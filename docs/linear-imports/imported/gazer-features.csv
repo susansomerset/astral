@@ -1,0 +1,542 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Claim Company Batches","Batch processing for WATCH companies with intelligent prioritization. Claims companies ready for scanning, prioritizing never-scanned companies first, then oldest scans. All companies in a Gazer run share a single batch_id for audit trail and lineage tracking.
+
+**Acceptance Criteria:**
+
+**Layer split:** Core owns orchestration; data layer exposes primitives only (no batch_id generation in data).
+
+**Core (e.g. src/core/gazer.py):**
+```python
+get_new_company_batch(
+    state: str,
+    limit: int,
+    sort_by: str = ""updated_at""
+) -> Tuple[str, List[Dict]]
+```
+Generates batch_id (UUID), calls data claim_company_batch(batch_id, state, limit, sort_by), then get_company_batch(batch_id), returns (batch_id, companies).
+
+**Data (src/data/database.py):** Naming uses company_batch (entity first). get_new_* breaks down to claim + get.
+- claim_company_batch(batch_id, state, limit, sort_by?) — set batch_id, batch_created_at on up to limit rows where state=? AND batch_id IS NULL; ORDER BY sort_by (e.g. last_scan_at ASC NULLS FIRST); stale interval from config.
+- get_company_batch(batch_id) -> List[Dict] (no state/limit)
+- clear_company_batch(batch_id) — set batch_id and batch_created_at NULL for batch
+
+**Input (core):**
+- state: str (company state to claim, e.g. WATCH); validate against config
+- limit: int (max companies to claim, 0 = unlimited)
+- sort_by: str (column to sort by, default updated_at)
+
+**Query logic (inside claim_company_batch):**
+```sql
+WHERE state = ? AND batch_id IS NULL
+AND (last_scan_at IS NULL OR last_scan_at < (now - interval '? hours'))
+ORDER BY {sort_by} ASC NULLS FIRST
+LIMIT ?  -- Null if limit=0
+```
+
+**Returns (core):** (batch_id, companies) where companies is list of full company records.
+
+**Prioritization:**
+- NULLS FIRST ensures never-scanned companies (last_scan_at IS NULL) process first
+- Then oldest last_scan_at next
+- Recently scanned companies naturally excluded by stale threshold
+
+**Configuration:**
+```python
+""gazer"": {
+    ""scan_state"": ""WATCH"",
+    ""sort_key"": ""last_scan_at"",
+    ""max_companies_per_run"": 100,  # 0 = unlimited
+    ""scan_interval_hours"": 24,
+    ""concurrent_batch_size"": 5
+}
+```
+
+**Gazer Execution Pattern:**
+```python
+config = ASTRAL_CONFIG[""gazer""]
+# Core: get a new batch (generates batch_id, calls data claim_company_batch + get_company_batch)
+batch_id, companies = core.get_new_company_batch(
+    state=config[""scan_state""],
+    limit=config[""max_companies_per_run""],
+    sort_by=config[""sort_key""]
+)
+
+# Process companies in concurrent chunks
+chunk_size = config[""concurrent_batch_size""]
+for chunk in chunks(companies, chunk_size):
+    await asyncio.gather(*[scan_company(c, batch_id) for c in chunk])
+
+# Release batch (data primitive)
+database.clear_company_batch(batch_id)
+```
+
+**Batch Locking:**
+- Single batch_id for entire Gazer run (not per chunk)
+- Prevents concurrent processing of same companies
+- batch_id explicitly cleared at end (success or failure)
+
+**Database (data layer only):**
+- claim_company_batch(batch_id, state, limit, sort_by?): UPDATE company SET batch_id, batch_created_at WHERE state=? AND batch_id IS NULL AND criteria ORDER BY sort_by
+- get_company_batch(batch_id): SELECT * FROM company WHERE batch_id=?
+- clear_company_batch(batch_id): UPDATE company SET batch_id=NULL, batch_created_at=NULL WHERE batch_id=?
+
+**Concurrency:**
+- Multiple Gazer runs won't double-process (batch_id IS NULL check)
+- Within run: process companies concurrently in chunks (Playwright concurrency limit)
+
+**State Machine Integration:**
+- Only claims companies in configured state (default: WATCH)
+- Does not transition states (that's Scrape/Track responsibility)
+- Follows same claim → process → release pattern as Roster and Tracker
+
+**Traceability:**
+- batch_id enables lineage tracking across company_job_scan records
+- All scans from single run share same batch_id",Backlog,High,feature,Astral Gazer,3
+"Scrape Job Postings","Web scraping orchestration for job listing pages. Uses Playwright to load job sites, handle pagination/lazy loading, validate page structure, and extract DOM content for parsing.
+
+**Acceptance Criteria:**
+
+**Input:**
+- company: Dict (company record with job_site, parse_instructions)
+- batch_id: str (for lineage tracking)
+
+**Processing Flow:**
+
+**1. Initialize Playwright:**
+- Create browser context
+- Navigate to company[""job_site""]
+- Handle retries (2 attempts) for network failures
+
+**2. Trigger Pagination:**
+```python
+await navigate_and_wait_for_ready(page, job_site)
+await load_all_jobs(page, short_name)
+```
+
+load_all_jobs() handles:
+- Infinite scroll (scroll to bottom, detect new content, repeat - max 10 scrolls)
+- ""Load More"" buttons (click repeatedly until exhausted - max 20 clicks)
+- Ensures all jobs visible in DOM
+
+**3. Validate Page Structure:**
+
+**If parse_instructions contains no_jobs_message:**
+```python
+if ""no_jobs_message"" in parse_instructions:
+    msg = parse_instructions[""no_jobs_message""]
+    if msg in page_text:
+        # Legitimate ""no openings"" - record success with 0 jobs
+        record_scan_success(total_found=0, new=0, duplicates=0)
+        update_company(last_scan_at=now)
+        return
+```
+
+**4. Extract DOM:**
+```python
+page_html = await extract_page_dom(page)
+# Returns culled HTML (scripts, styles, meta removed)
+```
+
+**5. Pass to Parser:**
+Return (page_html, parse_instructions) for container parsing
+
+**Playwright Retry Logic:**
+- navigate_and_wait_for_ready() retries 2x on timeout/failure
+- After 2 retries, raise exception (caught by Track Scan Results)
+
+**Error Scenarios:**
+
+**Network/Load Failures:**
+- Exception raised after retries
+- Tracked as failure in company_job_scan
+- Company stays in WATCH state for retry
+
+**Bot Detection:**
+- Exception raised (""bot block"" error message)
+- Tracked as failure
+- Future: May trigger separate bot mitigation workflow
+
+**Configuration:**
+```python
+""gazer"": {
+    ""concurrent_batch_size"": 5,  # Max parallel browser instances
+    ""page_load_timeout"": 60000,  # Milliseconds
+    ""scroll_max_attempts"": 10,
+    ""load_more_max_clicks"": 20
+}
+```
+
+**Playwright Functions Used:**
+- navigate_and_wait_for_ready(page, url) - Load page with retry
+- wait_for_page_ready_after_navigation(page) - Wait for dynamic content
+- load_all_jobs(page, short_name) - Trigger pagination
+- extract_page_dom(page) - Get culled HTML
+
+**Output:**
+- On success: (page_html, parse_instructions)
+- On failure: Raise exception with error details
+
+**Browser Lifecycle:**
+- Create context per company (isolation)
+- Close browser after DOM extraction
+- Async/concurrent execution within configured limits
+
+**Dependencies:**
+- src/external/playwright.py (existing functions)
+- parse_instructions from company record
+- Config for concurrency and timeouts
+
+**Future Enhancements:**
+- Bot mitigation strategies (captcha solving, proxy rotation)
+- Headless browser fingerprint randomization
+- Selective DOM extraction (only container regions)
+
+**Note on no_jobs_message:**
+- If message found: Early return with success status
+- Avoids unnecessary parsing when site legitimately has no openings
+- Allows continued monitoring without error state",Backlog,High,feature,Astral Gazer,5
+"Parse Job Containers","Extract individual job listings from page DOM using configured selectors. Implements two-stage parsing: container extraction followed by job_tag extraction. Validates structure and generates raw HTML job listings for Tracker ingestion.
+
+**Acceptance Criteria:**
+
+**New Playwright Function:**
+```python
+parse_by_element(
+    source: Union[Page, str],
+    element: str,
+    outer: bool = True
+) -> List[str]
+```
+
+**Parameters:**
+- source: Either Page object or HTML string
+- element: CSS selector (e.g., ""div.job-list"", ""div.jobby"")
+- outer: True = outerHTML, False = innerHTML
+
+**Returns:**
+- List[str] of HTML strings
+- Empty list if no matches
+
+**Input:**
+- page_html: str (culled HTML from Scrape Job Postings)
+- parse_instructions: Dict with:
+  - container: str (CSS selector for job list container)
+  - job_tag: str (CSS selector for individual job elements)
+
+**Two-Stage Parsing:**
+
+**Stage 1 - Extract Containers (innerHTML):**
+```python
+job_lists = parse_by_element(page_html, container_selector, outer=False)
+# Returns: [""<container1 innerHTML>"", ""<container2 innerHTML>"", ...]
+```
+
+**Validation - No Containers Found:**
+```python
+if len(job_lists) == 0:
+    # Container selector matched zero elements
+    
+    # Check if no_jobs_message explains it
+    if no_jobs_message and no_jobs_message in page_html:
+        record_scan_success(total_found=0, new=0, duplicates=0)
+        update_company(last_scan_at=now)
+        return
+    else:
+        # Structural problem - containers should exist
+        record_scan_failure(
+            total_found=0,
+            failure_message=""No containers found""
+        )
+        update_company(state=""JOBSITE_WATCH_ISSUE"")
+        return
+```
+
+**Stage 2 - Extract Job Tags (outerHTML):**
+```python
+all_raw_job_listings = []
+for job_list_html in job_lists:
+    if not job_list_html.strip():
+        continue  # Skip empty containers
+    
+    job_items = parse_by_element(job_list_html, job_tag_selector, outer=True)
+    all_raw_job_listings.extend(job_items)
+# Returns: [""<div class='jobby'>A</div>"", ""<div class='jobby'>B</div>"", ...]
+```
+
+**Character Accounting:**
+Sum of all job_items outerHTML characters should equal total innerHTML of all containers (minus empty containers).
+
+**Example:**
+```html
+<!-- Input: page_html contains -->
+<div class=""job-list"">
+  <div class=""jobby"">Job A</div>
+  <div class=""jobby"">Job B</div>
+</div>
+<div class=""job-list"">
+  <div class=""jobby"">Job C</div>
+</div>
+
+<!-- Stage 1: Extract containers (innerHTML) -->
+job_lists = [
+  ""<div class='jobby'>Job A</div><div class='jobby'>Job B</div>"",
+  ""<div class='jobby'>Job C</div>""
+]
+
+<!-- Stage 2: Extract job_tags (outerHTML) -->
+all_raw_job_listings = [
+  ""<div class='jobby'>Job A</div>"",
+  ""<div class='jobby'>Job B</div>"",
+  ""<div class='jobby'>Job C</div>""
+]
+```
+
+**Send to Tracker:**
+```python
+result = tracker.ingest_jobs(
+    company=company[""short_name""],
+    raw_job_listings=all_raw_job_listings,
+    batch_id=batch_id
+)
+# Returns: {""new"": X, ""duplicates"": Y}
+```
+
+**Edge Cases:**
+
+**Multiple Containers (Departments/Locations):**
+- Parse all containers found
+- Combine all job_tags into single list
+- Tracker treats as flat list (no department metadata yet)
+
+**Empty Containers:**
+- Skip silently (not an error)
+- Only error if NO containers found
+
+**Zero Jobs in Valid Containers:**
+```python
+if len(all_raw_job_listings) == 0:
+    # Legitimate ""no openings"" scenario
+    # Containers exist but no jobs currently
+    record_scan_success(total_found=0, new=0, duplicates=0)
+    update_company(last_scan_at=now)
+    return
+```
+
+**Implementation in playwright.py:**
+
+parse_by_element() needs to:
+1. Detect source type (Page object vs string)
+2. Apply CSS selector
+3. Extract innerHTML vs outerHTML based on flag
+4. Return list of HTML strings
+
+**Browser Context:**
+- parse_by_element() with Page object executes JavaScript in browser
+- parse_by_element() with string uses BeautifulSoup or similar parser
+
+**Output:**
+- all_raw_job_listings: List[str] (raw HTML job listings)
+- Ready for Tracker.ingest_jobs()
+
+**Error Handling:**
+- If selector syntax invalid: Exception raised, caught by Track Scan Results
+- If parsing fails: Exception raised
+- Gazer does not retry parsing errors (structural issue)
+
+**Future Enhancement:**
+- Extract metadata from containers (department, location) for job enrichment
+- Support for nested containers (e.g., department → location → jobs)",Backlog,High,feature,Astral Gazer,4
+"Track Scan Results","Record scan outcomes to company_job_scan table for audit trail and monitoring. Handles success/failure scenarios, updates company metadata, manages state transitions, and releases batch locks.
+
+**Acceptance Criteria:**
+
+**New Database Table:**
+```sql
+CREATE TABLE company_job_scan (
+    batch_id TEXT NOT NULL,
+    short_name TEXT NOT NULL,
+    scan_completed_at TIMESTAMP NOT NULL,
+    total_found INTEGER,
+    new INTEGER,
+    duplicates INTEGER,
+    status TEXT NOT NULL,  -- 'success' or 'failure'
+    failure_message TEXT,
+    PRIMARY KEY (batch_id, short_name),
+    FOREIGN KEY (short_name) REFERENCES company(short_name)
+);
+```
+
+**Scan Outcomes:**
+
+**1. Success - Jobs Found:**
+```python
+result = tracker.ingest_jobs(company, raw_job_listings, batch_id)
+
+record_to_company_job_scan(
+    batch_id=batch_id,
+    short_name=company,
+    scan_completed_at=now,
+    total_found=len(raw_job_listings),
+    new=result[""new""],
+    duplicates=result[""duplicates""],
+    status=""success"",
+    failure_message=None
+)
+
+update_company(
+    short_name=company,
+    last_scan_at=now
+)
+# State stays WATCH
+```
+
+**2. Success - No Jobs (no_jobs_message found OR zero jobs in valid containers):**
+```python
+record_to_company_job_scan(
+    batch_id=batch_id,
+    short_name=company,
+    scan_completed_at=now,
+    total_found=0,
+    new=0,
+    duplicates=0,
+    status=""success"",
+    failure_message=None
+)
+
+update_company(
+    short_name=company,
+    last_scan_at=now
+)
+# State stays WATCH
+```
+
+**3. Failure - No Containers Found:**
+```python
+record_to_company_job_scan(
+    batch_id=batch_id,
+    short_name=company,
+    scan_completed_at=now,
+    total_found=0,
+    new=None,
+    duplicates=None,
+    status=""failure"",
+    failure_message=""No containers found""
+)
+
+update_company(
+    short_name=company,
+    state=""JOBSITE_WATCH_ISSUE""
+)
+# DON'T update last_scan_at (failed scan)
+```
+
+**4. Failure - Tracker Exception:**
+```python
+try:
+    result = tracker.ingest_jobs(...)
+except Exception as e:
+    record_to_company_job_scan(
+        batch_id=batch_id,
+        short_name=company,
+        scan_completed_at=now,
+        total_found=len(raw_job_listings),
+        new=None,
+        duplicates=None,
+        status=""failure"",
+        failure_message=str(e)
+    )
+    
+    # State stays WATCH (transient error, retry next batch)
+    # DON'T update last_scan_at
+```
+
+**5. Failure - Network/Playwright Exception:**
+```python
+try:
+    page_html = await scrape_job_postings(...)
+except Exception as e:
+    record_to_company_job_scan(
+        batch_id=batch_id,
+        short_name=company,
+        scan_completed_at=now,
+        total_found=None,
+        new=None,
+        duplicates=None,
+        status=""failure"",
+        failure_message=str(e)
+    )
+    
+    # State stays WATCH
+    # DON'T update last_scan_at
+```
+
+**Batch Cleanup:**
+```python
+# Always run after all companies in batch processed
+database.clear_company_batch(batch_id)
+# Sets batch_id=NULL, batch_created_at=NULL for all companies
+# Allows retry in next batch if needed
+```
+
+**Scan Outcome Summary:**
+
+| Scenario | Status | Total | New | Dupe | State | last_scan_at | Notes |
+|----------|--------|-------|-----|------|-------|--------------|-------|
+| Jobs found | success | N | X | Y | WATCH | ✓ updated | Normal |
+| no_jobs_msg found | success | 0 | 0 | 0 | WATCH | ✓ updated | Valid empty |
+| Empty containers | success | 0 | 0 | 0 | WATCH | ✓ updated | Valid empty |
+| No containers | failure | 0 | NULL | NULL | JOBSITE_WATCH_ISSUE | ✗ not updated | Structural issue |
+| Tracker exception | failure | N | NULL | NULL | WATCH | ✗ not updated | Transient |
+| Network exception | failure | NULL | NULL | NULL | WATCH | ✗ not updated | Transient |
+
+**State Transitions:**
+
+WATCH → JOBSITE_WATCH_ISSUE:
+- Trigger: No containers found + no_jobs_message not found
+- Requires: Future AI diagnostic process to:
+  - Discover actual no_jobs_message → back to WATCH
+  - Determine site inactive → NO_JOB_SITE (human intervention)
+
+**Company Table Updates:**
+
+Success:
+```python
+UPDATE company SET 
+    last_scan_at = ?,
+    updated_at = ?
+WHERE short_name = ?
+```
+
+Failure (JOBSITE_WATCH_ISSUE):
+```python
+UPDATE company SET
+    state = 'JOBSITE_WATCH_ISSUE',
+    state_changed_at = ?,
+    updated_at = ?
+WHERE short_name = ?
+```
+
+**Monitoring:**
+- Query company_job_scan WHERE status='failure' for error review
+- Repeat offenders (multiple failures) flagged for investigation
+- Defensive monitoring = future Astral Monitor feature
+
+**Database Functions:**
+- record_to_company_job_scan(batch_id, short_name, ...) - Insert scan record
+- update_company(short_name, last_scan_at=..., state=...) - Update company
+- clear_company_batch(batch_id) - Release batch lock
+
+**Traceability:**
+- Full scan history in company_job_scan table
+- batch_id links to state_history in job table (via Tracker.ingest_jobs)
+- Complete lineage: Gazer batch → Company scans → Jobs created
+
+**Error Handling Philosophy:**
+- Transient failures (network, Tracker) → Keep in WATCH, retry next batch
+- Structural failures (no containers) → Move to JOBSITE_WATCH_ISSUE, requires investigation
+- Success with 0 jobs → Normal operation, not an error
+
+**Future Enhancements:**
+- Scan duration tracking (time taken per company)
+- Job count trends over time (alert on significant drops)
+- Automatic no_jobs_message discovery for JOBSITE_WATCH_ISSUE companies",Backlog,High,feature,Astral Gazer,5

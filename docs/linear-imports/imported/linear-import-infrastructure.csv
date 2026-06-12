@@ -1,0 +1,130 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Config: Centralized configuration system","Single source of truth for all file paths, API settings, task definitions, and business rules.
+
+**Code:** src/utils/config.py
+
+**What it provides:**
+- Directory paths (data_dir, agents_dir, companies_dir, etc.)
+- API configuration (model, temperature, maxTokens)
+- HTML culling rules (allowed tags, banner patterns, attribute stripping)
+- Cookie dismissal selectors (configured + fuzzy keywords)
+- Task configurations for all AI tasks (pickJobPages, vetJobPage, parseJobTag, scoreGET, scoreDO, scoreLIKE)
+- Job state machine definitions
+- ATS vendor patterns for detection
+- Database retry configuration
+
+**Impact:**
+Enables config-driven development - all settings in one place, no hardcoded values scattered through codebase.
+
+**Completed:** ~3 weeks ago",Done,Medium,"feature,infrastructure",Astral Foundation,3
+
+"Database: SQLite operations with retry logic","Robust database layer with automatic retry for transient errors and schema migration handling.
+
+**Code:** src/data/database.py
+
+**Features:**
+- Posting table primitives (insert_job_if_not_exists, save_job, update_jobs_state)
+- Batch processing support (set_batch_for_unclaimed, select_jobs_by_batch, clear_batch)
+- Query functions (select_jobs_by_state, select_jobs_by_company)
+- Company data management (save_company, remove_jobs_by_company)
+- Timesheet logging for API cost tracking (add_timesheet_entry)
+- Schema evolution with _ensure_posting_schema (handles LEGACY state migration)
+- Retry logic for database-locked/busy conditions (config-driven: max_attempts, delays)
+- Row-to-dict conversion helpers
+
+**Impact:**
+Reliable data persistence with automatic recovery from transient SQLite errors (locks, busy states).
+
+**Completed:** ~2 weeks ago",Done,Medium,"feature,infrastructure",Astral Foundation,5
+
+"Playwright: Web scraping infrastructure","Complete Playwright integration for web scraping with smart content extraction and vendor detection.
+
+**Code:** src/external/playwright.py
+
+**Features:**
+- Multi-browser support (Firefox → WebKit fallback)
+- Cookie banner dismissal (configured selectors + fuzzy keyword search)
+- Self-healing crawl (re-extract links after cookie dismissal if threshold not met)
+- Vendor detection from page artifacts (network requests, iframes, HTML)
+- Clickables extraction with priority merge (response_html > dom_early > dom_late)
+- HTML culling for API payload reduction (strips scripts, styles, banners)
+- Site crawling with configurable depth and verification
+- Page content extraction (text, links, buttons, DOM)
+- ATS iframe detection (Greenhouse, Lever, Workday, etc.)
+- Context manager for browser lifecycle
+- Lazy loading support (scroll + ""Load More"" buttons)
+
+**Impact:**
+Robust web scraping that handles modern JS-heavy sites, widgets, and cookie banners.
+
+**Completed:** ~3 weeks ago",Done,High,"feature,infrastructure",Astral Foundation,8
+
+"Anthropic: API client with prompt caching","Anthropic API client with intelligent prompt caching and labeled content blocks.
+
+**Code:** src/external/anthropic.py
+
+**Features:**
+- File-based prompt system with auto-resolution (simple filenames + path-based)
+- Prompt caching (4-block limit enforcement, ephemeral cache control)
+- Labeled content blocks for task prompts (=== LABEL === headers)
+- Binary file upload for PDFs via file server
+- Auto-parsing (text, JSON, Python code formats)
+- Timesheet logging integration (tokens, cost, context tracking)
+- Timestamp prefix generation for prompts
+- Config-driven API settings (model, temperature, maxTokens from ASTRAL_CONFIG)
+- Error handling with structured response dict (success, api_response, parsed_response, timesheet)
+
+**Impact:**
+90% cost reduction via prompt caching; clean separation of system/task/content prompts.
+
+**Completed:** ~2 weeks ago",Done,High,"feature,infrastructure",Astral Foundation,5
+
+"Consult: GET/DO/LIKE scoring system","Three-rubric evaluation system for job-candidate matching with AI analysis.
+
+**Code:** src/core/consult.py
+
+**Features:**
+- GET scoring (can candidate get the job? - credentials match)
+- DO scoring (can candidate do the job well? - excel at responsibilities)  
+- LIKE scoring (would candidate like the job? - culture fit, preferences)
+- Full pipeline with early stopping (score_job_full)
+- Config-driven task definitions (labeled blocks for rubrics, resume, LinkedIn, preferences)
+- Company context support for LIKE evaluation
+- Threshold-based progression (skip DO/LIKE if GET fails)
+
+**Impact:**
+Automated job evaluation that mimics human decision-making process (GET → DO → LIKE).
+
+**Completed:** ~1 week ago",Done,Medium,"feature",Astral Consult,5
+
+"Cost tracking: Token usage and estimation","Cost calculation and tracking for Anthropic API usage with cache-aware pricing.
+
+**Code:** src/utils/cost_calculator.py
+
+**Features:**
+- Simple cost calculation (input + output tokens)
+- Cache-aware cost calculation (90% discount for cache reads, 25% markup for cache writes)
+- Pricing constants for Claude Sonnet 4.5
+- Integration with timesheet logging via database.add_timesheet_entry()
+
+**Impact:**
+Accurate cost tracking for API usage; enables budget monitoring and optimization decisions.
+
+**Completed:** ~2 weeks ago",Done,Low,"feature,infrastructure",Astral Foundation,2
+
+"Logging: Centralized logging utility","Standardized logging interface with debug prefixes and runtime control.
+
+**Code:** src/utils/logging.py
+
+**Features:**
+- Prefixed logger wrapper ([ ~ ] prefix for debug messages)
+- Test mode logging (.test() method with runtime flag control)
+- Standard log levels (debug, info, warning, error, critical)
+- No dependency on third-party libraries (uses Python standard logging)
+- Simple configuration (logging.basicConfig with INFO level default)
+- Avoids conflicts with third-party library debug output
+
+**Impact:**
+Clean, consistent logging across all modules; helps with debugging without noise from dependencies.
+
+**Completed:** ~2 weeks ago",Done,Low,"feature,infrastructure",Astral Foundation,1

@@ -1,0 +1,78 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Component Library","Project scaffolding, Flask integration, and Railway deployment","**Scope:** Set up the React + TypeScript project with Vite, configure Flask to serve the built output, and prepare Railway deployment.
+
+- Vite + React + TypeScript project setup
+- Flask app serves built React output at root, API routes under /api/
+- Flask catch-all route serves index.html for non-API paths (client-side routing)
+- Railway deployment config: Procfile or railway.toml, persistent volume mount for SQLite
+- Dev workflow: Vite dev server proxies /api/ to Flask during development
+
+**Layer:** ui/ (new React project), Flask API server",Backlog,High,subissue,Astral Interface,2
+"Component Library","NavigationShell component","**Scope:** Build the NavigationShell layout component — sidebar with grouped nav sections and a main content area.
+
+- Sidebar layout with 4 grouped nav sections: Jobs, Companies, Candidate, Admin
+- Data-driven nav config: nav groups, links, and visibility driven by a config object (not hardcoded). Must support runtime flexibility for state-machine-dependent menu items (e.g., nav items that appear/hide based on candidate, company, or job state)
+- Active route highlighting via React Router NavLink
+- Router Outlet for page content area
+- Top-level app wrapper (all pages render inside NavigationShell)
+
+**Nav sections:**
+- Jobs: Meteors, New, Skipped, Applied, Responded
+- Companies: Watch List, Gazer Issues, Ignored, Watch History
+- Candidate: Profile, Strengths, Goals, Deal Breakers, Experience, Base Resume
+- Admin: Scheduled Actions, Performance Monitor, Agent Timesheets, Manage Candidates, Agent Prompts, Task Prompts, Consult Rubrics, Analysis Instructions, Resume Framework
+
+**Layer:** ui/src/components/",Backlog,High,subissue,Astral Interface,1
+"Component Library","ListPage component","**Scope:** Build the generic ListPage component — a sortable, filterable table with checkbox selection and bulk actions.
+
+- Sortable columns with direction toggle (click header to sort)
+- Filter/search text input
+- Checkbox column for row selection
+- Bulk action toolbar (appears when 1+ rows selected, actions passed via props)
+- Column config via props (no hardcoded screen content)
+- Row click handler prop for opening Modal or navigating
+
+**Layer:** ui/src/components/",Backlog,High,subissue,Astral Interface,1
+"Component Library","Modal component","**Scope:** Build the generic Modal component — a single-record edit overlay dialog.
+
+- Overlay dialog accepting a form schema prop
+- Renders typed inputs: text, textarea, select, toggle
+- Cancel and Save action buttons
+- Dismissable via Escape key or backdrop click
+- Fully generic — form fields driven by schema config
+
+**Layer:** ui/src/components/",Backlog,High,subissue,Astral Interface,1
+"Component Library","DetailsEditPage component","**Scope:** Build the DetailsEditPage component — a full-page single-record editor.
+
+- Full-page single-record editor (not a modal, renders at its own route)
+- Labeled sections with long-form text areas
+- Page-level Save and Cancel buttons
+- Section config via props
+
+**Layer:** ui/src/components/",Backlog,High,subissue,Astral Interface,1
+"Navigation","Stub page files for all nav destinations","**Scope:** Create stub page components for all 24 nav destinations. Organized by section folder: pages/Jobs/, pages/Companies/, pages/Candidate/, pages/Admin/. Every stub renders a large winking emoji centered in the main content area. No Component Library usage in stubs — just the emoji. Real implementations come later per feature.
+
+**Files (24 total):**
+- Jobs: Meteors.tsx, New.tsx, Skipped.tsx, Applied.tsx, Responded.tsx
+- Companies: WatchList.tsx, GazerIssues.tsx, Ignored.tsx, WatchHistory.tsx
+- Candidate: Profile.tsx, Strengths.tsx, Goals.tsx, DealBreakers.tsx, Experience.tsx, BaseResume.tsx
+- Admin: ScheduledActions.tsx, PerformanceMonitor.tsx, AgentTimesheets.tsx, ManageCandidates.tsx, AgentPrompts.tsx, TaskPrompts.tsx, ConsultRubrics.tsx, AnalysisInstructions.tsx, ResumeFramework.tsx
+
+**Naming convention:** PascalCase for component files (React requirement), snake_case for route paths (Astral convention).
+
+**Layer:** ui/src/pages/",Backlog,High,subissue,Astral Interface,1
+"Navigation","Route wiring, active highlighting, and refresh handling","**Scope:** Wire all nav config entries to their stub page components via React Router and verify end-to-end navigation.
+
+- Wire all nav config entries to their stub page components via React Router
+- Active link visually highlighted in sidebar
+- Unknown paths redirect gracefully (404 or redirect to default route)
+- Navigation works correctly on page refresh (Flask catch-all serves index.html)
+- Verified end-to-end: sidebar click -> route change -> correct stub with winking emoji
+
+**Route mapping:**
+- Jobs: /jobs/meteors, /jobs/new, /jobs/skipped, /jobs/applied, /jobs/responded
+- Companies: /companies/watch_list, /companies/gazer_issues, /companies/ignored, /companies/watch_history
+- Candidate: /candidate/profile, /candidate/strengths, /candidate/goals, /candidate/deal_breakers, /candidate/experience, /candidate/base_resume
+- Admin: /admin/scheduled_actions, /admin/performance_monitor, /admin/agent_timesheets, /admin/manage_candidates, /admin/agent_prompts, /admin/task_prompts, /admin/consult_rubrics, /admin/analysis_instructions, /admin/resume_framework
+
+**Layer:** ui/src/ (router config, NavigationShell integration)",Backlog,High,subissue,Astral Interface,2

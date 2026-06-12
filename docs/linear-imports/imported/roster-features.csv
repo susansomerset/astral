@@ -1,0 +1,294 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Import Companies to Roster","Import company data from CSV or single commands with validation and normalization.
+
+**Acceptance Criteria:**
+
+**CSV Import:**
+- Parse columns: shortName, companyName, websiteURL, jobSiteURL (optional)
+- Handle multi-line values, quoted fields
+
+**Single Command:**
+- Create company with required fields (shortName, companyName) and optional fields (websiteURL, jobSiteURL)
+
+**Validation:**
+- URL normalization: Handle www/non-www, trailing slashes, protocol variants
+- Duplicate detection: Check shortName and websiteURL uniqueness
+- Error handling: Clear error messages for invalid CSV format
+
+**Database:**
+- Save to company table with state=""imported""
+- Initialize empty company_data JSON
+
+**Future Enhancement:**
+- JSON import from Anthropic API with metadata",Backlog,Medium,feature,Astral Roster,5
+"Locate Company Website","Auto-discover company websites from names using Google Custom Search Engine and AI evaluation.
+
+**Acceptance Criteria:**
+
+**Input:**
+- Company name from companies with state=""imported""
+- No websiteURL populated yet
+
+**Search Strategy:**
+- Query Google CSE: ""<company name> website""
+- Return top N results (10?)
+
+**AI Evaluation:**
+- Send search results to AI (task configured in config.py)
+- AI picks main company homepage (not careers/social media/news)
+- Returns confidence level (high/medium/low)
+
+**Confidence Handling:**
+- High confidence: Auto-accept, save to websiteURL
+- Low confidence: Flag for human review, save to job_site_notes
+- Multiple plausible results: AI picks most likely OR flag as ""no_website""
+
+**State Transitions:**
+- ""imported"" → ""website_found"" (success)
+- ""imported"" → ""no_website"" (cannot determine)
+
+**Batch Processing:**
+- Process all ""imported"" companies sequentially
+- Logging: Discovery summary per company
+
+**Database Fields Updated:**
+- websiteURL: Discovered homepage URL
+- state: ""imported"" → ""website_found"" | ""no_website""
+- job_site_notes: AI confidence + reasoning, or failure explanation
+- batch_id: For locking during processing
+
+**Dependencies:**
+- Google CSE integration (new Foundation issue needed)
+
+**Future Enhancement:**
+- Crunchbase API integration for additional context",Backlog,High,feature,Astral Roster,8
+"Prefilter Company for Candidate","AI-powered first-line filter that evaluates company websites against candidate-specific preferences to catch dealbreakers BEFORE spending API costs on job description analysis. Saves ~$0.65 per filtered company.
+
+**Acceptance Criteria:**
+
+**Input:**
+- Companies with websiteURL populated
+- Typically state=""website_found"" (or any node in script mode)
+
+**Processing:**
+- Scrape visible text from company homepage (via Playwright)
+- Send to AI using task ""prefilterCompany"" (defined in config.py)
+- Task returns verdict + explanation
+
+**AI Response (parsed from task output):**
+- decision: ""WATCH"" | ""IGNORE"" | ""UNKNOWN""
+- reason: Brief reason for IGNORE (null for WATCH)
+- explanation: 2-3 sentence natural language reasoning
+
+**State Transitions:**
+
+1. WATCH:
+   - Set prefilter=""WATCH""
+   - Store explanation in prefilterNotes
+   - Keep in current node → ready for job page discovery
+   - Transition: ""website_found"" → ""TO_WATCH""
+
+2. IGNORE:
+   - Set prefilter=""IGNORE""
+   - Store reason + explanation in prefilterNotes
+   - Move company from current node → ""ignore"" node
+   - Do not process further
+
+3. UNKNOWN (parsing error/empty response):
+   - Set prefilter=""UNKNOWN""
+   - Store error in prefilterNotes
+   - Keep in current node for manual review
+
+**Current Implementation:**
+- Script: scripts/prefilter_company.py
+- Modes: Single company OR batch by node
+- Uses config task: ""prefilterCompany""
+- Outputs timestamped log file
+
+**Core Integration Needed:**
+- Callable function in roster.py (not just script)
+- Auto-trigger after website discovery
+- Integrate with state machine workflow
+- Support both single and batch operations
+- Add batch locking (like Tracker pattern)
+
+**Database Fields Updated:**
+- prefilter: ""WATCH"" | ""IGNORE"" | ""UNKNOWN""
+- prefilterNotes: AI explanation or error
+- state: ""website_found"" → ""TO_WATCH"" (for WATCH outcome)
+- batch_id: For locking during processing
+
+**Cost Savings:**
+- Prefilter: ~$0.10/company
+- Full GET/DO/LIKE: ~$0.75/company
+- 7.5x ROI when filtering incompatible companies",In Progress,High,feature,Astral Roster,5
+"Locate Company Job Page","Multi-step AI-guided discovery process that finds the URL where a company lists job openings. Uses recursive navigation (following links, clicking buttons) and iframe detection for embedded ATS vendors. Does NOT extract job data - just finds the jobSite URL.
+
+**Acceptance Criteria:**
+
+**Input:**
+- Batch of companies with state=""TO_WATCH""
+- Uses batch locking (like Tracker) to prevent concurrent processing
+- Companies must have companyWebsite populated
+
+**Processing Steps:**
+1. Claim batch: Lock N companies with state=""TO_WATCH"" using batch_id
+2. For each company:
+   - Scrape website/candidate pages
+   - Send DOM content to AI prompts (config index: ""find_job_site"")
+   - AI navigates by identifying links/buttons to follow
+   - Detect iframe-embedded ATS vendors (Greenhouse, Lever, Workday, etc.)
+   - Recurse up to max depth (2?) to find job listings
+3. AI evaluates outcome - returns one of:
+   - Found parseable job listings
+   - Found page that says ""no jobs available""
+   - Cannot locate job site
+4. Update company record with results
+5. Release batch: Clear batch_id after processing
+
+**AI Outcomes:**
+
+1. TO_PARSE:
+   - Job listings page found with active postings
+   - Save jobSite URL to company record
+   - Transition state: ""TO_WATCH"" → ""TO_PARSE""
+
+2. NO_JOBS:
+   - Job page found but currently no openings
+   - Text like ""No positions available"", ""Check back later""
+   - Save jobSite URL to company record
+   - Save message in job_site_notes
+   - Transition state: ""TO_WATCH"" → ""NO_JOBS""
+
+3. NO_JOB_SITE:
+   - Cannot find/deduce where jobs are listed
+   - Could be: no careers page, bot-blocked, complex navigation
+   - Save failure reason in job_site_notes
+   - Transition state: ""TO_WATCH"" → ""NO_JOB_SITE""
+   - Flagged for manual review by Astral Monitor
+
+**Special Cases:**
+
+Iframe Detection:
+- Detect embedded ATS vendors (Greenhouse, Lever, Workday, Ashby, etc.)
+- Extract iframe URL as jobSite
+- Enables direct navigation to ATS-hosted job boards
+- Common pattern: Company page embeds third-party job widget
+
+Recursive Navigation:
+- Follow links (""Careers"", ""Jobs"", ""Openings"")
+- Click buttons that load job content
+- Max recursion depth to prevent infinite loops
+- Loop detection (visited URLs tracking)
+
+**Current Implementation:**
+- Function: find_job_page() in roster.py (~800 lines)
+- Uses AI tasks pickJobPages, vetJobPage, parseJobTag (configured in config.py)
+- Already handles recursion, iframe detection, button clicking
+- NOT integrated with batch processing yet
+
+**Core Integration Needed:**
+- Add batch locking (like Tracker's get_new_batch())
+- Process companies in batches instead of one-off
+- Update company states in database
+- Clear batch after processing
+- Error handling for batch failures
+
+**Database Fields Updated:**
+- jobSite: URL of job listings page (if found)
+- job_site_notes: Explanatory text for NO_JOBS or NO_JOB_SITE outcomes
+- state: ""TO_WATCH"" → ""TO_PARSE"" | ""NO_JOBS"" | ""NO_JOB_SITE""
+- batch_id: For locking during processing",In Progress,High,feature,Astral Roster,8
+"Parse Company Job Page","Analyzes job listing page structure and generates parsing instructions for extracting job summaries. Uses AI to discover metadata schema dynamically and validates that parsing works. Saves reusable parsing config for Gazer.
+
+**Acceptance Criteria:**
+
+**Input:**
+- Batch of companies with state=""TO_PARSE""
+- Companies must have jobSite URL populated
+- Uses batch locking (like Features 4 and Tracker)
+
+**Processing Steps:**
+1. Claim batch: Lock N companies with state=""TO_PARSE"" using batch_id
+2. For each company:
+   - Navigate to jobSite URL via Playwright
+   - Detect bot blockers (""prove you're human"" challenges)
+   - Extract and trim DOM (remove unnecessary tags - function exists in playwright.py)
+   - Send trimmed body content to AI (config index: ""parse_job_list"")
+3. AI analyzes page structure and returns:
+   - container: Selector for parent element containing all job listings
+   - jobItem: Selector for repeating element (each job)
+   - metadata_schema: Dynamic schema discovered from first job
+   - Example: {""Location"": ""Remote"", ""Salary"": ""125k-155k"", ""Department"": ""Engineering"", ""PostedDate"": ""2026-01-15""}
+4. Validate parsing:
+   - Use AI-provided selectors to extract job items
+   - Pattern-match metadata from first parsed item
+   - Confirm can extract: job title, job ID, link to full description
+   - Save what works - even if some metadata fields fail to parse
+   - Record natural language explanation for validation failures
+5. Update company record with results
+6. Release batch: Clear batch_id after processing
+
+**AI Response (from ""parse_job_list"" task):**
+{
+  ""container"": ""div.careers-portal"",
+  ""jobItem"": ""li.job-posting"",
+  ""metadata_schema"": {
+    ""Location"": ""Remote"",
+    ""Salary"": ""125,000-155,000"",
+    ""Department"": ""Product"",
+    ""PostedDate"": ""Jan 15, 2026""
+  }
+}
+
+**Validation Philosophy:**
+- Save what works: If title/ID/link parse successfully but some metadata fails, still save the working parts
+- Record failures: Natural language explanation of what couldn't be parsed goes in job_site_notes
+- Partial success acceptable: Company can still reach ""NEW"" state if core fields (title, ID, link) work
+
+**Outcomes:**
+
+1. NEW (Success):
+   - Can extract required fields: title, ID, link
+   - Save to company_data JSON:
+     - container: Container selector
+     - jobItem: Job item selector
+     - metadata_schema: Discovered metadata shape (even if partial)
+   - Save partial parsing notes in job_site_notes if some metadata failed
+   - Transition state: ""TO_PARSE"" → ""NEW""
+   - Ready for Gazer to use
+
+2. CANNOT_PARSE_JOB_SITE (Parse Failure):
+   - AI cannot determine parsing structure
+   - Cannot extract required fields (title, ID, link)
+   - Save natural language explanation in job_site_notes for Monitor review
+   - Transition state: ""TO_PARSE"" → ""CANNOT_PARSE_JOB_SITE""
+   - Flagged for manual review
+
+3. BOT_BLOCKED (Security Challenge):
+   - Playwright detects bot blocker/CAPTCHA
+   - Cannot access page content
+   - Save detection in job_site_notes
+   - Transition state: ""TO_PARSE"" → ""BOT_BLOCKED""
+   - Flagged for manual review (may need retry later)
+
+**Database Fields Updated:**
+- company_data: JSON with container, jobItem, metadata_schema
+- state: ""TO_PARSE"" → ""NEW"" | ""CANNOT_PARSE_JOB_SITE"" | ""BOT_BLOCKED""
+- job_site_notes: Natural language explanation of parsing results/failures
+- batch_id: For locking during processing
+
+**Core Integration Needed:**
+- Create batch processing wrapper for Feature 5
+- Integrate with Playwright DOM trimming function
+- Create/configure ""parse_job_list"" AI task in config.py
+- Build validation logic to test parsing instructions
+- Handle bot blocker detection
+- Save parsing config to company_data JSON
+
+**Notes:**
+- This extracts job SUMMARIES only (list view), not full descriptions
+- Metadata schema is dynamic - discovered by AI per company
+- Partial success is acceptable - save working parts, document what failed
+- Parsing instructions saved here are reused by Gazer nightly
+- Some companies may have simple metadata (just title+link), others complex",In Progress,High,feature,Astral Roster,8

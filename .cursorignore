@@ -1,0 +1,22 @@
+# Runtime / local data — keep out of agent index and automatic context
+data/
+debug/
+z-old/
+*.db
+
+# Python / test artifacts
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.coverage
+.coverage-*
+
+# Frontend build deps and output
+src/ui/frontend/node_modules/
+src/ui/frontend/dist/
+src/ui/frontend/.vite/
+
+# OS / IDE noise
+.DS_Store
+

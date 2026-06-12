@@ -1,0 +1,179 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Ingest Job Listings","Sub: Input contract from Gazer","**Scope:** Define and validate input when Tracker receives an ingest call from Gazer.
+
+**Input (from Gazer):**
+- company: short_name (string)
+- batch_id: Gazer's batch ID (string, for lineage)
+- raw_job_listings: array of HTML strings (parsed joblist items from company job page)
+
+**Assumption:** Gazer parses the company joblist and sends the array with company short_name and Gazer's batch_id. Tracker does not fetch or parse; it receives only this payload.
+
+**Validation:**
+- company and batch_id present
+- raw_job_listings is a list (can be empty)
+- No business logic in validation; fail fast on invalid input
+
+**Layer:** core (or data interface)
+
+**Ref:** tracker-features.csv Ingest Job Listings",Backlog,High,subissue,Astral Tracker,1
+"Ingest Job Listings","Sub: Inverted pattern matching for deduplication","**Scope:** For each incoming raw_job_listing, determine if it already exists using inverted pattern matching.
+
+**Strategy:** For each raw_job_listing, check whether any existing job for this company has a company_job_id that appears inside the raw_job_listing. I.e. query existing company_job_ids for company; for each raw_job_listing, if raw_job_listing contains (LIKE) any of those IDs → duplicate. Else → new.
+
+**Pattern:** Inverted = we match incoming HTML against stored company_job_ids (not stored HTML against incoming ID). WHERE company=? AND raw_job_listing LIKE '%' || company_job_id || '%' (or equivalent per DB layer). Do not include NULL company_job_id in the query; it's pointless.
+
+**Rationale:** Job ID and full job metadata are parsed by Anthropic on joblist evaluation (task 101), which returns the parsed job metadata JSON from the raw_job_listing content. Therefore NONE of the Astral Python code needs to craft parsing logic for raw_job_listing data, ever. At ingest we only have raw HTML; dedup matches ""does this raw_job_listing contain any known company_job_id?"" using stored IDs (populated later by Consult/101). Single source of truth for ""known"" is the DB; no Python parsing of raw_job_listings.
+
+**Code:** Data layer exposes primitive(s) to support this check; core orchestrates. No hardcoded state sets; use config for job_states where relevant.
+
+**Ref:** tracker-features.csv Deduplication Strategy; Rationale; ASTRAL_CODE_RULES 2b",Backlog,High,subissue,Astral Tracker,3
+"Ingest Job Listings","Sub: Data layer primitives for ingest","**Scope:** Data layer functions required for ingest.
+
+**Primitives:**
+- Way to get existing company_job_ids for a company (for inverted match), or a single query that answers ""is this raw_job_listing a duplicate for this company?""
+- insert_job (or equivalent) for new records with required fields
+
+**Behavior:** Data layer only; no business logic. Validation of state against config; state value from caller (core).
+
+**Code:** src/data/database.py (or src/data/tracker.py if split)
+
+**Ref:** tracker-features.csv Database; ASTRAL_CODE_RULES data layer rules",Backlog,High,subissue,Astral Tracker,2
+"Ingest Job Listings","Sub: New job record shape and state initialization","**Scope:** When inserting a non-duplicate, create job record with correct shape.
+
+**Fields:**
+- astral_job_id: UUID (generated)
+- company: short_name
+- company_job_id: NULL (not parsed yet)
+- job_title: NULL (not parsed yet)
+- job_data: {""raw_job_listing"": ""<html string>""}
+- state: from ASTRAL_CONFIG[""job_states""] (e.g. first state = NEW)
+- state_history: [{""to_state"": <initial_state>, ""timestamp"": now, ""batch_id"": <gazer_batch_id>}]
+- batch_id: NULL (not locked for processing)
+- batch_created_at: NULL
+- created_at, updated_at, state_changed_at: now
+
+**Rule:** State and initial state_history entry use Gazer's batch_id for lineage. No magic numbers; state from config only.
+
+**Ref:** tracker-features.csv New Job Record; ASTRAL_CODE_RULES 3c",Backlog,Medium,subissue,Astral Tracker,1
+"Ingest Job Listings","Sub: Insert non-duplicates and count new vs duplicate","**Scope:** For each raw_job_listing, if duplicate skip; if new, insert via data layer. Maintain counts: new, duplicates.
+
+**Flow:** For each raw_job_listing in array: run inverted match; if duplicate increment dupe count; else insert new job, increment new count. Return counts to caller.
+
+**Layer:** core orchestrates; data layer does insert and match primitives.
+
+**Ref:** tracker-features.csv Output",Backlog,High,subissue,Astral Tracker,2
+"Ingest Job Listings","Sub: Response to Gazer (new and dupe counts)","**Scope:** After processing the array, respond to Gazer's call with result.
+
+**Response shape:** {""new"": N, ""duplicates"": M}
+
+**Contract:** Gazer calls Tracker with (company, batch_id, raw_job_listings); Tracker returns this dict so Gazer can confirm all raw_job_listings processed and track scan stats (future Gazer feature).
+
+**Layer:** core (or API boundary if Tracker is called via service). No change to Gazer code in this subissue; define contract only.
+
+**Ref:** tracker-features.csv Output; Traceability",Backlog,Medium,subissue,Astral Tracker,1
+"Ingest Job Listings","Sub: Ingest orchestration entrypoint","**Scope:** Single entrypoint that Gazer calls: receive (company, batch_id, raw_job_listings); run dedup (inverted pattern matching); insert non-dupes with correct state and state_history; return { new, duplicates }.
+
+**Steps:** Validate input → for each raw_job_listing determine duplicate vs new → insert new jobs → return counts. Thin orchestration; delegate to data layer for match and insert.
+
+**Code:** core (e.g. ingest_jobs). Per ASTRAL_CODE_RULES, Tracker batch operations live in data layer; this orchestration is the core entrypoint that uses those primitives plus dedup logic.
+
+**Ref:** tracker-features.csv; roster get_new_batch pattern for comparison (different flow but same layer discipline)",Backlog,High,subissue,Astral Tracker,2
+"Save Job Data","Sub: save_job_data signature and contract","**Scope:** Define function signature and input contract.
+
+**Input:**
+- astral_job_id: UUID (required, must exist)
+- job_data: Dict (required, new data to save)
+- replace: bool (optional, default False)
+
+**Validation:** No validation on job_data structure; accept any valid dict. Don't enforce structure in multiple places. Job must exist (see Error handling subissue).
+
+**Ref:** tracker-features.csv Save Job Data Input; Validation",Backlog,High,subissue,Astral Tracker,1
+"Save Job Data","Sub: Data layer update job_data primitive","**Scope:** Data layer primitive(s) to write job_data and updated_at. Tracker (or caller) calls database.py; database implements the mechanics.
+
+**Behavior:** When merge: load existing job_data, deep merge with new job_data (new keys added, existing updated, untouched preserved), write. When replace: write job_data as full replacement. Core decides merge vs replace; data layer implements how (generalized in database.py).
+
+**Code:** src/data/database.py (or src/data/tracker.py if split)
+
+**Ref:** tracker-features.csv Database Updates",Backlog,High,subissue,Astral Tracker,2
+"Save Job Data","Sub: Core decides merge vs replace","**Scope:** save_job_data entrypoint (core) interprets replace flag: replace=False → request merge semantics; replace=True → request full replacement. Core calls data layer with job_id, job_data, and merge/replace intent; data layer performs the mechanics (load+merge+write or overwrite).
+
+**Ref:** tracker-features.csv Merge Mode; Replace Mode",Backlog,High,subissue,Astral Tracker,1
+"Save Job Data","Sub: Error handling job not found","**Scope:** If astral_job_id doesn't exist, raise ValueError. Should never happen at runtime (QA-catchable bug).
+
+**Placement:** Data layer can raise when update affects 0 rows; or core can check existence before calling update. Document which layer owns the check.
+
+**Ref:** tracker-features.csv Error Handling",Backlog,Medium,subissue,Astral Tracker,1
+"Record State Transitions","Sub: transition_state signature and contract","**Scope:** Define function signature and input contract.
+
+**Input:**
+- job_ids: List[str] (one or more astral_job_ids)
+- to_state: str (new state to transition to)
+
+**Validation:** Call config validate function at entry (see subissue). If state invalid → fail loudly (ValueError). Should never be a runtime issue (QA-catchable). Tracker does NOT validate state machine transitions (Consult does); Tracker just records what Consult tells it.
+
+**Ref:** tracker-features.csv Record State Transitions Input; Validation; Transition Validation",Backlog,High,subissue,Astral Tracker,1
+"Record State Transitions","Sub: config.py validate_value(list, value)","**Scope:** config.py exposes a single generic validate function (e.g. validate_value(allowed_list, value)) that checks value is in allowed_list. If not → raise ValueError (fail loudly). Should never be a runtime issue (QA-catchable). No per-state-type functions (e.g. no validate_job_state, validate_company_state); one function, caller supplies the list.
+
+**Usage:** Caller gets the allowed list from config and passes it: e.g. validate_value(ASTRAL_CONFIG[""job_states""], to_state). The calling function knows from the config file which list to use.
+
+**Code:** src/utils/config.py
+
+**Ref:** tracker-features.csv Validation; ASTRAL_CODE_RULES 2b",Backlog,High,subissue,Astral Tracker,1
+"Record State Transitions","Sub: Data layer primitive append state_history and update state","**Scope:** For each job_id: read current batch_id from job table; append to state_history one entry {""to_state"": to_state, ""timestamp"": now, ""batch_id"": current_batch_id}; update state = to_state, state_changed_at = now, updated_at = now; leave batch_id unchanged.
+
+**Processing:** For all job_ids in one call: single SQL transaction; all-or-nothing. If any job_id fails, entire batch rolls back.
+
+**Database:** job table UPDATE state, state_changed_at, state_history, updated_at WHERE astral_job_id IN (...). batch_id not modified (cleared separately by clear_batch).
+
+**Code:** src/data/database.py (or src/data/tracker.py if split)
+
+**Ref:** tracker-features.csv Processing; Database Updates; Database",Backlog,High,subissue,Astral Tracker,3
+"Record State Transitions","Sub: Transaction atomicity for multiple job_ids","**Scope:** Single SQL transaction for all job_ids in the transition call. All-or-nothing atomic update. If any job_id fails (e.g. not found), entire batch rolls back.
+
+**Ref:** tracker-features.csv Transaction",Backlog,Medium,subissue,Astral Tracker,1
+"Record State Transitions","Sub: state_history entry shape and traceability","**Scope:** state_history is a JSON array; each appended entry has: to_state, timestamp, batch_id (the job's current batch_id at transition time). Enables full job lifecycle visibility and which batch processed each transition.
+
+**Note:** State machine (valid transitions, nomenclature) is for reference only; not enforced by Tracker.
+
+**Ref:** tracker-features.csv State History Structure; Traceability",Backlog,Medium,subissue,Astral Tracker,1
+"Manage State Batch Jobs","Sub: get_new_batch(state, limit)","**Scope:** Claim a batch of unclaimed jobs for a given state.
+
+**Input:** state (str, job state to claim e.g. NEW, PASSED_JOBLIST), limit (int, max jobs to claim). Validate state via validate_value(ASTRAL_CONFIG[""job_states""], state) at entry; fail loudly if invalid.
+
+**Processing:** Generate batch_id (UUID); claim N unclaimed jobs (WHERE state=? AND batch_id IS NULL LIMIT ?); set batch_id and batch_created_at on claimed jobs; fetch and return them.
+
+**Returns:** Tuple[str, List[Dict[str, Any]]] — (batch_id, jobs) where jobs is list of full job records.
+
+**Database:** job table UPDATE batch_id, batch_created_at WHERE state=? AND batch_id IS NULL LIMIT ?; SELECT * FROM job WHERE batch_id=?
+
+**Ref:** tracker-features.csv get_new_batch; ASTRAL_CODE_RULES 3c",Backlog,High,subissue,Astral Tracker,2
+"Manage State Batch Jobs","Sub: get_batch(batch_id)","**Scope:** Retrieve all jobs in a batch.
+
+**Input:** batch_id (str, UUID of batch to retrieve).
+
+**Processing:** Fetch all jobs with this batch_id.
+
+**Returns:** List[Dict[str, Any]] (list of full job records).
+
+**Database:** job table SELECT * FROM job WHERE batch_id=?
+
+**Ref:** tracker-features.csv get_batch",Backlog,Medium,subissue,Astral Tracker,1
+"Manage State Batch Jobs","Sub: clear_batch(batch_id)","**Scope:** Release a batch so jobs can be reclaimed.
+
+**Input:** batch_id (str, UUID of batch to release).
+
+**Processing:** Set batch_id=NULL and batch_created_at=NULL for all jobs in batch. Allows jobs to be reclaimed by future batches if needed.
+
+**Returns:** int (count of jobs released).
+
+**Database:** job table UPDATE batch_id=NULL, batch_created_at=NULL WHERE batch_id=?
+
+**Ref:** tracker-features.csv clear_batch",Backlog,High,subissue,Astral Tracker,1
+"Manage State Batch Jobs","Sub: Data layer primitives for batch operations","**Scope:** Data layer functions that implement batch claim/release. Primitives: set_batch_for_unclaimed(state, batch_id, limit), select_jobs_by_batch(batch_id), clear_batch(batch_id). Job table has batch_id, batch_created_at columns. Uses WHERE batch_id IS NULL to find unclaimed jobs.
+
+**Code:** src/data/database.py (or src/data/tracker.py if split)
+
+**Ref:** tracker-features.csv Database; ASTRAL_CODE_RULES 3c",Backlog,High,subissue,Astral Tracker,2
+"Manage State Batch Jobs","Sub: Batch locking and concurrency semantics","**Scope:** Document and implement semantics: jobs in batch keep batch_id through state transition; batch_id explicitly cleared at end (success or failure) via clear_batch; prevents double-processing (batch_id IS NULL check). Multiple batches can run concurrently on different states; same state cannot be double-processed; failed batches can be retried (clear_batch releases jobs). No artificial limit on batch size; caller determines. Pattern consistent with Roster (claim → process → release).
+
+**Ref:** tracker-features.csv Batch Locking; Concurrency; No Maximum Batch Size; Pattern Consistency",Backlog,Medium,subissue,Astral Tracker,1

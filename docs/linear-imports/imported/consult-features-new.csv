@@ -1,0 +1,237 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Fetch Grades","Refactor consult.py around a single render_verdict(task_type, astral_job_id) orchestrator that fetches job/company internally, preps live content, calls the correct agent with proper cached candidate context, audits the response, and derives a verdict with validated grades. No numeric scoring yet (stub) — just clean grades from the agents and F-means-death pass/fail.
+
+**Acceptance Criteria:**
+
+**Orchestrator Signature:**
+```python
+async def render_verdict(task_type: str, astral_job_id: str) -> Dict
+```
+
+render_verdict is the single entry point for all per-job consult tasks. It looks up the job via database.get_job(astral_job_id) and, if requires_company is set in CONSULT_CONFIG, the company via database.get_company(job[""company""]). No separate consult_get/do/like functions — task_type drives everything via config.
+
+**Return Shape (CLI-friendly):**
+```json
+{""success"": true, ""to_state"": ""PASSED_GET"", ""score"": null, ""grades"": [{""vector"": ""..."", ""grade"": ""A"", ""reason"": ""...""}, ...]}
+```
+No parsed_response in return — the full AI response (ja_notes, dealbreakers, overall_assessment, etc.) is already audited via add_agent_response_entry inside render_verdict. CLI gets verdict, score, and raw grades for logging so weirdness is visible without digging into the audit table.
+
+**Agent Assignments:**
+
+Each consult task uses a different agent based on what value it returns beyond grades:
+
+- consult_get — Atlas, ATS expert (ats_expert_atlas.txt). Returns grades + resume optimization recommendations reusable by resume editor agent post-LIKE.
+- consult_do — Grace, job analyst (job_analyst_grace.txt). Returns grades + cover letter topic recommendations.
+- consult_like — Grace, job analyst (job_analyst_grace.txt). Returns grades (pending rubric update with website_content vector from Susan).
+
+**Cache Strategy (Cache = Money):**
+
+Each task escalates cached candidate content. Cached blocks are loaded once per prompt and reused across calls with the same content.
+
+- GET: resume_base.txt + linkedinprofile.txt (cached). JD is live_content (uncached).
+- DO: everything from GET + job_requirements.txt (cached). JD is live_content (uncached).
+- LIKE: everything from DO + private_history.txt (cached). JD + company website_content are live_content (uncached — company vibes change per job).
+
+**Helpers:**
+
+- _prep_live_content(job, company=None): assembles live_content. JD via tracker.get_job_data coat-check (always go through tracker — no end-runs). For LIKE, website_content via roster.get_company_data coat-check. If website_content fails, calls tracker.transition_state to NEED_WEBSITE_CONTENT and returns False.
+- _render_pass_fail(task_key, grades): renamed from old render_verdict. Binary grading (PASS/F) for qualify_job_listings and evaluate_jd (unchanged behavior).
+- _render_score(cfg, grades): stub for scored grading. F in any vector = instant death. Numeric scoring (per-vector tables, X exclusion, pass_threshold) deferred to Render Verdict feature (AST-135).
+
+**AI Response Shape (common pattern):**
+
+All three tasks return the same shape with a generic grades key:
+```json
+{
+    ""jobid"": ""str"",
+    ""company"": ""str"",
+    ""title"": ""str"",
+    ""grades"": [{""vector"": ""str"", ""grade"": ""A-F or X"", ""reason"": ""10-20 words""}, ...],
+    ""dealbreakers"": ""str"",
+    ""clarifications"": ""str"",
+    ""overall_assessment"": ""str"",
+    ""ja_notes"": ""str""
+}
+```
+
+The quantity and names of vectors are config-driven (defined in CONSULT_CONFIG per task). Code never hardcodes vector counts.
+
+**AGENT_CONFIG Updates:**
+
+Rename task keys from score_get/score_do/score_like to consult_get/consult_do/consult_like. Update context_format accordingly.
+
+- consult_get: system_prompt to ats_expert_atlas.txt; response_schema with grades items_schema (vector/grade/reason); cached_blocks: GET_RUBRIC (ax_consult_get_rubric.txt) + CANDIDATE_RESUME + LINKEDIN_PROFILE
+- consult_do: response_schema with grades items_schema; cached_blocks: add JOB_REQUIREMENTS (candidate/job_requirements.txt)
+- consult_like: response_schema with grades items_schema; cached_blocks: add JOB_REQUIREMENTS + PRIVATE_HISTORY (candidate/private_history.txt); review whether CANDIDATE_PREFERENCES (preferences_template.txt) still needed alongside private_history
+
+**Task Prompt/Rubric Renames:**
+
+- 300_atlas_atswonk.txt -> ats_expert_atlas.txt
+- 211_GET-(((SCORE))).txt -> ax_consult_get.txt
+- 212_DO-(((SCORE))).txt -> ja_consult_do.txt
+- 213_LIKE-(((SCORE))).txt -> ja_consult_like.txt
+- 205_GET_RUBRIC.txt -> ax_consult_get_rubric.txt
+- 206_DO_RUBRIC.txt -> ja_consult_do_rubric.txt
+- 207_LIKE_RUBRIC.txt -> ja_consult_like_rubric.txt
+
+**Task Prompt Content Updates (Susan's responsibility):**
+
+- GET (ax_consult_get.txt): update voice for Atlas (ATS expert)
+- DO (ja_consult_do.txt): reference JOB_REQUIREMENTS cached block
+- LIKE (ja_consult_like.txt): replace company file reference with language indicating company context is in the job data section below; reference PRIVATE_HISTORY block
+
+**Audit Rule:** Agent response audited immediately after do_task, before any grade interpretation.
+
+**Cleanup:** Remove score_get, score_do, score_like, score_job_full. Rename old render_verdict to _render_pass_fail. evaluate_jd and qualify_job_listings updated to call _render_pass_fail directly (no behavior change). evaluate_jd refactor to use render_verdict deferred to backlog.
+
+**Layer:** src/core/consult.py, src/utils/config.py (AGENT_CONFIG + CONSULT_CONFIG), data/agents/_taskprompts/, data/agents/_systemprompts/, data/agents/content/
+
+**Dependencies:**
+- src/external/anthropic.py (do_task, items_schema validation already implemented)
+- src/data/database.py (get_job, get_company for internal lookups)
+- src/core/tracker.py (get_job_data coat-check for JD, transition_state for NEED_WEBSITE_CONTENT on LIKE failure)
+- src/core/roster.py (get_company_data coat-check for website_content — Prep Company Culture Pages feature)",Backlog,High,feature,Astral Consult,5
+"Render Verdict","Extend _render_score to support full numeric scoring for the consult pipeline. F is always death (any F in any vector = fail_state). For non-F results, each vector has its own per-grade score table calibrated by importance. Scores are normalized to a ten-point scale as a percentage of total possible, with X-graded vectors excluded from both numerator and denominator. Includes CONSULT_CONFIG scoring entries (vectors, pass_threshold), grade persistence, and CLI batch scripts for consult steps.
+
+**Acceptance Criteria:**
+
+**_render_score Extension:**
+
+_render_score currently stubs out as F-means-death with no numeric scoring. Extend to full implementation:
+
+- Input: [{vector, grade (A-F or X), reason}] array from AI response
+- F in ANY vector = instant death → fail_state (regardless of other scores)
+- X in a vector = unable to assess → exclude that vector entirely from the calculation (removed from both numerator and denominator)
+- If no F's: for each non-X vector, look up grade in that vector's grade_scores table. Sum actual scores (numerator). Sum A-values for non-X vectors (denominator = total possible). Score = (numerator / denominator) * 10 → ten-point scale.
+- Score compared against config-driven pass_threshold: >= threshold → pass_state, below → fail_state
+- Return (to_state, score) tuple
+
+**CONSULT_CONFIG Scoring Entries:**
+
+Add vectors array and pass_threshold to existing consult_get/do/like entries. Each vector defines its own score table calibrated by importance. High-importance vectors have large A values, low-importance vectors have small A values:
+```python
+""vectors"": [
+    {""name"": ""TITLE_MATCH"", ""grade_scores"": {""A"": 50, ""B"": 40, ""C"": 20, ""D"": 5}},
+    {""name"": ""YEARS_EXPERIENCE"", ""grade_scores"": {""A"": 30, ""B"": 20, ""C"": 10, ""D"": 2}},
+    ...
+],
+""pass_threshold"": 6.0,
+```
+
+Scoring example: if 3 vectors with A-values 50+30+10=90, and grades are A(50)+B(20)+X → X vector excluded, so numerator=70, denominator=80 (50+30), score = (70/80)*10 = 8.75.
+
+**Grade Persistence:**
+
+After render_verdict returns, CLI saves full grade array + calculated numeric score to job_data via tracker.save_job_data. Keyed by task: consult_get saves to get_grades + get_score, consult_do saves to do_grades + do_score, consult_like saves to like_grades + like_score. CLI also calls tracker.transition_state with to_state.
+
+**CLI Batch Scripts:**
+
+h_ja_consult_get, i_ja_consult_do, k_ja_consult_like — Pattern B (per-job iteration) following evaluate_jd_batch.py template:
+- --batch-count parameter, run-until-empty loop
+- Claim batch from input_state, iterate jobs, call render_verdict(task_type, aid), save grades + score, transition state, release batch
+- render_verdict handles all lookups internally — CLI just passes task_type and astral_job_id
+- render_verdict returns {success, to_state, score, grades} — CLI logs verdict, score, and grades per job for visibility
+
+**Error Handling:**
+- render_verdict returns success=False with error string: CLI logs and continues to next job
+- Exception raised (network, API): log, skip job, continue batch
+- Batch always released in finally block
+- Failed jobs stay in current state for retry if exception prevented transition
+
+**Logging:**
+- Batch start: batch_id, state, jobs claimed
+- Per-job: astral_job_id, to_state, numeric score, grade summary
+- Batch end: passed/failed/error counts
+- Loop end: total batches, total jobs processed
+
+**Layer:** src/core/consult.py (_render_score), src/utils/config.py (CONSULT_CONFIG vectors + pass_threshold), src/cli/ (CLI scripts)
+
+**Dependencies:**
+- Fetch Grades (render_verdict orchestrator and _render_score stub must exist)
+- src/core/tracker.py (save_job_data, transition_state, get_new_job_batch, clear_job_batch)",Backlog,High,feature,Astral Consult,5
+"Prep Company Culture Pages","Implement coat-check pattern for company website_content in roster.get_company_data. When consult_like requests website_content and it doesn't exist in company_data, transparently fetch it: AI analyst selects which pages to scrape from the company's homepage text and nav links (both already in company_data from earlier pipeline steps), gatekeeper scrapes them, content saved to company record, value returned to caller. Same pattern as job_description coat-check in tracker.get_job_data and nav_links coat-check in roster.get_company_data.
+
+**Acceptance Criteria:**
+
+**Coat-Check Pattern:**
+
+roster.get_company_data(company, key) checks company_data[key] — if present, returns it. If missing, runs a select/case on the key to dispatch the fetch-on-missing handler. Currently only nav_links has a handler (hardcoded if/else). Refactor to select/case dispatch and add the website_content handler:
+
+```python
+# In roster.get_company_data, after happy-path check:
+# Select on key:
+#   case nav_links_key: existing nav_links fetch logic
+#   case website_content_key: AI selects pages, gatekeeper scrapes, save, return
+#   default: return None (unregistered key, no handler)
+```
+
+Caller (render_verdict via _prep_live_content) just asks for the data and gets it back. No awareness of whether it was cached or freshly fetched.
+
+**Data Dependencies (already available from earlier pipeline steps):**
+- Homepage visible text: saved to company_data during prefilter (step a)
+- Nav links: saved to company_data[""nav_links""] during locate_job_page (step b), with its own coat-check fallback
+
+**Fetch-on-Missing Flow (three steps):**
+
+**1. AI Analyst selects pages:**
+
+Grace receives company homepage visible text + nav_links. Returns list of URLs to scrape for culture vibes. Max pages config-driven (e.g. 5).
+
+Pages the analyst considers: Homepage, About Us, Mission/Values, Product/Services, Blog (first page only).
+Pages ignored: Careers, Contact, Legal, Privacy, Investors, Press.
+
+**2. Gatekeeper scrapes selected pages:**
+
+For each URL, playwright scrape_visible_text. Collect {url, content}. If individual pages fail (404, bot block), skip and continue with others.
+
+**3. Save and return:**
+
+Save {url, content} array to company_data[""website_content""] via update_company. Merge with existing company_data (don't clobber nav_links, parse_instructions, etc.). Return the content to the caller.
+
+**Failure Behavior:**
+- nav_links missing: coat-check fetches them via existing nav_links handler (same as find_job_page uses). No fake default paths — if we can't get nav_links, we can't select pages.
+- AI analyst task fails: cannot blindly scrape without page selection. Return None to caller.
+- All page scrapes fail: something is wrong with the process. Return None to caller.
+- Individual page scrape failures: skip failed page, continue with remaining. Only fail if ALL selected pages fail.
+- Do NOT store empty website_content on failure — that would mask the problem on retry and prevent the coat-check from re-triggering after the issue is fixed.
+
+**Error flow (no exception propagation):** roster.get_company_data returns None on failure → _prep_live_content receives None → _prep_live_content calls tracker.transition_state to set job to NEED_WEBSITE_CONTENT → _prep_live_content returns False → render_verdict returns {success: False} → CLI logs the failure, continues batch.
+
+NEED_WEBSITE_CONTENT is a new state (from PASSED_DO). Jobs in this state need investigation but the coat-check will re-trigger on retry once the underlying issue is resolved.
+
+**Config:**
+
+ROSTER_CONFIG company_data_keys: add ""website_content"": ""website_content"" (register as coat-check key).
+
+```python
+CONSULT_CONFIG = {
+    ""culture_pages_max"": 5,
+}
+```
+
+**LIKE Rubric Update:**
+
+The LIKE rubric (ja_consult_like_rubric.txt) needs a new vector for company website/culture content analysis so Grace knows how to factor the vibes pages into her grading. **BLOCKED: Susan to provide updated LIKE rubric with website_content vector.** Susan manages rubric prompts in a separate Claude project.
+
+**AGENT_CONFIG:**
+```python
+""select_culture_pages"": {
+    ""system_prompt"": ""job_analyst_grace.txt"",
+    ""task_prompt"": ""220_select_culture_pages.txt"",
+    ""cached_blocks"": [],
+    ""uncached_blocks"": [],
+    ""response_format"": ""json"",
+    ""context_format"": ""culture_pages_{index}"",
+    ""response_schema"": {
+        ""selected_pages"": {""type"": ""list"", ""required"": True},
+        ""reason"": {""type"": ""str"", ""required"": False},
+    },
+}
+```
+
+**Layer:** src/core/roster.py (get_company_data coat-check handler), src/external/playwright.py (scrape), src/external/anthropic.py (do_task), src/utils/config.py (CONSULT_CONFIG + AGENT_CONFIG + ROSTER_CONFIG)
+
+**Dependencies:**
+- src/external/anthropic.py (do_task for page selection)
+- src/external/playwright.py (scrape_visible_text)
+- Nav links coat-check already implemented in roster.get_company_data",Backlog,High,feature,Astral Consult,3

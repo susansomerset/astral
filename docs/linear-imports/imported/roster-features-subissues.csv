@@ -1,0 +1,495 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Import Companies to Roster","Sub: Company schema and config alignment","**Scope:** Align company table and data layer with docs/ROSTER_DATA_MODEL.md and config.
+
+**Snake_case columns:**
+- short_name, state, company_name, company_website, job_site, batch_id, company_data, agent_responses (no camelCase)
+
+**Two blobs:**
+- company_data: notes keyed by prompt index (e.g. prefilter_company_notes); parse_instructions when applicable
+- agent_responses: array of { timestamp, prompt_index, raw_response }
+
+**State validation:**
+- Validate state against ASTRAL_CONFIG[""company_states""] only
+- No hardcoded ALLOWED_STATES (ASTRAL_CODE_RULES 2b)
+
+**batch_id:**
+- On company table; same locking concept as posting
+
+**Note:**
+- Company table is used only in the new codebase; old codebase used _roster.json
+
+**Checklist:**
+- Use config for allowed states
+- No magic numbers
+- No hardcoded sets
+
+**Ref:** README State machines, config.py company_states",Todo,High,subissue,Astral Roster,5
+"Import Companies to Roster","Sub: save_company (data layer)","**Scope:** Data layer for company persistence.
+
+**Code:** src/data/database.py
+
+**Function signature:**
+- save_company(short_name, state, company_website, job_site, company_data, agent_responses, ...)
+- Snake_case params and columns
+
+**Validation:**
+- State validated against ASTRAL_CONFIG[""company_states""] only (no hardcoded set)
+
+**Behavior:**
+- When state=NEW clear posting rows for company
+- INSERT OR REPLACE; preserve search_history
+
+**Ref:** ROSTER_DATA_MODEL.md
+
+**Status:** Built (legacy shape); align with schema alignment subissue",Backlog,Medium,subissue,Astral Roster,1
+"Import Companies to Roster","Sub: CSV parsing and validation","**Scope:** Parse CSV with columns short_name, company_name, website_url, job_site_url (optional).
+
+**Requirements:**
+- Multi-line and quoted fields
+- Snake_case column names in code/spec
+
+**Layer:** scripts or data
+
+**Status:** Will build",Backlog,Medium,subissue,Astral Roster,2
+"Import Companies to Roster","Sub: Single-company create with validation","**Scope:** Create one company via CLI/API.
+
+**Required fields:**
+- short_name
+- company_name
+
+**Optional fields:**
+- company_website
+- job_site
+
+**Naming:** Snake_case
+
+**Layer:** core or CLI
+
+**Status:** Will build",Backlog,Medium,subissue,Astral Roster,1
+"Import Companies to Roster","Sub: URL normalization and duplicate detection","**Scope:** Normalize URLs and detect duplicates before insert.
+
+**Normalization:**
+- www/non-www
+- trailing slash
+- protocol variants
+
+**Duplicate detection:**
+- Check short_name uniqueness
+- Check company_website uniqueness
+
+**Layer:** utils or data
+
+**Status:** Will build",Backlog,Medium,subissue,Astral Roster,2
+"Import Companies to Roster","Sub: State IMPORTED and company_data init","**Scope:** On import set state and initialize company_data.
+
+**State:**
+- Set state=IMPORTED (UPPERCASE from config)
+
+**company_data:**
+- Initialize as {} or minimal blob
+- Do not duplicate column data in company_data
+
+**Ref:** ROSTER_DATA_MODEL.md
+
+**Status:** Will build",Backlog,Low,subissue,Astral Roster,1
+"Locate Company Website","Sub: Google CSE integration","**Scope:** Query Google Custom Search for company website.
+
+**Query:** ""<company name> website""
+
+**Results:** Return top N results (N from config or named constant)
+
+**Code:** New src/external/google_cse.py (from astral_investigate)
+
+**Status:** Dependency",Backlog,High,subissue,Astral Roster,5
+"Locate Company Website","Sub: AI evaluation task for homepage selection","**Scope:** Send search results to AI; pick main company homepage.
+
+**Filtering:**
+- Exclude careers/social/news sites
+- Pick main homepage only
+
+**Confidence:** Return confidence level
+
+**Layer:** config task + src/external/anthropic.py fetch_response
+
+**Prompt index:** Semantic name (e.g. find_company_website)
+
+**Status:** Will build",Backlog,High,subissue,Astral Roster,5
+"Locate Company Website","Sub: get_companies_by_state (data layer)","**Scope:** Select companies WHERE state=? for batch processing.
+
+**Code:** src/data/database.py
+
+**Validation:**
+- Filter by ASTRAL_CONFIG[""company_states""] where relevant
+- No hardcoded state list
+
+**Note:** Exists in src/astral_database.py; migrate to data layer
+
+**Status:** Will build",Todo,Medium,subissue,Astral Roster,2
+"Locate Company Website","Sub: State transitions to WEBSITE_FOUND / NO_WEBSITE / WEBSITE_REVIEW","**Scope:** Update company state and save notes after website discovery.
+
+**States (UPPERCASE from config):**
+- WEBSITE_FOUND
+- NO_WEBSITE
+- WEBSITE_REVIEW
+
+**Notes:**
+- Save in company_data keyed by prompt index (e.g. website_discovery_notes)
+
+**Ref:** config company_states
+
+**Status:** Will build",Backlog,Medium,subissue,Astral Roster,2
+"Prefilter Company for Candidate","Sub: prefilter_company task config","**Scope:** Config-driven task for AI prefilter.
+
+**Code:** src/utils/config.py tasks[""prefilter_company""]
+
+**Configuration:**
+- System: 200_grace_analyst
+- Task: 205_Prefilter_Company.txt
+- Cached: 205_Instructions
+
+**Naming:** Snake_case key
+
+**Status:** Built (needs rename to prefilter_company)",Backlog,Medium,subissue,Astral Roster,0
+"Prefilter Company for Candidate","Sub: Playwright visible text extraction","**Scope:** Scrape visible text from company homepage.
+
+**Code:** src/external/playwright.py
+
+**Functions:**
+- extract_visible_text
+- get_page
+- create_browser_context
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Prefilter Company for Candidate","Sub: Script prefilter_company single and batch","**Scope:** Single company or batch by state (not ""node"").
+
+**Code:** scripts/prefilter_company.py
+
+**Modes:**
+- Single company
+- Batch by state (e.g. WEBSITE_FOUND)
+
+**Data source:** Roster file or DB
+
+**Status:** Built (uses node + roster file; needs state + DB)",Backlog,Medium,subissue,Astral Roster,0
+"Prefilter Company for Candidate","Sub: Core roster prefilter callable","**Scope:** Callable in src/core/roster.py for prefilter.
+
+**Function:** prefilter_company()
+
+**Uses:**
+- Config task prefilter_company
+- Playwright for scraping
+
+**Trigger:** Auto-trigger after website discovery
+
+**Saves:**
+- Notes in company_data under key prefilter_company_notes
+- Append to agent_responses
+
+**Ref:** ROSTER_DATA_MODEL.md
+
+**Status:** Will build",Backlog,High,subissue,Astral Roster,3
+"Prefilter Company for Candidate","Sub: Prefilter states TO_WATCH / IGNORE / PREFILTER_UNKNOWN","**Scope:** Set company state based on prefilter outcome.
+
+**States (from config company_states):**
+- WATCH → state=TO_WATCH
+- IGNORE → state=IGNORE
+- UNKNOWN → state=PREFILTER_UNKNOWN
+
+**Notes:**
+- Save in company_data keyed by prefilter_company_notes
+
+**Concept:** No ""nodes""; everything is state
+
+**Ref:** config company_states
+
+**Status:** Will build",Backlog,High,subissue,Astral Roster,2
+"Locate Company Job Page","Sub: response_type_to_state UPPERCASE and from config","**Scope:** Map vet_job_site response types to UPPERCASE company states only.
+
+**Config owns mapping:**
+- try_parse → TO_PARSE
+- no_jobs_msg → NO_JOBS
+- no_clue → NO_JOB_SITE
+- bot_block → BOT_BLOCKED
+
+**Requirements:**
+- No hardcoded state strings
+- Read from config (e.g. response_type_to_state or equivalent)
+
+**Checklist:**
+- Remove any hardcoded ALLOWED_STATES in database.py
+- Validate against ASTRAL_CONFIG[""company_states""]
+
+**Ref:** ASTRAL_CODE_RULES 2b
+
+**Status:** Will build (course correction)",Todo,High,subissue,Astral Roster,2
+"Locate Company Job Page","Sub: Find stops at TO_PARSE (no parse in find)","**Scope:** find_job_page on vet_job_site try_parse must save state=TO_PARSE and job_site only.
+
+**Do NOT:**
+- Call parse_job_list
+- Save parse_instructions
+
+**Parse Job Page flow:** Consumes TO_PARSE later
+
+**Checklist:**
+- Remove _handle_try_parse_response from find_job_page try_parse branch
+- Save TO_PARSE and job_site
+- Append agent_responses with vet_job_site raw response
+
+**Ref:** roster-scope-itemized.md
+
+**Status:** Will build (course correction)",Backlog,High,subissue,Astral Roster,3
+"Locate Company Job Page","Sub: find_job_page orchestration","**Scope:** Main discovery flow.
+
+**Code:** src/core/roster.py find_job_page()
+
+**Flow:**
+1. Crawl
+2. Enumerate
+3. find_job_site (pick candidate)
+4. Extract content
+5. vet_job_site
+6. Route by response_type
+
+**Config task keys:**
+- find_job_site
+- vet_job_site
+- Single-layer; roster.py decides context
+
+**Limits:**
+- Recursion limit from config or named constant
+- visited_urls tracking
+- max_depth
+
+**Status:** Built (legacy); apply course corrections (stop at TO_PARSE, UPPERCASE state)",Backlog,High,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: find_job_site task (candidate selection)","**Scope:** Rank URLs from crawl; return top_candidates.
+
+**Returns:**
+- top_candidates (1-based indices) or 0
+
+**Code:**
+- roster _fetch_jobsite_candidates
+- roster _extract_jobsite_candidate_url
+
+**Config:** tasks[""find_job_site""]
+
+**Naming:** Snake_case key
+
+**Ref:** ROSTER_DATA_MODEL.md Config prompt naming
+
+**Status:** Built (legacy key pickJobPages); rename to find_job_site in config",Backlog,High,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: vet_job_site task (page analysis)","**Scope:** Analyze page; return response_type and type-specific fields.
+
+**Response types:**
+- try_parse
+- no_jobs_msg
+- try_link
+- push_button
+- no_clue
+- bot_block
+
+**Code:**
+- roster _fetch_jobsite_analysis
+- roster _format_jobsite_analysis_content
+
+**Config:** tasks[""vet_job_site""]
+
+**Naming:** Snake_case key
+
+**Status:** Built (legacy key vetJobPage); rename to vet_job_site in config",Backlog,High,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: Response type routing (all 6 types)","**Scope:** Route by response_type.
+
+**Routes:**
+- try_parse → save TO_PARSE and job_site (no parse)
+- no_jobs_msg → save NO_JOBS
+- try_link → recurse
+- push_button → click then recurse
+- no_clue/bot_block → save NO_JOB_SITE or BOT_BLOCKED per config
+
+**State:** From config only
+
+**Code:** roster find_job_page() Step 9
+
+**Status:** Built (legacy); align with response_type_to_state UPPERCASE subissue",Backlog,High,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: try_link and push_button with recursion limits","**Scope:** Handle try_link and push_button with recursion.
+
+**try_link:**
+- Extract URL
+- normalize_url
+- visited_urls tracking
+- Recurse find_job_page(depth+1)
+
+**push_button:**
+- clickable_text
+- response_html > dom fallback
+- Same-page anchor + ATS fallback
+
+**Max depth:** From config or named constant (no magic number)
+
+**Status:** Built",Code Complete,High,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: ATS vendor detection","**Scope:** Detect iframe/link URLs matching known ATS patterns.
+
+**Code:** roster _detect_ats_iframe()
+
+**Config:** ats_vendor_patterns
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: Clickable priority merge response_html > dom","**Scope:** Priority merge for clickable extraction.
+
+**Priority:** response_html (href) then dom search
+
+**Code:**
+- roster push_button branch
+- playwright extract_page_clickables with source
+
+**Use case:** Handles widget replacement
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: Same-page anchor and ATS iframe fallback","**Scope:** Handle same-page navigation with ATS fallback.
+
+**When:** push_button yields same-page (anchor)
+
+**Flow:**
+1. Call _detect_ats_iframe
+2. If ATS URL → use as job_site
+3. Else → try next candidate or no_clue
+
+**Code:** roster find_job_page() push_button block
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: Candidate fallback system","**Scope:** On failure try next candidate.
+
+**Mechanism:** Try next top_candidates[_candidate_attempt+1]
+
+**Code:** roster find_job_page(_url_list, _top_candidates, _candidate_attempt)
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: _save_company_data and config state","**Scope:** Map response_type to state via config; call save_company.
+
+**Requirements:**
+- No hardcoded state strings
+- Use config (response_type_to_state or equivalent)
+
+**Code:**
+- config response_type_to_state
+- roster _save_company_data()
+
+**Status:** Built (legacy); align with response_type_to_state UPPERCASE subissue",Backlog,Medium,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: extract_site_page_list and extract_page_content","**Scope:** Crawl site and extract page content.
+
+**Functions:**
+- extract_site_page_list: Crawl for URL list
+- extract_page_content: Get page text + links + buttons + page ref
+
+**Code:** src/external/playwright.py
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Locate Company Job Page","Sub: Batch locking for TO_WATCH companies","**Scope:** Claim N companies with state=TO_WATCH via batch_id; release after process.
+
+**Pattern:** Same as posting
+- set_batch_for_unclaimed
+- clear_batch
+
+**Layer:** data
+
+**Ref:** config company_states
+
+**Status:** Will build",Backlog,High,subissue,Astral Roster,3
+"Parse Company Job Page","Sub: parse_instructions blob and notes in company_data","**Scope:** Save parse result as company_data[""parse_instructions""].
+
+**parse_instructions shape:**
+```json
+{
+  ""parse_type"": ""javascript"",
+  ""container"": ""div.joblist"",
+  ""job_tag"": ""li"",
+  ""metadata"": ""...""
+}
+```
+
+**Naming:** Snake_case
+
+**Do not duplicate:** job_site etc. in company_data
+
+**Notes:**
+- Save parse failure or partial notes in company_data keyed by prompt index (e.g. parse_job_list_notes)
+
+**agent_responses:**
+- Append each agent call (timestamp, prompt_index, raw_response)
+
+**Ref:** ROSTER_DATA_MODEL.md
+
+**Status:** Will build (course correction)",Backlog,High,subissue,Astral Roster,3
+"Parse Company Job Page","Sub: parse_job_list task","**Scope:** Receives culled DOM from confirmed job list page; returns parsing metadata.
+
+**Returns:**
+- container
+- job_tag
+- parse_type
+- metadata
+
+**Code:** roster _fetch_jobtag equivalent
+
+**Config:** tasks[""parse_job_list""]
+
+**Naming:** Snake_case key
+
+**Ref:** ROSTER_DATA_MODEL.md
+
+**Status:** Built (legacy key parseJobTag); rename to parse_job_list in config",Backlog,High,subissue,Astral Roster,0
+"Parse Company Job Page","Sub: parse_job_page flow (standalone)","**Scope:** Entrypoint that consumes companies with state=TO_PARSE and job_site.
+
+**Flow:**
+1. For each company with state=TO_PARSE
+2. Navigate to job_site
+3. Run parse_job_list task
+4. Validate extraction
+5. Save parse_instructions in company_data
+6. Set state: NEW or CANNOT_PARSE_JOB_SITE or BOT_BLOCKED
+
+**Ref:** config company_states
+
+**Status:** Built (currently inside find_job_page); extract to standalone parse_job_page; align with find stops at TO_PARSE",Backlog,High,subissue,Astral Roster,0
+"Parse Company Job Page","Sub: DOM extraction and selector validation","**Scope:** Extract DOM and validate selectors.
+
+**Functions:**
+- extract_page_dom
+- extract_with_javascript
+- extract_tags_in_order
+
+**Code:** src/external/playwright.py
+
+**Validation:** extract_job_id_from_html (utils/job_html)
+
+**Status:** Built",Code Complete,Medium,subissue,Astral Roster,0
+"Parse Company Job Page","Sub: Batch processing for TO_PARSE","**Scope:** Claim batch state=TO_PARSE; for each navigate to job_site, run parse flow, update company; release batch.
+
+**Updates:**
+- parse_instructions
+- state
+
+**Layer:** core + data
+
+**Ref:** config company_states
+
+**Status:** Will build",Backlog,High,subissue,Astral Roster,5
+"Parse Company Job Page","Sub: Bot blocker detection","**Scope:** Detect CAPCHA/bot on job_site load.
+
+**On detection:**
+- Set state=BOT_BLOCKED
+- Save note in company_data keyed by prompt index
+
+**Ref:** config company_states
+
+**Status:** Will build",Backlog,Medium,subissue,Astral Roster,2
+"Parse Company Job Page","Sub: metadata_schema and partial success","**Scope:** AI returns metadata; validate and save working parts.
+
+**metadata:** Part of parse_instructions
+
+**Validation:**
+- Validate title/ID/link
+- Save working parts in parse_instructions
+- Record failures in company_data notes (e.g. parse_job_list_notes)
+
+**Ref:** ROSTER_DATA_MODEL.md parse_instructions
+
+**Status:** Will build",Backlog,Medium,subissue,Astral Roster,3

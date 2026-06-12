@@ -1,0 +1,6 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "bash scripts/build_railway.sh"
+
+[deploy]
+startCommand = "python scripts/start_server.py"

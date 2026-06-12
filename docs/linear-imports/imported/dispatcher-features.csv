@@ -1,0 +1,47 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+In-Process Dispatch Scheduler,"Upgrade the Dispatcher from an external Railway cron service to a self-managed, in-process scheduler with full admin controls on the Task Dispatcher page.
+
+**Problem:**
+The current Dispatcher runs as a separate Railway cron service that triggers the web server via webhook. This creates operational risks: zombie processes run for hours with no timeout, the scheduler cannot be paused or adjusted from the UI, the cron and web services deploy independently (a rename can silently break dispatch), and dispatch logic is split between the CLI and core layers with no functional benefit.
+
+**Solution:**
+Move the scheduler into the web server and expose controls on the existing Task Dispatcher admin page.
+
+**Acceptance Criteria:**
+
+**Codebase Consolidation:**
+- Merge all batch runner logic and dispatch orchestration from `src/cli/run_astral.py` into `src/core/dispatcher.py`
+- Delete `src/cli/` directory entirely — no CLI entry points remain
+- Rename `src/core/dispatch.py` to `src/core/dispatcher.py` (consistent with `gazer.py`, `tracker.py`, `roster.py`)
+- Rename `ui/api/admin_dispatch.py` to `ui/api/admin_dispatch_history.py` for clarity
+- Update all import paths across backend and API layers
+
+**In-Process Scheduler Thread:**
+- Background daemon thread runs inside the web server process — no external cron service required
+- Event-based sleep (`threading.Event.wait`) for interruptible intervals
+- Skip dispatch cycle if previous cycle is still running (overlap guard)
+- 20-minute hard timeout per dispatch cycle (`asyncio.wait_for`) — kills stuck scrapes/API calls
+- Supports multiple concurrent Gunicorn workers (existing DB-level batch claim locks prevent double-processing)
+
+**Admin UI Controls (Task Dispatcher page — status bar between title and table):**
+- **Active / Paused toggle** — Click to flip scheduler state. Green badge when active, grey when paused. Calls `POST /api/admin/scheduler/toggle`
+- **Run Now button** — Triggers an immediate dispatch cycle regardless of interval timer. Calls `POST /api/admin/scheduler/run`
+- **Last Run timestamp** — Displays the time of the last completed dispatch cycle using the candidate's timezone
+- **Interval setting** — Editable number input (minutes) to control how often the scheduler fires. Saves on blur via `PUT /api/admin/scheduler`
+- **Auto-refresh** — Status bar polls `GET /api/admin/scheduler` every 15 seconds to stay current
+
+**API Endpoints:**
+- `GET /api/admin/scheduler` — Returns scheduler status (active, interval_seconds, last_run_at, running)
+- `POST /api/admin/scheduler/toggle` — Flip active/paused state
+- `POST /api/admin/scheduler/run` — Wake the scheduler thread immediately
+- `PUT /api/admin/scheduler` — Update interval (accepts `interval_seconds`)
+- Remove `POST /api/internal/dispatch` — no longer needed
+
+**Configuration:**
+- Add `dispatch_interval_minutes` (default 5) and `dispatch_workers` (default 2) to `ASTRAL_CONFIG`
+- `railway.toml` worker count reads from config
+
+**Notes:**
+- Scheduler thread starts automatically when the web server boots — no manual activation needed, runs even with no active users
+- Existing DB-level batch claim locks ensure safe concurrent dispatch across Gunicorn workers
+- Railway cron service should be disabled in the Railway dashboard after deployment",Backlog,High,feature,Astral Dispatcher,8

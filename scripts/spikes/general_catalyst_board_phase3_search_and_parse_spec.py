@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+"""
+AST-432 Phase 3: parameterized search on jobs.generalcatalyst.com → results + parse spec.
+
+Uses widget ids from Phase 2: title (w-00001), location (w-00002). Parameters discerned from inventory.
+
+Usage (repo root, PYTHONPATH=.):
+  python3 scripts/spikes/general_catalyst_board_phase3_search_and_parse_spec.py \\
+    [--widgets-json PATH] [--out-dir DIR] [--headed] [--title-query Q] [--location Q]
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+if "ASTRAL_DB_DIR" not in os.environ:
+    os.environ["ASTRAL_DB_DIR"] = str(_ROOT / "data")
+
+from playwright.async_api import Page
+
+from src.external.playwright import create_browser_context
+
+DEFAULT_URL = "https://jobs.generalcatalyst.com/jobs"
+DEFAULT_TITLE_QUERY = "Engineer"
+DEFAULT_LOCATION_QUERY = "United States"
+DEFAULT_WIDGETS_JSON = _ROOT / "debug/spikes/AST-431/widgets.json"
+
+NAV_TIMEOUT_MS = 120_000
+POST_LOAD_WAIT_MS = 2_000
+ACTION_SETTLE_MS = 1_200
+NETWORKIDLE_AFTER_SEARCH_MS = 60_000
+
+WIDGET_TITLE = "w-00001"
+WIDGET_LOCATION = "w-00002"
+TITLE_PLACEHOLDER = "Job title, company or keyword"
+LOCATION_PLACEHOLDER = "Location"
+
+
+def _playwright_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("playwright")
+    except Exception:
+        return "unknown"
+
+
+async def _dismiss_consent(page: Page) -> Optional[str]:
+    try:
+        loc = page.get_by_role(
+            "button", name=re.compile(r"accept|agree|ok|allow", re.I)
+        )
+        if await loc.count() > 0:
+            await loc.first.click(timeout=4_000)
+            await page.wait_for_timeout(400)
+            return "get_by_role_button_regex"
+    except Exception:
+        pass
+    for sel in ('[id*="cookie" i] button', '[class*="consent" i] button'):
+        try:
+            lo = page.locator(sel).first
+            if await lo.is_visible(timeout=1_500):
+                await lo.click(timeout=3_000)
+                await page.wait_for_timeout(400)
+                return sel
+        except Exception:
+            continue
+    return None
+
+
+def _load_widgets(path: Path) -> Dict[str, Any]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data.get("controls"), list):
+        raise SystemExit("widgets.json: missing controls array")
+    return data
+
+
+def _controls_by_id(widgets: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for c in widgets["controls"]:
+        cid = c.get("id")
+        if cid:
+            out[cid] = c
+    return out
+
+
+def _require_widget(by_id: Dict[str, Dict[str, Any]], wid: str) -> None:
+    if wid not in by_id:
+        raise SystemExit(f"widgets.json missing control {wid!r}")
+
+
+_RESULTS_REGION_JS = r"""
+() => {
+  const jobLinks = document.querySelectorAll('a[href*="/jobs/"], a[href*="job"], a[href*="getro"]');
+  let best = null;
+  let bestN = 0;
+  for (const el of document.querySelectorAll("main, section, div")) {
+    const links = el.querySelectorAll('a[href*="/jobs/"], a[href*="positions"], a[href*="careers"]');
+    const n = links.length;
+    if (n > bestN) {
+      bestN = n;
+      best = el;
+    }
+  }
+  if (best && bestN > 2) {
+    return {
+      strategy: "job_link_densest_section",
+      text: best.innerText || "",
+      job_link_count: bestN,
+    };
+  }
+  const showing = [...document.querySelectorAll("div, section, main")].find((el) =>
+    /Showing\s+[\d,]+\s+jobs/i.test(el.innerText || "")
+  );
+  if (showing) {
+    let root = showing;
+    for (let i = 0; i < 6 && root.parentElement; i++) root = root.parentElement;
+    const links = root.querySelectorAll("a[href]");
+    return {
+      strategy: "showing_jobs_ancestor",
+      text: root.innerText || "",
+      job_link_count: links.length,
+    };
+  }
+  const main = document.querySelector("main");
+  if (main) {
+    return {
+      strategy: "main",
+      text: main.innerText || "",
+      job_link_count: main.querySelectorAll("a[href]").length,
+    };
+  }
+  const b = document.body;
+  return {
+    strategy: "body_fallback",
+    text: b ? b.innerText || "" : "",
+    job_link_count: document.querySelectorAll("a[href]").length,
+  };
+}
+"""
+
+
+def _board_parse_instructions() -> Dict[str, Any]:
+    return {
+        "container": "main",
+        "job_tag": 'a[href*="/jobs/"], a[href*="positions"]',
+        "job_link": 'a[href*="/jobs/"], a[href*="positions"]',
+        "title": 'a[href*="/jobs/"], a[href*="positions"]',
+        "company": "",
+        "posted": "",
+        "notes": (
+            "General Catalyst / Getro jobs board: listings are link clusters under "
+            "'Showing N jobs'; company/location often in sibling text nodes. Re-verify selectors."
+        ),
+    }
+
+
+async def _run(
+    url: str,
+    widgets_path: Path,
+    out_dir: Path,
+    headed: bool,
+    title_query: str,
+    location_query: str,
+) -> None:
+    widgets = _load_widgets(widgets_path)
+    by_id = _controls_by_id(widgets)
+    _require_widget(by_id, WIDGET_TITLE)
+    _require_widget(by_id, WIDGET_LOCATION)
+
+    meta: Dict[str, Any] = {
+        "spike": "general_catalyst_board_phase3_search_and_parse_spec",
+        "linear_id": "AST-432",
+        "entry_url": url,
+        "target_url": url,
+        "widgets_json": str(widgets_path.resolve()),
+        "playwright_version": _playwright_version(),
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "parameters": {"title_query": title_query, "location_query": location_query},
+        "widget_mapping": {
+            "title_query": WIDGET_TITLE,
+            "location_query": WIDGET_LOCATION,
+        },
+        "filters_applied": {
+            "title_query": True,
+            "location_query": bool(location_query.strip()),
+            "note": "Phase 2 had empty tray lists; pill filters not driven this run",
+        },
+        "consent_dismissal": None,
+        "networkidle_errors": [],
+    }
+
+    parse_instructions = _board_parse_instructions()
+    parse_instructions["parse_meta_crossref"] = (
+        "Written from static DOM inspection; card count in meta confirms selectors."
+    )
+
+    async with create_browser_context(headless=not headed) as ctx:
+        page = await ctx.new_page()
+        await page.goto(url, wait_until="networkidle", timeout=NAV_TIMEOUT_MS)
+        await page.wait_for_timeout(POST_LOAD_WAIT_MS)
+        meta["consent_dismissal"] = await _dismiss_consent(page)
+        await page.wait_for_timeout(400)
+
+        await page.get_by_placeholder(TITLE_PLACEHOLDER).fill(title_query)
+        if location_query.strip():
+            await page.get_by_placeholder(LOCATION_PLACEHOLDER).fill(location_query)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(ACTION_SETTLE_MS)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=NETWORKIDLE_AFTER_SEARCH_MS)
+        except Exception as e:
+            meta["networkidle_errors"].append(repr(e))
+
+        region = await page.evaluate(_RESULTS_REGION_JS)
+        meta["results_region_strategy"] = region.get("strategy")
+        meta["job_cards_visible"] = await page.evaluate(
+            """() => {
+              const t = document.body.innerText || '';
+              const m = t.match(/Showing\\s+([\\d,]+)\\s+jobs/i);
+              return m ? parseInt(m[1].replace(/,/g, ''), 10) : 0;
+            }"""
+        )
+        meta["job_link_count_results_region"] = region.get("job_link_count")
+        results_text = region.get("text") or ""
+
+    meta["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
+    parse_instructions["verified_job_card_count"] = meta.get("job_cards_visible")
+    if not meta.get("job_cards_visible"):
+        parse_instructions["notes"] += " Zero 'Showing N jobs' after search; re-verify."
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "results_visible.txt").write_text(results_text, encoding="utf-8")
+    (out_dir / "board_results_parse_instructions.json").write_text(
+        json.dumps(parse_instructions, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (out_dir / "meta.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--widgets-json", type=Path, default=DEFAULT_WIDGETS_JSON)
+    p.add_argument("--out-dir", type=Path, default=_ROOT / "debug/spikes/AST-432")
+    p.add_argument("--url", default=DEFAULT_URL)
+    p.add_argument("--title-query", default=DEFAULT_TITLE_QUERY)
+    p.add_argument("--location-query", default=DEFAULT_LOCATION_QUERY)
+    p.add_argument("--headed", action="store_true")
+    args = p.parse_args()
+    if not args.widgets_json.is_file():
+        raise SystemExit(f"widgets.json not found: {args.widgets_json}")
+    asyncio.run(
+        _run(
+            args.url,
+            args.widgets_json,
+            args.out_dir,
+            bool(args.headed),
+            args.title_query,
+            args.location_query,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

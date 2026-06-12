@@ -1,0 +1,257 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Edit Candidate Profile","Candidate provides contact information, pastes resume text and LinkedIn profile text. Grace automatically parses the resume into structured candidate_data fields. State advances from NEW to PROFILE_READY on completion.
+
+**Acceptance Criteria:**
+
+**Candidate Table Schema (new table):**
+- astral_candidate_id: UUID (PK, generated at insert)
+- first: TEXT (required)
+- last: TEXT (required)
+- contact_email: TEXT (required — Astral's outbound email, may differ from resume email)
+- state: TEXT (candidate state machine, default NEW)
+- candidate_data: JSON blob (all candidate content, see below)
+- created_at, updated_at, state_changed_at: TIMESTAMP
+
+**candidate_data initial shape:**
+- display_email: TEXT (optional, resume-facing email)
+- phone: TEXT (optional)
+- location: TEXT (optional)
+- github: TEXT (optional)
+- linkedin_url: TEXT (optional)
+- resume_raw: TEXT (full text paste of resume)
+- linkedin_raw: TEXT (full text paste of LinkedIn profile)
+- resume_summary: TEXT (populated by Parse Resume)
+- resume_competencies: array (populated by Parse Resume)
+- resume_experiences: array (populated by Parse Resume)
+- resume_previous_experience: array (populated by Parse Resume)
+- resume_education_certifications: array (populated by Parse Resume)
+- resume_skills: array (populated by Parse Resume)
+- strengths: array (populated in survey, initially empty)
+- priorities: array (populated in survey, initially empty)
+- deal_breakers: array (populated in survey, initially empty)
+- backstory: array (populated in survey, initially empty)
+
+**Company Table Update:**
+- Add candidate_id FK (one-to-many: one candidate has many companies)
+- All company analysis (prefilter decisions, scores, notes) is candidate-scoped
+- Bootstrap migration: assign existing company rows to candidate_id=1 (Susan)
+
+**Profile Screen (UI — Candidate > Profile):**
+- DetailsEditPage component
+- Fields: first, last, contact_email, display_email, phone, location, github, linkedin_url
+- Two large textarea fields: resume_raw, linkedin_raw
+- Save triggers Parse Resume automatically (no separate button)
+- On successful parse: candidate_data populated with resume sections, state → PROFILE_READY
+- If parse fails: save contact info anyway, surface error, allow retry
+
+**Parse Resume (automatic on save):**
+- Fires do_task with task_key=""parse_resume"" (new task in AGENT_CONFIG)
+- live_content: resume_raw text
+- Grace returns structured JSON matching resume section shape above
+- candidate_data updated with parsed fields via merge
+- Follows same do_task pattern as all other Consult tasks (ASTRAL_CODE_RULES 2.2)
+- Response schema defined in AGENT_CONFIG for validation
+
+**State Transition:**
+- NEW → PROFILE_READY (on successful profile save + parse)
+- PROFILE_READY unlocks: Companies nav appears (greyed → active), Strengths nav item activates
+
+**Nav Gating:**
+- NEW state: Only Profile is active in Candidate nav. All other Candidate items visible but greyed/disabled. Companies and Jobs sections hidden entirely.
+- PROFILE_READY: Companies section appears and is active. Strengths unlocks.
+
+**Bootstrap Migration:**
+- Script in scripts/migrations/ to seed candidate_id=1 from existing data/candidate/ files
+- Assigns all existing company rows to candidate_id=1
+- Idempotent: safe to run multiple times
+
+**Database:**
+- candidate table: INSERT new record (admin creates via Manage Candidates)
+- candidate table: UPDATE candidate_data, state, updated_at, state_changed_at
+- company table: ALTER to add candidate_id FK
+- database.py header inventory updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Candidate,8
+"Edit Survey Lists","Five survey screens where the candidate provides weighted lists of personal content that drive all downstream AI generation. Each screen maps to a candidate state. Lists are manually editable to start; AI interview generation (coatcheck) is a future enhancement explicitly out of scope here.
+
+**Acceptance Criteria:**
+
+**Shared Data Shape (all survey types):**
+Each item in every survey array follows this structure:
+- description: TEXT (natural language expression of the item)
+- priority: INTEGER 1–5 (importance to candidate; 5 = highest)
+- created_at, updated_at: TIMESTAMP
+
+**Survey Screens and State Mapping:**
+
+**Strengths (SURVEY_STRENGTHS):**
+- Nav item unlocks when state = PROFILE_READY
+- Candidate enters their professional superpowers
+- Each item: what they're exceptionally good at, priority weight
+- Clicking Strengths nav when state = PROFILE_READY transitions state → SURVEY_STRENGTHS
+
+**Goals / Priorities (SURVEY_PRIORITIES):**
+- Nav item unlocks when state = SURVEY_STRENGTHS
+- Candidate enters ambitions, ideal job characteristics, career direction
+- Each item: what they want from their next role, priority weight
+
+**Deal Breakers (SURVEY_DEAL_BREAKERS):**
+- Nav item unlocks when state = SURVEY_PRIORITIES
+- Candidate enters hard nos: culture, comp, industry, role type, etc.
+- Each item: what they will not accept, priority weight
+
+**Backstory (SURVEY_DEAL_BREAKERS → SURVEY_BACKSTORY):**
+- Nav item unlocks when state = SURVEY_DEAL_BREAKERS
+- Maps to Candidate nav item ""Backstory"" (replaces ""Experience"" from Interface design)
+- Each item describes a past role: what was loved, tolerated, and why they left
+- Description convention (not enforced, surfaced as hint): ""As <job title> at <company>, loved X, tolerated Y, left because Z""
+- Priority reflects how formative/relevant that role was
+
+**Base Resume (SURVEY_BASE_RESUME):**
+- Nav item unlocks when state = SURVEY_BACKSTORY
+- Candidate reviews and edits the structured resume sections parsed from their resume_raw
+- Sections displayed as editable fields: resume_summary (textarea), resume_competencies, resume_experiences, resume_previous_experience, resume_education_certifications, resume_skills (each as list of editable items)
+- Candidate corrects any parse errors or adds missing content
+- This is the immutable source of truth for resume content — Artifacts assembly will pull from these fields, never from AI generation
+
+**UI Pattern (all survey screens):**
+- ListPage component showing current array items
+- Columns: description (truncated), priority (1–5 badge), updated_at
+- Add new item via Modal (description textarea + priority selector 1–5)
+- Edit existing item via Modal (same fields, pre-populated)
+- Delete item with confirmation
+- Changes write directly to candidate_data array in candidate table via API
+- Empty list is valid — no minimum required at this stage (completion gate is separate feature)
+
+**State Transitions:**
+- PROFILE_READY → SURVEY_STRENGTHS (on first click of Strengths nav)
+- SURVEY_STRENGTHS → SURVEY_PRIORITIES (on first click of Goals nav)
+- SURVEY_PRIORITIES → SURVEY_DEAL_BREAKERS (on first click of Deal Breakers nav)
+- SURVEY_DEAL_BREAKERS → SURVEY_BACKSTORY (on first click of Backstory nav)
+- SURVEY_BACKSTORY → SURVEY_BASE_RESUME (on first click of Base Resume nav)
+
+**Future Enhancement (explicitly out of scope):**
+- Coatcheck: if a survey array is empty, trigger a stateful AI interview to generate items for candidate review. Not built here. Empty array = empty list = manual entry only.
+
+**Database:**
+- candidate table: UPDATE candidate_data (merge array for relevant key), updated_at
+- All reads/writes go through candidate_data JSON blob — no separate table",Backlog,High,feature,Astral Candidate,5
+"Complete Survey Lists","Completion gate that verifies all survey arrays are populated before advancing the candidate to CONTENT_READY. Surfaces a clear checklist so the candidate knows exactly what remains.
+
+**Acceptance Criteria:**
+
+**Completion Requirements:**
+All five of the following candidate_data arrays must be non-empty:
+- strengths (at least 1 item)
+- priorities (at least 1 item)
+- deal_breakers (at least 1 item)
+- backstory (at least 1 item)
+- resume_experiences (at least 1 item — proxy for base resume completeness)
+
+**UI:**
+- Completion status visible on each survey screen (e.g. green checkmark when array is non-empty)
+- Summary checklist surfaced on Base Resume screen (final survey screen) showing status of all five
+- ""Ready for Astral"" confirm button on Base Resume screen, enabled only when all five are complete
+- On confirm: state → CONTENT_READY, success message, Build Consult Prompts triggered automatically
+
+**State Transition:**
+- SURVEY_BASE_RESUME → CONTENT_READY (on candidate confirmation with all arrays non-empty)
+- CONTENT_READY triggers Build Consult Prompts (see next feature)
+
+**Validation:**
+- Server-side check on confirm: re-verify all arrays non-empty before accepting state transition
+- Client-side check: disable confirm button if any array is empty (UX guard, not security)
+
+**Database:**
+- candidate table: UPDATE state = CONTENT_READY, state_changed_at, updated_at",Backlog,High,feature,Astral Candidate,2
+"Build Consult Prompts","Grace generates all candidate-specific agent_content rows from the completed candidate_data. This is the AI generation step that transforms survey answers into calibrated prompts and rubrics. Fires automatically when candidate reaches CONTENT_READY.
+
+**Acceptance Criteria:**
+
+**agent_content Table Schema (new table):**
+- id: UUID (PK)
+- task: TEXT (required — keys to AGENT_CONFIG task key, e.g. ""scoreGET"", ""scoreDO"", ""prefilter_company"")
+- type: TEXT (required — enum: system, user, cached, nocache)
+- label: TEXT (optional — the === LABEL === header for cached blocks, e.g. ""GET_RUBRIC"", ""CANDIDATE_RESUME"")
+- candidate_id: TEXT (nullable FK to candidate — NULL means universal/shared)
+- content: TEXT (the prompt content)
+- approved_at: TIMESTAMP (nullable — NULL means not yet reviewed)
+- created_at, updated_at: TIMESTAMP
+
+**Prompts to Generate (per candidate):**
+
+Grace analyst system prompt (type=system, task=all grace tasks):
+- Grace's analyst persona, voice, and instructions — calibrated to this candidate's industry and target role
+
+GET rubric content (type=cached, label=GET_RUBRIC, task=scoreGET):
+- Calibrated credential-match examples using candidate's actual background
+- ""A 5 means..."" examples reference candidate's specific skills and experience level
+
+DO rubric content (type=cached, label=DO_RUBRIC, task=scoreDO):
+- Calibrated responsibility-fit examples using candidate's strengths and work style
+
+LIKE rubric content (type=cached, label=LIKE_RUBRIC, task=scoreLIKE):
+- Calibrated culture/preference examples using candidate's priorities and deal_breakers
+
+Prefilter instructions (type=cached, label=PREFILTER_INSTRUCTIONS, task=prefilter_company):
+- Candidate-specific company evaluation criteria derived from deal_breakers and priorities
+
+Resume cached block (type=cached, label=CANDIDATE_RESUME, task=scoreGET+scoreDO):
+- Assembled from structured resume fields (resume_summary, resume_competencies, resume_experiences, etc.)
+- Never hallucinated — assembled from candidate_data, not generated by AI
+
+LinkedIn cached block (type=cached, label=LINKEDIN_PROFILE, task=scoreGET+scoreDO):
+- From linkedin_raw (candidate-provided text)
+
+Preferences block (type=cached, label=CANDIDATE_PREFERENCES, task=scoreLIKE):
+- Assembled from strengths, priorities, deal_breakers arrays
+
+**anthropic.py Update:**
+- do_task queries agent_content table by task + candidate_id before falling back to file
+- Falls back to NULL candidate_id rows (universal) when no candidate-specific row exists
+- Falls back to file if no DB row exists (migration safety)
+- Assembled prompt identical in structure to current file-based assembly (=== LABEL === headers preserved)
+- candidate_id passed through do_task call from core layer
+
+**Generation Process:**
+- Fires automatically when state transitions to CONTENT_READY
+- Each prompt generated via do_task with task_key=""generate_[prompt_type]"" (new tasks in AGENT_CONFIG)
+- Input: full candidate_data JSON as live_content
+- Output: content text saved as agent_content row
+- approved_at: NULL on generation (pending candidate review in Astral Rubrics)
+
+**State Transition:**
+- CONTENT_READY → LIVE_PROMPTS pending (prompts generating)
+- Completion gate (Complete Prompts feature) advances to LIVE_PROMPTS when all required rows exist
+
+**Database:**
+- agent_content table: INSERT rows for each generated prompt block
+- database.py header inventory updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Candidate,8
+"Complete Prompts","Completion gate that verifies every candidate-specific task in AGENT_CONFIG has a corresponding agent_content row before advancing the candidate to LIVE_PROMPTS. Candidate reviews and approves their Astral Rubrics from this state.
+
+**Acceptance Criteria:**
+
+**Completion Check:**
+- Enumerate all tasks in AGENT_CONFIG that require candidate-specific content
+- For each: verify at least one agent_content row exists with matching task + candidate_id
+- All rows must exist before state can advance to LIVE_PROMPTS
+
+**Astral Rubrics Screen (UI — Candidate > Astral Rubrics):**
+- Nav item visible but greyed from NEW; unlocks at LIVE_PROMPTS
+- ListPage showing all agent_content rows for this candidate
+- Columns: task, type, label, approved status, updated_at
+- Row action: Modal with full content textarea (editable) + Approve button
+- Approve sets approved_at = now on that row
+- Candidate can edit content and re-save (clears approved_at, requires re-approval)
+- Read-only view of universal (candidate_id = NULL) rows for reference — not editable from Candidate screen (Admin only)
+
+**Advance to LIVE_PROMPTS:**
+- All required agent_content rows exist (system check)
+- Candidate has approved at least the rubric rows (GET_RUBRIC, DO_RUBRIC, LIKE_RUBRIC)
+- Admin can force-advance if needed (via Manage Candidates)
+
+**State Transition:**
+- CONTENT_READY → LIVE_PROMPTS (on completion check pass + rubric approval)
+- LIVE_PROMPTS unlocks: Jobs section appears in nav, Astral Rubrics nav item activates, Companies becomes fully operational
+
+**Database:**
+- agent_content table: UPDATE approved_at, content, updated_at
+- candidate table: UPDATE state = LIVE_PROMPTS, state_changed_at, updated_at",Backlog,High,feature,Astral Candidate,3

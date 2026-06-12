@@ -1,0 +1,149 @@
+# AST-502 — Dispatcher multi-chunk cache-warm exhaustion
+
+**Linear:** [AST-502](https://linear.app/astralcareermatch/issue/AST-502/dispatcher-multi-chunk-cache-warm-exhaustion-high-volume-encoded-batch)  
+**Parent epic:** [AST-500](https://linear.app/astralcareermatch/issue/AST-500/high-volume-encoded-batch-consult-migrate-all-stages-cache-first)  
+**Project:** Astral Consult  
+**Publish ref:** `origin/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion`
+
+When eligible jobs exceed **`dispatch_tasks.batch_size`**, **`_run_unified`** (job + **`batch_call_mode=1`** consult paths) shall **claim the full backlog** for that **`batch_id`/dispatch ledger cycle** (**one `clear_job_batch` at exit** per code rules §2.4), **partition** claimed rows into contiguous chunks sized **`batch_size`**, **`await`** **chunk 0** (**cache warm**) through the existing **`consult`** batch runners, **`await asyncio.sleep`** for **`ASTRAL_CONFIG["cache_warm_delay_seconds"]`** (**same knob as `_warm_then_gather`**), then **`await asyncio.gather`** on **`chunks 1…K−1`** (each chunk = one **`consult.run_consult_task`**/`_run_batch_consult`/`do_task` round-trip sized to **`batch_size`**). **Depends on AST-501** for **`qualify`**/**`evaluate`** true single-call multi-line payloads — parallel chunks **amplify** regressions otherwise. **Leaves DO/GET/LIKE batch delegation to AST-503** except where **shared splitter** touches generic job batch runner only.
+
+---
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/core/dispatcher.py` | Replace single **`consult.run_consult_task`** call for **`batch_call_mode`** job/consult slice with **`_run_chunked_batch_consult` (new private async helper)** partitioning **`entities`** and orchestrating **`await`/sleep/`gather`** as above; aggregate **`passed`/`failed`/`processed`** summaries into **`_SUMMARY_ZERO` shape**. | core |
+| `src/core/consult.py` | Optional thin exports if split logic needs **`run_consult_task`** entry per chunk with explicit subset — **prefer no public API churn** (**dispatcher** passes slices identical to today's full list semantics). May add **`consult_batch_chunk(task, entities_slice, bid, ctx, debug, chunk_suffix)` only if unavoidable** (**document necessity** inline). | core |
+| `src/core/agent.py` | **`do_task` index / RESPONSE dedupe**: today **`index=f"{task_key}_batch_{batch_id}"`** from **`_run_batch_consult`** must stay **collision-free** across **parallel chunks** (**two chunks same parent `bid` collide**); extend index with **stable suffix** per chunk (**e.g. `_c{chunk_index}`**) **only inside batch consult path**. | core |
+| `src/data/database.py` | Extend **`claim_job_batch`** semantics **or add `claim_additional_job_rows_for_batch`** if single UPDATE cannot economically claim **`>batch_size`** in one txn — canonical approach per parent epic: **`count_eligible` then `LIMIT <eligible>` UPDATE** attaching **`batch_id`**. Prefer **minimal SQL** respecting existing sort/score-floor filters mirrored with **`count_eligible_for_dispatch_task`**. Parameter order **`batch_id` first**. | data |
+| `src/core/tracker.py` | If **`database.claim_job_batch` signature** gains total limit / overload, **`get_new_job_batch`** plumbed-through kwargs **maintain backward compatibility**. | core |
+| `tests/component/core/test_dispatcher.py` | Unit-test partition + ordering: mocked **`consult`** coroutine asserts **calls == K**, first chunk **serialized before** **`gather`** starts, **`sleep`** invoked exactly once **between** chunk0 completion and **`gather`** (use **`AsyncMock`** + **`unittest.mock`** `patch`** on **`asyncio.sleep`**). | tests |
+
+---
+
+## Stage 1: Expand claim semantics (data layer)
+
+**Done when:** A single **`get_new_job_batch`** / **`database.claim_job_batch`** call can attach **all concurrent eligible rows** (**up to `available`**) for (**state**, **candidate_id**, filters) matching **`count_eligible_for_dispatch_task`** for that **`dispatch_task`** row (**no silent cap at `batch_size`** for claiming).
+
+⚠️ **Decision:** Prefer **raising `effective_claim_limit = available_count` read before UPDATE** (**same predicates as count**) over repeated **`LIMIT batch_size`** rounds that **reuse `batch_id`**, because current SQL only targets **`batch_id IS NULL OR ''`** rows — **incremental accumulate with same bid is unsupported without schema change.**
+
+1. Inspect **`database.count_eligible_for_dispatch_task`** SQL vs **`claim_job_batch` WHERE** clauses — enforce **equality** (**sort order**, **`score_floor`**, **`candidate_id` filter**) so **nothing is double-count mis-claimed**.
+2. Implement **`claim_job_batch`** optional parameter **`effective_limit: Optional[int] = None`**: when **`None`**, preserve current behavior (**dispatcher passes `task["batch_size"]`** unchanged for non-exhaust callers). When **`dispatcher` chunked exhaust path passes `effective_limit=int(available_count)`**, **`UPDATE … LIMIT`** uses that integer (**exact eligible count**) — **never `min(..., heuristic_cap)`**.
+3. Update **`dispatcher._run_unified`**: **`available = database.count_eligible_for_dispatch_task(task)`** (**already surfaced** indirectly through scheduler) — after successful claim path, **`get_new_job_batch(..., limit=available)` for batch_call_mode chunked mode** (**job + consult**) **instead of `limit=batch_size`**.
+
+⚠️ **Decision:** Separate **claim limit** (large **`available_count`**) from **chunk size** (`task["batch_size"]` API assembly **only**) — avoids mutating **`get_new_job_batch`** default (**10**) for unrelated tasks (**add keyword at consult exhaustion callsite**; **company batches unchanged**).
+
+---
+
+## Stage 2: Chunk splitter + concurrency orchestration (`dispatcher`)
+
+**Done when:** For **`entity_type=="job"`** with **`batch_call_mode==1`** and **`task_key` in configured consult-encoded set `{qualify_job_listings, evaluate_jd, consult_do, consult_get, consult_like}`** (**post-503** may grow set), splitter runs **exactly**:
+
+1. **`K = ceil(len(jobs) / chunk_size)`** with **`chunk_size = int(task["batch_size"])`** from the **`dispatch_task` row**.
+
+   ⚠️ **Decision:** **`chunk_size` source** = **`int(task["batch_size"])`** only — **crash if missing during dispatch** (**configuration error**) per **Susan no magic defaults**.
+2. If **`K≤1`** → **`await consult.run_consult_task(..., entities=jobs,...)` once** (**legacy path**) — preserves today’s **`do_task`/batch_id** behavior (**no needless suffix**).
+
+3. If **`K>1`** → build **`chunks`** list slicing **`jobs`** in stable order (**same **`sort_by` claim order** embodied in **`jobs` list`**).
+
+   - **`r0 = await run_chunk(0, chunks[0])`**
+   - **`await asyncio.sleep(ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0))`**
+   - **`gather(*[run_chunk(i, chunks[i]) for i in range(1, K)])`** collecting coroutine results (**tuple of dict summaries** compatible with aggregator).
+
+4. **Aggregation:** **`run_consult_task`** returns **`_SUMMARY_ZERO` shape`; `_run_batch_consult` returns smaller dict (**passed/failed/total**) — unify **into `_SUMMARY_ZERO`** already near bottom of **`run_consult_task`** (**extend splitter to sum fields** analogous to **`_warm_then_gather`** loop).
+
+5. **`run_chunk` responsibilities:** forward **`bid`/`ctx`/`debug`**, **`entity_type/input_state`** identical to today's **`run_consult_task`**.
+
+---
+
+## Stage 3: Uniqueness of **`do_task` index** across parallel chunks
+
+**Done when:** Parallel chunks **never** collide on **`RESPONSE`** block hashing / **`agent_data` dedupe**.
+
+1. Locate **`consult._run_batch_consult`** **`do_task` call** (**`index=f"{task_key}_batch_{batch_id}"`**).
+2. Thread optional **`chunk_index: Optional[int] = None`** from **`dispatcher.run_chunk`** (or **`ctx["batch_chunk_suffix"]`** if fewer signature edits).
+3. If **`chunk_index`** not **`None`** → **`index=f"{task_key}_batch_{batch_id}_c{chunk_index}"`**.
+4. **Append_agent_response** uses **per-job references** unaffected — confirm **RESPONSE BLOCK** storage uses updated index (**dedupe HASH** uniqueness).
+
+⚠️ **Decision:** Prefer **explicit kwarg through `consult` wrappers** vs stuffing **`ctx` magic string**.
+
+---
+
+## Stage 4: Blocked sibling guard + integration notes
+
+**Done when:** Plan doc links **explicit ordering**: **implement after AST-501 merged** (**splitter testing uses multi-line payloads**).
+
+- **Consult DO/GET/LIKE** chunked fan-out activates only after **`run_consult_task`** routes **`batch_slice`** (**AST-503**). Until then, **restrict consult set literal** (**qualify_job_listings**, **`evaluate_jd`**) behind runtime **feature-flagless** **`if`** on **`task_key`** — expands when **AST-503** lands (**single PR per ticket** prefers **narrow first diff** exposing helper only **for keys already batchable**).
+
+**Per-chunk envelope partial failure**: inherited from **`AST-501`/ `_run_batch_consult`** (**retry/error** granularity) — **no new whole-chunk escalation** besides **`do_task` failure** (**entire envelope**).
+
+---
+
+## Stage 5: Tests
+
+**Done when:**
+
+1. Dispatcher test **mocks **`consult.run_consult_task`** → returns **`{total_processed: len(entities)}` mirrored into passed/failed** shape** verifies **ordering** (**sleep**/chunk call pattern).
+2. Property check: **`K=4`/`batch_size=500`/`2000`** jobs → **`run_consult_task` awaited 4×** (**first awaited before gather others**).
+
+---
+
+## Self-Assessment
+
+### Scope — **scope-MAJOR-CHANGE**
+
+Cross-cuts **`database` claiming**, **`dispatcher` concurrency**, and **`consult`/`agent`** indexing — foundational dispatch behavior.
+
+### Conf — **conf-Medium**
+
+Depends on aligning **`claim` vs `count` SQL`; parallel **`asyncio.gather`** around shared **`bid`** is **novel** (**integration risk**) though patterns mirror **`_warm_then_gather`**.
+
+### Risk — **HIGH**
+
+Bug could **duplicate claims**, **starve concurrency**, **drop ledger summaries**, or **corrupt RESPONSE dedupe** — **dispatcher is production critical**.
+
+---
+
+## Plan vs ASTRAL_CODE_RULES cross-check
+
+- **§2.4 Batch pattern:** Maintain **single `batch_id` claim/clear lifecycle** (**`clear_job_batch` in `finally` unchanged** — **aggregator processes all chunks prior** **`finally`**).
+- **§1.4 No magic defaults:** **`batch_size` from DB**, **`sleep` duration from `ASTRAL_CONFIG` literal**.
+- **§3.3:** **`dispatcher` imports `consult`; `database` untouched by `ui`**.
+- **`!!-NONE`:** Claim/count predicate mismatch flagged during Stage1 — **STOP** Linear comment if divergence found.
+
+---
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion` @ `c18bbd1d25cdfd49ed3b4a8611794060fe98dacb`
+
+### What's solid
+- **`claim_job_batch`** + **`get_new_job_batch`** plumbed **`claim_cap=`** (`effective_limit` in UPDATE) aligns with widening claims to **`count_eligible_for_dispatch_task`** for encoded batch consult exhaustion; raises if **`dispatch_tasks.batch_size`** missing — no heuristic cap (**plan Stage 1**).
+- Dispatcher chunking: **`ceil(len/batch_size)`**, chunk 0 serial then **`sleep(cache_warm_delay_seconds)`**, tail **`asyncio.gather`** — mirrors intent; **`batch_chunk_index`** suffix on **`do_task` index** avoids RESPONSE dedupe collisions across chunks sharing one **`bid`**.
+- Narrow **`_CHUNK_EXHAUST_CONSULT_JOB_KEYS`** to qualify + evaluate only on this slice matches AST-503 boundary (**plan Stage 4**).
+
+### Issues / follow-ups
+
+| Severity | Bucket | Topic | Notes |
+| -------- | ------ | ----- | ----- |
+| discuss | Operational resilience | **`asyncio.gather`** chunk fan-out vs **`_warm_then_gather`** behavior | **`_warm_then_gather`** catches per-slot exceptions into error-shaped summaries; **`gather`** here fails the whole **`_run_unified`** coroutine if a chunk raises — confirm this is acceptable for dispatcher ticks (versus chunk-isolated degraded summaries). |
+| advisory | Config access style | **`ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0)`** | Same pattern already in **`_warm_then_gather`**; literal exists under **`config.py`** — keyed read would satisfy the strictest reading of §1 binary config access, optional cleanup only if you want uniformity. |
+
+### Recommended actions
+
+No **fix-now** blocker for **`resolve-astral`**; resolve **`discuss`** if Hedy prefers **`gather(return_exceptions=True)`** parity.
+
+---
+
+## Resolution (`resolve-astral`)
+
+**Date:** 2026-05-26  
+
+**Against:** Radia `review-astral` § **Review** on `origin/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion` @ **`c18bbd1d`**.
+
+**Product / plan**
+
+- **`fix-now`:** None — `claim_cap` / widen-claim exhaustion, **`batch_chunk_index`**, chunk-0 **`sleep`**, and parallel tail **`gather`** are as-reviewed; **`dev-hedy`** includes the **`docs(AST-502): Radia …`** tip before this appendix.
+- **Discuss — `asyncio.gather` failing the whole **`_run_unified`**:** **Confirmed intentional** for catastrophic chunk/consult faults (explicit exception from a **`do_task`/batch invocation**). **`_warm_then_gather`-style** swallowed per-slot summaries are **not** replayed here: within a successful envelope, **`_run_batch_consult`** continues to honor **per-job RETRY** rules for omitted/garbled **positions**, matching parent **AST-500** partial-line expectations. Opting **`return_exceptions=True`** and digesting failures into degraded dicts stays **deferred** unless Susan requests softer tick-level masking.
+- **Advisory — `ASTRAL_CONFIG.get(...)` literal default:** Mirrors existing **`_warm_then_gather`** style; left unchanged.

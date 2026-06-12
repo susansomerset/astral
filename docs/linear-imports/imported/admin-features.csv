@@ -1,0 +1,336 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+Manage Candidates — API Key,"Add encrypted Anthropic API key management to the existing Manage Candidates screen. This is the only addition needed to complete Manage Candidates as a feature.
+
+**Acceptance Criteria:**
+
+**Candidate Table:**
+- Add top-level column `candidate_api_key` (TEXT, encrypted at rest) to the candidate table
+- `get_candidate()` returns this field alongside `candidate_id`, `state`, `candidate_data`
+- `candidate.py` gets `get_api_key(candidate)` function: decrypts and returns key, raises `ValueError` if missing or blank — no fallback to system key
+
+**Edit Modal (Manage Candidates screen):**
+- Add API key field: masked input (password-style) with a reveal toggle
+- Save replaces existing key — no clear action, replacement only
+- Validation: key must be non-blank on save
+
+**List View:**
+- Add API key status indicator column: '🔑 Set' or '⚠️ Not set'
+- No key value displayed in list — status only
+
+**Nav Cleanup (include in this issue):**
+- Remove Analysis Instructions from NAV_CONFIG and routes.tsx
+- Remove Resume Framework from NAV_CONFIG and routes.tsx
+- Rename 'Scheduled Actions' → 'Task Dispatcher' in NAV_CONFIG and routes.tsx
+- Rename 'Performance Monitor' → 'Execution History' in NAV_CONFIG and routes.tsx
+
+**Database:**
+- candidate table: ALTER to add `candidate_api_key` TEXT column
+- Encryption/decryption handled in database.py or candidate.py (encrypted at rest, decrypted once by `candidate.get_api_key()`)
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Admin,3
+Manage Agents,"New admin screen to manage named system prompt templates. System prompts are reusable across multiple tasks and define agent persona, voice, and standing instructions. They are prose templates with candidate and config merge tokens.
+
+**Acceptance Criteria:**
+
+**`agent` Table (new):**
+- `agent_id` — PK, human-readable string (e.g. `job_analyst_grace`, `gate_keeper_atlas`)
+- `content` — TEXT, the system prompt template (may include merge tokens e.g. `{$FNAME}`, `{$CANDIDATE_UPSHOT}`, `{$RESPONSE_SCHEMA}`)
+- `updated_at` — TIMESTAMP
+
+**Manage Agents Screen (UI — Admin > Manage Agents):**
+- ListPage showing all agents
+- Columns: `agent_id`, char count of content, `updated_at`
+- Row action: Edit → full-page textarea with content, save writes back to `agent` table
+- Add New Agent button → modal with `agent_id` input + content textarea
+- No delete in v1 (agents are referenced by agent_task records)
+
+**API Endpoints:**
+- GET /api/admin/agents — list all agents (agent_id, char count, updated_at)
+- GET /api/admin/agents/:agent_id — get full content
+- PUT /api/admin/agents/:agent_id — save updated content
+- POST /api/admin/agents — create new agent
+
+**Notes:**
+- agent_id is stable and referenced by agent_task records — renaming is out of scope for v1
+- Content is a template; token resolution happens at runtime in anthropic.py, not here
+- Seed script to migrate existing system prompt .txt files from data/agents/_systemprompts/ into agent table on first run
+
+**Database:**
+- agent table: CREATE TABLE as above
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Admin,3
+Manage Tasks,"New admin screen to manage task definitions and their associated prompt content. Tasks are defined in CONFIG_TASKS in config.py — the UI renders from that list. The agent_task table stores prompt content for each task. anthropic.py fetches from agent_task and agent tables at runtime instead of AGENT_CONFIG and file system.
+
+**Acceptance Criteria:**
+
+**config.py Changes:**
+- Replace AGENT_CONFIG with CONFIG_TASKS — task key is the index, each entry contains:
+  - `response_schema` — dict (programmatic contract, stays in code)
+  - `vectors` — list (grading vectors, stays in code)
+  - `grading_mode` — string
+  - `requires_candidate_key` — bool
+  - `trigger_state` — string (the input state this task processes, used by Dispatcher)
+- Add `get_task_keys()` — returns list of all task keys for UI rendering
+- Add `stringify_response_schema(task_key)` — returns formatted string of response_schema for injection as `{$RESPONSE_SCHEMA}` token in prompt content
+
+**`agent_task` Table (new):**
+- `task_key` — PK, matches CONFIG_TASKS key exactly
+- `agent_id` — FK to agent table (nullable until assigned)
+- `user_prompt` — TEXT (never-cached user prompt template)
+- `cache_prompt` — TEXT (cacheable content block template)
+- `nocache_prompt` — TEXT (uncached supporting content template)
+- `updated_at` — TIMESTAMP
+
+**Startup Sync:**
+- On app startup, compare CONFIG_TASKS keys against agent_task rows
+- Any key in CONFIG_TASKS without a row gets a blank agent_task record created automatically
+- Surfaces in UI as unconfigured task (all slots empty/red)
+
+**Manage Tasks Screen (UI — Admin > Manage Tasks):**
+- ListPage driven by CONFIG_TASKS keys (via get_task_keys())
+- Columns: task_key, agent (agent_id or '⚠️ Not set'), user char count, cache char count, nocache char count — all with green/red coverage indicators
+- Row action: Edit → tabbed modal with four tabs:
+  - **System** — dropdown of existing agents from agent table (select to assign agent_id)
+  - **User** — large textarea for user_prompt
+  - **Cache** — large textarea for cache_prompt
+  - **NoCache** — large textarea for nocache_prompt
+- Save commits all four fields to agent_task record
+
+**anthropic.py Changes (prompt assembly refactor):**
+- `do_task` fetches agent_task record by task_key from database
+- Resolves agent_id → fetches system prompt content from agent table
+- Token resolution pass over all content blocks:
+  - Candidate tokens (e.g. `{$FNAME}`, `{$LNAME}`, `{$CANDIDATE_UPSHOT}`) resolved from ctx.candidate_data
+  - Config tokens (e.g. `{$RESPONSE_SCHEMA}`) resolved via stringify_response_schema(task_key)
+- Assembles prompt identically to current structure — same output shape, different source
+- Falls back to existing file-based assembly if no agent_task record found (migration safety, remove after cutover)
+- consult.py requires no changes — interface to do_task unchanged
+
+**API Endpoints:**
+- GET /api/admin/tasks — list all tasks with coverage status
+- GET /api/admin/tasks/:task_key — get full agent_task record
+- PUT /api/admin/tasks/:task_key — save updated content
+- GET /api/admin/agents/list — lightweight agent list for dropdown
+
+**Notes:**
+- Seed script to migrate existing task prompt .txt files and AGENT_CONFIG entries into agent_task table
+- Token resolution is runtime only — admin edits raw templates, never sees resolved content in UI
+
+**Database:**
+- agent_task table: CREATE TABLE as above
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Admin,8
+View Agent Timesheets,"Admin screen to view, filter, sort and export Anthropic API usage and cost data. The timesheets table already exists and is being written to by add_timesheet_entry. This feature adds the UI and a context_id field to the timesheet record.
+
+**Acceptance Criteria:**
+
+**Timesheet Table Addition:**
+- Add `context_id` TEXT column to timesheets table (e.g. `grade_get_acme`, `qualify_job_listings_batch_uuid`)
+- `add_timesheet_entry()` in database.py accepts and stores `context_id`
+- All callers of `do_task` pass context_id through — follows existing context pattern in _build_context()
+
+**View Agent Timesheets Screen (UI — Admin > Agent Timesheets):**
+- Sortable, filterable list of all timesheet records
+- Columns: created_at, context_id, batch_id, user_prompt_file, request_id, tokens_input, cache_read_tokens, tokens_output, est_cost
+- Filter controls: date range, user_prompt_file, batch_id, context_id
+- **Header totals row** — sums tokens_input, cache_read_tokens, tokens_output, est_cost across all records matching current filter
+- **Selected totals row** — same sums for checked/selected rows only, pinned to bottom of list
+- Checkbox selection per row
+- **Export to CSV** — exports all columns including metadata for current filter or selection
+- Filter params are URL-querystring driven to support deep-linking from Execution History
+
+**API Endpoints:**
+- GET /api/admin/timesheets — list with filter params (date_from, date_to, user_prompt_file, batch_id, context_id)
+- GET /api/admin/timesheets/export — CSV export with same filter params
+
+**Notes:**
+- No delete or edit — timesheets are append-only
+- Execution History links to this screen filtered by batch_id
+
+**Database:**
+- timesheets table: ALTER to add context_id TEXT column
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,Medium,feature,Astral Admin,4
+Company State History,"Add state_history tracking to the company table, mirroring the existing pattern on the job table. batch_id is the spine that connects company state transitions to execution sessions, timesheets, and Better Stack logs.
+
+**Acceptance Criteria:**
+
+**company Table Addition:**
+- Add `state_history` TEXT column (JSON array, same shape as job.state_history)
+- Each entry: `{ ""to_state"": ""..."", ""timestamp"": ""..."", ""batch_id"": ""..."" }`
+- Migration: existing rows get `state_history = '[]'`
+
+**roster.py Changes:**
+- Add state_history append pattern to every company state transition, mirroring tracker.py:
+  - Fetch current company, read state_history array
+  - Append new entry with to_state, timestamp, current batch_id
+  - Write back via save_company
+
+**database.py Changes:**
+- `save_company()` accepts and stores `state_history` (same overwrite pattern as save_job)
+- Schema migration adds column to existing databases idempotently
+
+**ROSTER_DATA_MODEL.md:**
+- Update to document state_history column and entry shape
+
+**Database:**
+- company table: ALTER to add `state_history` TEXT column
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Roster,2
+View Execution History,"Admin screen showing a summary list of Dispatcher-initiated batch runs. The Dispatcher writes execution_session records as a side effect of orchestrating each run. Clicking a session opens a modal surfacing log content from Better Stack filtered to that batch_id.
+
+Execution History is Dispatcher-only — manually triggered CLI runs go to console and are not recorded here.
+
+**Acceptance Criteria:**
+
+**Better Stack Setup:**
+- Configure Better Stack (Logtail) as Railway log drain — one-click integration in Railway dashboard
+- All existing stdout log output flows to Better Stack automatically via the drain — no logging.py changes required
+- Better Stack search URL pattern documented so batch_id deep-link URLs can be constructed dynamically
+
+**`execution_session` Table (new, written by Dispatcher only):**
+- `batch_id` — PK (the batch_id from the dispatch run — no new identifier needed)
+- `task_key` — TEXT (which task was dispatched)
+- `candidate_id` — TEXT (FK to candidate)
+- `started_at` — TIMESTAMP
+- `completed_at` — TIMESTAMP (nullable, set on completion)
+- `status` — TEXT (RUNNING, COMPLETED, FAILED)
+- `total_processed` — INTEGER
+- `total_passed` — INTEGER
+- `total_failed` — INTEGER
+- `total_errors` — INTEGER
+- `better_stack_url` — TEXT (constructed deep-link URL to Better Stack filtered to this batch_id)
+
+**View Execution History Screen (UI — Admin > Execution History):**
+- ListPage showing execution_session records, newest first
+- Columns: started_at, task_key, candidate_id, status, total_processed, total_passed, total_failed, total_errors, duration
+- Click row → modal surfacing log content from Better Stack for this batch_id (implementation at Chuckles' discretion)
+- Link from row → Agent Timesheets filtered by batch_id (URL querystring)
+
+**API Endpoints:**
+- GET /api/admin/execution_sessions — list sessions (filterable by task_key, candidate_id, status, date range)
+- GET /api/admin/execution_sessions/:batch_id — single session detail
+
+**Notes:**
+- execution_session records are created and updated by dispatcher.py — this feature is UI-only on the read side
+- No CLI changes required
+
+**Database:**
+- execution_session table: CREATE TABLE as above
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,Medium,feature,Astral Admin,4
+Manage Task Dispatcher,"Replace the Scheduled Actions stub with a fully operational Task Dispatcher. A thin Railway cron job fires every few minutes and calls the Dispatcher endpoint. All scheduling logic lives in dispatcher.py and the dispatch_task table. Introduces the candidate-as-raft pattern, candidate-scoped batch processing, and execution_session record ownership.
+
+**Acceptance Criteria:**
+
+**Candidate as Raft:**
+- The candidate record returned by `get_candidate()` serves as the context object (the raft) — no new dataclass needed
+- `candidate.get_api_key(candidate)` decrypts and returns `candidate_api_key`, raises `ValueError` if missing — no fallback to system key
+- `ctx` (the candidate record dict) passes through the call stack: Dispatcher → consult.py → do_task
+- `consult.py` accepts `ctx` and forwards to `do_task` — consult does not inspect or use ctx beyond forwarding
+- `do_task` accepts `ctx`, uses `ctx['candidate_api_key']` when task `requires_candidate_key=True` per CONFIG_TASKS
+- `ctx['candidate_data']` provides all candidate content for token resolution in anthropic.py
+
+**`get_*_batch` Function Updates:**
+- `claim_job_batch()` and `claim_company_batch()` in database.py accept optional `candidate_id` filter
+- All batch queries filter by `candidate_id` when provided
+- `tracker.py` and `roster.py` `get_new_*_batch()` functions accept and pass `candidate_id` from ctx
+
+**CLI `--batch-id` Argument (all batch CLIs):**
+- Each CLI accepts an optional `--batch-id` argument
+- If provided (Dispatcher-initiated): use the passed batch_id
+- If not provided (manual run): generate a new UUID as today
+- This is the only change required to existing CLI files
+
+**`dispatch_task` Table (new):**
+- `id` — PK
+- `candidate_id` — TEXT, FK to candidate
+- `task_key` — TEXT, references CONFIG_TASKS key
+- `last_run_at` — TIMESTAMP (nullable)
+- `freq_hrs` — FLOAT (how often this task should run)
+- `min_count` — INTEGER (minimum records in trigger state required to actually fire)
+- `batch_id` — TEXT (nullable — set when claimed by Dispatcher to prevent double-dispatch, cleared on completion)
+- `enabled` — BOOL
+- `updated_at` — TIMESTAMP
+
+**Example rows (consult_joblist for one candidate):**
+- `freq_hrs=24, min_count=1` — daily floor run regardless of volume
+- `freq_hrs=6, min_count=90` — high-volume trigger when NEW jobs accumulate quickly
+
+**Dispatcher Logic (`src/core/dispatcher.py` — new, per ASTRAL_CODE_RULES 3.3):**
+
+`get_due_tasks()`:
+- Query dispatch_task WHERE `now() > last_run_at + freq_hrs` AND `batch_id IS NULL` AND `enabled = TRUE`
+- Claim due records by setting `batch_id` on each (prevents cron double-dispatch)
+- Return claimed records
+
+`dispatch()` — main entry point called by cron endpoint:
+1. Call `get_due_tasks()` to get claimed dispatch_task records
+2. For each claimed record:
+   a. Get `trigger_state` from CONFIG_TASKS for this task_key
+   b. Query count of records in trigger_state for this candidate_id (via database)
+   c. If count < `min_count`: skip, clear batch_id on dispatch_task record, continue
+   d. Fetch candidate record (the raft) via `candidate.get_candidate(candidate_id)`
+   e. Validate `candidate.get_api_key(candidate)` — skip with error log if missing
+   f. Write `execution_session` record (status=RUNNING, batch_id, task_key, candidate_id, started_at)
+   g. Invoke appropriate batch function directly (not subprocess) passing ctx + batch_id
+   h. Await summary response from batch function
+   i. Update `execution_session` (status=COMPLETED/FAILED, counts, completed_at, better_stack_url)
+   j. Update `dispatch_task`: clear batch_id, set last_run_at=now()
+
+**Manage Task Dispatcher Screen (UI — Admin > Task Dispatcher):**
+- ListPage showing all dispatch_task records
+- Columns: candidate_id, task_key, enabled toggle, freq_hrs, min_count, last_run_at, next_run_at (computed), currently_running indicator
+- Edit row → modal to update freq_hrs, min_count, enabled
+- Add row → modal to create new dispatch_task (select candidate, task_key, set freq_hrs and min_count)
+- Manual trigger button per row (dispatch immediately regardless of threshold — for testing)
+
+**Cron Setup:**
+- Thin Railway cron job (every 2-3 minutes) calls POST /api/dispatcher/run
+- Endpoint calls `dispatcher.dispatch()` and returns summary JSON
+- No logic in the cron itself — all logic in dispatcher.py
+
+**API Endpoints:**
+- POST /api/dispatcher/run — called by cron, triggers dispatch cycle
+- GET /api/admin/dispatch_tasks — list all dispatch_task records
+- POST /api/admin/dispatch_tasks — create new dispatch_task row
+- PUT /api/admin/dispatch_tasks/:id — update freq_hrs, min_count, enabled
+- POST /api/admin/dispatch_tasks/:id/trigger — manual trigger
+
+**Nav:**
+- Enable Task Dispatcher route (remove `enabled: False`) — rename handled in Manage Candidates issue
+
+**Database:**
+- dispatch_task table: CREATE TABLE as above
+- execution_session table: CREATE TABLE (see View Execution History issue)
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Admin,13
+Dynamic Cache/NoCache Prompt Selection,"Runtime optimization: allow the system to decide whether prompt content should be sent as cached or uncached based on batch size. When processing a small batch (e.g. 1-3 items), caching overhead may not be worthwhile; for large batches, caching saves significant token cost.
+
+**Acceptance Criteria:**
+
+**CONFIG_TASKS Addition:**
+- Add optional `cache_threshold` per task (integer, minimum batch size to enable caching)
+- Default behavior when absent: always cache (current behavior)
+
+**anthropic.py Changes:**
+- `do_task` accepts batch context (current batch size or similar signal)
+- When batch_size < cache_threshold: send cache_prompt content as uncached instead
+- When batch_size >= cache_threshold: normal caching behavior
+- No change to prompt content itself — only the cache_control flag changes
+
+**Notes:**
+- Requires batch_size to be available in the do_task call chain (may come via ctx or explicit param)
+- Pure optimization — no functional change to prompt assembly or responses
+- Measure token cost savings before/after to validate",Backlog,Low,feature,Astral Admin,2
+Inline Execution Logs via Better Stack API,"Replace the v1 deep-link approach in View Execution History with inline log display. Use Better Stack's REST API (or SQL API) to fetch log entries filtered by batch_id and render them directly in a modal within Astral, eliminating the need for separate Better Stack authentication.
+
+**Acceptance Criteria:**
+
+**Backend:**
+- Better Stack API token stored as env var (e.g. `BETTERSTACK_API_TOKEN`)
+- New endpoint: GET /api/admin/execution_sessions/:batch_id/logs — proxies to Better Stack API, returns filtered log entries as JSON
+- Pagination support for large log sets
+
+**Frontend:**
+- Replace deep-link click behavior with modal showing log entries
+- Styled log viewer with timestamp, level, message columns
+- Auto-scroll to latest, search within results
+
+**Notes:**
+- Spec this after hands-on exposure to Better Stack's data format and query capabilities
+- Better Stack offers Live Tail Query API and SQL API (ClickHouse) — evaluate which fits better
+- v1 deep-link remains as fallback (""Open in Better Stack"" button in modal header)",Backlog,Low,feature,Astral Admin,3

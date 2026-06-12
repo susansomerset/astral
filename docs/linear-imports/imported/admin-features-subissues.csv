@@ -1,0 +1,295 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Manage Candidates — API Key","Database schema, encryption, get_api_key, and endpoint wiring","**Scope:** Add encrypted API key column to candidate table, build encryption helpers, add get_api_key core function, and wire save into existing PUT endpoint.
+
+- ALTER candidate table: add `candidate_api_key` TEXT column
+- Idempotent migration in `_ensure_candidate_schema()` in src/data/database.py
+- Add `cryptography` (Fernet) to requirements
+- Encryption key from env var (e.g. `ASTRAL_ENCRYPTION_KEY`)
+- Two helper functions in database.py: `_encrypt_value(plaintext) -> ciphertext`, `_decrypt_value(ciphertext) -> plaintext`
+- `save_candidate()` encrypts `candidate_api_key` before writing
+- `get_candidate()` returns `candidate_api_key` (encrypted) as part of the candidate dict — the raft carries it
+- Add `get_api_key(candidate: dict) -> str` to src/core/candidate.py: decrypts `candidate_api_key` from the candidate dict, raises `ValueError` if missing or blank — no fallback to system key
+- Extend existing `PUT /api/candidates/<id>/data` in ui/api/candidate.py: pop `api_key` from body (same pattern as `state` override), encrypt, pass to `save_candidate()` as `candidate_api_key` — no new endpoint
+- Never echo the key value back in any response; list endpoint returns truthiness only (see list view subissue)
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py, src/core/candidate.py, ui/api/candidate.py",Backlog,High,subissue,Astral Administrator,2
+"Manage Candidates — API Key","Edit modal: API key field","**Scope:** Add masked API key input to the existing Manage Candidates edit modal.
+
+- In ui/frontend/src/pages/Admin/ManageCandidates.tsx, add API key field to edit modal
+- Masked input (`type=""password""`) with a reveal toggle button
+- Saves through existing PUT endpoint alongside other candidate fields
+- Validation: key must be non-blank on save
+- No key field in Add modal (key is added after candidate creation)
+
+**Layer:** ui/frontend/src/pages/Admin/ManageCandidates.tsx",Backlog,Medium,subissue,Astral Administrator,1
+"Manage Candidates — API Key","List view: API key status indicator","**Scope:** Add a status-only column to the Manage Candidates list showing whether each candidate has an API key set.
+
+- Add `api_key_status` computed value to list endpoint response (or compute client-side from candidate dict truthiness)
+- List shows status only: 'Set' (green) or 'Not set' (amber) — never the key value
+- Add column to DATA_SHAPES `candidates.list.manage` in src/utils/config.py, or handle as a client-side render column (same pattern as the existing `_actions` column)
+
+**Layer:** src/utils/config.py, ui/frontend/src/pages/Admin/ManageCandidates.tsx",Backlog,Medium,subissue,Astral Administrator,1
+"Manage Candidates — API Key","Nav cleanup: remove and rename items","**Scope:** Remove obsolete nav items and rename placeholders to match their intended features.
+
+- Remove from NAV_CONFIG in src/utils/config.py:
+  - `Analysis Instructions` (path: `/admin/analysis_instructions`)
+  - `Resume Framework` (path: `/admin/resume_framework`)
+- Rename in NAV_CONFIG:
+  - `Scheduled Actions` → `Task Dispatcher`
+  - `Performance Monitor` → `Execution History`
+- Remove matching routes from ui/frontend/src/routes.tsx
+- Page component files can stay (dead code cleanup, no functional impact)
+
+**Layer:** src/utils/config.py, ui/frontend/src/routes.tsx",Backlog,Medium,subissue,Astral Administrator,1
+"Manage Agents","Agent table and database functions","**Scope:** Create agent table and CRUD functions in database.py.
+
+- CREATE TABLE agent: `agent_id` TEXT PK (human-readable, e.g. `job_analyst_grace`), `content` TEXT (system prompt template, may include merge tokens), `updated_at` TIMESTAMP
+- Idempotent schema creation following existing `_ensure_*_schema` pattern
+- Database functions: `save_agent(agent_id, content)`, `get_agent(agent_id)`, `list_agents()` (returns agent_id, char count of content, updated_at)
+- No delete in v1 (agents are referenced by agent_task records)
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py",Backlog,High,subissue,Astral Administrator,1
+"Manage Agents","API endpoints and nav rename","**Scope:** Create API blueprint for agent CRUD and rename nav item from Agent Prompts to Manage Agents.
+
+- New Blueprint ui/api/admin_agents.py with url_prefix=""/api/admin/agents"", registered in ui/server.py
+- Endpoints (all @require_auth):
+  - GET /api/admin/agents — list all agents (agent_id, char count, updated_at)
+  - GET /api/admin/agents/:agent_id — get full content
+  - PUT /api/admin/agents/:agent_id — save updated content
+  - POST /api/admin/agents — create new agent (agent_id + content)
+- Rename in NAV_CONFIG: `Agent Prompts` → `Manage Agents`
+- Update route path in routes.tsx to match
+
+**Layer:** ui/api/admin_agents.py, ui/server.py, src/utils/config.py, ui/frontend/src/routes.tsx",Backlog,High,subissue,Astral Administrator,1
+"Manage Agents","Manage Agents screen","**Scope:** De-stub AgentPrompts.tsx into a working Manage Agents screen.
+
+- ListPage showing all agents from GET /api/admin/agents
+- Columns: agent_id, char count of content, updated_at
+- Row action: Edit → full-page textarea with content, save writes back via PUT
+- Add New Agent button → modal with agent_id input + content textarea, creates via POST
+- No delete in v1
+- Rename component file or keep as AgentPrompts.tsx (functional name in nav is what matters)
+
+**Layer:** ui/frontend/src/pages/Admin/AgentPrompts.tsx",Backlog,High,subissue,Astral Administrator,1
+"Manage Tasks","CONFIG_TASKS refactor and TOKEN_SOURCES in config.py","**Scope:** Replace AGENT_CONFIG with CONFIG_TASKS and add config-driven token resolution mapping.
+
+- Replace `AGENT_CONFIG` with `CONFIG_TASKS` — task key is the index, each entry keeps only code-owned fields:
+  - `response_schema` (dict), `vectors` (list), `grading_mode` (string), `requires_candidate_key` (bool), `trigger_state` (string)
+- Prompt content fields (system_prompt, task_prompt, cached_blocks, uncached_blocks) removed — now live in agent_task table
+- Add `get_task_keys()` — returns list of all task keys for UI rendering
+- Add `stringify_response_schema(task_key)` — returns formatted string for `{$RESPONSE_SCHEMA}` token
+- Add `TOKEN_SOURCES` mapping — config-driven token-to-data-path definitions:
+  - Each token maps to a source type and resolution path
+  - Source types: `candidate` (dot-path into candidate dict), `config` (named resolver function), `company` (future — dot-path into company_data, designed for but not yet wired)
+  - Adding new tokens is a config change, not a code change
+- Update all references to `AGENT_CONFIG` across codebase (anthropic.py, consult.py, etc.)
+
+**Layer:** src/utils/config.py, all files importing AGENT_CONFIG",Backlog,High,subissue,Astral Administrator,2
+"Manage Tasks","agent_task table, database functions, and startup sync","**Scope:** Create agent_task table and CRUD functions with automatic sync on startup.
+
+- CREATE TABLE agent_task: `task_key` TEXT PK (matches CONFIG_TASKS key), `agent_id` TEXT FK to agent (nullable until assigned), `user_prompt` TEXT, `cache_prompt` TEXT, `nocache_prompt` TEXT, `updated_at` TIMESTAMP
+- Database functions: `save_agent_task(task_key, ...)`, `get_agent_task(task_key)`, `list_agent_tasks()`
+- Startup sync: compare CONFIG_TASKS keys against agent_task rows; auto-create blank records for missing keys (surfaces in UI as unconfigured/red)
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py",Backlog,High,subissue,Astral Administrator,1
+"Manage Tasks","anthropic.py DB-first prompt assembly and generic token resolver","**Scope:** Refactor do_task to fetch prompt content from DB and resolve merge tokens generically via TOKEN_SOURCES.
+
+- `do_task` fetches agent_task record by task_key from database
+- Resolves agent_id → fetches system prompt content from agent table
+- Generic token resolution: regex finds all `{$TOKEN}` patterns in prompt text, looks each up in `TOKEN_SOURCES` from config, resolves value from the mapped source:
+  - `candidate` source: dot-path walk into ctx (the candidate dict on the raft)
+  - `config` source: calls named resolver function (e.g. `stringify_response_schema`)
+  - `company` source: dot-path walk into company_data (designed for, not yet wired)
+  - Unresolved tokens left as-is (no crash on unknown tokens)
+- Assembles prompt identically to current shape — same output, different source
+- Falls back to existing file-based assembly if no agent_task record found (migration safety)
+- consult.py requires no changes — do_task interface unchanged
+
+**Layer:** src/external/anthropic.py",Backlog,High,subissue,Astral Administrator,3
+"Manage Tasks","API endpoints and nav rename","**Scope:** Create API blueprint for task admin and rename nav item.
+
+- New Blueprint with url_prefix=""/api/admin/tasks"", registered in ui/server.py
+- Endpoints (all @require_auth):
+  - GET /api/admin/tasks — list all tasks with coverage status (agent set, prompt char counts)
+  - GET /api/admin/tasks/:task_key — get full agent_task record
+  - PUT /api/admin/tasks/:task_key — save updated content (agent_id, user_prompt, cache_prompt, nocache_prompt)
+- GET /api/admin/agents/list — lightweight agent list for dropdown (agent_id only)
+- Rename in NAV_CONFIG: `Task Prompts` → `Manage Tasks`
+- Update route path in routes.tsx to match
+
+**Layer:** ui/api/, src/utils/config.py, ui/frontend/src/routes.tsx",Backlog,High,subissue,Astral Administrator,1
+"Manage Tasks","Manage Tasks screen","**Scope:** De-stub TaskPrompts.tsx into a working Manage Tasks screen.
+
+- ListPage driven by get_task_keys(): task_key, agent (agent_id or 'Not set'), user/cache/nocache char counts with green/red coverage indicators
+- Row action: tabbed edit modal with 3 tabs:
+  - Tab 1 (System/User) — agent dropdown from agent table + user_prompt text input (short field)
+  - Tab 2 (Cache) — large textarea for cache_prompt (raw template with merge tokens visible, e.g. `{$FNAME}`)
+  - Tab 3 (NoCache) — large textarea for nocache_prompt (same pattern)
+- Save commits all four fields (agent_id, user_prompt, cache_prompt, nocache_prompt)
+- Rename component file or keep as TaskPrompts.tsx (functional name in nav is what matters)
+
+**Layer:** ui/frontend/src/pages/Admin/TaskPrompts.tsx",Backlog,High,subissue,Astral Administrator,1
+"View Agent Timesheets","Database: context_id column and query function","**Scope:** Add context_id to timesheets table and build a filterable query function for the read side.
+
+- ALTER timesheets table: add `context_id` TEXT column
+- Idempotent migration following existing schema pattern
+- Update `add_timesheet_entry()` signature: accept and store `context_id`
+- Update caller in anthropic.py `_fetch_response()` to pass context through
+- Add `list_timesheets(date_from, date_to, user_prompt_file, batch_id, context_id)` — all filters optional, returns list of dicts
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py, src/external/anthropic.py",Backlog,High,subissue,Astral Administrator,1
+"View Agent Timesheets","API endpoints and nav enable","**Scope:** Create read-only API endpoints for timesheets and enable nav item.
+
+- New Blueprint or extend existing admin blueprint
+- Endpoints (all @require_auth):
+  - GET /api/admin/timesheets — list with filter params (date_from, date_to, user_prompt_file, batch_id, context_id)
+  - GET /api/admin/timesheets/export — CSV download with same filter params
+- Enable Agent Timesheets nav item: remove `enabled: False` from NAV_CONFIG
+- No delete or edit endpoints — timesheets are append-only
+
+**Layer:** ui/api/, src/utils/config.py",Backlog,High,subissue,Astral Administrator,1
+"View Agent Timesheets","View Agent Timesheets screen","**Scope:** De-stub AgentTimesheets.tsx into a sortable, filterable timesheets viewer with totals and export.
+
+- Sortable, filterable ListPage of all timesheet records
+- Columns: created_at, context_id, batch_id, user_prompt_file, request_id, tokens_input, cache_read_tokens, tokens_output, est_cost
+- Filter controls: date range picker, user_prompt_file dropdown, batch_id text, context_id text
+- Header totals row — sums tokens_input, cache_read_tokens, tokens_output, est_cost across all records matching current filter
+- Checkbox selection per row
+- Selected totals row — same sums for checked rows only, pinned to bottom of list
+- Export to CSV button — exports current filter or selection
+- Filter params are URL-querystring driven to support deep-linking from Execution History
+
+**Layer:** ui/frontend/src/pages/Admin/AgentTimesheets.tsx",Backlog,Medium,subissue,Astral Administrator,2
+"Company State History","Database: state_history column and save_company update","**Scope:** Add state_history to company table mirroring the existing job table pattern.
+
+- ALTER company table: add `state_history` TEXT column (JSON array)
+- Idempotent migration: existing rows get `state_history = '[]'`
+- Update `save_company()` to accept and store `state_history` (same overwrite pattern as save_job — caller manages append via get_company + append + save_company)
+- Update company row-to-dict parsing to deserialize state_history JSON
+- Update ROSTER_DATA_MODEL.md to document state_history column and entry shape: `{ ""to_state"": ""..."", ""timestamp"": ""..."", ""batch_id"": ""..."" }`
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py, docs/ROSTER_DATA_MODEL.md",Backlog,High,subissue,Astral Roster,1
+"Company State History","roster.py: state_history append on transitions","**Scope:** Add state_history append to every company state transition, mirroring tracker.py pattern.
+
+- For every company state transition in src/core/roster.py:
+  - Fetch current company via get_company
+  - Read state_history array from company dict
+  - Append new entry: `{ ""to_state"": to_state, ""timestamp"": now_iso, ""batch_id"": current_batch_id }`
+  - Write back via save_company with updated state_history
+- batch_id is the spine connecting state transitions to execution sessions, timesheets, and logs
+
+**Layer:** src/core/roster.py",Backlog,High,subissue,Astral Roster,1
+"View Execution History","dispatch_ledger table and database functions","**Scope:** Create dispatch_ledger table and CRUD functions. Table is written by Dispatcher, read by this feature. Contains dispatch-driven data only.
+
+- CREATE TABLE dispatch_ledger: `batch_id` TEXT PK, `task_key` TEXT, `candidate_id` TEXT (FK to candidate), `started_at` TIMESTAMP, `completed_at` TIMESTAMP (nullable), `status` TEXT (RUNNING, COMPLETED, FAILED), `total_processed` INTEGER, `total_passed` INTEGER, `total_failed` INTEGER, `total_errors` INTEGER, `better_stack_url` TEXT (constructed deep-link URL)
+- Database functions: `save_dispatch_ledger()`, `update_dispatch_ledger()`, `get_dispatch_ledger(batch_id)`, `list_dispatch_ledger()` with filters (task_key, candidate_id, status, date range)
+- Idempotent schema creation following existing pattern
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py",Backlog,High,subissue,Astral Administrator,1
+"View Execution History","Better Stack log drain setup and URL pattern","**Scope:** Configure Better Stack as Railway log drain and document the deep-link URL pattern.
+
+- Configure Better Stack (Logtail) as Railway log drain — one-click integration in Railway dashboard
+- All existing stdout log output flows to Better Stack automatically via the drain — no logging.py changes required
+- Document Better Stack search URL pattern so batch_id deep-link URLs can be constructed dynamically by Dispatcher when writing dispatch_ledger records
+- Validate that batch_id appears consistently in log output during dispatch runs (Dispatcher logs batch_id at start/end of each run)
+
+**Layer:** Infrastructure (Railway + Better Stack), docs/",Backlog,Medium,subissue,Astral Administrator,1
+"View Execution History","API endpoints and nav enable","**Scope:** Create read-only API endpoints for execution sessions and enable nav item.
+
+- Endpoints (all @require_auth):
+  - GET /api/admin/dispatch_ledger — list entries, filterable by task_key, candidate_id, status, date range
+  - GET /api/admin/dispatch_ledger/:batch_id — single entry detail
+- Enable Execution History nav item (already renamed from Performance Monitor in API Key nav cleanup sub)
+
+**Layer:** ui/api/, src/utils/config.py",Backlog,High,subissue,Astral Administrator,1
+"View Execution History","View Execution History screen","**Scope:** De-stub into a working Execution History screen with deep-link log access.
+
+- ListPage showing dispatch_ledger records, newest first
+- Columns: started_at, task_key, candidate_id, status, total_processed, total_passed, total_failed, total_errors, duration (computed from started_at/completed_at)
+- Click row → opens Better Stack deep-link URL in new tab (filtered by batch_id, requires Better Stack login)
+- Link from row → Agent Timesheets filtered by batch_id (URL querystring deep-link)
+
+**Layer:** ui/frontend/src/pages/Admin/ (rename from PerformanceMonitor.tsx or create new)",Backlog,Medium,subissue,Astral Administrator,1
+"Manage Task Dispatcher","Candidate-as-raft: ctx threading through the call stack","**Scope:** Thread the candidate record dict (ctx / the raft) through the entire call stack so every layer has access to candidate data and API key.
+
+- The candidate record dict from `get_candidate()` IS the context object (ctx) — no new dataclass
+- `candidate_api_key` is already decrypted on the ctx by the time it's used — no separate `get_api_key()` function
+- Add `ctx` parameter to consult.py: `render_verdict`, `qualify_job_listings`, `evaluate_jd` — all accept ctx and forward to `do_task`
+- Add `ctx` parameter to roster.py: `prefilter_company` — accepts ctx and forwards to `do_task`
+- consult.py and roster.py do not inspect or use ctx beyond forwarding
+- `do_task` in anthropic.py accepts `ctx`:
+  - When task `requires_candidate_key=True` (per CONFIG_TASKS): uses `ctx['candidate_api_key']` directly
+  - `ctx['candidate_data']` provides all candidate content for TOKEN_SOURCES resolution
+
+**Layer:** src/core/consult.py, src/core/roster.py, src/external/anthropic.py",Backlog,High,subissue,Astral Administrator,3
+"Manage Task Dispatcher","Candidate-scoped batch claims","**Scope:** Make candidate_id a required parameter on all batch claim functions so every run is single-candidate scoped.
+
+- `claim_job_batch()` and `claim_company_batch()` in src/data/database.py REQUIRE `candidate_id` (not optional)
+- All batch queries include `WHERE candidate_id = ?`
+- `tracker.py` `get_new_job_batch()` and `roster.py` `get_new_company_batch()` require and pass `candidate_id` from ctx
+- batch_id flows from dispatch_task record → CLI --batch-id argument → claim_*_batch
+- Every run is single-candidate scoped — separate dispatch_task rows per candidate
+
+**Layer:** src/data/database.py, src/core/tracker.py, src/core/roster.py",Backlog,High,subissue,Astral Administrator,2
+"Manage Task Dispatcher","CLI --batch-id argument","**Scope:** Add optional --batch-id argument to all batch CLI scripts so the Dispatcher can pass its batch_id down.
+
+- Each batch CLI script accepts an optional `--batch-id` argument
+- If provided (Dispatcher-initiated): use the passed batch_id
+- If not provided (manual run): generate a new UUID as today
+- This is the only change required to existing CLI files — no other refactoring
+
+**Layer:** scripts/ (all batch CLI scripts)",Backlog,Medium,subissue,Astral Administrator,1
+"Manage Task Dispatcher","dispatch_task table and database functions","**Scope:** Create dispatch_task table for scheduling configuration and dispatch_ledger table for run history.
+
+- CREATE TABLE dispatch_task: `id` INTEGER PK, `candidate_id` TEXT FK, `task_key` TEXT, `last_run_at` TIMESTAMP (nullable), `freq_hrs` FLOAT, `min_count` INTEGER, `batch_id` TEXT (nullable — set when claimed by Dispatcher, cleared on completion), `enabled` BOOL, `updated_at` TIMESTAMP
+- CREATE TABLE dispatch_ledger: `batch_id` TEXT PK, `task_key` TEXT, `candidate_id` TEXT FK, `started_at` TIMESTAMP, `completed_at` TIMESTAMP (nullable), `status` TEXT (RUNNING, COMPLETED, FAILED), `total_processed` INTEGER, `total_passed` INTEGER, `total_failed` INTEGER, `total_errors` INTEGER, `better_stack_url` TEXT
+- Database functions for dispatch_task: `save_dispatch_task()`, `get_dispatch_task()`, `list_dispatch_tasks()`, `get_due_tasks()` (WHERE now > last_run_at + freq_hrs AND batch_id IS NULL AND enabled), `claim_dispatch_task(id, batch_id)`, `release_dispatch_task(id)`
+- Database functions for dispatch_ledger: `save_dispatch_ledger()`, `update_dispatch_ledger()`, `get_dispatch_ledger(batch_id)`, `list_dispatch_ledger()` with filters
+- Example dispatch_task rows: `freq_hrs=24, min_count=1` (daily floor), `freq_hrs=6, min_count=90` (high-volume trigger)
+- Update database.py module docstring per ASTRAL_CODE_RULES 1.1
+
+**Layer:** src/data/database.py",Backlog,High,subissue,Astral Administrator,1
+"Manage Task Dispatcher","Dispatcher orchestration logic","**Scope:** Build the dispatcher orchestrator that drives all scheduled batch processing. Lives in src/cli (orchestrator, not business logic).
+
+- New file src/cli/dispatcher.py
+- `get_due_tasks()`: query dispatch_task for due records, claim by setting batch_id (prevents cron double-dispatch), return claimed records
+- `dispatch()` — main entry point called by cron endpoint:
+  1. Call `get_due_tasks()`
+  2. For each claimed record:
+     a. Get `trigger_state` from CONFIG_TASKS for this task_key
+     b. Query count of records in trigger_state for this candidate_id
+     c. If count < `min_count`: skip, release dispatch_task, continue
+     d. Fetch candidate record (the raft) via `candidate.get_candidate(candidate_id)`
+     e. Validate `ctx['candidate_api_key']` — skip with error log if missing
+     f. Write dispatch_ledger record (status=RUNNING)
+     g. Invoke batch function directly (not subprocess) passing ctx + batch_id
+     h. Await summary response
+     i. Update dispatch_ledger (status=COMPLETED/FAILED, counts, completed_at, better_stack_url)
+     j. Release dispatch_task: clear batch_id, set last_run_at=now()
+
+**Layer:** src/cli/dispatcher.py",Backlog,High,subissue,Astral Administrator,3
+"Manage Task Dispatcher","API endpoints, cron setup, and nav enable","**Scope:** Create API endpoints for dispatcher cron trigger and dispatch_task admin, configure Railway cron.
+
+- POST /api/dispatcher/run — called by Railway cron (every 2-3 min), calls `dispatcher.dispatch()`, returns summary JSON. No logic in the cron — all logic in src/cli/dispatcher.py
+- GET /api/admin/dispatch_tasks — list all dispatch_task records
+- POST /api/admin/dispatch_tasks — create new row (select candidate, task_key, freq_hrs, min_count)
+- PUT /api/admin/dispatch_tasks/:id — update freq_hrs, min_count, enabled
+- POST /api/admin/dispatch_tasks/:id/trigger — manual trigger (dispatch immediately regardless of threshold)
+- Enable Task Dispatcher nav item (remove `enabled: False`, already renamed in API Key nav cleanup)
+
+**Layer:** ui/api/, Railway cron config",Backlog,High,subissue,Astral Administrator,1
+"Manage Task Dispatcher","Manage Task Dispatcher screen","**Scope:** De-stub ScheduledActions.tsx into a working Task Dispatcher management screen.
+
+- ListPage showing all dispatch_task records
+- Columns: candidate_id, task_key, enabled toggle, freq_hrs, min_count, last_run_at, next_run_at (computed from last_run_at + freq_hrs), currently_running indicator (batch_id not null)
+- Edit row → modal to update freq_hrs, min_count, enabled
+- Add row → modal to create new dispatch_task (select candidate, select task_key, set freq_hrs and min_count)
+- Manual trigger button per row (dispatch immediately — for testing)
+
+**Layer:** ui/frontend/src/pages/Admin/ScheduledActions.tsx",Backlog,High,subissue,Astral Administrator,2

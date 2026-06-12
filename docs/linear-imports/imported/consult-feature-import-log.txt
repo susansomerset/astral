@@ -1,0 +1,156 @@
+(.venv) tempest ~/chuckles/linear % ls
+README.md		import_linear.py	requirements.txt
+(.venv) tempest ~/chuckles/linear % python3 import_linear.py ../astral/docs/linear-imports/consult-features.csv
+📂 Reading CSV file: ../astral/docs/linear-imports/consult-features.csv
+
+📊 Found 9 issues to import
+
+📋 Parent issues: 9
+📎 Sub-issues: 0
+
+[1/9] Importing parent: Evaluate Job List
+🎯 Using team: Team Astral
+
+  ✅ Created: AST-133 - Evaluate Job List
+[2/9] Importing parent: Evaluate Job Description
+  ✅ Created: AST-134 - Evaluate Job Description
+[3/9] Importing parent: Score Jobs (GET/DO/LIKE)
+  ✅ Created: AST-135 - Score Jobs (GET/DO/LIKE)
+[4/9] Importing parent: Consult Batch Runner
+  ✅ Created: AST-136 - Consult Batch Runner
+[5/9] Importing parent: Prep Company Culture Pages
+  ✅ Created: AST-137 - Prep Company Culture Pages
+[6/9] Importing parent: Capture Nav Links During Job Page Discovery
+  ✅ Created: AST-138 - Capture Nav Links During Job Page Discovery
+[7/9] Importing parent: Retrofit Batch-Count to Existing CLIs
+  📁 Creating project: Astral Infrastructure
+  ✅ Created: AST-139 - Retrofit Batch-Count to Existing CLIs
+[8/9] Importing parent: Add ADDED_JD_SCRAPE to Job State Machine
+  ✅ Created: AST-140 - Add ADDED_JD_SCRAPE to Job State Machine
+[9/9] Importing parent: Rename AGENT_CONFIG Task Keys to snake_case
+  ✅ Created: AST-141 - Rename AGENT_CONFIG Task Keys to snake_case
+
+============================================================
+📊 Import Summary
+============================================================
+✅ Successfully imported: 9 issues
+   - Created: 9
+   - Updated: 0
+
+(.venv) tempest ~/chuckles/linear % python3 import_linear.py ../astral/docs/linear-imports/consult-features-subissues.csv 
+📂 Reading CSV file: ../astral/docs/linear-imports/consult-features-subissues.csv
+
+📊 Found 29 issues to import
+
+📋 Parent issues: 0
+📎 Sub-issues: 29
+
+🔍 Looking up 9 parent issues in Linear...
+🎯 Using team: Team Astral
+
+  ✓ Found: Capture Nav Links During Job Page Discovery
+  ✓ Found: Prep Company Culture Pages
+  ✓ Found: Consult Batch Runner
+  ✓ Found: Evaluate Job Description
+  ✓ Found: Retrofit Batch-Count to Existing CLIs
+  ✓ Found: Evaluate Job List
+  ✓ Found: Add ADDED_JD_SCRAPE to Job State Machine
+  ✓ Found: Rename AGENT_CONFIG Task Keys to snake_case
+  ✓ Found: Score Jobs (GET/DO/LIKE)
+
+[1/29] Processing sub-issue: Sub: check_job_list signature and live content assembly
+  └─ Parent: Evaluate Job List
+  ✅ Created: AST-142 - Sub: check_job_list signature and live content assembly
+[2/29] Processing sub-issue: Sub: Batch size constraint and config
+  └─ Parent: Evaluate Job List
+  ✅ Created: AST-143 - Sub: Batch size constraint and config
+[3/29] Processing sub-issue: Sub: AI response shape and caller mapping
+  └─ Parent: Evaluate Job List
+  ✅ Created: AST-144 - Sub: AI response shape and caller mapping
+[4/29] Processing sub-issue: Sub: AGENT_CONFIG check_job_list task
+  └─ Parent: Evaluate Job List
+  ✅ Created: AST-145 - Sub: AGENT_CONFIG check_job_list task
+[5/29] Processing sub-issue: Sub: evaluate_jd signature and live content
+  └─ Parent: Evaluate Job Description
+  ✅ Created: AST-146 - Sub: evaluate_jd signature and live content
+[6/29] Processing sub-issue: Sub: Response schema (pass/fail) and failure reason categories
+  └─ Parent: Evaluate Job Description
+  ✅ Created: AST-147 - Sub: Response schema (pass/fail) and failure reason categories
+[7/29] Processing sub-issue: Sub: Caller responsibilities and state machine
+  └─ Parent: Evaluate Job Description
+  ✅ Created: AST-148 - Sub: Caller responsibilities and state machine
+[8/29] Processing sub-issue: Sub: AGENT_CONFIG evaluate_jd task
+  └─ Parent: Evaluate Job Description
+  ✅ Created: AST-149 - Sub: AGENT_CONFIG evaluate_jd task
+[9/29] Processing sub-issue: Sub: score_get and score_do uniform pattern
+  └─ Parent: Score Jobs (GET/DO/LIKE)
+  ✅ Created: AST-150 - Sub: score_get and score_do uniform pattern
+[10/29] Processing sub-issue: Sub: score_like with company context
+  └─ Parent: Score Jobs (GET/DO/LIKE)
+  ✅ Created: AST-151 - Sub: score_like with company context
+[11/29] Processing sub-issue: Sub: Grade-to-score calculation in consult
+  └─ Parent: Score Jobs (GET/DO/LIKE)
+  ✅ Created: AST-152 - Sub: Grade-to-score calculation in consult
+[12/29] Processing sub-issue: Sub: Pass threshold and state transitions
+  └─ Parent: Score Jobs (GET/DO/LIKE)
+  ✅ Created: AST-153 - Sub: Pass threshold and state transitions
+[13/29] Processing sub-issue: Sub: AGENT_CONFIG score task renames and schema
+  └─ Parent: Score Jobs (GET/DO/LIKE)
+  ✅ Created: AST-154 - Sub: AGENT_CONFIG score task renames and schema
+[14/29] Processing sub-issue: Sub: batch-count CLI parameter and outer loop
+  └─ Parent: Consult Batch Runner
+  ✅ Created: AST-155 - Sub: batch-count CLI parameter and outer loop
+[15/29] Processing sub-issue: Sub: CONSULT_CONFIG step definitions
+  └─ Parent: Consult Batch Runner
+  ✅ Created: AST-156 - Sub: CONSULT_CONFIG step definitions
+[16/29] Processing sub-issue: Sub: Pattern A — batch-as-prompt (check_job_list)
+  └─ Parent: Consult Batch Runner
+  ✅ Created: AST-157 - Sub: Pattern A — batch-as-prompt (check_job_list)
+[17/29] Processing sub-issue: Sub: Pattern B — per-job (evaluate_jd, score_get, score_do, score_like)
+  └─ Parent: Consult Batch Runner
+  ✅ Created: AST-158 - Sub: Pattern B — per-job (evaluate_jd, score_get, score_do, score_like)
+[18/29] Processing sub-issue: Sub: CLI scripts and layer rules
+  └─ Parent: Consult Batch Runner
+  ✅ Created: AST-159 - Sub: CLI scripts and layer rules
+[19/29] Processing sub-issue: Sub: Error handling and logging
+  └─ Parent: Consult Batch Runner
+  ✅ Created: AST-160 - Sub: Error handling and logging
+[20/29] Processing sub-issue: Sub: Trigger and prep_company_culture_pages signature
+  └─ Parent: Prep Company Culture Pages
+  ✅ Created: AST-161 - Sub: Trigger and prep_company_culture_pages signature
+[21/29] Processing sub-issue: Sub: Step 1 — AI select_culture_pages
+  └─ Parent: Prep Company Culture Pages
+  ✅ Created: AST-162 - Sub: Step 1 — AI select_culture_pages
+[22/29] Processing sub-issue: Sub: Step 2 — Gatekeeper scrape selected pages
+  └─ Parent: Prep Company Culture Pages
+  ✅ Created: AST-163 - Sub: Step 2 — Gatekeeper scrape selected pages
+[23/29] Processing sub-issue: Sub: Step 3 — Roster save website_content
+  └─ Parent: Prep Company Culture Pages
+  ✅ Created: AST-164 - Sub: Step 3 — Roster save website_content
+[24/29] Processing sub-issue: Sub: Fallbacks and config
+  └─ Parent: Prep Company Culture Pages
+  ✅ Created: AST-165 - Sub: Fallbacks and config
+[25/29] Processing sub-issue: Sub: Extract nav links during locate_job_page
+  └─ Parent: Capture Nav Links During Job Page Discovery
+  ✅ Created: AST-166 - Sub: Extract nav links during locate_job_page
+[26/29] Processing sub-issue: Sub: Store in company_data and merge
+  └─ Parent: Capture Nav Links During Job Page Discovery
+  ✅ Created: AST-167 - Sub: Store in company_data and merge
+[27/29] Processing sub-issue: Sub: Add batch-count and run-until-empty to prefilter and gatekeeper CLIs
+  └─ Parent: Retrofit Batch-Count to Existing CLIs
+  ✅ Created: AST-168 - Sub: Add batch-count and run-until-empty to prefilter and gatekeeper CLIs
+[28/29] Processing sub-issue: Sub: JOB_STATES and job_state_transitions
+  └─ Parent: Add ADDED_JD_SCRAPE to Job State Machine
+  ✅ Created: AST-169 - Sub: JOB_STATES and job_state_transitions
+[29/29] Processing sub-issue: Sub: Rename task keys in config and update references
+  └─ Parent: Rename AGENT_CONFIG Task Keys to snake_case
+  ✅ Created: AST-170 - Sub: Rename task keys in config and update references
+
+============================================================
+📊 Import Summary
+============================================================
+✅ Successfully imported: 29 issues
+   - Created: 29
+   - Updated: 0
+
+(.venv) tempest ~/chuckles/linear % 

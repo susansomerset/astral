@@ -1,0 +1,6 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "echo 'cron-only service, no build needed'"
+
+[deploy]
+startCommand = "curl -v -X POST -H \"X-Dispatch-Secret: $ASTRAL_ENCRYPTION_KEY\" $ASTRAL_DISPATCH_URL"

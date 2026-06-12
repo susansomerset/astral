@@ -1,0 +1,196 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Claim Company Batches","Sub: get_new_company_batch signature and contract (core)","**Scope:** Define the **core** orchestration function for claiming a new batch of companies.
+
+**Layer:** Core (e.g. src/core/gazer.py). Data layer does not generate batch_id; core does.
+
+**Signature:**
+```python
+get_new_company_batch(
+    state: str,
+    limit: int,
+    sort_by: str = ""updated_at""
+) -> Tuple[str, List[Dict]]
+```
+
+**Behavior:** Generate batch_id (UUID); call data claim_company_batch(batch_id, state, limit, sort_by); call data get_company_batch(batch_id); return (batch_id, companies).
+
+**Input:** state (validate against ASTRAL_CONFIG[""company_states""] only), limit (0 = unlimited), sort_by. **Returns:** (batch_id, companies). No hardcoded state strings.
+
+**Ref:** gazer-features.csv Claim Company Batches; ASTRAL_CODE_RULES 2b, 3c",Backlog,High,subissue,Astral Gazer,1
+"Claim Company Batches","Sub: Query logic and prioritization (inside claim_company_batch)","**Scope:** Implement the query inside **data** claim_company_batch(batch_id, state, limit, sort_by?): only update rows where batch_id was previously null; ORDER BY sort_by (e.g. last_scan_at ASC NULLS FIRST).
+
+**WHERE:** state = ? AND batch_id IS NULL AND (last_scan_at IS NULL OR last_scan_at < now - interval). Stale threshold (interval) must come from config (e.g. scan_interval_hours)—explicit from config, no magic number.
+
+**ORDER BY:** sort_by ASC NULLS FIRST (never-scanned first, then oldest). **LIMIT:** from param; null if limit=0.
+
+**Processing:** UPDATE company SET batch_id, batch_created_at on matching rows. Data layer does not generate batch_id; caller (core) passes it in. Naming: company_batch (entity first).
+
+**Ref:** gazer-features.csv Query Logic; Prioritization; ASTRAL_CODE_RULES 2b",Backlog,High,subissue,Astral Gazer,2
+"Claim Company Batches","Sub: Data layer primitives (claim_company_batch, get_company_batch, clear_company_batch)","**Scope:** Data layer functions for company batches. Naming: company_batch / job_batch (entity first). Core get_new_* breaks down to claim + get at data layer; no redundancy.
+
+**Company table primitives:**
+- claim_company_batch(batch_id, state, limit, sort_by?) — set batch_id, batch_created_at on up to limit rows where state=? AND batch_id IS NULL; ORDER BY sort_by (query/order/limit as in Query logic subissue)
+- get_company_batch(batch_id) -> List[Dict] (no state/limit)
+- clear_company_batch(batch_id) — set batch_id and batch_created_at NULL for that batch
+
+**Job table (parallel pair):** claim_job_batch(batch_id, state, limit, sort_by?), get_job_batch(batch_id), clear_job_batch(batch_id).
+
+**Code:** src/data/database.py. Data never generates batch_id.
+
+**Ref:** gazer-features.csv Database; GAZER_FEATURES_VS_ASTRAL_CODE_RULES.md #1",Backlog,High,subissue,Astral Gazer,2
+"Claim Company Batches","Sub: Gazer config for scan and batch","**Scope:** Config-driven gazer settings for claim and run.
+
+**Config keys (example):**
+- scan_state (e.g. WATCH)
+- sort_key (e.g. last_scan_at)
+- max_companies_per_run (0 = unlimited)
+- scan_interval_hours
+- concurrent_batch_size
+
+**Usage:** Gazer reads config; no magic numbers. Same pattern as Roster/Tracker config.
+
+**Ref:** gazer-features.csv Configuration; ASTRAL_CODE_RULES 2b",Backlog,Medium,subissue,Astral Gazer,1
+"Claim Company Batches","Sub: Gazer execution pattern and batch lifecycle","**Scope:** Orchestration: claim batch (core), process in chunks, release batch (data).
+
+**Flow:** core.get_new_company_batch(state, limit, sort_by) → (batch_id, companies); process companies in concurrent chunks (asyncio.gather); then data.clear_company_batch(batch_id) on exit (success or failure).
+
+**Semantics:** Single batch_id for entire run; prevents double-processing. Release always so companies can be retried if needed.
+
+**Ref:** gazer-features.csv Gazer Execution Pattern; Batch Locking",Backlog,High,subissue,Astral Gazer,1
+"Scrape Job Postings","Sub: Input contract and Playwright entry","**Scope:** Define input and entry into scrape flow.
+
+**Input:** company (dict with job_site, parse_instructions), batch_id (str).
+
+**Steps:** Create browser context; navigate to company[""job_site""]; retries (e.g. 2) for network failures.
+
+**Validation:** company and job_site present; fail fast on invalid input.
+
+**Ref:** gazer-features.csv Input; Processing Flow 1",Backlog,High,subissue,Astral Gazer,1
+"Scrape Job Postings","Sub: load_all_jobs pagination and ready wait","**Scope:** Trigger pagination so all jobs are in DOM.
+
+**Behavior:** navigate_and_wait_for_ready(page, job_site); then load_all_jobs(page, short_name).
+
+**load_all_jobs:** Infinite scroll (scroll to bottom, detect new content, repeat — max scrolls from config); ""Load More"" buttons (click until exhausted — max clicks from config).
+
+**Ref:** gazer-features.csv Trigger Pagination; load_all_jobs",Backlog,High,subissue,Astral Gazer,2
+"Scrape Job Postings","Sub: no_jobs_message early exit","**Scope:** When parse_instructions contains no_jobs_message, check page text.
+
+**If** message found in page text → legitimate no openings; return success with 0 jobs (do not parse). Caller records scan success and updates last_scan_at.
+
+**Ref:** gazer-features.csv Validate Page Structure; no_jobs_message",Backlog,High,subissue,Astral Gazer,1
+"Scrape Job Postings","Sub: extract_page_dom and pass to parser","**Scope:** Extract culled DOM (scripts, styles, meta removed) and return for parsing.
+
+**Function:** page_html = await extract_page_dom(page). Return (page_html, parse_instructions) to Parse Job Containers.
+
+**Output:** On success (page_html, parse_instructions). On failure raise with error details.
+
+**Ref:** gazer-features.csv Extract DOM; Pass to Parser",Backlog,Medium,subissue,Astral Gazer,1
+"Scrape Job Postings","Sub: Retry and error handling","**Scope:** Retry logic and error semantics.
+
+**Retries:** navigate_and_wait_for_ready retries 2x on timeout/failure; after 2 retries raise. Exception caught by Track Scan Results.
+
+**Scenarios:** Network/load → failure record, company stays WATCH. Bot detection → failure record; future bot mitigation out of scope.
+
+**Ref:** gazer-features.csv Playwright Retry Logic; Error Scenarios",Backlog,Medium,subissue,Astral Gazer,1
+"Scrape Job Postings","Sub: Config for timeouts and pagination limits","**Scope:** Config-driven timeouts and limits for scrape.
+
+**Keys (example):** concurrent_batch_size, page_load_timeout, scroll_max_attempts, load_more_max_clicks.
+
+**Ref:** gazer-features.csv Configuration",Backlog,Low,subissue,Astral Gazer,0
+"Parse Job Containers","Sub: parse_by_element signature and behavior","**Scope:** New Playwright/parser helper for selector-based extraction. Lives in src/external/playwright.py (parsing by HTML tags).
+
+**Signature:** parse_by_element(source: Union[Page, str], element: str, outer: bool = True) -> List[str].
+
+**Parameters:** source = Page or HTML string; element = CSS selector; outer = True for outerHTML, False for innerHTML.
+
+**Returns:** List of HTML strings; empty if no matches. When source is string, use BeautifulSoup (or equivalent); when Page, use browser.
+
+**DRY:** One function, two source types (Page vs string)—same selector logic, no duplication. Comment in code that the string-vs-Page branching is intentional for DRY.
+
+**Ref:** gazer-features.csv New Playwright Function; Implementation",Backlog,High,subissue,Astral Gazer,2
+"Parse Job Containers","Sub: Stage 1 extract containers (innerHTML)","**Scope:** First stage of two-stage parse: extract container regions.
+
+**Input:** page_html, parse_instructions[""container""] (CSS selector).
+
+**Action:** job_lists = parse_by_element(page_html, container_selector, outer=False). Result: list of innerHTML strings per container.
+
+**Ref:** gazer-features.csv Stage 1",Backlog,High,subissue,Astral Gazer,1
+"Parse Job Containers","Sub: No containers found validation and state","**Scope:** When zero containers matched: distinguish no-jobs vs structural problem.
+
+**If** no_jobs_message present and in page_html → record success 0 jobs, update last_scan_at, return. **Else** record scan failure (e.g. ""No containers found""), set company state to value from ASTRAL_CONFIG[""company_states""] (e.g. JOBSITE_WATCH_ISSUE)—no hardcoded state strings.
+
+**Ref:** gazer-features.csv Validation - No Containers Found; ASTRAL_CODE_RULES 2b",Backlog,High,subissue,Astral Gazer,1
+"Parse Job Containers","Sub: Stage 2 extract job_tags (outerHTML) and combine","**Scope:** Second stage: from each container innerHTML, extract job elements.
+
+**Input:** job_lists from Stage 1; parse_instructions[""job_tag""] (CSS selector).
+
+**Action:** For each non-empty job_list_html, parse_by_element(..., outer=True); concatenate all results into all_raw_job_listings. Skip empty containers.
+
+**Output:** List of raw HTML job listing strings for Tracker.
+
+**Ref:** gazer-features.csv Stage 2",Backlog,High,subissue,Astral Gazer,1
+"Parse Job Containers","Sub: Zero jobs in valid containers","**Scope:** When containers exist but all_raw_job_listings is empty.
+
+**Action:** Legitimate no openings; record scan success total_found=0, new=0, duplicates=0; update company last_scan_at; state stays WATCH.
+
+**Ref:** gazer-features.csv Zero Jobs in Valid Containers",Backlog,Medium,subissue,Astral Gazer,0
+"Parse Job Containers","Sub: Call Tracker ingest_jobs","**Scope:** Send extracted raw job listings to Tracker.
+
+**Call:** tracker.ingest_jobs(company=short_name, raw_job_listings=all_raw_job_listings, batch_id=batch_id). Returns {""new"": X, ""duplicates"": Y}.
+
+**Contract:** Gazer passes list; Tracker returns counts. Exceptions handled by Track Scan Results.
+
+**Ref:** gazer-features.csv Send to Tracker",Backlog,High,subissue,Astral Gazer,1
+"Parse Job Containers","Sub: Multiple and empty containers","**Scope:** Edge cases for container list.
+
+**Multiple containers:** Parse all; combine job_tags into single list (no department metadata yet). **Empty containers:** Skip silently; only error when NO containers found.
+
+**Ref:** gazer-features.csv Edge Cases",Backlog,Low,subissue,Astral Gazer,0
+"Track Scan Results","Sub: company_job_scan table schema","**Scope:** Define and create company_job_scan table.
+
+**Columns:** batch_id, short_name, scan_completed_at, total_found, new, duplicates, status ('success'|'failure'), failure_message. PK (batch_id, short_name); FK short_name → company.
+
+**Code:** Migrations or database.py. Used for audit and monitoring.
+
+**Ref:** gazer-features.csv New Database Table",Backlog,High,subissue,Astral Gazer,2
+"Track Scan Results","Sub: record_to_company_job_scan and update_company","**Scope:** Data layer primitives for recording scan outcome and updating company. Data layer is dumb: it records what core passes; no outcome branching here.
+
+**Functions:** record_to_company_job_scan(batch_id, short_name, scan_completed_at, total_found, new, duplicates, status, failure_message); update_company(short_name, last_scan_at=..., state=...). State values from config only (core passes them).
+
+**Core** owns the outcome matrix (which state to transition to based on results); core calls these primitives with the correct arguments.
+
+**Ref:** gazer-features.csv Database Functions; Company Table Updates; ASTRAL_CODE_RULES 2b",Backlog,High,subissue,Astral Gazer,2
+"Track Scan Results","Sub: Success outcomes (jobs found and no jobs)","**Scope:** Record success and update company for both success paths.
+
+**Jobs found:** Record scan with total_found, new, duplicates from Tracker; status success; update last_scan_at; state stays WATCH.
+
+**No jobs:** total_found=0, new=0, duplicates=0; status success; update last_scan_at; state stays WATCH.
+
+**Ref:** gazer-features.csv Scan Outcomes 1 and 2",Backlog,High,subissue,Astral Gazer,1
+"Track Scan Results","Sub: Failure - no containers","**Scope:** When Parse Job Containers reports no containers (and no_jobs_message not found).
+
+**Record:** status failure, failure_message ""No containers found"", total_found=0, new/duplicates NULL. **Company:** state JOBSITE_WATCH_ISSUE; do NOT update last_scan_at.
+
+**Ref:** gazer-features.csv Failure - No Containers Found",Backlog,High,subissue,Astral Gazer,1
+"Track Scan Results","Sub: Failure - Tracker or network exception","**Scope:** When Tracker.ingest_jobs raises or Scrape/Playwright raises.
+
+**Tracker exception:** Record failure with total_found=len(raw_job_listings), new/duplicates NULL; state stays WATCH; do not update last_scan_at.
+
+**Network/Playwright exception:** Record failure with total_found=None, new/duplicates NULL; state stays WATCH; do not update last_scan_at.
+
+**Ref:** gazer-features.csv Failure - Tracker Exception; Failure - Network/Playwright",Backlog,High,subissue,Astral Gazer,1
+"Track Scan Results","Sub: clear_company_batch after batch","**Scope:** Always release batch after all companies in batch processed.
+
+**Action:** database.clear_company_batch(batch_id). Sets batch_id and batch_created_at NULL so companies can be retried. Run on success or failure path.
+
+**Ref:** gazer-features.csv Batch Cleanup",Backlog,High,subissue,Astral Gazer,1
+"Track Scan Results","Sub: State transition to JOBSITE_WATCH_ISSUE","**Scope:** Core decides when to set state JOBSITE_WATCH_ISSUE (no containers found, no_jobs_message not found). State value must come from ASTRAL_CONFIG[""company_states""] only—no hardcoded strings.
+
+**Future:** AI diagnostic may move back to WATCH (discover no_jobs_message) or to NO_JOB_SITE (human intervention). Out of scope for this feature.
+
+**Ref:** gazer-features.csv State Transitions; ASTRAL_CODE_RULES 2b",Backlog,Medium,subissue,Astral Gazer,0
+"Track Scan Results","Sub: Scan outcome summary and monitoring","**Scope:** Document outcome matrix (success/failure, state, last_scan_at) and monitoring use.
+
+**Use:** Query company_job_scan WHERE status='failure' for review; repeat offenders for investigation. Defensive monitoring = future Astral Monitor.
+
+**Ref:** gazer-features.csv Scan Outcome Summary; Monitoring",Backlog,Low,subissue,Astral Gazer,0

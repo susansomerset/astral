@@ -1,0 +1,274 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Ingest Job Listings","Raw-job-listing-based job ingestion with intelligent deduplication. Receives raw HTML job listings from Gazer and creates new job records only if the raw_job_listing doesn't contain a known company_job_id.
+
+**Acceptance Criteria:**
+
+**Input:**
+- company: Company shortName (string)
+- raw_job_listings: List[str] (raw HTML strings from Gazer)
+- batch_id: str (company batch_id from Gazer/Roster for lineage tracking)
+
+**Deduplication Strategy:**
+For each raw_job_listing:
+- Query: WHERE company=? AND ? LIKE '%' || company_job_id || '%'
+- If match found: Count as duplicate, skip insertion
+- If no match: Create new job record
+
+**Rationale — Why inverted pattern matching:**
+- At ingest we only have raw HTML raw_job_listings; company_job_id is not yet on the record (it is NULL for new inserts).
+- Job ID and full job metadata are parsed by Anthropic on joblist evaluation (task 101), which returns the parsed job metadata JSON from the raw_job_listing content. Therefore NONE of the Astral Python code needs to craft parsing logic for raw_job_listing data, ever.
+- Dedup therefore matches incoming HTML against stored company_job_ids (""does this raw_job_listing contain any known ID for this company?"") rather than parsing the raw_job_listing to get an ID and looking it up. Single source of truth for ""known"" is existing DB rows (company_job_id populated later by Consult/101). Re-scans of the same job list dedupe correctly because the raw_job_listing HTML still contains that company_job_id.
+
+**New Job Record:**
+- astral_job_id: UUID (generated, primary key)
+- company: Company shortName
+- company_job_id: NULL (not parsed yet)
+- job_title: NULL (not parsed yet)
+- job_data: {""raw_job_listing"": ""<html string>""}
+- state: ASTRAL_CONFIG[""job_states""][0] (should be ""NEW"")
+- state_history: [{""to_state"": ""NEW"", ""timestamp"": ""..."", ""batch_id"": <passed_batch_id>}]
+- batch_id: NULL (not locked for processing)
+- batch_created_at: NULL
+- created_at: now
+- updated_at: now
+- state_changed_at: now
+
+**Output:**
+- Returns: {""new"": X, ""duplicates"": Y}
+- Allows Gazer to confirm all raw_job_listings processed
+- Gazer uses counts to track scan stats (future Gazer feature)
+
+**Database:**
+- job table: INSERT new records with state from config
+
+**Traceability:**
+- batch_id in state_history traces jobs back to company batch that discovered them
+- Enables full lineage: Company batch → Gazer scan → Jobs created
+
+**Future Enhancement:**
+- Gazer will track per-company scan stats (N total, X new, Y duplicate)",Backlog,High,feature,Astral Tracker,5
+"Save Job Data","Update job_data JSON blob as jobs progress through evaluation pipeline. Supports both merge (add/update keys) and replace (full overwrite) modes.
+
+**Acceptance Criteria:**
+
+**Input:**
+- astral_job_id: UUID (required, must exist)
+- job_data: Dict (required, new data to save)
+- replace: bool (optional, default False)
+  - False: Merge mode - add new keys, update existing keys, preserve untouched keys
+  - True: Replace mode - full replacement of entire job_data JSON
+
+**Processing:**
+
+Merge Mode (replace=False):
+- Load existing job_data from database
+- Deep merge with new job_data
+- New keys added
+- Existing keys updated with new values
+- Untouched keys preserved
+
+Replace Mode (replace=True):
+- Replace entire job_data JSON with new dict
+- All previous data lost (use with caution)
+
+**Database Updates:**
+- job_data: Merged or replaced JSON
+- updated_at: now
+
+**Error Handling:**
+- If astral_job_id doesn't exist: Raise ValueError
+- Should never happen at runtime (QA-catchable bug)
+
+**Validation:**
+- No validation on job_data structure
+- Accept any valid dict
+- Don't enforce structure in multiple places
+
+**Common Usage Patterns:**
+
+After Consult parses raw_job_listing (joblist):
+- save_job_data(job_id, {""company_job_id"": ""..."", ""job_title"": ""..."", ""job_link"": ""...""})
+
+After Consult fetches full JD:
+- save_job_data(job_id, {""job_description"": ""..."", ""scraped_at"": ""...""})
+
+After GET/DO/LIKE evaluation:
+- save_job_data(job_id, {""get_score"": 0.85, ""do_score"": 0.72, ...})
+
+**Database:**
+- job table: UPDATE job_data, updated_at WHERE astral_job_id=?",Backlog,High,feature,Astral Tracker,3
+"Record State Transitions","Track job progression through evaluation pipeline with full state history. Records each state change with timestamp and batch context for complete job lifecycle traceability.
+
+**Acceptance Criteria:**
+
+**Input:**
+- job_ids: List[str] (one or more astral_job_ids)
+- to_state: str (new state to transition to)
+
+**Validation:**
+- Validate to_state exists in ASTRAL_CONFIG[""job_states""]
+- If invalid state: Raise ValueError
+- Should never happen at runtime (QA-catchable bug)
+
+**Processing:**
+For each astral_job_id in job_ids:
+1. Read current state and current batch_id from job table
+2. Append to state_history: {""to_state"": to_state, ""timestamp"": now, ""batch_id"": current_batch_id}
+3. Update state = to_state
+4. Update state_changed_at = now
+5. Leave batch_id unchanged (cleared separately by clear_batch)
+
+**Database Updates:**
+- state: New state value
+- state_changed_at: Timestamp of transition
+- state_history: Append new entry to JSON array
+- updated_at: now
+- batch_id: UNCHANGED (released by clear_batch later)
+
+**Transaction:**
+- Single SQL transaction for all job_ids
+- All-or-nothing atomic update
+- If any job_id fails, entire batch rolls back
+
+**State History Structure:**
+```json
+[
+  {""to_state"": ""NEW"", ""timestamp"": ""2026-02-03T10:00:00Z"", ""batch_id"": ""uuid-from-gazer""},
+  {""to_state"": ""PASSED_JOBLIST"", ""timestamp"": ""2026-02-03T10:05:00Z"", ""batch_id"": ""uuid-from-consult""},
+  {""to_state"": ""ADDED_JD_SCRAPE"", ""timestamp"": ""2026-02-03T10:10:00Z"", ""batch_id"": ""uuid-from-consult""}
+]
+```
+
+**Transition Validation:**
+- Tracker does NOT validate state transitions
+- Consult ensures valid transitions per state machine
+- Tracker just records what Consult tells it
+
+**State Machine (for reference only - not enforced by Tracker):**
+
+All States:
+- NEW, PASSED_JOBLIST, FAILED_JOBLIST, ADDED_JD_SCRAPE, ERROR_JD_SCRAPE
+- PASSED_JD, FAILED_JD, PASSED_GET, FAILED_GET, PASSED_DO, FAILED_DO
+- PASSED_LIKE, FAILED_LIKE
+
+Valid Transitions:
+- NEW → PASSED_JOBLIST | FAILED_JOBLIST
+- PASSED_JOBLIST → ADDED_JD_SCRAPE | ERROR_JD_SCRAPE
+- ADDED_JD_SCRAPE → PASSED_JD | FAILED_JD
+- PASSED_JD → PASSED_GET | FAILED_GET
+- PASSED_GET → PASSED_DO | FAILED_DO
+- PASSED_DO → PASSED_LIKE | FAILED_LIKE
+
+**Nomenclature:**
+- PASS/FAIL: Agent evaluation decision (candidate fit)
+- ERROR: Technical/system issues (scraping failed, bot block)
+- ADDED: Data successfully obtained (no evaluation yet)
+
+**Database:**
+- job table: UPDATE state, state_changed_at, state_history, updated_at WHERE astral_job_id IN (...)
+
+**Traceability:**
+- Full job lifecycle visible in state_history
+- Track which batch processed each transition
+- Debug problematic jobs by reviewing history",Backlog,High,feature,Astral Tracker,5
+"Manage State Batch Jobs","Batch processing operations for efficient job pipeline processing. Implements claim → process → release pattern to prevent concurrent processing and enable parallel batch execution.
+
+**Acceptance Criteria:**
+
+**Functions:**
+
+**get_new_batch(state, limit):**
+
+Input:
+- state: str (job state to claim, e.g., ""NEW"", ""PASSED_JOBLIST"")
+- limit: int (maximum jobs to claim)
+
+Processing:
+1. Generate batch_id (UUID)
+2. Claim N unclaimed jobs: WHERE state=? AND batch_id IS NULL LIMIT ?
+3. Set batch_id and batch_created_at on claimed jobs
+4. Fetch and return claimed jobs
+
+Returns:
+- Tuple[str, List[Dict[str, Any]]]
+- (batch_id, jobs) where jobs is list of full job records
+
+Database:
+- job table: UPDATE batch_id, batch_created_at WHERE state=? AND batch_id IS NULL LIMIT ?
+- job table: SELECT * FROM job WHERE batch_id=?
+
+**get_batch(batch_id):**
+
+Input:
+- batch_id: str (UUID of batch to retrieve)
+
+Processing:
+- Fetch all jobs with this batch_id
+
+Returns:
+- List[Dict[str, Any]] (list of full job records)
+
+Database:
+- job table: SELECT * FROM job WHERE batch_id=?
+
+**clear_batch(batch_id):**
+
+Input:
+- batch_id: str (UUID of batch to release)
+
+Processing:
+- Set batch_id=NULL and batch_created_at=NULL for all jobs in batch
+- Allows jobs to be reclaimed by future batches if needed
+
+Returns:
+- int (count of jobs released)
+
+Database:
+- job table: UPDATE batch_id=NULL, batch_created_at=NULL WHERE batch_id=?
+
+**Batch Processing Flow:**
+
+Typical usage by Consult/Gazer:
+```python
+# 1. Claim batch
+(batch_id, jobs) = tracker.get_new_batch(""NEW"", 50)
+
+try:
+    # 2. Process each job
+    for job in jobs:
+        result = await process_job(job)
+        
+        # 3. Update job data
+        tracker.save_job_data(job[""astral_job_id""], result)
+        
+    # 4. Transition states
+    job_ids = [job[""astral_job_id""] for job in jobs]
+    tracker.transition_state(job_ids, ""PASSED_JOBLIST"")
+    
+finally:
+    # 5. Release batch (always runs)
+    tracker.clear_batch(batch_id)
+```
+
+**Batch Locking:**
+- Jobs in batch keep batch_id through state transition
+- Prevents double-processing by concurrent runs
+- batch_id explicitly cleared at end (success or failure)
+
+**Concurrency:**
+- Multiple batches can run concurrently on different states
+- Same state cannot be double-processed (batch_id IS NULL check)
+- Failed batches can be retried (clear_batch releases jobs)
+
+**No Maximum Batch Size:**
+- No artificial limit on batch size
+- Caller determines appropriate batch size
+- Allows flexibility for different processing patterns
+
+**Database:**
+- job table: batch_id, batch_created_at columns for locking
+- Uses WHERE batch_id IS NULL to find unclaimed jobs
+
+**Pattern Consistency:**
+- Follows same claim → process → release pattern as Roster
+- Ensures consistent batch handling across codebase",Backlog,High,feature,Astral Tracker,5

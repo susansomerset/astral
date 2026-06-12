@@ -1,0 +1,24 @@
+name: FTR merge-ready
+
+on:
+  push:
+    branches:
+      - dev
+      - 'ftr/**'
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  ftr-merge-ready:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch origin refs
+        run: git fetch origin dev 'refs/heads/ftr/*:refs/remotes/origin/ftr/*' || true
+
+      - name: Check ftr branches absorb origin/dev
+        run: ./scripts/ci/ftr-merge-ready.sh --check

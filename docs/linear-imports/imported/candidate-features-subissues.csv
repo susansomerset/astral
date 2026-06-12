@@ -1,0 +1,248 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Edit Candidate Profile","Candidate table schema and database functions","**Scope:** Create the candidate table, add candidate_id FK to company table, and build all database CRUD functions.
+
+- CREATE TABLE candidate (astral_candidate_id UUID PK, first, last, contact_email, state TEXT default 'NEW', candidate_data JSON, created_at, updated_at, state_changed_at)
+- ALTER TABLE company ADD COLUMN candidate_id TEXT (FK to candidate)
+- Index on company.candidate_id
+- Database functions: save_candidate, get_candidate, update_candidate, update_candidate_data, get_candidate_for_entity
+- get_candidate_for_entity resolves candidate_id from entity chain: given ""job""/astral_job_id or ""company""/short_name, walks the FK to return candidate_id
+- Schema flags: _candidate_schema_ensured, _company_candidate_fk_ensured
+- Update database.py module docstring header inventory per ASTRAL_CODE_RULES 1.1
+- Add CANDIDATE_STATES ordered list to config.py following COMPANY_STATES pattern
+
+**Layer:** src/data/database.py, src/utils/config.py",Backlog,High,subissue,Astral Candidate,3
+"Edit Candidate Profile","Candidate core layer","**Scope:** Create src/core/candidate.py with orchestration functions for candidate operations.
+
+- create_candidate(first, last, contact_email) -- calls save_candidate, returns candidate
+- get_candidate(candidate_id) -- fetch with all data
+- update_candidate_profile(candidate_id, profile_fields) -- update contact fields + candidate_data, trigger parse_resume if resume_raw present
+- transition_candidate_state(candidate_id, to_state) -- validate linear progression (can only advance one step), update state + state_changed_at
+- get_candidate_state(candidate_id) -- returns current state string
+- Import rules: imports from src/data/database, src/external/anthropic, src/utils/config only
+
+**Layer:** src/core/candidate.py",Backlog,High,subissue,Astral Candidate,1
+"Edit Candidate Profile","Parse Resume AGENT_CONFIG task","**Scope:** Add parse_resume task definition to AGENT_CONFIG and create placeholder task prompt file.
+
+- New task parse_resume in AGENT_CONFIG (config.py)
+- system_prompt: job_analyst_grace.txt (existing Grace persona)
+- task_prompt: ja_parse_resume.txt (placeholder with instructions skeleton)
+- cached_blocks: none (resume text is live_content)
+- response_format: json
+- response_schema: { resume_summary: str, resume_competencies: list, resume_experiences: list, resume_previous_experience: list, resume_education_certifications: list, resume_skills: list }
+- Placeholder task prompt file at data/agents/_taskprompts/ja_parse_resume.txt
+- Task prompt content (.txt) is Admin responsibility; sub-issue defines config entry + schema only
+
+**Layer:** src/utils/config.py, data/agents/_taskprompts/",Backlog,Medium,subissue,Astral Candidate,1
+"Edit Candidate Profile","Parse Resume core orchestration","**Scope:** Build parse_candidate_resume function in core/candidate.py that calls do_task and merges results into candidate_data.
+
+- parse_candidate_resume(candidate_id) in src/core/candidate.py
+- Fetches candidate, gets resume_raw from candidate_data
+- Calls do_task(""parse_resume"", live_content=resume_raw) -- no index needed (not entity-scoped)
+- On success: merges parsed sections into candidate_data via update_candidate_data, transitions NEW -> PROFILE_READY
+- On failure: saves contact info anyway (partial save), returns error dict for UI
+- Audits AI response via add_agent_response_entry (same pattern as render_verdict)
+
+**Layer:** src/core/candidate.py",Backlog,High,subissue,Astral Candidate,1
+"Edit Candidate Profile","Candidate API endpoints (Blueprint)","**Scope:** Create Flask Blueprint for candidate CRUD endpoints, register in server.py.
+
+- New Blueprint ui/api/candidate.py with url_prefix=""/api/candidates""
+- Register in ui/server.py alongside existing blueprints
+- Endpoints (all @require_auth):
+  - GET /api/candidates -- list all candidates (for Manage Candidates ListPage)
+  - GET /api/candidates/<id> -- single candidate with full candidate_data
+  - POST /api/candidates -- create new candidate (from Manage Candidates modal)
+  - PUT /api/candidates/<id>/profile -- update profile fields, triggers parse_resume on save if resume_raw changed
+  - GET /api/candidates/<id>/state -- returns current state (for nav gating)
+- Error handling: 404 for unknown candidate, 400 for validation errors, 500 for parse failures
+- Response format: JSON, consistent with existing API patterns
+
+**Layer:** ui/api/candidate.py, ui/server.py",Backlog,High,subissue,Astral Candidate,2
+"Edit Candidate Profile","Profile screen wiring (de-stub)","**Scope:** Wire Profile.tsx to real API endpoints and update DATA_SHAPES to match actual candidate schema.
+
+- Update Profile.tsx to fetch candidate data from GET /api/candidates/<id> (hardcoded id=1 initially)
+- Save calls PUT /api/candidates/<id>/profile
+- Surface parse errors if resume parse fails (toast or inline error)
+- Loading state while fetching
+- Update DATA_SHAPES candidates.detail.profile in config.py: first, last, contact_email, display_email, phone, location, github, linkedin_url, resume_raw (textarea), linkedin_raw (textarea)
+- DetailsEditPage component already built and wired
+
+**Layer:** ui/frontend/src/pages/Candidate/Profile.tsx, src/utils/config.py",Backlog,High,subissue,Astral Candidate,1
+"Edit Candidate Profile","Bootstrap migration script","**Scope:** Create idempotent migration script to seed candidate_id=1 from existing data/candidate/ files and assign all company rows.
+
+- New script scripts/migrations/bootstrap_candidate.py
+- Reads existing data/candidate/ files: resume_base.txt, linkedinprofile.txt, private_history.txt
+- Seeds candidate record (astral_candidate_id=1, first=""Susan"", last=""Somerset"", state=""LIVE_PROMPTS"")
+- Populates candidate_data with file contents as resume_raw, linkedin_raw, etc.
+- Updates all existing company rows: SET candidate_id = 1
+- Idempotent: checks for existing candidate before insert, safe to re-run
+
+**Layer:** scripts/migrations/",Backlog,Medium,subissue,Astral Candidate,1
+"Edit Survey Lists","Survey API endpoints","**Scope:** Add CRUD endpoints for survey arrays to candidate Blueprint with state transition on first access.
+
+- Add to candidate Blueprint (ui/api/candidate.py):
+  - GET /api/candidates/<id>/survey/<survey_key> -- returns array from candidate_data
+  - POST /api/candidates/<id>/survey/<survey_key> -- append new item (description, priority, timestamps)
+  - PUT /api/candidates/<id>/survey/<survey_key>/<idx> -- update item by index
+  - DELETE /api/candidates/<id>/survey/<survey_key>/<idx> -- remove item by index
+- Valid survey_key values: strengths, priorities, deal_breakers, backstory, base_resume
+- State transition on first GET: if candidate is at prerequisite state for this survey, advance (e.g., first GET of strengths when state=PROFILE_READY transitions to SURVEY_STRENGTHS)
+- Core function: update_survey_item(candidate_id, survey_key, action, data) in candidate.py
+
+**Layer:** ui/api/candidate.py, src/core/candidate.py",Backlog,High,subissue,Astral Candidate,2
+"Edit Survey Lists","Survey ListPage component pattern and DATA_SHAPES","**Scope:** Add shared DATA_SHAPES entries for survey screens and establish the reusable survey page pattern.
+
+- Shared approach for all survey screens (except Base Resume which has special layout)
+- Add DATA_SHAPES entries to config.py:
+  - candidates.list.survey -- shared columns: description (truncated), priority (1-5 badge), updated_at
+  - candidates.edit.survey -- shared fields: description (textarea), priority (select 1-5)
+- No new React components -- reuse ListPage + Modal pattern already built
+- Each survey page fetches shapes from /api/shapes/candidates and data from /api/candidates/<id>/survey/<key>
+
+**Layer:** src/utils/config.py (DATA_SHAPES), ui/frontend/",Backlog,High,subissue,Astral Candidate,1
+"Edit Survey Lists","Wire Strengths, Goals, Deal Breakers screens","**Scope:** De-stub three survey pages using the shared survey ListPage + Modal pattern.
+
+- De-stub three pages: Strengths.tsx, Goals.tsx, DealBreakers.tsx
+- Each follows identical pattern: fetch shapes, fetch survey data, render ListPage, Modal for add/edit
+- Delete with confirmation dialog
+- State transition fires automatically on first page load (API handles it)
+- All three screens use same survey DATA_SHAPES columns and edit fields
+
+**Layer:** ui/frontend/src/pages/Candidate/",Backlog,High,subissue,Astral Candidate,1
+"Edit Survey Lists","Wire Backstory screen and rename Experience","**Scope:** Rename Experience to Backstory in nav config and routes, de-stub with survey pattern.
+
+- Rename ""Experience"" to ""Backstory"" in NAV_CONFIG (config.py)
+- Update route path from /candidate/experience to /candidate/backstory
+- Update routes.tsx to match
+- Rename/move page file if needed
+- Same survey ListPage + Modal pattern as Strengths/Goals/Deal Breakers
+- Hint text in description field: ""As [job title] at [company], loved X, tolerated Y, left because Z""
+
+**Layer:** ui/frontend/src/pages/Candidate/, src/utils/config.py, ui/frontend/src/routes.tsx",Backlog,Medium,subissue,Astral Candidate,1
+"Edit Survey Lists","Wire Base Resume screen","**Scope:** De-stub Base Resume with sectioned editable resume fields -- different from other surveys.
+
+- De-stub BaseResume.tsx
+- Different from other surveys: displays parsed resume sections as editable fields, not a flat list
+- Sections from candidate_data: resume_summary (textarea), resume_competencies (editable list), resume_experiences (editable list), resume_previous_experience (editable list), resume_education_certifications (editable list), resume_skills (editable list)
+- Each list section: items can be added, edited, deleted inline
+- Save writes all sections back to candidate_data via PUT /api/candidates/<id>/survey/base_resume
+- DATA_SHAPES entry: candidates.detail.base_resume -- sectioned layout similar to profile
+- This is the immutable source of truth for resume content -- Artifacts assembly pulls from here
+
+**Layer:** ui/frontend/src/pages/Candidate/BaseResume.tsx, src/utils/config.py",Backlog,High,subissue,Astral Candidate,2
+"Complete Survey Lists","Completion gate logic (shared backend)","**Scope:** Build shared completion gate pattern in core/candidate.py for both survey and prompt gates, with API endpoints.
+
+- Core functions in src/core/candidate.py:
+  - check_completion_gate(candidate_id, gate_type) -- returns status dict with per-item checklist
+  - complete_gate(candidate_id, gate_type) -- validates all items present, transitions state
+- Gate types:
+  - survey: checks strengths, priorities, deal_breakers, backstory, resume_experiences all non-empty; transitions SURVEY_BASE_RESUME -> CONTENT_READY; triggers background prompt generation on success
+  - prompts: checks all required agent_content rows exist for candidate; checks rubric rows (GET/DO/LIKE) approved; transitions CONTENT_READY -> LIVE_PROMPTS
+- API endpoints in candidate Blueprint:
+  - GET /api/candidates/<id>/gates/<gate> -- returns checklist status
+  - POST /api/candidates/<id>/gates/<gate> -- validate and advance
+- Server-side validation before accepting any transition
+
+**Layer:** src/core/candidate.py, ui/api/candidate.py",Backlog,High,subissue,Astral Candidate,1
+"Complete Survey Lists","Completion UI on Base Resume screen","**Scope:** Add completion checklist and confirm button to Base Resume page.
+
+- Green checkmarks per survey section on Base Resume page
+- Summary checklist showing all 5 survey statuses (fetched from /api/candidates/<id>/gates/survey)
+- ""Ready for Astral"" confirm button, enabled only when all 5 complete
+- On confirm: calls POST /api/candidates/<id>/gates/survey, shows success message
+- Client-side disabled state is UX guard only; server validates
+
+**Layer:** ui/frontend/src/pages/Candidate/BaseResume.tsx",Backlog,High,subissue,Astral Candidate,1
+"Build Consult Prompts","agent_content table schema and database functions","**Scope:** Create agent_content table and build CRUD database functions with fallback chain for content resolution.
+
+- CREATE TABLE agent_content (id UUID PK, task TEXT, type TEXT, label TEXT, candidate_id TEXT nullable FK, content TEXT, approved_at TIMESTAMP nullable, created_at, updated_at)
+- type enum enforced in code: system, user, cached, nocache
+- Index on (task, candidate_id) for fast lookup
+- Index on candidate_id for listing all content for a candidate
+- Database functions:
+  - save_agent_content(task, type, label, content, candidate_id=None) -- INSERT, returns row
+  - get_agent_content(task, label=None, candidate_id=None) -- fetch matching rows; fallback chain: candidate-specific -> universal (NULL) -> None
+  - get_all_agent_content(candidate_id) -- all rows for a candidate (for Astral Rubrics screen)
+  - update_agent_content(content_id, content=None, approved_at=None) -- update content and/or approval
+- Update database.py module docstring header inventory
+
+**Layer:** src/data/database.py",Backlog,High,subissue,Astral Candidate,2
+"Build Consult Prompts","Prompt generation AGENT_CONFIG tasks","**Scope:** Add AGENT_CONFIG task definitions for each prompt generation type with placeholder task prompt files using template references.
+
+- New tasks in AGENT_CONFIG (config.py): generate_system_prompt, generate_get_rubric, generate_do_rubric, generate_like_rubric, generate_prefilter_instructions
+- Each task: system_prompt=job_analyst_grace.txt, task_prompt=placeholder .txt with {candidate.candidate_data.*} template references, live_content=full candidate_data JSON, response_format=text, response_schema={ content: str }
+- Assembled content (not AI-generated, built by code in candidate.py):
+  - Resume block: assembled from resume_summary, resume_competencies, etc.
+  - LinkedIn block: from linkedin_raw
+  - Preferences block: from strengths, priorities, deal_breakers
+- Task prompt content (.txt files) is Admin responsibility; sub-issue creates placeholder files with template reference patterns for testing
+
+**Layer:** src/utils/config.py, data/agents/_taskprompts/",Backlog,Medium,subissue,Astral Candidate,1
+"Build Consult Prompts","Prompt generation orchestration","**Scope:** Build build_candidate_prompts function that generates all agent_content rows from candidate_data.
+
+- build_candidate_prompts(candidate_id) in src/core/candidate.py
+- For AI-generated content (system prompt, rubrics, prefilter instructions): call do_task with candidate_data as live_content, save result as agent_content row
+- For assembled content (resume, LinkedIn, preferences): build from candidate_data directly in Python, save as agent_content rows (no AI call)
+- Error handling: partial generation is acceptable; completion gate handles verification of which rows exist
+- Each generated row: approved_at = NULL (pending candidate review)
+- Follows render_verdict pattern for AI calls: audit response, then save
+
+**Layer:** src/core/candidate.py",Backlog,High,subissue,Astral Candidate,3
+"Build Consult Prompts","anthropic.py DB-first resolution and template references","**Scope:** Modify prompt assembly to check agent_content DB before file fallback, and add template reference interpolation. Highest-risk sub-issue.
+
+**DB-first block resolution:**
+- New function _resolve_content_from_db(task_key, label, index): resolves candidate_id via entity chain (index -> get_job -> company -> candidate_id), queries agent_content for candidate-specific content, falls back to universal (NULL candidate_id), falls back to None
+- _load_labeled_block modified: check DB first, use file as final fallback
+- Targeted import from src/data/database.py: get_agent_content, get_candidate_for_entity -- documented layer exception in ASTRAL_CODE_RULES
+- Backward compatibility: when no DB rows exist, file loading works exactly as before
+
+**Template reference resolution:**
+- New function _resolve_template_refs(text, candidate_data): regex {candidate\\.(.+?)} walks dot-path into candidate_data, lists -> newline-joined, scalars -> str(), unresolved refs left as-is
+- Called after loading text content (file or DB) before sending to API
+- Only runs when index is provided and entity has a candidate FK
+
+**No signature changes to do_task** -- index already carries entity identifier, resolution is internal
+
+**Layer:** src/external/anthropic.py, docs/ASTRAL_CODE_RULES.md",Backlog,High,subissue,Astral Candidate,3
+"Build Consult Prompts","Background trigger on CONTENT_READY","**Scope:** CLI script that fires prompt generation headlessly when candidate reaches CONTENT_READY.
+
+- CLI script scripts/build_prompts.py:
+  - Queries candidates in CONTENT_READY state
+  - Calls build_candidate_prompts(candidate_id) for each
+  - Logs progress per prompt type
+  - Idempotent: skips candidates that already have all required agent_content rows
+- Triggered by: survey completion gate kicking off as subprocess (fire-and-forget), or Railway hybrid dispatcher on schedule, or manual CLI run for retry/debugging
+- No API endpoint blocks waiting for generation
+- UI shows ""Prompts are being generated"" when state=CONTENT_READY; Astral Rubrics nav item appears when state reaches LIVE_PROMPTS
+
+**Layer:** scripts/build_prompts.py, src/cli/",Backlog,High,subissue,Astral Candidate,1
+"Complete Prompts","Astral Rubrics screen","**Scope:** Build Astral Rubrics page for candidate to review, edit, and approve generated prompt content.
+
+- Add ""Astral Rubrics"" to Candidate section in NAV_CONFIG, positioned after Base Resume
+- Gated: visible but greyed until LIVE_PROMPTS (or CONTENT_READY for preview)
+- New page AstralRubrics.tsx:
+  - ListPage showing all agent_content rows for this candidate
+  - Columns: task, type, label, approved status (badge), updated_at
+  - Fetches from GET /api/candidates/<id>/agent_content (new endpoint in candidate Blueprint)
+- Row action: Modal with full content textarea (editable) + Approve button
+  - Approve sets approved_at = now
+  - Editing content clears approved_at (requires re-approval)
+  - Save calls PUT /api/agent_content/<content_id>
+- Universal rows (candidate_id=NULL) shown read-only for reference (Admin-editable only)
+- DATA_SHAPES entries for agent_content list + edit
+- Completion section at bottom: gate status + ""Activate Prompts"" button (calls POST /api/candidates/<id>/gates/prompts)
+
+**Layer:** ui/frontend/src/pages/Candidate/AstralRubrics.tsx, ui/api/candidate.py, src/utils/config.py",Backlog,High,subissue,Astral Candidate,2
+"Complete Prompts","Nav gating implementation","**Scope:** Implement server-side nav filtering based on candidate state and client-side rendering of disabled/hidden items. Cross-cutting concern.
+
+**Server-side (Python):**
+- Update /api/nav_config endpoint in ui/api/system.py to accept candidate_id from auth context (g.user)
+- Core function: get_nav_for_candidate(candidate_id) in src/core/candidate.py fetches state, applies gating rules to NAV_CONFIG
+- Returns filtered/annotated NAV_CONFIG with disabled/hidden flags per item/section
+- Gating rules: NEW=only Profile active, others disabled, Jobs/Companies hidden; PROFILE_READY=Strengths unlocks, Companies appears; each survey state unlocks next; CONTENT_READY=generating state; LIVE_PROMPTS=all active
+- NAV_CONFIG items gain optional requires_state field for declarative gating
+
+**Client-side (React):**
+- Update NavigationShell.tsx: render disabled items as greyed text (no link, cursor: not-allowed), omit hidden sections
+- Session storage cache invalidated on state change
+
+**Layer:** ui/api/system.py, src/core/candidate.py, src/utils/config.py, ui/frontend/src/components/NavigationShell.tsx",Backlog,High,subissue,Astral Candidate,3

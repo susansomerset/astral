@@ -1,0 +1,56 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+View Agent Timesheets,"Admin screen to view, filter, sort and export Anthropic API usage and cost data. The timesheets table already exists and is being written to by add_timesheet_entry. This feature adds the UI and a context_id field to the timesheet record.
+
+**Acceptance Criteria:**
+
+**Timesheet Table Addition:**
+- Add `context_id` TEXT column to timesheets table (e.g. `grade_get_acme`, `qualify_job_listings_batch_uuid`)
+- `add_timesheet_entry()` in database.py accepts and stores `context_id`
+- All callers of `do_task` pass context_id through — follows existing context pattern in _build_context()
+
+**View Agent Timesheets Screen (UI — Admin > Agent Timesheets):**
+- Sortable, filterable list of all timesheet records
+- Columns: created_at, context_id, batch_id, user_prompt_file, request_id, tokens_input, cache_read_tokens, tokens_output, est_cost
+- Filter controls: date range, user_prompt_file, batch_id, context_id
+- **Header totals row** — sums tokens_input, cache_read_tokens, tokens_output, est_cost across all records matching current filter
+- **Selected totals row** — same sums for checked/selected rows only, pinned to bottom of list
+- Checkbox selection per row
+- **Export to CSV** — exports all columns including metadata for current filter or selection
+- Filter params are URL-querystring driven to support deep-linking from Execution History
+
+**API Endpoints:**
+- GET /api/admin/timesheets — list with filter params (date_from, date_to, user_prompt_file, batch_id, context_id)
+- GET /api/admin/timesheets/export — CSV export with same filter params
+
+**Notes:**
+- No delete or edit — timesheets are append-only
+- Execution History links to this screen filtered by batch_id
+
+**Database:**
+- timesheets table: ALTER to add context_id TEXT column
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,Medium,feature,Astral Admin,4
+Company State History,"Add state_history tracking to the company table, mirroring the existing pattern on the job table. batch_id is the spine that connects company state transitions to execution sessions, timesheets, and Better Stack logs.
+
+**Acceptance Criteria:**
+
+**company Table Addition:**
+- Add `state_history` TEXT column (JSON array, same shape as job.state_history)
+- Each entry: `{ ""to_state"": ""..."", ""timestamp"": ""..."", ""batch_id"": ""..."" }`
+- Migration: existing rows get `state_history = '[]'`
+
+**roster.py Changes:**
+- Add state_history append pattern to every company state transition, mirroring tracker.py:
+  - Fetch current company, read state_history array
+  - Append new entry with to_state, timestamp, current batch_id
+  - Write back via save_company
+
+**database.py Changes:**
+- `save_company()` accepts and stores `state_history` (same overwrite pattern as save_job)
+- Schema migration adds column to existing databases idempotently
+
+**ROSTER_DATA_MODEL.md:**
+- Update to document state_history column and entry shape
+
+**Database:**
+- company table: ALTER to add `state_history` TEXT column
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,feature,Astral Roster,2

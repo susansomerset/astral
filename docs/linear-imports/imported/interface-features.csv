@@ -1,0 +1,151 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Component Library","Build the reusable React + TypeScript UI component library that all Interface screens are assembled from. This is the foundation layer — all screen implementations depend on these components, so this feature must be completed first.
+
+**Stack:** React + TypeScript. Built output served as static files from Flask. Hosted on Railway (single service: Flask API + React frontend + SQLite on persistent volume).
+
+**Components to build:**
+
+**ListPage:** Sortable, filterable table component with checkbox column for bulk actions. Supports configurable columns, sort direction toggle, filter/search input, and a bulk action toolbar that appears when one or more rows are selected. Used by: Companies Watch List, Ignored, Watch History, Gazer Issues, Jobs screens.
+
+**Modal:** Single-record edit overlay. Accepts a form schema and renders appropriate inputs (text, textarea, select, toggle). Cancel and Save actions. Dismissable by Escape key or backdrop click. Used by: all List Page row-level edits.
+
+**DetailsEditPage:** Full-page single-record editor for rich, multi-section content. Supports labeled sections, long-form text areas, and page-level Save/Cancel. Not a modal — renders at its own route. Used by: Candidate Profile.
+
+**NavigationShell:** Sidebar layout with grouped nav links (Jobs, Companies, Candidate, Admin). Active route highlighting. Router outlet for page content. Top-level app wrapper that all pages render inside.
+
+**Acceptance Criteria:**
+- All four components built and typed in TypeScript
+- Components are generic and accept props/config — no hardcoded screen-specific content
+- NavigationShell renders with all nav groups and links from the Interface design (Jobs: Meteors, New, Skipped, Applied, Responded; Companies: Watch List, Gazer Issues, Ignored, Watch History; Candidate: Profile, Strengths, Goals, Deal Breakers, Experience, Base Resume; Admin: Manage Candidates, Agent Prompts, Task Prompts, Rubrics, Analysis Instructions, Resume Framework)
+- React Router configured with placeholder routes for all nav destinations
+- Flask serves the built React app at root; API routes live under /api/
+- App loads and navigates without errors
+- Railway deployment config in place (Procfile or railway.toml): web service + persistent volume mount for SQLite",Backlog,High,feature,Astral Interface,5
+"Navigation","Wire up the NavigationShell to real routes and confirm all nav destinations resolve to their correct page components. This feature establishes the routing backbone — each destination renders its actual page component (even if that page is initially empty/stubbed), not a placeholder.
+
+**Nav structure (from Interface design):**
+
+Jobs
+- Meteors
+- New
+- Skipped
+- Applied
+- Responded
+
+Companies
+- Watch List (with Seek and Import as in-screen functionality)
+- Gazer Issues
+- Ignored
+- Watch History
+
+Candidate
+- Profile
+- Strengths
+- Goals
+- Deal Breakers
+- Experience
+- Base Resume
+
+Admin
+- Manage Candidates
+- Agent Prompts
+- Task Prompts
+- Rubrics
+- Analysis Instructions
+- Resume Framework
+
+**Acceptance Criteria:**
+- Every nav link routes to its own named page component
+- Active link is visually highlighted in the sidebar
+- Page components may be empty shells at this stage — content is implemented in subsequent features
+- No broken routes; unknown paths redirect gracefully
+- Navigation works correctly on refresh (Flask catch-all serves index.html for non-API routes)
+- NavigationShell and routing confirmed working end-to-end on Railway",Backlog,High,feature,Astral Interface,3
+"Admin Interfaces","Implement all six Admin screens. Admin is the interface for managing candidate-scoped content: the candidate record itself, and all AI-generated prompt content (agent prompts, task prompts, rubrics, analysis instructions, resume framework). These screens are prioritized before Candidate because they are needed to view and edit content as it migrates into the database.
+
+**Screens:**
+
+**Manage Candidates:** List Page. Each row is a candidate record. Columns: name, email, location, status. Bulk actions: none initially. Row action: open candidate detail (links to Candidate > Profile). Supports adding a new candidate via modal.
+
+**Agent Prompts:** List Page. Each row is an agent prompt record keyed to a candidate. Columns: candidate, prompt label/name, last updated, approved status. Row action: open Modal to view/edit prompt content (long-form textarea). Bulk actions: none initially.
+
+**Task Prompts:** List Page. Each row is a task prompt record. Columns: candidate, task key, prompt label, last updated. Row action: open Modal to view/edit. Note: task prompts reference candidate content by label; they do not contain candidate data directly.
+
+**Rubrics:** List Page. Each row is a rubric (GET, DO, LIKE rubric content, keyed to candidate). Columns: candidate, rubric type, last updated, approved status. Row action: open Modal to view/edit.
+
+**Analysis Instructions:** List Page. Each row is an analysis instructions block keyed to a candidate. Columns: candidate, instruction label, last updated, approved status. Row action: open Modal to view/edit.
+
+**Resume Framework:** List Page. Each row is a resume framework record keyed to a candidate. Columns: candidate, section label, last updated, approved status. Row action: open Modal to view/edit full framework content.
+
+**Acceptance Criteria:**
+- All six screens implemented using ListPage and Modal components from Component Library
+- Each screen fetches data from its Flask API endpoint
+- Row-level edit via Modal with Save wiring to API (PUT/PATCH)
+- Add new record supported where applicable (Manage Candidates minimum)
+- Approved status field visible and toggleable where present
+- All screens reachable via Admin nav links",Backlog,High,feature,Astral Interface,8
+"Candidate Interfaces","Implement all six Candidate screens. These screens are the primary interface for viewing and editing the candidate's profile and content — the human-facing side of what Astral Candidate generates and maintains.
+
+**Screens:**
+
+**Profile:** DetailsEditPage. Single candidate record. Fields: name, address, email, phone, location. Full-page edit with Save/Cancel. This is the one Details Edit Page in the application.
+
+**Strengths:** Modal-backed List Page. Each row is a candidate strength entry. Columns: strength label, summary, approved status. Row action: open Modal to view/edit full content.
+
+**Goals:** Modal-backed List Page. Each row is a goal entry. Columns: goal label, summary, approved status. Row action: open Modal to view/edit.
+
+**Deal Breakers:** Modal-backed List Page. Each row is a deal breaker entry. Columns: label, summary, approved status. Row action: open Modal to view/edit.
+
+**Experience:** Modal-backed List Page. Each row is an experience entry (role, company, period). Columns: title, company, dates, approved status. Row action: open Modal to view/edit full experience detail.
+
+**Base Resume:** DetailsEditPage or full-screen Modal (Chuckles to decide based on content length). Displays the candidate's assembled base resume content. Editable. Save wired to API.
+
+**Acceptance Criteria:**
+- All six screens implemented using ListPage, Modal, and DetailsEditPage components from Component Library
+- Profile screen uses DetailsEditPage; content saves correctly via API
+- List-backed screens (Strengths, Goals, Deal Breakers, Experience) fetch and display records from API
+- Row-level edit via Modal with Save wiring
+- Approved status visible and toggleable where present
+- All screens reachable via Candidate nav links",Backlog,Medium,feature,Astral Interface,8
+"Companies Interfaces","Implement all four Companies screens. These screens expose the company roster and Gazer pipeline state — primarily list-based views for monitoring and managing which companies Astral is watching.
+
+**Screens:**
+
+**Watch List:** List Page. Each row is a company in WATCH state. Columns: company name, short_name, website, state, last scanned. In-screen functionality: Seek (trigger a Gazer scan for selected companies) and Import list (bulk import companies from CSV or paste). Bulk actions: Set to Ignore, Retry Scrape. Row action: Modal with company detail and state history.
+
+**Gazer Issues:** List Page. Companies with technical errors (scrape failures, bot blocks, parse errors). Columns: company name, state, error type, last attempted. Row action: Modal showing error detail and state history. Bulk action: Retry.
+
+**Ignored:** List Page. Companies in IGNORE state. Columns: company name, short_name, prefilter reason, ignored at. Row action: Modal. Bulk action: Move to Watch.
+
+**Watch History:** List Page. Read-only audit view. All companies with state history visible. Columns: company name, current state, state_changed_at, created_at. Sortable by state and date. Row action: Modal showing full state_history JSON rendered as a readable timeline.
+
+**Acceptance Criteria:**
+- All four screens implemented using ListPage and Modal from Component Library
+- Each screen fetches from appropriate Flask API endpoint filtered by state
+- Seek and Import in-screen functionality stubbed on Watch List (full implementation in a future feature)
+- Bulk actions wired where specified
+- State history rendered as readable timeline in row-level Modal
+- All screens reachable via Companies nav links",Backlog,Medium,feature,Astral Interface,8
+"Jobs Interfaces","Implement all five Jobs screens. These screens expose the job posting pipeline — sorted and filtered views of postings at each stage of the GET/DO/LIKE evaluation pipeline.
+
+**Screens:**
+
+**Meteors:** List Page. Jobs that have passed the full evaluation pipeline (PASSED_LIKE). The hot ones — candidate should act on these. Columns: job title, company, GET score, DO score, LIKE score, state_changed_at. Row action: Modal with full job detail, scores, and job description.
+
+**New:** List Page. Jobs in NEW or early pipeline states (PASSED_JOBLIST, PASSED_JD) not yet fully evaluated. Columns: job title, company, state, created_at. Row action: Modal with available detail.
+
+**Skipped:** List Page. Jobs that failed at any evaluation stage (FAILED_GET, FAILED_DO, FAILED_LIKE, FAILED_JD, FAILED_JOBLIST). Columns: job title, company, failed stage, reason summary. Row action: Modal showing evaluation detail and failure reason. Bulk action: Retry.
+
+**Applied:** List Page. Jobs where candidate has submitted an application. Columns: job title, company, applied at, application notes. Row action: Modal to view/edit application notes and status.
+
+**Responded:** List Page. Jobs where the company has responded (interview request, rejection, etc.). Columns: job title, company, response type, responded at, notes. Row action: Modal to view/edit response detail.
+
+**Note:** Applied and Responded states are future Artifacts/Candidate workflow states — screens can be stubbed with empty lists until those pipeline stages are built.
+
+**Acceptance Criteria:**
+- All five screens implemented using ListPage and Modal from Component Library
+- Meteors, New, and Skipped fetch from API filtered by their respective job states
+- Applied and Responded screens implemented as stubs (empty list with correct layout) pending Artifacts pipeline
+- Score display on Meteors formatted clearly (e.g. percentage or letter grade)
+- Failure reason surfaced on Skipped where available in job_data
+- All screens reachable via Jobs nav links",Backlog,Low,feature,Astral Interface,8

@@ -1,0 +1,78 @@
+resumes/preferences.txt
+
+# macOS folder metadata
+.DS_Store
+
+# Environment variables - never commit API keys!
+.env
+token.json
+
+# Access profiles - never commit session cookies!
+data/access_profiles/
+data/candidates/
+data_brian/
+data/postings/
+
+# Live company data - environment-specific
+data/companies/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Agent cache files
+data/agents/__cache/
+
+# Cursor IDE — local only (team workflow skills live under ~/.cursor/skills)
+.cursor/
+
+# Per-agent workspace brief (local only — one per worktree; never publish)
+AGENTS.md
+
+# Local debug / scratch — never commit. Spikes, Playwright captures, review scorecards:
+#   debug/spikes/<issue-id>/...   NOT repo-root artifacts/ (conflicts with docs/features/artifacts/)
+debug/
+/artifacts/
+
+# Large log files
+*.log
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Results and logs (optional - keep local)
+results/
+logs/*.log
+
+# Database files (runtime data) — never commit; local machine / volume only
+*.db
+data/*.db
+data/astral.db
+/astral.db
+
+# Active data files (runtime JSON files)
+**/_*.json
+
+# Archived old code and files (local only — never add to git; use git rm -r --cached if indexed)
+z-old/
+
+# React frontend build artifacts
+src/ui/frontend/node_modules/
+src/ui/frontend/dist/
+# Vite dependency pre-bundle cache (regenerated locally)
+src/ui/frontend/.vite/
+
+# Playwright browser binaries (installed during build)
+.browsers/
+
+# Regenerated test coverage (pytest + Vitest component runs)
+tests/.coverage/
+/.coverage
+/.coverage-*.json
+/coverage-component-frontend/
+/formatting.cover/

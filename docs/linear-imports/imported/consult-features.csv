@@ -1,0 +1,604 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+"Evaluate Job List","Batch-as-prompt Consult function for evaluating raw job listing thumbprints. Sends an entire batch of raw_job_listings in a single API call for cache efficiency — rubric and cached blocks loaded once, N thumbprints evaluated together. Returns per-job verdicts with parsed metadata.
+
+**Acceptance Criteria:**
+
+**Function Signature:**
+```python
+async def check_job_list(jobs: List[Dict]) -> Dict
+```
+
+**Live Content Assembly:**
+
+Assembles all raw_job_listings from the batch into a single live_content payload:
+```python
+async def check_job_list(jobs: List[Dict]) -> Dict:
+    live_content = assemble_thumbprints(jobs)
+    result = await do_task(
+        task_key=""check_job_list"",
+        live_content=live_content,
+        index=f""batch_{len(jobs)}_jobs"",
+    )
+    return result
+```
+
+**Batch Size Constraint:**
+
+Batch size must be limited to prevent the AI response from exceeding output token limits. All thumbprints go in one prompt; all results come back in one response. Config-driven:
+```python
+CONSULT_CONFIG = {
+    ""check_job_list"": {
+        ""batch_size"": 10,  # Tuned to stay within response token limits
+        ...
+    },
+}
+```
+
+**AI Response:**
+
+Returns an array of per-job results. Each result includes:
+- verdict: PASS or FAIL
+- company_job_id: Parsed from thumbprint (the employer's job ID)
+- job_title: Parsed from thumbprint
+- job_link: URL to full job description
+- notes: Brief reasoning
+
+**Caller Responsibilities (CLI/batch runner):**
+
+The caller maps results back to individual jobs:
+- Save parsed metadata to job_data via tracker.save_job_data
+- Update job table columns (company_job_id, job_title) for PASS results
+- Transition PASS jobs to PASSED_JOBLIST
+- Transition FAIL jobs to FAILED_JOBLIST
+
+**State Machine:**
+- Input state: NEW
+- Pass: PASSED_JOBLIST
+- Fail: FAILED_JOBLIST
+
+**AGENT_CONFIG:**
+
+Existing checkJobList task needs revision:
+- Rename to check_job_list (snake_case)
+- Update response_schema to include company_job_id, job_title, job_link, verdict, notes
+- Response is an array (one entry per thumbprint in batch)
+
+**Layer:** src/core/consult.py
+
+**Dependencies:**
+- src/external/anthropic.py (do_task)
+- AGENT_CONFIG check_job_list task definition",Backlog,High,feature,Astral Consult,3
+"Evaluate Job Description","Per-job Consult function for dealbreaker screening of full job descriptions. Binary pass/fail gate — checks remote status, mission/domain, salary, role type, and W2 status. Only explicit dealbreakers fail; when in doubt, pass and let the scoring pipeline evaluate.
+
+**Acceptance Criteria:**
+
+**Function Signature:**
+```python
+async def evaluate_jd(job: Dict) -> Dict
+```
+
+**Live Content Assembly:**
+
+Pulls the scraped job description and original thumbprint from job_data:
+```python
+async def evaluate_jd(job: Dict) -> Dict:
+    live_content = build_jd_content(job)
+    result = await do_task(
+        task_key=""evaluate_jd"",
+        live_content=live_content,
+        index=job[""astral_job_id""],
+    )
+    return result
+```
+
+**Live Content Sources:**
+- job_data[""job_description""]: Full JD text scraped by gatekeeper (step f)
+- job_data[""raw_job_listing""]: Original thumbprint for cross-reference context
+
+**AI Response (from 102 rubric):**
+
+Pass:
+```json
+{
+    ""verdict"": ""PASS"",
+    ""notes"": ""Fully remote, $190k-$230k, patient care platform, cross-functional leadership."",
+    ""company_tenword"": ""<ten word company summary>"",
+    ""job_summary"": ""<simple paragraph>""
+}
+```
+
+Fail:
+```json
+{
+    ""verdict"": ""FAIL"",
+    ""reason"": ""Hybrid/office requirement exceeds 1x per month"",
+    ""notes"": ""Requires 2-3 days per week in SF office""
+}
+```
+
+**Failure Reason Categories (exact strings per 102 rubric):**
+- Defense/Military domain (auto-fail)
+- Security/Cybersecurity domain (auto-fail)
+- Crypto/Blockchain domain (auto-fail)
+- Fintech for ultra-rich/corporate optimization
+- Salary below threshold
+- Pure IC engineering role
+- Pure management role
+- Heavy junior PM language (support/help/contribute)
+- Hybrid/office requirement exceeds 1x per month
+- Freelance/1099 without W2 path
+- Mission egregiously harmful
+
+Structured failure reasons enable pattern analysis and false-negative review.
+
+**Caller Responsibilities (CLI/batch runner):**
+- Save result to job_data via tracker.save_job_data
+- Transition PASS to PASSED_JD
+- Transition FAIL to FAILED_JD
+
+**State Machine:**
+- Input state: ADDED_JD_SCRAPE
+- Pass: PASSED_JD
+- Fail: FAILED_JD
+
+**AGENT_CONFIG:**
+
+New task definition:
+- task_key: evaluate_jd
+- Task prompt references 102_JD_RUBRIC
+- response_schema: verdict, reason (when fail), notes, company_tenword (when pass), job_summary (when pass)
+- response_format: json
+
+**Layer:** src/core/consult.py
+
+**Dependencies:**
+- src/external/anthropic.py (do_task)
+- AGENT_CONFIG evaluate_jd task definition
+- Gatekeeper scrape (step f) must have populated job_data[""job_description""]",Backlog,High,feature,Astral Consult,3
+"Score Jobs (GET/DO/LIKE)","Per-job Consult functions for the graded scoring pipeline. Three functions — score_get, score_do, score_like — follow an identical pattern: send the job description to the AI with the appropriate rubric, receive a graded evaluation, calculate a numeric score from the grades. The only variation is that score_like also requires company website content.
+
+**Acceptance Criteria:**
+
+**Function Signatures:**
+```python
+async def score_get(job: Dict) -> Dict
+async def score_do(job: Dict) -> Dict
+async def score_like(job: Dict, company: Dict) -> Dict
+```
+
+**Uniform Pattern (score_get and score_do):**
+```python
+async def score_get(job: Dict) -> Dict:
+    live_content = job[""job_data""][""job_description""]
+    result = await do_task(
+        task_key=""score_get"",
+        live_content=live_content,
+        index=job[""astral_job_id""],
+    )
+    return result
+```
+
+score_do is structurally identical — different task_key, same live_content source.
+
+**score_like — Company Context Required:**
+```python
+async def score_like(job: Dict, company: Dict) -> Dict:
+    job_description = job[""job_data""][""job_description""]
+    company_context = company[""company_data""][""website_content""]
+    live_content = f""{job_description}\n\n=== COMPANY CONTEXT ===\n{company_context}""
+    result = await do_task(
+        task_key=""score_like"",
+        live_content=live_content,
+        index=job[""astral_job_id""],
+    )
+    return result
+```
+
+If company_data does not contain website_content, score_like raises an error. The Prep Company Culture Pages feature ensures this data exists before LIKE runs.
+
+**AI Response — Graded Evaluation:**
+
+All three scoring tasks return graded rubric evaluations. The AI grades individual criteria (e.g. A/B/C/D/F per rubric dimension), and the response includes both grades and reasoning.
+
+**Grade-to-Score Calculation:**
+
+The parsed_response from each scoring task contains grades that need conversion to a numeric score. This calculation logic lives in consult.py (not in the AI prompt and not in the CLI):
+- Each rubric dimension receives a letter grade
+- Letter grades convert to numeric values (config-driven scale)
+- Weighted or unweighted average produces final score
+- Score saved to job_data (e.g. get_score, do_score, like_score)
+
+**Score Threshold for Pass/Fail:**
+
+The numeric score is compared against a config-driven threshold to determine pass/fail:
+```python
+CONSULT_CONFIG = {
+    ""score_get"": {
+        ""pass_threshold"": 0.6,
+        ...
+    },
+    ""score_do"": {
+        ""pass_threshold"": 0.6,
+        ...
+    },
+    ""score_like"": {
+        ""pass_threshold"": 0.6,
+        ...
+    },
+}
+```
+
+The consult function returns the full result (grades + score). The caller (CLI/batch runner) uses the score vs threshold to determine state transition.
+
+**Caller Responsibilities (CLI/batch runner):**
+- Save grades + calculated score to job_data via tracker.save_job_data
+- Compare score to threshold
+- Transition PASS or FAIL based on threshold
+
+**State Machine:**
+
+| Function | Input State | Pass | Fail |
+|----------|------------|--------|--------|
+| score_get | PASSED_JD | PASSED_GET | FAILED_GET |
+| score_do | PASSED_GET | PASSED_DO | FAILED_DO |
+| score_like | PASSED_DO | PASSED_LIKE | FAILED_LIKE |
+
+**AGENT_CONFIG:**
+
+Existing tasks need revision:
+- Rename scoreGET to score_get, scoreDO to score_do, scoreLIKE to score_like
+- Review and update response_schema for grade structure
+- Ensure response_format is json
+
+**Layer:** src/core/consult.py
+
+**Dependencies:**
+- src/external/anthropic.py (do_task)
+- AGENT_CONFIG score_get, score_do, score_like task definitions
+- Prep Company Culture Pages (for score_like company_data dependency)
+- Grade-to-score conversion scale in config",Backlog,High,feature,Astral Consult,5
+"Consult Batch Runner","Generic config-driven CLI orchestration for running Consult tasks in batches. Implements the claim-process-save-transition-release pattern with a batch-count parameter that enables run-until-empty behavior for cron execution. Each Consult CLI step uses this same runner pattern.
+
+**Acceptance Criteria:**
+
+**CLI Batch-Count Parameter:**
+
+All Consult CLI scripts accept an optional batch-count parameter:
+```bash
+# Run until no records left (cron mode, default)
+python -m src.cli.e_ja_consult_job_list
+
+# Run one batch (manual/testing)
+python -m src.cli.e_ja_consult_job_list --batch-count 1
+
+# Run exactly 3 batches
+python -m src.cli.h_ja_consult_get --batch-count 3
+```
+
+- Default: no limit (run until empty)
+- batch-count=1: process one batch and stop
+- batch-count=N: process up to N batches and stop
+
+**Outer Loop (run-until-empty):**
+```python
+batches_run = 0
+while True:
+    if batch_count and batches_run >= batch_count:
+        break
+
+    (batch_id, jobs) = tracker.get_new_batch(
+        state=step_config[""input_state""],
+        limit=step_config[""batch_size""],
+    )
+
+    if not jobs:
+        break  # No records left
+
+    try:
+        process_batch(jobs, batch_id, step_config)
+    finally:
+        tracker.clear_batch(batch_id)
+
+    batches_run += 1
+```
+
+**Two Processing Patterns:**
+
+**Pattern A — Batch-as-Prompt (check_job_list only):**
+
+Entire batch goes to one consult call. Caller maps array response back to individual jobs for save and transition.
+
+**Pattern B — Per-Job (evaluate_jd, score_get, score_do, score_like):**
+
+CLI iterates jobs in batch, calls the appropriate consult function per job, saves result, transitions state. For score_like, the runner also fetches the company record and ensures website_content is present (triggering Prep Company Culture Pages if needed).
+
+**CONSULT_CONFIG (step definitions):**
+
+Each CLI step is config-driven. Add to config.py:
+```python
+CONSULT_CONFIG = {
+    ""check_job_list"": {
+        ""input_state"": ""NEW"",
+        ""pass_state"": ""PASSED_JOBLIST"",
+        ""fail_state"": ""FAILED_JOBLIST"",
+        ""batch_size"": 10,
+        ""processing_pattern"": ""batch_as_prompt"",
+    },
+    ""evaluate_jd"": {
+        ""input_state"": ""ADDED_JD_SCRAPE"",
+        ""pass_state"": ""PASSED_JD"",
+        ""fail_state"": ""FAILED_JD"",
+        ""batch_size"": 10,
+        ""processing_pattern"": ""per_job"",
+    },
+    ""score_get"": {
+        ""input_state"": ""PASSED_JD"",
+        ""pass_state"": ""PASSED_GET"",
+        ""fail_state"": ""FAILED_GET"",
+        ""batch_size"": 10,
+        ""processing_pattern"": ""per_job"",
+        ""pass_threshold"": 0.6,
+    },
+    ""score_do"": {
+        ""input_state"": ""PASSED_GET"",
+        ""pass_state"": ""PASSED_DO"",
+        ""fail_state"": ""FAILED_DO"",
+        ""batch_size"": 10,
+        ""processing_pattern"": ""per_job"",
+        ""pass_threshold"": 0.6,
+    },
+    ""score_like"": {
+        ""input_state"": ""PASSED_DO"",
+        ""pass_state"": ""PASSED_LIKE"",
+        ""fail_state"": ""FAILED_LIKE"",
+        ""batch_size"": 10,
+        ""processing_pattern"": ""per_job"",
+        ""pass_threshold"": 0.6,
+        ""requires_company"": True,
+    },
+}
+```
+
+**CLI Scripts:**
+- e_ja_consult_job_list (Pattern A)
+- g_ja_consult_job_desc (Pattern B)
+- h_ja_consult_get (Pattern B)
+- i_ja_consult_do (Pattern B)
+- k_ja_consult_like (Pattern B, requires_company)
+
+**CLI Layer Rules (per ASTRAL_CODE_RULES):**
+- CLI imports core and utils only — never external, never data
+- CLI parses args, calls core, formats output — thin wrappers
+- Batch claim/release at CLI level
+- Suppress HTTP request logging at startup
+
+**Error Handling:**
+- AI returns success=False: transition to fail_state (not an exception)
+- Exception raised (network, API): log, skip job, continue batch
+- Batch always released in finally block
+- Failed jobs stay in current state for retry if exception prevented transition
+
+**Logging:**
+- Batch start: batch_id, state, jobs claimed
+- Per-job: astral_job_id, verdict/score, brief notes
+- Batch end: passed/failed/error counts
+- Loop end: total batches, total jobs processed
+
+**Dependencies:**
+- src/core/tracker.py (get_new_batch, save_job_data, transition_state, clear_batch)
+- src/core/consult.py (task functions)
+- CONSULT_CONFIG in config.py",Backlog,High,feature,Astral Consult,5
+"Prep Company Culture Pages","Collect curated website content for the LIKE evaluation. Before score_like runs, company_data must contain website_content. If missing, this feature coordinates the collection: AI analyst selects which pages to scrape from the company's nav links, gatekeeper scrapes them via Playwright, content is saved to the company record via Roster.
+
+**Acceptance Criteria:**
+
+**Trigger:**
+
+Called by the Consult batch runner when processing score_like jobs and the company record lacks website_content in company_data. Runs once per company — multiple jobs from the same company reuse cached content.
+
+```python
+company = database.get_company(job[""company""])
+if ""website_content"" not in company.get(""company_data"", {}):
+    await prep_company_culture_pages(company)
+```
+
+**Function Signature:**
+```python
+async def prep_company_culture_pages(company: Dict) -> None
+```
+
+**Orchestration (three calls):**
+
+**1. AI Analyst selects pages:**
+```python
+result = await do_task(
+    task_key=""select_culture_pages"",
+    live_content=json.dumps(company[""company_data""].get(""nav_links"", default_pages)),
+    index=company[""short_name""],
+)
+selected_pages = result[""parsed_response""][""selected_pages""]
+```
+
+The analyst picks from nav_links (captured by Roster during job page discovery) or falls back to default URL patterns (homepage, /about, /product, /services, /blog). Max pages config-driven (e.g. 5).
+
+Pages the analyst considers: Homepage, About Us, Mission/Values, Product/Services, Blog (first page only). Pages ignored: Careers, Contact, Legal, Privacy, Investors, Press.
+
+**2. Gatekeeper scrapes selected pages:**
+```python
+pages_content = []
+for url in selected_pages:
+    text = await playwright.scrape_visible_text(url)
+    pages_content.append({""url"": url, ""content"": text})
+```
+
+If individual pages fail (404, bot block), skip and continue with others.
+
+**3. Roster saves to company record:**
+```python
+roster.save_company_data(
+    short_name=company[""short_name""],
+    company_data={""website_content"": pages_content},
+)
+```
+
+Merge with existing company_data (don't clobber nav_links, parse_instructions, etc.).
+
+**Fallback Behavior:**
+- nav_links missing: use default URL patterns (homepage + common paths)
+- AI analyst task fails: scrape default pages without AI selection
+- All scrapes fail: log warning, store empty website_content, score_like runs with job_description only (degraded mode)
+
+**Config:**
+```python
+CONSULT_CONFIG = {
+    ""culture_pages_max"": 5,
+    ""culture_page_default_paths"": [""/about"", ""/product"", ""/services"", ""/blog""],
+}
+```
+
+**AGENT_CONFIG:**
+```python
+""select_culture_pages"": {
+    ""system_prompt"": ""200_grace_analyst.txt"",
+    ""task_prompt"": ""220_select_culture_pages.txt"",
+    ""cached_blocks"": [],
+    ""uncached_blocks"": [],
+    ""response_format"": ""json"",
+    ""context_format"": ""culture_pages_{index}"",
+    ""response_schema"": {
+        ""selected_pages"": {""type"": ""list"", ""required"": True},
+        ""reason"": {""type"": ""str"", ""required"": False},
+    },
+}
+```
+
+**Layer:** src/core/consult.py (orchestration calls anthropic, playwright, and roster)
+
+**Dependencies:**
+- src/external/anthropic.py (do_task for page selection)
+- src/external/playwright.py (scrape_visible_text)
+- src/core/roster.py (save_company_data)
+- Roster nav link capture (separate spin-off issue, graceful fallback if missing)",Backlog,High,feature,Astral Consult,3
+"Capture Nav Links During Job Page Discovery","During Roster's locate_job_page step, capture top-level site navigation links as a byproduct and store in company_data[""nav_links""]. Provides the menu of pages for the Consult LIKE culture page selection.
+
+**Acceptance Criteria:**
+
+**During locate_job_page processing:**
+- While navigating the company website, extract top-level nav links (header/footer navigation)
+- Store as ordered list in company_data[""nav_links""]
+- Includes link text and URL for each nav item
+
+**Data Shape:**
+```json
+{
+    ""nav_links"": [
+        {""text"": ""About"", ""url"": ""https://example.com/about""},
+        {""text"": ""Products"", ""url"": ""https://example.com/products""},
+        {""text"": ""Blog"", ""url"": ""https://example.com/blog""},
+        {""text"": ""Careers"", ""url"": ""https://example.com/careers""}
+    ]
+}
+```
+
+**Scope:**
+- Low-effort add-on to existing Playwright navigation in locate_job_page
+- Extract from header/footer nav elements during page load
+- Merge into company_data (don't clobber existing parse_instructions, etc.)
+- If extraction fails, log and continue — locate_job_page should not fail because of this
+
+**Consumer:** Prep Company Culture Pages (Astral Consult) uses nav_links to let AI analyst pick culture-relevant pages
+
+**Layer:** Touches src/external/playwright.py (extraction) and src/core/roster.py (save to company_data)",Backlog,Medium,feature,Astral Roster,2
+"Retrofit Batch-Count to Existing CLIs","Add batch-count parameter and run-until-empty loop to existing CLI scripts. Enables cron-friendly execution where a single invocation processes all available records.
+
+**Acceptance Criteria:**
+
+**CLI scripts to update:**
+- a_ja_prefilter
+- b_gk_locate_job_page
+- c_gk_parse_job_list
+- d_gk_gaze_job_lists
+
+**Behavior:**
+- --batch-count N: run up to N batches
+- No flag: run until no records left (default for cron)
+- --batch-count 1: run one batch (manual/testing, preserves current behavior)
+
+**Pattern:**
+Same outer loop as Consult Batch Runner:
+```python
+batches_run = 0
+while True:
+    if batch_count and batches_run >= batch_count:
+        break
+    (batch_id, entities) = get_new_batch(...)
+    if not entities:
+        break
+    try:
+        process(entities)
+    finally:
+        clear_batch(batch_id)
+    batches_run += 1
+```
+
+**Note:** Each CLI already has its own processing logic. This issue only adds the outer loop and CLI parameter — no changes to the processing internals.
+
+**Layer:** src/cli/",Backlog,Medium,feature,Astral Infrastructure,3
+"Add ADDED_JD_SCRAPE to Job State Machine","Add the ADDED_JD_SCRAPE state to JOB_STATES and update job_state_transitions in config.py. This state represents a job whose full description has been scraped by the gatekeeper (step f) and is ready for AI evaluation (step g).
+
+**Acceptance Criteria:**
+
+**JOB_STATES update:**
+```python
+JOB_STATES = {
+    ""NEW"": {""batch_criteria"": {""limit"": 10, ""sort_by"": ""updated_at""}},
+    ""PASSED_JOBLIST"": {""batch_criteria"": {""limit"": 10, ""sort_by"": ""updated_at""}},
+    ""FAILED_JOBLIST"": {},
+    ""ADDED_JD_SCRAPE"": {""batch_criteria"": {""limit"": 10, ""sort_by"": ""updated_at""}},
+    ""FAILED_TECHNICAL"": {},
+    ""PASSED_JD"": {""batch_criteria"": {""limit"": 10, ""sort_by"": ""updated_at""}},
+    ""FAILED_JD"": {},
+    ...
+}
+```
+
+**job_state_transitions update:**
+```python
+(""PASSED_JOBLIST"", ""ADDED_JD_SCRAPE""),   # gatekeeper scrape success
+(""PASSED_JOBLIST"", ""FAILED_TECHNICAL""),   # gatekeeper scrape failure
+(""ADDED_JD_SCRAPE"", ""PASSED_JD""),         # AI evaluation pass
+(""ADDED_JD_SCRAPE"", ""FAILED_JD""),         # AI evaluation fail
+```
+
+**Removes:**
+- (""PASSED_JOBLIST"", ""PASSED_JD"") — no longer a direct transition
+- (""PASSED_JOBLIST"", ""FAILED_JD"") — no longer a direct transition
+
+**Context:**
+Previously PASSED_JOBLIST to PASSED_JD was a single step. With the gatekeeper scrape (step f) separated from AI evaluation (step g), we need an intermediate state to track which jobs have been scraped and are ready for JD evaluation vs. still waiting for scrape.
+
+**Layer:** src/utils/config.py",Backlog,High,feature,Astral Infrastructure,1
+"Rename AGENT_CONFIG Task Keys to snake_case","Rename all camelCase task keys in AGENT_CONFIG to snake_case per coding standards. Update all references in core and CLI code.
+
+**Acceptance Criteria:**
+
+**Renames:**
+- checkJobList to check_job_list
+- scoreGET to score_get
+- scoreDO to score_do
+- scoreLIKE to score_like
+- prefilter_company: already snake_case, no change
+- find_job_site: already snake_case, no change
+- vet_job_list: already snake_case, no change
+- parse_job_list: already snake_case, no change
+
+**New tasks (already snake_case):**
+- evaluate_jd
+- select_culture_pages
+
+**Update all references:**
+- AGENT_CONFIG keys in config.py
+- do_task(task_key=...) calls in core files
+- Any CLI or test code referencing task keys
+
+**Layer:** src/utils/config.py + all referencing files",Backlog,Medium,feature,Astral Infrastructure,2

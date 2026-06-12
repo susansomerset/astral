@@ -1,0 +1,72 @@
+Title,Description,State,Priority,Labels,Project,Estimate
+Per-Agent Model Configuration,"Add model, temperature, and max_tokens to the agent record so each agent carries its own API call parameters. Remove the api block from ASTRAL_CONFIG entirely — these settings no longer belong in code.
+
+**Acceptance Criteria:**
+
+**config.py Changes:**
+- Remove the `api` block from ASTRAL_CONFIG entirely
+- Add a top-level `models` list to config.py with the following shape per entry:
+  - `model_label` — human-readable name (e.g. ""Haiku"", ""Sonnet"", ""Opus"")
+  - `model_code` — Anthropic API string (e.g. `claude-haiku-4-5-20251001`)
+  - `cpm_input` — cost per million input tokens (float)
+  - `cpm_output` — cost per million output tokens (float)
+  - `default_temperature` — sensible default for this model (float)
+  - `default_max_tokens` — sensible default for this model (int)
+- Seed with current Haiku, Sonnet, and Opus models and their published pricing
+
+**database.py / agent Table Changes:**
+- ALTER agent table to add three columns:
+  - `model_code` — TEXT (FK by convention to models list in config)
+  - `temperature` — REAL
+  - `max_tokens` — INTEGER
+- `get_agent()` returns all three new fields alongside existing fields
+- Schema migration adds columns to existing databases idempotently
+
+**cost_calculator.py Changes:**
+- Remove hardcoded Sonnet 4.5 pricing constants
+- `calculate_cost_with_cache(usage, model_code)` — looks up cpm_input and cpm_output from config models list by model_code
+- `calculate_cost(usage, model_code)` — same, simple variant
+- Raises ValueError if model_code not found in config
+
+**Manage Agents Screen (UI — Admin > Manage Agents):**
+- Add model selector to agent edit form — dropdown populated from config models list
+- On model selection, pre-populate temperature and max_tokens from config defaults (editable)
+- Display current model, temperature, max_tokens in agent list columns
+- Add delete agent action to list (row action: Delete → confirmation modal → DELETE endpoint)
+- Save writes model_code, temperature, max_tokens back to agent record
+
+**API Endpoints:**
+- GET /api/admin/models — returns config models list (for dropdown population)
+- PUT /api/admin/agents/:agent_id — updated to accept and save model_code, temperature, max_tokens
+- DELETE /api/admin/agents/:agent_id — delete agent record
+
+**Notes:**
+- No fallback model anywhere — if an agent record is missing model_code the system should surface an error, not silently default
+- Chuckles to seed existing agent records with appropriate model_code, temperature, max_tokens as part of migration
+
+**Database:**
+- agent table: ALTER to add model_code, temperature, max_tokens columns
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1",Backlog,High,enhancement,Astral Administrator,5
+Consult Uses Agent Model,"Update consult.py and anthropic.py so that API call parameters (model, temperature, max_tokens) flow from the agent record rather than global config. The api block is being removed from ASTRAL_CONFIG — callers must supply all parameters explicitly or the system hard-fails.
+
+**Acceptance Criteria:**
+
+**consult.py Changes:**
+- When fetching the agent record for a task, read `model_code`, `temperature`, and `max_tokens` from the agent row
+- Pass all three explicitly to `do_task` (or the underlying `_fetch_response`) as named parameters
+- Raise a clear ValueError if any of the three are missing or None on the agent record — no silent fallback
+
+**anthropic.py Changes:**
+- `_fetch_response` requires `model`, `temperature`, and `max_tokens` as explicit parameters — no defaults, no fallback to config
+- Remove all references to `ASTRAL_CONFIG['api']`
+- Hard crash (raise ValueError) if any of the three are not provided by the caller
+- `calculate_cost_with_cache` call updated to pass `model_code` per the updated cost_calculator.py signature
+
+**Notes:**
+- This issue depends on: Per-Agent Model Configuration (Astral Admin)
+- The intent is zero tolerance for misconfiguration — a mis-configured agent should fail loudly at runtime, not silently use a wrong or expensive model
+- Chuckles to verify all callers of do_task / _fetch_response after this change and confirm no other callers are broken
+
+**Database:**
+- No schema changes in this issue
+- database.py module docstring updated per ASTRAL_CODE_RULES 1.1 if touched",Backlog,High,enhancement,Astral Consult,3

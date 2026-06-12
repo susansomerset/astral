@@ -1,0 +1,128 @@
+Parent,Title,Description,State,Priority,Labels,Project,Estimate
+"Evaluate Job List","Sub: AGENT_CONFIG qualify_job_listings task","**Scope:** Rename AGENT_CONFIG task key check_job_list to qualify_job_listings. Update task_prompt to ja_qualify_job_listings.txt; cached block to ja_qualify_job_listings_instructions.txt. Update response_schema to new shape: {jobs: [{company_job_id, job_title, job_link, grades: [...], reason, ...}]}; each job has grades array (dealbreaker assessments); reason has enum constraint; items_schema for per-item validation of jobs array. Ensure response_format is json.
+
+**Constraints:** No danny_notes or Danny references in schema or code. reason must be enum (valid values defined in ja_qualify_job_listings_instructions.txt). grades is required list per job.
+
+**Layer:** src/utils/config.py (AGENT_CONFIG[""tasks""][""qualify_job_listings""])
+
+**Ref:** AST-133 plan Sub 1; ASTRAL_CODE_RULES 2.1.",Backlog,High,subissue,Astral Consult,2
+"Evaluate Job List","Sub: Batch size constraint and CONSULT_CONFIG","**Scope:** Add CONSULT_CONFIG[""qualify_job_listings""] to config.py with: batch_size (e.g. 10), pass_state (""PASSED_JOBLIST""), fail_state (""FAILED_JOBLIST""). CLI only reads batch_size when claiming batch; consult never does. render_verdict reads pass_state and fail_state to derive to_state from grades. qualify_job_listings is the only task that sends whole batch to one do_task call (vs per-job iteration).
+
+**Constraints:** No magic numbers (ASTRAL_CODE_RULES 1.4). All behavior-driving values in config.
+
+**Layer:** src/utils/config.py (new CONSULT_CONFIG block)
+
+**Ref:** AST-133 plan Sub 2; ASTRAL_CODE_RULES 1.4, 2.1.",Backlog,High,subissue,Astral Consult,1
+"Evaluate Job List","Sub: Tracker save_job","**Scope:** New tracker function save_job(astral_job_id, company, company_job_id, job_title, job_link, metadata=None). Updates job table columns (company_job_id, job_title, job_link) and merges optional metadata dict into job_data JSON blob (keys like salary_range, location, industry — omit when not stated). Consult calls save_job and transition_state separately (no composite function). transition_state already exists in tracker. Database layer needs update_job or similar to set top-level columns.
+
+**Constraints:** Batch job shape is {astral_job_id, company, job_data: {raw_job_listing: ""<thumbprint>""}}.
+
+**Layer:** src/core/tracker.py, src/data/database.py
+
+**Ref:** AST-133 plan Sub 3.",Backlog,High,subissue,Astral Consult,2
+"Evaluate Job List","Sub: render_verdict","**Scope:** New consult function render_verdict(task_key: str, grades: List[str]) -> str. Receives task_key and array of grades (dealbreaker assessments, e.g. [""PASS"", ""PASS"", ""F""]). Config-driven: reads CONSULT_CONFIG[task_key][""pass_state""] and [""fail_state""]. Logic (for now): if any grade is ""F"" or fail, return fail_state; else return pass_state. Extensible for more sophisticated rules (weighted grades, thresholds, etc.). qualify_job_listings and future consult tasks call this to derive to_state from parsed response.
+
+**Constraints:** Must read from CONSULT_CONFIG, not hardcode states.
+
+**Layer:** src/core/consult.py, src/utils/config.py (reads CONSULT_CONFIG)
+
+**Ref:** AST-133 plan Sub 4.",Backlog,High,subissue,Astral Consult,1
+"Evaluate Job List","Sub: qualify_job_listings core function","**Scope:** Thick core function async def qualify_job_listings(batch_id: str, jobs: List[Dict]) -> Dict. (1) assemble_raw_job_listings(jobs) pulls job_data[""raw_job_listing""] per job, concatenates with separators. (2) Calls do_task(task_key=""qualify_job_listings"", live_content=..., index=f""qualify_batch_{batch_id}""). (3) Maps parsed response jobs to input jobs by index. (4) For each job: calls render_verdict(task_key, grades) to get to_state; calls tracker.save_job(astral_job_id, company, company_job_id, job_title, job_link, metadata); calls tracker.transition_state([astral_job_id], to_state). (5) Persists agent_response in agent_responses table. (6) Returns verdict counts summary {passed, failed, total} so CLI can validate passed+failed==total==len(jobs) and pretty-print stats.
+
+**Constraints:** Consult owns mapping verdict to state, saving, and transitioning. CLI only calls qualify_job_listings(batch_id, jobs) and logs stats. No danny_notes.
+
+**Layer:** src/core/consult.py
+
+**Ref:** AST-133 plan Sub 5. Depends on Sub 1 (AGENT_CONFIG), Sub 3 (save_job), Sub 4 (render_verdict).",Backlog,High,subissue,Astral Consult,3
+"Evaluate Job List","Sub: AI response shape and rubric","**Scope:** Update ja_qualify_job_listings_instructions.txt with new response shape: {jobs: [{company_job_id, job_title, job_link, grades: [""PASS"",""PASS"",""F""], reason: <enum>, ...}]}. First 3 job keys REQUIRED (company_job_id, job_title, job_link). grades is required array of dealbreaker assessments (PASS/FAIL per element). reason is ENUM only (not natural language); valid values MUST be listed in instructions file (e.g. DB_LOCATION_HYBRID, DB_SALARY, DB_ROLE_TYPE, REMOTE). Add EXTRACT METADATA section with recommended snake_case job_data key names (salary_range, location, industry, remote_policy, role_level, company_size, employment_type); omit key when not stated in listing.
+
+**Constraints:** NO danny_notes, NO Danny references in instructions, schema, or code. Rubric: each dealbreaker element gets PASS/FAIL; agent returns array; fail job if even one fail. Order of jobs in response must match order of input raw_job_listings. State machine: NEW to PASSED_JOBLIST or FAILED_JOBLIST.
+
+**Layer:** data/agents/content/ja_qualify_job_listings_instructions.txt, src/utils/config.py (response_schema)
+
+**Ref:** AST-133 plan Sub 6. Depends on Sub 1 (schema).",Backlog,High,subissue,Astral Consult,2
+"Evaluate Job List","Sub: do_task items_schema validation","**Scope:** Extend _validate_response_schema in anthropic.py to support per-item validation for list fields. Schema can specify items_schema: {...} for a list field; each element validated against that sub-schema. For qualify_job_listings: jobs has items_schema requiring company_job_id (str, required), job_title (str, required), job_link (str, required), grades (list, required); reason (str, enum) validated when present. Ensures anthropic never passes sloppy natural language or malformed items to consult — parse/schema failures always return {success: False, error: ""...""}.
+
+**Constraints:** Consult must never receive raw unstructured text when success=True. Existing top-level validation unchanged; items_schema is additive.
+
+**Layer:** src/external/anthropic.py (_validate_response_schema)
+
+**Ref:** AST-133 plan Sub 7. Depends on Sub 1 (response_schema with items_schema).",Backlog,High,subissue,Astral Consult,2
+"Evaluate Job Description","Sub: evaluate_jd signature and live content","**Scope:** async def evaluate_jd(job: Dict) -> Dict; build_jd_content from job_data[""job_description""] and job_data[""raw_job_listing""]; do_task(task_key=""evaluate_jd"", ...).
+
+**Layer:** src/core/consult.py
+
+**Ref:** consult-features Function Signature; Live Content Assembly.",Backlog,High,subissue,Astral Consult,2
+"Evaluate Job Description","Sub: Response schema (pass/fail) and failure reason categories","**Scope:** Pass: verdict, notes, company_tenword, job_summary; Fail: verdict, reason, notes. Enumerate exact failure reason strings per 102 rubric for pattern analysis.
+
+**Ref:** consult-features AI Response; Failure Reason Categories.",Backlog,High,subissue,Astral Consult,2
+"Evaluate Job Description","Sub: Caller responsibilities and state machine","**Scope:** Save to job_data; PASS to PASSED_JD, FAIL to FAILED_JD; input state ADDED_JD_SCRAPE.
+
+**Ref:** consult-features Caller Responsibilities; State Machine.",Backlog,High,subissue,Astral Consult,1
+"Evaluate Job Description","Sub: AGENT_CONFIG evaluate_jd task","**Scope:** New task evaluate_jd; 102_JD_RUBRIC; response_schema and response_format.
+
+**Ref:** consult-features AGENT_CONFIG.",Backlog,Medium,subissue,Astral Consult,1
+"Score Jobs (GET/DO/LIKE)","Sub: score_get and score_do uniform pattern","**Scope:** Signatures; live_content = job[""job_data""][""job_description""]; do_task(score_get) / do_task(score_do); same structure, different task_key.
+
+**Ref:** consult-features Uniform Pattern.",Backlog,High,subissue,Astral Consult,2
+"Score Jobs (GET/DO/LIKE)","Sub: score_like with company context","**Scope:** score_like(job, company); live_content = job_description + company_data[""website_content""]; raise if website_content missing.
+
+**Ref:** consult-features score_like; Prep Company Culture Pages dependency.",Backlog,High,subissue,Astral Consult,2
+"Score Jobs (GET/DO/LIKE)","Sub: Grade-to-score calculation in consult","**Scope:** Parsed grades to numeric score (config-driven scale); weighted/unweighted average; save get_score, do_score, like_score to job_data. Logic in consult.py, not prompt.
+
+**Ref:** consult-features Grade-to-Score Calculation.",Backlog,High,subissue,Astral Consult,3
+"Score Jobs (GET/DO/LIKE)","Sub: Pass threshold and state transitions","**Scope:** CONSULT_CONFIG pass_threshold per task; caller compares score to threshold; state table (PASSED_JD to PASSED_GET/FAILED_GET, etc.).
+
+**Ref:** consult-features Score Threshold; State Machine.",Backlog,High,subissue,Astral Consult,1
+"Score Jobs (GET/DO/LIKE)","Sub: AGENT_CONFIG score task renames and schema","**Scope:** scoreGET to score_get, scoreDO to score_do, scoreLIKE to score_like; response_schema for grade structure; response_format json.
+
+**Ref:** consult-features AGENT_CONFIG.",Backlog,Medium,subissue,Astral Consult,2
+"Consult Batch Runner","Sub: batch-count CLI parameter and outer loop","**Scope:** --batch-count N (default: no limit); while True with get_new_batch; break when batch_count reached or no jobs.
+
+**Ref:** consult-features CLI Batch-Count; Outer Loop.",Backlog,High,subissue,Astral Consult,2
+"Consult Batch Runner","Sub: CONSULT_CONFIG step definitions","**Scope:** Add CONSULT_CONFIG entries for check_job_list, evaluate_jd, score_get, score_do, score_like (input_state, pass_state, fail_state, batch_size, processing_pattern, pass_threshold where needed, requires_company for score_like).
+
+**Ref:** consult-features CONSULT_CONFIG.",Backlog,High,subissue,Astral Consult,3
+"Consult Batch Runner","Sub: Pattern A — batch-as-prompt (check_job_list)","**Scope:** One consult call per batch; map array response back to jobs; save and transition per job.
+
+**Ref:** consult-features Pattern A.",Backlog,High,subissue,Astral Consult,2
+"Consult Batch Runner","Sub: Pattern B — per-job (evaluate_jd, score_get, score_do, score_like)","**Scope:** Iterate batch; call consult function per job; save result; transition state; for score_like fetch company and ensure website_content (trigger Prep if needed).
+
+**Ref:** consult-features Pattern B.",Backlog,High,subissue,Astral Consult,3
+"Consult Batch Runner","Sub: CLI scripts and layer rules","**Scope:** e_ja_consult_job_list, g_ja_consult_job_desc, h_ja_consult_get, i_ja_consult_do, k_ja_consult_like; CLI imports core and utils only; batch claim/release at CLI; suppress HTTP logging.
+
+**Ref:** consult-features CLI Scripts; ASTRAL_CODE_RULES 3.2 CLI.",Backlog,High,subissue,Astral Consult,2
+"Consult Batch Runner","Sub: Error handling and logging","**Scope:** success=False to fail_state; exceptions log, skip job, continue; finally clear_batch; batch/job/loop logging as in feature.
+
+**Ref:** consult-features Error Handling; Logging.",Backlog,Medium,subissue,Astral Consult,2
+"Prep Company Culture Pages","Sub: Trigger and prep_company_culture_pages signature","**Scope:** Called when score_like job's company lacks company_data[""website_content""]; async def prep_company_culture_pages(company: Dict) -> None.
+
+**Ref:** consult-features Trigger; Function Signature.",Backlog,High,subissue,Astral Consult,1
+"Prep Company Culture Pages","Sub: Step 1 — AI select_culture_pages","**Scope:** do_task(select_culture_pages) with nav_links or default paths; max pages config; selected_pages from parsed_response. Pages to consider/ignore as in feature.
+
+**Ref:** consult-features Orchestration 1; AGENT_CONFIG.",Backlog,High,subissue,Astral Consult,2
+"Prep Company Culture Pages","Sub: Step 2 — Gatekeeper scrape selected pages","**Scope:** For each URL, playwright scrape_visible_text; collect {url, content}; skip failed pages.
+
+**Ref:** consult-features Orchestration 2.",Backlog,High,subissue,Astral Consult,2
+"Prep Company Culture Pages","Sub: Step 3 — Roster save website_content","**Scope:** roster.save_company_data(website_content=pages_content); merge with existing company_data.
+
+**Ref:** consult-features Orchestration 3.",Backlog,High,subissue,Astral Consult,1
+"Prep Company Culture Pages","Sub: Fallbacks and config","**Scope:** nav_links missing to default paths; AI fails to scrape defaults; all scrapes fail to empty website_content, degraded score_like. culture_pages_max, culture_page_default_paths.
+
+**Ref:** consult-features Fallback; Config.",Backlog,Medium,subissue,Astral Consult,1
+"Capture Nav Links During Job Page Discovery","Sub: Extract nav links during locate_job_page","**Scope:** While navigating, extract header/footer nav; ordered list of {text, url}.
+
+**Ref:** consult-features During locate_job_page processing.",Backlog,High,subissue,Astral Roster,1
+"Capture Nav Links During Job Page Discovery","Sub: Store in company_data and merge","**Scope:** company_data[""nav_links""]; merge, don't clobber parse_instructions etc.; extraction failure to log and continue.
+
+**Ref:** consult-features Data Shape; Scope; Consumer.",Backlog,High,subissue,Astral Roster,1
+"Capture Nav Links During Job Page Discovery","Sub: Generic get_company_data and fetch-on-missing for nav_links (coat check)","**Scope:** roster.get_company_data(company, key); key from config; case-style handling so for nav_links key, if missing, fetch via extract_site_page_list, enumerate_array, merge-save, return. Config for key name. Extensible for future self-heal keys. **Ref:** plan coat-check pattern.",Backlog,High,subissue,Astral Roster,2
+"Retrofit Batch-Count to Existing CLIs","Sub: Add batch-count and run-until-empty to prefilter and gatekeeper CLIs","**Scope:** a_ja_prefilter, b_gk_locate_job_page, c_gk_parse_job_list, d_gk_gaze_job_lists: --batch-count N, same outer loop as Consult Batch Runner; no change to processing internals.
+
+**Ref:** consult-features Behavior; Pattern; ASTRAL_CODE_RULES 2.4.",Backlog,Medium,subissue,Astral Infrastructure,3
+"Add ADDED_JD_SCRAPE to Job State Machine","Sub: JOB_STATES and job_state_transitions","**Scope:** Add ADDED_JD_SCRAPE with batch_criteria; add (PASSED_JOBLIST, ADDED_JD_SCRAPE), (PASSED_JOBLIST, FAILED_TECHNICAL), (ADDED_JD_SCRAPE, PASSED_JD), (ADDED_JD_SCRAPE, FAILED_JD); remove (PASSED_JOBLIST, PASSED_JD) and (PASSED_JOBLIST, FAILED_JD).
+
+**Ref:** consult-features JOB_STATES update; job_state_transitions; Context.",Backlog,High,subissue,Astral Infrastructure,1
+"Rename AGENT_CONFIG Task Keys to snake_case","Sub: Rename task keys in config and update references","**Scope:** checkJobList to check_job_list, scoreGET to score_get, scoreDO to score_do, scoreLIKE to score_like; leave prefilter_company, find_job_site, vet_job_list, parse_job_list; update do_task(task_key=...) and any CLI/test refs.
+
+**Ref:** consult-features Renames; ASTRAL_CODE_RULES 2.1.",Backlog,Medium,subissue,Astral Infrastructure,2
