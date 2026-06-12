@@ -125,6 +125,34 @@ class TestCandidateRoutes:
     def test_list_requires_auth(self, candidate_client: FlaskClient) -> None:
         assert candidate_client.get("/api/candidates").status_code == 401
 
+    def test_non_admin_cannot_create_delete_or_override_state(
+        self,
+        candidate_client: FlaskClient,
+        non_admin_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(candidate_mod, "initiate_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod, "core_delete_candidate", MagicMock())
+        assert (
+            candidate_client.post(
+                "/api/candidates", json={"astral_candidate_id": "cand-x"}, headers=non_admin_headers
+            ).status_code
+            == 403
+        )
+        assert candidate_client.delete("/api/candidates/cand-x", headers=non_admin_headers).status_code == 403
+        resp = candidate_client.put(
+            "/api/candidates/cand-x/data",
+            json={"state": "LIVE_PROMPTS"},
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+        key_resp = candidate_client.put(
+            "/api/candidates/cand-x/data",
+            json={"api_key": "secret"},
+            headers=non_admin_headers,
+        )
+        assert key_resp.status_code == 403
+
     def test_list_candidates_and_states(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod, "core_list_candidates", lambda include_deleted=False: [{"candidate_api_key": "x"}] if include_deleted else [])
         assert candidate_client.get("/api/candidates", headers=auth_headers).get_json() == []
@@ -169,6 +197,10 @@ class TestCandidateRoutes:
         monkeypatch.setattr(candidate_mod, "clear_candidate_api_key", clear_key)
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod, "resolve_resume_structure", lambda cd: {"sections": {}}, raising=False)
+        monkeypatch.setattr(candidate_mod, "enabled_resume_structure_sections", lambda resolved: [], raising=False)
+        monkeypatch.setattr(candidate_mod, "filter_base_resume_to_structure", lambda base, ids: base, raising=False)
+        monkeypatch.setattr(candidate_mod, "normalize_resume_structure", lambda merged: merged, raising=False)
         resp = candidate_client.put(
             "/api/candidates/cand-1/data",
             json={"state": "LIVE_PROMPTS", "api_key": "  new-key  ", "artifacts": {"joblist_rubric": []}, "note": "x"},

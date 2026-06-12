@@ -4,9 +4,9 @@ import base64
 import binascii
 import struct
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
-from ui.auth import require_auth
+from ui.auth import require_auth, require_admin
 from src.core.candidate import (
     apply_company_search_terms_save,
     clear_candidate_api_key,
@@ -110,7 +110,7 @@ def get_candidate_detail(candidate_id):
 
 
 @candidate_bp.route("", methods=["POST"])
-@require_auth
+@require_admin
 def create_candidate():
     body = request.get_json(silent=True) or {}
     candidate_id = body.get("astral_candidate_id", "").strip().lower()
@@ -136,6 +136,8 @@ def update_candidate_data(candidate_id):
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
+        if not g.user.get("is_admin") and (state_override is not None or api_key is not None):
+            return jsonify({"error": "Admin access required"}), 403
         if body:
             arts = body.get("artifacts")
             if isinstance(arts, dict):
@@ -208,7 +210,7 @@ def sync_company_search_terms(candidate_id):
 
 
 @candidate_bp.route("/<candidate_id>", methods=["DELETE"])
-@require_auth
+@require_admin
 def delete_candidate(candidate_id):
     try:
         core_delete_candidate(candidate_id)
