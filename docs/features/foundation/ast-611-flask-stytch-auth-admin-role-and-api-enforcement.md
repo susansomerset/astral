@@ -299,3 +299,38 @@ No `conf-!!-NONE` conflicts.
 - Stage 3: `api_candidate.py` admin guards, `api_system.py` nav filter — `c4fec002`.
 
 **Betty:** QA manifest in **QA test specification** above (`TestRequireAuth`, `TestRequireAdmin`).
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-609/AST-611-flask-stytch-auth-and-admin` @ `1b186aa4` (1264 lines, 21 files — cumulative with AST-610 dependency not yet on `origin/dev`; AST-611 product commits touch 6 modules only).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 delivered; Stage 4 compile/tests satisfied via Betty manifest |
+| §3.3 layers | `auth_bootstrap.py` wires Stytch in core; `auth.py` / API modules import utils only; no ui→external |
+| §2.9 shape | `@require_auth` sets `g.user` from `validate_bearer_token`; `/api/me` returns full dict including `is_admin` |
+| Admin enforcement | 39 `@require_admin` Bearer routes in `api_admin.py`; 3 `@require_ip` script routes unchanged |
+| Candidate guards | create/delete `@require_admin`; PUT blocks non-admin `state`/`api_key` overrides |
+| Nav filter | `_nav_config_for_user` strips Admin group for non-admin on authenticated `/api/nav_config` |
+| IP cutover | `@require_auth` no longer checks IP; `serve_react` always serves static assets |
+| Boundaries | No edits to `stytch.py` / `utils/auth.py` in AST-611 commits; AST-612 React scope untouched |
+| Tests | Betty manifest covers decorators, `/api/me`, nav filter, candidate admin guards, SPA IP removal |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now or discuss items |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Proceed to `resolve-child` (no code changes required) | Hedy |
+
+### Advisory (non-blocking)
+
+- **`docs/ASTRAL_CODE_RULES.md` §2.9:** Still documents Auth0 stub wording; update when parent AST-609 lands on `origin/dev` (plan optional Radia pass).
+- **Diff scope:** Three-dot diff vs `origin/dev` includes AST-610 files because sibling dependency is stacked on the sub branch — expected until ftr merge.
