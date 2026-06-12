@@ -121,6 +121,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | --- | --- | --- |
 | `src/utils/config.py` | `tests/component/utils/test_config.py` | yes |
 | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py` | yes |
+| `src/utils/auth.py` | `tests/component/utils/test_auth.py` | no |
 
 ## 7.13b Component coverage map (external)
 
@@ -129,6 +130,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | `src/external/anthropic.py` | `tests/component/external/test_anthropic.py` | yes |
 | `src/external/gmail.py` | `tests/component/external/test_gmail.py` | yes |
 | `src/external/playwright.py` | `tests/component/external/test_playwright.py` | yes |
+| `src/external/stytch.py` | `tests/component/external/test_stytch.py` | no |
 
 **AST-489:** `src/external/google_cse.py` — `tests/component/external/test_google_cse.py` (HTTP mocked; no branch lock). Spike `scripts/spikes/ast489_google_cse_company_search_spike.py` is console-only / live credentials — not a component-test target.
 
@@ -1197,6 +1199,24 @@ cd src/ui/frontend && npm run test:component -- \
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
   tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job
+```
+
+## 7.13zza Stytch auth client and swappable utils (**AST-610**, parent **AST-609**)
+
+**AST-609 (parent):** Swap-friendly authentication — Stytch B2C session JWT in **`src/external/stytch.py`**, provider-agnostic **`src/utils/auth.py`** with registerable **`TokenAuthenticator`** (AST-611 wires **`register_token_authenticator(stytch.authenticate_session_jwt)`**). **`AUTH_CONFIG`** admin lists from env. No Flask/React changes this child.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-610** | Stytch JWT validate + user dict mapping; **`normalize_user`** / **`is_admin`** / **`validate_bearer_token`** | `src/external/stytch.py`, `src/utils/auth.py`, `src/utils/config.py` (`AUTH_CONFIG`) | `tests/component/external/test_stytch.py::TestAuthenticateSessionJwt`; `tests/component/utils/test_auth.py::{TestIsAdmin,TestNormalizeUser,TestValidateBearerToken}` |
+
+**AST-610** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_stytch.py::TestAuthenticateSessionJwt \
+  tests/component/utils/test_auth.py::TestIsAdmin \
+  tests/component/utils/test_auth.py::TestNormalizeUser \
+  tests/component/utils/test_auth.py::TestValidateBearerToken
 ```
 
 ## Appendix A — Run component tests
