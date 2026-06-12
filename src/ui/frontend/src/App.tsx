@@ -1,6 +1,7 @@
 import { BrowserRouter, useRoutes } from "react-router-dom"
-import { CandidateProvider } from "./contexts/CandidateContext"
-import { StateUiProvider } from "./contexts/StateUiContext"
+import { StytchProvider } from "@stytch/react"
+import { AuthProvider } from "./contexts/AuthContext"
+import { stytchClient } from "./lib/stytchClient"
 import routes from "./routes"
 import "./App.css"
 
@@ -11,11 +12,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <StateUiProvider>
-        <CandidateProvider>
+      <StytchProvider stytch={stytchClient}>
+        <AuthProvider>
           <AppRoutes />
-        </CandidateProvider>
-      </StateUiProvider>
+        </AuthProvider>
+      </StytchProvider>
     </BrowserRouter>
   )
 }

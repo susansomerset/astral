@@ -335,3 +335,9 @@ Mock `@stytch/react` in component tests (`vi.mock("@stytch/react")`) — do not 
 | §1.3 DRY | Single `setAuthTokenGetter` + `useAuth` — no duplicate admin checks beyond route + selector |
 
 No `conf-!!-NONE` conflicts identified.
+
+## Review (Radia)
+
+- **Built:** pending
+- **Branch:** `sub/AST-609/AST-612-react-login-and-admin-ui`
+- **Scope delivered:** Stytch login gate, Bearer `session_jwt` on `api()`, `/api/me` admin gating, `AdminRoute` on `/admin/*`, non-admin candidate selector lock.

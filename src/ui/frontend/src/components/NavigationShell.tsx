@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet } from "react-router-dom"
 import { UserPromptProvider } from "./UserPrompt"
+import { useAuth } from "../contexts/AuthContext"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import astralLogo from "../assets/astral_logo.png"
@@ -29,6 +30,7 @@ export default function NavigationShell() {
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const { isAdmin } = useAuth()
   const { candidates, selectedId, setSelectedId } = useCandidate()
 
   useEffect(() => {
@@ -74,7 +76,8 @@ export default function NavigationShell() {
           <div className="sidebar-candidate-select">
             <select
               value={selectedId ?? ""}
-              onChange={e => setSelectedId(e.target.value)}
+              disabled={!isAdmin}
+              onChange={e => isAdmin && setSelectedId(e.target.value)}
             >
               {candidates.map(c => {
                 const cd = c.candidate_data || {}

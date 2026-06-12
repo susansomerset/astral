@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import api from "../lib/api"
 import { setFmtTimezone } from "../lib/fmt"
+import { useAuth } from "./AuthContext"
 
 interface CandidateInfo {
   astral_candidate_id: string
@@ -23,12 +24,14 @@ const CandidateContext = createContext<CandidateCtx>({
 const STORAGE_KEY = "astral_selected_candidate"
 
 export function CandidateProvider({ children }: { children: ReactNode }) {
+  const { isAdmin } = useAuth()
   const [candidates, setCandidates] = useState<CandidateInfo[]>([])
   const [selectedId, _setSelectedId] = useState<string | null>(
     () => localStorage.getItem(STORAGE_KEY)
   )
 
   function setSelectedId(id: string) {
+    if (!isAdmin) return
     _setSelectedId(id)
     localStorage.setItem(STORAGE_KEY, id)
   }

@@ -1,7 +1,12 @@
 // SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
 //       If you add/remove/rename a route, update NAV_CONFIG to match.
-import { Navigate, type RouteObject } from "react-router-dom"
+import { Navigate, Outlet, type RouteObject } from "react-router-dom"
+import AdminRoute from "./components/AdminRoute"
 import NavigationShell from "./components/NavigationShell"
+import RequireAuth from "./components/RequireAuth"
+import { CandidateProvider } from "./contexts/CandidateContext"
+import { StateUiProvider } from "./contexts/StateUiContext"
+import Authenticate from "./pages/Authenticate"
 
 // --- Jobs ---
 import Recommended from "./pages/JobsRecommended"
@@ -49,57 +54,72 @@ import AnthropicAdHoc from "./pages/AdminAnthropicAdHoc"
 import DataManagement from "./pages/AdminDataManagement"
 
 const routes: RouteObject[] = [
+  { path: "authenticate", element: <Authenticate /> },
   {
-    element: <NavigationShell />,
+    element: (
+      <RequireAuth>
+        <StateUiProvider>
+          <CandidateProvider>
+            <Outlet />
+          </CandidateProvider>
+        </StateUiProvider>
+      </RequireAuth>
+    ),
     children: [
-      { index: true, element: <Navigate to="/jobs/recommended" replace /> },
+      {
+        element: <NavigationShell />,
+        children: [
+          { index: true, element: <Navigate to="/jobs/recommended" replace /> },
 
-      // Jobs
-      { path: "jobs/in_review", element: <InReview /> },
-      { path: "jobs/skipped", element: <Skipped /> },
-      { path: "jobs/recommended", element: <Recommended /> },
-      { path: "jobs/applied", element: <Applied /> },
-      { path: "jobs/responded", element: <Responded /> },
+          // Jobs
+          { path: "jobs/in_review", element: <InReview /> },
+          { path: "jobs/skipped", element: <Skipped /> },
+          { path: "jobs/recommended", element: <Recommended /> },
+          { path: "jobs/applied", element: <Applied /> },
+          { path: "jobs/responded", element: <Responded /> },
 
-      // Companies
-      { path: "companies/watch_list", element: <WatchList /> },
-      { path: "companies/new_list", element: <NewList /> },
-      { path: "companies/inactive_list", element: <InactiveList /> },
-      { path: "companies/ignored", element: <Ignored /> },
-      { path: "companies/watch_history", element: <WatchHistory /> },
+          // Companies
+          { path: "companies/watch_list", element: <WatchList /> },
+          { path: "companies/new_list", element: <NewList /> },
+          { path: "companies/inactive_list", element: <InactiveList /> },
+          { path: "companies/ignored", element: <Ignored /> },
+          { path: "companies/watch_history", element: <WatchHistory /> },
 
-      // Artifacts
-      { path: "artifacts/base_resume_content", element: <BaseResumeContent /> },
-      { path: "artifacts/company_watch_criteria", element: <CompanyWatchCriteria /> },
-      { path: "artifacts/company_search_terms", element: <CompanySearchTerms /> },
-      { path: "artifacts/job_list_criteria", element: <JobListCriteria /> },
-      { path: "artifacts/job_description_criteria", element: <JobDescCriteria /> },
-      { path: "artifacts/get_job_criteria", element: <GetJobCriteria /> },
-      { path: "artifacts/do_job_criteria", element: <DoJobCriteria /> },
-      { path: "artifacts/like_job_criteria", element: <LikeJobCriteria /> },
+          // Artifacts
+          { path: "artifacts/base_resume_content", element: <BaseResumeContent /> },
+          { path: "artifacts/company_watch_criteria", element: <CompanyWatchCriteria /> },
+          { path: "artifacts/company_search_terms", element: <CompanySearchTerms /> },
+          { path: "artifacts/job_list_criteria", element: <JobListCriteria /> },
+          { path: "artifacts/job_description_criteria", element: <JobDescCriteria /> },
+          { path: "artifacts/get_job_criteria", element: <GetJobCriteria /> },
+          { path: "artifacts/do_job_criteria", element: <DoJobCriteria /> },
+          { path: "artifacts/like_job_criteria", element: <LikeJobCriteria /> },
 
-      // Candidate
-      { path: "candidate/profile", element: <Profile /> },
-      { path: "candidate/intake", element: <CandidateIntake /> },
-      { path: "candidate/strengths", element: <Strengths /> },
-      { path: "candidate/priorities", element: <Priorities /> },
-      { path: "candidate/deal_breakers", element: <DealBreakers /> },
-      { path: "candidate/backstory", element: <Backstory /> },
-      { path: "candidate/writing_preferences", element: <WritingPreferences /> },
-      { path: "candidate/board_searches", element: <BoardSearches /> },
-      // Admin
-      { path: "admin/scheduled_actions", element: <ScheduledActions /> },
-      { path: "admin/performance_monitor", element: <PerformanceMonitor /> },
-      { path: "admin/agent_timesheets", element: <AgentTimesheets /> },
-      { path: "admin/cost_reconciliation", element: <CostReconciliation /> },
-      { path: "admin/manage_candidates", element: <ManageCandidates /> },
-      { path: "admin/agent_prompts", element: <AgentPrompts /> },
-      { path: "admin/task_prompts", element: <TaskPrompts /> },
-      { path: "admin/anthropic_ad_hoc", element: <AnthropicAdHoc /> },
-      { path: "admin/data_management", element: <DataManagement /> },
+          // Candidate
+          { path: "candidate/profile", element: <Profile /> },
+          { path: "candidate/intake", element: <CandidateIntake /> },
+          { path: "candidate/strengths", element: <Strengths /> },
+          { path: "candidate/priorities", element: <Priorities /> },
+          { path: "candidate/deal_breakers", element: <DealBreakers /> },
+          { path: "candidate/backstory", element: <Backstory /> },
+          { path: "candidate/writing_preferences", element: <WritingPreferences /> },
+          { path: "candidate/board_searches", element: <BoardSearches /> },
 
-      // Catch-all
-      { path: "*", element: <Navigate to="/jobs/recommended" replace /> },
+          // Admin
+          { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },
+          { path: "admin/performance_monitor", element: <AdminRoute><PerformanceMonitor /></AdminRoute> },
+          { path: "admin/agent_timesheets", element: <AdminRoute><AgentTimesheets /></AdminRoute> },
+          { path: "admin/cost_reconciliation", element: <AdminRoute><CostReconciliation /></AdminRoute> },
+          { path: "admin/manage_candidates", element: <AdminRoute><ManageCandidates /></AdminRoute> },
+          { path: "admin/agent_prompts", element: <AdminRoute><AgentPrompts /></AdminRoute> },
+          { path: "admin/task_prompts", element: <AdminRoute><TaskPrompts /></AdminRoute> },
+          { path: "admin/anthropic_ad_hoc", element: <AdminRoute><AnthropicAdHoc /></AdminRoute> },
+          { path: "admin/data_management", element: <AdminRoute><DataManagement /></AdminRoute> },
+
+          // Catch-all
+          { path: "*", element: <Navigate to="/jobs/recommended" replace /> },
+        ],
+      },
     ],
   },
 ]

@@ -1,9 +1,18 @@
-// TODO: replace with Auth0 access token once tenant is set up
-const AUTH_TOKEN = "stub-susan-token"
+type TokenGetter = () => string | null | undefined
+
+let authTokenGetter: TokenGetter = () => null
+
+/** Registered by AuthContext when Stytch session is active. */
+export function setAuthTokenGetter(getter: TokenGetter): void {
+  authTokenGetter = getter
+}
 
 async function api(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers)
-  headers.set("Authorization", `Bearer ${AUTH_TOKEN}`)
+  const token = authTokenGetter()
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`)
+  }
   return fetch(path, { ...options, headers })
 }
 
