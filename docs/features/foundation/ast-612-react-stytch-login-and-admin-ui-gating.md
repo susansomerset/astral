@@ -338,6 +338,37 @@ No `conf-!!-NONE` conflicts identified.
 
 ## Review (Radia)
 
-- **Built:** `276f9950` on `sub/AST-609/AST-612-react-login-and-admin-ui`
-- **Branch:** `sub/AST-609/AST-612-react-login-and-admin-ui`
-- **Scope delivered:** Stytch login gate, Bearer `session_jwt` on `api()`, `/api/me` admin gating, `AdminRoute` on `/admin/*`, non-admin candidate selector lock.
+- **Ref:** `e98ab853` on `origin/sub/AST-609/AST-612-react-login-and-admin-ui`
+- **Baseline:** `origin/dev...e98ab853` (branch also carries **AST-610** / **AST-611** commits not yet on `dev`; findings below are **AST-612 frontend scope only**)
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | Stages 1–4 delivered: `@stytch/react`, `setAuthTokenGetter` + Bearer in `api.ts`, `AuthContext` + `/api/me`, `Login` / `Authenticate`, `RequireAuth` shell, `AdminRoute` on all nine `admin/*` paths, non-admin candidate lock in `NavigationShell` + `CandidateContext` |
+| Layer contract | No new cross-layer imports; frontend-only product changes for 612 |
+| §2.9 alignment | Stub token removed; session JWT injected on every `api()` call |
+| Tests (Betty manifest) | `test_api`, `test_AuthContext`, `test_RequireAuth`, `test_AdminRoute`, `test_NavigationShell` (disabled select), `test_CandidateContext` (noop) — matches plan § Betty QA spec |
+| Session effect fix | `e98ab853` stabilizes `sessionJwt` string dep — avoids Stytch object identity churn |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | **None (fix-now / discuss)** |
+
+### Advisory
+
+| Location | Note |
+|----------|------|
+| `src/ui/frontend/src/lib/stytchClient.ts` | Uses `StytchUIClient` from `@stytch/vanilla-js` instead of plan’s `createStytchUIClient` from `@stytch/react` — acceptable; `StytchProvider` works with the vanilla client |
+| `src/ui/frontend/src/contexts/AuthContext.tsx` | While `/api/me` is in flight, `isAdmin` is false — admin users may see a briefly disabled candidate `<select>`; happy-path acceptable |
+| `docs/ASTRAL_CODE_RULES.md` §2.9 | Still describes Auth0 stub wording — optional doc pass (called out in plan out-of-scope) |
+| Diff vs `origin/dev` | Backend Stytch/auth files are **AST-610/611** sibling work on the same branch, not 612 scope creep |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Proceed to `resolve-child` only if `[review-handoff]` — none filed | Katherine |
+| Optional: update §2.9 Auth0 stub text when parent epic lands | Radia / Susan |
