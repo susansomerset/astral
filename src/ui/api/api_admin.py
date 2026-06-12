@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, Response, send_file
 
-from ui.auth import require_auth, require_ip
+from ui.auth import require_admin, require_ip
 from src.data import database
 from src.data.database import (
     _get_connection,
@@ -73,7 +73,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 # ---------------------------------------------------------------------------
 
 @admin_bp.route("/config")
-@require_auth
+@require_admin
 def admin_config():
     return jsonify(ADMIN_CONFIG)
 
@@ -99,32 +99,32 @@ def _agent_admin_view(agent: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @admin_bp.route("/agents")
-@require_auth
+@require_admin
 def list_agents():
     return jsonify([_agent_admin_view(dict(a)) for a in database.list_agents()])
 
 
 @admin_bp.route("/agents/ids")
-@require_auth
+@require_admin
 def list_agent_ids():
     return jsonify([a["agent_id"] for a in database.list_agents()])
 
 
 @admin_bp.route("/agents/brain_settings")
-@require_auth
+@require_admin
 def list_brain_settings():
     """Config-backed tier catalog for Manage Agents (AST-495)."""
     return jsonify(admin_brain_setting_catalog())
 
 
 @admin_bp.route("/agents/models")
-@require_auth
+@require_admin
 def list_models():
     return jsonify([{"model_code": code, **info} for code, info in AGENT_CONFIG.items()])
 
 
 @admin_bp.route("/agents/<agent_id>")
-@require_auth
+@require_admin
 def get_agent(agent_id):
     agent = database.get_agent(agent_id)
     if not agent:
@@ -133,7 +133,7 @@ def get_agent(agent_id):
 
 
 @admin_bp.route("/agents", methods=["POST"])
-@require_auth
+@require_admin
 def create_agent():
     body = request.get_json(silent=True) or {}
     agent_id = (body.get("agent_id") or "").strip()
@@ -167,7 +167,7 @@ def create_agent():
 
 
 @admin_bp.route("/agents/<agent_id>", methods=["PUT"])
-@require_auth
+@require_admin
 def update_agent(agent_id):
     body = request.get_json(silent=True) or {}
     if not database.get_agent(agent_id):
@@ -201,7 +201,7 @@ def update_agent(agent_id):
 
 
 @admin_bp.route("/agents/<agent_id>", methods=["DELETE"])
-@require_auth
+@require_admin
 def delete_agent(agent_id):
     if not database.get_agent(agent_id):
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
@@ -328,27 +328,27 @@ def _enrich_tasks(candidate_id: str) -> list:
 
 
 @admin_bp.route("/tasks")
-@require_auth
+@require_admin
 def list_tasks():
     candidate_id = request.args.get("candidate_id", "")
     return jsonify(_enrich_tasks(candidate_id))
 
 
 @admin_bp.route("/tasks/meta/tokens")
-@require_auth
+@require_admin
 def task_tokens():
     return jsonify(get_tokens())
 
 
 @admin_bp.route("/tasks/meta/chain_tokens")
-@require_auth
+@require_admin
 def task_chain_tokens():  # pragma: no cover (GET mirror; registry covered in utils/component config tests)
     """Manage Tasks chain-picker: {$CALLER_*}, SELECTED_AGENT (AST-455)."""
     return jsonify(get_manage_tasks_chain_tokens())
 
 
 @admin_bp.route("/tasks/<task_key>/preview")
-@require_auth
+@require_admin
 def preview_task(task_key):
     try:
         candidate_id = request.args.get("candidate_id", "")
@@ -377,7 +377,7 @@ def preview_task(task_key):
 
 
 @admin_bp.route("/tasks/<task_key>")
-@require_auth
+@require_admin
 def get_task(task_key):
     task = database.get_agent_task(task_key)
     if not task:
@@ -390,7 +390,7 @@ def get_task(task_key):
 
 
 @admin_bp.route("/tasks/<task_key>", methods=["PUT"])
-@require_auth
+@require_admin
 def update_task(task_key):
     existing = database.get_agent_task(task_key)
     if not existing:
@@ -469,7 +469,7 @@ def _enrich_timesheet_row(row: dict) -> dict:
 
 
 @admin_bp.route("/timesheets")
-@require_auth
+@require_admin
 def list_timesheets_all():
     rows = [_enrich_timesheet_row(r) for r in list_timesheets(**_timesheet_filters())]
     if request.args.get("req_dict"):
@@ -478,7 +478,7 @@ def list_timesheets_all():
 
 
 @admin_bp.route("/timesheets/export")
-@require_auth
+@require_admin
 def export_timesheets_csv():
     rows = [_enrich_timesheet_row(r) for r in list_timesheets(**_timesheet_filters())]
     buf = io.StringIO()
@@ -501,14 +501,14 @@ def _ledger_filters(*keys: str) -> dict:
 
 
 @admin_bp.route("/dispatch_ledger")
-@require_auth
+@require_admin
 def list_ledger():
     params = _ledger_filters("task_key", "candidate_id", "status", "date_from", "date_to")
     return jsonify(list_dispatch_ledger(**params))
 
 
 @admin_bp.route("/dispatch_ledger/<batch_id>")
-@require_auth
+@require_admin
 def get_ledger(batch_id):
     record = get_dispatch_ledger(batch_id)
     if not record:
@@ -517,7 +517,7 @@ def get_ledger(batch_id):
 
 
 @admin_bp.route("/dispatch_ledger/<batch_id>/logs")
-@require_auth
+@require_admin
 def get_ledger_logs(batch_id):
     return jsonify(list_log_entries(batch_id=batch_id))
 
@@ -552,7 +552,7 @@ _DISPATCH_TASK_COLUMNS = [
 
 
 @admin_bp.route("/dispatch_tasks")
-@require_auth
+@require_admin
 def list_dtasks():
     rows = list_dispatch_tasks()
     # Enrich each row with live available entity count
@@ -593,7 +593,7 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
 
 
 @admin_bp.route("/dispatch_tasks/task_keys")
-@require_auth
+@require_admin
 def dispatch_task_keys():
     """task_key → entity_type / trigger_state for Scheduled Actions forms.
 
@@ -621,7 +621,7 @@ def dispatch_task_keys():
 
 
 @admin_bp.route("/dispatch_tasks/state_options")
-@require_auth
+@require_admin
 def dispatch_task_state_options():
     return jsonify({
         "job": list(JOB_STATES.keys()),
@@ -630,7 +630,7 @@ def dispatch_task_state_options():
 
 
 @admin_bp.route("/dispatch_tasks", methods=["POST"])
-@require_auth
+@require_admin
 def create_dtask():
     data = request.get_json(force=True)
     required = ("candidate_id", "task_key", "trigger_state", "min_count")
@@ -668,7 +668,7 @@ def create_dtask():
 
 
 @admin_bp.route("/dispatch_tasks/<int:task_id>", methods=["PUT"])
-@require_auth
+@require_admin
 def update_dtask(task_id):
     data = request.get_json(force=True)
     allowed = {"min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor", "trigger_state"}
@@ -800,7 +800,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
 
 
 @admin_bp.route("/adhoc/entities")
-@require_auth
+@require_admin
 def adhoc_entities():
     """Return entities in the trigger state for a task_key + candidate_id."""
     task_key = request.args.get("task_key", "")
@@ -909,7 +909,7 @@ def _resolve_adhoc(body):
 
 
 @admin_bp.route("/adhoc/preview", methods=["POST"])
-@require_auth
+@require_admin
 def adhoc_preview():
     body = request.get_json(silent=True) or {}
     resolved, err = _resolve_adhoc(body)
@@ -929,7 +929,7 @@ def adhoc_preview():
 
 
 @admin_bp.route("/adhoc/test", methods=["POST"])
-@require_auth
+@require_admin
 def adhoc_test():
     body = request.get_json(silent=True) or {}
     resolved, err = _resolve_adhoc(body)
@@ -1027,7 +1027,7 @@ def _decode_blob_values(row: dict) -> dict:
 
 
 @admin_bp.route("/data/sql", methods=["POST"])
-@require_auth
+@require_admin
 def run_sql():
     body = request.get_json(silent=True) or {}
     sql = (body.get("sql") or "").strip()
@@ -1057,7 +1057,7 @@ def run_sql():
 
 
 @admin_bp.route("/data/table_copy_upsert", methods=["POST"])
-@require_auth
+@require_admin
 def admin_table_copy_upsert():
     """Paste Copy Output JSON rows → transactional upsert (generic PK or agent_task semantics)."""
     body = request.get_json(silent=True) or {}
@@ -1085,7 +1085,7 @@ def admin_table_copy_upsert():
 
 
 @admin_bp.route("/data/upsert_config_table", methods=["POST"])
-@require_auth
+@require_admin
 def upsert_config_table():
     """Apply config-table upsert payload (used by scripts/push_tables_to_prod.py)."""
     body = request.get_json(silent=True) or {}
@@ -1133,7 +1133,7 @@ def _candidate_dispatch_api_key_error(candidate_id: Optional[str]) -> Optional[s
 
 
 @admin_bp.route("/dispatch_tasks/<int:task_id>/run", methods=["POST"])
-@require_auth
+@require_admin
 def run_dtask(task_id):
     row = database.get_dispatch_task(task_id)
     if not row:
@@ -1146,7 +1146,7 @@ def run_dtask(task_id):
 
 
 @admin_bp.route("/dispatch_tasks/<int:task_id>/stop", methods=["POST"])
-@require_auth
+@require_admin
 def stop_dtask(task_id):
     """Graceful stop — finishes current batch then exits."""
     result = drain_task(task_id)
@@ -1154,7 +1154,7 @@ def stop_dtask(task_id):
 
 
 @admin_bp.route("/dispatch_tasks/<int:task_id>/kill", methods=["POST"])
-@require_auth
+@require_admin
 def kill_dtask(task_id):
     """Immediate kill — cancels mid-batch."""
     result = cancel_task(task_id)
@@ -1162,13 +1162,13 @@ def kill_dtask(task_id):
 
 
 @admin_bp.route("/scheduler/thread_status")
-@require_auth
+@require_admin
 def scheduler_thread_status():
     return jsonify(task_status_all())
 
 
 @admin_bp.route("/scheduler/stop_all", methods=["POST"])
-@require_auth
+@require_admin
 def scheduler_stop_all():
     killed = cancel_all_tasks()
     return jsonify({"killed": killed})
@@ -1183,7 +1183,7 @@ _backfill_thread: Optional[threading.Thread] = None
 
 
 @admin_bp.route("/script/backfill_culture_links", methods=["POST"])
-@require_auth
+@require_admin
 def backfill_culture_links_start():
     global _backfill_thread
     if _backfill_thread and _backfill_thread.is_alive():
@@ -1209,13 +1209,13 @@ def backfill_culture_links_start():
 
 
 @admin_bp.route("/script/backfill_culture_links/status")
-@require_auth
+@require_admin
 def backfill_culture_links_status():
     return jsonify(_backfill_status)
 
 
 @admin_bp.route("/script/backfill_culture_links/companies")
-@require_auth
+@require_admin
 def backfill_culture_links_companies():
     """Companies eligible for backfill that are still missing culture_links_to_explore."""
     companies = database.list_companies(exclude_states=EXCLUDE_STATES)
