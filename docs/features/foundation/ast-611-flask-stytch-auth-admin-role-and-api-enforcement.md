@@ -334,3 +334,13 @@ No `conf-!!-NONE` conflicts.
 
 - **`docs/ASTRAL_CODE_RULES.md` §2.9:** Still documents Auth0 stub wording; update when parent AST-609 lands on `origin/dev` (plan optional Radia pass).
 - **Diff scope:** Three-dot diff vs `origin/dev` includes AST-610 files because sibling dependency is stacked on the sub branch — expected until ftr merge.
+
+## Resolution
+
+**Date:** 2026-06-12 · **Publish ref:** `origin/sub/AST-609/AST-611-flask-stytch-auth-and-admin`
+
+Radia review had no fix-now or discuss items. No product code changes in resolve — Radia doc commit `e498bc85` already on publish ref.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-609-use-stytch-for-user-authentication`.
+
+**Outcome:** Ready for User Testing; Chuckles `merge-child` rolls `sub/* → ftr/*` when sibling policy allows.
