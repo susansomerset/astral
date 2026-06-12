@@ -295,3 +295,13 @@ No `conf-!!-NONE` conflicts.
 
 - **`src/external/stytch.py` §1.3 ordering:** `authenticate_session_jwt` follows private helpers; consider public-before-helpers on a future touch.
 - **`AUTH_CONFIG` §2.1 secrets:** `STYTCH_*` uses `os.environ.get(..., "")` per plan Stage 1 §5 (deferred fail until first auth call). Plan-approved; document if AST-611 cutover changes startup behavior.
+
+## Resolution (2026-06-12)
+
+**Radia review @ `fa9b85ef`:** No fix-now or discuss items. Advisory notes (helper ordering, deferred Stytch env validation) accepted as-is per plan.
+
+**Changes:** None — clean review; no product or test commits required.
+
+**§9a dry-run:** `origin/sub/AST-609/AST-610-stytch-client-and-auth-utils` @ `b20117fe` merges cleanly into `origin/dev` and `origin/ftr/ast-609-use-stytch-for-user-authentication`.
+
+**Handoff:** AST-611 (Hedy) wires `register_token_authenticator(stytch.authenticate_session_jwt)` at Flask startup.
