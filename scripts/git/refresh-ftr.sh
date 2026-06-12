@@ -8,9 +8,14 @@ FTR="ftr/${PARENT}"
 
 git -C "$MAIN" fetch origin
 WT=$(mktemp -d)
-trap 'git -C "$WT" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT
+TMP_BRANCH="tmp-refresh-${PARENT}"
+cleanup() {
+  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" branch -D "$TMP_BRANCH" 2>/dev/null || true
+}
+trap cleanup EXIT
 
-git -C "$MAIN" worktree add "$WT" -B "tmp-refresh-${PARENT}" "origin/${FTR}"
+git -C "$MAIN" worktree add "$WT" -B "$TMP_BRANCH" "origin/${FTR}"
 git -C "$WT" merge --no-edit origin/dev
 git -C "$WT" push origin "HEAD:${FTR}"
 

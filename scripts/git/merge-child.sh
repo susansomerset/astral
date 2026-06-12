@@ -23,9 +23,14 @@ if ! git -C "$MAIN" merge-base --is-ancestor "origin/${FTR}" "origin/${SUB_REF}"
 fi
 
 WT=$(mktemp -d)
-trap 'git -C "$WT" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT
+TMP_BRANCH="tmp-merge-child-${PARENT}"
+cleanup() {
+  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" branch -D "$TMP_BRANCH" 2>/dev/null || true
+}
+trap cleanup EXIT
 
-git -C "$MAIN" worktree add "$WT" -B "tmp-merge-child-${PARENT}" "origin/${FTR}"
+git -C "$MAIN" worktree add "$WT" -B "$TMP_BRANCH" "origin/${FTR}"
 git -C "$WT" merge --no-edit "origin/${SUB_REF}"
 git -C "$WT" push origin "HEAD:${FTR}"
 

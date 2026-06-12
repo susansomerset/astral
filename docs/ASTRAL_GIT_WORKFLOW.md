@@ -20,7 +20,7 @@ Flow direction is strictly one-way:
 
 ```
 dev   → ftr → sub   (work flows down at dispatch)
-tests → sub         (Betty merges in at declared SHA)
+tests → sub         (Betty merge-tests)
 sub   → ftr → dev   (integration flows up)
 dev   → main        (release only)
 ```
@@ -101,7 +101,7 @@ Every sub-branch follows this sequence. Ticket ID in every subject is mandatory.
 ```
 plan(AST-NNN)         ← engineer
 code(AST-NNN)         ← engineer: implementation complete
-push-tests(AST-NNN)   ← Betty: deliver origin/tests <sha> to origin/sub
+merge-tests(AST-NNN)   ← Betty: deliver origin/tests <sha> to origin/sub
 test(AST-NNN)         ← engineer: src changes to make tests pass
 docs(AST-NNN)         ← Radia: — clean OR — findings
 resolve(AST-NNN)      ← engineer: — clean OR — findings addressed
@@ -116,7 +116,7 @@ plan(AST-NNN)
 park-wip(AST-NNN)      ← blocked; work on origin
 merge-resume(AST-NNN)  ← engineer: merge ftr into sub after unblock
 code(AST-NNN)
-push-tests(AST-NNN)   ← Betty
+merge-tests(AST-NNN)   ← Betty
 test(AST-NNN)
 docs(AST-NNN)
 resolve(AST-NNN)
@@ -130,7 +130,7 @@ resolve(AST-NNN)
 | `park-wip()` | Engineer | No | Blocked only |
 | `merge-resume()` | Engineer | No | Paired with each `park-wip()` |
 | `code()` | Engineer | Yes | Implementation complete |
-| `push-tests()` | **Betty** | Yes | Merge her `origin/tests` SHA into sub; push `origin/sub` |
+| `merge-tests()` | **Betty** | Yes | Merge her `origin/tests` SHA into sub; push `origin/sub` |
 | `test()` | Engineer | Yes | Src fixes for manifest green |
 | `docs()` | Radia | Yes | Always — clean or findings |
 | `resolve()` | Engineer | Yes | Always — clean or addressed |
@@ -155,21 +155,23 @@ resolve(AST-NNN): — findings addressed
 
 1. **Local commit** on `tests` in `astral-tests` (test-lane files only).
 2. **`git push origin tests`** — publish test corpus to `origin/tests`.
-3. **`push-tests(AST-NNN)`** — from `astral-tests`, integrate that commit onto the sub-branch and push `origin/sub/<parent>/<child>`:
+3. **`merge-tests(AST-NNN)`** — from `astral-tests`, integrate that commit onto the sub-branch and push `origin/sub/<parent>/<child>`:
    - `git fetch origin`
    - Check out the sub-branch locally (in `astral-tests` worktree — temporary checkout).
-   - `git merge <sha>` where `<sha>` is Betty's commit from step 1 (already on `origin/tests`).
-   - Commit message: `push-tests(AST-NNN): origin/tests <sha>`.
+   - `git merge <sha>` where `<sha>` is **the single** Betty commit for this ticket from step 1 (already on `origin/tests`).
+   - Commit message: `merge-tests(AST-NNN): origin/tests <sha>`.
    - `git push origin HEAD:sub/<parent>/<child>`.
    - Return to local `tests` branch in `astral-tests`.
-4. **Engineer** resumes in the **ftr worktree** — checks out the sub-branch at the `push-tests()` tip from origin (merge-on-checkout from `ftr` as usual).
+4. **Engineer** resumes in the **ftr worktree** — checks out the sub-branch at the `merge-tests()` tip from origin (merge-on-checkout from `ftr` as usual).
 5. **Engineer** runs tests, fixes `src/` only, commits `test(AST-NNN)`, pushes `origin/sub/...`.
 
 Betty **never** uses the ftr worktree. She references `origin/sub/...` read-only during planning (step 1 prep); step 3 is the only write to the sub-branch, and she does it from `astral-tests`.
 
-### `push-tests()` vs `merge-tests()`
+### `merge-tests()` — one SHA, one merge
 
-Git mechanism is **`merge` + `push`** — Betty merges her `origin/tests` SHA into the sub-branch, then pushes. Functionally the same as a merge. **`push-tests()`** is the preferred commit name because it describes Betty's job (deliver tests to the sub) rather than the git verb. Use **`push-tests()`** in the vocabulary; do not use `merge-tests()`.
+Git mechanism is **`merge` + `push`** — Betty merges her `origin/tests` SHA into the sub-branch, then pushes. **`merge-tests()`** is the canonical commit name on the sub-branch.
+
+**One delivery per ticket.** Betty declares exactly **one** SHA per child ticket and produces exactly **one** `merge-tests(AST-NNN): origin/tests <sha>` on `origin/sub/...`. If she revises tests on `origin/tests`, amend or squash on `tests` **before** merging to the sub — **never** push twice and merge twice for the same ticket (that interleaves test SHAs and duplicate merge commits on the sub log).
 
 Betty owns the SHA — she created it in step 1. No Linear comment chain for handoff.
 
@@ -192,7 +194,7 @@ Before `merge-child()`, Chuckles validates the sub-branch log:
 
 - `plan()` present
 - `code()` present
-- `merge-tests()` present → **`push-tests()`** present
+- `merge-tests()` present
 - `test()` present
 - `docs()` with `— clean` or `— findings`
 - `resolve()` with matching state
@@ -212,7 +214,7 @@ Failure → Chuckles posts on the Linear ticket; no merge.
 
 ### Merge on checkout (mandatory)
 
-Whenever Chuckles checks out a sub-branch in the ftr worktree:
+Whenever the **engineer** (or Chuckles seeding the epic worktree) checks out a **`sub/*`** branch in **`<reponame>-<parent-id>/`**:
 
 ```bash
 git fetch origin
@@ -232,7 +234,7 @@ No-op if ftr unchanged; mandatory every time.
 | `code()` | Engineer | Yes | Implementation complete |
 | `park-wip()` | Engineer | Conditional | Blocked — parked on origin |
 | `merge-resume()` | Engineer | Conditional | Ftr merged after unblock |
-| `push-tests()` | **Betty** | Yes | Deliver `origin/tests` SHA to `origin/sub` |
+| `merge-tests()` | **Betty** | Yes | Deliver `origin/tests` SHA to `origin/sub` |
 | `test()` | Engineer | Yes | Src changes — tests pass |
 | `docs()` | Radia | Yes | Review — clean or findings |
 | `resolve()` | Engineer | Yes | Review loop closed |
@@ -241,7 +243,15 @@ No-op if ftr unchanged; mandatory every time.
 
 Ten commit types. One owner each.
 
+**Deprecated on new work:** `feat()`, `fix()`, and `push-tests()` — use `code()` (build), `test()` (test-child src fixes), and `merge-tests()` (Betty delivery) instead.
+
 ---
+
+## Chuckles git hygiene
+
+Chuckles merge scripts (`refresh-ftr.sh`, `merge-child.sh`) use ephemeral `tmp-refresh-*` / `tmp-merge-child-*` local branch names. Those branches must be deleted when the script exits — they must **never** appear on `origin` or linger in `git log` decorations.
+
+Legacy `worktree/<IssueID>` local branch names from old worktree helpers should be pruned when the epic worktree uses `sub/*` directly. Only `sub/*`, `ftr/*`, `dev`, `tests`, and `main` should matter in day-to-day history.
 
 ## What never happens
 
@@ -251,7 +261,7 @@ Ten commit types. One owner each.
 - Force-push to any branch on origin
 - Simultaneous child subs on the same parent
 - Engineer commits to `tests/` or `docs/ASTRAL_TEST_BIBLE.md`
-- Betty commits to `src/` or `docs/features/` (except `push-tests()` merge commit on sub)
+- Betty commits to `src/` or `docs/features/` (except `merge-tests()` merge commit on sub)
 - `tests` merging into `dev` or `main`
 - Any agent creating `ftr/` or `sub/` refs
 - `merge-child()` before Chuckles validates commit sequence

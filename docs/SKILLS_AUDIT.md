@@ -1,6 +1,6 @@
 # Astral skills audit (v3 rollout)
 
-Audit of every Astral-related skill under `~/.cursor/skills/`. **Law:** [ASTRAL_GIT_WORKFLOW.md](ASTRAL_GIT_WORKFLOW.md). **Personas:** `~/.cursor/agents/*-AGENTS.md` (five child assignees) + `astral/AGENTS.md` (Chuckles only).
+Audit of every Astral-related skill under **`team-chuckles/skills/`** (installed to `~/.cursor/skills/`). **Law:** [ASTRAL_GIT_WORKFLOW.md](ASTRAL_GIT_WORKFLOW.md) (product repo). **Personas:** **`team-chuckles/agents/*-AGENTS.md`** including **`chuckles-AGENTS.md`** (six personas; Chuckles not in child handoff table).
 
 | Skill | Action | New name | Notes |
 |-------|--------|----------|-------|
@@ -10,7 +10,7 @@ Audit of every Astral-related skill under `~/.cursor/skills/`. **Law:** [ASTRAL_
 | `finish-up` | RENAME + EDIT | `merge-parent` | ftr → dev; absorbs `git-push-dev` land |
 | `plan-astral` | RENAME + EDIT | `plan-child` | Epic worktree; `plan()` commit |
 | `build-astral` | RENAME + EDIT | `build-child` | `code()` commit; merge ftr on checkout |
-| `qa-astral` | RENAME + EDIT | `qa-child` | `astral-tests` + `push-tests()` |
+| `qa-astral` | RENAME + EDIT | `qa-child` | `astral-tests` + `merge-tests()` |
 | `test-astral` | RENAME + EDIT | `test-child` | `test()` commit in epic worktree |
 | `review-astral` | RENAME + EDIT | `review-child` | `docs()` commit |
 | `resolve-astral` | RENAME + EDIT | `resolve-child` | `resolve()` commit |
@@ -28,7 +28,7 @@ Audit of every Astral-related skill under `~/.cursor/skills/`. **Law:** [ASTRAL_
 | `git-session-open` | REMOVE | — | Joan sunset |
 | `git-store-plan-commit` | REMOVE | — | Direct commits on sub |
 | `git-store-code-commit` | REMOVE | — | Direct commits on sub |
-| `git-store-qa-commit` | REMOVE | — | Betty `push-tests()` |
+| `git-store-qa-commit` | REMOVE | — | Betty `merge-tests()` |
 | `git-store-test-commit` | REMOVE | — | Engineer `test()` |
 | `git-store-review-commit` | REMOVE | — | Radia `docs()` |
 | `git-store-resolve-commit` | REMOVE | — | Engineer `resolve()` |
@@ -42,6 +42,10 @@ Audit of every Astral-related skill under `~/.cursor/skills/`. **Law:** [ASTRAL_
 | `fix-uat-dev` | REMOVE | — | Bug children use `*-child` pipeline |
 | `fix-uat-qa` | REMOVE | — | Same |
 | `git-workflow` | NEVER CREATE | — | Git law lives in `orientation` + repo doc |
+
+## Tooling repo
+
+Cursor personas, skills, and hooks: **[`team-chuckles`](../../team-chuckles)** — not in the product repo. Run **`./install.sh`** there to link into `~/.cursor/` and seed **`astral/AGENTS.md`** from **`chuckles-AGENTS.md`**.
 
 ## New skills (created in rollout)
 

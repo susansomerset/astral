@@ -210,7 +210,7 @@ _authenticate: TokenAuthenticator | None = None
 
 ## QA test specification (Betty — `qa-child`, not Ada commits)
 
-Betty delivers `tests/component/external/test_stytch.py` and `tests/component/utils/test_auth.py` via `push-tests(AST-610)` before **Tests Ready**.
+Betty delivers `tests/component/external/test_stytch.py` and `tests/component/utils/test_auth.py` via `merge-tests(AST-610)` before **Tests Ready**.
 
 ### `tests/component/utils/test_auth.py`
 
