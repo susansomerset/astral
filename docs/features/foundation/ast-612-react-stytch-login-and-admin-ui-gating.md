@@ -338,6 +338,6 @@ No `conf-!!-NONE` conflicts identified.
 
 ## Review (Radia)
 
-- **Built:** pending
+- **Built:** `276f9950` on `sub/AST-609/AST-612-react-login-and-admin-ui`
 - **Branch:** `sub/AST-609/AST-612-react-login-and-admin-ui`
 - **Scope delivered:** Stytch login gate, Bearer `session_jwt` on `api()`, `/api/me` admin gating, `AdminRoute` on `/admin/*`, non-admin candidate selector lock.
