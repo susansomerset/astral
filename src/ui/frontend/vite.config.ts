@@ -31,6 +31,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    alias: {
+      '@stytch/react': path.join(repoRoot, 'tests/component/frontend/stytchMock.tsx'),
+    },
     testTimeout: 120000,
     // Default 2 workers; raise with ASTRAL_VITEST_MAX_WORKERS when the machine has headroom.
     maxWorkers: Number.isFinite(vitestMaxWorkers) && vitestMaxWorkers > 0 ? vitestMaxWorkers : 2,
