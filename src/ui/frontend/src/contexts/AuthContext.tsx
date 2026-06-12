@@ -29,15 +29,15 @@ const AuthContext = createContext<AuthCtx>({
   refreshMe: () => {},
 })
 
-function sessionJwt(stytch: ReturnType<typeof useStytch>): string | null {
-  return stytch.session.getTokens()?.session_jwt ?? null
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const stytch = useStytch()
   const { session } = useStytchSession()
   const [user, setUser] = useState<MeUser | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Stable string dep — Stytch hook objects may change identity every render.
+  const sessionJwt =
+    session ? stytch.session.getTokens()?.session_jwt ?? null : null
 
   const loadMe = useCallback(async (jwt: string) => {
     setAuthTokenGetter(() => jwt)
@@ -58,26 +58,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!session) {
+    if (!sessionJwt) {
       setAuthTokenGetter(() => null)
       setUser(null)
       setLoading(false)
       return
     }
-    const jwt = sessionJwt(stytch)
-    if (!jwt) {
-      setAuthTokenGetter(() => null)
-      setUser(null)
-      setLoading(false)
-      return
-    }
-    loadMe(jwt)
-  }, [session, stytch, loadMe])
+    loadMe(sessionJwt)
+  }, [sessionJwt, loadMe])
 
   const refreshMe = useCallback(() => {
-    const jwt = sessionJwt(stytch)
-    if (jwt) loadMe(jwt)
-  }, [stytch, loadMe])
+    if (sessionJwt) loadMe(sessionJwt)
+  }, [sessionJwt, loadMe])
 
   return (
     <AuthContext.Provider
