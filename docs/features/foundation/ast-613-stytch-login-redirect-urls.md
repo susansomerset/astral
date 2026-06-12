@@ -176,3 +176,19 @@ Mock `window.location.origin` in Vitest. Do not call real Stytch.
 | §2.9 Auth | Unchanged — Bearer flow remains AST-612 |
 
 No `conf-!!-NONE` conflicts identified.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-609/AST-613-stytch-login-redirect-urls` @ `7ab12d53`.
+
+**Stages delivered:**
+- Stage 1: `stytchRedirect.ts`, `vite-env.d.ts`, `env.example` — `544aea8d`.
+- Stage 2: `Login.tsx` via `getStytchAuthenticateRedirectUrl()` — `7ab12d53`.
+
+**UAT ops (Susan):** Register Stytch Dashboard redirect URLs + set Railway `VITE_STYTCH_REDIRECT_URL` per Stage 3 checklist before re-test.
+
+**Betty:** Optional `test_stytchRedirect.test.ts` in Betty QA spec above.
+
+## Review (Radia)
+
+<!-- Radia fills after Tests Passed -->
