@@ -372,3 +372,13 @@ No `conf-!!-NONE` conflicts identified.
 |--------|-------|
 | Proceed to `resolve-child` only if `[review-handoff]` — none filed | Katherine |
 | Optional: update §2.9 Auth0 stub text when parent epic lands | Radia / Susan |
+
+## Resolution
+
+**Date:** 2026-06-12 · **Publish ref:** `origin/sub/AST-609/AST-612-react-login-and-admin-ui` @ `0d3d2262`
+
+Radia review had no fix-now or discuss items. No product code changes in resolve — Radia doc commit `0d3d2262` already on publish ref; product tip `e98ab853` (AuthContext `session_jwt` effect deps).
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-609-use-stytch-for-user-authentication`.
+
+**Outcome:** Ready for User Testing; Chuckles `merge-child` rolls `sub/* → ftr/*` when sibling policy allows.
