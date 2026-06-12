@@ -1,9 +1,20 @@
-"""IP-allowlist authentication for UI API endpoints. Imported by blueprint modules."""
+"""Stytch Bearer auth for UI API endpoints. Imported by blueprint modules.
+
+@require_auth validates Authorization: Bearer via src.utils.auth.validate_bearer_token
+and sets g.user to {user_id, name, is_admin}.
+
+@require_admin requires is_admin on g.user (403 otherwise).
+
+@require_ip gates script callers without Bearer tokens. ASTRAL_ALLOWED_IPS applies
+only to @require_ip routes; empty allowlist = open (dev mode).
+"""
 
 import os
 from functools import wraps
 
 from flask import g, jsonify, request
+
+from src.utils.auth import validate_bearer_token
 
 _ALLOWED_IPS: set[str] = set()
 
@@ -43,15 +54,27 @@ def require_ip(f):
 
 
 def require_auth(f):
-    """IP gate + Bearer token scaffold. Token validation is a stub until Auth0 is wired up."""
+    """Validate Stytch session JWT from Authorization: Bearer header."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not is_ip_allowed():
-            return jsonify({"error": "Access denied"}), 403
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return jsonify({"error": "Missing or invalid Authorization header"}), 401
-        # TODO: validate JWT via Auth0 once tenant is configured
-        g.user = {"user_id": "susan", "name": "Susan Somerset"}
+        token = auth_header[7:].strip()
+        user = validate_bearer_token(token)
+        if user is None:
+            return jsonify({"error": "Invalid or expired token"}), 401
+        g.user = user
+        return f(*args, **kwargs)
+    return decorated
+
+
+def require_admin(f):
+    """Require authenticated admin user."""
+    @require_auth
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not g.user.get("is_admin"):
+            return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
     return decorated
