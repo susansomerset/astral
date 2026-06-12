@@ -1201,13 +1201,14 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job
 ```
 
-## 7.13zza Stytch auth client and swappable utils (**AST-610**, parent **AST-609**)
+## 7.13zza Stytch auth client and swappable utils (**AST-610**, **AST-611**, parent **AST-609**)
 
-**AST-609 (parent):** Swap-friendly authentication — Stytch B2C session JWT in **`src/external/stytch.py`**, provider-agnostic **`src/utils/auth.py`** with registerable **`TokenAuthenticator`** (AST-611 wires **`register_token_authenticator(stytch.authenticate_session_jwt)`**). **`AUTH_CONFIG`** admin lists from env. No Flask/React changes this child.
+**AST-609 (parent):** Swap-friendly authentication — Stytch B2C session JWT in **`src/external/stytch.py`**, provider-agnostic **`src/utils/auth.py`** with registerable **`TokenAuthenticator`** (AST-611 wires **`register_token_authenticator(stytch.authenticate_session_jwt)`** via **`src/core/auth_bootstrap.py`**). **`AUTH_CONFIG`** admin lists from env.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-610** | Stytch JWT validate + user dict mapping; **`normalize_user`** / **`is_admin`** / **`validate_bearer_token`** | `src/external/stytch.py`, `src/utils/auth.py`, `src/utils/config.py` (`AUTH_CONFIG`) | `tests/component/external/test_stytch.py::TestAuthenticateSessionJwt`; `tests/component/utils/test_auth.py::{TestIsAdmin,TestNormalizeUser,TestValidateBearerToken}` |
+| **AST-611** | Flask **`@require_auth`** / **`@require_admin`**; admin API enforcement; **`/api/me`** + nav filter | `src/core/auth_bootstrap.py`, `src/ui/auth.py`, `src/ui/server.py`, `src/ui/api/api_admin.py`, `src/ui/api/api_candidate.py`, `src/ui/api/api_system.py` | `tests/component/ui/test_auth.py::{TestRequireAuth,TestRequireAdmin}`; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::{test_me_requires_bearer,test_me_non_admin_includes_is_admin_false,test_nav_config_omits_admin_group_for_non_admin}`; `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state`; `tests/component/ui/test_server.py::TestServeReact::test_serves_index_when_ip_allowlist_restricted` |
 
 **AST-610** narrowed run:
 
@@ -1217,6 +1218,19 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/utils/test_auth.py::TestIsAdmin \
   tests/component/utils/test_auth.py::TestNormalizeUser \
   tests/component/utils/test_auth.py::TestValidateBearerToken
+```
+
+**AST-611** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_auth.py::TestRequireAuth \
+  tests/component/ui/test_auth.py::TestRequireAdmin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_requires_bearer \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_non_admin_includes_is_admin_false \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
+  tests/component/ui/test_server.py::TestServeReact::test_serves_index_when_ip_allowlist_restricted
 ```
 
 ## Appendix A — Run component tests

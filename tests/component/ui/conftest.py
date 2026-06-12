@@ -33,9 +33,42 @@ def _ui_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod, "get_active_llm_provider", lambda: "anthropic")
 
 
+@pytest.fixture(autouse=True)
+def _register_mock_authenticator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AST-611: Stytch validate_bearer_token stub for UI route tests."""
+    from src.utils import auth as utils_auth
+
+    utils_auth._authenticate = None
+
+    def _mock(token: str) -> dict:
+        if token == "test-token":
+            return {"user_id": "susan", "name": "Susan", "email": "susan@susansomerset.com"}
+        if token == "good-jwt":
+            return {"user_id": "u1", "name": "Test User", "email": "test@example.com"}
+        if token == "non-admin-jwt":
+            return {"user_id": "u2", "name": "Regular User", "email": "plain@example.com"}
+        raise ValueError("invalid token")
+
+    utils_auth.register_token_authenticator(_mock)
+    monkeypatch.setattr(
+        utils_auth,
+        "AUTH_CONFIG",
+        {
+            "admin_user_ids": frozenset({"susan"}),
+            "admin_emails": frozenset({"susan@susansomerset.com"}),
+        },
+        raising=False,
+    )
+
+
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
     return {"Authorization": "Bearer test-token"}
+
+
+@pytest.fixture
+def non_admin_headers() -> dict[str, str]:
+    return {"Authorization": "Bearer non-admin-jwt"}
 
 
 _DB_SCHEMA_FLAGS = (
