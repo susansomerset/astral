@@ -288,3 +288,14 @@ tests/component/ui/test_auth.py::TestRequireAdmin
 | UI business logic in API layer — nav admin filter in `api_system.py` | **Pass** |
 
 No `conf-!!-NONE` conflicts.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-609/AST-611-flask-stytch-auth-and-admin` @ `c4fec002`.
+
+**Stages delivered:**
+- Stage 1: `auth_bootstrap.py`, `auth.py`, `server.py` — `2366a48a`.
+- Stage 2: `api_admin.py` `@require_admin` sweep — `84e3893f`.
+- Stage 3: `api_candidate.py` admin guards, `api_system.py` nav filter — `c4fec002`.
+
+**Betty:** QA manifest in **QA test specification** above (`TestRequireAuth`, `TestRequireAdmin`).
