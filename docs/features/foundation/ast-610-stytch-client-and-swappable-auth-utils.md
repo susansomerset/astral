@@ -263,3 +263,35 @@ No `conf-!!-NONE` conflicts.
 **AST-611 handoff:** `register_token_authenticator(stytch.authenticate_session_jwt)` before auth checks. `g.user` shape: `{user_id, name, is_admin}`.
 
 **Betty:** QA manifest in **QA test specification** above (`test_stytch.py`, `test_auth.py`).
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-609/AST-610-stytch-client-and-auth-utils` @ `fa9b85ef` (645 lines, 9 files).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | All four stages delivered; no `src/ui/` diff; AST-611/612 boundaries respected |
+| §3.3 layers | `external/stytch.py` → utils only; `utils/auth.py` → config only; registerable authenticator resolves ui↔external constraint |
+| §2.9 shape | `normalize_user` returns `{user_id, name, is_admin}`; admin from `AUTH_CONFIG` env lists |
+| External client | Lazy `Client` + commented lazy import; `StytchAuthError` on empty JWT / SDK failure / missing env |
+| Tests | Betty manifest covers happy path, empty JWT, SDK error, missing env, admin resolution, unregistered authenticator |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now or discuss items |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Proceed to `resolve-child` (no code changes required) | Ada |
+| AST-611: `register_token_authenticator(stytch.authenticate_session_jwt)` at Flask startup | Hedy |
+
+### Advisory (non-blocking)
+
+- **`src/external/stytch.py` §1.3 ordering:** `authenticate_session_jwt` follows private helpers; consider public-before-helpers on a future touch.
+- **`AUTH_CONFIG` §2.1 secrets:** `STYTCH_*` uses `os.environ.get(..., "")` per plan Stage 1 §5 (deferred fail until first auth call). Plan-approved; document if AST-611 cutover changes startup behavior.
