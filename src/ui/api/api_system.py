@@ -98,6 +98,13 @@ def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> li
     return resolved
 
 
+def _nav_config_for_user(candidate_state: str, candidate_id: Optional[str]) -> list:
+    nav = _resolve_nav(candidate_state, candidate_id)
+    if g.user.get("is_admin"):
+        return nav
+    return [group for group in nav if group.get("label") != "Admin"]
+
+
 # --- Open endpoints (no auth) ---
 
 @system_bp.route("/health")
@@ -122,7 +129,7 @@ def nav_config():
         candidate = get_candidate(candidate_id)
         if candidate:
             candidate_state = candidate.get("state", "")
-    return jsonify(_resolve_nav(candidate_state, candidate_id or None))
+    return jsonify(_nav_config_for_user(candidate_state, candidate_id or None))
 
 
 @system_bp.route("/shapes/<entity>")
