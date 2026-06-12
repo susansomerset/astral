@@ -250,3 +250,16 @@ Mock `stytch.Client` / `sessions.authenticate_jwt`.
 | UI must not import external | **Pass** — deferred to AST-611 via registry |
 
 No `conf-!!-NONE` conflicts.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-609/AST-610-stytch-client-and-auth-utils` @ `1c9e987f`.
+
+**Stages delivered:**
+- Stage 1: `AUTH_CONFIG`, `env.example`, `stytch` in `requirements.txt` — `54b425aa`.
+- Stage 2: `src/external/stytch.py` (`authenticate_session_jwt`, `StytchAuthError`) — `9122628a`.
+- Stage 3: `src/utils/auth.py` (registerable authenticator, `normalize_user`, `validate_bearer_token`) — `1c9e987f`.
+
+**AST-611 handoff:** `register_token_authenticator(stytch.authenticate_session_jwt)` before auth checks. `g.user` shape: `{user_id, name, is_admin}`.
+
+**Betty:** QA manifest in **QA test specification** above (`test_stytch.py`, `test_auth.py`).
