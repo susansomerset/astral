@@ -191,4 +191,26 @@ No `conf-!!-NONE` conflicts identified.
 
 ## Review (Radia)
 
-<!-- Radia fills after Tests Passed -->
+**Diff:** `origin/dev...origin/sub/AST-609/AST-613-stytch-login-redirect-urls` @ `c12b9af8`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–2 delivered: `stytchRedirect.ts`, `vite-env.d.ts`, `env.example`, `Login.tsx` wired through `getStytchAuthenticateRedirectUrl()` for all four redirect fields |
+| §1.3 DRY | Single canonical helper replaces module-level redirect string |
+| §2.1 Config | `VITE_STYTCH_REDIRECT_URL` at build time with origin fallback matches AST-612 public-token pattern |
+| §3.3 Layers | Frontend-only; no backend or cross-layer imports |
+| Boundaries | No AST-610/611/612 scope smuggled in |
+| Tests | Betty manifest covers env trim/slash, origin fallback, and Login config wiring |
+
+### Issues
+
+None — **fix-now** or **discuss**.
+
+### Recommended actions
+
+| Severity | Item | Location |
+|----------|------|----------|
+| Advisory | Stage 3 UAT still requires Susan: Stytch Dashboard redirect URLs (Login + Sign-up) and Railway `VITE_STYTCH_REDIRECT_URL` must match exactly — code cannot bypass allowlist | Plan Stage 3; `env.example` |
+| Advisory | `stytchLoginConfig` rebuilt each render inside `Login` — acceptable at this scale; `useMemo` only if profiling shows unnecessary Stytch re-init | `Login.tsx` |
