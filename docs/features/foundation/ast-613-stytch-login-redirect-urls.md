@@ -214,3 +214,13 @@ None — **fix-now** or **discuss**.
 |----------|------|----------|
 | Advisory | Stage 3 UAT still requires Susan: Stytch Dashboard redirect URLs (Login + Sign-up) and Railway `VITE_STYTCH_REDIRECT_URL` must match exactly — code cannot bypass allowlist | Plan Stage 3; `env.example` |
 | Advisory | `stytchLoginConfig` rebuilt each render inside `Login` — acceptable at this scale; `useMemo` only if profiling shows unnecessary Stytch re-init | `Login.tsx` |
+
+## Resolution
+
+**Date:** 2026-06-13 · **Publish ref:** `origin/sub/AST-609/AST-613-stytch-login-redirect-urls` @ `cb671bbe`
+
+Radia review had no fix-now or discuss items. No product code changes in resolve — Radia doc commit `cb671bbe` already on publish ref; product tip `7ab12d53` (Stages 1–2) + Betty tests `c12b9af8`.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-609-use-stytch-for-user-authentication`.
+
+**Outcome:** Ready for User Testing; Susan must complete Stage 3 Stytch Dashboard + Railway `VITE_STYTCH_REDIRECT_URL` ops before manual login re-test.
