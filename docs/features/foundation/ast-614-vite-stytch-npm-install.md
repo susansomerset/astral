@@ -115,3 +115,36 @@ No conflicts — plan is implementable as written.
 - Stage 1: `_ensure_frontend_deps` in `launch.sh` — `acbedad3`.
 
 **Manual verify:** Removed `node_modules`; guard ran `npm install --include=dev` and restored `@stytch/react`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-609/AST-614-vite-stytch-npm-install` @ `2214ce2c`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | `_ensure_frontend_deps` + `run_vite` hook match Stage 1; sentinel `node_modules/@stytch/react`, `npm install --include=dev`, stderr notice |
+| §1.3 DRY | Acceptable — one guard in repo-root script, no shared module (plan exception) |
+| Tests | `TestLaunchFrontendDeps` covers install-when-missing and skip-when-present |
+| Tabs path | Default/`--tabs` spawns `--vite` subcommand → same guard |
+
+### Issues
+
+None — **fix-now** or **discuss**.
+
+### Recommended actions
+
+| Severity | Item | Location |
+|----------|------|----------|
+| Advisory | Future deps without `@stytch/react` in tree won't re-install until sentinel missing — deliberate per plan | `launch.sh` |
+
+## Resolution
+
+**Date:** 2026-06-13 · **Publish ref:** `origin/sub/AST-609/AST-614-vite-stytch-npm-install` @ `2214ce2c`
+
+Radia review had no fix-now or discuss items. No product code changes in resolve — product tip `acbedad3` (`launch.sh` guard) + Betty tests `2214ce2c`.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-609-use-stytch-for-user-authentication`.
+
+**Outcome:** Ready for User Testing — Susan re-test: fresh pull without `setup_dev.sh`, then `zsh launch.sh --vite`; Login loads without `@stytch/react` import error.
