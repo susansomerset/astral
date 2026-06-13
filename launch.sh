@@ -13,6 +13,15 @@ setopt errexit nounset pipefail
 
 WORKDIR="${0:A:h}"
 SCRIPT_PATH="${WORKDIR}/launch.sh"
+FRONTEND_DIR="${WORKDIR}/src/ui/frontend"
+
+_ensure_frontend_deps() {
+  cd "${FRONTEND_DIR}"
+  if [[ ! -d node_modules/@stytch/react ]]; then
+    print -u2 "installing frontend deps (missing node_modules/@stytch/react)..."
+    npm install --include=dev
+  fi
+}
 
 typeset USE_TABS=1
 [[ "${1:-}" == "--windows" ]] && { USE_TABS=0; shift; }
@@ -31,7 +40,8 @@ run_flask() {
 }
 
 run_vite() {
-  cd "${WORKDIR}/src/ui/frontend"
+  _ensure_frontend_deps
+  cd "${FRONTEND_DIR}"
   print -u2 "vite-dev http://localhost:5173 (Ctrl-C to stop)"
   exec npm run dev
 }

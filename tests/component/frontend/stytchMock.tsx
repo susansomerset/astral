@@ -11,6 +11,7 @@ export function resetStytchTestState(): void {
   stytchTestState.session = {}
   stytchTestState.isInitialized = true
   stytchTestState.sessionJwt = "test-session-jwt"
+  lastStytchLoginConfig = null
 }
 
 export function StytchProvider({ children }: { children: ReactNode }) {
@@ -35,6 +36,10 @@ export function useStytchSession() {
   }
 }
 
-export function StytchLogin() {
+/** Last config passed to StytchLogin — for Login page redirect assertions (AST-613). */
+export let lastStytchLoginConfig: unknown = null
+
+export function StytchLogin({ config }: { config?: unknown }) {
+  lastStytchLoginConfig = config ?? null
   return <div data-testid="stytch-login">Stytch Login</div>
 }
