@@ -106,3 +106,12 @@ zsh launch.sh --vite
 | §3.5 naming | `_ensure_frontend_deps` follows existing `launch.sh` private-function style (`_tab_cmd`, `_spawn_tab`). |
 
 No conflicts — plan is implementable as written.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-609/AST-614-vite-stytch-npm-install` @ `acbedad3`.
+
+**Stages delivered:**
+- Stage 1: `_ensure_frontend_deps` in `launch.sh` — `acbedad3`.
+
+**Manual verify:** Removed `node_modules`; guard ran `npm install --include=dev` and restored `@stytch/react`.
