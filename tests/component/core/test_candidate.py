@@ -501,12 +501,67 @@ class TestRunCandidateArtifactGeneration:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
         monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": {"x": 1}, "timesheet": {"y": 2}})))
         monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=1.25))
         body, status = candidate_mod.run_candidate_artifact_generation("somerset", "craft_resume_base", None)
         assert status == 200
         assert body["parsed_response"] == {"x": 1}
         assert body["timesheet"] == {"y": 2}
+
+    def test_persists_artifacts_on_craft_resume_base_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[tuple[Any, ...]] = []
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "Jobs"})
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation("karfo", "craft_resume_base", "resume text")
+        assert status == 200
+        assert body["success"] is True
+        assert len(saves) == 1
+        assert saves[0][0] == "karfo"
+        assert saves[0][1]["merge"] is True
+        artifacts = saves[0][1]["candidate_data"]["artifacts"]
+        assert "resume_structure" in artifacts
+        assert artifacts["base_resume"]["experience"] == "Jobs"
+
+    def test_does_not_persist_artifacts_on_other_task_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[tuple[Any, ...]] = []
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(
+                run=MagicMock(
+                    return_value={
+                        "success": True,
+                        "parsed_response": {"bio_summary": "x", "strengths": "y", "priorities": "z", "deal_breakers": "a", "backstory": "b"},
+                    }
+                )
+            ),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation("karfo", "bootstrap_candidate_context", "text")
+        assert status == 200
+        assert saves == []
 
 
 class TestNormalizeCompanySearchTermsOnSave:
