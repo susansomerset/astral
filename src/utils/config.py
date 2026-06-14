@@ -24,7 +24,6 @@ Config sections:
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
   AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
-  DEPLOY_STATUS_CONFIG — allowed deploy environment labels (AST-646)
 """
 
 import json
@@ -1950,14 +1949,6 @@ RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
     "playwright_browsers_path": str(_PROJECT_ROOT / ".browsers"),
-}
-
-# ---------------------------------------------------------------------------
-# DEPLOY_STATUS_CONFIG: admin nav footer — allowed deploy environment labels.
-# Actual value read from ASTRAL_DEPLOY_ENV env var (optional; see deploy_status.py).
-# ---------------------------------------------------------------------------
-DEPLOY_STATUS_CONFIG = {
-    "allowed_environments": ("local", "test", "staging", "production"),
 }
 
 # ---------------------------------------------------------------------------
