@@ -1351,6 +1351,34 @@ Equivalent harness:
 | Per-hop ledger + chain skip | **`TestAst531RunNextHopLedger`**; **`TestDoTask::test_mid_chain_empty_caller_skips_api`** |
 | `debug=False` unchanged | **`TestDoTask`** paths without **`debug=True`**; full-file branch lock |
 
+## 7.13zzf Debug logging backfill — roster (**AST-621**, parent **AST-542**)
+
+**AST-542 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/roster.py`** inflow paths — **`run_inflow_discovery_batch`** / **`vet_inflow_discovery`** baseline from **AST-557** on **`ftr/`**; this child adds **`resolve_company_website`** contract debug, **`_ingest_failure_reason`** ` | ` detail under vet-row headers, and empty-dedupe skip header. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only. **`debug=False`** must stay unchanged — existing inflow behavior tests are the gate.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-621** | Ingest failure reason helper; `resolve_company_website` CSE/vet/state contract; empty-dedupe header in discovery batch | `src/core/roster.py` | **`tests/component/core/test_roster.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-621** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_roster.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `run_inflow_discovery_batch` vet-row ingest outcomes + empty dedupe | **`TestAst505InflowDiscovery`** (`test_run_batch_happy_path`, `test_run_batch_cse_failure_continues`, `test_run_batch_no_stale_terms_returns_zero_errors`, `test_run_batch_searches_only_stale_terms`) |
+| `resolve_company_website` CSE + `find_company_website` + state transitions | **`TestAst506InflowResolve`** |
+| `debug=False` unchanged on inflow paths | **`TestAst505InflowDiscovery`** / **`TestAst506InflowResolve`** paths without **`debug=True`**; full-file branch lock |
+
 ## Appendix A — Run component tests
 
 From repo root:
