@@ -4,6 +4,7 @@ import { UserPromptProvider } from "./UserPrompt"
 import { useAuth } from "../contexts/AuthContext"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
+import AdminDeployFooter from "./AdminDeployFooter"
 import astralLogo from "../assets/astral_logo.png"
 
 interface NavItem { label: string; path: string; enabled: boolean; count?: number }
@@ -126,7 +127,7 @@ export default function NavigationShell() {
             )
           })
         )}
-        <span className="nav-footer-spacer" />
+        {isAdmin ? <AdminDeployFooter /> : <span className="nav-footer-spacer" />}
       </nav>
       <main className="content">
         <Outlet />
