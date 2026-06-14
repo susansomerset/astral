@@ -19,7 +19,7 @@ from src.utils.config import BOARD_SEARCH_STATES
 
 
 # Entry netloc boards.example matches deeplink URLs in these tests (see DEMO_BOARD).
-AUTH_HEADERS = {"Authorization": "Bearer astral-component-test"}
+AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 DEMO_BOARD: Dict[str, object] = {
     "tst": {
@@ -38,6 +38,16 @@ DEMO_BOARD: Dict[str, object] = {
 @pytest.fixture
 def board_search_http_client(seeded_db, monkeypatch: pytest.MonkeyPatch) -> FlaskClient:
     """Real SQLite candidate `cand-1` + boards REST blueprint."""
+    from src.utils import auth as utils_auth
+
+    utils_auth._authenticate = None
+
+    def _mock(token: str) -> dict:
+        if token == "test-token":
+            return {"user_id": "susan", "name": "Susan", "email": "susan@susansomerset.com"}
+        raise ValueError("invalid token")
+
+    utils_auth.register_token_authenticator(_mock)
     monkeypatch.setattr(boards_mod, "BOARD_CONFIG", DEMO_BOARD)
     monkeypatch.setattr("src.data.database.DB_PATH", seeded_db.DB_PATH)
 

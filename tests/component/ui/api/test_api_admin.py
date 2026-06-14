@@ -1088,13 +1088,13 @@ class TestApiAdminBranchGaps:
         for tk in admin_mod.get_task_keys():
             assert tk in keys
         assert keys["anticipate_scan"]["entity_type"] == "job"
-        assert keys["contemplate_job"]["trigger_state"] == "BUILD_ARTIFACTS"
+        assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
 
     def test_ast549_task_keys_config_derivation_authoritative(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         """Schedulable keys merge dispatch_task_admin_defaults — not removed seed dict (AST-549)."""
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        assert keys["contemplate_job"]["trigger_state"] == "BUILD_ARTIFACTS"
+        assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
         assert keys["find_job_page"]["entity_type"] == "company"
         assert keys["find_job_page"]["trigger_state"] == "TO_WATCH"
         assert keys["consult_do"]["phase"] == cfg.TASK_CONFIG["grade_do"]["phase"]

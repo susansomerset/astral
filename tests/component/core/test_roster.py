@@ -207,6 +207,7 @@ class TestBatchApi:
             candidate_id="cand-1",
             require_empty_website=False,
             score_floor=None,
+            states=None,
         )
 
     def test_get_new_company_batch_generates_batch_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
