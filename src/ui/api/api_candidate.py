@@ -13,12 +13,14 @@ from src.core.candidate import (
     company_search_terms_joined_text,
     company_search_terms_lines_for_candidate,
     delete_candidate as core_delete_candidate,
+    enabled_resume_structure_sections,
+    filter_base_resume_to_structure,
     get_candidate,
     initiate_candidate,
     list_candidates as core_list_candidates,
-    company_search_terms_joined_text,
-    company_search_terms_lines_for_candidate,
+    normalize_resume_structure,
     normalize_rubric_artifacts_on_save,
+    resolve_resume_structure,
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
@@ -96,6 +98,21 @@ def list_candidates():
 @require_auth
 def get_candidate_states():
     return jsonify(list(CANDIDATE_STATES.keys()))
+
+
+@candidate_bp.route("/<candidate_id>/resume_structure")
+@require_auth
+def get_candidate_resume_structure(candidate_id):
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    cd = candidate.get("candidate_data") or {}
+    resolved = resolve_resume_structure(cd)
+    sections = enabled_resume_structure_sections(resolved)
+    accent = resolved.get("accent_color")
+    if not isinstance(accent, str):
+        accent = None
+    return jsonify({"sections": sections, "accent_color": accent})
 
 
 @candidate_bp.route("/<candidate_id>")
