@@ -5,8 +5,6 @@ import subprocess
 import time
 from pathlib import Path
 
-from src.utils.config import DEPLOY_STATUS_CONFIG
-
 _PROCESS_BOOT_TIME = time.time()
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -28,10 +26,8 @@ def format_uptime_seconds(seconds: float) -> str:
 
 
 def _resolve_environment() -> str | None:
-    raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip().lower()
+    raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip()
     if not raw:
-        return None
-    if raw not in DEPLOY_STATUS_CONFIG["allowed_environments"]:
         return None
     return raw
 
