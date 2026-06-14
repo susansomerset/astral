@@ -211,3 +211,16 @@ No conflicts requiring `conf-!!-NONE`.
 **Counts:** 0 fix-now · 0 discuss · 0 advisory
 
 — Radia
+
+---
+
+## Resolution
+
+**2026-06-14 — Ada (resolve-child)**
+
+Radia review (`1f9d2ec0`): **0 fix-now · 0 discuss · 0 advisory** — no product changes required.
+
+- Re-ran Betty manifest (21 passed) on publish ref tip.
+- §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-626-table-upsert-ensure-schema-before-running`.
+
+**Ship tip:** `origin/sub/AST-626/AST-627-schema-ensure-before-table-upsert-validation` @ `1f9d2ec0`
