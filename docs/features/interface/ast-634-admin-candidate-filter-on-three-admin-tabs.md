@@ -163,3 +163,11 @@ When picking tests in **qa-child**, cover at minimum:
 - Execute stages 1→4 in order; one commit per stage on epic worktree; publish each to `origin/sub/AST-628/AST-634-admin-candidate-filter-on-three-admin-tabs`.
 - Do not edit `tests/` or `docs/ASTRAL_TEST_BIBLE.md` (Betty owns tests).
 - Blocking ambiguity → comment on **AST-628** with 🛑 template from **plan-child**.
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-628/AST-634-admin-candidate-filter-on-three-admin-tabs`  
+**Tip:** `aeda4fdc`  
+**Built:** Stage 1 — `candidateLabel.ts`, `useAdminCandidateFilter`, `AdminCandidateFilterControl`, export `CandidateInfo`. Stage 2 — `AdminScheduledActions` client filter + control. Stage 3 — `AdminPerformanceMonitor` full candidate list, URL default/sync. Stage 4 — `AdminAgentTimesheets` dropdown + URL parity. Component tests deferred to Betty per build-child test-tree ban.
+
+**Betty manifest (Code Complete):** see **QA manifest (Betty)** above.
