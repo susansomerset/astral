@@ -139,3 +139,10 @@ None (**fix-now** / **discuss**).
 | Severity | Item | Location |
 |----------|------|----------|
 | advisory | `.dep-btn` and `.modal-btn` in-flight blocks mirror each other — acceptable per plan placement after each base `.save:hover`; optional future consolidation to a shared selector group if more generate buttons adopt the pattern. | `App.css` |
+
+## Resolution
+
+**Resolved:** 2026-06-14  
+**Publish ref:** `origin/sub/AST-635/AST-645-yellow-in-flight-ai-generate-buttons` @ `dbcc7de7`
+
+No **fix-now** or **discuss** items from Radia review. Advisory CSS mirror blocks left as-is per plan. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-635`. Ready for **User Testing** (Susan manual AC1–AC6 on staging).
