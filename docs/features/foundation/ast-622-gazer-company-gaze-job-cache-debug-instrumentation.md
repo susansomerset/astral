@@ -390,3 +390,15 @@ No conflicts requiring `conf-!!-NONE`.
 - Execute stages 1–4 in order; one commit per stage on epic worktree, publish to `origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug`.
 - Do not modify `tests/` or tracker ingest signatures.
 - If `raw_job_listing_is_duplicate` is not importable from `src.data.database` at build time, stop and comment on AST-622 — do not invent an alternate dedupe check.
+
+## Review (build-child)
+
+**Built:** `origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug` @ `d6e10380`
+
+| Commit | Summary |
+|--------|---------|
+| `ad6d354f` | Stage 1: identifier helpers + `scrape_jd_batch` contract debug |
+| `73d28101` | Stage 2: `validate_title_batch` contract debug |
+| `d6e10380` | Stages 3–4: `process_gazer_batch` dedupe trace + `process_gaze_board_batch` contract debug |
+
+**Verification:** `python3 -m py_compile src/core/gazer.py`
