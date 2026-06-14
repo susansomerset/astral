@@ -108,3 +108,9 @@ Primary AI **Generate** / **Regenerate** / **Generate Artifacts** controls stay 
 | §3.5 naming | No new components; flat `components/` + existing page file only. |
 
 No conflicts flagged.
+
+## Review (build)
+
+- **Branch:** `origin/sub/AST-635/AST-645-yellow-in-flight-ai-generate-buttons`
+- **Tip:** `be5f6378`
+- **Built:** 2026-06-14 — Stage 1 complete (shared `.in-flight` CSS + three className conditionals); Betty manifest pending.
