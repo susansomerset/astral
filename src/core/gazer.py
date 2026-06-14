@@ -22,6 +22,7 @@ from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
 from src.data.database import (
     get_company,
     record_to_company_job_scan,
+    raw_job_listing_is_duplicate,
     set_board_search_state,
     update_board_search_last_scan_at,
     update_company_last_scan_at,
@@ -367,6 +368,27 @@ async def scrape_one(short_name: str, job_site: str) -> Tuple[str, str, str]:
 
 # ---- Process batch (scrape -> parse -> ingest -> record) ----
 
+def _log_listing_dedupe_trace(
+    log: Any,
+    company: str,
+    raw_job_listings: List[str],
+    title_matchers: Optional[List[Any]],
+) -> None:
+    """Debug-only: mirror ingest_jobs dedupe/title filter without inserting (AST-622)."""
+    cap = 25
+    for li, raw in enumerate(raw_job_listings):
+        if li >= cap:
+            log.debug_detail(f"... {len(raw_job_listings) - cap} more listings omitted from dedupe trace")
+            break
+        if raw_job_listing_is_duplicate(company, raw):
+            log.debug_detail(f"listing {li + 1}: dedupe hit (duplicate)")
+            continue
+        if title_matchers and not any(m.search(raw) for m in title_matchers):
+            log.debug_detail(f"listing {li + 1}: title filter miss (invalid_title)")
+            continue
+        log.debug_detail(f"listing {li + 1}: dedupe miss (would insert)")
+
+
 async def process_gazer_batch(
     batch_id: str,
     companies: List[Dict[str, Any]],
@@ -376,6 +398,17 @@ async def process_gazer_batch(
     """Scrape each company, parse job list, ingest via tracker, record scan outcome. Returns list of outcome dicts (short_name, status, message, new, duplicates, title_mismatch)."""
     if not await check_connectivity():
         raise ConnectionError(f"process_gazer_batch: no internet connectivity, aborting batch {batch_id} ({len(companies)} companies)")
+    if debug:
+        _log.set_debug_flag(True)
+    company_total = len(companies)
+    if debug and company_total:
+        _log.debug_index(
+            func="gazer.process_gazer_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {company_total} company/companies",
+        )
     to_scrape = []
     for c in companies:
         short_name = c.get("short_name", "")
@@ -386,6 +419,18 @@ async def process_gazer_batch(
         *[scrape_one(sn, js) for sn, js in to_scrape],
         return_exceptions=True,
     )
+    if debug:
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                sn, js = to_scrape[i]
+                _log.debug_index(
+                    func="gazer.process_gazer_batch",
+                    index=i + 1,
+                    total=len(to_scrape),
+                    identifier=sn,
+                    outcome=f"scrape failed: {r!s}",
+                )
+                _log.debug_detail(f"job_site={js!r}")
     results_by_short_name: Dict[str, Tuple[str, str, str]] = {}
     for i, r in enumerate(results):
         if isinstance(r, Exception):
@@ -396,12 +441,21 @@ async def process_gazer_batch(
     scan_completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     outcomes: List[Dict[str, Any]] = []
 
-    for c in companies:
+    for ci, c in enumerate(companies, start=1):
         short_name = c.get("short_name", "")
         if not short_name:
             continue
 
         if short_name not in results_by_short_name:
+            if debug:
+                _log.debug_index(
+                    func="gazer.process_gazer_batch",
+                    index=ci,
+                    total=company_total,
+                    identifier=short_name,
+                    outcome="failure — scrape failed",
+                )
+                _log.debug_detail(f"job_site={(c.get('job_site') or '').strip()!r}")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=None, new=None, duplicates=None,
@@ -411,12 +465,30 @@ async def process_gazer_batch(
             continue
 
         _, job_site, page_html = results_by_short_name[short_name]
+        if debug:
+            _log.debug_index(
+                func="gazer.process_gazer_batch",
+                index=ci,
+                total=company_total,
+                identifier=short_name,
+                outcome="scrape ok",
+            )
+            _log.debug_detail(f"job_site={job_site!r}")
         raw_job_listings: List[str] = []
         parse_instructions = await get_company_data(
             c, ROSTER_CONFIG["company_data_keys"]["parse_instructions"]
         )
 
         if not parse_instructions:
+            if debug:
+                _log.debug_index(
+                    func="gazer.process_gazer_batch",
+                    index=ci,
+                    total=company_total,
+                    identifier=short_name,
+                    outcome="failure — no parse_instructions",
+                )
+                _log.debug_detail("re-run find_job_page")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=None, new=None, duplicates=None,
@@ -429,16 +501,36 @@ async def process_gazer_batch(
         job_tag = parse_instructions.get("job_tag") or ""
         container_index = parse_instructions.get("container_index", 0)
         raw_job_listings = extract_raw_job_listings(page_html, container, job_tag, container_index)
+        if debug:
+            _log.debug_detail(
+                f"extracted_listings={len(raw_job_listings)} container={container!r} job_tag={job_tag!r} "
+                f"container_index={container_index}"
+            )
         patterns = _compiled_title_patterns(ctx or {})
         title_matchers = patterns or None
 
         try:
+            if debug and raw_job_listings:
+                _log.debug_detail(f"dedupe trace for {short_name} ({len(raw_job_listings)} listing(s))")
+                _log_listing_dedupe_trace(_log, short_name, raw_job_listings, title_matchers)
             result = ingest_jobs(short_name, batch_id, raw_job_listings, title_matchers=title_matchers)
             total_found = len(raw_job_listings)
             new_count = result.get("new", 0)
             dup_count = result.get("duplicates", 0)
             # Canonical ingest_jobs key invalid_title (board-ingest parity); legacy return dict may still use title_mismatch.
             title_mismatch_count = result.get("invalid_title", result.get("title_mismatch", 0))
+            if debug:
+                _log.debug_index(
+                    func="gazer.process_gazer_batch",
+                    index=ci,
+                    total=company_total,
+                    identifier=short_name,
+                    outcome=(
+                        f"success ingest new={new_count} duplicates={dup_count} "
+                        f"invalid_title={title_mismatch_count}"
+                    ),
+                )
+                _log.debug_detail(f"total_found={total_found} scan_status=success")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=total_found, new=new_count, duplicates=dup_count,
@@ -452,12 +544,27 @@ async def process_gazer_batch(
                 "new": new_count, "duplicates": dup_count, "title_mismatch": title_mismatch_count,
             })
         except Exception as e:
+            if debug:
+                _log.debug_index(
+                    func="gazer.process_gazer_batch",
+                    index=ci,
+                    total=company_total,
+                    identifier=short_name,
+                    outcome=f"failure — ingest_error: {e!s}",
+                )
+                _log.debug_detail(f"extracted_listings={len(raw_job_listings)}")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=len(raw_job_listings), new=None, duplicates=None,
                 status="failure", failure_message=str(e),
             )
             outcomes.append({"short_name": short_name, "status": "failure", "message": f"ingest_error: {e}", "new": None, "duplicates": None})
+
+    if debug:
+        success_ct = sum(1 for o in outcomes if o.get("status") == "success")
+        _log.debug_detail(
+            f"summary companies={company_total} success={success_ct} failure={company_total - success_ct}"
+        )
 
     return outcomes
 
@@ -474,7 +581,18 @@ async def process_gaze_board_batch(
     act, _, err_st = BOARD_SEARCH_STATES
     outcomes: List[Dict[str, Any]] = []
     cctx = ctx if ctx is not None else {}
-    for row in searches:
+    if debug:
+        _log.set_debug_flag(True)
+    search_total = len(searches)
+    if debug and search_total:
+        _log.debug_index(
+            func="gazer.process_gaze_board_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {search_total} board_search row(s)",
+        )
+    for si, row in enumerate(searches, start=1):
         sid = (row.get("board_search_id") or "").strip()
         if not sid:
             continue
@@ -485,7 +603,25 @@ async def process_gaze_board_batch(
             update_board_search_last_scan_at(sid)
             outcomes.append(merged)
             set_board_search_state(sid, act)
+            if debug:
+                _log.debug_index(
+                    func="gazer.process_gaze_board_batch",
+                    index=si,
+                    total=search_total,
+                    identifier=sid,
+                    outcome=f"success -> {act}",
+                )
+                _log.debug_detail(f"board_key={(row.get('board_key') or '')!r}")
         except Exception as e:
+            if debug:
+                _log.debug_index(
+                    func="gazer.process_gaze_board_batch",
+                    index=si,
+                    total=search_total,
+                    identifier=sid,
+                    outcome=f"failure -> {err_st}",
+                )
+                _log.debug_detail(f"board_key={(row.get('board_key') or '')!r} error={e!s}")
             _log.error(
                 "process_gaze_board_batch board_search_id=%s board_key=%s error=%s",
                 sid,
@@ -494,11 +630,11 @@ async def process_gaze_board_batch(
             )
             outcomes.append({"board_search_id": sid, "status": "failure", "error": str(e)})
             set_board_search_state(sid, err_st)
-        if debug:
-            _log.debug(  # pragma: no cover — noise-only trace; branches covered via debug toggle in tests (§7.12 lock).
-                "process_gaze_board_batch batch_id=%s board_search_id=%s",
-                batch_id,
-                sid,
-            )
+
+    if debug:
+        passed = sum(1 for o in outcomes if o.get("status") == "success")
+        _log.debug_detail(
+            f"summary processed={len(outcomes)} success={passed} failure={len(outcomes) - passed}"
+        )
 
     return outcomes
