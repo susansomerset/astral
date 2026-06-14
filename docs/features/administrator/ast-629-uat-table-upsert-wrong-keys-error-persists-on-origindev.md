@@ -130,3 +130,10 @@ Betty adds these to the **Tests Ready** manifest. If omitted, engineer adds only
 | §3.5 naming | `_UPSERT_SCHEMA_ENSURE_FLAGS` matches existing `_UPSERT_LAZY_SCHEMA_HANDLERS` convention. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-626/AST-629-uat-table-upsert-wrong-keys-error-persists-on-origindev`  
+**Build:** Stage 1 complete — `ensure_table_schema_for_upsert` clears `_UPSERT_SCHEMA_ENSURE_FLAGS` before handler. Stage 2 tests pending Betty manifest / test-child.
