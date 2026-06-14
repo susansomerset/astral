@@ -42,7 +42,6 @@ from src.utils.config import (
     COMPANY_STATES,
     ADMIN_CONFIG,
     CHARS_PER_TOKEN,
-    chain_context_selected_agent,
     DISPATCH_SCHEDULABLE_TASK_KEYS,
     dispatch_task_admin_defaults,
     dispatch_task_key_is_scored,
@@ -56,7 +55,7 @@ from src.utils.config import (
     validate_allowed_brain_setting,
 )
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
-from src.core.agent import run_adhoc_workbench_test, _decode_payload, resolved_task_system
+from src.core.agent import run_adhoc_workbench_test, _decode_payload, resolved_task_system, _chain_context
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
 
@@ -239,7 +238,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             brain_setting_eff = ""
             resolved_model_key = ""
             model_cfg: Dict = {}
-            _cc = chain_context_selected_agent(agent.get("content")) if agent else None
+            _cc = _chain_context(agent, cd, task_key, None) if agent else None
             if agent:
                 brain_setting_eff = (agent.get("brain_setting") or "").strip()
                 if not brain_setting_eff:
@@ -883,7 +882,6 @@ def _resolve_adhoc(body):
     if candidate_id and task_cfg.get("requires_candidate_key") and candidate:
         api_key_override = candidate.get("candidate_api_key")
 
-    _cc = chain_context_selected_agent(agent.get("content"))
     jc = None
     if task_cfg.get("entity_type") == "job":
         entity_id = (body.get("entity_id") or "").strip()
@@ -893,8 +891,12 @@ def _resolve_adhoc(body):
                 from src.core.consult import build_job_token_context
 
                 jc = build_job_token_context(job, cd)
+    _cc = _chain_context(agent, cd, task_key, jc)
+    agent_task_for_system = (
+        {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
+    )
     return {
-        "system": resolve_tokens(agent.get("content") or "", cd, task_key, _cc, jc),
+        "system": resolved_task_system(agent, agent_task_for_system, cd, task_key, _cc, jc),
         "user": resolve_tokens(body.get("user_prompt", ""), cd, task_key, _cc, jc),
         "cache": resolve_tokens(body.get("cache_prompt", ""), cd, task_key, _cc, jc),
         "nocache": resolve_tokens(body.get("nocache_prompt", ""), cd, task_key, _cc, jc),

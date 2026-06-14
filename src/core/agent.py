@@ -340,9 +340,51 @@ def _resolve_task_prompts(task_key: str):
     return agent_row, agent_task_row
 
 
-def _chain_context(agent_row: Dict[str, Any], extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """Chain/runtime tokens for resolve_tokens (AST-304). AST-303 merges parent-hop tokens into `extra`."""
-    base = chain_context_selected_agent(agent_row.get("content"))
+def resolved_agent_content(
+    agent_row: Dict[str, Any],
+    candidate_data: dict,
+    task_key: str,
+    job_context: Optional[Dict[str, str]] = None,
+    *,
+    chain_entry: bool = False,
+    parent_task_key: Optional[str] = None,
+    parent_caller_summary: Optional[Dict[str, str]] = None,
+) -> str:
+    """Resolve non-chain tokens in agent.content before SELECTED_AGENT injection (AST-631)."""
+    return resolve_tokens(
+        agent_row.get("content") or "",
+        candidate_data,
+        task_key,
+        None,  # chain tokens not expected in agent rows
+        job_context,
+        chain_entry=chain_entry,
+        parent_task_key=parent_task_key,
+        parent_caller_summary=parent_caller_summary,
+    )
+
+
+def _chain_context(
+    agent_row: Dict[str, Any],
+    candidate_data: dict,
+    task_key: str,
+    job_context: Optional[Dict[str, str]] = None,
+    extra: Optional[Dict[str, str]] = None,
+    *,
+    chain_entry: bool = False,
+    parent_task_key: Optional[str] = None,
+    parent_caller_summary: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """Chain/runtime tokens for resolve_tokens (AST-304). SELECTED_AGENT = resolved agent body (AST-631)."""
+    resolved_body = resolved_agent_content(
+        agent_row,
+        candidate_data,
+        task_key,
+        job_context,
+        chain_entry=chain_entry,
+        parent_task_key=parent_task_key,
+        parent_caller_summary=parent_caller_summary,
+    )
+    base = chain_context_selected_agent(resolved_body)
     if not extra:
         return base
     out = dict(base)
@@ -1290,7 +1332,17 @@ async def do_task(
         for k in CALLER_HOP_TOKEN_NAMES
         if k in (chain_context or {})
     }
-    _cc = _chain_context(agent_row, chain_context)
+    _jc = _job_context_for_call(ctx, index, cd)
+    _cc = _chain_context(
+        agent_row,
+        cd,
+        task_key,
+        _jc,
+        chain_context,
+        chain_entry=chain_entry,
+        parent_task_key=parent_task_key or None,
+        parent_caller_summary=parent_caller_summary or None,
+    )
     if debug and task_key in resume_artifact_hop_task_keys():
         source = (chain_context or {}).get("_caller_hydration_source") or (
             "live_llm" if (chain_context or {}).get("_hop_parent_task_key") else "chain_entry"
@@ -1304,7 +1356,6 @@ async def do_task(
             dbg.debug_detail(
                 f"caller_hydration=agent_data upstream={(chain_context or {}).get('_hop_parent_task_key')}"
             )
-    _jc = _job_context_for_call(ctx, index, cd)
 
     brain_setting = (agent_row.get("brain_setting") or "").strip()
     if not brain_setting:
@@ -2077,7 +2128,7 @@ def simulated_chain_context_for_preview(
     """Build callee ``chain_context`` as if parent hop completed with ``simulate_parsed`` payload (admin preview)."""
     agent_row, agent_task_row = _resolve_task_prompts(parent_task_key)
     cd = candidate_data or {}
-    _cc = _chain_context(agent_row)
+    _cc = _chain_context(agent_row, cd, parent_task_key, job_context)
     sys_c = resolved_task_system(agent_row, agent_task_row, cd, parent_task_key, _cc, job_context)
     rca = resolve_tokens(agent_task_row.get("cache_prompt") or "", cd, parent_task_key, _cc, job_context)
     rcb = resolve_tokens(agent_task_row.get("cache_prompt_b") or "", cd, parent_task_key, _cc, job_context)
@@ -2110,7 +2161,7 @@ def preview_prompt(
     Returns ``cache`` legacy alias = cache block A; adds ``cache_a``…``cache_d`` keys."""
     agent_row, agent_task_row = _resolve_task_prompts(task_key)
     cd = candidate_data or {}
-    _cc = _chain_context(agent_row, chain_context)
+    _cc = _chain_context(agent_row, cd, task_key, job_context, chain_context)
     system_out = resolved_task_system(agent_row, agent_task_row, cd, task_key, _cc, job_context)
     user_out = getTimestampPrefix() + resolve_tokens(agent_task_row.get("user_prompt") or "", cd, task_key, _cc, job_context)
     ca = resolve_tokens(agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, job_context)
