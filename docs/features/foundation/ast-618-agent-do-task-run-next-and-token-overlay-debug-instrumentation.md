@@ -323,3 +323,35 @@ No unresolved conflicts — plan assumes AST-554 on integration line (satisfied)
 - Stage 5: Generalized `run_next` dispatch debug; invalid-child suppression detail — `adbd9027`.
 
 **Stage 6 (verification):** `python3 -m py_compile src/core/agent.py` passed; zero `[DEBUG]` strings in `agent.py`. Betty log-string tests deferred per parent.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-541/AST-618-agent-do-task-run-next-token-debug` @ `9c26e613`.
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| §1.5.1 trigger | All new contract emission gated on `debug=True`; `[DEBUG]` hand-rolled lines removed from `agent.py`. |
+| Entry header | `_do_task_debug_entry` generalizes AST-597 resume-hop index to all tasks; fires after `batch_id` resolution, immediately before LLM call — satisfies AC #1. |
+| Assembly / payload | `llm_params` + block counts via `debug_detail`; encoded payload and long `raw_text` (>50 lines) use `debug_detail_block`. |
+| Exit / chain | Provider failure, terminal completion index, invalid-child suppression, and generalized `run_next` dispatch detail present; hop INFO boundaries unchanged. |
+| Layer / scope | Changes confined to `src/core/agent.py` orchestration; no data-layer logging; external `debug=` passthrough intact. |
+| Plan alignment | Self-Assessment scope/conf/risk matches diff; boundaries respected (no dispatcher/external edits). |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `do_task` ~1337–1353 vs ~1418 | Stage 2 token-overlay `debug_detail` lines emit **before** `_do_task_debug_entry` `debug_index`. §1.5.1 expects working detail **under** the per-hop header for scan order. Move token overlay block to immediately **after** `_do_task_debug_entry` (still before assembly / LLM). |
+| **fix-now** | `_do_task_debug_logger` ~440 | Helper defined in plan Stage 1 but **never called** — dead code. Remove or replace repeated `get_logger(__name__, debug_flag=True)` with it. |
+| **advisory** | `_uuid4` bind ~15–16, ~2119, ~2195 | Hop-ledger UUID bind is outside “logging only” scope; commit `9c26e613` rationale (test isolation) is acceptable — no functional change. |
+| **advisory** | Build stub Stage 4 label | “cache hit, early return, exception” not in diff; only `exit provider_failed` landed — stub oversells; not blocking vs parent AC. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| Token overlay order | Move `if debug:` token overlay block to after `_do_task_debug_entry` call. |
+| Dead helper | Delete `_do_task_debug_logger` or wire callers. |
+| `_uuid4` | No change required if tests depend on import-time bind. |
