@@ -420,3 +420,64 @@ class TestAst629UpsertFlagBypass:
         )
         assert out["ok"], out
         assert out["inserted"] + out["updated"] + out["skipped"] > 0
+
+class TestAst637CompanyUpsertSchemaEnsure:
+    def test_copy_upsert_stale_company_missing_candidate_and_legacy_columns(
+        self, sqlite_in_memory,
+    ) -> None:
+        """AST-637: company upsert runs full ensure chain before key validation."""
+        from src.core.table_copy_upsert import apply_copy_output_table_upsert
+        from src.data import database as db
+
+        db._company_schema_ensured = False
+        db._company_candidate_fk_ensured = False
+        cx = sqlite_in_memory._get_connection()
+        try:
+            cx.execute("DROP TABLE IF EXISTS company")
+            cx.execute(
+                """
+                CREATE TABLE company (
+                    short_name TEXT PRIMARY KEY,
+                    state TEXT NOT NULL,
+                    company_name TEXT,
+                    company_website TEXT,
+                    job_site TEXT,
+                    batch_id TEXT,
+                    batch_created_at TIMESTAMP,
+                    last_scan_at TIMESTAMP,
+                    company_data TEXT,
+                    agent_responses TEXT DEFAULT '[]',
+                    state_history TEXT DEFAULT '[]',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    state_updated_at TIMESTAMP
+                )
+                """
+            )
+            cx.commit()
+        finally:
+            cx.close()
+
+        db._company_schema_ensured = False
+        db._company_candidate_fk_ensured = False
+        learn = sqlite_in_memory._get_connection()
+        try:
+            db._ensure_company_table_for_upsert(learn)
+            cols = db.table_columns(learn, "company")
+            assert "candidate_id" in cols
+            assert "agent_responses_legacy" in cols
+        finally:
+            learn.close()
+
+        db._company_schema_ensured = True
+        db._company_candidate_fk_ensured = True
+        row = {c: None for c in cols}
+        row.update({"short_name": "komodohealth", "state": "NEW"})
+
+        out = apply_copy_output_table_upsert(
+            table_name="company",
+            json_payload=json.dumps([row]),
+        )
+        assert out["ok"], out
+        assert out["inserted"] + out["updated"] + out["skipped"] > 0
+
