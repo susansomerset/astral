@@ -261,3 +261,20 @@ return children
 | §3.5 UI stack | Pass — React/Vite component; matches Login layout; no new routes |
 
 No conflicts — plan is implementable as written.
+
+## Review (Radia)
+
+- **Ref:** `5ccaf5ac` on `origin/sub/AST-624/AST-625-session-logoff-screen`
+- **Built:** Katherine — stages 1–4 (sessionAuthMark, api 401 hook, LogOffScreen, AuthContext, RequireAuth)
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | All four stages delivered per plan |
+| Layer contract | Frontend-only; no Flask or config changes |
+| Auth gate | Had-session + log-off reason in sessionStorage; Refresh clears marks for Login recovery |
+
+### Issues
+
+_(Radia fills at review-child.)_
