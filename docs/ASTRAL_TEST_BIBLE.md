@@ -1539,6 +1539,7 @@ npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-627** | Registry + ensure hook in config upsert; core path calls ensure before `table_columns`; removes duplicate in-transaction `agent_task` ensure | `src/data/database.py`, `src/core/table_copy_upsert.py` | **`tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_schema_ensure_before_validate`**; full **`test_table_copy_upsert.py`** + config upsert rows in **`test_schema.py`** for AST-464 regressions |
 | **AST-629** | UAT bug: `ensure_table_schema_for_upsert` clears process-global `_*_schema_ensured` flags before handler so stale DB + flag-already-True still migrates | `src/data/database.py` (`_UPSERT_SCHEMA_ENSURE_FLAGS`, `ensure_table_schema_for_upsert`) | **`tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass::test_copy_upsert_stale_dispatch_task_when_schema_flag_already_true`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_when_schema_flag_already_true`**; full **`TestAst627EnsureBeforeValidate`** + **`TestApplyConfigTableUpsert`** for AST-627/464 regressions |
+| **AST-637** | UAT bug: `company` upsert handler chains `_ensure_company_candidate_fk` + adds `agent_responses_legacy` DDL; registry flags reset both globals (AST-629 combo) | `src/data/database.py` (`_ensure_company_table_for_upsert`, `_ensure_company_schema`) | **`tests/component/data/database/test_table_copy_upsert.py::TestAst637CompanyUpsertSchemaEnsure::test_copy_upsert_stale_company_missing_candidate_and_legacy_columns`**; full **`TestAst627EnsureBeforeValidate`** + **`TestAst629UpsertFlagBypass`** for AST-626/629 regressions |
 
 **AST-627** narrowed run:
 
@@ -1562,6 +1563,16 @@ npm run test:component -- \
   -q
 ```
 
+**AST-637** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst637CompanyUpsertSchemaEnsure \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass \
+  -q
+```
+
 ## 7.13zzm Agent content token resolution (**AST-631**, parent **AST-574**)
 
 **AST-574 (parent):** Agent `content` resolves registry tokens when used as the direct system block or when injected behind task `system_prompt` **`{$SELECTED_AGENT}`** — same `resolve_tokens` call context as task segments. **AST-632** (Katherine) covers Manage Agents autocomplete + preview UI only.
@@ -1570,6 +1581,7 @@ npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-631** | `resolved_agent_content`; `_chain_context` puts resolved body in `SELECTED_AGENT`; `do_task` / `preview_prompt` / admin enrich use shared path | `src/core/agent.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_agent.py::TestAst631AgentContentTokens`; `tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens`; `tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent`; full **`tests/component/core/test_agent.py`** (**`LOCKED_AT_100`**) |
 | **AST-632** | `get_manage_agents_tokens`; `GET /agents/meta/tokens`; `POST /agents/preview`; Manage Agents `TokenTextarea` + resolved preview (literal save) | `src/utils/config.py`, `src/ui/api/api_admin.py`, `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | `tests/component/utils/test_config.py::TestGetManageAgentsTokens`; `tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_ast632_manage_agents_token_meta_and_preview`; `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` (**`AST-632`** routed page + preview) |
+| **AST-636** | UAT fix: portaled `TokenTextarea` menu (modal clipping); `useAgentTokenList` ignores non-OK `/agents/meta/tokens` | `src/ui/frontend/src/components/TokenTextarea.tsx`, `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | `tests/component/frontend/components/test_TokenTextarea.test.tsx` (**`AST-636`** portal); `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` (**`AST-636`** edit-modal autocomplete + non-OK meta) |
 
 **AST-631** narrowed run:
 
@@ -1589,6 +1601,14 @@ npm run test:component -- \
   tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_ast632_manage_agents_token_meta_and_preview \
   -q
 cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+**AST-636** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
 ```
 

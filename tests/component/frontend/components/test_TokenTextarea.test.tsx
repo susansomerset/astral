@@ -5,7 +5,7 @@ import TokenTextarea from "../../../../src/ui/frontend/src/components/TokenTexta
 import { renderWithProviders } from "../test-utils"
 
 function hasTokenMenu() {
-  return document.querySelector('[style*="z-index: 100"], [style*="zIndex: 100"]') != null
+  return document.querySelector('[style*="z-index: 3000"], [style*="zIndex: 3000"]') != null
 }
 
 function focusEnd(textarea: HTMLTextAreaElement) {
@@ -35,6 +35,20 @@ describe("TokenTextarea", () => {
       <TokenTextarea value="" onChange={onChange} tokens={["FOO"]} rows={7} />,
     )
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).rows).toBe(7)
+  })
+
+  it("AST-636: portaled menu attaches to document.body above modal clipping", () => {
+    const onChange = vi.fn()
+    renderWithProviders(
+      <div style={{ overflow: "hidden", height: 40 }}>
+        <TokenTextarea value="{$" onChange={onChange} tokens={["FOO"]} />
+      </div>,
+    )
+    focusEnd(screen.getByRole("textbox") as HTMLTextAreaElement)
+    const menu = document.body.querySelector('[style*="zIndex: 3000"], [style*="z-index: 3000"]')
+    expect(menu).not.toBeNull()
+    expect(menu?.parentElement).toBe(document.body)
+    expect(hasTokenMenu()).toBe(true)
   })
 
   it("updates value and inserts a token from the dropdown", async () => {

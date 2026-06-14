@@ -43,8 +43,11 @@ function useAgentTokenList(): string[] {
   const [tokenList, setTokenList] = useState<string[]>([])
   useEffect(() => {
     api("/api/admin/agents/meta/tokens")
-      .then(r => r.json())
-      .then(data => setTokenList(Array.isArray(data) ? data : []))
+      .then(async r => {
+        if (!r.ok) { setTokenList([]); return }
+        const data = await r.json()
+        setTokenList(Array.isArray(data) ? data : [])
+      })
       .catch(() => setTokenList([]))
   }, [])
   return tokenList
