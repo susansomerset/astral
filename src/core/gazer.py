@@ -292,8 +292,20 @@ async def validate_title_batch(
     pass_state = task_cfg["pass_state"]
     fail_state = task_cfg["fail_state"]
     patterns = _compiled_title_patterns(ctx)
+    if debug:
+        _log.set_debug_flag(True)
+    job_total = len(jobs)
+    pattern_count = len(patterns)
+    if debug and job_total:
+        _log.debug_index(
+            func="gazer.validate_title_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {job_total} job(s) pattern_count={pattern_count}",
+        )
     passed = failed = 0
-    for job in jobs:
+    for ji, job in enumerate(jobs, start=1):
         aid = job.get("astral_job_id", "")
         jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
         raw_listing = (jd or {}).get("raw_job_listing") or ""
@@ -308,12 +320,34 @@ async def validate_title_batch(
             transition_job_state([aid], pass_state)
             passed += 1
             if debug:
-                _log.info("[%s] title pattern match -> %s", aid, pass_state)
+                _log.debug_index(
+                    func="gazer.validate_title_batch",
+                    index=ji,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"passed -> {pass_state}",
+                )
+                _log.debug_detail(
+                    f"raw_listing_chars={len(raw_listing)} patterns={pattern_count} "
+                    f"permissive={not patterns}"
+                )
         else:
             transition_job_state([aid], fail_state)
             failed += 1
             if debug:
-                _log.info("[%s] no title pattern match -> %s", aid, fail_state)
+                _log.debug_index(
+                    func="gazer.validate_title_batch",
+                    index=ji,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed -> {fail_state}",
+                )
+                _log.debug_detail(
+                    f"raw_listing_chars={len(raw_listing)} patterns={pattern_count} "
+                    f"permissive={not patterns}"
+                )
+    if debug:
+        _log.debug_detail(f"summary passed={passed} failed={failed} total={job_total}")
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
 
