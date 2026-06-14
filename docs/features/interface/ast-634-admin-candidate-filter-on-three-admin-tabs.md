@@ -204,3 +204,17 @@ When picking tests in **qa-child**, cover at minimum:
 | UAT | Confirm AC6 nav-sync + manual pin on all three screens in staging. |
 
 **Verdict:** Approve for `resolve-child` / UAT — no fix-now blockers; one discuss item on hook dependency stability worth addressing if first-load URL default flickers in staging.
+
+## Resolution
+
+**Date:** 2026-06-14 · **Review:** Radia @ `7eb0b981` · **Product tip:** `87911345`
+
+| Item | Outcome |
+|------|---------|
+| fix-now | None — ship as reviewed. |
+| discuss — `urlBacked` object identity / nav-sync `useEffect` | Deferred optional hardening; smoke first visit (nav candidate set, no `candidate_id` URL param) in UAT before extracting `urlValue`/`setUrlValue` args. |
+| discuss — duplicate URL helpers on Execution History + Timesheets | Accepted for this ticket; extract only if a fourth admin screen needs the pattern. |
+| advisory — `tz` follows nav not filter | Pre-existing; no change unless UAT asks for filter-scoped timezone. |
+| advisory — `candidate_data \|\| {}` in labels | Display-only; matches nav shell. |
+
+**Tests:** Betty manifest green @ `87911345` (Katherine `test-child`).
