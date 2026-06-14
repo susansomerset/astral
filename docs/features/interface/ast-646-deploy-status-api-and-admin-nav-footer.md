@@ -199,3 +199,10 @@ Administrators need an at-a-glance deploy signal in the left nav: which environm
 
 - Execute stages in order. **Stop** on ambiguity — comment on **AST-640** parent with 🛑 template from **plan-child**.
 - Blocking questions → comment on **AST-640** parent with 🛑 format from **plan-child**.
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer`  
+**Product commits:** `7810b2ac` (deploy status helpers + config), `3ef85eae` (admin API endpoint), `71ecb534` (admin nav footer UI)
+
+## Review
