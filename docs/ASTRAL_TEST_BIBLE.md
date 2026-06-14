@@ -1612,6 +1612,30 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
 ```
 
+## 7.13zzn Admin candidate filter on three admin tabs (**AST-634**, parent **AST-628**)
+
+**AST-628 (parent):** Shared **`AdminCandidateFilterControl`** + **`useAdminCandidateFilter`** on Scheduled Actions (client-side row filter), Execution History (URL-backed ledger scope), and Agent Timesheets (URL-backed list + export). Default tracks left-nav until Susan picks manually; **All** shows cross-candidate rows; Execution History dropdown lists global **`/api/candidates`** even when ledger rows omit a candidate.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-634** | Hook + label helpers; three routed admin pages | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `src/ui/frontend/src/components/AdminCandidateFilterControl.tsx`, `src/ui/frontend/src/lib/candidateLabel.ts`, `AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx`, `AdminAgentTimesheets.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`; `tests/component/frontend/lib/test_candidateLabel.test.ts`; **`AST-634`** describe in `test_AdminScheduledActions.test.tsx`, `test_AdminPerformanceMonitor.test.tsx`, `test_AdminAgentTimesheets.test.tsx` |
+
+**RTL note (Execution History):** page tests seed **`candidate_id`** on the initial route when **`urlPresentDisablesSync`** applies — bare mount without URL param can hang on nav-sync effects.
+
+**AST-634** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/lib/test_candidateLabel.test.ts \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  -t "AST-634|useAdminCandidateFilter|candidateLabel"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
+
 ## Appendix A — Run component tests
 
 From repo root:
