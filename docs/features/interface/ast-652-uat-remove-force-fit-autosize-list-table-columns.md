@@ -124,3 +124,10 @@ No conflicts — plan stays UI-only per parent boundaries.
 - Stages 1 → 2 in order; one `code()` commit per stage on epic worktree; publish each to **`origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`** via `git push origin HEAD:sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`.
 - After Stage 2, run `cd src/ui/frontend && npm run build` before handoff to test-child.
 - Deviation → Linear comment on **AST-652** parent thread format from plan-child §6.
+
+## Review
+
+- **Branch:** `origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`
+- **Diff:** `origin/ftr/AST-633...origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`
+- **Tip:** `f5d70afe`
+- **Built:** 2026-06-14 — Stages 1–2 (`7bb598bf`, `f5d70afe`); `npm run build` green.
