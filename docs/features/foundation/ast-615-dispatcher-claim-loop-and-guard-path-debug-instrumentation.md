@@ -362,3 +362,33 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 5: `_check_circuit_breaker` debug context (same commit as stage 4) — `05cd51b9`.
 
 **Stage 6 (manual):** Susan UAT — `debug=False` spot-check; company batch + job chunk + skip paths with `debug=True`. No Betty log-string tests per parent.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-540/AST-615-dispatcher-claim-loop-guard-debug` @ `f8d5b3a8` — `src/core/dispatcher.py`, `src/utils/config.py`, plan doc, test bible manifest.
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | Stages 1–5 delivered: `_dispatch_entity_identifier`, `_dispatch_one` start/skip, `_run_dispatch_loop` iteration + exit detail, `_run_task` / `_run_unified` generalized contract, `_check_circuit_breaker` context, chunk headers before consult. |
+| §1.5.1 / AST-538 | Contract emission gated on `debug=True` + `set_debug_flag`; per-entity `index N/M` under claim; chunk indices before `_consult_chunk`; `batch end summary=` after per-index detail; hand-rolled `[DEBUG]` retired in touched blocks. |
+| `debug=False` | Helpers only under `if debug`; existing `TestRunUnified::test_returns_zero_without_debug_logging` and `TestRunTask::test_runs_without_debug_logging` cover passthrough. |
+| §2.4 batch | Claim/clear semantics unchanged; instrumentation inside existing loops only. |
+| Layers | No new cross-layer imports beyond existing `config` / `data` patterns in dispatcher. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | `src/utils/config.py` + `_trigger_state_scored` | Adds `dispatch_claim_uses_score_floor` and switches claim gating from `trigger_state_used_by_scored_dispatch_task` (`f8d5b3a8`). Correct per **§2.1** / **AST-586** (VALID_TITLE must not apply score floor at claim), but ticket boundary says *no dispatch business logic* and plan Self-Assessment says *dispatcher.py only*. Confirm intentional co-land vs split to **AST-586**; note on parent if kept here. |
+| **advisory** | `_run_dispatch_loop` loop headers | `index=loop_iter, total=loop_iter` mid-loop — plan Stage 2 documents this; acceptable for UAT scan. |
+| **advisory** | Build stub tip | Stub cites `05cd51b9`; branch tip is `f8d5b3a8` (test commit for discuss row above). |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| — | **resolve-child:** no fix-now on debug instrumentation. |
+| **discuss** | Engineer or Susan: confirm `dispatch_claim_uses_score_floor` co-land on **AST-615** vs sibling **AST-586** ticket; update parent comment if intentional. |
+| Optional | Susan UAT Stage 6: company batch + job chunk + skip paths per plan. |
