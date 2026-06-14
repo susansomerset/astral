@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
+import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
+import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import api from "../lib/api"
 import Time from "../components/Time"
 import CollapsiblePanel from "../components/CollapsiblePanel"
@@ -36,6 +38,7 @@ type SortDir = "asc" | "desc"
 
 export default function ScheduledActions() {
   const { selectedId } = useCandidate()
+  const { candidateFilter, setCandidateFilter, candidates } = useAdminCandidateFilter()
   const [data, setData] = useState<DispatchTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortCol, setSortCol] = useState<string>("_default")
@@ -137,10 +140,10 @@ export default function ScheduledActions() {
 
   const filteredRows = useMemo(() => {
     let filtered = data
-    if (selectedId) filtered = filtered.filter(r => r.candidate_id === selectedId)
+    if (candidateFilter) filtered = filtered.filter(r => r.candidate_id === candidateFilter)
     if (taskKeyFilter) filtered = filtered.filter(r => r.task_key === taskKeyFilter)
     return filtered
-  }, [data, selectedId, taskKeyFilter])
+  }, [data, candidateFilter, taskKeyFilter])
 
   const sections = useMemo(() => {
     const byPhase: Record<string, DispatchTask[]> = {}
@@ -322,6 +325,11 @@ export default function ScheduledActions() {
       </div>
 
       <div className="admin-filters">
+        <AdminCandidateFilterControl
+          value={candidateFilter}
+          onChange={setCandidateFilter}
+          candidates={candidates}
+        />
         <label>
           Task
           <select value={taskKeyFilter} onChange={e => setTaskKeyFilter(e.target.value)}>
