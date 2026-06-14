@@ -1732,6 +1732,27 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
 ```
 
+## 7.13zzt List table layout — freeze columns, sticky header, cell tooltips (**AST-647**, parent **AST-633**)
+
+**AST-633 (parent):** Shared list-table presentation for **ListPage** and bespoke grouped tables: **N** frozen left data columns (default **2** from `UI_CONFIG` via `/api/system/ui_config`), checkbox and row-action columns always frozen in addition to **N**, sticky header in the table scroll region, horizontal scroll for wide tables, long cells truncated to **30** chars with full value in hover tooltip (`title`).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-647** | `UI_CONFIG` defaults; shared `listTableLayout` / `uiConfig` / `ListTableTruncatedCell`; ListPage freeze + truncate; **AdminScheduledActions** bespoke table with `frozenDataColumns={3}` | `src/utils/config.py`, `src/ui/frontend/src/lib/{listTableLayout,uiConfig}.ts`, `ListPage.tsx`, `ListTableTruncatedCell.tsx`, `App.css`, `AdminScheduledActions.tsx` | `tests/component/frontend/lib/test_listTableLayout.test.ts`; `tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx`; `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx`; `tests/component/frontend/components/test_ListPage.test.tsx` (api mock + `/api/system/ui_config` — **uiConfig** extract regression); `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-647: phase table freezes first three data columns`** + candidate-filter test fixes; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults` |
+
+**AST-647** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_listTableLayout.test.ts \
+  ../../../tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
 ## Appendix A — Run component tests
 
 From repo root:

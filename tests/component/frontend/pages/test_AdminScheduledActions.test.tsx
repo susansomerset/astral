@@ -87,6 +87,7 @@ describe("AdminScheduledActions", () => {
     running = true,
     extra?: {
       tasks?: unknown[]
+      candidates?: unknown[]
       threads?: Record<number, ThreadEntry>
       taskKeysPayload?: unknown
       stateOptionsPayload?: unknown
@@ -97,13 +98,14 @@ describe("AdminScheduledActions", () => {
     },
   ) {
     const tasks = extra?.tasks ?? [dispatchTask]
+    const candidates = extra?.candidates ?? adminCandidates
     const threads = extra?.threads ?? {
       1: { running, draining: false, task_key: "scan_jobs", candidate_id: "c1", is_auto: false },
     }
     const keysDefault = { scan_jobs: { entity_type: "job", trigger_state: "NEW", phase: "D. Job Analysis", seq: 1, is_scored: true } }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
-        return { ok: true, json: async () => adminCandidates } as Response
+        return { ok: true, json: async () => candidates } as Response
       }
       if (url === "/api/admin/scheduler/thread_status") {
         if (extra?.threadStatusOk === false) return { ok: false, json: async () => ({}) } as Response
@@ -131,6 +133,11 @@ describe("AdminScheduledActions", () => {
         return { ok: true, json: async () => ({}) } as Response
       }
     })
+  }
+
+  async function selectAllCandidatesFilter() {
+    const candidateSelect = await screen.findByLabelText("Candidate", { selector: "select" })
+    await userEvent.selectOptions(candidateSelect, "")
   }
 
   async function expandFirstPhaseSection() {
@@ -185,6 +192,7 @@ describe("AdminScheduledActions", () => {
     })
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await selectAllCandidatesFilter()
     expect(screen.getByText(/D\. Job Analysis \(1\)/)).toBeInTheDocument()
     expect(screen.getByText(/C\. Company Roster \(1\)/)).toBeInTheDocument()
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
@@ -193,6 +201,24 @@ describe("AdminScheduledActions", () => {
     await waitFor(() => expect(within(jobPanel).getByText("scan_jobs")).toBeVisible())
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Collapse section" }))
     expect(within(jobPanel).getByText("scan_jobs")).not.toBeVisible()
+  }, 20000)
+
+  it("AST-647: phase table freezes first three data columns", async () => {
+    mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+    renderWithProviders(<ScheduledActions />)
+    await expandFirstPhaseSection()
+    await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+    const headers = within(screen.getByRole("table")).getAllByRole("columnheader")
+    expect(headers[0]).toHaveClass("list-table-cell-frozen")
+    expect(headers[1]).toHaveClass("list-table-cell-frozen")
+    expect(headers[2]).toHaveClass("list-table-cell-frozen")
+    expect(headers[3]).not.toHaveClass("list-table-cell-frozen")
+    const row = within(screen.getByRole("table")).getAllByRole("row")[1]
+    const cells = within(row).getAllByRole("cell")
+    expect(cells[0]).toHaveClass("list-table-cell-frozen")
+    expect(cells[1]).toHaveClass("list-table-cell-frozen")
+    expect(cells[2]).toHaveClass("list-table-cell-frozen")
+    expect(cells[3]).not.toHaveClass("list-table-cell-frozen")
   }, 20000)
 
   it("sorts columns, filters task key, and shows row edge cases", async () => {
@@ -205,6 +231,7 @@ describe("AdminScheduledActions", () => {
     })
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getAllByText("∞").length).toBeGreaterThan(0))
+    await selectAllCandidatesFilter()
     await expandFirstPhaseSection()
     expect(screen.getAllByText("—").length).toBeGreaterThan(0)
 
@@ -236,12 +263,13 @@ describe("AdminScheduledActions", () => {
 
   it("save disabled on add when no candidate selected", async () => {
     localStorage.clear()
-    mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig })
+    mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, candidates: [] })
     renderWithProviders(<ScheduledActions />)
     await expandFirstPhaseSection()
     await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+    const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+    expect(within(modal).getByRole("button", { name: "Save" })).toBeDisabled()
   }, 20000)
 
   it("alerts on auto toggle failure and run failure", async () => {
