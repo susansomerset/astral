@@ -803,6 +803,14 @@ def run_candidate_artifact_generation(
                 batch_id,
                 total_cost,
             )
+        parsed_response = result.get("parsed_response")
+        if task_key == "craft_resume_base" and parsed_response is not None:
+            structure, content = split_craft_resume_base_payload(parsed_response)
+            database.save_candidate(
+                candidate_id,
+                candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
+                merge=True,
+            )
         return (
             {
                 "success": True,

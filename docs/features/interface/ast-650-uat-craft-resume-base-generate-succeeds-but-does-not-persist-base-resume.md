@@ -115,3 +115,11 @@ Betty adds to **Tests Ready** manifest. If omitted, engineer adds only:
 | §3.5 naming | No new public API |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Built:** `code(AST-650): persist craft_resume_base artifacts on UI Generate success`  
+**Branch:** `origin/sub/AST-601/AST-650-craft-resume-base-generate-no-persist`  
+**Commit:** (filled after push)
