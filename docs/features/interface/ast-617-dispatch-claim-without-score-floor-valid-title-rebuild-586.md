@@ -130,3 +130,33 @@ No conflicts requiring `conf-!!-NONE`.
 1. `tests/component/utils/test_config.py` — `dispatch_claim_uses_score_floor` cases (VALID_TITLE False, PASSED_JD/PASSED_JOBLIST True, RETRY/None False).
 2. `tests/component/core/test_dispatcher.py` — `test_qualify_valid_title_claim_without_score_floor` asserts `score_floor=None` on claim.
 3. `tests/component/ui/api/test_api_admin.py` — list/create/helper tests for VALID_TITLE `is_scored=False`, `score_floor=None`; PASSED_JD/PASSED_JOBLIST still scored.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586` @ `2ad10c34`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| **Plan fidelity (AST-617)** | `database.py` import + `count_eligible_for_dispatch_task` (~5201) + schema backfill (~4890) use `dispatch_claim_uses_score_floor`; `score_floor_by_trigger_for_candidate` (~1555) unchanged per plan. |
+| **Admin API** | `api_admin.py` — `_trigger_state_is_scored`, `list_dtasks`, `dispatch_task_keys`, `create_dtask`, `update_dtask` all swap to claim helper; grading import removed from this file. |
+| **Config / dispatcher** | No diff vs `origin/dev` — claim helper + `_trigger_state_scored` already landed (AST-615 sibling). |
+| **Rules (§2.1, §3.3)** | Claim vs grading metadata split preserved; data/ui → utils config imports allowed; no state-machine or batch-pattern drift. |
+
+### Issues
+
+| Severity | Location | Issue |
+|----------|----------|-------|
+| **fix-now** | Publish ref commits `842b6dda`–`ef194b22` | **Sibling scope bleed (§5d):** AST-601 **AST-616** product code on this AST-600 branch — `api_candidate.py` (`GET …/resume_structure`), `ArtifactsBaseResumeContent.tsx`, `ast-616` plan doc. AST-617 plan explicitly excludes React UI and candidate API beyond dispatch admin. Re-publish ref without AST-616 commits (or revert `ef194b22` and ancestors) before ftr merge. |
+| **discuss** | `ef194b22` message | Was the AST-616 merge intentional for test harness? If so, confirm AST-616 tracking/merge-parent path so this ticket does not absorb another epic's ship. |
+
+### Recommended actions (resolve-child)
+
+| Action | Owner |
+|--------|-------|
+| Drop AST-616 commits from `sub/AST-600/AST-617-*` (keep `6e5f2e17` + plan/docs/test merges for AST-617 only) | Hedy |
+| No code changes needed for AST-617 claim-floor call sites — implementation matches plan | — |
+| After ref cleanup, re-run Betty §7.13zv manifest on cleaned tip | Hedy / Betty |
