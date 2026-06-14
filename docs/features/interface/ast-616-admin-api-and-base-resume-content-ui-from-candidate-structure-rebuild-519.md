@@ -204,7 +204,12 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review
 
-*(empty — Radia fills after review-child)*
+**Built:** Katherine (build-child)  
+**Branch:** `sub/AST-601/AST-616-base-resume-content-ui-rebuild-519`  
+**Tip:** `842b6dda` — `code(AST-616)` stages 1–2 (GET route + Base Resume Content structure mode)  
+**Status:** Code Complete — awaiting Betty (`qa-child`)
+
+**Note for qa:** `test_ArtifactsBaseResumeContent.test.tsx` still asserts legacy `/api/shapes/candidates` and `base_resume.accent_color` PUT — update to `resume_structure` contract per plan Stage 3.
 
 ---
 
