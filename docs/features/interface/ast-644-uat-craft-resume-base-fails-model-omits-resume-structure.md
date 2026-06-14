@@ -133,4 +133,4 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Built:** `code(AST-644): inject default resume_structure before craft_resume_base schema validation`  
 **Branch:** `origin/sub/AST-601/AST-644-craft-resume-base-missing-structure`  
-**Commit:** (filled after push)
+**Commit:** `8c1a4522`
