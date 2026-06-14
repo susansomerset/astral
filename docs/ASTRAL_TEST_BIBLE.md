@@ -1772,6 +1772,21 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/test_routes.test.tsx
 ```
 
+## 7.13zzv UAT — craft_resume_base Generate does not persist artifacts (**AST-650**, parent **AST-601**)
+
+**AST-650 (UAT bug):** UI **Generate** POST for **`craft_resume_base`** returned HTTP 200 with **`parsed_response`** but never wrote **`artifacts.resume_structure`** / **`artifacts.base_resume`** — persistence existed only on **`parse_candidate_resume`**. Fix: after successful **`do_task`** in **`run_candidate_artifact_generation`**, **`split_craft_resume_base_payload`** + **`save_candidate(..., merge=True)`** for **`craft_resume_base`** only (mirrors parse path). No UI / schema / prompt changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-650** | UI Generate success persists structure + base_resume | `src/core/candidate.py` **`run_candidate_artifact_generation`** | **`tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration`** — **`test_persists_artifacts_on_craft_resume_base_success`**, **`test_does_not_persist_artifacts_on_other_task_success`**; revised **`test_returns_200_on_success`** (mock **`save_candidate`**) |
+
+**AST-650** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration
+```
+
 ## Appendix A — Run component tests
 
 From repo root:
