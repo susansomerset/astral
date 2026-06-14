@@ -219,3 +219,13 @@ Update `TestChainContext.test_merges_extra_chain_tokens` in `tests/component/cor
 | §3.5 naming | `resolved_agent_content` parallels `resolved_task_system` |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build-child)
+
+**Built:** `origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` @ `25359fc1`
+
+| Commit | Summary |
+|--------|---------|
+| `25359fc1` | Stage 1: `resolved_agent_content`, `_chain_context` signature, `do_task` / preview paths, admin `_enrich_tasks` + `_resolve_adhoc` |
+
+**Verification:** `python3 -m py_compile src/core/agent.py src/ui/api/api_admin.py`
