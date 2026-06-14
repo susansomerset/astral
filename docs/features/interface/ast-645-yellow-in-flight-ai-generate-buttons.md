@@ -114,3 +114,35 @@ No conflicts flagged.
 - **Branch:** `origin/sub/AST-635/AST-645-yellow-in-flight-ai-generate-buttons`
 - **Tip:** `be5f6378`
 - **Built:** 2026-06-14 — Stage 1 complete (shared `.in-flight` CSS + three className conditionals); Betty manifest pending.
+
+## Review (Radia)
+
+**Baseline:** `origin/dev...origin/sub/AST-635/AST-645-yellow-in-flight-ai-generate-buttons` @ `55626b3d`  
+**Reviewed:** 2026-06-14
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1 only — shared `.in-flight` CSS on `.dep-btn.save` / `.modal-btn.save`, three className conditionals on `generating` / `primaryBusy`; no lifecycle, API, or label changes. |
+| Acceptance criteria | AC1–AC6 covered: gold while in-flight, green when idle, Save/Cancel untouched, confirm-regenerate modal unchanged until confirm. |
+| §1.3 DRY | One modifier class in `App.css`; no per-page inline gold. |
+| §3.3 layer | `src/ui/frontend/` only; no backend or cross-layer imports. |
+| Tests | Betty manifest asserts `in-flight` during held POST on all three touch points; Save excluded; partial `api` mock preserves `importOriginal` pattern. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item | Location |
+|----------|------|----------|
+| advisory | `.dep-btn` and `.modal-btn` in-flight blocks mirror each other — acceptable per plan placement after each base `.save:hover`; optional future consolidation to a shared selector group if more generate buttons adopt the pattern. | `App.css` |
+
+## Resolution
+
+**Resolved:** 2026-06-14  
+**Publish ref:** `origin/sub/AST-635/AST-645-yellow-in-flight-ai-generate-buttons` @ `dbcc7de7`
+
+No **fix-now** or **discuss** items from Radia review. Advisory CSS mirror blocks left as-is per plan. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-635`. Ready for **User Testing** (Susan manual AC1–AC6 on staging).
