@@ -54,6 +54,18 @@ describe("NavigationShell", () => {
           ],
         } as Response
       }
+      if (url === "/api/deploy_status") {
+        return {
+          ok: true,
+          json: async () => ({
+            environment: "local",
+            commit_short: "abc1234",
+            commit_message: "nav footer",
+            uptime: "1h15m",
+            uptime_seconds: 4500,
+          }),
+        } as Response
+      }
       throw new Error(url)
     })
 
@@ -69,6 +81,10 @@ describe("NavigationShell", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).not.toBeDisabled())
     await userEvent.selectOptions(screen.getByRole("combobox"), "c2")
     expect(localStorage.getItem("astral_selected_candidate")).toBe("c2")
+    await waitFor(() => expect(screen.getByLabelText("Deploy status")).toBeInTheDocument())
+    expect(screen.getByText("local")).toBeInTheDocument()
+    expect(screen.getByText("abc1234")).toBeInTheDocument()
+    expect(screen.getByText("1h15m")).toBeInTheDocument()
   })
 
   it("disables candidate select for non-admin users", async () => {
@@ -95,6 +111,7 @@ describe("NavigationShell", () => {
 
     renderWithProviders(<NavigationShell />)
     await waitFor(() => expect(screen.getByRole("combobox")).toBeDisabled())
+    expect(screen.queryByLabelText("Deploy status")).not.toBeInTheDocument()
   })
 
   it("shows loading and error states", async () => {
@@ -110,6 +127,17 @@ describe("NavigationShell", () => {
       }
       if (url.startsWith("/api/nav_config")) {
         return { ok: false, status: 500 } as Response
+      }
+      if (url === "/api/deploy_status") {
+        return {
+          ok: true,
+          json: async () => ({
+            commit_short: "abc1234",
+            commit_message: "",
+            uptime: "5m",
+            uptime_seconds: 300,
+          }),
+        } as Response
       }
       throw new Error(url)
     })

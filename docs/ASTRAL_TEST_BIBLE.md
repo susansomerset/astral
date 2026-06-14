@@ -120,6 +120,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | Source | Test file | Branch lock |
 | --- | --- | --- |
 | `src/utils/config.py` | `tests/component/utils/test_config.py` | yes |
+| `src/utils/deploy_status.py` | `tests/component/utils/test_deploy_status.py` | no |
 | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py` | yes |
 | `src/utils/auth.py` | `tests/component/utils/test_auth.py` | no |
 
@@ -1692,6 +1693,26 @@ cd src/ui/frontend && npm run test:component -- \
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx
+```
+
+## 7.13zzs Admin deploy status nav footer (**AST-646**, parent **AST-640**)
+
+**AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label (when `ASTRAL_DEPLOY_ENV` is valid), short commit hash with message tooltip, and server-formatted uptime. Non-admins keep the existing footer spacer; no deploy API call.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-646** | `GET /api/deploy_status` (`@require_admin`); `deploy_status.py` payload builder; `AdminDeployFooter` + admin gate in `NavigationShell` | `src/utils/deploy_status.py`, `src/utils/config.py` (`DEPLOY_STATUS_CONFIG`), `src/ui/api/api_system.py`, `src/ui/frontend/src/components/{AdminDeployFooter,NavigationShell}.tsx` | `tests/component/utils/test_deploy_status.py`; `tests/component/ui/api/test_api_system.py::TestDeployStatus`; `tests/component/frontend/components/test_AdminDeployFooter.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx` (admin footer visible; non-admin absent) |
+
+**AST-646** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
 ```
 
 ## Appendix A — Run component tests

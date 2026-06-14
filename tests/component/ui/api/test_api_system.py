@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from flask.testing import FlaskClient
 
+from src.utils import deploy_status as ds_mod
 from ui.api import api_system as system_mod
 
 
@@ -104,6 +105,62 @@ class TestSystemAuthRoutes:
         monkeypatch.setattr("src.core.agent.get_entity_response", MagicMock(return_value={"block_data": "{}"}))
         resp = system_client.get("/api/agent_data/batch-1/entity/acme", headers=auth_headers)
         assert resp.status_code == 200
+
+
+class TestDeployStatus:
+    def test_requires_bearer(self, system_client: FlaskClient) -> None:
+        assert system_client.get("/api/deploy_status").status_code == 401
+
+    def test_non_admin_forbidden(
+        self, system_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = system_client.get("/api/deploy_status", headers=non_admin_headers)
+        assert resp.status_code == 403
+
+    def test_admin_returns_payload(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        expected = {
+            "commit_short": "abc1234",
+            "commit_message": "test msg",
+            "uptime": "5m",
+            "uptime_seconds": 300,
+            "environment": "local",
+        }
+        monkeypatch.setattr(system_mod, "get_deploy_status_payload", lambda: expected)
+        resp = system_client.get("/api/deploy_status", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == expected
+
+    def test_admin_omits_environment_when_unset(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = {
+            "commit_short": "deadbeef",
+            "commit_message": "",
+            "uptime": "<1m",
+            "uptime_seconds": 10,
+        }
+        monkeypatch.setattr(system_mod, "get_deploy_status_payload", lambda: payload)
+        resp = system_client.get("/api/deploy_status", headers=auth_headers)
+        assert resp.status_code == 200
+        assert "environment" not in resp.get_json()
+
+    def test_admin_uptime_format_samples_via_payload_builder(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ds_mod, "_git_head_info", lambda: ("abc1234", "msg"))
+        monkeypatch.setattr(ds_mod, "_PROCESS_BOOT_TIME", 0.0)
+        cases = [
+            (30, "<1m"),
+            (5 * 60, "5m"),
+            (75 * 60, "1h15m"),
+            (3 * 86400 + 22 * 3600 + 7 * 60, "3d22h07m"),
+        ]
+        for seconds, expected_uptime in cases:
+            monkeypatch.setattr("time.time", lambda s=seconds: float(s))
+            payload = ds_mod.get_deploy_status_payload()
+            assert payload["uptime"] == expected_uptime
 
 
 class TestSystemNavHelpers:
