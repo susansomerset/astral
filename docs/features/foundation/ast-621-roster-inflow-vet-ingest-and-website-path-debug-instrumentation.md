@@ -301,3 +301,14 @@ if not all_hits:
 - Execute stages **in order**; one commit per stage on epic worktree, publish to `origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug` after each stage.
 - Do **not** rewrite AST-557 discovery instrumentation except Stage 3 empty-dedupe block.
 - Blocking questions → comment on **AST-542** with 🛑 template from **plan-child**.
+
+## Review (build-child)
+
+**Built:** `sub/AST-542/AST-621-roster-inflow-vet-ingest-debug` → `origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug`
+
+| Commit | Summary |
+|--------|---------|
+| `3357bb6c` | Merge-clean `agent.py` do_task debug (ftr conflict markers) |
+| `a8139771` | Stages 1–3: ingest reason helper, `resolve_company_website` contract debug, empty-dedupe header |
+
+**Verification:** `python3 -m py_compile src/core/roster.py src/core/agent.py`; `run_component_tests.sh` — `TestAst505InflowDiscovery` + `TestAst506InflowResolve` (18 passed).
