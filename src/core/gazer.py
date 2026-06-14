@@ -189,8 +189,6 @@ async def scrape_jd_batch(
             failed += 1
             return
         text = _prune_jd(text, job.get("job_title", ""))
-        if debug:
-            _log.debug_detail(f"pruned_chars={len(text)} job_link={job_link!r}")
         if len(text) < min_chars:
             if debug:
                 _log.debug_index(
@@ -200,6 +198,7 @@ async def scrape_jd_batch(
                     identifier=_gazer_job_identifier(job),
                     outcome=f"failed — JD too short ({len(text)} < {min_chars}) -> {fail_state}",
                 )
+                _log.debug_detail(f"pruned_chars={len(text)} job_link={job_link!r}")
             _log.warning("[%s] JD too short (%d chars < %d), -> %s", aid, len(text), min_chars, fail_state)
             transition_job_state([aid], fail_state)
             failed += 1
@@ -236,7 +235,9 @@ async def scrape_jd_batch(
                 identifier=_gazer_job_identifier(job),
                 outcome=f"passed -> {pass_state} ({len(text)} chars)",
             )
-            _log.debug_detail(f"job_link={job_link!r} title={title!r}")
+            _log.debug_detail(
+                f"job_link={job_link!r} title={title!r} pruned_chars={len(text)}"
+            )
         passed += 1
 
     # Cap concurrent Firefox instances to avoid exhausting container resources (EAGAIN / SIGSEGV)
@@ -419,15 +420,17 @@ async def process_gazer_batch(
         *[scrape_one(sn, js) for sn, js in to_scrape],
         return_exceptions=True,
     )
+    scrape_fail_logged: set[str] = set()
     if debug:
         for i, r in enumerate(results):
             if isinstance(r, Exception):
                 sn, js = to_scrape[i]
+                scrape_fail_logged.add(sn)
                 _log.debug_index(
                     func="gazer.process_gazer_batch",
                     index=i + 1,
                     total=len(to_scrape),
-                    identifier=sn,
+                    identifier=_gazer_company_identifier({"short_name": sn}),
                     outcome=f"scrape failed: {r!s}",
                 )
                 _log.debug_detail(f"job_site={js!r}")
@@ -447,12 +450,12 @@ async def process_gazer_batch(
             continue
 
         if short_name not in results_by_short_name:
-            if debug:
+            if debug and short_name not in scrape_fail_logged:
                 _log.debug_index(
                     func="gazer.process_gazer_batch",
                     index=ci,
                     total=company_total,
-                    identifier=short_name,
+                    identifier=_gazer_company_identifier(c),
                     outcome="failure — scrape failed",
                 )
                 _log.debug_detail(f"job_site={(c.get('job_site') or '').strip()!r}")
@@ -470,7 +473,7 @@ async def process_gazer_batch(
                 func="gazer.process_gazer_batch",
                 index=ci,
                 total=company_total,
-                identifier=short_name,
+                identifier=_gazer_company_identifier(c),
                 outcome="scrape ok",
             )
             _log.debug_detail(f"job_site={job_site!r}")
@@ -485,7 +488,7 @@ async def process_gazer_batch(
                     func="gazer.process_gazer_batch",
                     index=ci,
                     total=company_total,
-                    identifier=short_name,
+                    identifier=_gazer_company_identifier(c),
                     outcome="failure — no parse_instructions",
                 )
                 _log.debug_detail("re-run find_job_page")
@@ -524,7 +527,7 @@ async def process_gazer_batch(
                     func="gazer.process_gazer_batch",
                     index=ci,
                     total=company_total,
-                    identifier=short_name,
+                    identifier=_gazer_company_identifier(c),
                     outcome=(
                         f"success ingest new={new_count} duplicates={dup_count} "
                         f"invalid_title={title_mismatch_count}"
@@ -549,7 +552,7 @@ async def process_gazer_batch(
                     func="gazer.process_gazer_batch",
                     index=ci,
                     total=company_total,
-                    identifier=short_name,
+                    identifier=_gazer_company_identifier(c),
                     outcome=f"failure — ingest_error: {e!s}",
                 )
                 _log.debug_detail(f"extracted_listings={len(raw_job_listings)}")

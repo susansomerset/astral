@@ -429,3 +429,25 @@ No conflicts requiring `conf-!!-NONE`.
 | `pruned_chars` ordering | In `resolve-child`: emit after `debug_index` on each terminal path, or include in `debug_detail` paired with that header only. |
 | Duplicate scrape-failure headers | In `resolve-child`: track gather-logged `short_name` set and skip redundant main-loop header, or remove gather-loop headers and rely on main loop only (with exception text in `debug_detail`). |
 | `_gazer_company_identifier` | Remove unused helper or wire into `process_gazer_batch` identifiers for consistency with `_gazer_job_identifier`. |
+
+## Resolution (2026-06-14)
+
+**Publish:** `origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug` (resolve tip after push)
+
+### Radia fix-now
+
+| Item | Change |
+|------|--------|
+| `scrape_jd_batch` `pruned_chars` ordering | Removed standalone `debug_detail` before branch checks; `pruned_chars` now in `debug_detail` after each terminal `debug_index` (too-short, classified-fail already paired; pass path includes `pruned_chars`). |
+| `process_gazer_batch` duplicate scrape-failure headers | `scrape_fail_logged` set from gather-loop exceptions; main loop skips redundant `failure — scrape failed` header when gather already logged that `short_name`. |
+
+### Discuss
+
+| Item | Change |
+|------|--------|
+| `_gazer_company_identifier` unused | Wired into all `process_gazer_batch` `identifier=` fields (gather + main loop). |
+
+### Verification
+
+- `python3 -m py_compile src/core/gazer.py`
+- Betty manifest (no test-tree changes): `pytest tests/component/core/test_gazer.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q`
