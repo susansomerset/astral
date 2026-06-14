@@ -240,4 +240,13 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Resolution
 
-*(empty — Katherine fills after resolve-child)*
+**2026-06-14 — Katherine (`resolve-child`)**
+
+Addressed Radia **fix-now** @ `be1c3618`:
+
+1. **`src/data/database.py` + `src/ui/api/api_admin.py`** — reverted to `origin/dev` (`dispatch_claim_uses_score_floor` call sites). Removes AST-617/586 cross-ticket delta (commit `6e5f2e17`) that incorrectly swapped score-gate helpers on claim paths.
+2. **`docs/features/interface/ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md`** — restored from `origin/dev` (sibling plan doc accidentally deleted on branch).
+
+AST-616 scope unchanged: `api_candidate.py` GET `resume_structure`, `ArtifactsBaseResumeContent.tsx` structure mode, Betty §7.13zzd tests/bible.
+
+**Verify:** §7.13zzd narrowed manifest green post-revert; §9a publish ref merges cleanly into `origin/dev`.
