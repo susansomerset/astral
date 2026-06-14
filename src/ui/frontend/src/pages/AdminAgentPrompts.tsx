@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import ListPage from "../components/ListPage"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import TokenTextarea from "../components/TokenTextarea"
+import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import type { Column } from "../components/ListPage"
 
@@ -36,6 +38,18 @@ const LIST_COLUMNS: Column<Agent>[] = [
   { key: "updated_at",     label: "Updated",       sortable: true, type: "datetime" },
 ]
 
+/** Agent template picker: registry minus chain/hop tokens (AST-632). */
+function useAgentTokenList(): string[] {
+  const [tokenList, setTokenList] = useState<string[]>([])
+  useEffect(() => {
+    api("/api/admin/agents/meta/tokens")
+      .then(r => r.json())
+      .then(data => setTokenList(Array.isArray(data) ? data : []))
+      .catch(() => setTokenList([]))
+  }, [])
+  return tokenList
+}
+
 /** Verbatim tier for grid; absent / unknown-backed storage → em dash */
 function tierCell(a: Agent) {
   const t = a.brain_setting
@@ -43,6 +57,8 @@ function tierCell(a: Agent) {
 }
 
 export default function AgentPrompts() {
+  const { selectedId } = useCandidate()
+  const tokenList = useAgentTokenList()
   const [agents, setAgents]   = useState<Agent[]>([])
   const [brainSettings, setBrainSettings] = useState<BrainSettingCatalogRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,6 +83,13 @@ export default function AgentPrompts() {
 
   // Delete confirm state
   const [deleteTarget, setDeleteTarget]   = useState<Agent | null>(null)
+
+  // Preview state (AST-632)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewText, setPreviewText] = useState("")
+  const [previewCandidateId, setPreviewCandidateId] = useState("")
+  const [previewSource, setPreviewSource] = useState<"edit" | "add">("edit")
 
   const loadAll = useCallback(() => {
     setLoading(true)
@@ -192,6 +215,28 @@ export default function AgentPrompts() {
       .catch(e => { setDeleteTarget(null); setToast({ text: e.message, variant: "error" }) })
   }
 
+  function handlePreview(source: "edit" | "add") {
+    setPreviewSource(source)
+    setPreviewLoading(true)
+    const content = source === "edit" ? editContent : addContent
+    api("/api/admin/agents/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, candidate_id: selectedId || undefined }),
+    })
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Preview failed") })
+        return r.json()
+      })
+      .then(data => {
+        setPreviewText(typeof data.content === "string" ? data.content : "")
+        setPreviewCandidateId(data.candidate_id || "")
+        setPreviewOpen(true)
+      })
+      .catch(e => setToast({ text: e.message, variant: "error" }))
+      .finally(() => setPreviewLoading(false))
+  }
+
   const renderedAgents = agents.map(a => ({
     ...a,
     brain_setting: tierCell(a),
@@ -254,13 +299,28 @@ export default function AgentPrompts() {
         />
         <div className="dep-field">
           <label className="dep-field-label">System Prompt Content</label>
-          <textarea
+          <TokenTextarea
             className="dep-input"
             value={editContent}
-            onChange={e => setEditContent(e.target.value)}
+            onChange={setEditContent}
+            tokens={tokenList}
             rows={20}
-            style={{ fontFamily: "monospace", fontSize: 13, resize: "vertical" }}
+            placeholder="Agent system prompt — type {$ to insert merge tokens."
           />
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="dep-btn cancel"
+              type="button"
+              onClick={() => handlePreview("edit")}
+              disabled={previewLoading}
+              style={{ fontSize: 12, padding: "5px 12px" }}
+            >
+              {previewLoading && previewSource === "edit" ? "Loading..." : "Preview Resolved"}
+            </button>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              Resolves tokens for the selected candidate (draft text)
+            </span>
+          </div>
         </div>
       </Modal>
 
@@ -287,13 +347,28 @@ export default function AgentPrompts() {
         />
         <div className="dep-field">
           <label className="dep-field-label">System Prompt Content</label>
-          <textarea
+          <TokenTextarea
             className="dep-input"
             value={addContent}
-            onChange={e => setAddContent(e.target.value)}
+            onChange={setAddContent}
+            tokens={tokenList}
             rows={12}
-            style={{ fontFamily: "monospace", fontSize: 13, resize: "vertical" }}
+            placeholder="Agent system prompt — type {$ to insert merge tokens."
           />
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="dep-btn cancel"
+              type="button"
+              onClick={() => handlePreview("add")}
+              disabled={previewLoading}
+              style={{ fontSize: 12, padding: "5px 12px" }}
+            >
+              {previewLoading && previewSource === "add" ? "Loading..." : "Preview Resolved"}
+            </button>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              Resolves tokens for the selected candidate (draft text)
+            </span>
+          </div>
         </div>
       </Modal>
 
@@ -307,6 +382,23 @@ export default function AgentPrompts() {
         <p style={{ margin: 0 }}>
           Delete <strong>{deleteTarget?.agent_id}</strong>? This cannot be undone.
         </p>
+      </Modal>
+
+      {/* Preview modal (AST-632) */}
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={`Preview${previewCandidateId ? `: ${previewCandidateId}` : ""}`}
+      >
+        <pre style={{
+          margin: 0, padding: 12, borderRadius: 4,
+          background: "var(--bg-deep)", border: "1px solid var(--border)",
+          color: "var(--text-primary)", fontFamily: "monospace", fontSize: 12,
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 500, overflow: "auto",
+        }}>
+          {previewText || "(empty)"}
+        </pre>
       </Modal>
 
       <Toast message={toast} onDone={clearToast} />
