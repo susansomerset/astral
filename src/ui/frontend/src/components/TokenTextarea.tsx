@@ -1,6 +1,9 @@
 import { useRef, useState, useEffect, useCallback, useMemo, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
 
+const MENU_MAX_HEIGHT = 180
+const MENU_GAP_PX = 4
+
 interface TokenTextareaProps {
   value: string
   onChange: (value: string) => void
@@ -11,18 +14,31 @@ interface TokenTextareaProps {
   className?: string
 }
 
-function menuAnchor(ta: HTMLTextAreaElement): { top: number; left: number; width: number } {
+type MenuAnchor = { top: number; left: number; width: number; placement: "below" | "above" }
+
+function menuAnchor(ta: HTMLTextAreaElement, triggerCharIndex: number): MenuAnchor {
   const style = getComputedStyle(ta)
   const lineHeight = Number.parseFloat(style.lineHeight) || 18
   const padTop = Number.parseFloat(style.paddingTop) || 0
   const padLeft = Number.parseFloat(style.paddingLeft) || 0
   const padRight = Number.parseFloat(style.paddingRight) || 0
-  const lines = ta.value.substring(0, ta.selectionStart).split("\n").length - 1
   const rect = ta.getBoundingClientRect()
+  const triggerLine = ta.value.substring(0, triggerCharIndex).split("\n").length - 1
+  const triggerLineTop = rect.top + padTop + triggerLine * lineHeight - ta.scrollTop
+  const triggerLineBottom = triggerLineTop + lineHeight
+  const belowTop = triggerLineBottom + MENU_GAP_PX
+  const spaceBelow = window.innerHeight - belowTop
+  const spaceAbove = triggerLineTop - rect.top
+  const left = rect.left + padLeft
+  const width = rect.width - padLeft - padRight
+  if (spaceBelow >= MENU_MAX_HEIGHT || spaceBelow >= spaceAbove) {
+    return { top: belowTop, left, width, placement: "below" }
+  }
   return {
-    top: rect.top + padTop + (lines + 1) * lineHeight,
-    left: rect.left + padLeft,
-    width: rect.width - padLeft - padRight,
+    top: Math.max(8, triggerLineTop - MENU_MAX_HEIGHT - MENU_GAP_PX),
+    left,
+    width,
+    placement: "above",
   }
 }
 
@@ -34,7 +50,9 @@ export default function TokenTextarea({
   const [show, setShow] = useState(false)
   const [filter, setFilter] = useState("")
   const [sel, setSel] = useState(0)
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 })
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; placement: "below" | "above" }>({
+    top: 0, left: 0, width: 0, placement: "below",
+  })
   // cursor position where {$ starts
   const [triggerPos, setTriggerPos] = useState(-1)
 
@@ -65,7 +83,7 @@ export default function TokenTextarea({
     setFilter(afterTrigger)
     setSel(0)
     setShow(true)
-    setMenuPos(menuAnchor(ta))
+    setMenuPos(menuAnchor(ta, lastOpen))
   }, [dismiss])
 
   // Insert selected token, replacing the partial {$... text
@@ -106,14 +124,16 @@ export default function TokenTextarea({
   // Reposition portaled menu on scroll/resize while open
   useEffect(() => {
     if (!show) return
-    const reposition = () => { if (ref.current) setMenuPos(menuAnchor(ref.current)) }
+    const reposition = () => {
+      if (ref.current && triggerPos >= 0) setMenuPos(menuAnchor(ref.current, triggerPos))
+    }
     window.addEventListener("scroll", reposition, true)
     window.addEventListener("resize", reposition)
     return () => {
       window.removeEventListener("scroll", reposition, true)
       window.removeEventListener("resize", reposition)
     }
-  }, [show])
+  }, [show, triggerPos])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -150,7 +170,7 @@ export default function TokenTextarea({
             top: menuPos.top,
             left: menuPos.left,
             width: menuPos.width,
-            maxHeight: 180,
+            maxHeight: MENU_MAX_HEIGHT,
             overflowY: "auto",
             background: "var(--bg-elevated)",
             border: "1px solid var(--border)",
