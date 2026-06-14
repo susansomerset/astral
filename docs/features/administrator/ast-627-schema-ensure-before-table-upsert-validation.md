@@ -179,3 +179,9 @@ Betty adds these to the **Tests Ready** manifest (engineer implements during **t
 | §3.5 naming | `ensure_table_schema_for_upsert` follows existing `_ensure_*_schema` naming; snake_case preserved. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Built by Ada.** Publish ref `sub/AST-626/AST-627-schema-ensure-before-table-upsert-validation`. Product commits: `ada989ae` (data-layer registry + config upsert hook), `b9a071a9` (core copy-output ensure before validation).
