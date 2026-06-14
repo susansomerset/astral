@@ -161,3 +161,12 @@ No conflicts — plan is implementable as written.
 
 - Branch tip includes Betty **`tests/`** + bible updates and incidental drift fixes (`test_boards.py` AST-459 deeplink alignment, `test_roster.py` `states=None`, `contemplate_job` trigger_state assertion) — expected qa-child scope, not AST-649 product defects.
 - `gaze_board` remains schedulable in backend config and could still be created via raw API POST; plan explicitly chose UI-only hide — intentional per epic boundaries.
+
+## Resolution (Katherine / resolve)
+
+**Date:** 2026-06-14  
+**Review:** Radia — no fix-now, no discuss (doc `6b870da1`).
+
+No product code changes required. Review confirmed plan fidelity and acceptance criteria on publish ref `6b870da1` (product `5cbafff0`, `2478ca22`; Betty tests `51da72b4`).
+
+**§9a:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-648-remove-board-searches-and-related-references`.
