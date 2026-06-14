@@ -40,8 +40,11 @@ def _rubric_item(label: str = "fit", code: str = "CR") -> Dict[str, Any]:
 
 
 @pytest.fixture
-def enable_debug_log(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(consult_mod.logger, "isEnabledFor", lambda level: level == consult_mod._LOG_DEBUG)
+def enable_debug_log() -> None:
+    """AST-619: grading helpers use logger.set_debug_flag + debug_detail (not _LOG_DEBUG)."""
+    consult_mod.logger.set_debug_flag(True)
+    yield
+    consult_mod.logger.set_debug_flag(False)
 
 
 class TestRenderPassFail:
