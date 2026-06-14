@@ -893,6 +893,7 @@ def get_new_company_batch(
     scan_interval_hours: Optional[float] = None,
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
+    states: Optional[List[str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim companies for batch processing. Returns (batch_id, companies).
 
@@ -904,8 +905,13 @@ def get_new_company_batch(
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
     allowed = list(COMPANY_STATES.keys()) if COMPANY_STATES else []
-    if not allowed or state not in allowed:
-        raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
+    if states is None:
+        if not allowed or state not in allowed:
+            raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
+    else:
+        for s in states:
+            if not allowed or s not in allowed:
+                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
     state_config = (COMPANY_STATES or {}).get(state, {})
     batch_criteria = state_config.get("batch_criteria", {})
     limit_val = limit if limit is not None else batch_criteria.get("limit", 10)
@@ -920,6 +926,7 @@ def get_new_company_batch(
         bid, state, limit_val, sort_by=sort_by, scan_interval_hours=eff_scan,
         candidate_id=candidate_id, require_empty_website=require_empty_website,
         score_floor=score_floor,
+        states=states,
     )
     companies = get_company_batch(bid)
     return (bid, companies)

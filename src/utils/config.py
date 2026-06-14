@@ -30,7 +30,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, Optional
+from typing import Any, Dict, FrozenSet, List, Optional
 
 from dotenv import load_dotenv
 
@@ -1186,6 +1186,23 @@ def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
     if ts in PASSED_SCORE_GATED_STATES:
         return True
     return ts in _TRANSITION_STATES_USED_BY_SCORED_TASKS
+
+
+def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> List[str]:
+    """States a dispatch row claims and counts (primary + companion *_RETRY when configured)."""
+    if trigger_state is None:
+        return []
+    ts = str(trigger_state).strip()
+    if not ts:
+        return []
+    if ts.endswith("_RETRY"):
+        return [ts]
+    companion = f"{ts}_RETRY"
+    if entity_type == "job" and companion in JOB_STATES:
+        return [ts, companion]
+    if entity_type == "company" and companion in COMPANY_STATES:
+        return [ts, companion]
+    return [ts]
 
 
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).

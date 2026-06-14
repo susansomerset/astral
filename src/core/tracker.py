@@ -549,6 +549,7 @@ def get_new_job_batch(
     context: Optional[str] = None,
     *,
     claim_cap: Optional[int] = None,
+    states: Optional[List[str]] = None,
     ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim jobs in state (AST-78). Returns (batch_id, jobs).
     limit/sort_by from the caller (dispatcher reads from DB task row); limit defaults to 10 if omitted.
@@ -556,7 +557,11 @@ def get_new_job_batch(
     candidate_id: when provided, scopes claim to jobs whose company belongs to this candidate.
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided)."""
-    validate_value(_JOB_STATE_LIST, state)
+    if states is None:
+        validate_value(_JOB_STATE_LIST, state)
+    else:
+        for s in states:
+            validate_value(_JOB_STATE_LIST, s)
     limit_val = limit if limit is not None else 10
     sort_by_val = sort_by
     if not batch_id and not context:
@@ -570,6 +575,7 @@ def get_new_job_batch(
         candidate_id=candidate_id,
         score_floor=score_floor,
         claim_cap=claim_cap,
+        states=states,
     )
     jobs = database.get_job_batch(bid)
     return (bid, jobs)

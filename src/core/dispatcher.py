@@ -30,6 +30,7 @@ from src.utils.config import (
     INFLOW_CONFIG,
     TASK_CONFIG,
     dispatch_claim_uses_score_floor,
+    dispatch_claim_states,
     dispatch_task_key_is_scored,
     resume_artifact_compound_state,
     resume_artifact_hop_task_keys,
@@ -216,6 +217,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         logger.set_debug_flag(True)
 
     claim_cap = None
+    claim_states: Optional[List[str]] = None
     if entity_type == "board_search":
         from src.data.database import claim_board_search_batch, clear_board_search_batch
         from src.utils.config import BOARDS_CONFIG
@@ -247,6 +249,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     f"(task_key={task_key_run!r} id={task.get('id')})"
                 )
             claim_cap = database.count_eligible_for_dispatch_task(task)
+        claim_states = dispatch_claim_states(input_state, "job")
         bid, entities = get_new_job_batch(
             input_state,
             limit=limit,
@@ -255,6 +258,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             candidate_id=candidate_id,
             batch_id=bid,
             claim_cap=claim_cap,
+            states=claim_states,
         )
     else:
         freq = float(task.get("freq_hrs") or 0)
@@ -263,6 +267,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         sort_override = (task.get("sort_by") or "").strip() or None
         resolve_key = INFLOW_CONFIG["resolve"]["task_key"]
         floor = float(task["score_floor"]) if task.get("score_floor") is not None else None
+        claim_states = dispatch_claim_states(input_state, "company")
         bid, entities = get_new_company_batch(
             input_state,
             limit=limit,
@@ -273,6 +278,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             scan_interval_hours=scan_override,
             require_empty_website=(task.get("task_key") == resolve_key),
             score_floor=floor,
+            states=claim_states,
         )
 
     if not entities:
@@ -302,6 +308,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         logger.debug_detail(
             f"task_key={dispatch_task_key} batch_id={bid} batch_call_mode={batch_call_mode} "
             f"dispatch batch_size={limit!r} claim_cap={claim_cap!r}"
+            + (f" claim_states={claim_states!r}" if claim_states is not None else "")
         )
         for ei, entity in enumerate(entities, start=1):
             logger.debug_index(
