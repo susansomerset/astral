@@ -277,6 +277,33 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review
 
 - **Branch:** `origin/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips`
-- **Tip:** `f03a041f`
-- **Built:** 2026-06-14 — stages 1–4 complete (UI_CONFIG defaults, shared helpers/CSS, ListPage integration, AdminScheduledActions); Betty manifest pending.
+- **Diff:** `origin/dev...origin/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips`
+- **Tip:** `5b9b971a`
+- **Radia:** 2026-06-14 — **findings** (one discuss; see below)
+
+### What's solid
+
+| Area | Assessment |
+|------|------------|
+| Plan fidelity | Stages 1–4 match the combined plan: `UI_CONFIG` keys, `listTableLayout` / `uiConfig` / `ListTableTruncatedCell`, ListPage wiring, `AdminScheduledActions` adopter, sticky-header CSS fix. |
+| §2.1 Config | `list_table_frozen_data_columns` / `list_table_cell_truncate_chars` in `UI_CONFIG`; ListPage `frozenDataColumns` override; no new API route. |
+| §1.3 DRY | ui_config cache extracted to `uiConfig.ts`; freeze/truncate helpers shared. |
+| §3.3 Layers | UI-only frontend + two config literals; no layer violations. |
+| Boundaries | Layout/presentation only — sort, filter, checkbox, drag/resize, localStorage, phase grouping untouched. |
+| Tests | Betty manifest present: layout helpers, truncated cell, ListPage freeze/truncate, ui_config API defaults, Scheduled Actions frozen-class test. |
+
+### Issues
+
+| Severity | Location | Note |
+|----------|----------|------|
+| **discuss** | `AdminScheduledActions.tsx` — `scheduledFrozenStyle` / `stickyLeftPx(..., {}, ...)` | Bespoke table uses **percentage** column widths (`9%`, `14%`, `7%`) but sticky `left` offsets assume **pixel** widths (`120` default per prior col). Column 0 (`left: 0`) is correct; columns 1–2 may **misalign** under horizontal scroll. Component tests assert CSS classes only, not pixel alignment. **UAT:** Scheduled Actions with wide content / narrow viewport — scroll horizontally and confirm Candidate / Task / Entity headers and cells stay aligned with their columns. If gaps or overlap appear, pass measured widths (or min-width colgroup + `--auto`) into `stickyLeftPx`. |
+| advisory | `resolveFrozenDataColumns(null)` → `0` before ui_config loads | Brief render with no frozen data columns until fetch completes; pre-existing fetch-failure fallback unchanged. |
+| advisory | `App.css` — global `tbody td` `max-width: 0` + nowrap | Intended for truncation; watch `expandable` columns in UAT for ellipsis fighting inline expand toggle. |
+| advisory | `list-table-cell-frozen-right` | No dedicated hover background rule (left frozen cols have one); row-actions stickies may look slightly flat on hover. |
+
+### Recommended actions
+
+1. **resolve-child:** Run manual UAT on Scheduled Actions horizontal scroll for frozen-column alignment (discuss item above).
+2. **Optional:** Add hover background for `tbody tr:hover td.list-table-cell-frozen-right` if cosmetic gap matters.
+3. No fix-now blockers for ListPage path — pixel offsets use `colWidths` from resize/localStorage as planned.
 
