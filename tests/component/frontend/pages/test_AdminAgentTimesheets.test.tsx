@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import AgentTimesheets from "../../../../src/ui/frontend/src/pages/AdminAgentTimesheets"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -94,4 +95,39 @@ describe("AdminAgentTimesheets", () => {
     renderWithProviders(<AgentTimesheets />)
     await waitFor(() => expect(screen.getByText("No timesheet entries found.")).toBeInTheDocument())
   }, 15000)
+
+  describe("AST-634 admin candidate filter", () => {
+    it("uses Candidate dropdown and passes candidate_id on export", async () => {
+      let exportUrl = ""
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/timesheets/export")) {
+          exportUrl = url
+          return { blob: async () => new Blob(["csv"]) } as Response
+        }
+        if (url.startsWith("/api/admin/timesheets")) {
+          return { json: async () => [row] } as Response
+        }
+        if (url === "/api/candidates") {
+          return {
+            json: async () => [
+              { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} },
+              { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: {} },
+            ],
+          } as Response
+        }
+      })
+
+      renderWithProviders(<AgentTimesheets />, {
+        router: { initialEntries: ["/admin/agent_timesheets?candidate_id=c1"] },
+      })
+      await waitFor(() => expect(screen.getByText("Agent Timesheets")).toBeInTheDocument())
+      expect(screen.getByLabelText("Candidate", { selector: "select" })).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText("candidate_id")).not.toBeInTheDocument()
+
+      const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+      await userEvent.click(screen.getByRole("button", { name: "Export CSV" }))
+      await waitFor(() => expect(exportUrl).toContain("candidate_id=c1"))
+      anchorClick.mockRestore()
+    }, 15000)
+  })
 })

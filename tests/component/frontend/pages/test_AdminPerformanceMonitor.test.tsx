@@ -7,6 +7,8 @@ import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
@@ -28,6 +30,24 @@ const ledgerRow = {
 const candidateFixture = [
   { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
 ]
+
+const adminCandidates = [
+  { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Ada" } },
+  { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Betty" } },
+]
+
+/** AST-634: urlPresentDisablesSync needs candidate_id on mount or RTL hangs on nav sync. */
+function withCandidateQuery(path: string): string {
+  if (path.includes("candidate_id=")) return path
+  return `${path}${path.includes("?") ? "&" : "?"}candidate_id=c1`
+}
+
+function renderPerformanceMonitor(path = "/admin/performance", opts?: Parameters<typeof renderWithProviders>[1]) {
+  return renderWithProviders(<PerformanceMonitor />, {
+    ...opts,
+    router: { initialEntries: [withCandidateQuery(path)], ...opts?.router },
+  })
+}
 
 function chainHopRowsForToday() {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
@@ -85,9 +105,7 @@ describe("AdminPerformanceMonitor", () => {
 
   it("loads ledger rows, filters, expands logs, and opens batch modal", async () => {
     mockApi()
-    renderWithProviders(<PerformanceMonitor />, {
-      router: { initialEntries: ["/admin/performance?task_key=task_a&status=COMPLETED"] },
-    })
+    renderPerformanceMonitor("/admin/performance?task_key=task_a&status=COMPLETED")
 
     await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
     const table = screen.getByRole("table")
@@ -117,7 +135,7 @@ describe("AdminPerformanceMonitor", () => {
       if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
       throw new Error(`unexpected ${url}`)
     })
-    renderWithProviders(<PerformanceMonitor />)
+    renderPerformanceMonitor()
     await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
     await waitFor(() => expect(ledgerUrl).toContain("date_from="))
   }, 15000)
@@ -160,7 +178,7 @@ describe("AdminPerformanceMonitor", () => {
         } as Response
       }
     })
-    renderWithProviders(<PerformanceMonitor />)
+    renderPerformanceMonitor()
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
     const table = screen.getByRole("table")
     expect(within(table).getByText("RUNNING")).toBeInTheDocument()
@@ -173,7 +191,7 @@ describe("AdminPerformanceMonitor", () => {
       if (url.startsWith("/api/admin/dispatch_ledger")) return { json: async () => [ledgerRow] } as Response
     })
 
-    renderWithProviders(<PerformanceMonitor />)
+    renderPerformanceMonitor()
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
     const table = screen.getByRole("table")
     await userEvent.click(within(table).getByText("task_a"))
@@ -195,9 +213,7 @@ describe("AdminPerformanceMonitor", () => {
       }
     })
 
-    renderWithProviders(<PerformanceMonitor />, {
-      router: { initialEntries: ["/admin/performance?date_from=2026-05-19"] },
-    })
+    renderPerformanceMonitor("/admin/performance?date_from=2026-05-19")
     await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
     const from = screen.getByLabelText("From") as HTMLInputElement
     const before = calls.length
@@ -241,7 +257,7 @@ describe("AdminPerformanceMonitor", () => {
 
     it("lists separate per-hop rows with correct task keys", async () => {
       mockChainList(chainHopRowsForToday())
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       expect(within(table).getByText("anticipate_scan")).toBeInTheDocument()
@@ -252,7 +268,7 @@ describe("AdminPerformanceMonitor", () => {
 
     it("expands hop-scoped logs per batch_id", async () => {
       mockChainList(chainHopRowsForToday())
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       await userEvent.click(within(table).getByText("anticipate_scan"))
@@ -267,7 +283,7 @@ describe("AdminPerformanceMonitor", () => {
 
     it("opens hop-scoped agent_data per batch_id", async () => {
       mockChainList(chainHopRowsForToday())
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       await userEvent.click(within(table).getByText("anticipate_scan"))
@@ -293,9 +309,7 @@ describe("AdminPerformanceMonitor", () => {
         }
         if (url === "/api/candidates") return { json: async () => candidateFixture } as Response
       })
-      renderWithProviders(<PerformanceMonitor />, {
-        router: { initialEntries: ["/admin/performance?task_key=anticipate_scan"] },
-      })
+      renderPerformanceMonitor("/admin/performance?task_key=anticipate_scan")
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       await waitFor(() => expect(calls.some(u => u.includes("task_key=anticipate_scan"))).toBe(true))
       const table = screen.getByRole("table")
@@ -318,7 +332,7 @@ describe("AdminPerformanceMonitor", () => {
         },
       ]
       mockChainList(rows)
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       expect(within(table).getByText("adhoc-evaluate_jd")).toBeInTheDocument()
@@ -344,11 +358,47 @@ describe("AdminPerformanceMonitor", () => {
         },
       ]
       mockChainList(rows)
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       const badge = within(table).getByText("FAILED")
       expect(badge).toHaveClass("dispatch-status-fail")
+    }, 15000)
+  })
+
+  describe("AST-634 admin candidate filter", () => {
+    it("lists global candidates even when ledger rows omit them", async () => {
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => adminCandidates } as Response
+        }
+      })
+      renderPerformanceMonitor()
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.options.length).toBeGreaterThan(1))
+      const optionLabels = Array.from(candidateSelect.options).map(o => o.textContent)
+      expect(optionLabels).toContain("Ada")
+      expect(optionLabels).toContain("Betty")
+    }, 15000)
+
+    it("passes candidate_id from URL into ledger fetch", async () => {
+      const calls: string[] = []
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?")) calls.push(url)
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => adminCandidates } as Response
+        }
+      })
+      renderPerformanceMonitor("/admin/performance?candidate_id=c2")
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      await waitFor(() => expect(calls.some(u => u.includes("candidate_id=c2"))).toBe(true))
     }, 15000)
   })
 })

@@ -80,7 +80,7 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
-      if (url === "/api/admin/agents/meta/tokens") return { json: async () => agentTokens } as Response
+      if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
       if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
       if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
       if (url === "/api/admin/agents/models") return { json: async () => models } as Response
@@ -132,6 +132,48 @@ describe("AdminAgentPrompts", () => {
     await waitFor(() => expect(screen.getByText("load failed")).toBeInTheDocument())
   }, 15000)
 
+  it("AST-636: shows token autocomplete when typing {$ in edit modal", async () => {
+    mockApi()
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("agent_a"))
+    await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+    const textarea = screen.getByDisplayValue("system prompt") as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "{$" } })
+    textarea.setSelectionRange(2, 2)
+    fireEvent.keyUp(textarea)
+    await waitFor(() => {
+      expect(screen.getByText((_, node) => node?.textContent === "{$FIRST_NAME}")).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByText((_, node) => node?.textContent === "{$FIRST_NAME}"))
+    await waitFor(() => expect(textarea).toHaveValue("{$FIRST_NAME}"))
+  }, 15000)
+
+  it("AST-636: tolerates non-OK agent token meta without showing picker", async () => {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/admin/agents/meta/tokens") {
+        return { ok: false, status: 500, json: async () => ({ error: "fail" }) } as Response
+      }
+      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+      if (url === "/api/admin/agents/agent_a" && !init?.method) {
+        return { json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
+      }
+    })
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("agent_a"))
+    await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+    const textarea = screen.getByDisplayValue("system prompt") as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "system prompt{$" } })
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    fireEvent.keyUp(textarea)
+    expect(screen.queryByText((_, node) => node?.textContent === "{$FIRST_NAME}")).not.toBeInTheDocument()
+  }, 15000)
+
   it("AST-632: loads agent tokens, preview resolved, save preserves literal placeholders", async () => {
     localStorage.setItem("astral_selected_candidate", "c1")
     let putBody = ""
@@ -139,7 +181,7 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
-      if (url === "/api/admin/agents/meta/tokens") return { json: async () => agentTokens } as Response
+      if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
       if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
       if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
