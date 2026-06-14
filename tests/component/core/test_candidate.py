@@ -729,6 +729,65 @@ class TestAst517ResumeStructure:
         schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
         assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
 
+    def test_normalize_injects_default_when_resume_structure_missing(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "candidate_name": "Kar Fo",
+                "candidate_title": "Engineer",
+                "candidate_contact_detail": "kar@example.com",
+                "professional_summary": "Summary",
+                "core_competencies": "Skills",
+                "experience": "Jobs",
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert "candidate_name" in ap["resume_structure"]["sections"]
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_normalize_injects_default_when_resume_structure_sections_empty(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {"sections": {}},
+                "candidate_name": "Kar Fo",
+                "candidate_title": "Engineer",
+                "candidate_contact_detail": "kar@example.com",
+                "professional_summary": "Summary",
+                "core_competencies": "Skills",
+                "experience": "Jobs",
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert "candidate_name" in ap["resume_structure"]["sections"]
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_normalize_preserves_valid_custom_resume_structure(self) -> None:
+        custom = _three_section_structure()
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": custom,
+                "candidate_name": "Ada",
+                "candidate_title": "Eng",
+                "candidate_contact_detail": "a@b.c",
+                "professional_summary": "S",
+                "core_competencies": "C",
+                "experience": "E",
+            }
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        assert parsed["agent_payload"]["resume_structure"]["sections"]["experience"]["title"] == "Custom Jobs"
+
     def test_split_promotes_nested_section_content(self) -> None:
         structure = _three_section_structure()
         sections = {
