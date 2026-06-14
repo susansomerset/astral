@@ -757,6 +757,30 @@ class TestAst586DispatchClaimScoreFloor:
         assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is True
 
 
+# AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
+class TestAst641DispatchClaimStates:
+    def test_primary_job_includes_companion_retry(self) -> None:
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+        assert cfg.dispatch_claim_states("JD_READY", "job") == ["JD_READY", "JD_READY_RETRY"]
+
+    def test_retry_only_job_single_state(self) -> None:
+        assert cfg.dispatch_claim_states("VALID_TITLE_RETRY", "job") == ["VALID_TITLE_RETRY"]
+
+    def test_primary_company_includes_companion_retry(self) -> None:
+        assert cfg.dispatch_claim_states("WEBSITE_FOUND", "company") == [
+            "WEBSITE_FOUND",
+            "WEBSITE_FOUND_RETRY",
+        ]
+
+    def test_state_without_registry_companion_stays_single(self) -> None:
+        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW"]
+        assert cfg.dispatch_claim_states("NEW", "company") == ["NEW"]
+
+    def test_guard_none_blank(self) -> None:
+        assert cfg.dispatch_claim_states(None, "job") == []
+        assert cfg.dispatch_claim_states("", "company") == []
+
+
 # LLM_PROVIDER_CONFIG brain tiers, Anthropic / DeepSeek tier maps, startup env parity (AST-492).
 class TestAst492LlmBrainTierConfig:
     def test_resolve_anthropic_tier_maps_to_agent_config_keys(self) -> None:

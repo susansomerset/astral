@@ -225,3 +225,98 @@ class TestAst535DispatchTaskTripleUnique:
         db.save_dispatch_task("c535", "find_job_page", min_count=1, trigger_state="TO_WATCH")
         with pytest.raises(Exception, match="UNIQUE"):
             db.save_dispatch_task("c535", "find_job_page", min_count=1, trigger_state="TO_WATCH")
+
+
+class TestAst641UnionClaimCount:
+    """AST-641: primary trigger rows union companion *_RETRY for claim/count; retry-only rows unchanged."""
+
+    def _seed_valid_title_jobs(self, db, cid: str = "c641") -> None:
+        db.save_company("co641", state="IMPORTED", candidate_id=cid, company_name="co641")
+        db.save_job("job-primary", company="co641", state="VALID_TITLE")
+        db.save_job("job-retry", company="co641", state="VALID_TITLE_RETRY")
+        db.save_job("job-other", company="co641", state="JD_READY")
+
+    def test_count_eligible_primary_job_unions_retry(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_valid_title_jobs(db)
+        task = {
+            "entity_type": "job",
+            "trigger_state": "VALID_TITLE",
+            "task_key": "qualify_job_listings",
+            "candidate_id": "c641",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+
+    def test_count_eligible_retry_only_job_single_state(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_valid_title_jobs(db)
+        task = {
+            "entity_type": "job",
+            "trigger_state": "VALID_TITLE_RETRY",
+            "task_key": "qualify_job_listings",
+            "candidate_id": "c641",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+
+    def test_claim_job_batch_unions_primary_and_retry(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_valid_title_jobs(db)
+        n = db.claim_job_batch(
+            "batch-641",
+            "VALID_TITLE",
+            10,
+            candidate_id="c641",
+            states=["VALID_TITLE", "VALID_TITLE_RETRY"],
+        )
+        assert n == 2
+        rows = db.get_job_batch("batch-641")
+        assert {r["astral_job_id"] for r in rows} == {"job-primary", "job-retry"}
+
+    def test_count_eligible_company_prefilter_unions_retry(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c641c"
+        db.save_company("wf", state="WEBSITE_FOUND", candidate_id=cid, company_name="wf")
+        db.save_company("wfr", state="WEBSITE_FOUND_RETRY", candidate_id=cid, company_name="wfr")
+        db.save_company("other", state="NEW", candidate_id=cid, company_name="other")
+        task = {
+            "entity_type": "company",
+            "trigger_state": "WEBSITE_FOUND",
+            "task_key": "prefilter",
+            "candidate_id": cid,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+
+    def test_claim_company_batch_unions_primary_and_retry(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c641c"
+        db.save_company("wf", state="WEBSITE_FOUND", candidate_id=cid, company_name="wf")
+        db.save_company("wfr", state="WEBSITE_FOUND_RETRY", candidate_id=cid, company_name="wfr")
+        n = db.claim_company_batch(
+            "batch-641c",
+            "WEBSITE_FOUND",
+            10,
+            candidate_id=cid,
+            states=["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"],
+        )
+        assert n == 2
+        rows = db.get_company_batch("batch-641c")
+        assert {r["short_name"] for r in rows} == {"wf", "wfr"}
+
+    def test_scored_primary_count_applies_floor_across_union(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c641s"
+        db.save_company("co", state="IMPORTED", candidate_id=cid, company_name="co")
+        db.save_job("j-pass", company="co", state="PASSED_LIKE")
+        db.save_job("j-pass", latest_score=8.0)
+        db.save_job("j-retry-pass", company="co", state="PASSED_LIKE_RETRY")
+        db.save_job("j-retry-pass", latest_score=8.0)
+        db.save_job("j-below", company="co", state="PASSED_LIKE")
+        db.save_job("j-below", latest_score=0.5)
+        task = {
+            "entity_type": "job",
+            "trigger_state": "PASSED_LIKE",
+            "task_key": "consult_like",
+            "candidate_id": cid,
+            "score_floor": 7.0,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
