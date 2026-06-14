@@ -184,4 +184,43 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review
 
-**Built by Ada.** Publish ref `sub/AST-626/AST-627-schema-ensure-before-table-upsert-validation`. Product commits: `ada989ae` (data-layer registry + config upsert hook), `b9a071a9` (core copy-output ensure before validation).
+**Branch:** `origin/sub/AST-626/AST-627-schema-ensure-before-table-upsert-validation`  
+**Diff:** `origin/dev...origin/sub/AST-626/AST-627-schema-ensure-before-table-upsert-validation`  
+**Tip:** `645f12ee`
+
+### What's solid
+
+- Plan fidelity: `_UPSERT_LAZY_SCHEMA_HANDLERS` + `ensure_table_schema_for_upsert` in data layer; hook in `apply_config_table_upsert` after allowlist; core Copy Output path calls ensure before `table_columns` / PK checks and drops in-transaction `_ensure_agent_task_schema` (avoids early commit inside `BEGIN IMMEDIATE`).
+- Registry keys match plan exclusions (no timesheets multi-table, FK-only, or gaze seeding as standalone entries); all three config-table names (`dispatch_task`, `agent_task`, `candidate`) are registered.
+- Layer law (§3.3): core orchestrates via public data API only; no new logging in data (§1.5).
+- Tests cover stale-schema success (Copy Output + config upsert), genuine column mismatch after ensure, and no-handler generic table (AC1–AC5).
+- Self-Assessment scope/conf/risk matches diff footprint (two production modules + focused component tests).
+
+### Issues
+
+| Severity | Item |
+|----------|------|
+| — | None |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+— Radia
+
+---
+
+## Resolution
+
+**2026-06-14 — Ada (resolve-child)**
+
+Radia review (`1f9d2ec0`): **0 fix-now · 0 discuss · 0 advisory** — no product changes required.
+
+- Re-ran Betty manifest (21 passed) on publish ref tip.
+- §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-626-table-upsert-ensure-schema-before-running`.
+
+**Ship tip:** `origin/sub/AST-626/AST-627-schema-ensure-before-table-upsert-validation` @ `1f9d2ec0`

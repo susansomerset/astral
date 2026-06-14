@@ -4998,6 +4998,27 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
     _dispatch_task_schema_ensured = True
 
 
+_UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
+    "agent": ("_agent_schema_ensured",),
+    "agent_data": ("_agent_data_schema_ensured",),
+    "agent_responses": ("_agent_responses_schema_ensured",),
+    "agent_task": ("_agent_task_schema_ensured",),
+    "app_log": ("_app_log_schema_ensured",),
+    "board_search": ("_board_search_schema_ensured",),
+    "board_search_run": ("_board_search_run_schema_ensured",),
+    "candidate": ("_candidate_schema_ensured",),
+    "candidate_intake_session": ("_intake_session_schema_ensured",),
+    "company": ("_company_schema_ensured",),
+    "company_job_scan": ("_company_job_scan_schema_ensured",),
+    "company_search_terms": (
+        "_company_search_terms_schema_ensured",
+        "_company_search_terms_migration_swept",
+    ),
+    "dispatch_ledger": ("_dispatch_ledger_schema_ensured",),
+    "dispatch_task": ("_dispatch_task_schema_ensured",),
+    "job": ("_job_schema_ensured",),
+}
+
 _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = {
     "agent": _ensure_agent_schema,
     "agent_data": _ensure_agent_data_schema,
@@ -5018,11 +5039,16 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
 
 
 def ensure_table_schema_for_upsert(conn: sqlite3.Connection, table: str) -> None:
-    """Run idempotent lazy schema ensure for ``table`` when registered; no-op otherwise."""
-    handler = _UPSERT_LAZY_SCHEMA_HANDLERS.get(table)
-    if handler is not None:
-        handler(conn)
+    """Run idempotent lazy schema ensure for ``table`` when registered; no-op otherwise.
 
+    Upsert must not trust process-global ``_*_schema_ensured`` shortcuts: the target DB file
+    may be stale while flags were set by a prior request or DB swap in the same process."""
+    handler = _UPSERT_LAZY_SCHEMA_HANDLERS.get(table)
+    if handler is None:
+        return
+    for flag_name in _UPSERT_SCHEMA_ENSURE_FLAGS.get(table, ()):
+        globals()[flag_name] = False
+    handler(conn)
 
 def save_dispatch_task(
     candidate_id: str, task_key: str, min_count: int,
