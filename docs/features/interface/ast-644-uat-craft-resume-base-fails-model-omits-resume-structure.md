@@ -126,3 +126,11 @@ Betty adds these to the **Tests Ready** manifest. If omitted, engineer adds only
 | §3.5 naming | Existing function extended; no new public API surface |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Built:** `code(AST-644): inject default resume_structure before craft_resume_base schema validation`  
+**Branch:** `origin/sub/AST-601/AST-644-craft-resume-base-missing-structure`  
+**Commit:** (filled after push)
