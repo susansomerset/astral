@@ -2231,6 +2231,7 @@ def get_auth_config() -> Dict[str, Any]:
 # UI_CONFIG: Frontend display rules served via /api/system/ui_config.
 # column_types maps the type string returned by req_dict API responses to
 # display properties used by ListPage to format and align cell values.
+# list_table_* keys configure shared list-table layout (frozen columns, truncation).
 # number_format values are resolved by formatCell() in src/ui/frontend/src/lib/fmt.ts.
 # ---------------------------------------------------------------------------
 UI_CONFIG = {
@@ -2242,6 +2243,9 @@ UI_CONFIG = {
         "date":     {"align": "left",  "number_format": "date"},
         "datetime": {"align": "left",  "number_format": "datetime"},
     },
+    # AST-647: shared list-table layout — default frozen data columns (N) and cell truncate length.
+    "list_table_frozen_data_columns": 2,
+    "list_table_cell_truncate_chars": 30,
     # AST-366: client + API validation for profile.cover_letter_signature_image (JPEG data URL).
     "cover_letter_signature_image": {
         "max_width_px": 400,
