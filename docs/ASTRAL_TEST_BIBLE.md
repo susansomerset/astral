@@ -293,15 +293,15 @@ Manifest default: `./scripts/testing/run_component_tests.sh` (includes this file
 
 Eligible rows for **`claim_board_search_batch`** are **`state = 'ACTIVE'`** with **`batch_id`** cleared. User pause = **`INACTIVE`**; gaze failure sets **`ERROR`** until resume **`ACTIVE`**. Deeplink **`search_mode`** / **`run_board_search_gaze`** URL contract remains **`TestRunBoardSearchGazeAst459`** in **`test_boards.py`** where named.
 
-## 7.13s Manage Candidate Board Searches UI (**AST-457**, **AST-471** UX, parent **AST-379**)
+## 7.13s Manage Candidate Board Searches UI (**AST-457**, **AST-471** UX, parent **AST-379**; **UI retired AST-649**, parent **AST-648**)
 
-**`CandidateBoardSearches`** — Active / Paused toggles PATCH **`state`** **`ACTIVE`** ↔ **`INACTIVE`**; **`ERROR`** row shows **Resume ACTIVE**. CRUD via **`/api/boards/searches`**, **`GET /api/boards`** picker.
+**Retired (AST-649):** **`CandidateBoardSearches.tsx`** deleted; nav/route removed — backend **`/api/boards`** and core board modules remain (**§7.13q**). Manifest for removal: **§7.13zzu** (**AST-649**).
+
+**Historical (pre-649):** **`CandidateBoardSearches`** — Active / Paused toggles PATCH **`state`** **`ACTIVE`** ↔ **`INACTIVE`**; **`ERROR`** row shows **Resume ACTIVE**. CRUD via **`/api/boards/searches`**, **`GET /api/boards`** picker.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed Board Searches page | `src/ui/frontend/src/pages/CandidateBoardSearches.tsx` | `tests/component/frontend/pages/test_CandidateBoardSearches.test.tsx` (**§6c** — **`/api/candidates`**, **`/api/boards`**, **`/api/boards/searches`**) |
-| Route registration | `src/ui/frontend/src/routes.tsx` | `tests/component/frontend/test_routes.test.tsx` (`candidate/board_searches`; no `title_patterns`) |
-| REST + DDL | `src/ui/api/api_boards.py`, `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**) |
+| REST + DDL (backend unchanged) | `src/ui/api/api_boards.py`, `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**) |
 
 ## 7.13t NO_OPENINGS Playwright recheck + **JOBS_FOUND** (**AST-463**, parent **AST-460**)
 
@@ -598,7 +598,7 @@ Phase 0: newline-delimited **`artifacts.company_search_terms`**, **`craft_compan
   tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx
 ```
 
-**Harness tail (items 1–4):** `run_component_tests.sh` always runs full Vitest coverage after pytest. Cross-ticket page tests must stay green — notably **`test_AdminManageCandidates.test.tsx`** (AST-511 middle-name field selectors) and **`test_CandidateBoardSearches.test.tsx`** (AST-457 mode switch via **`UserPromptProvider`**, not **`window.confirm`**).
+**Harness tail (items 1–4):** `run_component_tests.sh` always runs full Vitest coverage after pytest. Cross-ticket page tests must stay green — notably **`test_AdminManageCandidates.test.tsx`** (AST-511 middle-name field selectors).
 
 **AST-505** narrowed run (blocker **AST-504** tests optional smoke — terms artifact must exist for dispatch eligibility):
 **AST-505** narrowed run (blocker **AST-504** tests optional smoke — terms artifact must exist for legacy artifact path; per-term eligibility → **AST-525**):
@@ -1751,6 +1751,25 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx \
   ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+## 7.13zzu Remove board search UI + hide `gaze_board` from Scheduled Actions (**AST-649**, parent **AST-648**)
+
+Retire candidate **Board Searches** nav/route/page and hide **`gaze_board`** from Admin Scheduled Actions APIs (**`ADMIN_CONFIG.hidden_dispatch_task_keys`** + **`admin_hidden_dispatch_task_keys()`**). Backend board tables, **`/api/boards`**, **`DISPATCH_SCHEDULABLE_TASK_KEYS`**, and core dispatch unchanged (**§7.13q**).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-649** | Drop **`NAV_CONFIG`** Board Searches item; delete **`CandidateBoardSearches.tsx`** + route; filter **`gaze_board`** from **`GET /api/admin/dispatch_tasks`**, **`/task_keys`**, **`/scheduler/thread_status`** | `src/utils/config.py`, `src/ui/frontend/src/routes.tsx`, `src/ui/api/api_admin.py` | `tests/component/frontend/test_routes.test.tsx` — **`candidate/board_searches`** route absent; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches`; `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions`; **delete** `tests/component/frontend/pages/test_CandidateBoardSearches.test.tsx` |
+
+**AST-649** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/test_routes.test.tsx
 ```
 
 ## Appendix A — Run component tests

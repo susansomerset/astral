@@ -95,6 +95,11 @@ class TestSystemAuthRoutes:
         payload = system_client.get("/api/nav_config", headers=non_admin_headers).get_json()
         assert all(group.get("label") != "Admin" for group in payload)
 
+    def test_nav_config_omits_board_searches(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
+        paths = [item.get("path") for group in payload for item in group.get("items", [])]
+        assert "/candidate/board_searches" not in paths
+
     def test_agent_data_returns_rows(self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.core.agent.get_agent_data", MagicMock(return_value=[{"id": "block-1"}]))
         resp = system_client.get("/api/agent_data/batch-1?block_type=RESPONSE&entity_id=acme", headers=auth_headers)
