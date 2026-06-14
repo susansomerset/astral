@@ -242,3 +242,14 @@ Extend `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — do *
 | §3.5 naming | Page stays `AdminAgentPrompts.tsx` in `pages/`; flat components import |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build-child)
+
+**Built:** `origin/sub/AST-574/AST-632-manage-agents-token-autocomplete-and-preview` @ `d4919d9b`
+
+| Commit | Summary |
+|--------|---------|
+| `e66e1bc3` | Stage 1: `get_manage_agents_tokens`, `GET /agents/meta/tokens`, `POST /agents/preview` |
+| `d4919d9b` | Stage 2: `AdminAgentPrompts` TokenTextarea, candidate preview modal |
+
+**Verification:** `python3 -m py_compile src/utils/config.py src/ui/api/api_admin.py`; `cd src/ui/frontend && npx tsc -b --noEmit && npm run build`
