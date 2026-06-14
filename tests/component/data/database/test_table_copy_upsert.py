@@ -351,3 +351,72 @@ class TestAst627EnsureBeforeValidate:
             json_payload=json.dumps([{"id": "one", "body": "x"}]),
         )
         assert out["ok"] and out["inserted"] == 1
+
+
+class TestAst629UpsertFlagBypass:
+    def test_copy_upsert_stale_dispatch_task_when_schema_flag_already_true(
+        self, sqlite_in_memory,
+    ) -> None:
+        """AST-629: upsert clears process-global ensure flags before migrating stale DB."""
+        from src.core.table_copy_upsert import apply_copy_output_table_upsert
+        from src.data import database as db
+
+        cx = sqlite_in_memory._get_connection()
+        try:
+            cx.execute("DROP TABLE IF EXISTS dispatch_task")
+            cx.execute(
+                """
+                CREATE TABLE dispatch_task (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    candidate_id TEXT NOT NULL,
+                    task_key TEXT NOT NULL,
+                    entity_type TEXT,
+                    trigger_state TEXT,
+                    sort_by TEXT,
+                    batch_call_mode INTEGER DEFAULT 0,
+                    last_run_at TIMESTAMP,
+                    freq_hrs REAL DEFAULT 0,
+                    min_count INTEGER NOT NULL,
+                    batch_size INTEGER,
+                    batch_id TEXT,
+                    auto_mode INTEGER NOT NULL DEFAULT 0,
+                    debug INTEGER NOT NULL DEFAULT 0,
+                    skip_cache INTEGER NOT NULL DEFAULT 0,
+                    max_runs INTEGER DEFAULT 1,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(candidate_id, task_key, trigger_state)
+                )
+                """
+            )
+            cx.commit()
+        finally:
+            cx.close()
+
+        learn = sqlite_in_memory._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(learn)
+            cols = db.table_columns(learn, "dispatch_task")
+        finally:
+            learn.close()
+
+        db._dispatch_task_schema_ensured = True
+        row = {c: None for c in cols}
+        row.update(
+            {
+                "candidate_id": "cand-ast629",
+                "task_key": "qualify_job_listings",
+                "trigger_state": "IMPORTED",
+                "min_count": 1,
+                "auto_mode": 0,
+                "debug": 0,
+                "skip_cache": 0,
+                "max_runs": 1,
+            }
+        )
+
+        out = apply_copy_output_table_upsert(
+            table_name="dispatch_task",
+            json_payload=json.dumps([row]),
+        )
+        assert out["ok"], out
+        assert out["inserted"] + out["updated"] + out["skipped"] > 0
