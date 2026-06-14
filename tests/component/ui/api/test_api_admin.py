@@ -161,6 +161,59 @@ class TestAdminConfigAndAgents:
         assert ok.status_code == 200
         delete.assert_called_once()
 
+    def test_ast632_manage_agents_token_meta_and_preview(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-632: GET /agents/meta/tokens; POST /agents/preview with candidate resolution."""
+        meta = admin_client.get("/api/admin/agents/meta/tokens", headers=auth_headers)
+        assert meta.status_code == 200
+        tokens = meta.get_json()
+        assert tokens == cfg.get_manage_agents_tokens()
+        assert "SELECTED_AGENT" not in tokens
+
+        assert admin_client.post("/api/admin/agents/preview", json={}, headers=auth_headers).status_code == 400
+
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda cid: None)
+        bad_cand = admin_client.post(
+            "/api/admin/agents/preview",
+            json={"content": "hi", "candidate_id": "missing"},
+            headers=auth_headers,
+        )
+        assert bad_cand.status_code == 400
+        assert "not found" in bad_cand.get_json()["error"].lower()
+
+        monkeypatch.setattr(admin_mod.database, "list_candidates", lambda: [])
+        no_cands = admin_client.post("/api/admin/agents/preview", json={"content": "hi"}, headers=auth_headers)
+        assert no_cands.status_code == 400
+
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {"profile": {"first": "Ada"}}},
+        )
+        monkeypatch.setattr(
+            admin_mod,
+            "resolved_agent_content",
+            lambda agent_row, cd, task_key, job_context=None: "resolved Ada",
+        )
+        ok = admin_client.post(
+            "/api/admin/agents/preview",
+            json={"content": "{$FIRST_NAME}", "candidate_id": "c1"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        body = ok.get_json()
+        assert body["candidate_id"] == "c1"
+        assert body["content"] == "resolved Ada"
+
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidates",
+            lambda: [{"astral_candidate_id": "c0", "candidate_data": {"profile": {"first": "Z"}}}],
+        )
+        fallback = admin_client.post("/api/admin/agents/preview", json={"content": "x"}, headers=auth_headers)
+        assert fallback.get_json()["candidate_id"] == "c0"
+
 
 # Branches: enrich rows with/without candidate, agent, task, cache, and timesheet averages.
 class TestEnrichTasks:

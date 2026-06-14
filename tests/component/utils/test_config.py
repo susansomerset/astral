@@ -189,6 +189,18 @@ class TestGetManageTasksChainTokens:
         assert "FIRST_NAME" not in expected
 
 
+class TestGetManageAgentsTokens:
+    """AST-632: Manage Agents picker — registry minus chain/hop tokens."""
+
+    def test_excludes_chain_and_hop_tokens(self) -> None:
+        chain = set(cfg.get_manage_tasks_chain_tokens())
+        agents = cfg.get_manage_agents_tokens()
+        assert agents == sorted(k for k in cfg.get_tokens() if k not in chain)
+        assert "FIRST_NAME" in agents
+        assert "SELECTED_AGENT" not in agents
+        assert not any(t.startswith("CALLER_") for t in agents)
+
+
 # Branches: missing task/schema; encoded variants; JSON example envelope.
 class TestStringifyResponseSchema:
     def test_returns_empty_for_unknown_task(self) -> None:
