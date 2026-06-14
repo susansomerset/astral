@@ -244,3 +244,15 @@ No conflicts requiring `conf-!!-NONE`.
 |--------|-------|
 | None required for merge — approve for `resolve-child` / User Testing path. | Ada |
 | (Optional) Emit contract debug on parse-failure if debug runs should show the raw body that failed parsing. | Future ticket / Susan call |
+
+## Resolution
+
+**Date:** 2026-06-14 · **Publish ref:** `origin/sub/AST-546/AST-620-external-llm-wrapper-debug` @ `e5ddaccd`
+
+Radia review had no fix-now or discuss items. No product code changes in resolve — Radia doc commit `e5ddaccd` already on publish ref; product tip `6e66f8e5` (Stages 1–2) + Betty tests `da1e7c89`.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-546-debug-logging-backfill-external-llm-wrappers`.
+
+**Advisory (no action):** parse-failure path contract debug and redundant `get_logger`/`set_debug_flag` — pre-change parity / harmless; optional follow-up only if Susan wants parse-error preview.
+
+**Outcome:** Ready for User Testing — Chuckles `merge-child` rolls `sub/* → ftr/*` when sibling policy allows.
