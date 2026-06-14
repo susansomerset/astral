@@ -556,6 +556,8 @@ async def _run_dispatch_loop(
 ) -> None:
     """Inner loop: run batches until drained or max_runs hit. Mutates accumulated in place."""
     debug = bool(task.get("debug"))
+    if debug:
+        logger.set_debug_flag(True)
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     run_count = 0
@@ -566,6 +568,23 @@ async def _run_dispatch_loop(
         # min_count gate only applies to AUTO — CLICK runs regardless of queue depth
         effective_min = (task.get("min_count") or 1) if is_auto else 1
         if available < effective_min:
+            if debug:
+                if run_count == 0:
+                    logger.debug_index(
+                        func="dispatcher._run_dispatch_loop",
+                        index=1,
+                        total=1,
+                        identifier=task_key,
+                        outcome="skipped — below min_count",
+                    )
+                    logger.debug_detail(
+                        f"available={available} effective_min={effective_min} is_auto={is_auto}"
+                    )
+                else:
+                    logger.debug_detail(
+                        f"loop stop: remaining below min_count available={available} "
+                        f"effective_min={effective_min} run_count={run_count}"
+                    )
             if run_count == 0:
                 _sched_log.info("Skipping %s: %d available (min_count=%s)",
                                 task_key, available, effective_min)
@@ -577,20 +596,47 @@ async def _run_dispatch_loop(
         with _registry_lock:
             draining = _task_registry.get(task["id"], {}).get("drain", False)
         if draining:
+            if debug:
+                logger.debug_detail(f"loop stop: drain flag set run_count={run_count}")
             _sched_log.info("[%s] drain flag set — stopping after %d run(s)", task_key, run_count)
             break
+        loop_iter = run_count + 1
+        if debug:
+            logger.debug_index(
+                func="dispatcher._run_dispatch_loop",
+                index=loop_iter,
+                total=loop_iter,
+                identifier=task_key,
+                outcome=f"loop iteration {loop_iter} starting",
+            )
+            logger.debug_detail(
+                f"available={available} effective_min={effective_min} max_runs={max_runs!r} "
+                f"draining={draining} entity_batch_id={entity_batch_id}"
+            )
         summary = await _run_task(task, ctx, debug)
         for k in accumulated:
             accumulated[k] += summary.get(k, 0)
         run_count += 1
+        if debug:
+            logger.debug_detail(
+                f"iteration {loop_iter} summary processed={summary.get('total_processed', 0)} "
+                f"passed={summary.get('total_passed', 0)} failed={summary.get('total_failed', 0)} "
+                f"errors={summary.get('total_errors', 0)} accumulated={accumulated}"
+            )
         # Update ledger mid-run so the execution history reflects live progress
         if dispatch_ledger_id:
             database.update_dispatch_ledger(dispatch_ledger_id, **accumulated)
         if summary.get("total_processed", 0) == 0:
+            if debug:
+                logger.debug_detail(f"loop stop: zero processed this iteration run_count={run_count}")
             _sched_log.info("Loop mode %s: 0 processed — stopping", task_key)
             break
         if max_runs != 0:
             if max_runs is None or run_count >= max_runs:
+                if debug:
+                    logger.debug_detail(
+                        f"loop stop: max_runs reached max_runs={max_runs!r} run_count={run_count}"
+                    )
                 break
 
 
