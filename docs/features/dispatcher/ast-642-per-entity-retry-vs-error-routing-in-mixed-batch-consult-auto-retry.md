@@ -201,3 +201,33 @@ No conflicts requiring `conf-!!-NONE`.
 **Compile:** `python3 -m py_compile src/core/consult.py` — pass.
 
 **Tests:** Betty at Code Complete (mixed-state batch fixtures per execution contract).
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-630/AST-642-per-entity-batch-retry` (three-dot). Product delta for this ticket: commit `65a52f86` (`src/core/consult.py` only). Stack also carries unmerged **AST-641** (union claim/count — Radia clean at `a053a5cc`); not re-litigated here.
+
+**Tip:** `2e6f1a38`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | `_consult_batch_fail_dest` + `_transition_batch_consult_failures` match Stages 1–3; batch-level `jobs[0].state` removed; envelope, hydration, missing IDs, `bad_grades`, analysis_upshot, and qualify short-title paths wired. |
+| §2.1 / §2.6 | Retry vs terminal derived from `JOB_STATES[].retry_state` and task `error_state`; `PASSED_LIKE_RETRY` → `FAILED_TECHNICAL` special case documented in helper. |
+| §2.4 batch pattern | Claim/get/clear untouched; only post-`do_task` failure routing changes. |
+| §1.5.1 debug | Mixed-batch `debug_detail` logs `batch_states`; per-missing-ID `debug_index` shows per-entity destination. |
+| Tests | `test_consult.py` covers helper matrix, mixed missing/bad_grades for qualify and evaluate_jd, analysis_upshot paths per execution contract. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None (fix-now / discuss). |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Proceed to `resolve-child` (optional — no fix-now items). | Ada |
