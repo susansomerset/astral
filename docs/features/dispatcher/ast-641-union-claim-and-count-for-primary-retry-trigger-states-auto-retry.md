@@ -232,3 +232,14 @@ No conflicts requiring `conf-!!-NONE`.
 | resolve-child | No fix-now — ship as reviewed; optional UAT: Scheduled Actions **Available** for `VALID_TITLE` / `WEBSITE_FOUND` rows shows primary+retry union in staging. |
 
 **Verdict:** Approve for `resolve-child` — clean pass.
+
+---
+
+## Resolution
+
+**Resolved:** 2026-06-14  
+**Publish ref:** `origin/sub/AST-630/AST-641-union-claim-count` @ `a053a5cc`
+
+Radia **Review Posted** (2026-06-14): **fix-now** none, **discuss** none. Advisory items (admin count covered via data-layer tests; `_state_in_sql` placement) — no product changes required.
+
+**Shipped:** `dispatch_claim_states` config helper; `_state_in_sql` + multi-state claim/count in `database.py`; optional `states=` on tracker/roster batch helpers; dispatcher union wiring. Betty manifest green (14 tests). §9a dry-run clean into `origin/dev` and `origin/ftr/ast-630-auto-retry`.
