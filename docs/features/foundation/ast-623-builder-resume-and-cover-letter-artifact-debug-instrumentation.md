@@ -352,3 +352,32 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 2: `build_resume` / `build_resume_from_job` failure headers + success contract — `3465d507`.
 - Stage 3: `build_cover_letter` / `build_cover_letter_from_job` failure headers + success contract — `3465d507`.
 - Stage 4: `build_base_resume` failure headers + success contract; zero `[DEBUG]` literals — `3465d507`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-545/AST-623-builder-artifact-debug` @ `f9e69620` (includes Betty `test(AST-623)` + bible §7.13zzj).
+
+### What's solid
+
+- Plan stages 1–4 delivered in `src/core/builder.py` only for product code; five public entry points accept `*, debug: bool = False` with pass-through; no HTML/schema changes.
+- §1.5.1 contract: `set_debug_flag` + `debug_index` (style D, `index 1/1`) on every success and terminal `ValueError` path; substantive resolution detail via `debug_detail`; HTML via `debug_detail_block` (15+omit+15).
+- Read-only source-label helpers match ticket AC (resume/cover/accent provenance) without altering `_resolve_*` behavior.
+- Zero `[DEBUG]` literals; `get_logger` only new import from `utils`.
+- Betty branch coverage for `debug=True`/`False` pairs aligns with bible §7.13zzj (no golden log-string asserts — correct for this child).
+
+### Issues
+
+| Severity | Location | Issue |
+|----------|----------|-------|
+| — | — | None |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| — | Ship via `resolve-child` — no code changes required |
+
+### Advisory
+
+- Module `_log` sets `set_debug_flag(True)` when `debug=True` but never resets to `False` on `debug=False` calls — same pattern as `gazer`/`dispatcher` siblings; emissions remain gated by `if debug` / `_emit_builder_failure`, so no contract leak observed. Optional hygiene: `set_debug_flag(debug)` at entry (as `roster.py`) if we standardize later across the backfill epic.
+- `_accent_source_label` re-invokes `resolve_resume_structure` on debug success paths only — acceptable debug-only duplication.
