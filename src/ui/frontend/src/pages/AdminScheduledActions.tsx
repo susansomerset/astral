@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import api from "../lib/api"
 import Time from "../components/Time"
 import CollapsiblePanel from "../components/CollapsiblePanel"
+import ListTableTruncatedCell from "../components/ListTableTruncatedCell"
+import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
+import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
 
 interface DispatchTask {
   id: number
@@ -36,6 +39,20 @@ interface ThreadEntry {
 
 type SortDir = "asc" | "desc"
 
+const FROZEN_DATA_COLUMNS = 3
+
+const DATA_COL_KEYS = [
+  "candidate_id", "task_key", "entity_type", "trigger_state", "score_floor",
+  "auto_mode", "run", "debug", "available_count", "freq_hrs", "min_count",
+  "batch_size", "max_runs", "last_run_at",
+] as const
+
+function scheduledFrozenStyle(colIndex: number, frozenN: number, base: CSSProperties = {}): CSSProperties {
+  const left = stickyLeftPx(colIndex, {}, [...DATA_COL_KEYS], false, frozenN)
+  if (left == null) return base
+  return { ...base, left }
+}
+
 export default function ScheduledActions() {
   const { selectedId } = useCandidate()
   const { candidateFilter, setCandidateFilter, candidates } = useAdminCandidateFilter()
@@ -62,6 +79,12 @@ export default function ScheduledActions() {
   // Stop All confirmation modal
   const [showStopAll, setShowStopAll] = useState(false)
   const [stoppingAll, setStoppingAll] = useState(false)
+  const [, forceUiConfig] = useState(0)
+
+  useEffect(() => { loadUiConfig(() => forceUiConfig(n => n + 1)) }, [])
+  const uiConfig = getUiConfig()
+  const frozenN = resolveFrozenDataColumns(uiConfig, FROZEN_DATA_COLUMNS)
+  const truncateChars = resolveCellTruncateChars(uiConfig)
 
   const loadThreadStatus = useCallback(async () => {
     const res = await api("/api/admin/scheduler/thread_status")
@@ -353,13 +376,13 @@ export default function ScheduledActions() {
               else setOpenPhase(null)
             }}
           >
-            <div className="list-page-table-wrap">
+            <div className="list-page-table-wrap list-page-table-wrap--scroll">
               <table className="list-page-table">
                 <thead>
                   <tr>
-                    <th className="sortable" style={{ width: "9%" }}  onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
-                    <th className="sortable" style={{ width: "14%" }} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
-                    <th className="sortable" style={{ width: "7%" }}  onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
+                    <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0, frozenN, { width: "9%" })} onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
+                    <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1, frozenN, { width: "14%" })} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
+                    <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2, frozenN, { width: "7%" })} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
                     <th className="sortable" style={{ width: "12%" }} onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
                     <th className="sortable" style={{ width: "6%", textAlign: "right" }} onClick={() => toggleSort("score_floor")}>Floor{sortIcon("score_floor")}</th>
                     <th className="sortable" style={{ width: "5%", textAlign: "center" }} onClick={() => toggleSort("auto_mode")}>AUTO{sortIcon("auto_mode")}</th>
@@ -380,11 +403,23 @@ export default function ScheduledActions() {
                     const isDraining = thread?.draining ?? false
                     return (
                       <tr key={row.id} onClick={() => openEdit(row)} style={{ cursor: "pointer" }}>
-                        <td>{row.candidate_id}</td>
-                        <td>{row.task_key}</td>
-                        <td>{allTaskKeys[row.task_key]?.entity_type || row.entity_type || "—"}</td>
-                        <td>{row.trigger_state || allTaskKeys[row.task_key]?.trigger_state || "—"}</td>
-                        <td style={{ textAlign: "right" }}>{(row.is_scored ?? !!allTaskKeys[row.task_key]?.is_scored) ? (row.score_floor ?? 1).toFixed(2) : ""}</td>
+                        <td className={0 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(0, frozenN)}>
+                          <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
+                        </td>
+                        <td className={1 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(1, frozenN)}>
+                          <ListTableTruncatedCell text={row.task_key} maxChars={truncateChars} />
+                        </td>
+                        <td className={2 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(2, frozenN)}>
+                          <ListTableTruncatedCell text={allTaskKeys[row.task_key]?.entity_type || row.entity_type || "—"} maxChars={truncateChars} />
+                        </td>
+                        <td>
+                          <ListTableTruncatedCell text={row.trigger_state || allTaskKeys[row.task_key]?.trigger_state || "—"} maxChars={truncateChars} />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {(row.is_scored ?? !!allTaskKeys[row.task_key]?.is_scored)
+                            ? <ListTableTruncatedCell text={(row.score_floor ?? 1).toFixed(2)} maxChars={truncateChars} />
+                            : null}
+                        </td>
                         <td style={{ textAlign: "center" }}>
                           <button
                             className={`dispatch-status-badge ${row.auto_mode ? "dispatch-status-ok" : "dispatch-status-muted"}`}
@@ -425,10 +460,21 @@ export default function ScheduledActions() {
                             {row.debug ? "ON" : "OFF"}
                           </button>
                         </td>
-                        <td style={{ textAlign: "right" }}>{row.available_count != null ? row.available_count.toLocaleString() : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{row.freq_hrs || "—"}</td>
-                        <td style={{ textAlign: "right" }}>{row.min_count}</td>
-                        <td style={{ textAlign: "right" }}>{row.batch_size ?? "—"}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <ListTableTruncatedCell
+                            text={row.available_count != null ? row.available_count.toLocaleString() : "—"}
+                            maxChars={truncateChars}
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <ListTableTruncatedCell text={row.freq_hrs ? String(row.freq_hrs) : "—"} maxChars={truncateChars} />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <ListTableTruncatedCell text={String(row.min_count)} maxChars={truncateChars} />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <ListTableTruncatedCell text={row.batch_size != null ? String(row.batch_size) : "—"} maxChars={truncateChars} />
+                        </td>
                         <td style={{ textAlign: "right" }}>
                           <span title={row.max_runs === 0 ? "Loop until drained" : undefined}>
                             {row.max_runs === 0 ? "∞" : (row.max_runs ?? 1)}
