@@ -1539,6 +1539,7 @@ npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-627** | Registry + ensure hook in config upsert; core path calls ensure before `table_columns`; removes duplicate in-transaction `agent_task` ensure | `src/data/database.py`, `src/core/table_copy_upsert.py` | **`tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_schema_ensure_before_validate`**; full **`test_table_copy_upsert.py`** + config upsert rows in **`test_schema.py`** for AST-464 regressions |
 | **AST-629** | UAT bug: `ensure_table_schema_for_upsert` clears process-global `_*_schema_ensured` flags before handler so stale DB + flag-already-True still migrates | `src/data/database.py` (`_UPSERT_SCHEMA_ENSURE_FLAGS`, `ensure_table_schema_for_upsert`) | **`tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass::test_copy_upsert_stale_dispatch_task_when_schema_flag_already_true`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_when_schema_flag_already_true`**; full **`TestAst627EnsureBeforeValidate`** + **`TestApplyConfigTableUpsert`** for AST-627/464 regressions |
+| **AST-637** | UAT bug: `company` upsert handler chains `_ensure_company_candidate_fk` + adds `agent_responses_legacy` DDL; registry flags reset both globals (AST-629 combo) | `src/data/database.py` (`_ensure_company_table_for_upsert`, `_ensure_company_schema`) | **`tests/component/data/database/test_table_copy_upsert.py::TestAst637CompanyUpsertSchemaEnsure::test_copy_upsert_stale_company_missing_candidate_and_legacy_columns`**; full **`TestAst627EnsureBeforeValidate`** + **`TestAst629UpsertFlagBypass`** for AST-626/629 regressions |
 
 **AST-627** narrowed run:
 
@@ -1559,6 +1560,16 @@ npm run test:component -- \
   tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_when_schema_flag_already_true \
   tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
   tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert \
+  -q
+```
+
+**AST-637** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst637CompanyUpsertSchemaEnsure \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass \
   -q
 ```
 
