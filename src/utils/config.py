@@ -2201,7 +2201,15 @@ ADMIN_CONFIG = {
         # Prefix for downloaded reconciliation CSV filenames.
         "export_filename_prefix": "astral",
     },
+    # AST-649: omit from Scheduled Actions UI; backend dispatch unchanged.
+    "hidden_dispatch_task_keys": ("gaze_board",),
 }
+
+
+def admin_hidden_dispatch_task_keys() -> frozenset:
+    """task_key values hidden from Scheduled Actions admin UI (dispatch backend unchanged)."""
+    raw = ADMIN_CONFIG.get("hidden_dispatch_task_keys") or ()
+    return frozenset(raw)
 
 # ---------------------------------------------------------------------------
 # AUTH_CONFIG: Authentication and admin role resolution (AST-609 / AST-610).
@@ -2308,7 +2316,6 @@ NAV_CONFIG = [
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
-            {"label": "Board Searches", "path": "/candidate/board_searches"},
         ],
     },
     {

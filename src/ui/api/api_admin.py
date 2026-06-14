@@ -42,6 +42,7 @@ from src.utils.config import (
     JOB_STATES,
     COMPANY_STATES,
     ADMIN_CONFIG,
+    admin_hidden_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_SCHEDULABLE_TASK_KEYS,
     dispatch_task_admin_defaults,
@@ -613,6 +614,8 @@ def list_dtasks():
         ts = row.get("trigger_state")
         cid = row.get("candidate_id", "")
         row["available_count"] = database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
+    hidden = admin_hidden_dispatch_task_keys()
+    rows = [r for r in rows if r.get("task_key") not in hidden]
     if request.args.get("req_dict"):
         return jsonify({"columns": _DISPATCH_TASK_COLUMNS, "rows": rows})
     return jsonify(rows)
@@ -663,6 +666,9 @@ def dispatch_task_keys():
                 "seq": None,
                 "is_scored": dispatch_claim_uses_score_floor(r.get("trigger_state")),
             }
+    hidden = admin_hidden_dispatch_task_keys()
+    for tk in hidden:
+        seen.pop(tk, None)
     return jsonify(seen)
 
 
@@ -1213,7 +1219,10 @@ def kill_dtask(task_id):
 @admin_bp.route("/scheduler/thread_status")
 @require_admin
 def scheduler_thread_status():
-    return jsonify(task_status_all())
+    hidden = admin_hidden_dispatch_task_keys()
+    status = task_status_all()
+    filtered = {k: v for k, v in status.items() if v.get("task_key") not in hidden}
+    return jsonify(filtered)
 
 
 @admin_bp.route("/scheduler/stop_all", methods=["POST"])

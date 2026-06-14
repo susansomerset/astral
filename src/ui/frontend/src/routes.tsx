@@ -40,7 +40,6 @@ import Priorities from "./pages/CandidatePriorities"
 import DealBreakers from "./pages/CandidateDealBreakers"
 import Backstory from "./pages/CandidateBackstory"
 import WritingPreferences from "./pages/CandidateWritingPreferences"
-import BoardSearches from "./pages/CandidateBoardSearches"
 
 // --- Admin ---
 import ScheduledActions from "./pages/AdminScheduledActions"
@@ -103,7 +102,6 @@ const routes: RouteObject[] = [
           { path: "candidate/deal_breakers", element: <DealBreakers /> },
           { path: "candidate/backstory", element: <Backstory /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
-          { path: "candidate/board_searches", element: <BoardSearches /> },
 
           // Admin
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },
