@@ -216,3 +216,31 @@ No conflicts requiring `conf-!!-NONE`.
 **Stages delivered:**
 - Stage 1: `_emit_llm_call_debug` helper + `send_to_anthropic` success/error paths — `6e66f8e5`.
 - Stage 2: `send_to_deepseek` imports helper; success/error paths; zero `[DEBUG]` strings — `6e66f8e5`.
+
+## Review (Radia — AST-620)
+
+**Diff:** `origin/dev...origin/sub/AST-546/AST-620-external-llm-wrapper-debug` @ `da1e7c89`.
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | Stages 1–3 delivered: shared `_emit_llm_call_debug`, both wrappers wired on success + inner/outer API error paths; `[DEBUG]` retired (grep clean). |
+| §1.5.1 contract | `debug=True` gates via `set_debug_flag` + `if debug:` call sites; Style D `index 1/1`; `\|` detail lines; `debug_detail_block` for response preview; `log_llm_batch_summary` coexistence preserved. |
+| §2.5 / §3.3 layer | External-only; deepseek → anthropic helper import matches existing `extract_api_response_text` pattern; no utils→data, no core/data edits in product diff. |
+| Scope / boundaries | No API, retry, cost, or sibling-module scope; bible §7.13zzh via `merge-tests` (Betty manifest), not engineer bible edit. |
+| Self-assessment | `scope-Single-Component` / `conf-high` / `risk-Medium` matches actual footprint. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| advisory | Parse-failure path (API OK, schema/parse fail) still emits only `log_llm_batch_summary` when `debug=True` — no contract block. Pre-change parity (old `[DEBUG]` never ran there either). Optional follow-up if Susan wants raw preview on parse errors. | `send_to_anthropic` / `send_to_deepseek` parse `except` blocks |
+| advisory | `_emit_llm_call_debug` uses a fresh `get_logger(__name__, debug_flag=True)` while call sites also `set_debug_flag(True)` on module logger — redundant but correct. | `anthropic.py` `_emit_llm_call_debug` |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None required for merge — approve for `resolve-child` / User Testing path. | Ada |
+| (Optional) Emit contract debug on parse-failure if debug runs should show the raw body that failed parsing. | Future ticket / Susan call |
