@@ -407,3 +407,15 @@ No conflicts requiring `conf-!!-NONE`.
 1. **`git checkout origin/dev -- src/core/agent.py`** (or equivalent) on epic worktree; republish — **zero** `agent.py` diff vs `origin/dev`.
 2. Optional: reorder grading detail vs per-job index if Susan wants strict §1.5.1 header-first ordering.
 3. Stage 5 manual UAT per plan (debug=True qualify/evaluate/scored; debug=False spot-check).
+
+## Resolution (resolve-child)
+
+**Date:** 2026-06-14 · **Publish after resolve:** `origin/sub/AST-543/AST-619-consult-claim-loop-grading-debug`
+
+| Radia item | Action |
+| --- | --- |
+| **fix-now** — `agent.py` out of scope | Reverted to byte-match **`origin/dev`** (removed accidental `test(AST-619)` partial AST-618 merge from publish ref). Zero `agent.py` diff vs dev. |
+| **discuss** — grading detail before per-job index | **No change** — branch-then-index acceptable for UAT per Radia review; strict header-first reorder deferred unless Susan asks. |
+| **discuss** — sticky `set_debug_flag` | **No change** — Stage 5 spot-check should run `debug=False` batch after `debug=True` in same worker; documented here for UAT. |
+
+**§9a:** publish ref dry-run merge into `origin/dev` and `origin/ftr/ast-543-debug-logging-backfill-consult` verified clean before **User Testing**.
