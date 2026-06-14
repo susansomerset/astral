@@ -160,3 +160,17 @@ No conflicts requiring `conf-!!-NONE`.
 | Drop AST-616 commits from `sub/AST-600/AST-617-*` (keep `6e5f2e17` + plan/docs/test merges for AST-617 only) | Hedy |
 | No code changes needed for AST-617 claim-floor call sites — implementation matches plan | — |
 | After ref cleanup, re-run Betty §7.13zv manifest on cleaned tip | Hedy / Betty |
+
+---
+
+## Resolution (2026-06-13)
+
+**Reviewer:** Radia · **Publish ref:** `origin/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586`
+
+**fix-now (scope bleed):** Rebuilt publish ref from `origin/ftr/AST-600-rebuild-586-git-casualty` + AST-617-only cherry-picks (`c5e54db3` plan → `252da4d6` code → Betty bible `ca7f6429`). Dropped commits `591cc4cd`–`ef194b22` (AST-616 plan/product + accidental `merge-tests` merge). Diff vs `ftr` is now `database.py`, `api_admin.py`, plan doc, and bible §7.13zzc only.
+
+**discuss (`ef194b22`):** Accidental — Betty's `merge-tests` on `astral-tests` pulled `origin/sub/AST-601/AST-616-*` into this ref; not required for AST-617 harness (§7.13zv reuses existing component tests). AST-616 remains on its own publish ref under AST-601.
+
+**Product:** No additional claim-floor code changes; implementation matched plan at `252da4d6`.
+
+**Verify:** Betty §7.13zv manifest green on cleaned tip; §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-600-rebuild-586-git-casualty`.
