@@ -131,4 +131,33 @@ No conflicts — plan is implementable as written.
 
 ## Review
 
-<!-- Radia fills this section at review-child -->
+**Diff:** `origin/dev...origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui` (51da72b4 tip includes Betty test merges; product commits `5cbafff0`, `2478ca22`).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1 + 2 match plan: `NAV_CONFIG` item removed, route/import/page deleted, `App.css` TOC comment removed, `ADMIN_CONFIG.hidden_dispatch_task_keys` + `admin_hidden_dispatch_task_keys()` wired into `list_dtasks`, `dispatch_task_keys`, `scheduler_thread_status`. |
+| Acceptance criteria | No sidebar Board Searches; no `candidate/board_searches` route; admin Scheduled Actions APIs omit `gaze_board`; backend `/api/boards`, `DISPATCH_SCHEDULABLE_TASK_KEYS`, core board modules untouched. |
+| §2.1 Config | Nav and admin hide list are config-driven — no hard-coded React or API task-key exceptions. |
+| §1.3 DRY | Single helper reused across three admin endpoints. |
+| §3.3 Layers | `api_admin.py` imports config helper only; no new cross-layer violations. |
+| Frontend sweep | No remaining `board_searches`, `Board Searches`, or `gaze_board` strings under `src/ui/frontend`. |
+| Self-assessment | Scope/risk labels match the diff footprint (Single-Component UI + admin presentation). |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No **fix-now** or **discuss** items. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None — proceed to `resolve-child` (no product changes required). | Katherine |
+
+### Advisory
+
+- Branch tip includes Betty **`tests/`** + bible updates and incidental drift fixes (`test_boards.py` AST-459 deeplink alignment, `test_roster.py` `states=None`, `contemplate_job` trigger_state assertion) — expected qa-child scope, not AST-649 product defects.
+- `gaze_board` remains schedulable in backend config and could still be created via raw API POST; plan explicitly chose UI-only hide — intentional per epic boundaries.
