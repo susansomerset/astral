@@ -31,6 +31,17 @@ from src.utils.logging import get_logger
 
 _log = get_logger(__name__)
 
+
+def _gazer_job_identifier(job: Dict[str, Any]) -> str:
+    """Primary debug identifier for a job row (§1.5.1 style D)."""
+    return str(job.get("astral_job_id") or job.get("job_title") or "?")
+
+
+def _gazer_company_identifier(row: Dict[str, Any]) -> str:
+    """Primary debug identifier for a company row in gaze batches."""
+    return str(row.get("short_name") or "?")
+
+
 # Maps _classify_jd() return value → JD_SCRAPE_FAIL_* state name
 _JD_ERROR_STATES = {
     "cookie":  "JD_SCRAPE_FAIL_COOKIE",
@@ -108,21 +119,40 @@ async def scrape_jd_batch(
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
         raise ConnectionError(f"scrape_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
+    if debug:
+        _log.set_debug_flag(True)
     cfg = TRACKER_CONFIG
     jd_key = cfg.get("job_data_keys", {}).get("job_description", "job_description")
     min_chars = cfg.get("jd_min_chars", 200)
     # Success / generic scrape-fail transitions (classified JD errors route via _JD_ERROR_STATES)
     pass_state = GAZER_CONFIG["scrape_jd"]["pass_state"]
     fail_state = GAZER_CONFIG["scrape_jd"]["fail_state"]
+    job_total = len(jobs)
 
     passed = failed = 0
+    if debug and job_total > 0:
+        _log.debug_index(
+            func="gazer.scrape_jd_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {job_total} job(s)",
+        )
 
-    async def _scrape_one(job: Dict) -> None:
+    async def _scrape_one(job: Dict, job_index: int) -> None:
         nonlocal passed, failed
         aid = job.get("astral_job_id", "")
         job_link = (job.get("job_link") or "").strip()
         title = job.get("job_title", aid)
         if not job_link:
+            if debug:
+                _log.debug_index(
+                    func="gazer.scrape_jd_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — no job_link -> {fail_state}",
+                )
             _log.warning("[%s] no job_link, cannot scrape JD", aid)
             transition_job_state([aid], fail_state)
             failed += 1
@@ -130,19 +160,45 @@ async def scrape_jd_batch(
         try:
             text = await get_visible_text(url=job_link)
         except Exception as e:
+            if debug:
+                _log.debug_index(
+                    func="gazer.scrape_jd_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — scrape error: {e!s} -> {fail_state}",
+                )
+                _log.debug_detail(f"job_link={job_link!r}")
             _log.warning("[%s] get_visible_text failed: %s", aid, e)
             transition_job_state([aid], fail_state)
             failed += 1
             return
         if not text or not text.strip():
+            if debug:
+                _log.debug_index(
+                    func="gazer.scrape_jd_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — empty visible text -> {fail_state}",
+                )
+                _log.debug_detail(f"job_link={job_link!r}")
             _log.warning("[%s] empty visible text from %s", aid, job_link)
             transition_job_state([aid], fail_state)
             failed += 1
             return
         text = _prune_jd(text, job.get("job_title", ""))
         if debug:
-            _log.info("[%s] pruned JD: %d chars", aid, len(text))
+            _log.debug_detail(f"pruned_chars={len(text)} job_link={job_link!r}")
         if len(text) < min_chars:
+            if debug:
+                _log.debug_index(
+                    func="gazer.scrape_jd_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — JD too short ({len(text)} < {min_chars}) -> {fail_state}",
+                )
             _log.warning("[%s] JD too short (%d chars < %d), -> %s", aid, len(text), min_chars, fail_state)
             transition_job_state([aid], fail_state)
             failed += 1
@@ -150,6 +206,15 @@ async def scrape_jd_batch(
         classification = _classify_jd(text)
         if classification != "ok":
             error_state = _JD_ERROR_STATES[classification]
+            if debug:
+                _log.debug_index(
+                    func="gazer.scrape_jd_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — classified {classification!r} -> {error_state}",
+                )
+                _log.debug_detail(f"job_link={job_link!r} pruned_chars={len(text)}")
             # Save the text so the bad capture is inspectable in the DB
             save_job_data(aid, {jd_key: text})
             _log.warning("[%s] JD classified as %r -> %s", aid, classification, error_state)
@@ -163,16 +228,31 @@ async def scrape_jd_batch(
         job["job_data"][jd_key] = text
         transition_job_state([aid], pass_state)
         if debug:
-            _log.info("[%s] %s -> %s (%d chars)", aid, title, pass_state, len(text))
+            _log.debug_index(
+                func="gazer.scrape_jd_batch",
+                index=job_index,
+                total=job_total,
+                identifier=_gazer_job_identifier(job),
+                outcome=f"passed -> {pass_state} ({len(text)} chars)",
+            )
+            _log.debug_detail(f"job_link={job_link!r} title={title!r}")
         passed += 1
 
     # Cap concurrent Firefox instances to avoid exhausting container resources (EAGAIN / SIGSEGV)
     sem = asyncio.Semaphore(3)
-    async def _limited(job: Dict) -> None:
+    async def _limited(job: Dict, job_index: int) -> None:
         async with sem:
-            await _scrape_one(job)
+            await _scrape_one(job, job_index)
 
-    await asyncio.gather(*[_limited(j) for j in jobs], return_exceptions=False)
+    await asyncio.gather(
+        *[_limited(j, ji) for ji, j in enumerate(jobs, start=1)],
+        return_exceptions=False,
+    )
+    if debug:
+        _log.debug_detail(
+            f"summary passed={passed} failed={failed} total={job_total} "
+            f"pass_state={pass_state!r} fail_state={fail_state!r}"
+        )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
 
