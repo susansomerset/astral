@@ -665,6 +665,7 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
                 last_scan_at TIMESTAMP,
                 company_data TEXT,
                 agent_responses TEXT DEFAULT '[]',
+                agent_responses_legacy TEXT,
                 state_history TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -701,6 +702,13 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
         if "state_history" not in cols:
             try:
                 conn.execute("ALTER TABLE company ADD COLUMN state_history TEXT DEFAULT '[]'")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+        if "agent_responses_legacy" not in cols:
+            try:
+                conn.execute("ALTER TABLE company ADD COLUMN agent_responses_legacy TEXT")
                 conn.commit()
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
@@ -2376,6 +2384,12 @@ def _ensure_company_candidate_fk(conn: sqlite3.Connection) -> None:
             if "duplicate column name" not in str(e).lower():
                 raise
     _company_candidate_fk_ensured = True
+
+
+def _ensure_company_table_for_upsert(conn: sqlite3.Connection) -> None:
+    """Run all lazy company DDL needed before Copy Output key validation."""
+    _ensure_company_schema(conn)
+    _ensure_company_candidate_fk(conn)
 
 
 def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -5008,7 +5022,7 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "board_search_run": ("_board_search_run_schema_ensured",),
     "candidate": ("_candidate_schema_ensured",),
     "candidate_intake_session": ("_intake_session_schema_ensured",),
-    "company": ("_company_schema_ensured",),
+    "company": ("_company_schema_ensured", "_company_candidate_fk_ensured"),
     "company_job_scan": ("_company_job_scan_schema_ensured",),
     "company_search_terms": (
         "_company_search_terms_schema_ensured",
@@ -5029,7 +5043,7 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
     "board_search_run": _ensure_board_search_run_table,
     "candidate": _ensure_candidate_schema,
     "candidate_intake_session": _ensure_candidate_intake_session_table,
-    "company": _ensure_company_schema,
+    "company": _ensure_company_table_for_upsert,
     "company_job_scan": _ensure_company_job_scan_schema,
     "company_search_terms": _ensure_company_search_terms_table,
     "dispatch_ledger": _ensure_dispatch_ledger_schema,
