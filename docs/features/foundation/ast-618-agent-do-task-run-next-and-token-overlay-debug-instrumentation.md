@@ -310,3 +310,16 @@ AST-554 helpers and AST-615/AST-597 patterns are established; partial resume-hop
 | §3.5 naming | `_do_task_debug_entry` / `_do_task_debug_logger` prefix distinguishes from dispatcher helpers. |
 
 No unresolved conflicts — plan assumes AST-554 on integration line (satisfied).
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-541/AST-618-agent-do-task-run-next-token-debug` @ `adbd9027`.
+
+**Stages delivered:**
+- Stage 1: `_do_task_debug_logger` + `_do_task_debug_entry`; retire `_resume_hop_debug_index`; entry after `batch_id` resolution — `adbd9027`.
+- Stage 2: Generalized token overlay detail (chain/caller/job); mid-chain empty-caller guard debug — `adbd9027`.
+- Stage 3: Assembly + encoded payload `debug_detail` / `debug_detail_block`; provider failure exit debug; long `raw_text` truncation — `adbd9027`.
+- Stage 4: `do_task` exit-path debug (cache hit, early return, exception) — `adbd9027`.
+- Stage 5: Generalized `run_next` dispatch debug; invalid-child suppression detail — `adbd9027`.
+
+**Stage 6 (verification):** `python3 -m py_compile src/core/agent.py` passed; zero `[DEBUG]` strings in `agent.py`. Betty log-string tests deferred per parent.
