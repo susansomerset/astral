@@ -206,3 +206,34 @@ Administrators need an at-a-glance deploy signal in the left nav: which environm
 **Product commits:** `7810b2ac` (deploy status helpers + config), `3ef85eae` (admin API endpoint), `71ecb534` (admin nav footer UI)
 
 ## Review
+
+**Diff:** `origin/dev...origin/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer` @ `1647c04e`  
+**Reviewed:** 2026-06-14
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 match spec: `DEPLOY_STATUS_CONFIG` + `deploy_status.py` payload builder; `GET /api/deploy_status` with `@require_admin`; `AdminDeployFooter` + `isAdmin` gate in `NavigationShell`; `env.example` documents `ASTRAL_DEPLOY_ENV`. |
+| Acceptance criteria | Betty manifest covers 401/403/200, environment omission, uptime format samples (`<1m`, `5m`, `1h15m`, `3d22h07m`), admin vs non-admin footer visibility, error state. |
+| §2.1 config | Allowed environment set in `DEPLOY_STATUS_CONFIG`; optional deploy label via `os.environ.get` documented in plan (intentional omission, not a secret). |
+| §3.3 layers | `deploy_status.py` in utils (config only); `api_system.py` imports utils; frontend renders API fields via `api()` — dumb-frontend rule satisfied. |
+| §3.5 naming | `get_deploy_status_payload`, `AdminDeployFooter`, `ASTRAL_DEPLOY_ENV` align with conventions. |
+| Admin gating | API `@require_admin` (401 via `@require_auth`, 403 non-admin) + UI mount only when `isAdmin` — consistent with AST-611 patterns. |
+| Scope | Self-assessment `scope-Single-Component` / `conf-high` / `risk-low` matches diff footprint; no sibling scope bleed. |
+
+### Issues
+
+| Severity | Location | Note |
+| --- | --- | --- |
+| advisory | `deploy_status.py` `_git_head_info()` | Two `git` subprocess calls per `/api/deploy_status` request (30s admin poll). Low traffic; acceptable. Optional future cache if Railway latency matters — not blocking. |
+| advisory | `deploy_status.py` L61–62 | Graceful `("unknown", "")` on git failure is intentional per plan (Railway image may lack `.git`); not a §D2 silent-failure violation — bounded read-only display. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| resolve-child | None required — proceed to §9a / User Testing. |
+| UAT | Confirm `ASTRAL_DEPLOY_ENV` on Railway staging/production; verify admin footer after deploy restart (AC6). |
+
+**Verdict:** Approve for `resolve-child` — no fix-now or discuss items.
