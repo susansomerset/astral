@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { useCandidate } from "../contexts/CandidateContext"
+import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
+import {
+  type AdminCandidateFilterValue,
+  useAdminCandidateFilter,
+} from "../hooks/useAdminCandidateFilter"
 import api from "../lib/api"
 import { rowTotalCost } from "../lib/timesheetCost"
 import ListPage, { type Column } from "../components/ListPage"
@@ -42,6 +48,10 @@ const ZERO: Totals = {
 }
 
 const FILTER_KEYS = ["date_from", "date_to", "task_key_uuid", "batch_id", "candidate_id", "model_code", "agent_performance"] as const
+
+function candidateIdFromParams(sp: URLSearchParams): AdminCandidateFilterValue {
+  return sp.get("candidate_id") || ""
+}
 
 function defaultDateFrom(): string {
   const d = new Date()
@@ -88,9 +98,26 @@ const COLUMNS: Column<TimesheetRow>[] = [
 
 export default function AgentTimesheets() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { selectedId } = useCandidate()
   const [rows, setRows] = useState<TimesheetRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<TimesheetRow[]>([])
+  const initialCandidateDefaultApplied = useRef(false)
+
+  const setCandidateParam = useCallback((next: AdminCandidateFilterValue) => {
+    setSearchParams(prev => {
+      const nextParams = new URLSearchParams(prev)
+      if (next) nextParams.set("candidate_id", next)
+      else nextParams.delete("candidate_id")
+      return nextParams
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const urlCandidate = candidateIdFromParams(searchParams)
+  const { candidateFilter, setCandidateFilter, syncWithNav, candidates } = useAdminCandidateFilter({
+    urlBacked: { value: urlCandidate, setValue: setCandidateParam },
+    urlPresentDisablesSync: true,
+  })
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
@@ -113,6 +140,14 @@ export default function AgentTimesheets() {
       return next
     })
   }
+
+  useEffect(() => {
+    if (initialCandidateDefaultApplied.current) return
+    if (searchParams.get("candidate_id")) return
+    if (!syncWithNav || !selectedId) return
+    initialCandidateDefaultApplied.current = true
+    setCandidateParam(selectedId)
+  }, [searchParams, syncWithNav, selectedId, setCandidateParam])
 
   const loadData = useCallback(() => {
     setLoading(true)
@@ -160,11 +195,11 @@ export default function AgentTimesheets() {
           <input type="text" placeholder="batch_id" value={filters.batch_id || ""}
             onChange={e => setFilter("batch_id", e.target.value)} />
         </label>
-        <label>
-          Candidate
-          <input type="text" placeholder="candidate_id" value={filters.candidate_id || ""}
-            onChange={e => setFilter("candidate_id", e.target.value)} />
-        </label>
+        <AdminCandidateFilterControl
+          value={candidateFilter}
+          onChange={setCandidateFilter}
+          candidates={candidates}
+        />
       </div>
 
       {selectedRows.length > 0 && (
