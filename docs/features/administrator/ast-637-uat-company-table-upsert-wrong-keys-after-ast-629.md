@@ -164,3 +164,16 @@ None (fix-now / discuss).
 ### Advisory
 
 - `_UPDATE_COMPANY_ALLOWED` still omits `agent_responses_legacy` — pre-existing; upsert uses `apply_generic_table_copy_upsert` (all `table_columns`), not that frozenset. Only matters if a future normal `update_company` kwargs path needs legacy column writes.
+
+---
+
+## Resolution
+
+**2026-06-14 — Ada (resolve-child)**
+
+Radia review: **0 fix-now · 0 discuss · 1 advisory (out of scope)** — no product changes required.
+
+- Re-ran Betty manifest (5 passed) on publish ref tip `12528dcc`.
+- §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-626-table-upsert-ensure-schema-before-running`.
+
+**Ship tip:** `origin/sub/AST-626/AST-637-uat-company-table-upsert-wrong-keys-after-ast-629` @ `12528dcc`
