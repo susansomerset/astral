@@ -202,6 +202,28 @@ def _candidate_company_urls(candidate_id: str) -> Set[str]:
     return urls
 
 
+def _ingest_failure_reason(
+    candidate_id: str,
+    slug: str,
+    website: Optional[str],
+) -> Optional[str]:
+    """Return human-readable ingest failure reason, or None if ingest would succeed."""
+    slug = (slug or "").strip().lower()
+    if not slug or not _INFLOW_SLUG_RE.match(slug):
+        return f"invalid slug {slug!r}"
+    existing = get_company(slug)
+    if existing:
+        if (existing.get("candidate_id") or "") != candidate_id:
+            return f"slug {slug!r} owned by another candidate"
+        return f"duplicate slug {slug!r} for candidate {candidate_id}"
+    site = (website or "").strip()
+    if site:
+        norm = _normalize_company_url_for_dedupe(site)
+        if norm and norm in _candidate_company_urls(candidate_id):
+            return f"duplicate URL {site!r} for candidate {candidate_id}"
+    return None
+
+
 def ingest_new_companies(
     candidate_id: str,
     slug: str,
@@ -247,10 +269,20 @@ async def resolve_company_website(
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Phase 2: CSE resolution search + find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
-    _ = debug
     cfg = INFLOW_CONFIG["resolve"]
+    log = logger
+    log.set_debug_flag(debug)
     site = (entity.get("company_website") or "").strip()
     if site:
+        if debug:
+            log.debug_index(
+                func="roster.resolve_company_website",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="skipped — company_website already set",
+            )
+            log.debug_detail(f"company_website={site!r}")
         return {"success": True, "state": "WEBSITE_FOUND", "error": None}
     name = (entity.get("company_name") or short_name or "").strip()
     query = f"{name} official website"
@@ -262,9 +294,43 @@ async def resolve_company_website(
             days=cfg["date_restrict_days"],
         )
     except (RuntimeError, ValueError) as exc:
+        if debug:
+            log.debug_index(
+                func="roster.resolve_company_website",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome=f"CSE failed: {exc!s}",
+            )
+            log.debug_detail(f"query={query!r}")
         logger.warning("[%s] resolve_company_website: CSE failed: %s", short_name, exc)
         return {"success": False, "state": None, "error": str(exc)}
+    if debug:
+        log.debug_index(
+            func="roster.resolve_company_website",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"{len(hits)} CSE hit(s)",
+        )
+        log.debug_detail(f"query={query!r} raw_hits={len(hits)}")
+        for hi, hit in enumerate(hits):
+            if hi >= 20:  # UAT cap — same as discovery
+                log.debug_detail(f"... {len(hits) - 20} more hits omitted from log")
+                break
+            log.debug_detail(
+                f"hit title={hit.get('title', '')!r} url={hit.get('url', '')!r}"
+            )
     if not hits:
+        if debug:
+            log.debug_index(
+                func="roster.resolve_company_website",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="NO_WEBSITE — zero CSE hits",
+            )
+            log.debug_detail(f"query={query!r}")
         transition_company_state(short_name, "NO_WEBSITE")
         return {"success": True, "state": "NO_WEBSITE", "error": None}
     # find_company_website: row 0 = company slug; hit rows 1..N (1-based index in live_content).
@@ -273,21 +339,59 @@ async def resolve_company_website(
         snip = (hit.get("snippet") or "")[:500]
         lines.append(f"{i + 1}|{hit.get('title', '')}|{hit.get('url', '')}|{snip}")
     live_content = "\n".join(lines)
+    if debug:
+        log.debug_index(
+            func="roster.resolve_company_website",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"vet {cfg['ai_task_key']} {len(hits)} hit(s)",
+        )
+        log.debug_detail_block(live_content)
     api_result = await do_task(
         task_key=cfg["ai_task_key"],
         live_content=live_content,
         index=short_name,
         ctx=ctx,
+        debug=debug,
     )
     if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.resolve_company_website",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="find_company_website task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
         return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
     parsed = api_result.get("parsed_response") or {}
     website = (parsed.get("website") or "").strip()
     if not parsed.get("task_success") or not website:
+        if debug:
+            log.debug_index(
+                func="roster.resolve_company_website",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="NO_WEBSITE — task_success false or empty website",
+            )
+            log.debug_detail(
+                f"task_success={parsed.get('task_success')!r} website={website!r}"
+            )
         transition_company_state(short_name, "NO_WEBSITE")
         return {"success": True, "state": "NO_WEBSITE", "error": None}
     update_company(short_name, company_website=website)
     transition_company_state(short_name, "WEBSITE_FOUND")
+    if debug:
+        log.debug_index(
+            func="roster.resolve_company_website",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"recorded WEBSITE_FOUND website={website!r}",
+        )
     return {"success": True, "state": "WEBSITE_FOUND", "error": None}
 
 
@@ -366,6 +470,17 @@ async def run_inflow_discovery_batch(
             seen_urls.add(norm)
             all_hits.append(hit)
     if not all_hits:
+        if debug:
+            log.debug_index(
+                func="roster.run_inflow_discovery_batch",
+                index=1,
+                total=1,
+                identifier=candidate_id,
+                outcome="no deduped hits after CSE — vet skipped",
+            )
+            log.debug_detail(
+                f"terms_searched={term_total} errors={errors} deduped_hits=0"
+            )
         return {**zero, "total_errors": errors}
     lines = ["Discovery hits (index|title|url|snippet)"]
     for i, hit in enumerate(all_hits):
@@ -415,6 +530,7 @@ async def run_inflow_discovery_batch(
         if not isinstance(row, dict):
             continue
         row_i += 1
+        fail_reason = None
         action = (row.get("action") or "").strip().lower()
         slug = (row.get("short_name") or "").strip()
         site = (row.get("website") or "").strip() or None
@@ -438,10 +554,15 @@ async def run_inflow_discovery_batch(
                     f"recorded state={'WEBSITE_FOUND' if site else 'NEW'} website={site or ''}"
                 )
             else:
+                fail_reason = _ingest_failure_reason(candidate_id, slug, site)
                 outcome = (
-                    "not recorded (duplicate slug, other candidate, invalid slug, or duplicate URL)"
+                    f"not recorded — {fail_reason}"
+                    if fail_reason
+                    else "not recorded (unknown)"
                 )
         if debug:
+            if fail_reason:
+                log.debug_detail(f"ingest failed: {fail_reason}")
             log.debug_index(
                 func="roster.run_inflow_discovery_batch",
                 index=row_i,
