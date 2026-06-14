@@ -7,9 +7,10 @@ import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { installBaseApiMocks } from "../pages/page-mocks"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 

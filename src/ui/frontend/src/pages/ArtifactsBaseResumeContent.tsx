@@ -14,6 +14,7 @@ export default function BaseResumeContent() {
   const { selectedId } = useCandidate()
   const [palette, setPalette] = useState<string[]>([])
   const [accent, setAccent] = useState<string | null>(null)
+  const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -25,11 +26,21 @@ export default function BaseResumeContent() {
   }, [])
 
   useEffect(() => {
-    if (!selectedId) return
-    api(`/api/candidates/${selectedId}`)
+    if (!selectedId) {
+      setStructureSections(null)
+      setAccent(null)
+      return
+    }
+    api(`/api/candidates/${selectedId}/resume_structure`)
       .then(r => r.json())
-      .then(c => setAccent(normalizeHex(c.candidate_data?.artifacts?.base_resume?.accent_color)))
-      .catch(() => setAccent(null))
+      .then(data => {
+        setStructureSections(Array.isArray(data.sections) ? data.sections : [])
+        setAccent(normalizeHex(data.accent_color))
+      })
+      .catch(() => {
+        setStructureSections([])
+        setAccent(null)
+      })
   }, [selectedId])
 
   function pickSwatch(hex: string) {
@@ -39,7 +50,7 @@ export default function BaseResumeContent() {
     api(`/api/candidates/${selectedId}/data`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artifacts: { base_resume: { accent_color: up } } }),
+      body: JSON.stringify({ artifacts: { resume_structure: { accent_color: up } } }),
     })
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
@@ -74,7 +85,8 @@ export default function BaseResumeContent() {
         title="Base Resume Content"
         artifactKey="base_resume"
         taskKey="craft_resume_base"
-        shapesKey="base_resume_structure"
+        useCandidateResumeStructure
+        structureSections={structureSections}
       />
       <Toast message={toast} onDone={clearToast} />
     </>
