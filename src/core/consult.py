@@ -40,6 +40,7 @@ from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def _consult_job_identifier(job: Dict[str, Any]) -> str:
     """Primary debug identifier for a consult job row (§1.5.1 style D)."""
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
@@ -98,6 +99,7 @@ def _render_pass_fail(task_key: str, grades: list) -> str:
 
 
 _CODE_SUFFIX = re.compile(r'\s*\([A-Z]{2}\)\s*$')
+
 def _strip_code(name: str) -> str:
     """Strip trailing ' (XX)' code suffix the model appends to vector names, e.g. 'Foo (CR)' → 'Foo'."""
     return _CODE_SUFFIX.sub('', name).strip()
@@ -493,6 +495,7 @@ def _render_score(
     )
     return (consult_cfg["pass_state"], score)
 
+
 def _latest_score_value(raw: Optional[float]) -> Optional[float]:
     """Normalize score for persistence; None means keep existing latest_score."""
     return None if raw is None else float(raw)
@@ -723,8 +726,11 @@ def _apply_render_verdict_decoded_job(
     response_job: Dict[str, Any],
     cfg: Dict[str, Any],
     ctx: Optional[Dict[str, Any]],
+    debug: bool = False,
 ) -> Tuple[str, Optional[Any], List[Any]]:
     """Decode path: hydrate reasons, graded verdict, persist {prefix}_* + transition (single row or batch)."""
+    if debug:
+        logger.set_debug_flag(True)
     agent_task = cfg.get("agent_task") or resolve_dispatch_task_config_key(dispatch_task_key)
     grades = response_job.get("grades")
     if not isinstance(grades, list):
@@ -735,6 +741,10 @@ def _apply_render_verdict_decoded_job(
 
     agent_cfg = TASK_CONFIG[agent_task]
     mode = agent_cfg.get("grading_mode", "binary")
+    if debug:
+        logger.debug_detail(
+            f"apply_verdict dispatch_task_key={dispatch_task_key} mode={mode} grades={grades!r}"
+        )
     nt = response_job.get("notes")
     notes_tail = nt.strip() if isinstance(nt, str) and nt.strip() else ""
 
@@ -778,8 +788,21 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     agent_task = cfg["agent_task"]
     error_state = cfg.get("error_state")
 
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func="consult.render_verdict",
+            index=1,
+            total=1,
+            identifier=astral_job_id,
+            outcome="single-job consult start",
+        )
+        logger.debug_detail(f"task_type={task_type} agent_task={agent_task}")
+
     def _fail(error: str) -> Dict[str, Any]:
         """Transition to error_state (if configured) and return failure dict."""
+        if debug:
+            logger.debug_detail(f"render_verdict failed: {error}")
         if error_state:
             _transition_job_state_for_task(agent_task, [astral_job_id], error_state)
         return {"success": False, "to_state": error_state, "error": error}
@@ -839,7 +862,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
 
     try:
         to_state, score, grades_out = _apply_render_verdict_decoded_job(
-            task_type, astral_job_id, row_for_apply, cfg, ctx,
+            task_type, astral_job_id, row_for_apply, cfg, ctx, debug=debug,
         )
     except ValueError as e:
         # Config defect (TASK_CONFIG typo) — not a runtime job failure — matches legacy raise contract.
@@ -847,6 +870,16 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         if es.startswith("Unknown grading_mode:"):
             raise
         return _fail(es)
+
+    if debug:
+        logger.debug_index(
+            func="consult.render_verdict",
+            index=1,
+            total=1,
+            identifier=astral_job_id,
+            outcome=str(to_state),
+        )
+        logger.debug_detail(f"score={score} grades_count={len(grades_out or [])}")
 
     return {"success": True, "to_state": to_state, "score": score, "grades": grades_out, "timesheet": result.get("timesheet", {})}
 
@@ -1305,6 +1338,12 @@ async def _consult_scored_dispatch_batch_encoded(
     error_state = cfg_dispatch.get("error_state")
     skipped = 0
 
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(
+            f"{dispatch_task_key} batch_id={batch_id} claimed={len(jobs)} agent_task={agent_tk}"
+        )
+
     eligible: List[Dict[str, Any]] = []
     live_rows: List[str] = []
 
@@ -1318,6 +1357,15 @@ async def _consult_scored_dispatch_batch_encoded(
             if not company:
                 if error_state:
                     _transition_job_state_for_task(agent_tk, [aid], error_state)
+                if debug:
+                    logger.debug_index(
+                        func=f"consult._consult_scored_dispatch_batch_encoded({dispatch_task_key})",
+                        index=skipped + 1,
+                        total=len(jobs),
+                        identifier=aid,
+                        outcome="skipped — prep failed",
+                    )
+                    logger.debug_detail("reason=no_company")
                 skipped += 1
                 continue
 
@@ -1327,6 +1375,15 @@ async def _consult_scored_dispatch_batch_encoded(
             if fresh.get("state") != "NEED_WEBSITE_CONTENT":
                 if error_state:
                     _transition_job_state_for_task(agent_tk, [aid], error_state)
+            if debug:
+                logger.debug_index(
+                    func=f"consult._consult_scored_dispatch_batch_encoded({dispatch_task_key})",
+                    index=skipped + 1,
+                    total=len(jobs),
+                    identifier=aid,
+                    outcome="skipped — prep failed",
+                )
+                logger.debug_detail(f"reason=no_live_content state={fresh.get('state')!r}")
             skipped += 1
             continue
 
@@ -1334,6 +1391,8 @@ async def _consult_scored_dispatch_batch_encoded(
         live_rows.append(lc)
 
     if not eligible:
+        if debug:
+            logger.debug_detail(f"no eligible rows after prep skipped={skipped}")
         return {"success": True, "passed": 0, "failed": 0, "total": len(jobs), "skipped": skipped}
 
     def assemble(rows: List[Dict[str, Any]]) -> str:
@@ -1343,7 +1402,7 @@ async def _consult_scored_dispatch_batch_encoded(
     def process(input_job, response_job, _orch_cfg):
         aid = response_job["astral_job_id"]
         to_state, _, _grades = _apply_render_verdict_decoded_job(
-            dispatch_task_key, aid, response_job, cfg_dispatch, ctx,
+            dispatch_task_key, aid, response_job, cfg_dispatch, ctx, debug=debug,
         )
         return to_state
 
