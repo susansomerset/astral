@@ -178,3 +178,17 @@ No other changes to `AdminAgentPrompts.tsx` in this ticket.
 |----------|--------|
 | Advisory | `menuAnchor` uses line-count vertical offset only (plan-approved); wrapped long lines may anchor menu at textarea left edge rather than horizontal caret — acceptable vs prior `top:0` clipping |
 | — | Katherine: **`resolve-child`** — no code changes required from this review |
+
+## Resolution (resolve-child)
+
+**Date:** 2026-06-14  
+**Review ref:** Radia comment @ `151d4968`; doc commit `cb7a3ac3`
+
+| Item | Outcome |
+|------|---------|
+| **fix-now** | None — no product commits in resolve pass. |
+| **discuss** | None. |
+| **Advisory** | Accepted as documented (`menuAnchor` line-count vertical offset; wrapped lines may anchor at textarea left edge). |
+| **§9a dry-run** | `origin/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing` merges cleanly into `origin/dev` and `origin/ftr/ast-574-support-tokens-in-agent-prompts`. |
+
+**Publish tip after resolve:** `origin/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing` @ resolve commit SHA (see git log).
