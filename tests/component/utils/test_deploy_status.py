@@ -32,8 +32,12 @@ class TestResolveEnvironment:
         monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
         assert ds._resolve_environment() == "local"
 
-    def test_invalid_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "bogus")
+    def test_non_allowlisted_value_returns_raw(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "eu-west")
+        assert ds._resolve_environment() == "eu-west"
+
+    def test_whitespace_only_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "   ")
         assert ds._resolve_environment() is None
 
 
