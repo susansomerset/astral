@@ -148,4 +148,32 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review
 
 **Diff:** `origin/dev...origin/sub/AST-626/AST-637-uat-company-table-upsert-wrong-keys-after-ast-629`  
-**Built:** Stage 1 complete — pending Betty manifest (Stage 2) and Radia review.
+**Radia (2026-06-14):** **Clean** — plan fidelity and §3 data-layer rules satisfied.
+
+### What's solid
+
+- `_ensure_company_table_for_upsert` chains schema + `candidate_id` FK ensure on the upsert registry only; normal `_ensure_company_schema` call sites unchanged (plan Stage 1).
+- `agent_responses_legacy` added to CREATE + idempotent ALTER (column add only; no archive UPDATE).
+- `_UPSERT_SCHEMA_ENSURE_FLAGS["company"]` includes both globals so AST-629 flag clearing runs the full chain.
+- `TestAst637CompanyUpsertSchemaEnsure` covers stale DDL missing both columns plus flags-already-True before upsert (AST-629 combo).
+
+### Issues
+
+None (fix-now / discuss).
+
+### Advisory
+
+- `_UPDATE_COMPANY_ALLOWED` still omits `agent_responses_legacy` — pre-existing; upsert uses `apply_generic_table_copy_upsert` (all `table_columns`), not that frozenset. Only matters if a future normal `update_company` kwargs path needs legacy column writes.
+
+---
+
+## Resolution
+
+**2026-06-14 — Ada (resolve-child)**
+
+Radia review: **0 fix-now · 0 discuss · 1 advisory (out of scope)** — no product changes required.
+
+- Re-ran Betty manifest (5 passed) on publish ref tip `12528dcc`.
+- §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-626-table-upsert-ensure-schema-before-running`.
+
+**Ship tip:** `origin/sub/AST-626/AST-637-uat-company-table-upsert-wrong-keys-after-ast-629` @ `12528dcc`
