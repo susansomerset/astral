@@ -1636,13 +1636,14 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
 
-## 7.13zzo Auto retry — union claim/count for primary + `_RETRY` triggers (**AST-641**, parent **AST-630**)
+## 7.13zzo Auto retry — union claim/count + per-entity batch retry routing (**AST-641**, **AST-642**, parent **AST-630**)
 
-**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored.
+**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-641** | `dispatch_claim_states`; multi-state SQL in claim/count; dispatcher passes `states=` into batch helpers | `src/utils/config.py`, `src/data/database.py`, `src/core/tracker.py`, `src/core/roster.py`, `src/core/dispatcher.py` | `tests/component/utils/test_config.py::TestAst641DispatchClaimStates`; `tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount`; `tests/component/core/test_dispatcher.py` **`test_ast641_*`** |
+| **AST-642** | `_consult_batch_fail_dest`; `_transition_batch_consult_failures`; per-entity routing in `_run_batch_consult`, `_run_analysis_upshot_batch`, qualify short-title path | `src/core/consult.py` | `tests/component/core/test_consult.py::TestConsultBatchFailDest`; `tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry` |
 
 **AST-641** narrowed run:
 
@@ -1651,6 +1652,14 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/utils/test_config.py::TestAst641DispatchClaimStates \
   tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount \
   tests/component/core/test_dispatcher.py -k ast641
+```
+
+**AST-642** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry
 ```
 
 ## Appendix A — Run component tests
