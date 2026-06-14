@@ -496,6 +496,9 @@ def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
         payload = parsed
     if isinstance(payload, dict):
         _flatten_craft_resume_section_strings(payload)
+        raw_struct = payload.get("resume_structure")
+        if not isinstance(raw_struct, dict) or not raw_struct.get("sections"):
+            payload["resume_structure"] = default_resume_structure()
 
 
 _DRAFT_JOB_RESUME_METADATA_KEYS = frozenset({"astral_job_id", "company", "title", "task_success"})
