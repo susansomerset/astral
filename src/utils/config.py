@@ -2308,7 +2308,6 @@ NAV_CONFIG = [
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
-            {"label": "Board Searches", "path": "/candidate/board_searches"},
         ],
     },
     {

@@ -19,7 +19,6 @@
  * 11. Toast
  * 12. Agent Timesheets
  * 13. Execution History
- * 14. Board Searches (candidate)
  */
 
 
@@ -1713,8 +1712,6 @@ input.side-tab-heading-editable:focus {
   border-bottom: none;
   border-radius: 4px 4px 0 0;
 }
-
-/* === 14. Board Searches — uses ListPage + Modal dep-* fields (CandidateBoardSearches.tsx) === */
 
 /* === 13. Execution History === */
 
