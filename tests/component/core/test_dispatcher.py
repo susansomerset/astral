@@ -445,6 +445,63 @@ class TestRunUnified:
         assert claim.call_args.kwargs["score_floor"] is None
 
     @pytest.mark.asyncio
+    async def test_ast641_primary_job_trigger_passes_union_claim_states(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, []))
+        monkeypatch.setattr("src.core.tracker.get_new_job_batch", claim)
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
+        monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
+        task = {
+            "entity_type": "job",
+            "trigger_state": "VALID_TITLE",
+            "task_key": "qualify_job_listings",
+            "batch_call_mode": 1,
+            "batch_size": 10,
+        }
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
+        assert claim.call_args.kwargs["states"] == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+
+    @pytest.mark.asyncio
+    async def test_ast641_retry_only_job_trigger_single_claim_state(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, []))
+        monkeypatch.setattr("src.core.tracker.get_new_job_batch", claim)
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
+        monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
+        task = {
+            "entity_type": "job",
+            "trigger_state": "VALID_TITLE_RETRY",
+            "task_key": "qualify_job_listings",
+            "batch_call_mode": 1,
+            "batch_size": 10,
+        }
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
+        assert claim.call_args.kwargs["states"] == ["VALID_TITLE_RETRY"]
+
+    @pytest.mark.asyncio
+    async def test_ast641_company_prefilter_passes_union_claim_states(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, []))
+        monkeypatch.setattr("src.core.roster.get_new_company_batch", claim)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", MagicMock())
+        monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
+        task = {
+            "entity_type": "company",
+            "trigger_state": "WEBSITE_FOUND",
+            "task_key": "prefilter",
+            "batch_call_mode": 1,
+            "batch_size": 10,
+        }
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
+        assert claim.call_args.kwargs["states"] == ["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"]
+
+    @pytest.mark.asyncio
     async def test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:
