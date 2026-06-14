@@ -31,6 +31,7 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     AGENT_CONFIG,
     DEEPSEEK_MODEL_PRICING,
+    get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
     get_tokens,
     resolve_tokens,
@@ -55,7 +56,13 @@ from src.utils.config import (
     validate_allowed_brain_setting,
 )
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
-from src.core.agent import run_adhoc_workbench_test, _decode_payload, resolved_task_system, _chain_context
+from src.core.agent import (
+    run_adhoc_workbench_test,
+    _decode_payload,
+    resolved_agent_content,
+    resolved_task_system,
+    _chain_context,
+)
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
 
@@ -114,6 +121,46 @@ def list_agent_ids():
 def list_brain_settings():
     """Config-backed tier catalog for Manage Agents (AST-495)."""
     return jsonify(admin_brain_setting_catalog())
+
+
+def _resolve_agent_preview_candidate(candidate_id: str):
+    """Candidate row + candidate_data for agent preview (mirrors preview_task_prompt fallback)."""
+    if candidate_id:
+        candidate = database.get_candidate(candidate_id)
+        if not candidate:
+            raise ValueError(f"Candidate not found: {candidate_id}")
+    else:
+        candidates = database.list_candidates()
+        if not candidates:
+            raise ValueError("No active candidate found for preview.")
+        candidate = candidates[0]
+    cd = candidate.get("candidate_data") or {}
+    cid = candidate.get("astral_candidate_id") or candidate_id
+    return cid, cd
+
+
+@admin_bp.route("/agents/meta/tokens")
+@require_admin
+def agent_tokens():
+    """Manage Agents picker: all registry tokens except chain/hop (AST-632)."""
+    return jsonify(get_manage_agents_tokens())
+
+
+@admin_bp.route("/agents/preview", methods=["POST"])
+@require_admin
+def preview_agent():
+    body = request.get_json(silent=True) or {}
+    content = body.get("content")
+    if content is None:
+        return jsonify({"error": "content is required"}), 400
+    candidate_id = (body.get("candidate_id") or "").strip()
+    try:
+        cid, cd = _resolve_agent_preview_candidate(candidate_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    agent_row = {"content": content}
+    resolved = resolved_agent_content(agent_row, cd, "manage_agents_preview", None)
+    return jsonify({"candidate_id": cid, "content": resolved})
 
 
 @admin_bp.route("/agents/models")

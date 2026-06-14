@@ -2952,6 +2952,12 @@ def get_manage_tasks_chain_tokens() -> list:
     )
 
 
+def get_manage_agents_tokens() -> list:
+    """Sorted Manage Agents picker tokens — registry minus chain/hop tokens (AST-632)."""
+    chain = set(get_manage_tasks_chain_tokens())
+    return sorted(k for k in get_tokens() if k not in chain)
+
+
 CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
     k for k in get_manage_tasks_chain_tokens() if k.startswith("CALLER_")
 )
