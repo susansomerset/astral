@@ -378,15 +378,10 @@ body {
 }
 
 .list-page-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 13px;
-}
-
-.list-page-table--auto {
-  table-layout: auto;
   width: auto;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 13px;
 }
 
 .list-page-table thead th {
@@ -441,7 +436,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 0;
 }
 
 .list-table-cell-frozen {
