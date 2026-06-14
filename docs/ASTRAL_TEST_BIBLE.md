@@ -1381,6 +1381,39 @@ Equivalent harness:
 
 **Rollup reconcile (AST-621):** Betty publish ref **`origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug`** — one **§7.13zzf** table row; **`rollup-child`** merges into **`origin/ftr/ast-542-debug-logging-backfill-roster`**.
 
+## 7.13zzg Debug logging backfill — consult (**AST-619**, parent **AST-543**)
+
+**AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-619** | Contract debug across batch loops, grading branches, qualify/evaluate, encoded consult batches, `render_verdict` | `src/core/consult.py` | **`tests/component/core/test_consult.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-619** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_consult.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_consult.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `_render_pass_fail` / `_render_score` grading branches | **`TestRenderPassFail`**, **`TestRenderPassFailDebug`**, **`TestRenderScore`**, **`TestRenderScoreBranches`** |
+| `_run_batch_consult` batch start, per-job indices, envelope failure | **`TestRunBatchConsult`**, **`TestRunBatchConsultBranches`** |
+| `qualify_job_listings` / `evaluate_jd_batch` Pattern-A wrappers | **`TestQualifyJobListings`**, **`TestEvaluateJdBatch`** |
+| `render_verdict` single-job decode path | **`TestRenderVerdict`** |
+| Encoded DO/GET/LIKE batch routing | **`TestAst503`**, **`TestRunConsultTask`** consult batch rows |
+| `debug=False` unchanged | **`TestRemainingConsultBranches::test_runs_without_debug_logging`**; full-file branch lock |
+
+**Betty test fix (AST-619):** **`enable_debug_log`** fixture uses **`logger.set_debug_flag(True)`** — product removed **`_LOG_DEBUG`** / **`isEnabledFor`** guards in favor of **`debug_detail`**.
+
 ## 7.13zzh Debug logging backfill — external LLM wrappers (**AST-620**, parent **AST-546**)
 
 **AST-546 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/external/anthropic.py`** and **`src/external/deepseek.py`** — shared **`_emit_llm_call_debug`** helper, Style D index + **`|`** detail lines (model, task key, timing, tokens, truncated response preview via **`debug_detail_block`**); retire hand-rolled **`[DEBUG]`** blocks. **`log_llm_batch_summary`** and non-debug INFO/ERROR timing lines unchanged when **`debug=False`**. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
