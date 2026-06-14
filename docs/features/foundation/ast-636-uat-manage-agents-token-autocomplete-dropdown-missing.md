@@ -140,3 +140,14 @@ No other changes to `AdminAgentPrompts.tsx` in this ticket.
 - §3.3 imports: `createPortal` from `react-dom` (already used in `Modal.tsx`).
 - §3.5 UI: no new dependencies; frontend-only; API token list remains config-driven via existing endpoint.
 - No `tests/` or `ASTRAL_TEST_BIBLE.md` edits in this ticket (Betty manifest).
+
+## Review (build-child)
+
+**Built:** `origin/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing` @ `2e20662a`
+
+| Commit | Summary |
+|--------|---------|
+| `6ff12ac0` | Stage 1: portal `TokenTextarea` autocomplete menu to fix modal clipping |
+| `2e20662a` | Stage 2: harden `useAgentTokenList` for non-OK API responses |
+
+**Verification:** `cd src/ui/frontend && npx tsc -b --noEmit`
