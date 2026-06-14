@@ -274,6 +274,28 @@ class TestPreviewTaskPrompt:
         )
         assert captured["chain"] == {"CALLER_RESPONSE": "hop"}
 
+    def test_preview_resolves_agent_body_when_system_is_selected_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Manage Tasks preview path mirrors production for {$SELECTED_AGENT} tasks (AST-631 AC3)."""
+        from src.core import agent as agent_mod
+
+        cd = {"profile": {"first": "Ada"}}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": cd},
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "Hi, you're Grace. You're helping {$FIRST_NAME} find a great role."},
+                {"system_prompt": "{$SELECTED_AGENT}", "user_prompt": "", "cache_prompt": "", "nocache_prompt": ""},
+            ),
+        )
+        out = candidate_mod.preview_task_prompt("craft_resume_base", candidate_id="c1")
+        assert "helping Ada find" in out["system"]
+        assert "{$FIRST_NAME}" not in out["system"]
+
     def test_chain_sim_parent_only_merges_simulated_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod.database,

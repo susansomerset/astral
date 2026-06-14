@@ -1562,6 +1562,24 @@ npm run test:component -- \
   -q
 ```
 
+## 7.13zzm Agent content token resolution (**AST-631**, parent **AST-574**)
+
+**AST-574 (parent):** Agent `content` resolves registry tokens when used as the direct system block or when injected behind task `system_prompt` **`{$SELECTED_AGENT}`** — same `resolve_tokens` call context as task segments. **AST-632** (Katherine) covers Manage Agents autocomplete + preview UI only.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-631** | `resolved_agent_content`; `_chain_context` puts resolved body in `SELECTED_AGENT`; `do_task` / `preview_prompt` / admin enrich use shared path | `src/core/agent.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_agent.py::TestAst631AgentContentTokens`; `tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens`; `tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent`; full **`tests/component/core/test_agent.py`** (**`LOCKED_AT_100`**) |
+
+**AST-631** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst631AgentContentTokens \
+  tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens \
+  tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent \
+  -q
+```
+
 ## Appendix A — Run component tests
 
 From repo root:
