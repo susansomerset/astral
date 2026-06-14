@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import api from "../lib/api"
+import { useAuth } from "./AuthContext"
 
 /** Mirrors `build_state_ui_manifest()` in `src/utils/config.py`. */
 export interface StateUiManifest {
@@ -59,13 +60,15 @@ const defaultValue: StateUiContextValue = { manifest: null, loadState: "loading"
 const StateUiContext = createContext<StateUiContextValue>(defaultValue)
 
 export function StateUiProvider({ children }: { children: ReactNode }) {
+  const { loading: authLoading } = useAuth()
   const [value, setValue] = useState<StateUiContextValue>(defaultValue)
   useEffect(() => {
+    if (authLoading) return
     api("/api/state_ui_manifest")
       .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() })
       .then((body: StateUiManifest) => setValue({ manifest: body, loadState: "ready" }))
       .catch(() => setValue({ manifest: null, loadState: "error" }))
-  }, [])
+  }, [authLoading])
   return <StateUiContext.Provider value={value}>{children}</StateUiContext.Provider>
 }
 

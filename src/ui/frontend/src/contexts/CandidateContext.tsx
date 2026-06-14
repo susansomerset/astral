@@ -24,7 +24,7 @@ const CandidateContext = createContext<CandidateCtx>({
 const STORAGE_KEY = "astral_selected_candidate"
 
 export function CandidateProvider({ children }: { children: ReactNode }) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, loading: authLoading } = useAuth()
   const [candidates, setCandidates] = useState<CandidateInfo[]>([])
   const [selectedId, _setSelectedId] = useState<string | null>(
     () => localStorage.getItem(STORAGE_KEY)
@@ -51,7 +51,11 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
     }).catch(() => setCandidates([]))
   }
 
-  useEffect(() => { load() }, [])
+  // Wait until AuthContext has wired the bearer token (and finished /api/me).
+  useEffect(() => {
+    if (authLoading) return
+    load()
+  }, [authLoading])
 
   // Keep fmtTime's timezone in sync with the selected candidate
   useEffect(() => {

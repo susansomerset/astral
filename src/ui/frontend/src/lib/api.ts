@@ -13,7 +13,8 @@ async function api(path: string, options: RequestInit = {}): Promise<Response> {
   if (token) {
     headers.set("Authorization", `Bearer ${token}`)
   }
-  return fetch(path, { ...options, headers })
+  // Include Stytch session cookies when SDK uses opaque/HttpOnly tokens (getTokens() null).
+  return fetch(path, { ...options, headers, credentials: "include" })
 }
 
 export default api

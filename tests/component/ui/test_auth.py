@@ -76,6 +76,16 @@ class TestRequireAuth:
         assert payload["user_id"] == "u1"
         assert payload["is_admin"] is False
 
+    def test_valid_stytch_jwt_cookie_sets_g_user_fields(
+        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
+        client = flask_app.test_client()
+        client.set_cookie("stytch_session_jwt", "good-jwt")
+        resp = client.get("/secure")
+        assert resp.status_code == 200
+        assert resp.get_json()["user_id"] == "u1"
+
     def test_require_auth_ignores_ip_allowlist_with_valid_bearer(
         self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
     ) -> None:

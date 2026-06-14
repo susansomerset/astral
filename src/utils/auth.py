@@ -10,6 +10,7 @@ before require_auth can validate real Stytch sessions.
 Public API: register_token_authenticator, validate_bearer_token, normalize_user, is_admin
 """
 
+import logging
 from typing import Any, Callable, Mapping
 
 from src.utils.config import AUTH_CONFIG
@@ -21,6 +22,8 @@ __all__ = [
     "is_admin",
     "TokenAuthenticator",
 ]
+
+_log = logging.getLogger(__name__)
 
 TokenAuthenticator = Callable[[str], Mapping[str, Any]]
 _authenticate: TokenAuthenticator | None = None
@@ -60,5 +63,7 @@ def validate_bearer_token(raw_token: str) -> dict | None:
             name=str(session.get("name") or ""),
             email=session.get("email"),
         )
-    except Exception:
+    except Exception as exc:
+        # Dev aid — Stytch errors are swallowed to 401; log once per failure for local debugging.
+        _log.warning("Bearer token validation failed: %s", exc)
         return None

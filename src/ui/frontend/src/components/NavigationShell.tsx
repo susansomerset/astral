@@ -30,10 +30,11 @@ export default function NavigationShell() {
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const { isAdmin } = useAuth()
+  const { isAdmin, loading: authLoading } = useAuth()
   const { candidates, selectedId, setSelectedId } = useCandidate()
 
   useEffect(() => {
+    if (authLoading) return
     const params = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
     const fetchNav = () =>
       api(`/api/nav_config${params}`)
@@ -53,7 +54,7 @@ export default function NavigationShell() {
     fetchNav()
     const interval = setInterval(fetchNav, 30_000)
     return () => clearInterval(interval)
-  }, [selectedId])
+  }, [selectedId, authLoading])
 
   function toggleGroup(label: string) {
     setExpanded(prev => {

@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   type ReactNode,
 } from "react"
@@ -39,8 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionJwt =
     session ? stytch.session.getTokens()?.session_jwt ?? null : null
 
-  const loadMe = useCallback(async (jwt: string) => {
-    setAuthTokenGetter(() => jwt)
+  // Child useEffects run before parent useEffect — wire the token in layout phase.
+  useLayoutEffect(() => {
+    setAuthTokenGetter(() => sessionJwt)
+  }, [sessionJwt])
+
+  const loadMe = useCallback(async () => {
     setLoading(true)
     try {
       const r = await api("/api/me")
@@ -58,18 +63,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!sessionJwt) {
-      setAuthTokenGetter(() => null)
+    if (!session) {
       setUser(null)
       setLoading(false)
       return
     }
-    loadMe(sessionJwt)
-  }, [sessionJwt, loadMe])
+    // sessionJwt may be null when Stytch uses opaque cookies — /api/me uses cookie auth.
+    loadMe()
+  }, [session, sessionJwt, loadMe])
 
   const refreshMe = useCallback(() => {
-    if (sessionJwt) loadMe(sessionJwt)
-  }, [sessionJwt, loadMe])
+    if (session) loadMe()
+  }, [session, loadMe])
 
   return (
     <AuthContext.Provider

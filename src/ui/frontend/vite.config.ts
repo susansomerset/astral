@@ -10,6 +10,8 @@ const frontendNodeModules = path.join(frontendRoot, 'node_modules')
 const vitestMaxWorkers = Number(process.env.ASTRAL_VITEST_MAX_WORKERS ?? "2")
 
 export default defineConfig({
+  // Repo-root .env (same file Flask loads via python-dotenv) — not src/ui/frontend/.
+  envDir: repoRoot,
   plugins: [react()],
   resolve: {
     alias: {

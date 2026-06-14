@@ -65,10 +65,20 @@ def authenticate_session_jwt(session_jwt: str) -> dict:
     if not token:
         raise StytchAuthError("missing session JWT")
     try:
-        resp = _get_client().sessions.authenticate_jwt(session_jwt=token)
+        client = _get_client()
+        resp = client.sessions.authenticate_jwt(session_jwt=token)
+        # authenticate_jwt returns AuthenticateJWTLocalResponse: session + session_jwt, no user.
+        user = getattr(resp, "user", None)
+        if user is None:
+            session = getattr(resp, "session", None)
+            if session is None or not getattr(session, "user_id", None):
+                raise StytchAuthError("missing session user_id in JWT response")
+            # users.get returns GetResponse — user fields live on the response itself.
+            user = client.users.get(user_id=session.user_id)
+    except StytchAuthError:
+        raise
     except Exception as exc:
         raise StytchAuthError(str(exc)) from exc
-    user = resp.user
     user_id = str(user.user_id)
     email = _primary_email(user)
     return {

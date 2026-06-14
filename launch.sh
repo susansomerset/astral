@@ -15,6 +15,19 @@ WORKDIR="${0:A:h}"
 SCRIPT_PATH="${WORKDIR}/launch.sh"
 FRONTEND_DIR="${WORKDIR}/src/ui/frontend"
 
+_ensure_python_deps() {
+  cd "${WORKDIR}"
+  if [[ ! -f .venv/bin/activate ]]; then
+    print -u2 "missing ${WORKDIR}/.venv — run scripts/setup_dev.sh"
+    exit 1
+  fi
+  source .venv/bin/activate
+  if ! python -c "import stytch" 2>/dev/null; then
+    print -u2 "installing python deps (missing stytch)..."
+    pip install -r requirements.txt
+  fi
+}
+
 _ensure_frontend_deps() {
   cd "${FRONTEND_DIR}"
   if [[ ! -d node_modules/@stytch/react ]]; then
@@ -27,14 +40,8 @@ typeset USE_TABS=1
 [[ "${1:-}" == "--windows" ]] && { USE_TABS=0; shift; }
 
 run_flask() {
-  cd "${WORKDIR}"
-  if [[ -f .venv/bin/activate ]]; then
-    source .venv/bin/activate
-  else
-    print -u2 "missing ${WORKDIR}/.venv — run scripts/setup_dev.sh"
-    exit 1
-  fi
-  cd src/ui
+  _ensure_python_deps
+  cd "${WORKDIR}/src/ui"
   print -u2 "flask-api http://localhost:5001 (Ctrl-C to stop)"
   exec python server.py
 }
