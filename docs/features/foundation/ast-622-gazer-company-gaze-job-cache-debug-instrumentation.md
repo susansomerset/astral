@@ -402,3 +402,30 @@ No conflicts requiring `conf-!!-NONE`.
 | `d6e10380` | Stages 3–4: `process_gazer_batch` dedupe trace + `process_gaze_board_batch` contract debug |
 
 **Verification:** `python3 -m py_compile src/core/gazer.py`
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug` @ `6b8bda45`
+
+### What's solid
+
+- Plan stages 1–4 landed: all four `debug`-gated batch entry points (`scrape_jd_batch`, `validate_title_batch`, `process_gazer_batch`, `process_gaze_board_batch`) use `set_debug_flag(True)` + `debug_index` / `debug_detail`; hand-rolled `if debug: _log.info` and board noise `_log.debug` retired in touched blocks.
+- `debug=False` paths unchanged for transitions, warnings, and return shapes; no ingest or state-machine edits.
+- Read-only `_log_listing_dedupe_trace` mirrors `ingest_jobs` pre-checks via `raw_job_listing_is_duplicate` (existing core→data import block); 25-listing cap per plan.
+- Scope boundaries respected: no `roster.py` / `tracker.py` signature changes; Betty tests cover branch paths without log-string asserts.
+
+### Issues
+
+| Severity | Location | Issue |
+|----------|----------|-------|
+| fix-now | `gazer.py` ~192–193 (`scrape_jd_batch`) | `pruned_chars` `debug_detail` emits **before** the per-job `debug_index` on pass, too-short, and classified-fail paths — §1.5.1 expects working detail under the index header for that item. Move `pruned_chars` into the outcome block (detail after index, or fold into `outcome`). |
+| fix-now | `gazer.py` ~422–433 + ~450–458 (`process_gazer_batch`) | Scrape `Exception` from `asyncio.gather` logs **two** index headers for the same company (`scrape failed: {e}` in gather loop, then `failure — scrape failed` in main loop). Keep one header per failure (prefer gather loop with exception text; drop duplicate in main loop when already logged). |
+| discuss | `gazer.py` ~41–43 | `_gazer_company_identifier` is defined but never called; remove dead helper or use it for company `identifier=` fields. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| `pruned_chars` ordering | In `resolve-child`: emit after `debug_index` on each terminal path, or include in `debug_detail` paired with that header only. |
+| Duplicate scrape-failure headers | In `resolve-child`: track gather-logged `short_name` set and skip redundant main-loop header, or remove gather-loop headers and rely on main loop only (with exception text in `debug_detail`). |
+| `_gazer_company_identifier` | Remove unused helper or wire into `process_gazer_batch` identifiers for consistency with `_gazer_job_identifier`. |
