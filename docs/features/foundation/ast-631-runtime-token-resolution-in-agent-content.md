@@ -229,3 +229,38 @@ No conflicts requiring `conf-!!-NONE`.
 | `25359fc1` | Stage 1: `resolved_agent_content`, `_chain_context` signature, `do_task` / preview paths, admin `_enrich_tasks` + `_resolve_adhoc` |
 
 **Verification:** `python3 -m py_compile src/core/agent.py src/ui/api/api_admin.py`
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` @ `b8345d3f`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| **Plan fidelity** | `resolved_agent_content`, expanded `_chain_context`, `do_task` `_jc` before `_cc` with hop kwargs, `preview_prompt` / `simulated_chain_context_for_preview`, admin `_enrich_tasks` + `_resolve_adhoc` match Stage 1 spec. |
+| **AC coverage (Betty)** | `TestAst631AgentContentTokens` (direct + `{$SELECTED_AGENT}` + plain body + `preview_prompt`); `TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent`; bible §7.13zzm manifest. |
+| **Rules §1.3 / §3.3** | DRY: single resolution helper; admin reuses `_chain_context` instead of raw `chain_context_selected_agent`. `api_admin` → `core.agent` matches existing `resolved_task_system` import pattern. No layer bends, silent failures, or debug-contract drift in touched product files. |
+| **Boundaries (§5d)** | No AST-632 UI, no registry/DB changes, no chain tokens in agent rows. Product diff limited to `agent.py` + `api_admin.py`. |
+
+### Issues
+
+| Severity | Location | Issue |
+|----------|----------|-------|
+| — | — | No **fix-now** or **discuss** items on product code. |
+
+### Advisory
+
+| Location | Note |
+|----------|------|
+| `agent.py` direct-system path | `_chain_context` resolves agent body for `SELECTED_AGENT` while `resolved_task_system` (empty `system_prompt`) resolves the same `content` again — redundant but idempotent; plan documents this as acceptable. |
+| `api_admin._enrich_tasks` | `job_context=None` — job-scoped tokens in agent body stay literal in list token **estimates** only; production `do_task` / adhoc preview pass `_jc`. Plan decision stands. |
+| Publish ref test merge | `merge-tests` commit includes Betty bible + large `test_agent.py` churn (AST-603 rubric harness alignment). Product scope clean; test tree is Betty-owned. |
+
+### Recommended actions (resolve-child)
+
+| Action | Owner |
+|--------|-------|
+| No product code changes required — proceed to **User Testing** after optional read of advisory | Ada |
