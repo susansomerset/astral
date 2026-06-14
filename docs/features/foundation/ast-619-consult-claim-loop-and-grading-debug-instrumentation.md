@@ -377,3 +377,45 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 4: `render_verdict`, `_apply_render_verdict_decoded_job`, `_consult_scored_dispatch_batch_encoded` — `527feb98`.
 
 **Stage 5 (manual):** Susan UAT — `debug=False` spot-check; qualify/evaluate/scored consult with `debug=True`. No Betty log-string tests per parent.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-543/AST-619-consult-claim-loop-grading-debug` @ `ae0685ef`
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| **§1.5.1 consult paths** | `_LOG_DEBUG` / hand-rolled `[DEBUG]` retired in `consult.py`; contract uses `set_debug_flag` + `debug_index` / `debug_detail`. |
+| **Pattern-A batch** | `_run_batch_consult`: batch-start header, per-response-job indices (incl. `process_fn` failure), missing-ID indices, batch-end detail after per-job headers. |
+| **Wrappers** | `qualify_job_listings` input-job indices; `evaluate_jd_batch` JD-readiness skip indices; legacy per-job `logger.info` gated with `if not debug:`. |
+| **Scored / single-job** | `_consult_scored_dispatch_batch_encoded` skip indices; `render_verdict` start + outcome indices; `_apply_render_verdict_decoded_job(debug=…)`. |
+| **Grading helpers** | `_render_pass_fail` / `_render_score` branch detail via `debug_detail` (no-op when flag unset). |
+| **§2.4 / §2.6** | No claim/clear or transition rule changes observed in diff. |
+| **§3.3** | No new cross-layer imports. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `src/core/agent.py` (whole file vs `origin/dev`, ~86 lines) | **§5d / plan execution contract:** ticket and plan forbid `agent.py` changes. Publish ref still diffs from `origin/dev`: drops `_resume_hop_debug_index`, resume-hop `debug_detail`, and legacy `[DEBUG]` blocks while retaining partial `_do_task_debug_*` from a sibling merge. **Revert `agent.py` to byte-match `origin/dev`** on this publish ref; agent instrumentation belongs to **AST-541 / AST-618**, not AST-619. |
+| **discuss** | `_render_pass_fail` / `_render_score` inside `_run_batch_consult` `process_fn` | Grading `debug_detail` lines emit **before** the per-job `debug_index` for that response row (§1.5.1 prefers detail under index header). Accept branch-then-index for UAT, or reorder in resolve. |
+| **discuss** | Batch entry points (`set_debug_flag(True)`) | No `set_debug_flag(False)` on exit; module logger may stay hot across back-to-back calls in one worker. Confirm `debug=False` spot-check includes a non-debug batch after a debug batch in-process. |
+
+### Recommended actions (resolve-child)
+
+1. **`git checkout origin/dev -- src/core/agent.py`** (or equivalent) on epic worktree; republish — **zero** `agent.py` diff vs `origin/dev`.
+2. Optional: reorder grading detail vs per-job index if Susan wants strict §1.5.1 header-first ordering.
+3. Stage 5 manual UAT per plan (debug=True qualify/evaluate/scored; debug=False spot-check).
+
+## Resolution (resolve-child)
+
+**Date:** 2026-06-14 · **Publish after resolve:** `origin/sub/AST-543/AST-619-consult-claim-loop-grading-debug`
+
+| Radia item | Action |
+| --- | --- |
+| **fix-now** — `agent.py` out of scope | Reverted to byte-match **`origin/dev`** (removed accidental `test(AST-619)` partial AST-618 merge from publish ref). Zero `agent.py` diff vs dev. |
+| **discuss** — grading detail before per-job index | **No change** — branch-then-index acceptable for UAT per Radia review; strict header-first reorder deferred unless Susan asks. |
+| **discuss** — sticky `set_debug_flag` | **No change** — Stage 5 spot-check should run `debug=False` batch after `debug=True` in same worker; documented here for UAT. |
+
+**§9a:** publish ref dry-run merge into `origin/dev` and `origin/ftr/ast-543-debug-logging-backfill-consult` verified clean before **User Testing**.
