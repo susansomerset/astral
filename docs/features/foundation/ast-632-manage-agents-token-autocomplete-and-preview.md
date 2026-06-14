@@ -281,3 +281,17 @@ No conflicts requiring `conf-!!-NONE`.
 | Advisory | Frontend test exercises edit-modal preview only; add-modal preview path untested — low risk given shared `handlePreview` |
 | Advisory | Token fetch `.catch(() => setTokenList([]))` matches `AdminTaskPrompts` precedent — acceptable silent degrade for picker |
 | — | Katherine: **`resolve-child`** — no code changes required from this review |
+
+## Resolution (resolve-child)
+
+**Date:** 2026-06-14  
+**Review ref:** Radia comment @ `26d7f373`; doc commit `26d7f373`
+
+| Item | Outcome |
+|------|---------|
+| **fix-now** | None — no product commits in resolve pass. |
+| **discuss** | None. |
+| **Advisory** | Accepted as documented (add-modal preview untested — shared `handlePreview`; token fetch silent degrade matches Manage Tasks). |
+| **§9a dry-run** | `origin/sub/AST-574/AST-632-manage-agents-token-autocomplete-and-preview` merges cleanly into `origin/dev` and `origin/ftr/ast-574-support-tokens-in-agent-prompts`. |
+
+**Publish tip after resolve:** `origin/sub/AST-574/AST-632-manage-agents-token-autocomplete-and-preview` @ resolve commit SHA (see git log).
