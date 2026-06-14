@@ -147,3 +147,7 @@ No conflicts flagged.
 
 - **Engineer:** None — proceed to `resolve-child` / User Testing.
 - **Betty (optional):** Remove orphan fence in `ASTRAL_TEST_BIBLE.md` §7.13zzp boundary on next bible touch.
+
+## Resolution
+
+- **2026-06-14 — Katherine (`resolve-child`):** Radia review clean — no fix-now items. No product code changes; Stage 1 (`41957eb7`) and Betty placement test (`7baf09b1` / merge-tests `9dc4b750`) stand as shipped. Advisory bible fence (§7.13zzp) deferred to Betty per review. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-638`. Ticket → **User Testing**.
