@@ -90,6 +90,52 @@ def extract_api_response_text(api_response: Any) -> str:
     return text_parts[-1]
 
 
+def _emit_llm_call_debug(
+    *,
+    func_name: str,
+    prompt_label: str,
+    model: str,
+    duration: float,
+    stop_reason: str,
+    input_total: int,
+    input_cached: int,
+    cache_creation_tokens: int,
+    output_total: int,
+    raw_text: str = "",
+    error: Optional[str] = None,
+    provider: str = "anthropic",
+    vendor_detail: Optional[str] = None,
+) -> None:
+    """Emit AST-538 contract lines for one external LLM call (debug_flag must already be True)."""
+    dbg = get_logger(__name__, debug_flag=True)
+    outcome = "error" if error else ("max_tokens" if stop_reason == "max_tokens" else "success")
+    dbg.debug_index(
+        func=func_name,
+        index=1,
+        total=1,
+        identifier=prompt_label or "(unknown)",
+        outcome=outcome,
+    )
+    dbg.debug_detail(
+        f"provider={provider} model={model} task={prompt_label} "
+        f"duration={duration:.1f}s stop_reason={stop_reason or 'n/a'}"
+    )
+    token_line = (
+        f"tokens fresh={input_total} cache_read={input_cached} "
+        f"cache_write={cache_creation_tokens} output={output_total}"
+    )
+    if vendor_detail:
+        token_line = f"{vendor_detail} {token_line}"
+    dbg.debug_detail(token_line)
+    if error:
+        dbg.debug_detail(f"error={error}")
+    elif stop_reason == "max_tokens":
+        dbg.debug_detail("warning=stop_reason_max_tokens — API response may be truncated")
+    if raw_text and not error:
+        dbg.debug_detail("response_preview:")
+        dbg.debug_detail_block(raw_text)
+
+
 async def _parse_api_response(response: Dict[str, Any]) -> str:
     """Extract text content from an API response dict."""
     if response is None:
@@ -238,6 +284,9 @@ async def send_to_anthropic(
         "inputtotal": 0, "inputcached": 0, "outputtotal": 0, "cache_creation_tokens": 0,
     }
 
+    if debug:
+        logger.set_debug_flag(True)
+
     try:
         client = Anthropic(api_key=api_key_override, timeout=_httpx.Timeout(_API_CALL_TIMEOUT)) if api_key_override else _get_client()
 
@@ -280,11 +329,19 @@ async def send_to_anthropic(
             if debug:
                 raw_text = extract_api_response_text(response) if response.content else ""
                 stop_reason = getattr(response, "stop_reason", "?")
-                logger.info("[DEBUG] send_to_anthropic('%s'): %.1fs | stop_reason=%s", prompt_label, duration, stop_reason)
-                logger.info("[DEBUG]   tokens: fresh=%d cache_read=%d cache_write=%d output=%d",
-                            input_total, input_cached, cache_creation_tokens, output_total)
-                if stop_reason == "max_tokens":  # pragma: no cover
-                    logger.info("[DEBUG]   *** WARNING: stop_reason=max_tokens — response TRUNCATED")
+                _emit_llm_call_debug(
+                    func_name="send_to_anthropic",
+                    prompt_label=prompt_label,
+                    model=model_code,
+                    duration=duration,
+                    stop_reason=stop_reason,
+                    input_total=input_total,
+                    input_cached=input_cached,
+                    cache_creation_tokens=cache_creation_tokens,
+                    output_total=output_total,
+                    raw_text=raw_text,
+                    provider="anthropic",
+                )
 
             try:
                 cost_parts = calculate_cost_components(usage, model_code)
@@ -358,8 +415,36 @@ async def send_to_anthropic(
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
             log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=str(e))
+            if debug:
+                _emit_llm_call_debug(
+                    func_name="send_to_anthropic",
+                    prompt_label=prompt_label,
+                    model=model_code,
+                    duration=duration,
+                    stop_reason="error",
+                    input_total=0,
+                    input_cached=0,
+                    cache_creation_tokens=0,
+                    output_total=0,
+                    error=str(e),
+                    provider="anthropic",
+                )
             return {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
     except Exception as e:  # pragma: no cover
         duration = (datetime.now() - start_time).total_seconds()
         log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=str(e))
+        if debug:
+            _emit_llm_call_debug(
+                func_name="send_to_anthropic",
+                prompt_label=prompt_label,
+                model=model_code,
+                duration=duration,
+                stop_reason="error",
+                input_total=0,
+                input_cached=0,
+                cache_creation_tokens=0,
+                output_total=0,
+                error=str(e),
+                provider="anthropic",
+            )
         return {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
