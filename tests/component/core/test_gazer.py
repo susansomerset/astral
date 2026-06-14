@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
@@ -363,3 +364,300 @@ class TestProcessGazeBoardBatch:
         assert "bs-2" in joined
         assert "a16z" in joined
         assert "boom" in joined
+
+
+# Branches: identifier fallbacks; AST-622 debug instrumentation (no log-string asserts).
+class TestGazerIdentifierHelpers:
+    def test_job_identifier_falls_back_to_title_then_question(self) -> None:
+        assert gazer_mod._gazer_job_identifier({"job_title": "Role"}) == "Role"
+        assert gazer_mod._gazer_job_identifier({}) == "?"
+
+    def test_company_identifier_falls_back_to_question(self) -> None:
+        assert gazer_mod._gazer_company_identifier({"short_name": "acme"}) == "acme"
+        assert gazer_mod._gazer_company_identifier({}) == "?"
+
+
+class TestLogListingDedupeTrace:
+    def test_duplicate_title_miss_and_insert_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(
+            gazer_mod,
+            "raw_job_listing_is_duplicate",
+            lambda _co, raw: raw == "dup",
+        )
+        patterns = [re.compile("engineer", re.I)]
+        gazer_mod._log_listing_dedupe_trace(
+            log, "co", ["dup", "janitor", "senior engineer"], patterns
+        )
+        assert log.debug_detail.call_count >= 3
+
+    def test_omits_listings_beyond_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(gazer_mod, "raw_job_listing_is_duplicate", lambda *_: False)
+        listings = [f"listing-{i}" for i in range(30)]
+        gazer_mod._log_listing_dedupe_trace(log, "co", listings, None)
+        messages = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("omitted from dedupe trace" in m for m in messages)
+
+
+class TestScrapeJdBatchDebugPaths:
+    @pytest.mark.asyncio
+    async def test_failure_paths_with_debug_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "transition_job_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
+        jobs = [{"astral_job_id": "job-1", "job_link": ""}]
+        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=True)
+        assert out["failed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_scrape_error_empty_short_and_classified_with_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "transition_job_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_job_data", MagicMock())
+        monkeypatch.setattr(
+            gazer_mod,
+            "get_visible_text",
+            AsyncMock(side_effect=[RuntimeError("net"), "   ", "short", _OK_JD]),
+        )
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
+        jobs = [
+            {"astral_job_id": "j1", "job_link": "https://example.com/a"},
+            {"astral_job_id": "j2", "job_link": "https://example.com/b", "job_title": "B"},
+            {"astral_job_id": "j3", "job_link": "https://example.com/c", "job_title": "C"},
+            {"astral_job_id": "j4", "job_link": "https://example.com/d", "job_title": "D"},
+        ]
+        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=True)
+        assert out["failed"] == 4
+
+
+class TestValidateTitleBatchDebugPaths:
+    @pytest.mark.asyncio
+    async def test_pass_fail_and_summary_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        jobs = [
+            {"astral_job_id": "job-ok", "job_data": {"raw_job_listing": "senior engineer"}},
+            {"astral_job_id": "job-bad", "job_data": {"raw_job_listing": "janitor"}},
+        ]
+        out = await gazer_mod.validate_title_batch("batch-1", jobs, ctx, debug=True)
+        assert out == {"passed": 1, "failed": 1, "total": 2}
+
+
+class TestProcessGazerBatchDebugPaths:
+    @pytest.mark.asyncio
+    async def test_no_parse_instructions_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_one",
+            AsyncMock(return_value=("noparse", "https://example.com/noparse", "<html/>")),
+        )
+        monkeypatch.setattr(gazer_mod, "get_company_data", AsyncMock(return_value={}))
+        record = MagicMock()
+        monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", record)
+        monkeypatch.setattr(gazer_mod, "update_company_last_scan_at", MagicMock())
+
+        outcomes = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "noparse", "job_site": "https://example.com/noparse"}],
+            debug=True,
+        )
+        assert outcomes[0]["status"] == "failure"
+        assert "parse_instructions" in outcomes[0]["message"]
+
+    @pytest.mark.asyncio
+    async def test_dedupe_trace_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_one",
+            AsyncMock(return_value=("goodco", "https://example.com/good", "<html>good</html>")),
+        )
+
+        async def _company_data(company: Dict[str, Any], key: str) -> Dict[str, Any]:
+            return {"container": "motion", "job_tag": "a", "container_index": 0}
+
+        monkeypatch.setattr(gazer_mod, "get_company_data", _company_data)
+        monkeypatch.setattr(
+            gazer_mod,
+            "extract_raw_job_listings",
+            MagicMock(return_value=["dup listing", "engineer listing"]),
+        )
+        monkeypatch.setattr(
+            gazer_mod,
+            "raw_job_listing_is_duplicate",
+            lambda _co, raw: raw == "dup listing",
+        )
+        monkeypatch.setattr(
+            gazer_mod,
+            "ingest_jobs",
+            MagicMock(return_value={"new": 1, "duplicates": 1, "invalid_title": 0}),
+        )
+        monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", MagicMock())
+        monkeypatch.setattr(gazer_mod, "update_company_last_scan_at", MagicMock())
+
+        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        outcomes = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "goodco", "job_site": "https://example.com/good"}],
+            debug=True,
+            ctx=ctx,
+        )
+        assert outcomes[0]["status"] == "success"
+
+
+class TestProcessGazerBatchDebugBranchCoverage:
+    @pytest.mark.asyncio
+    async def test_empty_companies_with_debug_skips_batch_start(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        outcomes = await gazer_mod.process_gazer_batch("batch-1", [], debug=True)
+        assert outcomes == []
+
+    @pytest.mark.asyncio
+    async def test_failure_paths_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_one",
+            AsyncMock(side_effect=RuntimeError("scrape failed")),
+        )
+        record = MagicMock()
+        monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", record)
+
+        outcomes = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "badco", "job_site": "https://example.com/bad"}],
+            debug=False,
+        )
+        assert outcomes[0]["status"] == "failure"
+
+    @pytest.mark.asyncio
+    async def test_empty_extracted_listings_with_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_one",
+            AsyncMock(return_value=("goodco", "https://example.com/good", "<html/>")),
+        )
+
+        async def _company_data(company: Dict[str, Any], key: str) -> Dict[str, Any]:
+            return {"container": "motion", "job_tag": "a", "container_index": 0}
+
+        monkeypatch.setattr(gazer_mod, "get_company_data", _company_data)
+        monkeypatch.setattr(gazer_mod, "extract_raw_job_listings", MagicMock(return_value=[]))
+        monkeypatch.setattr(
+            gazer_mod,
+            "ingest_jobs",
+            MagicMock(return_value={"new": 0, "duplicates": 0, "invalid_title": 0}),
+        )
+        monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", MagicMock())
+        monkeypatch.setattr(gazer_mod, "update_company_last_scan_at", MagicMock())
+
+        outcomes = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "goodco", "job_site": "https://example.com/good"}],
+            debug=True,
+        )
+        assert outcomes[0]["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_success_and_ingest_error_without_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_one",
+            AsyncMock(return_value=("goodco", "https://example.com/good", "<html>good</html>")),
+        )
+
+        async def _company_data(company: Dict[str, Any], key: str) -> Dict[str, Any]:
+            return {"container": "motion", "job_tag": "a", "container_index": 0}
+
+        monkeypatch.setattr(gazer_mod, "get_company_data", _company_data)
+        monkeypatch.setattr(gazer_mod, "extract_raw_job_listings", MagicMock(return_value=["listing"]))
+        monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", MagicMock())
+        monkeypatch.setattr(gazer_mod, "update_company_last_scan_at", MagicMock())
+
+        ingest = MagicMock(return_value={"new": 1, "duplicates": 0, "invalid_title": 0})
+        monkeypatch.setattr(gazer_mod, "ingest_jobs", ingest)
+
+        ok = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "goodco", "job_site": "https://example.com/good"}],
+            debug=False,
+        )
+        assert ok[0]["status"] == "success"
+
+        ingest.side_effect = RuntimeError("ingest failed")
+        bad = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "goodco", "job_site": "https://example.com/good"}],
+            debug=False,
+        )
+        assert bad[0]["status"] == "failure"
+
+    @pytest.mark.asyncio
+    async def test_no_parse_instructions_without_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_one",
+            AsyncMock(return_value=("noparse", "https://example.com/noparse", "<html/>")),
+        )
+        monkeypatch.setattr(gazer_mod, "get_company_data", AsyncMock(return_value={}))
+        monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", MagicMock())
+
+        outcomes = await gazer_mod.process_gazer_batch(
+            "batch-1",
+            [{"short_name": "noparse", "job_site": "https://example.com/noparse"}],
+            debug=False,
+        )
+        assert outcomes[0]["status"] == "failure"
+
+
+class TestScrapeJdBatchDebugBranchCoverage:
+    @pytest.mark.asyncio
+    async def test_classified_failure_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "transition_job_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_job_data", MagicMock())
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
+        jobs = [{"astral_job_id": "job-3", "job_link": "https://example.com/a", "job_title": "A"}]
+        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=False)
+        assert out["failed"] == 1
+
+
+class TestProcessGazeBoardBatchDebugPaths:
+    @pytest.mark.asyncio
+    async def test_success_and_failure_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        gaze = AsyncMock(
+            side_effect=[
+                {"board_search_id": "bs-1", "new": 1, "duplicates": 0, "invalid_title": 0},
+                RuntimeError("scrape failed"),
+            ]
+        )
+        monkeypatch.setattr("src.core.boards.run_board_search_gaze", gaze)
+        monkeypatch.setattr(gazer_mod, "set_board_search_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "update_board_search_last_scan_at", MagicMock())
+
+        searches: List[Dict[str, Any]] = [
+            {"board_search_id": "bs-1", "board_key": "a16z"},
+            {"board_search_id": "bs-2", "board_key": "a16z"},
+        ]
+        outcomes = await gazer_mod.process_gaze_board_batch(
+            "batch-board", searches, debug=True, ctx={}
+        )
+        assert outcomes[0]["status"] == "success"
+        assert outcomes[1]["status"] == "failure"
