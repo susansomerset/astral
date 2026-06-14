@@ -74,6 +74,7 @@ from src.utils.config import (
     resolve_brain_setting_to_deepseek_tier_meta,
     dispatch_task_admin_defaults,
     dispatch_claim_uses_score_floor,
+    dispatch_claim_states,
     trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
 )
@@ -171,6 +172,7 @@ def claim_company_batch(
     *,
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
+    states: Optional[List[str]] = None,
     ) -> int:
     """Set batch_id, batch_created_at on company rows WHERE state=? AND batch_id IS NULL [AND scan_interval] LIMIT ?.
     Parameter order: batch_id first (caller owns it). When scan_interval_hours is set (gazer), only rows with
@@ -187,6 +189,7 @@ def claim_company_batch(
         candidate_id=candidate_id,
         require_empty_website=require_empty_website,
         score_floor=score_floor,
+        states=states,
     )
 
 def clear_company_batch(batch_id: str) -> int:
@@ -751,6 +754,7 @@ def set_company_batch(
     candidate_id: Optional[str] = None,
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
+    states: Optional[List[str]] = None,
     ) -> int:
     """Set batch_id on company rows: populate (claim) or clear.
 
@@ -771,8 +775,10 @@ def set_company_batch(
             else:
                 if not state:
                     raise ValueError("state required when clear=False")
-                where_base = "state = ? AND (batch_id IS NULL OR batch_id = '')"
-                params: List[Any] = [batch_id, state]
+                claim_states = states if states is not None else [state]
+                state_sql, state_params = _state_in_sql(claim_states)
+                where_base = f"{state_sql} AND (batch_id IS NULL OR batch_id = '')"
+                params: List[Any] = [batch_id, *state_params]
                 if candidate_id is not None:
                     where_base += " AND candidate_id = ?"
                     params.append(candidate_id)
@@ -1387,6 +1393,7 @@ def claim_job_batch(
     score_floor: Optional[float] = None,
     *,
     claim_cap: Optional[int] = None,
+    states: Optional[List[str]] = None,
     ) -> int:
     """Claim up to limit unclaimed jobs in state. Sets batch_id, batch_created_at.
     Parameter order: batch_id first (caller owns it).
@@ -1395,6 +1402,8 @@ def claim_job_batch(
     ``limit`` — claim exactly up to concurrent eligible rows; ``limit`` stays the API chunk width from dispatch_task.batch_size elsewhere.
     Returns count claimed."""
     now = _utc_now()
+    claim_states = states if states is not None else [state]
+    state_sql, state_params = _state_in_sql(claim_states)
     # latest_score: highest score first; ties and NULLs break by newest state_changed_at
     order_clause = (
         "ORDER BY latest_score DESC NULLS LAST, state_changed_at DESC" if sort_by == "latest_score"
@@ -1412,7 +1421,7 @@ def claim_job_batch(
         try:
             _ensure_job_schema(conn)
             eff_limit = int(claim_cap) if claim_cap is not None else int(limit)
-            params = [batch_id, now, state]
+            params = [batch_id, now, *state_params]
             if candidate_id:
                 params.append(candidate_id)
             if score_floor is not None:
@@ -1423,7 +1432,7 @@ def claim_job_batch(
                 f"""UPDATE job SET batch_id = ?, batch_created_at = ?
                    WHERE astral_job_id IN (
                      SELECT astral_job_id FROM job
-                     WHERE state = ? AND (batch_id IS NULL OR batch_id = '')
+                     WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
                      {candidate_filter}
                      {score_filter}
                      {order_clause}
@@ -5254,6 +5263,16 @@ def count_candidate_inflow_discovery_eligible(
     return 0
 
 
+
+def _state_in_sql(states: List[str]) -> tuple[str, List[Any]]:
+    """Return ('state IN (?,?)', [s0, s1]) or ('state = ?', [s0]) for non-empty states."""
+    if not states:
+        raise ValueError("states must be non-empty")
+    if len(states) == 1:
+        return "state = ?", [states[0]]
+    placeholders = ",".join("?" for _ in states)
+    return f"state IN ({placeholders})", list(states)
+
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH/gaze).
 
@@ -5266,6 +5285,9 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     candidate_id = task.get("candidate_id")
     if not entity_type or not state or not candidate_id:
         return 0
+    claim_states = dispatch_claim_states(state, entity_type)
+    if not claim_states:
+        return 0
     task_key = task.get("task_key", "")
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
@@ -5277,7 +5299,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
         floor_raw = task.get("score_floor")
         if floor_raw is not None:
             return count_companies_in_state_with_score_floor(
-                candidate_id, state, float(floor_raw),
+                candidate_id, state, float(floor_raw), states=claim_states,
             )
         bc = (COMPANY_STATES.get(state) or {}).get("batch_criteria") or {}
         freq = float(task.get("freq_hrs") or 0)
@@ -5292,11 +5314,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
                 conn = _get_connection()
                 try:
                     _ensure_company_schema(conn)
+                    state_sql, state_params = _state_in_sql(claim_states)
                     row = conn.execute(
-                        """SELECT COUNT(*) FROM company WHERE state = ? AND candidate_id = ?
+                        f"""SELECT COUNT(*) FROM company WHERE {state_sql} AND candidate_id = ?
                            AND (batch_id IS NULL OR batch_id = '')
                            AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                        (state, candidate_id, hours),
+                        (*state_params, candidate_id, hours),
                     ).fetchone()
                     return int(row[0])
                 finally:
@@ -5335,24 +5358,27 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
             conn = _get_connection()
             try:
                 _ensure_job_schema(conn)
+                state_sql, state_params = _state_in_sql(claim_states)
                 row = conn.execute(
-                    """SELECT COUNT(*) FROM job
-                       WHERE state = ? AND (batch_id IS NULL OR batch_id = '')
+                    f"""SELECT COUNT(*) FROM job
+                       WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
                          AND latest_score IS NOT NULL AND latest_score >= ?
                          AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)""",
-                    (state, float(floor), candidate_id),
+                    (*state_params, float(floor), candidate_id),
                 ).fetchone()
                 return int(row[0])
             finally:
                 conn.close()
         return _run_with_retry(_with_conn)
-    return count_entities_in_state(entity_type, state, candidate_id)
+    return count_entities_in_state(entity_type, state, candidate_id, states=claim_states)
 
 
 def count_companies_in_state_with_score_floor(
     candidate_id: str,
     state: str,
     score_floor: float,
+    *,
+    states: Optional[List[str]] = None,
 ) -> int:
     """Unclaimed companies in state with company_data.prefilter_score >= score_floor (AST-508)."""
     score_key = ROSTER_CONFIG["company_data_keys"]["prefilter_score"]
@@ -5361,13 +5387,15 @@ def count_companies_in_state_with_score_floor(
         conn = _get_connection()
         try:
             _ensure_company_schema(conn)
+            claim_states = states if states is not None else [state]
+            state_sql, state_params = _state_in_sql(claim_states)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM company
-                    WHERE state = ? AND candidate_id = ?
+                    WHERE {state_sql} AND candidate_id = ?
                       AND (batch_id IS NULL OR batch_id = '')
                       AND json_extract(company_data, '$.{score_key}') IS NOT NULL
                       AND CAST(json_extract(company_data, '$.{score_key}') AS REAL) >= ?""",
-                (state, candidate_id, float(score_floor)),
+                (*state_params, candidate_id, float(score_floor)),
             ).fetchone()
             return int(row[0])
         finally:
@@ -5376,25 +5404,30 @@ def count_companies_in_state_with_score_floor(
     return _run_with_retry(_with_conn)
 
 
-def count_entities_in_state(entity_type: str, state: str, candidate_id: str) -> int:
+def count_entities_in_state(
+    entity_type: str, state: str, candidate_id: str, *, states: Optional[List[str]] = None,
+) -> int:
     """Count available (unclaimed) jobs or companies in a given state for a candidate.
     Unclaimed = batch_id IS NULL OR batch_id = '' (same as claim_*_batch). Jobs are scoped via company.candidate_id."""
+    claim_states = states if states is not None else [state]
+    state_sql, state_params = _state_in_sql(claim_states)
+
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             if entity_type == "company":
                 _ensure_company_schema(conn)
                 row = conn.execute(
-                    "SELECT COUNT(*) FROM company WHERE state = ? AND candidate_id = ? AND (batch_id IS NULL OR batch_id = '')",
-                    (state, candidate_id),
+                    f"SELECT COUNT(*) FROM company WHERE {state_sql} AND candidate_id = ? AND (batch_id IS NULL OR batch_id = '')",
+                    (*state_params, candidate_id),
                 ).fetchone()
             elif entity_type == "job":
                 _ensure_job_schema(conn)
                 row = conn.execute(
-                    """SELECT COUNT(*) FROM job
-                       WHERE state = ? AND (batch_id IS NULL OR batch_id = '') AND company IN
+                    f"""SELECT COUNT(*) FROM job
+                       WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '') AND company IN
                        (SELECT short_name FROM company WHERE candidate_id = ?)""",
-                    (state, candidate_id),
+                    (*state_params, candidate_id),
                 ).fetchone()
             else:
                 raise ValueError(f"Unknown entity_type: {entity_type}")
