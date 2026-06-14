@@ -253,3 +253,31 @@ No conflicts requiring `conf-!!-NONE`.
 | `d4919d9b` | Stage 2: `AdminAgentPrompts` TokenTextarea, candidate preview modal |
 
 **Verification:** `python3 -m py_compile src/utils/config.py src/ui/api/api_admin.py`; `cd src/ui/frontend && npx tsc -b --noEmit && npm run build`
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-574/AST-632-manage-agents-token-autocomplete-and-preview` @ `14fb84bb` (includes AST-631 dependency commits on branch; AST-632 product delta: `e66e1bc3`, `d4919d9b`, test merge `3d87b1cf`).
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | Stage 1–2 match plan: `get_manage_agents_tokens()`, `GET /agents/meta/tokens`, `POST /agents/preview` with draft `content`, `AdminAgentPrompts` `TokenTextarea` + preview modal |
+| AC4 / AC5 | Meta excludes chain/hop tokens (`SELECTED_AGENT`, `CALLER_*`); preview POST resolves draft; PUT preserves literal `{$TOKEN}` — covered in `test_api_admin`, `test_config`, `test_AdminAgentPrompts` |
+| §2.1 / §3.3 | Token list server-owned via config helper; `api_admin` → `resolved_agent_content` + `get_manage_agents_tokens` (existing admin/core pattern); preview uses `database` per plan decision |
+| §3.5 / DRY | Reuses `TokenTextarea`, `CandidateContext`, Manage Tasks preview UX; no duplicate resolution logic |
+| Scope | Self-assessment **Single-Component** still accurate for AST-632 files; `agent.py` / enrich/adhoc `_chain_context` changes are AST-631 (already Radia clean on sibling) |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now items for AST-632 scope |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| Advisory | Frontend test exercises edit-modal preview only; add-modal preview path untested — low risk given shared `handlePreview` |
+| Advisory | Token fetch `.catch(() => setTokenList([]))` matches `AdminTaskPrompts` precedent — acceptable silent degrade for picker |
+| — | Katherine: **`resolve-child`** — no code changes required from this review |
