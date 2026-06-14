@@ -1293,6 +1293,14 @@ Equivalent harness:
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
 
+## 7.13zzc Rebuild AST-586 git casualty (**AST-617**, parent **AST-600**)
+
+Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backfill and **`api_admin.py`** **`is_scored`** / **`score_floor`** call sites to **`dispatch_claim_uses_score_floor`**. Config helper + **`dispatcher.py`** claim path already on **`origin/dev`** / sibling **AST-615** (**§7.13zzb**). **Manifest-only** — reuse **§7.13zv** (**AST-586**) narrowed run; no new test files.
+
+| Child | Behavior | Sources | Manifest |
+| --- | --- | --- | --- |
+| **AST-617** | DB eligible count + admin dispatch rows align with claim helper (not grading metadata) | `src/data/database.py`, `src/ui/api/api_admin.py` | **§7.13zv** narrowed run |
+
 ## Appendix A — Run component tests
 
 From repo root:
