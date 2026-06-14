@@ -142,3 +142,10 @@ Betty adds to **Tests Ready** manifest. If omitted, engineer adds only the case 
 | §3.5 naming | `_ensure_company_table_for_upsert` matches existing `_ensure_*` convention. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-626/AST-637-uat-company-table-upsert-wrong-keys-after-ast-629`  
+**Built:** Stage 1 complete — pending Betty manifest (Stage 2) and Radia review.
