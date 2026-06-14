@@ -561,8 +561,6 @@ async def run_inflow_discovery_batch(
                     else "not recorded (unknown)"
                 )
         if debug:
-            if fail_reason:
-                log.debug_detail(f"ingest failed: {fail_reason}")
             log.debug_index(
                 func="roster.run_inflow_discovery_batch",
                 index=row_i,
@@ -570,6 +568,8 @@ async def run_inflow_discovery_batch(
                 identifier=slug or f"hit_index={hi}",
                 outcome=outcome,
             )
+            if fail_reason:
+                log.debug_detail(f"ingest failed: {fail_reason}")
             log.debug_detail(
                 f"action={action!r} hit_index={row.get('hit_index')!r} website={site!r}"
             )
