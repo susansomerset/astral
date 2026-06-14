@@ -876,6 +876,20 @@ async def _run_batch_consult(
     retry_state = JOB_STATES.get(input_state, {}).get("retry_state") if input_state else None
     error_state = cfg.get("error_state")
 
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func=f"consult._run_batch_consult({task_key})",
+            index=1,
+            total=1,
+            identifier=task_key,
+            outcome=f"batch start n={len(jobs)}",
+        )
+        logger.debug_detail(
+            f"batch_id={batch_id} input_state={input_state!r} "
+            f"batch_chunk_index={batch_chunk_index!r} astral_ids={astral_ids}"
+        )
+
     live_content = assemble_fn(jobs)
     # Build code→label map from candidate's rubric so _decode_payload can hydrate vector names
     rubric_key = cfg.get("rubric_artifact")
@@ -894,6 +908,15 @@ async def _run_batch_consult(
 
     if not result.get("success"):
         # Envelope failure — whole batch to error_state
+        if debug:
+            logger.debug_index(
+                func=f"consult._run_batch_consult({task_key})",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="do_task failed — batch error transition",
+            )
+            logger.debug_detail(f"error={result.get('error')!r} error_state={error_state!r}")
         if error_state:
             _transition_job_state_for_task(task_key, astral_ids, error_state)
         return {"success": False, "error": result.get("error"), "passed": 0, "failed": 0, "total": len(jobs)}
@@ -917,15 +940,18 @@ async def _run_batch_consult(
 
     if debug:
         ts = result.get("timesheet", {})
-        logger.info(f"[DEBUG] {task_key}: got {len(response_jobs)} job objects back | tokens: input={ts.get('inputtotal')} cached={ts.get('inputcached')} output={ts.get('outputtotal')}")
+        logger.debug_detail(
+            f"do_task returned jobs={len(response_jobs)} "
+            f"tokens input={ts.get('inputtotal')} cached={ts.get('inputcached')} output={ts.get('outputtotal')}"
+        )
 
     sent_ids = set(input_by_id.keys())
     received_ids = {rj["astral_job_id"] for rj in response_jobs}
     missing = sent_ids - received_ids
     fabricated = received_ids - sent_ids
+    dest = retry_state or error_state
 
     if missing:
-        dest = retry_state or error_state
         dest_label = f"-> {dest}" if dest else f"(left in {input_state})"
         logger.warning(
             "[%s] batch incomplete: %d/%d IDs omitted %s: %s",
@@ -935,14 +961,14 @@ async def _run_batch_consult(
             _transition_job_state_for_task(task_key, list(missing), dest)
     if debug:
         if missing:
-            logger.info(f"[DEBUG] {task_key}: MISSING {len(missing)} IDs: {sorted(missing)}")
+            logger.debug_detail(f"MISSING {len(missing)} IDs: {sorted(missing)}")
         if fabricated:
-            logger.info(f"[DEBUG] {task_key}: FABRICATED {len(fabricated)} IDs: {sorted(fabricated)}")
+            logger.debug_detail(f"FABRICATED {len(fabricated)} IDs: {sorted(fabricated)}")
 
     passed = failed = 0
     bad_grades: set = set()
 
-    for response_job in response_jobs:
+    for job_idx, response_job in enumerate(response_jobs, start=1):
         aid = response_job["astral_job_id"]
         if aid in fabricated:
             continue
@@ -951,12 +977,43 @@ async def _run_batch_consult(
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
             bad_grades.add(aid)
+            if debug:
+                logger.debug_index(
+                    func=f"consult._run_batch_consult({task_key})",
+                    index=job_idx,
+                    total=len(response_jobs),
+                    identifier=_consult_job_identifier(input_job),
+                    outcome="process_fn failed",
+                )
+                logger.debug_detail(f"astral_job_id={aid} error={e!r} grades={response_job.get('grades')!r}")
             logger.warning(f"[{aid}] process_fn failed: {e} | grades: {response_job.get('grades')}")
             continue
+        if debug:
+            logger.debug_index(
+                func=f"consult._run_batch_consult({task_key})",
+                index=job_idx,
+                total=len(response_jobs),
+                identifier=_consult_job_identifier(input_job),
+                outcome=str(to_state),
+            )
+            logger.debug_detail(
+                f"astral_job_id={aid} pass_state={cfg['pass_state']!r} fail_state={cfg['fail_state']!r} "
+                f"grades={response_job.get('grades')!r}"
+            )
         if to_state == cfg["pass_state"]:
             passed += 1
         else:
             failed += 1
+
+    if debug and missing:
+        for mi, mid in enumerate(sorted(missing), start=1):
+            logger.debug_index(
+                func=f"consult._run_batch_consult({task_key})",
+                index=mi,
+                total=len(missing),
+                identifier=mid,
+                outcome=f"missing from response -> {dest or input_state}",
+            )
 
     # Store per-job agent_responses refs from the shared batch call
     agent_ref = result.get("agent_ref")
@@ -987,7 +1044,10 @@ async def _run_batch_consult(
         truncated_note = f"truncated: {len(missing)} IDs -> {dest or input_state}: {sorted(missing)}"
 
     if debug:
-        logger.info(f"[DEBUG] {task_key}: processed={len(jobs)} passed={passed} failed={failed} bad_grades={len(bad_grades)} missing={len(missing)} fabricated={len(fabricated)}")
+        logger.debug_detail(
+            f"batch end processed={len(jobs)} passed={passed} failed={failed} "
+            f"bad_grades={len(bad_grades)} missing={len(missing)} fabricated={len(fabricated)}"
+        )
 
     return {
         "success": not fabricated and not bad_grades,
