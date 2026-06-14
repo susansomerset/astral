@@ -29,10 +29,10 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
+    dispatch_claim_uses_score_floor,
     dispatch_task_key_is_scored,
     resume_artifact_compound_state,
     resume_artifact_hop_task_keys,
-    trigger_state_used_by_scored_dispatch_task,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -58,7 +58,7 @@ def _task_key_scored(task_key: str) -> bool:
 
 
 def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
-    return trigger_state_used_by_scored_dispatch_task(trigger_state)
+    return dispatch_claim_uses_score_floor(trigger_state)
 
 
 async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:

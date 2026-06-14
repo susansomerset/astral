@@ -1171,6 +1171,23 @@ IN_REVIEW_STATES = [
 PASSED_SCORE_GATED_STATES = frozenset({"PASSED_JD", "PASSED_DO", "PASSED_GET", "PASSED_LIKE"})
 
 
+def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
+    """True when job claim should filter latest_score >= dispatch_task.score_floor.
+
+    Distinct from trigger_state_used_by_scored_dispatch_task (task grading / TASK_CONFIG)
+    and dispatch_task_key_is_scored (task_key catalog). Input triggers such as VALID_TITLE
+    run a scored task but entities lack latest_score until that step completes (AST-586).
+    """
+    if trigger_state is None:
+        return False
+    ts = str(trigger_state).strip()
+    if not ts or ts.endswith("_RETRY"):
+        return False
+    if ts in PASSED_SCORE_GATED_STATES:
+        return True
+    return ts in _TRANSITION_STATES_USED_BY_SCORED_TASKS
+
+
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "prefilter", "find_job_page", "select_job_page", "parse_job_list",
