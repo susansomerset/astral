@@ -208,3 +208,11 @@ if debug:
 | §3.5 Naming | Private helper `_emit_llm_call_debug`; snake_case params |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-546/AST-620-external-llm-wrapper-debug` @ `6e66f8e5`.
+
+**Stages delivered:**
+- Stage 1: `_emit_llm_call_debug` helper + `send_to_anthropic` success/error paths — `6e66f8e5`.
+- Stage 2: `send_to_deepseek` imports helper; success/error paths; zero `[DEBUG]` strings — `6e66f8e5`.
