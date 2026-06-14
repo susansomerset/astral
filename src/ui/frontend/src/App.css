@@ -393,6 +393,7 @@ body {
 .list-page-table thead th {
   position: sticky;
   top: 0;
+  z-index: 2;
   background: var(--bg-elevated);
   text-align: left;
   padding: 6px 10px;
@@ -403,10 +404,9 @@ body {
   user-select: none;
   overflow: hidden;
   text-overflow: ellipsis;
-  position: relative;
 }
 
-.col-resize-handle {
+.list-page-table thead th .col-resize-handle {
   position: absolute;
   right: 0;
   top: 0;
@@ -416,7 +416,7 @@ body {
   background: transparent;
 }
 
-.col-resize-handle:hover {
+.list-page-table thead th .col-resize-handle:hover {
   background: var(--accent-gold);
   opacity: 0.4;
 }
@@ -439,6 +439,37 @@ body {
   padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
+}
+
+.list-table-cell-frozen {
+  position: sticky;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.list-page-table thead th.list-table-cell-frozen {
+  z-index: 3;
+  background: var(--bg-elevated);
+}
+
+.list-page-table tbody tr:hover td.list-table-cell-frozen {
+  background: var(--bg-elevated);
+}
+
+.list-table-cell-frozen-right {
+  position: sticky;
+  right: 0;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.list-page-table thead th.list-table-cell-frozen-right {
+  z-index: 3;
+  background: var(--bg-elevated);
 }
 
 .list-page-table tbody tr:hover {
