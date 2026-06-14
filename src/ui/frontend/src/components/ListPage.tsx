@@ -38,7 +38,6 @@ export interface ListPageProps<T = Row> {
   emptyMessage?: string
   actions?: ReactNode
   rowActions?: (row: T) => ReactNode
-  horizontalScrollable?: boolean                        // default: false; when true, table scrolls horizontally instead of squishing
   frozenDataColumns?: number                            // per-screen override; omit → UI_CONFIG default
 }
 
@@ -96,7 +95,6 @@ export default function ListPage<T extends Row>({
   emptyMessage = "No records found.",
   actions,
   rowActions,
-  horizontalScrollable = false,
   frozenDataColumns,
 }: ListPageProps<T>) {
   const [filter, setFilter] = useState("")
@@ -333,7 +331,7 @@ export default function ListPage<T extends Row>({
         <p className="list-page-status">{emptyMessage}</p>
       ) : (
         <div className="list-page-table-wrap list-page-table-wrap--scroll">
-          <table className={`list-page-table${horizontalScrollable ? " list-page-table--auto" : ""}`}>
+          <table className="list-page-table">
             <thead>
               <tr>
                 {showCheckboxes && (

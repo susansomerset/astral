@@ -219,7 +219,7 @@ export default function InReview() {
               </button>
               {isExpanded && (
                 <div className="list-page-table-wrap">
-                  <table className="list-page-table" style={{ tableLayout: "auto" }}>
+                  <table className="list-page-table">
                     <thead>
                       <tr>
                         <th className="sortable" onClick={() => handleSort(sec.state, "job_title")}>
