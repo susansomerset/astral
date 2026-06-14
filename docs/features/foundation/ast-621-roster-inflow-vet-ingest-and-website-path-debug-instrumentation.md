@@ -312,3 +312,26 @@ if not all_hits:
 | `a8139771` | Stages 1–3: ingest reason helper, `resolve_company_website` contract debug, empty-dedupe header |
 
 **Verification:** `python3 -m py_compile src/core/roster.py src/core/agent.py`; `run_component_tests.sh` — `TestAst505InflowDiscovery` + `TestAst506InflowResolve` (18 passed).
+
+## Resolution (resolve-child)
+
+**Radia review (2026-06-14):** [Linear comment](https://linear.app/astralcareermatch/issue/AST-621)
+
+### fix-now (landed)
+
+| Item | Resolution |
+|------|------------|
+| Vet-row `ingest failed` detail before `debug_index` | Moved `log.debug_detail(f"ingest failed: {fail_reason}")` **after** row `debug_index`, before `action=` detail — §1.5.1 working detail under the index header. |
+
+### discuss (closed — no product change)
+
+| Item | Resolution |
+|------|------------|
+| `agent.py` merge-clean (`3357bb6c`) drops dev `caller_hydration=live_llm` resume-artifact line | **AST-618** scope on ftr integration. Kept ftr `run_next dispatch` `debug_detail` (broader AST-618 contract). Dropping dev-only resume line is intentional merge hygiene for this publish ref; not an AST-621 roster fix. |
+
+### advisory (accepted as-is)
+
+- Dual `index 1/1` headers on zero CSE hits — acceptable UAT traceability.
+- Betty bible §7.13zzf + agent merge-clean on publish ref — expected artifacts.
+
+**Verification:** manifest re-run 181 passed; §9a dev + ftr dry-runs clean.
