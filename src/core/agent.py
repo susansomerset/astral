@@ -13,6 +13,7 @@ import json
 from logging import DEBUG as _LOG_DEBUG
 import re
 import uuid
+_uuid4 = uuid.uuid4  # bind at import — hop/adhoc ledger IDs avoid test patches on uuid module
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -2115,7 +2116,7 @@ def _open_run_next_hop_ledger(
     entity_type: str,
     batch_size: int = 1,
 ) -> str:
-    hop_batch_id = f"{task_key}-{uuid.uuid4()}"
+    hop_batch_id = f"{task_key}-{_uuid4()}"
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     database.save_dispatch_ledger(
         hop_batch_id,
@@ -2191,7 +2192,7 @@ async def run_adhoc_workbench_test(
 ) -> Dict[str, Any]:
     """Wrap run_adhoc with dispatch_ledger, log_batch_id, and agent_data for workbench Test."""
     ledger_task_key = f"adhoc-{workbench_task_key}"
-    batch_id = f"{ledger_task_key}-{uuid.uuid4()}"
+    batch_id = f"{ledger_task_key}-{_uuid4()}"
     entity_type = (TASK_CONFIG.get(workbench_task_key) or {}).get("entity_type") or "candidate"
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
