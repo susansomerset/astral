@@ -14,7 +14,6 @@ evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over
 consult_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(agent_task=*grade_*).
 """
 
-from logging import DEBUG as _LOG_DEBUG
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,6 +39,11 @@ from src.utils.formatting import enumerate_array
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+def _consult_job_identifier(job: Dict[str, Any]) -> str:
+    """Primary debug identifier for a consult job row (§1.5.1 style D)."""
+    return str(job.get("astral_job_id") or job.get("job_title") or "?")
+
 
 # input_state → TASK_CONFIG orchestration lookup key (`consult_*` → grade_* prompts via _consult_orchestration).
 # Legacy map — not used for dispatch routing (AST-534). Tests pass dispatch_task_key explicitly.
@@ -73,8 +77,7 @@ def _render_pass_fail(task_key: str, grades: list) -> str:
     Raises KeyError if orchestration lookup fails (missing TASK_CONFIG key)."""
     cfg = _consult_orchestration(task_key)
     if not grades:
-        if logger.isEnabledFor(_LOG_DEBUG):
-            logger.debug("_render_pass_fail task_key=%s empty grades -> fail", task_key)
+        logger.debug_detail(f"pass_fail task_key={task_key} branch=empty_grades -> fail")
         return cfg["fail_state"]
     if any(
         g.get("grade") == "F"
@@ -82,24 +85,19 @@ def _render_pass_fail(task_key: str, grades: list) -> str:
         and g["confidence"] >= 2
         for g in grades
     ):
-        if logger.isEnabledFor(_LOG_DEBUG):
-            logger.debug("_render_pass_fail task_key=%s F2+ dealbreaker -> fail grades=%r", task_key, grades)
+        logger.debug_detail(f"pass_fail task_key={task_key} branch=F2_dealbreaker -> fail grades={grades!r}")
         return cfg["fail_state"]
     if all(g.get("grade") == "X" for g in grades):
-        if logger.isEnabledFor(_LOG_DEBUG):
-            logger.debug("_render_pass_fail task_key=%s all literal X -> fail", task_key)
+        logger.debug_detail(f"pass_fail task_key={task_key} branch=all_literal_X -> fail")
         return cfg["fail_state"]
     if not any(isinstance(g.get("confidence"), int) and g["confidence"] > 1 for g in grades):
-        if logger.isEnabledFor(_LOG_DEBUG):
-            logger.debug("_render_pass_fail task_key=%s no confidence > 1 -> fail grades=%r", task_key, grades)
+        logger.debug_detail(f"pass_fail task_key={task_key} branch=no_confidence_gt_1 -> fail grades={grades!r}")
         return cfg["fail_state"]
-    if logger.isEnabledFor(_LOG_DEBUG):
-        logger.debug("_render_pass_fail task_key=%s pass", task_key)
+    logger.debug_detail(f"pass_fail task_key={task_key} branch=pass -> {cfg['pass_state']}")
     return cfg["pass_state"]
 
 
 _CODE_SUFFIX = re.compile(r'\s*\([A-Z]{2}\)\s*$')
-
 def _strip_code(name: str) -> str:
     """Strip trailing ' (XX)' code suffix the model appends to vector names, e.g. 'Foo (CR)' → 'Foo'."""
     return _CODE_SUFFIX.sub('', name).strip()
@@ -446,8 +444,7 @@ def _render_score(
         and g["confidence"] >= 2
         for g in grades
     ):
-        if logger.isEnabledFor(_LOG_DEBUG):
-            logger.debug("_render_score F2+ -> fail grades=%r", grades)
+        logger.debug_detail(f"branch=F2_dealbreaker scored_fail grades={grades!r}")
         return (consult_cfg["fail_state"], None)
     expected = {
         _strip_code(str(item.get("label") or "").strip())
@@ -478,30 +475,23 @@ def _render_score(
             imp = _importance_for_label(rubric_criteria, g["vector"])
             contrib = base * density * imp
             rubric_score += contrib
-            if logger.isEnabledFor(_LOG_DEBUG):
-                logger.debug(
-                    "_render_score vec=%r grade=%s conf=%s base=%s density=%s imp=%s contrib=%s",
-                    g.get("vector"),
-                    g.get("grade"),
-                    conf,
-                    base,
-                    density,
-                    imp,
-                    contrib,
-                )
+            logger.debug_detail(
+                f"vec={g.get('vector')!r} grade={g.get('grade')} conf={conf} "
+                f"base={base} density={density} imp={imp} contrib={contrib}"
+            )
     score = (rubric_score / float(RUBRIC_TOTAL)) * 10.0
-    if logger.isEnabledFor(_LOG_DEBUG):
-        logger.debug(
-            "_render_score rubric_score=%s score=%s threshold=%s v=%s",
-            rubric_score,
-            score,
-            pass_threshold,
-            v,
-        )
+    logger.debug_detail(
+        f"rubric_score={rubric_score} score={score} threshold={pass_threshold} v={v}"
+    )
     if score < pass_threshold:
+        logger.debug_detail(
+            f"branch=below_threshold -> fail score={score} threshold={pass_threshold}"
+        )
         return (consult_cfg["fail_state"], score)
+    logger.debug_detail(
+        f"branch=pass -> {consult_cfg['pass_state']} score={score} threshold={pass_threshold}"
+    )
     return (consult_cfg["pass_state"], score)
-
 
 def _latest_score_value(raw: Optional[float]) -> Optional[float]:
     """Normalize score for persistence; None means keep existing latest_score."""
