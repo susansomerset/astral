@@ -141,3 +141,14 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Built:** `code(AST-651): return raw ASTRAL_DEPLOY_ENV without allowlist` → `code(AST-651): drop DEPLOY_STATUS_CONFIG and update env.example`  
 **Branch:** `origin/sub/AST-640/AST-651-uat-show-raw-astral-deploy-env-without-allowlist-validation` @ `e22f56f7`
+
+---
+
+## Resolution
+
+**Date:** 2026-06-14  
+**Radia review:** fix-now none; discuss none; advisory only (AST-646 plan doc still mentions allowlist — historical, not blocking).
+
+**Outcome:** No product changes from review. Shipped as built @ `37443bba` (`7d5c5aeb` + `e22f56f7` product, `37443bba` Betty tests). §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-640`.
+
+**UAT verify:** Set `ASTRAL_DEPLOY_ENV=eu-west` (or any non-empty label), restart, sign in as admin — footer shows raw label plus commit and uptime.
