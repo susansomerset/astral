@@ -135,5 +135,24 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review
 
-**Branch:** `origin/sub/AST-626/AST-629-uat-table-upsert-wrong-keys-error-persists-on-origindev`  
-**Build:** Stage 1 complete — `ensure_table_schema_for_upsert` clears `_UPSERT_SCHEMA_ENSURE_FLAGS` before handler. Stage 2 tests pending Betty manifest / test-child.
+**Diff:** `origin/dev...origin/sub/AST-626/AST-629-uat-table-upsert-wrong-keys-error-persists-on-origindev`  
+**Radia:** 2026-06-14 — clean
+
+### What's solid
+
+- Root-cause fix matches plan: `ensure_table_schema_for_upsert` clears process-global `_*_schema_ensured` (and `company_search_terms` sweep flag) before invoking the registered handler, so stale SQLite files cannot skip idempotent migrations when flags were set earlier in the same interpreter.
+- `_UPSERT_SCHEMA_ENSURE_FLAGS` keys are **symmetric** with `_UPSERT_LAZY_SCHEMA_HANDLERS` (15 tables); no orphan entries.
+- Scope stays inside `database.py`; no changes to merge rules, allowlists, UI, or `_ensure_*` bodies — aligns with ticket boundaries and AST-626 parent AC.
+- Regression tests cover both Copy Output (`TestAst629UpsertFlagBypass`) and config upsert (`test_config_upsert_stale_candidate_when_schema_flag_already_true`) with flag pre-set `True` and stale DDL — the gap AST-627 missed.
+- `_config_upsert_columns` helper in `test_schema.py` correctly routes column discovery through `ensure_table_schema_for_upsert`, keeping sibling config-upsert tests aligned with post-ensure layout.
+- **ASTRAL_TEST_BIBLE** manifest updated; narrowed run **13 passed**.
+
+### Issues
+
+| Severity | Location | Note |
+| --- | --- | --- |
+| — | — | No fix-now or discuss items. |
+
+### Recommended actions
+
+- Proceed to **resolve-child** (no engineer changes required from this review).
