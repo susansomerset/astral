@@ -3,19 +3,33 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import ArtifactsCompanySearchTerms from "../../../../src/ui/frontend/src/pages/ArtifactsCompanySearchTerms"
+import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
+
+function installPageApiMocks(handler: (url: string, init?: RequestInit) => Promise<Response> | Response) {
+  mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url === "/api/me") {
+      return { json: async () => ({ user_id: "u1", name: "Test User", is_admin: true }) } as Response
+    }
+    if (url === "/api/state_ui_manifest") {
+      return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+    }
+    return handler(url, init)
+  })
+}
 
 describe("ArtifactsCompanySearchTerms", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    installPageApiMocks(async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
@@ -54,8 +68,44 @@ describe("ArtifactsCompanySearchTerms", () => {
     expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument()
   })
 
+  it("AST-645: Generate button uses in-flight class while generating", async () => {
+    let resolveGenerate!: (value: Response) => void
+    const generatePromise = new Promise<Response>((resolve) => {
+      resolveGenerate = resolve
+    })
+    installPageApiMocks(async (url: string, init?: RequestInit) => {
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return { json: async () => ({ company_search_terms: "", candidate_data: {} }) } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_company_search_terms" && init?.method === "POST") {
+        return generatePromise
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+
+    renderWithProviders(<ArtifactsCompanySearchTerms />)
+    const generateBtn = await screen.findByRole("button", { name: "Generate" })
+    expect(generateBtn).not.toHaveClass("in-flight")
+    await userEvent.click(generateBtn)
+    await waitFor(() => expect(generateBtn).toHaveClass("in-flight"))
+    expect(screen.getByRole("button", { name: "Save" })).not.toHaveClass("in-flight")
+    resolveGenerate({
+      ok: true,
+      json: async () => ({
+        success: true,
+        parsed_response: { search_terms: "generated term one\ngenerated term two" },
+      }),
+    } as Response)
+    await waitFor(() => expect(generateBtn).not.toHaveClass("in-flight"))
+  })
+
   it("populates textarea after generate when empty", async () => {
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    installPageApiMocks(async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],

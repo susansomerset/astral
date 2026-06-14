@@ -90,7 +90,7 @@ export default function RecommendedJobReportHeader({
           {primaryAction && (
             <button
               type="button"
-              className="modal-btn save"
+              className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
               disabled={primaryBusy || applyDisabled}
               onClick={onPrimaryAction}
             >

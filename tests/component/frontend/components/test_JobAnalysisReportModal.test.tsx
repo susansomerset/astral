@@ -6,9 +6,10 @@ import JobAnalysisReportModal from "../../../../src/ui/frontend/src/components/J
 import { baseCandidate, installBaseApiMocks, jsonResponse } from "../pages/page-mocks"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -141,6 +142,27 @@ describe("JobAnalysisReportModal — AST-565 tabbed Recommended report", () => {
     await waitFor(() =>
       expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j565/generate_artifacts", { method: "POST" }),
     )
+  })
+
+  it("AST-645: Generate Artifacts primary action uses in-flight class while Working", async () => {
+    let resolveGenerate!: (value: Response) => void
+    const generatePromise = new Promise<Response>((resolve) => {
+      resolveGenerate = resolve
+    })
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j565/generate_artifacts" && init?.method === "POST") {
+        return generatePromise
+      }
+      return jobHandler("j565")(url, init)
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j565" onClose={() => {}} />)
+    const btn = await screen.findByRole("button", { name: "Generate Artifacts" })
+    expect(btn).not.toHaveClass("in-flight")
+    await userEvent.click(btn)
+    await waitFor(() => expect(btn).toHaveClass("in-flight"))
+    expect(btn).toHaveTextContent("Working…")
+    resolveGenerate(jsonResponse({ ok: true, state: "BUILD_ARTIFACTS" }))
+    await waitFor(() => expect(btn).not.toHaveClass("in-flight"))
   })
 
   it("opens job_link via Apply on CANDIDATE_REVIEW", async () => {

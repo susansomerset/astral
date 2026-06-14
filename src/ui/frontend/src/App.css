@@ -801,6 +801,17 @@ body {
   background: var(--cta-green-hover);
 }
 
+.modal-btn.save.in-flight,
+.modal-btn.save.in-flight:disabled {
+  background: var(--accent-gold);
+  border: none;
+  color: var(--bg-deep);
+}
+
+.modal-btn.save.in-flight:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
+}
+
 .modal-btn.danger {
   background: var(--danger);
   border: none;
@@ -1086,6 +1097,17 @@ body {
 
 .dep-btn.save:hover {
   background: var(--cta-green-hover);
+}
+
+.dep-btn.save.in-flight,
+.dep-btn.save.in-flight:disabled {
+  background: var(--accent-gold);
+  border: none;
+  color: var(--bg-deep);
+}
+
+.dep-btn.save.in-flight:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
 }
 
 .dep-btn.danger {
