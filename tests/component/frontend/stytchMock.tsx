@@ -12,6 +12,11 @@ export function resetStytchTestState(): void {
   stytchTestState.isInitialized = true
   stytchTestState.sessionJwt = "test-session-jwt"
   lastStytchLoginConfig = null
+  try {
+    sessionStorage.clear()
+  } catch {
+    /* jsdom private mode */
+  }
 }
 
 export function StytchProvider({ children }: { children: ReactNode }) {
