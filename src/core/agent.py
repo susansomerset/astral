@@ -452,7 +452,7 @@ def _do_task_debug_entry(
 ) -> None:
     if not debug:
         return
-    dbg = get_logger(__name__, debug_flag=True)
+    dbg = _do_task_debug_logger(debug)
     entity_id = (index or task_key or "?").strip()
     if task_key in resume_artifact_hop_task_keys():
         keys = resume_artifact_hop_task_keys()
@@ -1334,24 +1334,6 @@ async def do_task(
         if "nocache" in snap:
             nocache_content = snap.get("nocache") or None
 
-    if debug:
-        dbg = get_logger(__name__, debug_flag=True)
-        source = (chain_context or {}).get("_caller_hydration_source") or (
-            "live_llm" if (chain_context or {}).get("_hop_parent_task_key") else "chain_entry"
-        )
-        dbg.debug_detail(
-            f"token_overlay chain_entry={chain_entry} caller_source={source} "
-            f"parent={(chain_context or {}).get('_hop_parent_task_key') or 'none'} "
-            f"caller_keys={_caller_key_status(_cc)}"
-        )
-        if source == "agent_data":
-            dbg.debug_detail(
-                f"caller_hydration=agent_data upstream={(chain_context or {}).get('_hop_parent_task_key')}"
-            )
-        if _jc:
-            populated = [k for k, v in _jc.items() if (v or "").strip()]
-            dbg.debug_detail(f"job_context tokens={','.join(populated) if populated else 'none'}")
-
     if not chain_entry:
         segment_texts = {
             "system": (agent_task_row.get("system_prompt") or "").strip() or (agent_row.get("content") or ""),
@@ -1384,7 +1366,7 @@ async def do_task(
                 _caller_key_status(_cc),
             )
             if debug:
-                get_logger(__name__, debug_flag=True).debug_detail(
+                _do_task_debug_logger(debug).debug_detail(
                     f"token_guard blocked: {guard_err} caller_keys={_caller_key_status(_cc)}"
                 )
             return {
@@ -1424,6 +1406,24 @@ async def do_task(
         debug=debug,
     )
 
+    if debug:
+        dbg = _do_task_debug_logger(debug)
+        source = (chain_context or {}).get("_caller_hydration_source") or (
+            "live_llm" if (chain_context or {}).get("_hop_parent_task_key") else "chain_entry"
+        )
+        dbg.debug_detail(
+            f"token_overlay chain_entry={chain_entry} caller_source={source} "
+            f"parent={(chain_context or {}).get('_hop_parent_task_key') or 'none'} "
+            f"caller_keys={_caller_key_status(_cc)}"
+        )
+        if source == "agent_data":
+            dbg.debug_detail(
+                f"caller_hydration=agent_data upstream={(chain_context or {}).get('_hop_parent_task_key')}"
+            )
+        if _jc:
+            populated = [k for k, v in _jc.items() if (v or "").strip()]
+            dbg.debug_detail(f"job_context tokens={','.join(populated) if populated else 'none'}")
+
     def _close_hop_ledger(*, success: bool, clear_log: bool = False) -> None:
         nonlocal hop_ledger_closed
         if hop_ledger_closed or not hop_ledger_batch_id:
@@ -1448,7 +1448,7 @@ async def do_task(
     )
 
     if debug:
-        dbg = get_logger(__name__, debug_flag=True)
+        dbg = _do_task_debug_logger(debug)
         model_tag = resolved_anthropic_key if provider == "anthropic" else tier_meta["vendor_model"]
         dbg.debug_detail(
             f"llm_params provider={provider} brain_setting={brain_setting} model={model_tag} "
@@ -1554,7 +1554,7 @@ async def do_task(
             result,
         )
         if debug:
-            get_logger(__name__, debug_flag=True).debug_detail(
+            _do_task_debug_logger(debug).debug_detail(
                 f"exit provider_failed task_key={task_key} batch_id={batch_id or ''} "
                 f"error={result.get('error')!r}"
             )
@@ -1572,10 +1572,11 @@ async def do_task(
             except ValueError:
                 pass
     if debug and raw_text and len(raw_text.splitlines()) > 50:
-        get_logger(__name__, debug_flag=True).debug_detail(
+        _dbg = _do_task_debug_logger(debug)
+        _dbg.debug_detail(
             f"raw_response task_key={task_key} lines={len(raw_text.splitlines())} chars={len(raw_text)}"
         )
-        get_logger(__name__, debug_flag=True).debug_detail_block(raw_text)
+        _dbg.debug_detail_block(raw_text)
 
     parsed = result.get("parsed_response")
     output_type = task_config.get("output_type", "")
@@ -1729,7 +1730,7 @@ async def do_task(
     if debug and "_encoded" in output_type:
         literal = parsed if isinstance(parsed, str) else raw_text
         if isinstance(literal, str) and literal.strip():
-            dbg = get_logger(__name__, debug_flag=True)
+            dbg = _do_task_debug_logger(debug)
             lines = [ln for ln in literal.splitlines() if ln.strip()]
             dbg.debug_detail(
                 f"encoded_payload task_key={task_key} lines={len(lines)} chars={len(literal)}"
@@ -1961,7 +1962,7 @@ async def do_task(
                 index,
             )
         if debug:
-            dbg = get_logger(__name__, debug_flag=True)
+            dbg = _do_task_debug_logger(debug)
             dbg.debug_index(
                 func="do_task",
                 index=1,
@@ -1981,7 +1982,7 @@ async def do_task(
             effective_next,
         )
         if debug:
-            get_logger(__name__, debug_flag=True).debug_detail(
+            _do_task_debug_logger(debug).debug_detail(
                 f"run_next suppressed invalid_child={effective_next!r} parent={task_key}"
             )
         _close_hop_ledger(success=True, clear_log=True)
@@ -1991,7 +1992,7 @@ async def do_task(
     merged_ctx = _merge_chain_context_for_next_hop(chain_context, hop_ctx)
     merged_ctx["_hop_parent_task_key"] = task_key
     if debug:
-        dbg = get_logger(__name__, debug_flag=True)
+        dbg = _do_task_debug_logger(debug)
         dbg.debug_detail(
             f"run_next dispatch parent={task_key} child={effective_next} "
             f"batch_id={batch_id or ''} caller_keys={_caller_key_status(hop_ctx)}"

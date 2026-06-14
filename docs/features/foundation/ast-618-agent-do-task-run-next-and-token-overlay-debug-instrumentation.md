@@ -355,3 +355,14 @@ No unresolved conflicts — plan assumes AST-554 on integration line (satisfied)
 | Token overlay order | Move `if debug:` token overlay block to after `_do_task_debug_entry` call. |
 | Dead helper | Delete `_do_task_debug_logger` or wire callers. |
 | `_uuid4` | No change required if tests depend on import-time bind. |
+
+## Resolution (2026-06-14)
+
+Addressed Radia **fix-now** items from review @ `95777cf8`:
+
+1. **Token overlay order** — Moved the `if debug:` token-overlay `debug_detail` block to immediately after `_do_task_debug_entry` (before assembly / LLM) so per-hop `debug_index` precedes working detail per §1.5.1 scan order.
+2. **Dead helper** — Wired `_do_task_debug_logger(debug)` across `do_task` contract emission sites (entry helper, token overlay, assembly, response truncation, exit / run_next paths); single `get_logger(__name__, debug_flag=True)` remains inside the helper.
+
+**Merge integration:** `origin/dev` merged on epic worktree with bible from `origin/tests` @ `050e3cd5` (Betty §7.13zze restore); AST-618 `agent.py` + plan doc preserved vs dev revert.
+
+**Advisory:** `_uuid4` import bind unchanged (`9c26e613`); build stub Stage 4 label oversell acknowledged, no product change.
