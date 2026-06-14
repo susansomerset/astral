@@ -122,3 +122,8 @@ Susan reported the token lookup dropdown covers the textarea while typing partia
 | §3.5 naming | Component remains in flat `components/` per Code Rules header inventory. |
 
 No conflicts flagged.
+
+## Review
+
+- **Branch:** `origin/sub/AST-638/AST-643-trigger-adjacent-token-lookup-placement`
+- **Built:** 2026-06-14 — Stage 1 complete (`41957eb7`); Betty manifest pending for AC5 placement test.
