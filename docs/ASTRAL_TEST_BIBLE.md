@@ -1379,6 +1379,8 @@ Equivalent harness:
 | `resolve_company_website` CSE + `find_company_website` + state transitions | **`TestAst506InflowResolve`** |
 | `debug=False` unchanged on inflow paths | **`TestAst505InflowDiscovery`** / **`TestAst506InflowResolve`** paths without **`debug=True`**; full-file branch lock |
 
+**Rollup reconcile (AST-621):** Betty publish ref **`origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug`** — one **§7.13zzf** table row; **`rollup-child`** merges into **`origin/ftr/ast-542-debug-logging-backfill-roster`**.
+
 ## Appendix A — Run component tests
 
 From repo root:
