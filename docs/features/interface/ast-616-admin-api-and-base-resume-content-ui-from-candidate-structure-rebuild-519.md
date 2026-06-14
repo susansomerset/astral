@@ -211,6 +211,31 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Note for qa:** `test_ArtifactsBaseResumeContent.test.tsx` still asserts legacy `/api/shapes/candidates` and `base_resume.accent_color` PUT — update to `resume_structure` contract per plan Stage 3.
 
+### Radia review (`origin/dev...origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `26bb967e`)
+
+**What's solid**
+
+- Stage 1: `GET /api/candidates/<id>/resume_structure` registered before the `/<candidate_id>` catch-all; 404 shape, enabled sections via `enabled_resume_structure_sections`, non-string accent → `null` — matches plan and `TestAst519ResumeStructureApi`.
+- Stage 1: Core imports restored (`resolve_resume_structure`, `normalize_resume_structure`, `enabled_resume_structure_sections`, `filter_base_resume_to_structure`); duplicate `company_search_terms_*` import lines removed (§1.3 DRY).
+- Stage 2: `ArtifactsBaseResumeContent.tsx` fetches structure for tabs + accent, passes `useCandidateResumeStructure` + `structureSections`, accent PUT targets `artifacts.resume_structure.accent_color` — matches acceptance criteria 2–4.
+- `ArtifactEditor.tsx` unchanged (verify-only per plan); page tests now mock structure GET, hide orphan keys, assert accent PUT path, candidate switch — Betty manifest §7.13zzd aligned.
+- Layer compliance (§3.3): API → core only; frontend uses `api()` client. No §5f debug surfaces touched.
+
+**Issues**
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **fix-now** | `src/data/database.py`, `src/ui/api/api_admin.py` (commit `6e5f2e17`, labeled AST-617) | **Cross-ticket scope (§5d):** Swaps `dispatch_claim_uses_score_floor` → `trigger_state_used_by_scored_dispatch_task` on claim/count/backfill/admin `is_scored` paths. That is **AST-617 / AST-586** dispatch-claim territory, not AST-616. **`origin/dev` already uses `dispatch_claim_uses_score_floor`** on those call sites (see `config.py` docstring: VALID_TITLE input triggers must not score-gate claim). This branch **reverts** the AST-586 fix — qualify on VALID_TITLE would incorrectly apply `score_floor` when merged. Revert both files to match `origin/dev`. |
+| **fix-now** | `docs/features/interface/ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md` (deleted on branch) | Sibling **AST-617** plan doc removed; file exists on `origin/dev`. Restore from dev — out of AST-616 scope. |
+
+**Recommended actions**
+
+| Action | Owner | Notes |
+| --- | --- | --- |
+| Revert `database.py` + `api_admin.py` to `origin/dev` for score-floor helpers | Katherine (`resolve-child`) | Keep only AST-616 files: `api_candidate.py`, `ArtifactsBaseResumeContent.tsx`, tests, bible §7.13zzd, this plan doc |
+| Restore deleted AST-617 plan doc from `origin/dev` | Katherine | `git checkout origin/dev -- docs/features/interface/ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md` |
+| Re-run §7.13zzd narrowed manifest after revert | Katherine | API + frontend page tests |
+
 ---
 
 ## Resolution
