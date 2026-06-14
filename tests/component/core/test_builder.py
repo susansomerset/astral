@@ -466,3 +466,284 @@ class TestAst518BuilderResumeStructure:
         ak = builder_mod.BUILD_CONFIG["default_style"]["ats_keyword_block"]
         monkeypatch.setattr(builder_mod.html, "escape", lambda token: "")
         assert builder_mod._emit_ats_block("python", ak) == ""
+
+
+class TestBuilderIdentifierHelpers:
+    """AST-623 — read-only debug label helpers (no log-string asserts)."""
+
+    def test_job_identifier_prefers_astral_job_id_then_title(self) -> None:
+        assert builder_mod._builder_job_identifier({"astral_job_id": "job-1"}) == "job-1"
+        assert builder_mod._builder_job_identifier({"job_title": "Role"}) == "Role"
+        assert builder_mod._builder_job_identifier({}) == "?"
+
+    def test_resume_content_source_labels(self) -> None:
+        job_rc = {"artifacts": {"resume_content": _resume_blob(professional_summary="x")}}
+        assert (
+            builder_mod._resume_content_source_label(job_rc, {})
+            == "job_data.artifacts.resume_content"
+        )
+        cd = _candidate_row(base_resume=_resume_blob(professional_summary="base"))
+        assert (
+            builder_mod._resume_content_source_label({"artifacts": {}}, cd["candidate_data"])
+            == "candidate_data.artifacts.base_resume"
+        )
+        assert builder_mod._resume_content_source_label({}, {}) == "missing"
+
+    def test_cover_letter_source_labels(self) -> None:
+        job_cl = {
+            "artifacts": {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
+        }
+        assert (
+            builder_mod._cover_letter_source_label(job_cl, {})
+            == "job_data.artifacts.cover_letter"
+        )
+        cd = _candidate_row()
+        assert (
+            builder_mod._cover_letter_source_label(
+                {"artifacts": {}}, cd["candidate_data"]
+            )
+            == "candidate_data.context.sample_cover_text"
+        )
+        assert builder_mod._cover_letter_source_label({"artifacts": {}}, {"context": {}}) is None
+
+    def test_accent_source_labels(self) -> None:
+        structure_cd = {
+            "artifacts": {
+                "resume_structure": {
+                    "accent_color": "#111111",
+                    "sections": {
+                        "professional_summary": {
+                            "id": "professional_summary",
+                            "title": "S",
+                            "enabled": True,
+                            "order": 0,
+                            "job_agent_editable": True,
+                        }
+                    },
+                },
+                "base_resume": _resume_blob(),
+            }
+        }
+        assert (
+            builder_mod._accent_source_label(structure_cd)
+            == "resume_structure.accent_color"
+        )
+        legacy_cd = {
+            "artifacts": {
+                "base_resume": {**_resume_blob(), "accent_color": "#445566"},
+            }
+        }
+        assert (
+            builder_mod._accent_source_label(legacy_cd)
+            == "artifacts.base_resume.accent_color"
+        )
+        assert builder_mod._accent_source_label({"artifacts": {"base_resume": _resume_blob()}}) == (
+            "BUILD_CONFIG.default_style"
+        )
+        whitespace_legacy = {
+            "artifacts": {"base_resume": {**_resume_blob(), "accent_color": "   "}}
+        }
+        assert builder_mod._accent_source_label(whitespace_legacy) == "BUILD_CONFIG.default_style"
+        non_string_legacy = {
+            "artifacts": {"base_resume": {**_resume_blob(), "accent_color": None}}
+        }
+        assert builder_mod._accent_source_label(non_string_legacy) == "BUILD_CONFIG.default_style"
+        assert builder_mod._accent_source_label({"artifacts": {"base_resume": "not-a-dict"}}) == (
+            "BUILD_CONFIG.default_style"
+        )
+
+
+class TestBuildResumeFromJobDebugPaths:
+    """AST-623 — contract debug branches on resume render (no golden log lines)."""
+
+    def test_success_resume_job_source_with_debug(self) -> None:
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {
+                "artifacts": {
+                    "resume_content": _resume_blob(professional_summary="Summary"),
+                    "cover_letter": {"re_line": "Re", "body": "Body", "signature": ""},
+                },
+                "critical_keywords": "python, sql",
+            },
+        }
+        html = builder_mod.build_resume_from_job(
+            job, _candidate_row(base_resume=_resume_blob()), include_cover=True, debug=True
+        )
+        assert "Summary" in html
+        assert 'aria-label="Cover body"' in html
+
+    def test_success_resume_list_keywords_and_base_source_with_debug(self) -> None:
+        job = {"job_data": {"critical_keywords": ["go", "rust"]}}
+        html = builder_mod.build_resume_from_job(
+            job,
+            _candidate_row(base_resume=_resume_blob(professional_summary="From base")),
+            debug=True,
+        )
+        assert "From base" in html
+
+    def test_failure_no_resume_source_with_debug(self) -> None:
+        with pytest.raises(ValueError, match="No resume_content"):
+            builder_mod.build_resume_from_job({"job_data": {}}, {"artifacts": {}}, debug=True)
+
+
+class TestBuildResumeDebugPaths:
+    def test_failure_emits_debug_header_when_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: None)
+        with pytest.raises(ValueError, match="Job not found"):
+            builder_mod.build_resume("job-missing", debug=True)
+
+    def test_success_delegates_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "company": "co",
+                "job_data": {"artifacts": {"resume_content": _resume_blob(professional_summary="x")}},
+            },
+        )
+        monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: {"candidate_id": "cand-1"})
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
+        )
+        called: Dict[str, Any] = {}
+
+        def _capture(job: Dict[str, Any], cd: Dict[str, Any], *, debug: bool = False) -> str:
+            called["debug"] = debug
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(builder_mod, "build_resume_from_job", _capture)
+        assert builder_mod.build_resume("job-1", debug=True) == "<html>ok</html>"
+        assert called["debug"] is True
+
+
+class TestBuildCoverLetterDebugPaths:
+    def test_failure_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: None)
+        with pytest.raises(ValueError, match="Job not found"):
+            builder_mod.build_cover_letter("job-missing", debug=True)
+
+    def test_success_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "company": "co",
+                "job_data": {
+                    "artifacts": {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
+                },
+            },
+        )
+        monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: {"candidate_id": "cand-1"})
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
+        )
+        html = builder_mod.build_cover_letter("job-1", debug=True)
+        assert "Hi" in html
+
+    def test_company_and_candidate_failures_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job",
+            lambda job_id: {"astral_job_id": job_id, "company": ""},
+        )
+        with pytest.raises(ValueError, match="missing company"):
+            builder_mod.build_cover_letter("job-1", debug=True)
+
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job",
+            lambda job_id: {"astral_job_id": job_id, "company": "co"},
+        )
+        monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: None)
+        with pytest.raises(ValueError, match="Company not found"):
+            builder_mod.build_cover_letter("job-1", debug=True)
+
+        monkeypatch.setattr(
+            builder_mod.database,
+            "get_company",
+            lambda short_name: {"candidate_id": ""},
+        )
+        with pytest.raises(ValueError, match="no candidate_id"):
+            builder_mod.build_cover_letter("job-1", debug=True)
+
+        monkeypatch.setattr(
+            builder_mod.database,
+            "get_company",
+            lambda short_name: {"candidate_id": "cand-1"},
+        )
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda candidate_id: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            builder_mod.build_cover_letter("job-1", debug=True)
+
+
+class TestBuildCoverLetterFromJobDebugPaths:
+    def test_success_with_debug_and_signature_image(self) -> None:
+        job = {
+            "astral_job_id": "job-cl",
+            "job_data": {
+                "artifacts": {
+                    "cover_letter": {"Subject": "Re: Role", "Letter": "Hello", "signature": "Ada"},
+                }
+            },
+        }
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["profile"]["cover_letter_signature_image"] = "https://example.com/sig.png"
+        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        assert "Hello" in html
+
+    def test_failure_no_cover_with_debug(self) -> None:
+        with pytest.raises(ValueError, match="No cover letter content"):
+            builder_mod.build_cover_letter_from_job(
+                {"job_data": {"artifacts": {}}}, {"artifacts": {}, "context": {}}, debug=True
+            )
+
+    def test_non_dict_job_data_with_debug(self) -> None:
+        job = {"job_data": None}
+        cd = _candidate_row()
+        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        assert "Dear team" in html
+
+    def test_rejected_signature_image_with_debug(self) -> None:
+        job = {
+            "job_data": {
+                "artifacts": {
+                    "cover_letter": {"Subject": "", "Letter": "Body", "signature": ""},
+                }
+            }
+        }
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["profile"]["cover_letter_signature_image"] = "javascript:alert(1)"
+        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        assert "Body" in html
+
+
+class TestBuildBaseResumeDebugPaths:
+    def test_success_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(
+                base_resume=_resume_blob(professional_summary="Base debug")
+            ),
+        )
+        html = builder_mod.build_base_resume("cand-1", debug=True)
+        assert "Base debug" in html
+
+    def test_failures_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda candidate_id: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            builder_mod.build_base_resume("missing", debug=True)
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {"artifacts": {}}},
+        )
+        with pytest.raises(ValueError, match="missing artifacts.base_resume"):
+            builder_mod.build_base_resume("cand-1", debug=True)
