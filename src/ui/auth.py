@@ -1,9 +1,23 @@
-"""IP-allowlist authentication for UI API endpoints. Imported by blueprint modules."""
+"""Stytch session auth for UI API endpoints. Imported by blueprint modules.
+
+@require_auth validates the Stytch session JWT from Authorization: Bearer or the
+stytch_session_jwt cookie (opaque/HttpOnly SDK mode — cookie forwarded via Vite proxy
+or same-site deploy). Sets g.user to {user_id, name, is_admin}.
+
+@require_admin requires is_admin on g.user (403 otherwise).
+
+@require_ip gates script callers without Bearer tokens. ASTRAL_ALLOWED_IPS applies
+only to @require_ip routes; empty allowlist = open (dev mode).
+"""
 
 import os
 from functools import wraps
 
 from flask import g, jsonify, request
+
+from src.utils.auth import validate_bearer_token
+
+_STYTCH_JWT_COOKIE = "stytch_session_jwt"
 
 _ALLOWED_IPS: set[str] = set()
 
@@ -42,16 +56,40 @@ def require_ip(f):
     return decorated
 
 
+def _session_jwt_from_request() -> str | None:
+    """Bearer header first; fall back to Stytch JWT cookie when SDK uses opaque tokens."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        if token:
+            return token
+    cookie_jwt = request.cookies.get(_STYTCH_JWT_COOKIE)
+    if cookie_jwt:
+        return cookie_jwt.strip()
+    return None
+
+
 def require_auth(f):
-    """IP gate + Bearer token scaffold. Token validation is a stub until Auth0 is wired up."""
+    """Validate Stytch session JWT from Bearer header or stytch_session_jwt cookie."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not is_ip_allowed():
-            return jsonify({"error": "Access denied"}), 403
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return jsonify({"error": "Missing or invalid Authorization header"}), 401
-        # TODO: validate JWT via Auth0 once tenant is configured
-        g.user = {"user_id": "susan", "name": "Susan Somerset"}
+        token = _session_jwt_from_request()
+        if not token:
+            return jsonify({"error": "Missing or invalid session credentials"}), 401
+        user = validate_bearer_token(token)
+        if user is None:
+            return jsonify({"error": "Invalid or expired token"}), 401
+        g.user = user
+        return f(*args, **kwargs)
+    return decorated
+
+
+def require_admin(f):
+    """Require authenticated admin user."""
+    @require_auth
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not g.user.get("is_admin"):
+            return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
     return decorated

@@ -23,6 +23,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
+  AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
 """
 
 import json
@@ -2158,6 +2159,30 @@ ADMIN_CONFIG = {
         "export_filename_prefix": "astral",
     },
 }
+
+# ---------------------------------------------------------------------------
+# AUTH_CONFIG: Authentication and admin role resolution (AST-609 / AST-610).
+# Consumed by src/utils/auth.py. Admin lists are env-driven — never hardcode
+# Susan in Flask decorators.
+# ---------------------------------------------------------------------------
+def _parse_csv_env(name: str) -> frozenset[str]:
+    raw = os.environ.get(name, "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+AUTH_CONFIG = {
+    "admin_user_ids": _parse_csv_env("ASTRAL_ADMIN_USER_IDS"),
+    "admin_emails": frozenset(
+        e.lower() for e in _parse_csv_env("ASTRAL_ADMIN_EMAILS")
+    ),
+    "stytch_project_id": os.environ.get("STYTCH_PROJECT_ID", ""),
+    "stytch_secret": os.environ.get("STYTCH_SECRET", ""),
+}
+
+
+def get_auth_config() -> Dict[str, Any]:
+    """Return AUTH_CONFIG (shallow copy safe for read-only callers)."""
+    return dict(AUTH_CONFIG)
 
 # ---------------------------------------------------------------------------
 # UI_CONFIG: Frontend display rules served via /api/system/ui_config.

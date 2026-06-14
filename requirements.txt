@@ -2,6 +2,7 @@
 
 # AI/API
 anthropic>=0.7.0
+stytch
 
 # Web scraping & automation
 playwright>=1.40.0

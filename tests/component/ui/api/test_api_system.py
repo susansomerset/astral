@@ -22,7 +22,18 @@ class TestSystemAuthRoutes:
         assert system_client.get("/api/me").status_code == 401
         resp = system_client.get("/api/me", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.get_json()["user_id"] == "susan"
+        payload = resp.get_json()
+        assert payload["user_id"] == "susan"
+        assert payload["is_admin"] is True
+
+    def test_me_non_admin_includes_is_admin_false(
+        self, system_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = system_client.get("/api/me", headers=non_admin_headers)
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload["user_id"] == "u2"
+        assert payload["is_admin"] is False
 
     def test_shapes_unknown_entity_404(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/shapes/missing", headers=auth_headers)
@@ -71,6 +82,12 @@ class TestSystemAuthRoutes:
         admin = next(group for group in payload if group["label"] == "Admin")
         ad_hoc = next(item for item in admin["items"] if item["path"] == "/admin/anthropic_ad_hoc")
         assert ad_hoc["label"] == "Agent Ad Hoc"
+
+    def test_nav_config_omits_admin_group_for_non_admin(
+        self, system_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        payload = system_client.get("/api/nav_config", headers=non_admin_headers).get_json()
+        assert all(group.get("label") != "Admin" for group in payload)
 
     def test_agent_data_returns_rows(self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.core.agent.get_agent_data", MagicMock(return_value=[{"id": "block-1"}]))

@@ -17,12 +17,13 @@ sys.path.insert(0, str(_repo_root / "src"))
 
 from flask import Flask, send_from_directory
 
-from ui.auth import is_ip_allowed
+from src.core.auth_bootstrap import wire_stytch_token_authenticator
 
 _DIST = Path(__file__).parent / "frontend" / "dist"
 
 app = Flask(__name__, static_folder=None)
 
+wire_stytch_token_authenticator()
 
 # --- Register Blueprints ---
 
@@ -67,29 +68,11 @@ start_scheduler()
 
 # --- Serve React app ---
 
-_BLOCKED_HTML = """<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Astral</title>
-<style>
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-       font-family:system-ui,sans-serif;background:#0d1117;color:#c9d1d9}
-  .card{text-align:center;padding:3rem}
-  h1{font-size:1.6rem;margin-bottom:.5rem}
-  p{color:#8b949e}
-  a{color:#58a6ff}
-</style></head><body>
-<div class="card">
-  <h1>Astral</h1>
-  <p>Contact <a href="mailto:susan@susansomerset.com">susan@susansomerset.com</a> for access.</p>
-</div></body></html>"""
-
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
-    """Catch-all: serve React app if IP allowed, otherwise show contact page."""
-    if not is_ip_allowed():
-        return _BLOCKED_HTML, 403
+    """Catch-all: serve React static assets (auth enforced on /api/* routes)."""
     if (_DIST / path).is_file():
         return send_from_directory(_DIST, path)
     return send_from_directory(_DIST, "index.html")

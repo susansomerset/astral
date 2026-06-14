@@ -10,6 +10,8 @@ const frontendNodeModules = path.join(frontendRoot, 'node_modules')
 const vitestMaxWorkers = Number(process.env.ASTRAL_VITEST_MAX_WORKERS ?? "2")
 
 export default defineConfig({
+  // Repo-root .env (same file Flask loads via python-dotenv) — not src/ui/frontend/.
+  envDir: repoRoot,
   plugins: [react()],
   resolve: {
     alias: {
@@ -31,6 +33,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    alias: {
+      '@stytch/react': path.join(repoRoot, 'tests/component/frontend/stytchMock.tsx'),
+    },
     testTimeout: 120000,
     // Default 2 workers; raise with ASTRAL_VITEST_MAX_WORKERS when the machine has headroom.
     maxWorkers: Number.isFinite(vitestMaxWorkers) && vitestMaxWorkers > 0 ? vitestMaxWorkers : 2,
