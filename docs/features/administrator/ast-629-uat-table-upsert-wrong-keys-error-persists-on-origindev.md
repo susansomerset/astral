@@ -156,3 +156,16 @@ No conflicts requiring `conf-!!-NONE`.
 ### Recommended actions
 
 - Proceed to **resolve-child** (no engineer changes required from this review).
+
+---
+
+## Resolution
+
+**2026-06-14 — Ada (resolve-child)**
+
+Radia review (`2c6c2400`): **0 fix-now · 0 discuss · 0 advisory** — no product changes required.
+
+- Re-ran Betty manifest (13 passed) on publish ref tip `2c6c2400`.
+- §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-626-table-upsert-ensure-schema-before-running`.
+
+**Ship tip:** `origin/sub/AST-626/AST-629-uat-table-upsert-wrong-keys-error-persists-on-origindev` @ `2c6c2400`
