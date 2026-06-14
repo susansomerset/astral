@@ -264,17 +264,33 @@ No conflicts — plan is implementable as written.
 
 ## Review (Radia)
 
-- **Ref:** `5ccaf5ac` on `origin/sub/AST-624/AST-625-session-logoff-screen`
+- **Ref:** `606c0100` on `origin/sub/AST-624/AST-625-session-logoff-screen` (diff `origin/dev...origin/sub/AST-624/AST-625-session-logoff-screen`)
 - **Built:** Katherine — stages 1–4 (sessionAuthMark, api 401 hook, LogOffScreen, AuthContext, RequireAuth)
 
 ### What's solid
 
 | Area | Notes |
 |------|--------|
-| Plan fidelity | All four stages delivered per plan |
-| Layer contract | Frontend-only; no Flask or config changes |
-| Auth gate | Had-session + log-off reason in sessionStorage; Refresh clears marks for Login recovery |
+| Plan fidelity | All four stages match plan; acceptance matrix covered by component tests |
+| Layer contract (§3.3) | Frontend-only; no Flask, config, or backend debug surfaces touched |
+| Auth gate routing | `RequireAuth` correctly orders LogOff → Login → children; first-time visitors skip log-off |
+| 401 centralization | `api()` sets `server-rejection` + handler only when `getHadSession()`; `/api/me` path duplicated safely in `loadMe` |
+| UX copy | Distinct timeout vs server-rejection messaging; Refresh clears marks before reload |
+| Tests | Manifest in bible §7.13zzk; five focused Vitest files + `stytchMock` sessionStorage reset |
 
 ### Issues
 
-_(Radia fills at review-child.)_
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | `RequireAuth.tsx` L19–21 | `setLogOffReason("timeout")` runs during render (side effect). Plan Stage 4 prescribes this pattern; sessionStorage write is idempotent and tests pass — acceptable with plan exception. If Strict Mode double-invoke ever surfaces duplicate telemetry, move to `useEffect`. |
+| **advisory** | Plan decision (no revoke) | After server-rejection **Refresh**, if Stytch client session still exists, user may loop LogOff → `/api/me` 401 → LogOff until Stytch session expires. Explicit out-of-scope (`stytch.session.revoke()`); Susan UAT should confirm recovery path is acceptable. |
+
+**fix-now:** none  
+**discuss:** none
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Proceed to `resolve-child` (no code changes required from review) | Katherine |
+| UAT: simulate timeout + 401 paths; confirm Refresh lands on Login for first-time tab after clear | Susan (AST-624) |
