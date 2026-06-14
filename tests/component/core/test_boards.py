@@ -47,12 +47,10 @@ def gaze_mocks(monkeypatch: pytest.MonkeyPatch):
 
 
 class TestRunBoardSearchGazeAst459:
-    """Criteria qp from row; shipped gaze uses BOARD_CONFIG entry_url until AST-459 reads stored deeplink URL."""
+    """Criteria qp from row; deeplink mode navigates stored deeplink_url (AST-459)."""
 
     @pytest.mark.asyncio
-    async def test_deeplink_row_still_uses_board_entry_url_until_ast459(
-        self, gaze_mocks: dict[str, Any]
-    ) -> None:
+    async def test_deeplink_row_uses_stored_deeplink_url(self, gaze_mocks: dict[str, Any]) -> None:
         deeplink_fn = gaze_mocks["deeplink"]
         row = {
             "board_search_id": "bs-d",
@@ -65,8 +63,8 @@ class TestRunBoardSearchGazeAst459:
         await boards_mod.run_board_search_gaze("batch-bd", row, ctx=None)
         deeplink_fn.assert_awaited_once()
         _, url, qp = deeplink_fn.await_args.args
-        assert url == "https://boards.example/start"
-        assert qp == {}
+        assert url == "https://boards.example/saved?view=all"
+        assert qp is None
 
     @pytest.mark.asyncio
     async def test_criteria_mode_builds_query_params_from_criteria_keys(
@@ -92,7 +90,7 @@ class TestRunBoardSearchGazeAst459:
         assert qp == {"title_query": "Rust", "work_mode": "remote"}
 
     @pytest.mark.asyncio
-    async def test_deeplink_blank_url_still_runs_until_ast459_validates(self, gaze_mocks: dict[str, Any]) -> None:
+    async def test_deeplink_blank_url_raises(self, gaze_mocks: dict[str, Any]) -> None:
         deeplink_fn = gaze_mocks["deeplink"]
         row = {
             "board_search_id": "bs-bad",
@@ -102,8 +100,6 @@ class TestRunBoardSearchGazeAst459:
             "deeplink_url": "   ",
             "criteria": {},
         }
-        await boards_mod.run_board_search_gaze("batch-bad", row, ctx=None)
-        deeplink_fn.assert_awaited_once()
-        _, url, qp = deeplink_fn.await_args.args
-        assert url == "https://boards.example/start"
-        assert qp == {}
+        with pytest.raises(ValueError, match="non-empty deeplink_url"):
+            await boards_mod.run_board_search_gaze("batch-bad", row, ctx=None)
+        deeplink_fn.assert_not_awaited()

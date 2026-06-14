@@ -8,6 +8,10 @@ import pytest
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("DEEPSEEK_API_KEY", "test-deepseek-key")
+os.environ.setdefault("GMAIL_USER", "astral.test@example.com")
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
+os.environ.setdefault("GOOGLE_REFRESH_TOKEN", "test-refresh-token")
 
 from src.utils import config as _cfg_mod
 
