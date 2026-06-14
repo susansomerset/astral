@@ -196,8 +196,39 @@ No conflicts requiring `conf-!!-NONE`.
 
 ---
 
-## Review
+## Review (build)
 
 **Built:** `sub/AST-630/AST-641-union-claim-count` @ `394dfdd7`
 **Scope:** `dispatch_claim_states` config helper; multi-state claim/count in data layer; dispatcher/tracker/roster wiring.
 **Betty:** extend `test_dispatcher.py`, `test_api_admin.py`, data-layer claim/count tests per Execution contract.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-630/AST-641-union-claim-count` @ `378af6e4`
+**Reviewed:** 2026-06-14
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 land as specified: `dispatch_claim_states` in config; `_state_in_sql` + multi-state claim/count in `database.py`; optional `states=` on tracker/roster batch helpers; dispatcher resolves and passes union before claim. |
+| AC coverage | Betty manifest: primary job/company union count+claim, retry-only single state, scored `PASSED_LIKE` floor across union (`TestAst641UnionClaimCount`, dispatcher `test_ast641_*`, config helper tests). |
+| §2.1 / §2.4 | Companion states from `JOB_STATES` / `COMPANY_STATES` registry; `batch_id`-first claim/get/clear unchanged; score-floor gating still keyed off dispatch row `trigger_state` via `dispatch_claim_uses_score_floor`. |
+| §2.6 / §5d | No transition or consult changes; AST-642 boundary respected. |
+| §1.3 DRY | Single resolver + SQL helper shared by count and claim paths. |
+| §1.5.1 debug | `claim_states` appended to `_run_unified` `debug_detail` only on debug path — no contract emission when `debug=False`. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | Plan Execution contract vs bible §7.13zzo | Plan listed `test_api_admin.py`; manifest covers admin **Available** indirectly via `count_eligible_for_dispatch_task` data-layer tests — sufficient for this ticket. |
+| advisory | `database.py` `_state_in_sql` placement | Helper defined after early claim functions that call it — valid at runtime (call-time binding); optional reorder only if readability matters. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| resolve-child | No fix-now — ship as reviewed; optional UAT: Scheduled Actions **Available** for `VALID_TITLE` / `WEBSITE_FOUND` rows shows primary+retry union in staging. |
+
+**Verdict:** Approve for `resolve-child` — clean pass.
