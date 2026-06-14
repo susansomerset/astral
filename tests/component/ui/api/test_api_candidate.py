@@ -374,7 +374,7 @@ class TestAst519ResumeStructureApi:
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._three_section_cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "normalize_company_search_terms_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
         resp = candidate_client.put(
             "/api/candidates/c1/data",
             json={"artifacts": {"base_resume": {"professional_summary": "ok", "orphan_section": "drop", "accent_color": "#ABCDEF"}}},
@@ -393,7 +393,7 @@ class TestAst519ResumeStructureApi:
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._three_section_cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "normalize_company_search_terms_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
         accent = (BUILD_CONFIG.get("accent_palette") or ["#1A1A2E"])[0].upper()
         resp = candidate_client.put(
             "/api/candidates/c1/data",
