@@ -42,6 +42,19 @@ logger = get_logger(__name__)
 _INFLOW_DISCOVERY_KEY = INFLOW_CONFIG["discovery"]["task_key"]
 
 
+def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
+    """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
+    if entity_type == "job":
+        return str(row.get("astral_job_id") or row.get("company") or "?")
+    if entity_type == "company":
+        return str(row.get("short_name") or row.get("company") or "?")
+    if entity_type == "board_search":
+        return str(row.get("board_search_id") or row.get("board_key") or "?")
+    if entity_type == "candidate":
+        return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
+    return str(row.get("id") or "?")
+
+
 def _task_key_scored(task_key: str) -> bool:
     return dispatch_task_key_is_scored(task_key)
 
@@ -414,9 +427,21 @@ async def _dispatch_one(task: Dict) -> None:
     candidate_id = task["candidate_id"]
     timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
     is_click = not bool(task.get("auto_mode"))
+    debug = bool(task.get("debug"))
+    if debug:
+        logger.set_debug_flag(True)
 
     ctx = database.get_candidate(candidate_id)
     if not ctx or not ctx.get("candidate_api_key"):
+        if debug:
+            logger.debug_index(
+                func="dispatcher._dispatch_one",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="skipped — no candidate or API key",
+            )
+            logger.debug_detail(f"candidate_id={candidate_id!r}")
         _sched_log.error("Skipping %s/%s — no candidate or API key", task_key, candidate_id)
         return
     ctx = dict(ctx)
@@ -425,6 +450,20 @@ async def _dispatch_one(task: Dict) -> None:
 
     entity_batch_id = f"{task_key}-{uuid.uuid4()}"
     has_run_next_chain = bool(_current_agent_task_run_next(task_key))
+    if debug:
+        logger.debug_index(
+            func="dispatcher._dispatch_one",
+            index=1,
+            total=1,
+            identifier=task_key,
+            outcome="task start",
+        )
+        logger.debug_detail(
+            f"candidate_id={candidate_id} available_count={task.get('available_count', 0)} "
+            f"entity_batch_id={entity_batch_id} mode={'AUTO' if not is_click else 'CLICK'} "
+            f"run_next_chain={has_run_next_chain} entity_type={task.get('entity_type')!r} "
+            f"trigger_state={task.get('trigger_state')!r}"
+        )
     ctx["entity_batch_id"] = entity_batch_id
     dispatch_ledger_id: Optional[str] = None
     task_entity_type = task.get("entity_type")
