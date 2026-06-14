@@ -59,6 +59,26 @@ describe("ListPage AST-647 list table layout", () => {
     expect(cells[3]).not.toHaveClass("list-table-cell-frozen")
   })
 
+  it("AST-652: default list-page-table uses autosize layout (not force-fit fixed)", async () => {
+    const { default: ListPage } = await import("../../../../src/ui/frontend/src/components/ListPage")
+    renderWithProviders(
+      <ListPage
+        title="Autosize"
+        columns={[
+          { key: "name", label: "Name" },
+          { key: "amount", label: "Amount" },
+        ]}
+        rows={[{ id: "1", name: "Alpha", amount: 2 }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument())
+    const table = screen.getByRole("table")
+    expect(table).toHaveClass("list-page-table")
+    expect(table.className).not.toMatch(/list-page-table--auto/)
+    expect(getComputedStyle(table).tableLayout).toBe("auto")
+    expect(getComputedStyle(table).width).not.toBe("100%")
+  })
+
   it("honors frozenDataColumns override over ui_config", async () => {
     const { default: ListPage } = await import("../../../../src/ui/frontend/src/components/ListPage")
     renderWithProviders(
