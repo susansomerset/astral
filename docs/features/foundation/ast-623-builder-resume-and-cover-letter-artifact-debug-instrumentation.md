@@ -342,3 +342,13 @@ No conflicts requiring `conf-!!-NONE`.
 - Execute stages 1–4 in order; one commit per stage on epic worktree; publish to `origin/sub/AST-545/AST-623-builder-artifact-debug`.
 - Do not modify `tests/` or `src/ui/api/api_resume_html.py`.
 - Blocking questions → comment on **AST-545** with 🛑 template from **plan-child**.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-545/AST-623-builder-artifact-debug` @ `3465d507`.
+
+**Stages delivered:**
+- Stage 1: module logger, read-only source helpers, `debug=` on five public APIs — `3465d507`.
+- Stage 2: `build_resume` / `build_resume_from_job` failure headers + success contract — `3465d507`.
+- Stage 3: `build_cover_letter` / `build_cover_letter_from_job` failure headers + success contract — `3465d507`.
+- Stage 4: `build_base_resume` failure headers + success contract; zero `[DEBUG]` literals — `3465d507`.
