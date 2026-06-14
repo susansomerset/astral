@@ -294,3 +294,14 @@ No conflicts — plan is implementable as written.
 |--------|-------|
 | Proceed to `resolve-child` (no code changes required from review) | Katherine |
 | UAT: simulate timeout + 401 paths; confirm Refresh lands on Login for first-time tab after clear | Susan (AST-624) |
+
+## Resolution (Katherine)
+
+**Date:** 2026-06-14  
+**Review ref:** `d0cf799c` on `origin/sub/AST-624/AST-625-session-logoff-screen`
+
+Radia posted **fix-now: none**, **discuss: none**. Two **advisory** items accepted per plan (render-time `setLogOffReason` per Stage 4; no `session.revoke()` per plan decision). No product or test changes in this resolve pass.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-624-log-off-screen`.
+
+**Status:** → **User Testing** (implementer assignee unchanged).
