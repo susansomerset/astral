@@ -392,3 +392,15 @@ No conflicts requiring `conf-!!-NONE`.
 | — | **resolve-child:** no fix-now on debug instrumentation. |
 | **discuss** | Engineer or Susan: confirm `dispatch_claim_uses_score_floor` co-land on **AST-615** vs sibling **AST-586** ticket; update parent comment if intentional. |
 | Optional | Susan UAT Stage 6: company batch + job chunk + skip paths per plan. |
+
+## Resolution (Ada)
+
+**Date:** 2026-06-14 · **Publish ref tip:** `f1921df1` (pre-resolve)
+
+| Review item | Resolution |
+|-------------|------------|
+| **fix-now** | None — debug instrumentation accepted as-is. |
+| **discuss** (`dispatch_claim_uses_score_floor` in `config.py`) | **Intentional co-land on AST-615.** Betty's manifest includes `test_qualify_valid_title_claim_without_score_floor` (AST-586 regression in the locked dispatcher suite). `test-child` required adding the helper + `_trigger_state_scored` wiring to pass manifest; aligns with **§2.1** / parent **AST-540** claim-path correctness. Full AST-586 admin/database call sites remain sibling scope — note on parent **AST-540** if rollup needs tracking. |
+| **advisory** (loop `total=loop_iter`) | No change — plan Stage 2 decision stands. |
+
+**§9a:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-540-debug-logging-backfill-dispatcher`.
