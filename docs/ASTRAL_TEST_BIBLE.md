@@ -1510,6 +1510,27 @@ Equivalent harness:
 
 **Betty test fix (AST-623):** Extended **`test_builder.py`** for **`LOCKED_AT_100`** on new **`debug=True`/`False`** branch pairs — not golden log-line asserts.
 
+## 7.13zzk Session log-off screen — expired session detection (**AST-625**, parent **AST-624**)
+
+**AST-624 (parent):** Dedicated log-off screen when the SPA detects a prior Stytch session is gone (timeout) or Flask returns **401** while the user was authenticated — distinct copy per reason, **Refresh** clears tab-scoped marks and reloads for **Login** recovery. First-time visitors still see **`Login`**. Frontend-only; no Flask or Stytch Dashboard changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-625** | `sessionStorage` had-session + log-off reason; centralized **`api()`** 401 hook; **`RequireAuth`** routes **`LogOffScreen`** vs **`Login`** vs children; reason-specific copy + **Refresh** | `src/ui/frontend/src/lib/sessionAuthMark.ts`, `src/ui/frontend/src/lib/api.ts`, `src/ui/frontend/src/contexts/AuthContext.tsx`, `src/ui/frontend/src/components/RequireAuth.tsx`, `src/ui/frontend/src/pages/LogOffScreen.tsx` | `tests/component/frontend/lib/test_sessionAuthMark.test.ts`; `tests/component/frontend/lib/test_api.test.ts`; `tests/component/frontend/contexts/test_AuthContext.test.tsx`; `tests/component/frontend/components/test_RequireAuth.test.tsx`; `tests/component/frontend/components/test_LogOffScreen.test.tsx` |
+
+**AST-625** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../tests/component/frontend/lib/test_sessionAuthMark.test.ts \
+  ../tests/component/frontend/lib/test_api.test.ts \
+  ../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../tests/component/frontend/components/test_LogOffScreen.test.tsx
+```
+
+**Regression guard (unchanged AST-612/613):** After manifest green, spot-check **`test_Login.test.tsx`**, **`test_AdminRoute.test.tsx`**, **`test_NavigationShell.test.tsx`** — no auth-gate regressions.
+
 ## Appendix A — Run component tests
 
 From repo root:

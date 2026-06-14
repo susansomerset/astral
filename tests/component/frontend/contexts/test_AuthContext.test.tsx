@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import { AuthProvider, useAuth } from "../../../../src/ui/frontend/src/contexts/AuthContext"
+import { getHadSession, getLogOffReason } from "../../../../src/ui/frontend/src/lib/sessionAuthMark"
 import { resetStytchTestState, stytchTestState } from "../stytchMock"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -34,6 +35,7 @@ describe("AuthContext", () => {
     expect(result.current.isAdmin).toBe(true)
     expect(result.current.user?.user_id).toBe("admin-1")
     expect(mockedApi).toHaveBeenCalledWith("/api/me")
+    expect(getHadSession()).toBe(true)
   })
 
   it("loads /api/me and exposes isAdmin false for non-admin users", async () => {
@@ -57,5 +59,20 @@ describe("AuthContext", () => {
     expect(result.current.user).toBeNull()
     expect(result.current.isAdmin).toBe(false)
     expect(mockedApi).not.toHaveBeenCalled()
+  })
+
+  it("sets server-rejection when /api/me returns 401", async () => {
+    mockedApi.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    } as Response)
+
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user).toBeNull()
+    expect(getHadSession()).toBe(true)
+    expect(getLogOffReason()).toBe("server-rejection")
   })
 })
