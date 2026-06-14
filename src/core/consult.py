@@ -1085,12 +1085,23 @@ async def qualify_job_listings(
     rubric_raw = artifacts.get(rubric_key) if rubric_key else None
     rubric_list = rubric_raw if isinstance(rubric_raw, list) else ((rubric_raw or {}).get("criteria") or [])
     if debug:
-        logger.info(f"[DEBUG] ========== qualify_job_listings START (batch={batch_id}) ==========")
-        total_chars = sum(len(j.get("job_data", {}).get("raw_job_listing", "") or "") for j in jobs)
-        for j in jobs:
+        logger.set_debug_flag(True)
+        logger.debug_detail(f"qualify_job_listings batch_id={batch_id} job_count={len(jobs)}")
+        for ji, j in enumerate(jobs, start=1):
             listing_len = len(j.get("job_data", {}).get("raw_job_listing", "") or "")
-            logger.info(f"[DEBUG]   [{j['astral_job_id']}] \"{j.get('job_title','UNKNOWN TITLE')}\" | listing={listing_len:,}chars | link={j.get('job_link','NO LINK')}")
-        logger.info(f"[DEBUG] Total live_content size: ~{total_chars:,} chars")
+            logger.debug_index(
+                func="consult.qualify_job_listings",
+                index=ji,
+                total=len(jobs),
+                identifier=_consult_job_identifier(j),
+                outcome="input job",
+            )
+            logger.debug_detail(
+                f"title={j.get('job_title', 'UNKNOWN TITLE')!r} listing_chars={listing_len} "
+                f"link={j.get('job_link', 'NO LINK')!r}"
+            )
+        total_chars = sum(len(j.get("job_data", {}).get("raw_job_listing", "") or "") for j in jobs)
+        logger.debug_detail(f"total_listing_chars≈{total_chars}")
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id is intentionally excluded from live content
@@ -1122,31 +1133,35 @@ async def qualify_job_listings(
             tracker.save_job_data(aid, {"joblist_grades": grades})
             _transition_job_state_for_task(task_key, [aid], to_state, score)
             failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
-            logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{', '.join(failed_vecs)}]")
+            if not debug:
+                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{', '.join(failed_vecs)}]")
             return to_state
 
         # Passing job — validate title and URL before initializing
         raw_title = (response_job.get("job_title") or "").strip()
         min_len = cfg.get("min_job_title_length", 5)
         if len(raw_title) < min_len:
+            if debug:
+                logger.debug_detail(f"title too short: {repr(raw_title)} min_len={min_len}")
             logger.warning(f"  {aid} -> {cfg['error_state']} [title too short: {repr(raw_title)}]")
             _transition_job_state_for_task(task_key, [aid], cfg["error_state"], score)
             return cfg["error_state"]
         job_link = (response_job.get("job_link") or "").strip()
         if not job_link.startswith("http"):
+            if debug:
+                logger.debug_detail(f"relative job_link: {job_link!r}")
             logger.warning(f"  {aid} skipped — relative job_link: {job_link}")
             raise ValueError(f"relative job_link: {job_link}")
         tracker.initialize_job(aid, input_job["company"], response_job)
         tracker.save_job_data(aid, {"joblist_grades": grades})
         _transition_job_state_for_task(task_key, [aid], to_state, score)
-        logger.info(f"  {input_job.get('job_title') or aid} -> {to_state}")
+        if not debug:
+            logger.info(f"  {input_job.get('job_title') or aid} -> {to_state}")
         return to_state
 
     result = await _run_batch_consult(
         task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
     )
-    if debug:
-        logger.info(f"[DEBUG] ========== qualify_job_listings END ==========")
     return result
 
 
@@ -1172,9 +1187,6 @@ async def evaluate_jd_batch(
     min_chars = cfg.get("min_jd_chars", 80)
     not_ready_state = cfg.get("not_ready_state", "PASSED_JOBLIST")
 
-    if debug:
-        logger.info(f"[DEBUG] ========== evaluate_jd_batch START (batch={batch_id}) ==========")
-
     ready_jobs: List[Dict[str, Any]] = []
     not_ready_jobs: List[Dict[str, Any]] = []
     for job in jobs:
@@ -1183,7 +1195,14 @@ async def evaluate_jd_batch(
         else:
             not_ready_jobs.append(job)
 
-    for job in not_ready_jobs:
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(
+            f"evaluate_jd batch_id={batch_id} ready={len(ready_jobs)} "
+            f"not_ready={len(not_ready_jobs)} min_chars={min_chars}"
+        )
+
+    for ni, job in enumerate(not_ready_jobs, start=1):
         aid = job["astral_job_id"]
         jd = ((job.get("job_data") or {}).get("job_description") or "").strip()
         tracker.save_job_data(aid, {
@@ -1194,10 +1213,24 @@ async def evaluate_jd_batch(
             },
         })
         _transition_job_state_for_task(task_key, [aid], not_ready_state, score=None)
-        title = job.get("job_title") or aid
-        logger.info("  %s -> %s [jd readiness skip]", title, not_ready_state)
+        if debug:
+            logger.debug_index(
+                func="consult.evaluate_jd_batch",
+                index=ni,
+                total=len(not_ready_jobs),
+                identifier=_consult_job_identifier(job),
+                outcome=f"jd readiness skip -> {not_ready_state}",
+            )
+            logger.debug_detail(f"jd_chars={len(jd)} min_chars={min_chars}")
+        if not debug:
+            title = job.get("job_title") or aid
+            logger.info("  %s -> %s [jd readiness skip]", title, not_ready_state)
 
     if not ready_jobs:
+        if debug:
+            logger.debug_detail(
+                f"evaluate_jd batch_id={batch_id} all jobs not JD-ready skipped={len(not_ready_jobs)}"
+            )
         return {
             "success": True,
             "passed": 0,
@@ -1234,11 +1267,12 @@ async def evaluate_jd_batch(
         tracker.save_job_data(aid, save_data)
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         title = input_job.get("job_title") or aid
-        if to_state == cfg["pass_state"]:
-            logger.info(f"  {title} -> {to_state}")
-        else:
-            failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
-            logger.info(f"  {title} -> {to_state} [{', '.join(failed_vecs)}]")
+        if not debug:
+            if to_state == cfg["pass_state"]:
+                logger.info(f"  {title} -> {to_state}")
+            else:
+                failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
+                logger.info(f"  {title} -> {to_state} [{', '.join(failed_vecs)}]")
         return to_state
 
     result = await _run_batch_consult(
@@ -1253,8 +1287,6 @@ async def evaluate_jd_batch(
     )
     if not_ready_jobs:
         result = {**result, "skipped": len(not_ready_jobs), "total": len(jobs)}
-    if debug:
-        logger.info(f"[DEBUG] ========== evaluate_jd_batch END ==========")
     return result
 
 
