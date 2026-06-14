@@ -231,3 +231,16 @@ No conflicts requiring `conf-!!-NONE`.
 | Action | Owner |
 |--------|-------|
 | Proceed to `resolve-child` (optional — no fix-now items). | Ada |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-14  
+**Review:** Radia clean — no fix-now / discuss items (`af44cec1`).
+
+**Outcome:** No product changes required. Implementation at `65a52f86` accepted as-is; Betty manifest green (11 tests, `2e6f1a38`).
+
+**§9a dry-run:** `origin/sub/AST-630/AST-642-per-entity-batch-retry` merges cleanly into `origin/dev` and `origin/ftr/ast-630-auto-retry`.
+
+**Status:** → **User Testing** (implementer assignee retained).
