@@ -126,4 +126,28 @@ No conflicts flagged.
 ## Review
 
 - **Branch:** `origin/sub/AST-638/AST-643-trigger-adjacent-token-lookup-placement`
-- **Built:** 2026-06-14 — Stage 1 complete (`41957eb7`); Betty manifest pending for AC5 placement test.
+- **Diff baseline:** `origin/dev...origin/sub/AST-638/AST-643-trigger-adjacent-token-lookup-placement` (2026-06-14)
+- **Built:** 2026-06-14 — Stage 1 complete (`41957eb7`); Betty manifest + placement test landed (`7baf09b1` / merge-tests).
+
+### What's solid
+
+- **Plan fidelity:** `menuAnchor(ta, triggerCharIndex)` matches Stage 1 — subtracts `scrollTop`, anchors from `{$` index (not `selectionStart`), viewport flip via `MENU_MAX_HEIGHT` / `MENU_GAP_PX`, `triggerPos` wired through scroll/resize reposition. No consumer page or backend changes.
+- **§3 layer / §3.5:** Single-file change in flat `components/`; no cross-layer imports.
+- **AC5 coverage:** `AST-643` test asserts portaled menu `style.top` strictly below textarea viewport origin on first-line trigger; existing AST-636 portal + keyboard/dismiss rows preserved.
+- **Scope:** Self-assessment `scope-Single-Component` / `conf-high` / `risk-low` matches diff footprint.
+
+### Issues
+
+| Severity | Location | Note |
+| --- | --- | --- |
+| advisory | `docs/ASTRAL_TEST_BIBLE.md` ~1665 | Stray orphan ` ``` ` fence inserted before §7.13zzp (AST-644) during bible merge — breaks markdown nesting; Betty cleanup, not AST-643 product scope. |
+| advisory | — | Flip-above and scrolled-textarea reposition rely on manual smoke per plan; no automated flip/scrollTop test (acceptable for this ticket). |
+
+### Recommended actions
+
+- **Engineer:** None — proceed to `resolve-child` / User Testing.
+- **Betty (optional):** Remove orphan fence in `ASTRAL_TEST_BIBLE.md` §7.13zzp boundary on next bible touch.
+
+## Resolution
+
+- **2026-06-14 — Katherine (`resolve-child`):** Radia review clean — no fix-now items. No product code changes; Stage 1 (`41957eb7`) and Betty placement test (`7baf09b1` / merge-tests `9dc4b750`) stand as shipped. Advisory bible fence (§7.13zzp) deferred to Betty per review. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-638`. Ticket → **User Testing**.
