@@ -51,6 +51,8 @@ def apply_copy_output_table_upsert(*, table_name: str, json_payload: str) -> Dic
                 return {**zeros, "error": f"Each row must be an object (row {i})"}
             parsed_rows.append(elem)
 
+        database.ensure_table_schema_for_upsert(conn, table_name)
+
         try:
             database.table_columns(conn, table_name)
         except ValueError as e:
@@ -65,7 +67,6 @@ def apply_copy_output_table_upsert(*, table_name: str, json_payload: str) -> Dic
         txn = True
 
         if table_name == "agent_task":
-            database._ensure_agent_task_schema(conn)
             counts = database.apply_agent_task_copy_upsert(conn, parsed_rows)
         else:
             counts = database.apply_generic_table_copy_upsert(conn, table_name, parsed_rows)
