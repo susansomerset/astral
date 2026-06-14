@@ -307,3 +307,9 @@ No conflicts requiring `conf-!!-NONE`.
 2. **Optional:** Add hover background for `tbody tr:hover td.list-table-cell-frozen-right` if cosmetic gap matters.
 3. No fix-now blockers for ListPage path — pixel offsets use `colWidths` from resize/localStorage as planned.
 
+## Resolution
+
+- **2026-06-14 (Katherine resolve-child):** No product commits — Radia review had **no fix-now** items. **`discuss`** (Scheduled Actions `%` widths vs `stickyLeftPx` 120px defaults) and **advisory** notes (ui_config flash, expandable columns, frozen-right hover) left for **Susan UAT** per review Recommended actions.
+- **§9a:** `origin/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips` @ `86c65f32` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-633`**.
+- **Outcome:** Ticket → **User Testing** (implementer assignee unchanged).
+
