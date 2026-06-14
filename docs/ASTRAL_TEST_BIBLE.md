@@ -1694,6 +1694,23 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx
 ```
 
+## 7.13zzr Yellow in-flight styling for AI generate buttons (**AST-645**, parent **AST-635**)
+
+**AST-635 (parent):** Shared **UI-call-to-AI** primary actions (artifact craft **Generate** / **Regenerate**, **Company Search Terms**, Recommended Job Report **Generate Artifacts** / **Working…**) use a shared `.in-flight` CSS modifier on existing `.dep-btn.save` / `.modal-btn.save` buttons — yellow/gold while `generating` / `primaryBusy`, green when idle. **Save** / **Cancel** unchanged.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-645** | Shared `.in-flight` in `App.css`; wire `generating` / `primaryBusy` on three generate controls | `src/ui/frontend/src/App.css`, `ArtifactEditor.tsx`, `ArtifactsCompanySearchTerms.tsx`, `RecommendedJobReportHeader.tsx` | `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — **`AST-645: Generate/Regenerate button uses in-flight class while generating`**; `tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx` — **`AST-645: Generate button uses in-flight class while generating`** (§6c routed page); `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — **`AST-645: Generate Artifacts primary action uses in-flight class while Working`** |
+
+**AST-645** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
 ## Appendix A — Run component tests
 
 From repo root:

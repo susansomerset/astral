@@ -30,6 +30,9 @@ type ApiHandler = (url: string, init?: RequestInit) => Promise<Response> | Respo
 
 export function installBaseApiMocks(mockedApi: Mock, handler: ApiHandler) {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url === "/api/me") {
+      return jsonResponse({ user_id: "u1", name: "Test User", is_admin: true })
+    }
     if (url === "/api/candidates") {
       return jsonResponse([baseCandidate])
     }
