@@ -1293,6 +1293,26 @@ Equivalent harness:
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
 
+## 7.13zzd Rebuild AST-519 git casualty — base resume UI + API (**AST-616**, parent **AST-601**)
+
+Restores **AST-519** per-candidate **Base Resume Content** behavior lost in git merges: **`GET …/resume_structure`**, structure-driven tabs (not global shapes), **`base_resume`** orphan strip on PUT, accent on **`artifacts.resume_structure.accent_color`**. Core helpers and **`ArtifactEditor`** structure mode already on **`origin/dev`** / **AST-517** lineage. **Betty** updates **`test_ArtifactsBaseResumeContent.test.tsx`** to mock structure GET + assert accent PUT path (**§6c** routed page).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-616** | API GET route + imports; Base Resume Content wired to structure sections + accent | `src/ui/api/api_candidate.py`, `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` | **§7.13zl** **AST-519** narrowed run (reuse **`TestAst519ResumeStructureApi`**, **`TestAst519ResumeStructureUiHelpers`**, **`test_ArtifactEditor.test.tsx`** structureSections rows); **`tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`** (structure GET, orphan hidden, accent PUT, candidate switch) |
+
+**AST-616** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t "structureSections|Base Resume Content|resume_structure"
+```
+
 ## Appendix A — Run component tests
 
 From repo root:
