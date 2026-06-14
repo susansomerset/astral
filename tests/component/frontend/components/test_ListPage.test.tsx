@@ -60,7 +60,6 @@ describe("ListPage", () => {
         onSelectionChange={onSelectionChange}
         onRowClick={row => row.id}
         rowActions={row => <button type="button">{`act-${row.id}`}</button>}
-        horizontalScrollable
         actions={<span>toolbar</span>}
       />,
     )
