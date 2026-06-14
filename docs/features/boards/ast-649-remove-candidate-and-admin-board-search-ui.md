@@ -123,3 +123,12 @@ Retire all user-visible board-search product surfaces while leaving backend boar
 | Boundaries | No backend rip-out; `api_boards.py` and core board modules untouched. |
 
 No conflicts — plan is implementable as written.
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui`  
+**Product commits:** `5cbafff0` (nav/route/page removal), `2478ca22` (hide gaze_board from admin Scheduled Actions)
+
+## Review
+
+<!-- Radia fills this section at review-child -->
