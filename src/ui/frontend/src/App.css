@@ -208,6 +208,35 @@ body {
   flex-shrink: 0;
 }
 
+.nav-deploy-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.nav-deploy-footer-error {
+  color: var(--danger);
+}
+.nav-deploy-env {
+  color: var(--text-secondary);
+  text-transform: lowercase;
+}
+.nav-deploy-sep {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+.nav-deploy-commit {
+  color: var(--text-secondary);
+  cursor: default;
+}
+.nav-deploy-uptime {
+  color: var(--text-muted);
+}
+
 /* === 6. Content Area === */
 
 .content {
