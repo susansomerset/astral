@@ -237,3 +237,7 @@ Administrators need an at-a-glance deploy signal in the left nav: which environm
 | UAT | Confirm `ASTRAL_DEPLOY_ENV` on Railway staging/production; verify admin footer after deploy restart (AC6). |
 
 **Verdict:** Approve for `resolve-child` — no fix-now or discuss items.
+
+## Resolution
+
+- **2026-06-14 — Katherine (`resolve-child`):** Radia review clean — no fix-now items. Product commits (`7810b2ac`–`71ecb534`) and Betty tests (`1647c04e`) stand as shipped. Advisory git subprocess cache deferred. `merge-resume(AST-646)` integrated `origin/dev` with Betty-reconciled bible (`47737068`) for §9a. §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-640`. Ticket → **User Testing**.
