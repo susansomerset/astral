@@ -48,7 +48,7 @@ from src.utils.config import (
     dispatch_task_key_is_scored,
     get_task_keys,
     resolve_dispatch_task_config_key,
-    trigger_state_used_by_scored_dispatch_task,
+    dispatch_claim_uses_score_floor,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -529,7 +529,7 @@ def get_ledger_logs(batch_id):
 
 def _trigger_state_is_scored(trigger_state: Optional[str], _task_key: str) -> bool:
     """Whether trigger_state is a scored-step outcome; task_key kept for test/API symmetry (ignored)."""
-    return trigger_state_used_by_scored_dispatch_task(trigger_state)
+    return dispatch_claim_uses_score_floor(trigger_state)
 
 
 def _task_is_scored(task_key: str) -> bool:
@@ -557,7 +557,7 @@ def list_dtasks():
     rows = list_dispatch_tasks()
     # Enrich each row with live available entity count
     for row in rows:
-        is_scored = trigger_state_used_by_scored_dispatch_task(row.get("trigger_state"))
+        is_scored = dispatch_claim_uses_score_floor(row.get("trigger_state"))
         row["is_scored"] = is_scored
         if not is_scored:
             row["score_floor"] = None
@@ -615,7 +615,7 @@ def dispatch_task_keys():
                 "trigger_state": (r.get("trigger_state") or "") or "",
                 "phase": None,
                 "seq": None,
-                "is_scored": trigger_state_used_by_scored_dispatch_task(r.get("trigger_state")),
+                "is_scored": dispatch_claim_uses_score_floor(r.get("trigger_state")),
             }
     return jsonify(seen)
 
@@ -637,7 +637,7 @@ def create_dtask():
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
-    is_scored = trigger_state_used_by_scored_dispatch_task(data.get("trigger_state"))
+    is_scored = dispatch_claim_uses_score_floor(data.get("trigger_state"))
     raw_score_floor = data.get("score_floor", None)
     score_floor = float(raw_score_floor) if (is_scored and raw_score_floor is not None) else (1.0 if is_scored else None)
     if bool(data.get("auto_mode", False)):
@@ -674,7 +674,7 @@ def update_dtask(task_id):
     allowed = {"min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor", "trigger_state"}
     row = database.get_dispatch_task(task_id)
     trigger_state = data.get("trigger_state", (row or {}).get("trigger_state"))
-    is_scored = trigger_state_used_by_scored_dispatch_task(trigger_state)
+    is_scored = dispatch_claim_uses_score_floor(trigger_state)
     updates = {}
     for k in allowed:
         if k in data:

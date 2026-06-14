@@ -73,6 +73,7 @@ from src.utils.config import (
     resolve_brain_setting_to_anthropic_agent_key,
     resolve_brain_setting_to_deepseek_tier_meta,
     dispatch_task_admin_defaults,
+    dispatch_claim_uses_score_floor,
     trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
 )
@@ -4887,7 +4888,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 continue
             task_key = row[1] or ""
             trigger_state = row[2] or ""
-            if trigger_state_used_by_scored_dispatch_task(trigger_state):
+            if dispatch_claim_uses_score_floor(trigger_state):
                 conn.execute("UPDATE dispatch_task SET score_floor = 1.0 WHERE id = ?", (row[0],))
         if scored_rows:
             conn.commit()
@@ -5198,7 +5199,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if not entity_type or not state or not candidate_id:
         return 0
     task_key = task.get("task_key", "")
-    is_scored = trigger_state_used_by_scored_dispatch_task(state)
+    is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
         return count_candidate_inflow_discovery_eligible(candidate_id, 0, None)
