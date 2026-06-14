@@ -58,6 +58,11 @@ class TestSystemAuthRoutes:
         assert palette
         assert all(isinstance(hex, str) and hex.startswith("#") for hex in palette)
 
+    def test_ui_config_includes_list_table_layout_defaults(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload.get("list_table_frozen_data_columns") == 2
+        assert payload.get("list_table_cell_truncate_chars") == 30
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200
