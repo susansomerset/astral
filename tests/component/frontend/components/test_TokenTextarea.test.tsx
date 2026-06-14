@@ -8,6 +8,10 @@ function hasTokenMenu() {
   return document.querySelector('[style*="z-index: 3000"], [style*="zIndex: 3000"]') != null
 }
 
+function getTokenMenu() {
+  return document.body.querySelector('[style*="zIndex: 3000"], [style*="z-index: 3000"]') as HTMLElement | null
+}
+
 function focusEnd(textarea: HTMLTextAreaElement) {
   textarea.focus()
   textarea.setSelectionRange(textarea.value.length, textarea.value.length)
@@ -35,6 +39,20 @@ describe("TokenTextarea", () => {
       <TokenTextarea value="" onChange={onChange} tokens={["FOO"]} rows={7} />,
     )
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).rows).toBe(7)
+  })
+
+  it("AST-643: portaled menu anchors below first-line trigger (not textarea origin)", () => {
+    const onChange = vi.fn()
+    renderWithProviders(
+      <TokenTextarea value="{$" onChange={onChange} tokens={["FOO"]} />,
+    )
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement
+    focusEnd(textarea)
+    const menu = getTokenMenu()
+    expect(menu).not.toBeNull()
+    const menuTopPx = Number.parseFloat(menu!.style.top || "0")
+    const textareaTopPx = textarea.getBoundingClientRect().top
+    expect(menuTopPx).toBeGreaterThan(textareaTopPx)
   })
 
   it("AST-636: portaled menu attaches to document.body above modal clipping", () => {

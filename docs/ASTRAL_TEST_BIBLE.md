@@ -1662,6 +1662,8 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry
 ```
 
+```
+
 ## 7.13zzp UAT — craft_resume_base omits resume_structure (**AST-644**, parent **AST-601**)
 
 **AST-644 (UAT bug):** Model returns **`craft_resume_base`** success envelope with content fields only — no **`resume_structure`** key — so **`_validate_response_schema`** hard-failed before **`split_craft_resume_base_payload`** could apply **`default_resume_structure()`** (AST-517). Fix: **`normalize_craft_resume_base_agent_payload`** injects config default when structure is missing or has empty **`sections`**, mirroring split path. No UI / schema / AST-517 storage changes.
@@ -1675,6 +1677,21 @@ cd src/ui/frontend && npm run test:component -- \
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst517ResumeStructure
+```
+
+## 7.13zzq Token lookup list — trigger-adjacent placement (**AST-643**, parent **AST-638**)
+
+**AST-638 (parent):** Shared **`TokenTextarea`** portaled autocomplete menu appears below the active **`{$`** trigger line (scroll-adjusted), flips above when insufficient viewport room below, and preserves AST-636 portal + open/filter/dismiss/keyboard behavior. All consumers (Manage Tasks, Manage Agents, Anthropic Ad Hoc) inherit from the component — no per-page manifest.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-643** | `menuAnchor` subtracts `scrollTop`; viewport flip; `triggerCharIndex` wiring | `src/ui/frontend/src/components/TokenTextarea.tsx` | Full **`tests/component/frontend/components/test_TokenTextarea.test.tsx`** — **`AST-643`** placement (`menu` fixed `top` strictly below textarea origin on first-line trigger); **`AST-636`** portal; existing open/filter/dismiss/keyboard rows |
+
+**AST-643** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx
 ```
 
 ## Appendix A — Run component tests
