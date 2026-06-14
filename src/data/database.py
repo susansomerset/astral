@@ -582,6 +582,8 @@ def apply_config_table_upsert(
     if table not in ALLOWED_CONFIG_TABLES:
         raise ValueError(f"table not allowed: {table!r} (allowed: {sorted(ALLOWED_CONFIG_TABLES)})")
 
+    ensure_table_schema_for_upsert(conn, table)
+
     expected = table_columns(conn, table)
     if list(columns) != expected:
         raise ValueError(
@@ -4994,6 +4996,32 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     _ensure_gaze_board_dispatch_tasks(conn)
     _dispatch_task_schema_ensured = True
+
+
+_UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = {
+    "agent": _ensure_agent_schema,
+    "agent_data": _ensure_agent_data_schema,
+    "agent_responses": _ensure_agent_responses_schema,
+    "agent_task": _ensure_agent_task_schema,
+    "app_log": _ensure_app_log_schema,
+    "board_search": _ensure_board_search_table,
+    "board_search_run": _ensure_board_search_run_table,
+    "candidate": _ensure_candidate_schema,
+    "candidate_intake_session": _ensure_candidate_intake_session_table,
+    "company": _ensure_company_schema,
+    "company_job_scan": _ensure_company_job_scan_schema,
+    "company_search_terms": _ensure_company_search_terms_table,
+    "dispatch_ledger": _ensure_dispatch_ledger_schema,
+    "dispatch_task": _ensure_dispatch_task_schema,
+    "job": _ensure_job_schema,
+}
+
+
+def ensure_table_schema_for_upsert(conn: sqlite3.Connection, table: str) -> None:
+    """Run idempotent lazy schema ensure for ``table`` when registered; no-op otherwise."""
+    handler = _UPSERT_LAZY_SCHEMA_HANDLERS.get(table)
+    if handler is not None:
+        handler(conn)
 
 
 def save_dispatch_task(
