@@ -365,3 +365,15 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 5 is manual verification only — no commit unless product fix required.
 - Blocking questions → parent **AST-543** with 🛑 format from **plan-child**.
 - **Passthrough:** Do not modify `dispatcher.py`, `agent.py`, or `src/utils/logging.py` — helpers already exist on integration line.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-543/AST-619-consult-claim-loop-grading-debug` @ `527feb98`.
+
+**Stages delivered:**
+- Stage 1: `_consult_job_identifier` + `_render_pass_fail` / `_render_score` contract detail; retire `_LOG_DEBUG` — `cac02ee1`.
+- Stage 2: `_run_batch_consult` batch start, per-job indices, missing/fabricated detail, batch end — `929d6674`.
+- Stage 3: `qualify_job_listings` / `evaluate_jd_batch` input context, JD-readiness skips, gated legacy INFO — `b84feb14`.
+- Stage 4: `render_verdict`, `_apply_render_verdict_decoded_job`, `_consult_scored_dispatch_batch_encoded` — `527feb98`.
+
+**Stage 5 (manual):** Susan UAT — `debug=False` spot-check; qualify/evaluate/scored consult with `debug=True`. No Betty log-string tests per parent.
