@@ -151,3 +151,30 @@ No other changes to `AdminAgentPrompts.tsx` in this ticket.
 | `2e20662a` | Stage 2: harden `useAgentTokenList` for non-OK API responses |
 
 **Verification:** `cd src/ui/frontend && npx tsc -b --noEmit`
+
+## Review (Radia)
+
+**Diff:** `origin/ftr/ast-574-support-tokens-in-agent-prompts...origin/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing` @ `151d4968` (product: `6ff12ac0`, `2e20662a`; tests merge `151d4968`).
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | Stage 1–2 match plan: `menuAnchor` + portaled `createPortal` menu (`zIndex: 3000` above `.modal-overlay` 1000/2000); scroll/resize reposition; outside-click includes `menuRef`; `useAgentTokenList` checks `r.ok` before JSON |
+| UAT repro | Root causes from ticket (modal clipping + empty list on non-OK meta) addressed without backend/registry/Manage Tasks scope creep |
+| §1.3 DRY | Shared `TokenTextarea` fix benefits all consumers; matches `Modal.tsx` / `Toast.tsx` portal pattern |
+| §3.5 | Frontend-only; token list still config-driven via existing `GET /agents/meta/tokens` |
+| Tests | `test_TokenTextarea` portal-to-`document.body` under `overflow:hidden`; `test_AdminAgentPrompts` edit-modal autocomplete + non-OK meta tolerance |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now items |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| Advisory | `menuAnchor` uses line-count vertical offset only (plan-approved); wrapped long lines may anchor menu at textarea left edge rather than horizontal caret — acceptable vs prior `top:0` clipping |
+| — | Katherine: **`resolve-child`** — no code changes required from this review |
