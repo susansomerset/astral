@@ -381,3 +381,15 @@ No conflicts requiring `conf-!!-NONE`.
 
 - Module `_log` sets `set_debug_flag(True)` when `debug=True` but never resets to `False` on `debug=False` calls — same pattern as `gazer`/`dispatcher` siblings; emissions remain gated by `if debug` / `_emit_builder_failure`, so no contract leak observed. Optional hygiene: `set_debug_flag(debug)` at entry (as `roster.py`) if we standardize later across the backfill epic.
 - `_accent_source_label` re-invokes `resolve_resume_structure` on debug success paths only — acceptable debug-only duplication.
+
+## Resolution
+
+**Date:** 2026-06-14 · **Publish ref:** `origin/sub/AST-545/AST-623-builder-artifact-debug` @ resolve tip after push
+
+Radia review had no fix-now or discuss items. No product code changes in resolve — Radia doc commit `f2c79b18` already on publish ref; product tip `3465d507` (Stages 1–4) + Betty tests `f9e69620`.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-545-debug-logging-backfill-builder`.
+
+**Advisory (no action):** module `_log` `set_debug_flag(True)` without reset on `debug=False` matches gazer/dispatcher siblings; `_accent_source_label` duplicate structure resolve on debug paths only.
+
+**Outcome:** Ready for User Testing — Chuckles `merge-child` rolls `sub/* → ftr/*` when sibling policy allows.
