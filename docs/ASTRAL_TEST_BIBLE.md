@@ -1531,6 +1531,25 @@ npm run test:component -- \
 
 **Regression guard (unchanged AST-612/613):** After manifest green, spot-check **`test_Login.test.tsx`**, **`test_AdminRoute.test.tsx`**, **`test_NavigationShell.test.tsx`** — no auth-gate regressions.
 
+## 7.13zzl Table upsert schema ensure before validation (**AST-627**, parent **AST-626**)
+
+**AST-626 (parent):** Lazy `_ensure_*_schema` handlers run **before** column validation in both Copy Output upsert (`apply_copy_output_table_upsert`) and config-table upsert (`apply_config_table_upsert`). Data-layer registry **`ensure_table_schema_for_upsert`** maps known table names to existing handlers; unregistered tables unchanged. Preserves AST-373 / AST-464 merge semantics — no UI or allowlist changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-627** | Registry + ensure hook in config upsert; core path calls ensure before `table_columns`; removes duplicate in-transaction `agent_task` ensure | `src/data/database.py`, `src/core/table_copy_upsert.py` | **`tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_schema_ensure_before_validate`**; full **`test_table_copy_upsert.py`** + config upsert rows in **`test_schema.py`** for AST-464 regressions |
+
+**AST-627** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
+  tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_schema_ensure_before_validate \
+  tests/component/data/database/test_table_copy_upsert.py \
+  tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert \
+  -q
+```
+
 ## Appendix A — Run component tests
 
 From repo root:

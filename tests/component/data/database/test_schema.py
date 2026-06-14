@@ -117,6 +117,64 @@ class TestApplyConfigTableUpsert:
         finally:
             conn.close()
 
+    def test_config_upsert_stale_candidate_schema_ensure_before_validate(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.data import database as db
+
+        monkeypatch.setattr(db, "_candidate_schema_ensured", False)
+        cx = sqlite_in_memory._get_connection()
+        try:
+            cx.execute("DROP TABLE IF EXISTS candidate")
+            cx.execute(
+                """
+                CREATE TABLE candidate (
+                    astral_candidate_id TEXT PRIMARY KEY,
+                    state TEXT NOT NULL DEFAULT 'NEW',
+                    candidate_data TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    state_changed_at TIMESTAMP
+                )
+                """
+            )
+            cx.commit()
+        finally:
+            cx.close()
+
+        db._candidate_schema_ensured = False
+        learn = sqlite_in_memory._get_connection()
+        try:
+            db._ensure_candidate_schema(learn)
+            cols = db.table_columns(learn, "candidate")
+        finally:
+            learn.close()
+
+        db._candidate_schema_ensured = False
+        row = {
+            "astral_candidate_id": "cand-ast627",
+            "state": "NEW",
+            "candidate_data": "{}",
+            "created_at": None,
+            "updated_at": None,
+            "state_changed_at": None,
+        }
+        for c in cols:
+            row.setdefault(c, None)
+        row_list = [row[c] for c in cols]
+
+        conn = sqlite_in_memory._get_connection()
+        try:
+            out = sqlite_in_memory.apply_config_table_upsert(
+                conn, "candidate", cols, [row_list],
+            )
+            conn.commit()
+            assert out["ok"] is True
+            assert out["replaced"] == 1
+        finally:
+            conn.close()
+
+
 
 # Branches: missing key; encrypt/decrypt round-trip; bad ciphertext.
 class TestEncryptValue:

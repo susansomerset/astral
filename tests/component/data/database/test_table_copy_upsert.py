@@ -242,3 +242,112 @@ def test_agent_task_idempotent_reapply_skips(seeded_agent_task) -> None:
     assert r1["ok"], r1
     assert r1["skipped"] >= 1
     assert r1["updated"] == r1["inserted"] == 0
+
+
+# Branches: stale schema ensure before validate; genuine mismatch; no registry handler.
+class TestAst627EnsureBeforeValidate:
+    def test_copy_upsert_stale_dispatch_task_schema_ensure_before_validate(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core.table_copy_upsert import apply_copy_output_table_upsert
+        from src.data import database as db
+
+        monkeypatch.setattr(db, "_dispatch_task_schema_ensured", False)
+        cx = sqlite_in_memory._get_connection()
+        try:
+            cx.execute("DROP TABLE IF EXISTS dispatch_task")
+            cx.execute(
+                """
+                CREATE TABLE dispatch_task (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    candidate_id TEXT NOT NULL,
+                    task_key TEXT NOT NULL,
+                    entity_type TEXT,
+                    trigger_state TEXT,
+                    sort_by TEXT,
+                    batch_call_mode INTEGER DEFAULT 0,
+                    last_run_at TIMESTAMP,
+                    freq_hrs REAL DEFAULT 0,
+                    min_count INTEGER NOT NULL,
+                    batch_size INTEGER,
+                    batch_id TEXT,
+                    auto_mode INTEGER NOT NULL DEFAULT 0,
+                    debug INTEGER NOT NULL DEFAULT 0,
+                    skip_cache INTEGER NOT NULL DEFAULT 0,
+                    max_runs INTEGER DEFAULT 1,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(candidate_id, task_key, trigger_state)
+                )
+                """
+            )
+            cx.commit()
+        finally:
+            cx.close()
+
+        db._dispatch_task_schema_ensured = False
+        learn = sqlite_in_memory._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(learn)
+            cols = db.table_columns(learn, "dispatch_task")
+        finally:
+            learn.close()
+
+        db._dispatch_task_schema_ensured = False
+        row = {c: None for c in cols}
+        row.update(
+            {
+                "candidate_id": "cand-ast627",
+                "task_key": "qualify_job_listings",
+                "trigger_state": "IMPORTED",
+                "min_count": 1,
+                "auto_mode": 0,
+                "debug": 0,
+                "skip_cache": 0,
+                "max_runs": 1,
+            }
+        )
+
+        out = apply_copy_output_table_upsert(
+            table_name="dispatch_task",
+            json_payload=json.dumps([row]),
+        )
+        assert out["ok"], out
+        assert out["inserted"] + out["updated"] + out["skipped"] > 0
+
+    def test_copy_upsert_genuine_column_mismatch_after_ensure(
+        self, sqlite_in_memory,
+    ) -> None:
+        from src.core.table_copy_upsert import apply_copy_output_table_upsert
+
+        cx = sqlite_in_memory._get_connection()
+        try:
+            cx.execute("CREATE TABLE flat_ast627 ( id TEXT PRIMARY KEY, body TEXT ) ")
+            cx.commit()
+        finally:
+            cx.close()
+
+        out = apply_copy_output_table_upsert(
+            table_name="flat_ast627",
+            json_payload=json.dumps([{"id": "z", "body": "ok", "extra_col": "nope"}]),
+        )
+        assert out["ok"] is False
+        err = (out["error"] or "").lower()
+        assert "wrong keys" in err or "columns" in err
+
+    def test_copy_upsert_no_handler_table_unchanged(self, sqlite_in_memory) -> None:
+        from src.core.table_copy_upsert import apply_copy_output_table_upsert
+
+        cx = sqlite_in_memory._get_connection()
+        try:
+            cx.execute(
+                "CREATE TABLE nopensure_ast627 ( id TEXT PRIMARY KEY, body TEXT ) "
+            )
+            cx.commit()
+        finally:
+            cx.close()
+
+        out = apply_copy_output_table_upsert(
+            table_name="nopensure_ast627",
+            json_payload=json.dumps([{"id": "one", "body": "x"}]),
+        )
+        assert out["ok"] and out["inserted"] == 1
