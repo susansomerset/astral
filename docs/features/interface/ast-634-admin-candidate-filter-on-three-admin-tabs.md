@@ -171,3 +171,50 @@ When picking tests in **qa-child**, cover at minimum:
 **Built:** Stage 1 — `candidateLabel.ts`, `useAdminCandidateFilter`, `AdminCandidateFilterControl`, export `CandidateInfo`. Stage 2 — `AdminScheduledActions` client filter + control. Stage 3 — `AdminPerformanceMonitor` full candidate list, URL default/sync. Stage 4 — `AdminAgentTimesheets` dropdown + URL parity. Component tests deferred to Betty per build-child test-tree ban.
 
 **Betty manifest (Code Complete):** see **QA manifest (Betty)** above.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-628/AST-634-admin-candidate-filter-on-three-admin-tabs` (tip `87911345`)  
+**Reviewed:** 2026-06-14
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–4 land as specified: shared `candidateLabel` / `useAdminCandidateFilter` / `AdminCandidateFilterControl`; Scheduled Actions client filter replaces silent nav filter; Execution History + Timesheets URL-backed with nav default effect. |
+| AC coverage | Betty manifest exercises default-from-nav, All, manual pin, global candidate list on Execution History, export `candidate_id` on Timesheets. |
+| §3.3 layers | Frontend-only; no `data` / `external` imports. |
+| §1.3 DRY | Nav-sync + label logic centralized; label rules match `NavigationShell.tsx` name join. |
+| §2.1 config | Candidate list from existing `/api/candidates` context — no duplicate state strings. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| discuss | `useAdminCandidateFilter.ts` L37–43, L53–56; callers pass inline `urlBacked` object | `applyFilter` depends on `urlBacked` identity; parent re-renders recreate the object → nav-sync `useEffect` may re-fire and call `setSearchParams` every render while `syncWithNav`. Tests work around RTL hangs via seeded `candidate_id` (`withCandidateQuery`). Stabilize deps (`setValue` + `value` as separate hook args, or memoize `urlBacked` at call site) before UAT on “first visit, no URL param”. |
+| discuss | `AdminPerformanceMonitor.tsx` + `AdminAgentTimesheets.tsx` | Duplicate `candidateIdFromParams` / `setCandidateParam` — fine for this ticket; extract only if a fourth admin screen needs the same pattern. |
+| advisory | `AdminPerformanceMonitor.tsx` `tz` useMemo | Date defaults still use **nav** `selectedId` timezone, not on-page candidate filter — pre-existing; acceptable unless Susan wants filter-scoped TZ. |
+| advisory | `candidateLabel.ts` L338 | `(c.candidate_data \|\| {})` cast for display labels — bounded UI use, matches nav shell pattern. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| resolve-child | Optional hardening: decouple `applyFilter` from inline `urlBacked` object identity; smoke first visit to Execution History / Timesheets with empty `candidate_id` query (nav candidate set). |
+| UAT | Confirm AC6 nav-sync + manual pin on all three screens in staging. |
+
+**Verdict:** Approve for `resolve-child` / UAT — no fix-now blockers; one discuss item on hook dependency stability worth addressing if first-load URL default flickers in staging.
+
+## Resolution
+
+**Date:** 2026-06-14 · **Review:** Radia @ `7eb0b981` · **Product tip:** `87911345`
+
+| Item | Outcome |
+|------|---------|
+| fix-now | None — ship as reviewed. |
+| discuss — `urlBacked` object identity / nav-sync `useEffect` | Deferred optional hardening; smoke first visit (nav candidate set, no `candidate_id` URL param) in UAT before extracting `urlValue`/`setUrlValue` args. |
+| discuss — duplicate URL helpers on Execution History + Timesheets | Accepted for this ticket; extract only if a fourth admin screen needs the pattern. |
+| advisory — `tz` follows nav not filter | Pre-existing; no change unless UAT asks for filter-scoped timezone. |
+| advisory — `candidate_data \|\| {}` in labels | Display-only; matches nav shell. |
+
+**Tests:** Betty manifest green @ `87911345` (Katherine `test-child`).
