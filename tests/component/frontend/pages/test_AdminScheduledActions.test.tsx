@@ -2,14 +2,30 @@ import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
+import { useCandidate } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import ScheduledActions from "../../../../src/ui/frontend/src/pages/AdminScheduledActions"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
+
+const adminCandidates = [
+  { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { first: "Ada", last: "One" } },
+  { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: { first: "Betty", last: "Two" } },
+]
+
+function CandidateSelectC2() {
+  const { setSelectedId } = useCandidate()
+  return (
+    <button type="button" onClick={() => setSelectedId("c2")}>
+      Select c2 nav
+    </button>
+  )
+}
 
 const dispatchTask = {
   id: 1,
@@ -86,6 +102,9 @@ describe("AdminScheduledActions", () => {
     }
     const keysDefault = { scan_jobs: { entity_type: "job", trigger_state: "NEW", phase: "D. Job Analysis", seq: 1, is_scored: true } }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/candidates") {
+        return { ok: true, json: async () => adminCandidates } as Response
+      }
       if (url === "/api/admin/scheduler/thread_status") {
         if (extra?.threadStatusOk === false) return { ok: false, json: async () => ({}) } as Response
         return { ok: true, json: async () => threads } as Response
@@ -331,4 +350,62 @@ describe("AdminScheduledActions", () => {
     await vi.advanceTimersByTimeAsync(5000)
     await waitFor(() => expect(screen.getByText("99")).toBeInTheDocument())
   }, 20000)
+
+  describe("AST-634 admin candidate filter", () => {
+    beforeEach(() => {
+      vi.useRealTimers()
+    })
+    afterEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+    })
+
+    it("defaults to nav candidate, All shows every candidate, manual All blocks nav sync", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      mockApi(false, {
+        tasks: [dispatchTask, sparseRow],
+        taskKeysPayload: taskKeysConfig,
+        threads: {},
+      })
+      renderWithProviders(
+        <>
+          <CandidateSelectC2 />
+          <ScheduledActions />
+        </>,
+      )
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.value).toBe("c1"))
+
+      await expandFirstPhaseSection()
+      expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument()
+      expect(within(screen.getByRole("table")).queryByText("watch_cos")).not.toBeInTheDocument()
+
+      await userEvent.selectOptions(candidateSelect, "")
+      await expandFirstPhaseSection()
+      await waitFor(() => expect(screen.getByText(/C\. Company Roster/)).toBeInTheDocument())
+
+      await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
+      expect(candidateSelect.value).toBe("")
+    }, 25000)
+
+    it("nav sync updates default filter when Susan has not manually changed dropdown", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      mockApi(false, {
+        tasks: [dispatchTask, sparseRow],
+        taskKeysPayload: taskKeysConfig,
+        threads: {},
+      })
+      renderWithProviders(
+        <>
+          <CandidateSelectC2 />
+          <ScheduledActions />
+        </>,
+      )
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.value).toBe("c1"))
+      await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
+      await waitFor(() => expect(candidateSelect.value).toBe("c2"))
+    }, 15000)
+  })
 })
