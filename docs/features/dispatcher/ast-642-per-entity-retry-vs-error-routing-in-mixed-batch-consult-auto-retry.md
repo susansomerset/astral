@@ -188,3 +188,16 @@ After AST-641, a primary-trigger dispatch row can claim jobs in both `VALID_TITL
 | §3.5 Naming | `_consult_batch_fail_dest` matches consult module prefix |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Branch:** `sub/AST-630/AST-642-per-entity-batch-retry`  
+**Tip:** `65a52f86` — `code(AST-642): per-entity retry vs error routing in mixed batch consult`
+
+**Summary:** Added `_consult_batch_fail_dest` and `_transition_batch_consult_failures`; wired per-entity grouped transitions into `_run_batch_consult` (envelope, hydration, missing IDs, bad_grades), `_run_analysis_upshot_batch`, and qualify short-title path.
+
+**Compile:** `python3 -m py_compile src/core/consult.py` — pass.
+
+**Tests:** Betty at Code Complete (mixed-state batch fixtures per execution contract).
