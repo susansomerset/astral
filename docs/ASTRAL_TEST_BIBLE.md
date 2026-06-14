@@ -1293,6 +1293,64 @@ Equivalent harness:
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
 
+## 7.13zzc Rebuild AST-586 git casualty (**AST-617**, parent **AST-600**)
+
+Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backfill and **`api_admin.py`** **`is_scored`** / **`score_floor`** call sites to **`dispatch_claim_uses_score_floor`**. Config helper + **`dispatcher.py`** claim path already on **`origin/dev`** / sibling **AST-615** (**§7.13zzb**). **Manifest-only** — reuse **§7.13zv** (**AST-586**) narrowed run; no new test files.
+
+| Child | Behavior | Sources | Manifest |
+| --- | --- | --- | --- |
+| **AST-617** | DB eligible count + admin dispatch rows align with claim helper (not grading metadata) | `src/data/database.py`, `src/ui/api/api_admin.py` | **§7.13zv** narrowed run |
+
+## 7.13zzd Rebuild AST-519 git casualty — base resume UI + API (**AST-616**, parent **AST-601**)
+
+Restores **AST-519** per-candidate **Base Resume Content** behavior lost in git merges: **`GET …/resume_structure`**, structure-driven tabs (not global shapes), **`base_resume`** orphan strip on PUT, accent on **`artifacts.resume_structure.accent_color`**. Core helpers and **`ArtifactEditor`** structure mode already on **`origin/dev`** / **AST-517** lineage. **Betty** updates **`test_ArtifactsBaseResumeContent.test.tsx`** to mock structure GET + assert accent PUT path (**§6c** routed page).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-616** | API GET route + imports; Base Resume Content wired to structure sections + accent | `src/ui/api/api_candidate.py`, `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` | **§7.13zl** **AST-519** narrowed run (reuse **`TestAst519ResumeStructureApi`**, **`TestAst519ResumeStructureUiHelpers`**, **`test_ArtifactEditor.test.tsx`** structureSections rows); **`tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`** (structure GET, orphan hidden, accent PUT, candidate switch) |
+
+**AST-616** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t "structureSections|Base Resume Content|resume_structure"
+```
+
+## 7.13zze Debug logging backfill — agent (**AST-618**, parent **AST-541**)
+
+**AST-541 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/agent.py`** **`do_task`** orchestration — generalized entry header (task key, batch id, index) before external LLM call; token overlay / job-context detail; assembly **`llm_params`** + block counts; truncated response payload via **`debug_detail_block`**; **`run_next`** hop boundary detail; retire hand-rolled **`[DEBUG]`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **AST-597** resume-hop index lines generalized to all tasks via **`_do_task_debug_entry`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-618** | Contract debug across `do_task` entry/exit, token overlay, assembly, response payload, `run_next` boundary | `src/core/agent.py` | **`tests/component/core/test_agent.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-618** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `do_task` entry header + batch/index detail | **`TestDoTask::test_debug_flag_passed_to_child`**; **`TestAst597MidChainResumeHydrationAndTransitions::test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry`** |
+| Token overlay / caller hydration | **`test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry`** (asserts `caller_source` / `caller_hydration`, not golden index lines) |
+| `run_next` hop boundary INFO (unchanged §1.5.1) | **`TestDoTask::test_hop_boundary_log_on_run_next`**; **`TestDoTask::test_chain_entry_log`** |
+| Per-hop ledger + chain skip | **`TestAst531RunNextHopLedger`**; **`TestDoTask::test_mid_chain_empty_caller_skips_api`** |
+| `debug=False` unchanged | **`TestDoTask`** paths without **`debug=True`**; full-file branch lock |
+
 ## Appendix A — Run component tests
 
 From repo root:
