@@ -198,6 +198,6 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review
 
-**Built:** `sub/AST-630/AST-641-union-claim-count` @ _(see latest code commit)_
+**Built:** `sub/AST-630/AST-641-union-claim-count` @ `394dfdd7`
 **Scope:** `dispatch_claim_states` config helper; multi-state claim/count in data layer; dispatcher/tracker/roster wiring.
 **Betty:** extend `test_dispatcher.py`, `test_api_admin.py`, data-layer claim/count tests per Execution contract.
