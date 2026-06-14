@@ -116,3 +116,17 @@ If any test fails after Stage 1, fix product code only (not tests) unless manife
 | §3.5 naming | Matches existing `dispatch_*` / `trigger_state_*` naming from AST-586. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586`  
+**Tip:** `6e5f2e17`  
+**Built:** Stage 1 — `database.py` count/backfill and `api_admin.py` list/create/update use `dispatch_claim_uses_score_floor`; config + dispatcher verified unchanged. Stage 2 component tests deferred to Betty per build-child test-tree ban.
+
+**Betty manifest (Code Complete):**
+
+1. `tests/component/utils/test_config.py` — `dispatch_claim_uses_score_floor` cases (VALID_TITLE False, PASSED_JD/PASSED_JOBLIST True, RETRY/None False).
+2. `tests/component/core/test_dispatcher.py` — `test_qualify_valid_title_claim_without_score_floor` asserts `score_floor=None` on claim.
+3. `tests/component/ui/api/test_api_admin.py` — list/create/helper tests for VALID_TITLE `is_scored=False`, `score_floor=None`; PASSED_JD/PASSED_JOBLIST still scored.
