@@ -378,27 +378,22 @@ async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Run a single batch through the unified runner. Returns summary counts."""
     bid = log_batch_id.get()
     task_key = (task.get("task_key") or "").strip()
-    if debug and task_key == _INFLOW_DISCOVERY_KEY:
+    if debug:
+        logger.set_debug_flag(True)
         logger.debug_index(
             func="dispatcher._run_task",
             index=1,
             total=1,
-            identifier=task_key,
-            outcome="running",
+            identifier=task_key or "?",
+            outcome="running batch",
         )
-        logger.debug_detail(f"batch_size={task.get('batch_size')} batch_id={bid}")
-    elif debug:
-        logger.info(
-            "[DEBUG] _run_task: running '%s' batch_size=%s batch_id=%s...",
-            task.get("task_key"),
-            task.get("batch_size"),
-            bid,
+        logger.debug_detail(
+            f"batch_size={task.get('batch_size')} batch_id={bid} "
+            f"entity_type={task.get('entity_type')!r} trigger_state={task.get('trigger_state')!r}"
         )
     summary = await _run_unified(task, ctx, debug)
-    if debug and task_key == _INFLOW_DISCOVERY_KEY:
+    if debug:
         logger.debug_detail(f"runner returned summary={summary}")
-    elif debug:
-        logger.info("[DEBUG] _run_task: runner returned summary=%s", summary)
     return summary
 
 
