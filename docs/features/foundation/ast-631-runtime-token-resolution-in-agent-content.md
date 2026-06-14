@@ -264,3 +264,17 @@ No conflicts requiring `conf-!!-NONE`.
 | Action | Owner |
 |--------|-------|
 | No product code changes required — proceed to **User Testing** after optional read of advisory | Ada |
+
+## Resolution (resolve-child)
+
+**Date:** 2026-06-14  
+**Review ref:** Radia comment @ `b8345d3f`; doc commit `13ceba79`
+
+| Item | Outcome |
+|------|---------|
+| **fix-now** | None — no product commits in resolve pass. |
+| **discuss** | None. |
+| **Advisory** | Accepted as documented (double-resolve on direct-system path idempotent; `_enrich_tasks` token estimates without `job_context`). |
+| **§9a dry-run** | `origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` merges cleanly into `origin/dev` and `origin/ftr/ast-574-support-tokens-in-agent-prompts`. |
+
+**Publish tip after resolve:** `origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` @ resolve commit SHA (see git log).
