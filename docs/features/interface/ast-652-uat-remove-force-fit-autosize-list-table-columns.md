@@ -128,6 +128,30 @@ No conflicts — plan stays UI-only per parent boundaries.
 ## Review
 
 - **Branch:** `origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`
-- **Diff:** `origin/ftr/AST-633...origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`
-- **Tip:** `f5d70afe`
-- **Built:** 2026-06-14 — Stages 1–2 (`7bb598bf`, `f5d70afe`); `npm run build` green.
+- **Diff:** `origin/dev...origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns`
+- **Tip:** `8b2e748c`
+- **Radia:** 2026-06-14 — **clean**
+
+### What's solid
+
+| Area | Assessment |
+|------|------------|
+| Plan fidelity | Stages 1–2 complete: `.list-page-table` → `width: auto` + `table-layout: auto`; `max-width: 0` removed; `--auto` class deleted; `horizontalScrollable` prop removed; consumer cleanup on Agent Timesheets, Cost Reconciliation, job phase pages, Scheduled Actions `%` widths dropped. |
+| UAT intent | Force-fit-on-one-screen removed; autosize is now the default for all shared list tables; scroll wrapper unchanged. |
+| §1.3 DRY | Redundant inline `tableLayout: "auto"` and `--auto` class removed; single CSS default. |
+| Boundaries | No changes to frozen-column logic, truncation, sort/filter/resize/localStorage, or backend. |
+| Tests | `AST-652: default list-page-table uses autosize layout` asserts computed `table-layout: auto` and no `--auto` class; obsolete `horizontalScrollable` test prop removed. |
+| Grep gate | Zero matches for `horizontalScrollable` / `list-page-table--auto` under `src/ui/frontend`. |
+
+### Issues
+
+None — fix-now or discuss.
+
+### Advisory
+
+- **Column resize + auto layout:** ListPage still applies pixel `width` from localStorage/resize on th/td; confirm in UAT that drag-resize behavior still feels correct under `table-layout: auto` (plan notes explicit widths override natural sizing).
+- **Scheduled Actions frozen offsets:** Still uses `stickyLeftPx` with 120px fallbacks (AST-647 carryover); plan explicitly defers — verify horizontal scroll alignment in UAT if not already done from AST-647 resolve-child.
+
+### Recommended actions
+
+Proceed to resolve-child / parent UAT — no code changes required from this review.
