@@ -273,3 +273,10 @@ Shared list/table presentation for **ListPage** and pages using the same `list-p
 | §1.5.1 | No backend debug logging changes. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review
+
+- **Branch:** `origin/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips`
+- **Tip:** `f03a041f`
+- **Built:** 2026-06-14 — stages 1–4 complete (UI_CONFIG defaults, shared helpers/CSS, ListPage integration, AdminScheduledActions); Betty manifest pending.
+
