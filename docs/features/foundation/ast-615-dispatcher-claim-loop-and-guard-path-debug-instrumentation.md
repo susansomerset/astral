@@ -349,3 +349,16 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 6 is manual verification only — no commit unless product fix required.
 - Blocking questions → parent **AST-540** with 🛑 format from **plan-child**.
 - **Passthrough:** Do not modify `consult.run_consult_task`, roster, or agent signatures — `debug` argument passing already exists on consult calls (~299, 316, 324); leave unchanged.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-540/AST-615-dispatcher-claim-loop-guard-debug` @ `05cd51b9`.
+
+**Stages delivered:**
+- Stage 1: `_dispatch_entity_identifier` + `_dispatch_one` task start / skip debug — `ddfd1756`.
+- Stage 2: `_run_dispatch_loop` iteration and loop-exit debug — `f5c522ca`.
+- Stage 3: `_run_task` generalized contract, retire `[DEBUG]` — `39711a34`.
+- Stage 4: `_run_unified` guards, claim, chunk, batch-end debug; remove `_INFLOW_DISCOVERY_KEY` — `05cd51b9`.
+- Stage 5: `_check_circuit_breaker` debug context (same commit as stage 4) — `05cd51b9`.
+
+**Stage 6 (manual):** Susan UAT — `debug=False` spot-check; company batch + job chunk + skip paths with `debug=True`. No Betty log-string tests per parent.
