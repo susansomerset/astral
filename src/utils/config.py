@@ -74,6 +74,19 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
     "notes": {"type": "str", "required": False},
 }
 
+_CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
+    "label": {"type": "str", "required": True},
+    "content": {"type": "str", "required": True},
+    "importance": {"type": "int", "required": True, "min": 1, "max": 10},
+}
+_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
+    "criteria": {
+        "type": "list",
+        "required": True,
+        "items_schema": _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA,
+    },
+}
+
 # ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
 # task_prompt, cached_blocks, uncached_blocks) now lives in the agent_task
@@ -165,15 +178,10 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     # Phase B. Candidate Artifacts
-    "craft_company_prefilter": {
+    "craft_prefilter_rubric": {
         "phase": "B. Candidate Artifacts",
         "seq": 1,
-        "response_schema": {
-            "criteria": {"type": "list", "required": True, "items_schema": {
-                "label": {"type": "str", "required": True},
-                "content": {"type": "str", "required": True},
-            }},
-        },
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
         "requires_candidate_key": True,
@@ -182,12 +190,7 @@ TASK_CONFIG = {
     "craft_joblist_rubric": {
         "phase": "B. Candidate Artifacts",
         "seq": 2,
-        "response_schema": {
-            "criteria": {"type": "list", "required": True, "items_schema": {
-                "label": {"type": "str", "required": True},
-                "content": {"type": "str", "required": True},
-            }},
-        },
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
         "requires_candidate_key": True,
@@ -196,12 +199,7 @@ TASK_CONFIG = {
     "craft_jobdesc_rubric": {
         "phase": "B. Candidate Artifacts",
         "seq": 3,
-        "response_schema": {
-            "criteria": {"type": "list", "required": True, "items_schema": {
-                "label": {"type": "str", "required": True},
-                "content": {"type": "str", "required": True},
-            }},
-        },
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
         "requires_candidate_key": True,
@@ -210,12 +208,7 @@ TASK_CONFIG = {
     "craft_get_rubric": {
         "phase": "B. Candidate Artifacts",
         "seq": 4,
-        "response_schema": {
-            "criteria": {"type": "list", "required": True, "items_schema": {
-                "label": {"type": "str", "required": True},
-                "content": {"type": "str", "required": True},
-            }},
-        },
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
         "requires_candidate_key": True,
@@ -224,12 +217,7 @@ TASK_CONFIG = {
     "craft_do_rubric": {
         "phase": "B. Candidate Artifacts",
         "seq": 5,
-        "response_schema": {
-            "criteria": {"type": "list", "required": True, "items_schema": {
-                "label": {"type": "str", "required": True},
-                "content": {"type": "str", "required": True},
-            }},
-        },
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
         "requires_candidate_key": True,
@@ -238,12 +226,7 @@ TASK_CONFIG = {
     "craft_like_rubric": {
         "phase": "B. Candidate Artifacts",
         "seq": 6,
-        "response_schema": {
-            "criteria": {"type": "list", "required": True, "items_schema": {
-                "label": {"type": "str", "required": True},
-                "content": {"type": "str", "required": True},
-            }},
-        },
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
         "requires_candidate_key": True,
