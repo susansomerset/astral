@@ -106,3 +106,9 @@ No conflicts flagged. Plan is implementable as written.
 |------|--------|
 | discuss (test inject) | **Susan / Katherine:** accept inject as standing jsdom workaround **or** remove inject and fix component-test CSS loading so `getComputedStyle` reads real `App.css`. |
 | advisory (bible) | Betty or resolve-child: update AST-672 manifest bullet to match chosen approach. |
+
+## Resolution
+
+- **2026-06-15 (Katherine resolve-child):** No product commits — Radia review had **no fix-now** items. **`discuss`** (test `ensureDispatchLogToolbarCss()` inject vs Vitest CSS pipeline so `getComputedStyle` reads real `App.css`) and **advisory** (test-bible § AST-672 wording) left for **Susan UAT** per review Recommended actions.
+- **§9a:** `origin/sub/AST-670/AST-672-execution-history-copy-left` @ `ccad8f4f` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-670-move-the-copy-link-to-the-left-side-of-the-page`**.
+- **Outcome:** Ticket → **User Testing** (implementer assignee unchanged).
