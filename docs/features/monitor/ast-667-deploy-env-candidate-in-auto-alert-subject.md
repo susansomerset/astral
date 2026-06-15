@@ -179,3 +179,11 @@ AUTO dispatch error alert emails (AST-344) still hardcode `[Astral]` in the subj
 - **§3.5 naming:** snake_case `get_deploy_label`, `_resolve_candidate_last_name`, `_format_alert_subject_prefix`.
 
 No conflicts identified.
+
+---
+
+## Review
+
+**Built:** `code(AST-667): deploy label helper for alert subject` → `code(AST-667): AUTO alert subject deploy env and candidate last name` → `code(AST-667): pass candidate_id to auto_run_error`  
+**Branch:** `origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject` @ `29180f5f`
+
