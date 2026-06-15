@@ -175,3 +175,27 @@ No conflicts requiring `conf-!!-NONE`.
 **Product commits:** `f2742e3a` (`scripts/git/record-landed-parent.sh`), `efd736f1` (wire `merge-parent.sh` after ftr land push)
 
 **Note for Betty (Stage 3):** Component test `tests/component/scripts/test_record_landed_parent.py` per plan — manifest at Code Complete.
+
+---
+
+## Radia review (AST-683)
+
+**Ref:** `origin/dev...origin/sub/AST-675/ast-683-finish-up-auto-record-landed-parent`  
+**Product commits reviewed:** `f2742e3a`, `efd736f1`, `de1a4dea` (test)
+
+### What's solid
+
+- **Plan fidelity:** `record-landed-parent.sh` matches Stage 1 verbatim; `merge-parent.sh` wires after ftr land push and before ftr delete per Stage 2; `prep-uat-land.sh` untouched.
+- **Boundaries:** No log format, deploy-status, or UI changes in AST-683 commits; append stays on AST-681 CLI/utils; parent id only via `grep -oiE 'AST-[0-9]+'`.
+- **Failure contract:** `set -euo pipefail`, `BLOCKED:` stderr on missing append script or unchanged log after append; land already on `dev` before record — matches plan escalation note.
+- **Tests:** Manifest `test_record_landed_parent.py` — 3/3 pass (temp repo append+commit, missing CLI block, static `merge-parent.sh` guard); fake `git push` avoids network.
+- **ASTRAL_CODE_RULES:** §1.3 DRY (bash orchestrates only); §2.1 config path via existing `MERGE_TICKET_LOG_CONFIG`; no new Python modules or layer violations in this ticket’s diff.
+
+### Issues
+
+None (fix-now).
+
+### Recommended actions
+
+- **Advisory:** On next real `finish-up` for AST-675, confirm `data/merge_ticket_log.json` on `origin/dev` gains one `AST-675` entry (plan Stage 3 manual verify — not automated).
+- **Advisory:** Re-running `merge-parent.sh` after a successful record will append a duplicate parent id (append-only log by design); acceptable per parent epic unless dedup is added later.
