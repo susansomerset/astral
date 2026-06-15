@@ -1078,3 +1078,26 @@ class TestAst517ResumeStructureConfig:
         assert keys[0] == "resume_structure"
         assert schema["resume_structure"]["required"] is True
 
+
+class TestAst676CraftRubricSchema:
+    """AST-676: craft_prefilter_rubric rename + shared importance criterion schema."""
+
+    _IMPORTANCE_SPEC = {"type": "int", "required": True, "min": 1, "max": 10}
+    _RUBRIC_TASK_KEYS = (
+        "craft_prefilter_rubric",
+        "craft_joblist_rubric",
+        "craft_jobdesc_rubric",
+        "craft_get_rubric",
+        "craft_do_rubric",
+        "craft_like_rubric",
+    )
+
+    def test_prefilter_task_key_renamed(self) -> None:
+        assert "craft_prefilter_rubric" in cfg.TASK_CONFIG
+        assert "craft_company_prefilter" not in cfg.TASK_CONFIG
+
+    def test_all_six_rubric_tasks_share_importance_schema(self) -> None:
+        for task_key in self._RUBRIC_TASK_KEYS:
+            items = cfg.TASK_CONFIG[task_key]["response_schema"]["criteria"]["items_schema"]
+            assert items["importance"] == self._IMPORTANCE_SPEC
+
