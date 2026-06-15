@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { useUserConfirm } from "../components/UserPrompt"
 import api from "../lib/api"
 
 interface QueryResult {
@@ -55,6 +56,7 @@ export default function DataManagement() {
   const [history, setHistory] = useState<string[]>(loadHistory)
   const histIdx = useRef(-1)
   const clearToast = useCallback(() => setToast(null), [])
+  const confirm = useUserConfirm()
 
   // Table upsert (Copy Output → SQLite)
   const [upsertTable, setUpsertTable] = useState("")
@@ -76,7 +78,11 @@ export default function DataManagement() {
       }
       if (upsertPosting) return
       const table = upsertTable.trim()
-      if (!window.confirm(`Apply JSON upsert into table "${table}"? Unrelated rows remain untouched.`)) return
+      const ok = await confirm(
+        `Apply JSON upsert into table "${table}"? Unrelated rows remain untouched.`,
+        { title: "Apply upsert", confirmLabel: "Apply" },
+      )
+      if (!ok) return
 
       setUpsertPosting(true)
       try {
