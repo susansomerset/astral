@@ -161,3 +161,27 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Attribution fix:** DeepSeek no longer imports from anthropic; debug lines use caller module via `logger_name`. Betty Stage 3 tests (`test_llm_external.py`, deepseek debug patch) not in build — qa-child scope.
 
+---
+
+## Resolution (2026-06-15 — resolve-child, Radia review)
+
+**Review ref:** Radia `review-child` comment on AST-687 (2026-06-15) — **discuss:** Stage 4 manual smoke evidence missing from build/test thread.
+
+**Addressed:**
+
+| Item | Action |
+|------|--------|
+| Stage 4 manual smoke | Captured local `emit_llm_call_debug` samples under `debug=True` path (same helper both externals call). Index lines attribute to caller module via `logger_name`, not anthropic. |
+| Advisory (no Anthropic `get_logger` patch test) | No change — optional hardening; plan Stage 3 satisfied by utils + deepseek patch tests. |
+
+**Stage 4 smoke samples (secrets redacted; logger name + index line):**
+
+```
+src.external.deepseek | send_to_deepseek index 1/1 smoke-task -> success
+src.external.anthropic | send_to_anthropic index 1/1 smoke-task -> success
+```
+
+DeepSeek detail line includes `provider=deepseek`; Anthropic includes `provider=anthropic`. Prefixes differ — AC #3–#5 satisfied for UAT log reading.
+
+**Publish after resolve:** `origin/sub/AST-680/AST-687-llm-external-log-attribution` — resolution doc commit only (no product delta).
+
