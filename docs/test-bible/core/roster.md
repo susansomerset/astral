@@ -69,3 +69,26 @@ Equivalent harness:
 | `debug=False` unchanged on inflow paths | **`TestAst505InflowDiscovery`** / **`TestAst506InflowResolve`** paths without **`debug=True`**; full-file branch lock |
 
 **Rollup reconcile (AST-621):** Betty publish ref **`origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug`** — one **§7.13zzf** table row; **`rollup-child`** merges into **`origin/ftr/ast-542-debug-logging-backfill-roster`**.
+
+---
+
+### AST-673 · AST-671
+
+**AST-673 (child):** **`find_job_page`** failure and early-exit paths must not overwrite a verified **job_site** with **company_website**. **`_job_site_for_persist`** centralizes column writes in **`_save_company`**; non-empty pre-run **job_site** → **`find_job_page`** delegates to **`jobs_found_process_job_site`** (same as **JOBS_FOUND** dispatch). Empty pre-run baseline stays empty on failure.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1–2 | **NO_JOBLIST** preserves distinct pre-run **job_site** via **`_save_company`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst673::test_save_company_no_joblist_preserves_pre_run_job_site` |
+| 3 | **WATCH** success writes confirmed listings URL | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst673::test_save_company_watch_writes_confirmed_job_site` |
+| 4 | Empty **job_site** baseline stays empty on PJL failure | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst673::test_find_job_page_failure_empty_job_site_stays_empty` |
+| 5 | Stored **job_site** → **`jobs_found_process_job_site`** redirect; scrape-empty failure preserves column | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst673::test_find_job_page_with_job_site_delegates_jobs_found_path`; `TestJobsFoundProcessJobSite469::test_scrape_empty_preserves_pre_run_job_site`; `TestJobSiteForPersist673` (helper unit) |
+
+**AST-673** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestJobSiteForPersist673 \
+  tests/component/core/test_roster.py::TestFindJobPageAst673 \
+  tests/component/core/test_roster.py::TestJobsFoundProcessJobSite469::test_missing_site_response \
+  tests/component/core/test_roster.py::TestJobsFoundProcessJobSite469::test_scrape_empty_preserves_pre_run_job_site
+```

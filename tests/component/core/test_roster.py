@@ -1120,6 +1120,115 @@ class TestCheckParseResults:
         assert success["parse_instructions"]["container"] == ".jobs"
 
 
+class TestJobSiteForPersist673:
+    def test_watch_writes_page_option_url(self) -> None:
+        assert roster_mod._job_site_for_persist(
+            terminal_state="WATCH",
+            page_option_url="https://confirmed.example/jobs",
+            pre_run_job_site="https://careers.example/jobs",
+        ) == "https://confirmed.example/jobs"
+
+    def test_no_joblist_preserves_pre_run_job_site(self) -> None:
+        assert roster_mod._job_site_for_persist(
+            terminal_state="NO_JOBLIST",
+            page_option_url="https://example.com",
+            pre_run_job_site="https://careers.example/jobs",
+        ) == "https://careers.example/jobs"
+
+    def test_no_joblist_empty_baseline_stays_empty(self) -> None:
+        assert roster_mod._job_site_for_persist(
+            terminal_state="NO_JOBLIST",
+            page_option_url="https://example.com",
+            pre_run_job_site="",
+        ) == ""
+
+    @pytest.mark.parametrize("terminal_state", ["NO_OPENINGS", "CANNOT_PARSE_JOB_SITE"])
+    def test_success_states_write_page_option_url(self, terminal_state: str) -> None:
+        assert roster_mod._job_site_for_persist(
+            terminal_state=terminal_state,
+            page_option_url="https://careers.example/jobs",
+            pre_run_job_site="https://old.example/jobs",
+        ) == "https://careers.example/jobs"
+
+
+class TestFindJobPageAst673:
+    @pytest.mark.asyncio
+    async def test_find_job_page_with_job_site_delegates_jobs_found_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        company = _company(
+            job_site="https://careers.example/jobs",
+            company_website="https://example.com",
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        jf = AsyncMock(return_value={"state": "WATCH", "job_site": "https://careers.example/jobs"})
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", jf)
+        out = await roster_mod.find_job_page(
+            "https://example.com", short_name="acme", company_website="https://example.com"
+        )
+        jf.assert_awaited_once_with(
+            "acme", "https://example.com", "https://careers.example/jobs", debug=False, ctx=None
+        )
+        assert out["state"] == "WATCH"
+
+    def test_save_company_no_joblist_preserves_pre_run_job_site(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(
+                return_value=_company(
+                    job_site="https://careers.example/jobs",
+                    company_website="https://example.com",
+                )
+            ),
+        )
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        roster_mod._save_company("acme", "https://example.com", "NO_JOBLIST", "https://example.com")
+        assert update.call_args.kwargs["job_site"] == "https://careers.example/jobs"
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_failure_empty_job_site_stays_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        company = _company(company_website="https://example.com", company_data={})
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        out = await roster_mod.find_job_page("https://example.com", short_name="acme", debug=True)
+        assert out["state"] == "NO_JOBLIST"
+        update.assert_called_once()
+        assert update.call_args.kwargs["job_site"] == ""
+
+    def test_save_company_watch_writes_confirmed_job_site(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(job_site="https://old.example/jobs")),
+        )
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        roster_mod._save_company(
+            "acme",
+            "https://example.com",
+            "WATCH",
+            "https://confirmed.example/jobs",
+        )
+        assert update.call_args.kwargs["job_site"] == "https://confirmed.example/jobs"
+
+
 class TestSaveCompany:
     def test_persists_optional_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
         update = MagicMock()
@@ -2184,6 +2293,38 @@ class TestJobsFoundProcessJobSite469:
     async def test_missing_site_response(self) -> None:
         out = await roster_mod.jobs_found_process_job_site("acme", "https://corp", "")
         assert out["response_type"] == "MISSING_JOB_SITE"
+        assert out["job_site"] == ""
+
+    @pytest.mark.asyncio
+    async def test_scrape_empty_preserves_pre_run_job_site(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        company = _company(
+            job_site="https://careers.example/jobs",
+            company_website="https://example.com",
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "_strip_company_data_keys", MagicMock())
+        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value=("t", "")))
+        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="nl"))
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(
+            roster_mod,
+            "_fetch_job_links_content",
+            AsyncMock(return_value=("   ", {}, {}, {})),
+        )
+
+        @asynccontextmanager
+        async def _ctx():
+            yield MagicMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _ctx)
+        out = await roster_mod.jobs_found_process_job_site(
+            "acme", "https://example.com", "https://careers.example/jobs", debug=False,
+        )
+        assert out["response_type"] == "JOBS_FOUND_SCRAPE_EMPTY"
+        assert update.call_args.kwargs["job_site"] == "https://careers.example/jobs"
 
     @pytest.mark.asyncio
     async def test_scrape_error_without_transition_when_no_error_state(
