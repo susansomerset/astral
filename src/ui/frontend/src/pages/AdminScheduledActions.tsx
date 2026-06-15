@@ -8,6 +8,7 @@ import CollapsiblePanel from "../components/CollapsiblePanel"
 import ListTableTruncatedCell from "../components/ListTableTruncatedCell"
 import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
+import { useListTableColumnMeasure } from "../lib/useListTableColumnMeasure"
 
 interface DispatchTask {
   id: number
@@ -47,10 +48,166 @@ const DATA_COL_KEYS = [
   "batch_size", "max_runs", "last_run_at",
 ] as const
 
-function scheduledFrozenStyle(colIndex: number, frozenN: number, base: CSSProperties = {}): CSSProperties {
-  const left = stickyLeftPx(colIndex, {}, [...DATA_COL_KEYS], false, frozenN)
-  if (left == null) return base
-  return { ...base, left }
+const DATA_COL_KEYS_ARR = [...DATA_COL_KEYS]
+const NO_PERSISTED_WIDTHS: Record<string, number> = {}
+
+interface ScheduledPhaseTableProps {
+  rows: DispatchTask[]
+  frozenN: number
+  truncateChars: number
+  threadStatus: Record<number, ThreadEntry>
+  allTaskKeys: Record<string, { entity_type: string; trigger_state: string; phase: string | null; seq: number | null; is_scored?: boolean }>
+  toggleSort: (col: string) => void
+  sortIcon: (col: string) => string
+  openEdit: (row: DispatchTask) => void
+  toggleAutoMode: (row: DispatchTask) => void
+  toggleDebug: (row: DispatchTask) => void
+  handleRun: (e: React.MouseEvent, row: DispatchTask) => void
+  handleStop: (e: React.MouseEvent, row: DispatchTask) => void
+}
+
+function ScheduledPhaseTable({
+  rows,
+  frozenN,
+  truncateChars,
+  threadStatus,
+  allTaskKeys,
+  toggleSort,
+  sortIcon,
+  openEdit,
+  toggleAutoMode,
+  toggleDebug,
+  handleRun,
+  handleStop,
+}: ScheduledPhaseTableProps) {
+  const tableRef = useRef<HTMLTableElement>(null)
+  const { mergedWidths } = useListTableColumnMeasure(
+    tableRef,
+    DATA_COL_KEYS_ARR,
+    false,
+    NO_PERSISTED_WIDTHS,
+    [rows.length, frozenN],
+  )
+
+  function scheduledFrozenStyle(colIndex: number, base: CSSProperties = {}): CSSProperties {
+    const left = stickyLeftPx(colIndex, mergedWidths, DATA_COL_KEYS_ARR, false, frozenN)
+    if (left == null) return base
+    return { ...base, left }
+  }
+
+  return (
+    <div className="list-page-table-wrap list-page-table-wrap--scroll">
+      <table ref={tableRef} className="list-page-table">
+        <thead>
+          <tr>
+            <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0)} onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
+            <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1)} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
+            <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2)} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
+            <th className="sortable" onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("score_floor")}>Floor{sortIcon("score_floor")}</th>
+            <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("auto_mode")}>AUTO{sortIcon("auto_mode")}</th>
+            <th style={{ textAlign: "center" }}>Run</th>
+            <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
+            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
+            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
+            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
+            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
+            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
+            <th className="sortable" onClick={() => toggleSort("last_run_at")}>Last Run{sortIcon("last_run_at")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => {
+            const thread = threadStatus[row.id]
+            const isRunning = thread?.running ?? false
+            const isDraining = thread?.draining ?? false
+            return (
+              <tr key={row.id} onClick={() => openEdit(row)} style={{ cursor: "pointer" }}>
+                <td className={0 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(0)}>
+                  <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
+                </td>
+                <td className={1 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(1)}>
+                  <ListTableTruncatedCell text={row.task_key} maxChars={truncateChars} />
+                </td>
+                <td className={2 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(2)}>
+                  <ListTableTruncatedCell text={allTaskKeys[row.task_key]?.entity_type || row.entity_type || "—"} maxChars={truncateChars} />
+                </td>
+                <td>
+                  <ListTableTruncatedCell text={row.trigger_state || allTaskKeys[row.task_key]?.trigger_state || "—"} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  {(row.is_scored ?? !!allTaskKeys[row.task_key]?.is_scored)
+                    ? <ListTableTruncatedCell text={(row.score_floor ?? 1).toFixed(2)} maxChars={truncateChars} />
+                    : null}
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <button
+                    className={`dispatch-status-badge ${row.auto_mode ? "dispatch-status-ok" : "dispatch-status-muted"}`}
+                    onClick={e => { e.stopPropagation(); toggleAutoMode(row) }}
+                    style={{ cursor: "pointer", border: "none" }}
+                  >
+                    {row.auto_mode ? "ON" : "OFF"}
+                  </button>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <button
+                      className="list-page-bulk-btn"
+                      style={{ padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
+                      disabled={isRunning || !!row.auto_mode}
+                      onClick={e => handleRun(e, row)}
+                    >
+                      Run
+                    </button>
+                    {isRunning && (
+                      <button
+                        className="list-page-bulk-btn"
+                        style={{ position: "absolute", inset: 0, padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", background: isDraining ? "#7d6608" : "#c0392b", color: "#fff" }}
+                        onClick={e => handleStop(e, row)}
+                        disabled={isDraining}
+                      >
+                        {isDraining ? "Draining…" : "Stop"}
+                      </button>
+                    )}
+                  </div>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <button
+                    className={`dispatch-status-badge ${row.debug ? "dispatch-status-warn" : "dispatch-status-muted"}`}
+                    onClick={e => { e.stopPropagation(); toggleDebug(row) }}
+                    style={{ cursor: "pointer", border: "none" }}
+                  >
+                    {row.debug ? "ON" : "OFF"}
+                  </button>
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell
+                    text={row.available_count != null ? row.available_count.toLocaleString() : "—"}
+                    maxChars={truncateChars}
+                  />
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell text={row.freq_hrs ? String(row.freq_hrs) : "—"} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell text={String(row.min_count)} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell text={row.batch_size != null ? String(row.batch_size) : "—"} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <span title={row.max_runs === 0 ? "Loop until drained" : undefined}>
+                    {row.max_runs === 0 ? "∞" : (row.max_runs ?? 1)}
+                  </span>
+                </td>
+                <td><Time value={row.last_run_at} /></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 export default function ScheduledActions() {
@@ -376,117 +533,20 @@ export default function ScheduledActions() {
               else setOpenPhase(null)
             }}
           >
-            <div className="list-page-table-wrap list-page-table-wrap--scroll">
-              <table className="list-page-table">
-                <thead>
-                  <tr>
-                    <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0, frozenN)} onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
-                    <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1, frozenN)} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
-                    <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2, frozenN)} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
-                    <th className="sortable" onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
-                    <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("score_floor")}>Floor{sortIcon("score_floor")}</th>
-                    <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("auto_mode")}>AUTO{sortIcon("auto_mode")}</th>
-                    <th style={{ textAlign: "center" }}>Run</th>
-                    <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
-                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
-                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
-                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
-                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
-                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
-                    <th className="sortable" onClick={() => toggleSort("last_run_at")}>Last Run{sortIcon("last_run_at")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sec.rows.map(row => {
-                    const thread = threadStatus[row.id]
-                    const isRunning = thread?.running ?? false
-                    const isDraining = thread?.draining ?? false
-                    return (
-                      <tr key={row.id} onClick={() => openEdit(row)} style={{ cursor: "pointer" }}>
-                        <td className={0 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(0, frozenN)}>
-                          <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
-                        </td>
-                        <td className={1 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(1, frozenN)}>
-                          <ListTableTruncatedCell text={row.task_key} maxChars={truncateChars} />
-                        </td>
-                        <td className={2 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(2, frozenN)}>
-                          <ListTableTruncatedCell text={allTaskKeys[row.task_key]?.entity_type || row.entity_type || "—"} maxChars={truncateChars} />
-                        </td>
-                        <td>
-                          <ListTableTruncatedCell text={row.trigger_state || allTaskKeys[row.task_key]?.trigger_state || "—"} maxChars={truncateChars} />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {(row.is_scored ?? !!allTaskKeys[row.task_key]?.is_scored)
-                            ? <ListTableTruncatedCell text={(row.score_floor ?? 1).toFixed(2)} maxChars={truncateChars} />
-                            : null}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            className={`dispatch-status-badge ${row.auto_mode ? "dispatch-status-ok" : "dispatch-status-muted"}`}
-                            onClick={e => { e.stopPropagation(); toggleAutoMode(row) }}
-                            style={{ cursor: "pointer", border: "none" }}
-                          >
-                            {row.auto_mode ? "ON" : "OFF"}
-                          </button>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <div style={{ position: "relative", display: "inline-block" }}>
-                            <button
-                              className="list-page-bulk-btn"
-                              style={{ padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
-                              disabled={isRunning || !!row.auto_mode}
-                              onClick={e => handleRun(e, row)}
-                            >
-                              Run
-                            </button>
-                            {isRunning && (
-                              <button
-                                className="list-page-bulk-btn"
-                                style={{ position: "absolute", inset: 0, padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", background: isDraining ? "#7d6608" : "#c0392b", color: "#fff" }}
-                                onClick={e => handleStop(e, row)}
-                                disabled={isDraining}
-                              >
-                                {isDraining ? "Draining…" : "Stop"}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            className={`dispatch-status-badge ${row.debug ? "dispatch-status-warn" : "dispatch-status-muted"}`}
-                            onClick={e => { e.stopPropagation(); toggleDebug(row) }}
-                            style={{ cursor: "pointer", border: "none" }}
-                          >
-                            {row.debug ? "ON" : "OFF"}
-                          </button>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <ListTableTruncatedCell
-                            text={row.available_count != null ? row.available_count.toLocaleString() : "—"}
-                            maxChars={truncateChars}
-                          />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <ListTableTruncatedCell text={row.freq_hrs ? String(row.freq_hrs) : "—"} maxChars={truncateChars} />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <ListTableTruncatedCell text={String(row.min_count)} maxChars={truncateChars} />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <ListTableTruncatedCell text={row.batch_size != null ? String(row.batch_size) : "—"} maxChars={truncateChars} />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <span title={row.max_runs === 0 ? "Loop until drained" : undefined}>
-                            {row.max_runs === 0 ? "∞" : (row.max_runs ?? 1)}
-                          </span>
-                        </td>
-                        <td><Time value={row.last_run_at} /></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ScheduledPhaseTable
+              rows={sec.rows}
+              frozenN={frozenN}
+              truncateChars={truncateChars}
+              threadStatus={threadStatus}
+              allTaskKeys={allTaskKeys}
+              toggleSort={toggleSort}
+              sortIcon={sortIcon}
+              openEdit={openEdit}
+              toggleAutoMode={toggleAutoMode}
+              toggleDebug={toggleDebug}
+              handleRun={handleRun}
+              handleStop={handleStop}
+            />
           </CollapsiblePanel>
         </div>
       ))}

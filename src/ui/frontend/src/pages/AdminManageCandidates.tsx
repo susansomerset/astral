@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import ListPage from "../components/ListPage"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { useUserConfirm } from "../components/UserPrompt"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import type { Column } from "../components/ListPage"
@@ -100,6 +101,7 @@ export default function ManageCandidates() {
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
   const { refresh } = useCandidate()
+  const confirm = useUserConfirm()
   const pronounField = pronounFieldFromShapes(shapes)
 
   // Admin view fetches ALL candidates including DELETED
@@ -201,8 +203,12 @@ export default function ManageCandidates() {
       .catch(e => setToast({ text: e.message, variant: "error" }))
   }
 
-  function handleDelete(c: Candidate) {
-    if (!window.confirm(`Delete candidate "${c.astral_candidate_id}"? This is a logical delete (state → DELETED).`)) return
+  async function handleDelete(c: Candidate) {
+    const ok = await confirm(
+      `Delete candidate "${c.astral_candidate_id}"? This is a logical delete (state → DELETED).`,
+      { title: "Delete candidate", confirmLabel: "Delete", variant: "danger" },
+    )
+    if (!ok) return
     api(`/api/candidates/${c.astral_candidate_id}`, { method: "DELETE" })
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Delete failed") })
@@ -246,7 +252,7 @@ export default function ManageCandidates() {
           <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); openEdit(row) }} aria-label="Edit">
             <EditIcon />
           </button>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); handleDelete(row) }} aria-label="Delete" style={{ color: "var(--danger)" }}>
+          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); void handleDelete(row) }} aria-label="Delete" style={{ color: "var(--danger)" }}>
             <DeleteIcon />
           </button>
         </span>
@@ -353,10 +359,15 @@ export default function ManageCandidates() {
                 type="button"
                 className="dep-btn"
                 onClick={() => {
-                  if (window.confirm("Clear this candidate's API key? They won't be able to run tasks until a new key is set.")) {
+                  void (async () => {
+                    const ok = await confirm(
+                      "Clear this candidate's API key? They won't be able to run tasks until a new key is set.",
+                      { title: "Clear API key", confirmLabel: "Clear key", variant: "danger" },
+                    )
+                    if (!ok) return
                     setClearKey(true)
                     setToast({ text: "Key will be cleared on save", variant: "info" })
-                  }
+                  })()
                 }}
                 style={{ padding: "6px 10px", fontSize: 12, color: "var(--danger)" }}
               >

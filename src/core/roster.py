@@ -1249,7 +1249,7 @@ async def jobs_found_process_job_site(
     """AST-469: JOBS_FOUND — fresh scrape of stored job_site; same select→parse chain as TO_WATCH locate (no stale job_list_visible)."""
     job_site = (job_site or "").strip()
     if not job_site:
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "MISSING_JOB_SITE"}
+        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": "", "response_type": "MISSING_JOB_SITE"}
 
     _strip_company_data_keys(short_name, ("job_list_visible",))
 
@@ -1323,6 +1323,11 @@ async def find_job_page(
 
     # Load company data for possible_job_links + nav_links
     company = get_company(short_name)
+    pre_job_site = str((company or {}).get("job_site") or "").strip()
+    if pre_job_site:
+        return await jobs_found_process_job_site(
+            short_name, company_website, pre_job_site, debug=debug, ctx=ctx,
+        )
     cdata = (company.get("company_data") or {}) if company else {}
     possible_job_links = cdata.get("possible_job_links") or []
     nav_links = cdata.get("nav_links") or ""
@@ -1335,7 +1340,11 @@ async def find_job_page(
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
+            pre_js = str((company or {}).get("job_site") or "")
+            job_site_out = _job_site_for_persist(
+                terminal_state="NO_JOBLIST", page_option_url=company_website, pre_run_job_site=pre_js,
+            )
+            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site_out, "response_type": "NO_JOBLIST_FOUND"}
 
         # Scrape PJL pages (text + DOM + visible + links in one page load each)
         assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
@@ -1345,7 +1354,11 @@ async def find_job_page(
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
+            pre_js = str((company or {}).get("job_site") or "")
+            job_site_out = _job_site_for_persist(
+                terminal_state="NO_JOBLIST", page_option_url=company_website, pre_run_job_site=pre_js,
+            )
+            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site_out, "response_type": "NO_JOBLIST_FOUND"}
 
         return await _find_job_page_from_assembled(
             short_name=short_name,
@@ -1643,6 +1656,26 @@ def _derive_shortname_from_url(url: str) -> str:
 
 
 
+_PERSIST_PAGE_OPTION_URL_STATES = frozenset({"WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE"})
+
+
+def _job_site_for_persist(
+    *,
+    terminal_state: str,
+    page_option_url: str,
+    pre_run_job_site: str,
+) -> str:
+    """Return job_site column value — never substitute company_website on locate failure."""
+    st = (terminal_state or "").strip()
+    pre = (pre_run_job_site or "").strip()
+    purl = (page_option_url or "").strip()
+    if st in _PERSIST_PAGE_OPTION_URL_STATES:
+        return purl
+    if pre:
+        return pre
+    return ""
+
+
 def _save_company(
     short_name: str,
     company_website: str,
@@ -1653,6 +1686,7 @@ def _save_company(
     parse_type: Optional[str] = None,
     job_tag: Optional[str] = None,
     parse_instructions: Optional[Dict[str, Any]] = None,
+    pre_run_job_site: Optional[str] = None,
     ) -> None:
     """Save company result to database, then transition state.
     
@@ -1663,13 +1697,22 @@ def _save_company(
         short_name: Company short name
         company_website: Original company website URL
         state: Company state (UPPERCASE from COMPANY_STATES)
-        page_option_url: URL of the page option (becomes job_site)
+        page_option_url: Candidate listings URL from locate path; persisted via _job_site_for_persist
         raw_response: Raw API response for agent_responses blob (includes response_type for audit)
         no_jobs_message: Optional message for NO_OPENINGS
         parse_type: Optional parse type (legacy)
         job_tag: Optional job tag (legacy)
         parse_instructions: Optional parse_instructions blob
+        pre_run_job_site: Pre-run job_site column; fetched from DB when omitted
     """
+    if pre_run_job_site is None:
+        row = get_company(short_name)
+        pre_run_job_site = str((row or {}).get("job_site") or "")
+    job_site_to_write = _job_site_for_persist(
+        terminal_state=state,
+        page_option_url=page_option_url,
+        pre_run_job_site=pre_run_job_site,
+    )
     cd: Dict[str, Any] = {}
     if no_jobs_message:
         cd["no_jobs_message"] = no_jobs_message
@@ -1681,7 +1724,7 @@ def _save_company(
     company_name = _extract_company_name_from_url(company_website or page_option_url)
     update_company(short_name,
         company_website=company_website,
-        job_site=page_option_url,
+        job_site=job_site_to_write,
         company_name=company_name,
     )
     if cd:

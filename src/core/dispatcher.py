@@ -588,7 +588,9 @@ async def _dispatch_one(task: Dict) -> None:
         flush_log_buffer()
         # Alert while log_batch_id still set — monitor logs appear in the batch log view
         if dispatch_ledger_id and not is_click and accumulated.get("total_errors", 0) > 0:
-            monitor.auto_run_error(task_key, dispatch_ledger_id, accumulated, final_status)
+            monitor.auto_run_error(
+                task_key, dispatch_ledger_id, accumulated, final_status, candidate_id
+            )
         log_batch_id.set(None)
         try:
             _db_update_dispatch_task(task_id, last_run_at=_now_iso())

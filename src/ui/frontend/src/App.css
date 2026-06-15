@@ -445,8 +445,14 @@ body {
 }
 
 .list-page-table thead th.list-table-cell-frozen {
+  position: sticky;
+  top: 0;
   z-index: 3;
   background: var(--bg-elevated);
+}
+
+.list-page-table tbody td.list-table-cell-frozen {
+  position: sticky;
 }
 
 .list-page-table tbody tr:hover td.list-table-cell-frozen {
@@ -1746,7 +1752,7 @@ input.side-tab-heading-editable:focus {
 
 .dispatch-log-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-bottom: 6px;
 }
 

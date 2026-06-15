@@ -9,6 +9,7 @@ escalation, daily summaries) extend this module without touching the dispatcher.
 from src.data import database
 from src.external.gmail import send_email
 from src.utils.config import ASTRAL_CONFIG
+from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -18,12 +19,21 @@ logger = get_logger(__name__)
 # Public
 # ---------------------------------------------------------------------------
 
-def auto_run_error(task_key: str, batch_id: str, accumulated: dict, final_status: str) -> None:
+def auto_run_error(
+    task_key: str,
+    batch_id: str,
+    accumulated: dict,
+    final_status: str,
+    candidate_id: str = "",
+) -> None:
     """Send an error alert email after an AUTO task run with errors.
 
     Called by dispatcher._dispatch_one() when:
       - task is AUTO mode (not a CLICK run)
       - total_errors > 0
+
+    Subject prefix is [{deploy_label}] or [{deploy_label}/{last_name}] from
+    ASTRAL_DEPLOY_ENV and the dispatch task candidate's profile.last.
 
     Fetches log entries for the batch (already flushed to DB at this point),
     formats subject + body, and sends via Gmail. Never raises — a failed alert
@@ -37,8 +47,11 @@ def auto_run_error(task_key: str, batch_id: str, accumulated: dict, final_status
         total_processed = accumulated.get("total_processed", 0)
         total_errors = accumulated.get("total_errors", 0)
 
+        deploy_label = get_deploy_label()
+        last_name = _resolve_candidate_last_name(candidate_id)
+        prefix = _format_alert_subject_prefix(deploy_label, last_name)
         subject = (
-            f"[Astral] {task_key} {final_status}: "
+            f"{prefix} {task_key} {final_status}: "
             f"{total_errors} error(s) / {total_processed} processed | {batch_id}"
         )
         logger.info("[monitor] fetching %s log entries for email body...", batch_id)
@@ -69,3 +82,22 @@ def _format_log_body(batch_id: str) -> str:
         for e in entries
     ]
     return "\n".join(lines)
+
+
+def _resolve_candidate_last_name(candidate_id: str) -> str | None:
+    """Profile last name for subject triage; None when missing or empty."""
+    if not (candidate_id or "").strip():
+        return None
+    row = database.get_candidate(candidate_id.strip())
+    if not row:
+        return None
+    profile = (row.get("candidate_data") or {}).get("profile") or {}
+    last = (profile.get("last") or "").strip()
+    return last or None
+
+
+def _format_alert_subject_prefix(deploy_label: str, last_name: str | None) -> str:
+    """Bracket prefix: [deploy] or [deploy/LastName]."""
+    if last_name:
+        return f"[{deploy_label}/{last_name}]"
+    return f"[{deploy_label}]"

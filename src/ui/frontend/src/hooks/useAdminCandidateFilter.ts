@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import { sortCandidatesForSelect } from "../lib/candidateLabel"
 
@@ -27,6 +27,7 @@ export function useAdminCandidateFilter(options?: Options) {
     if (urlBacked && options?.urlPresentDisablesSync && urlBacked.value) return false
     return true
   })
+  const manualPinRef = useRef(false)
 
   const [localFilter, setLocalFilter] = useState<AdminCandidateFilterValue>(() =>
     navDefaultCandidateFilter(selectedId),
@@ -44,6 +45,7 @@ export function useAdminCandidateFilter(options?: Options) {
 
   const setCandidateFilter = useCallback(
     (next: AdminCandidateFilterValue) => {
+      manualPinRef.current = true
       setSyncWithNav(false)
       applyFilter(next)
     },
@@ -51,7 +53,7 @@ export function useAdminCandidateFilter(options?: Options) {
   )
 
   useEffect(() => {
-    if (!syncWithNav) return
+    if (!syncWithNav || manualPinRef.current) return
     applyFilter(navDefaultCandidateFilter(selectedId))
   }, [selectedId, syncWithNav, applyFilter])
 

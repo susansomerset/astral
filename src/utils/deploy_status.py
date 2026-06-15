@@ -32,6 +32,11 @@ def _resolve_environment() -> str | None:
     return raw
 
 
+def get_deploy_label() -> str:
+    """Display label for deploy env in alerts and UI; Astral when unset."""
+    return _resolve_environment() or "Astral"
+
+
 def is_local_deploy_env() -> bool:
     raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip()
     return raw.lower() == "local"
