@@ -132,3 +132,35 @@ No conflicts flagged. Plan is implementable as written.
 **Branch:** `origin/sub/AST-656/AST-662-execution-history-candidate-switch`  
 **Tip:** `24495c35`  
 **Built:** Stage 1 — `manualPinRef` guard in `useAdminCandidateFilter`. Stage 2 — memoized `urlBacked` on `AdminPerformanceMonitor`. Stage 3 component tests deferred to Betty per build-child test-tree ban (AC6 coverage in qa-child manifest).
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-656/AST-662-execution-history-candidate-switch` (tip `bfc6d846`)  
+**Reviewed:** 2026-06-14
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–2 match plan; Stage 3 tests landed via Betty manifest (`test_useAdminCandidateFilter`, `test_AdminPerformanceMonitor`). |
+| AST-634 follow-through | Closes Radia **discuss** on `urlBacked` identity (`useMemo` on Execution History) and nav-sync race (`manualPinRef` before `setSyncWithNav`). |
+| AC coverage | Hook test locks direct c1→c2 without snap-back; page test asserts ledger refetch, row swap, and dropdown value. |
+| Boundaries | Execution History page + shared hook only; no backend, nav config, or other admin tabs touched. |
+| §3.3 layers | Frontend-only; imports at module top (`useRef`, existing `useMemo`). |
+| §2.1 config | No hardcoded candidate state strings. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | `useAdminCandidateFilter.ts` `manualPinRef` | Ref is never cleared after manual pick; harmless because `syncWithNav === false` already disables nav-sync for the rest of the session. Ref only covers the stale-`syncWithNav` render window. |
+| advisory | `AdminAgentTimesheets.tsx` (unchanged) | Still passes inline `urlBacked`; plan defers memoization there. If UAT reports the same direct-switch bug on Timesheets, apply the same one-liner. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| UAT | Smoke direct candidate-to-candidate switch on Execution History in staging; confirm All → specific path still works. |
+| follow-up | Only if Timesheets shows same defect: memoize `urlBacked` on that page (no hook change needed). |
+
+**Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
