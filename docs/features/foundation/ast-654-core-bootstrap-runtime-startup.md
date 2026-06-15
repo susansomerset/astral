@@ -193,3 +193,15 @@ No conflicts requiring `conf-!!-NONE`.
 | Optional: update `ASTRAL_CODE_RULES.md` §3.2 server.py bullet (scheduler now in `core/bootstrap`) | AST-385 or follow-up |
 
 **Verdict:** Clean — approve for merge integration.
+
+## Resolution (Hedy)
+
+**Resolved:** 2026-06-15 · publish ref @ resolve tip (see git log)
+
+Radia **Review Posted** @ `f5153328`: **fix-now** and **discuss** empty; advisory dispatch-key validation already addressed in `9088ec20` (product fix during test-child). No additional product changes required.
+
+**Shipped:**
+- `src/core/bootstrap.py` — `bootstrap_runtime()` pipeline (validation → sync → scheduler); dispatch keys validated via `resolve_dispatch_task_config_key` + `dispatch_task_admin_defaults` fallback.
+- `src/ui/server.py` — single `bootstrap_runtime()` call; zero `src.data` imports.
+
+**Deferred:** `ASTRAL_CODE_RULES.md` §3.2 scheduler bullet → AST-385 per Radia advisory.
