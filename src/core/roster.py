@@ -1643,6 +1643,26 @@ def _derive_shortname_from_url(url: str) -> str:
 
 
 
+_PERSIST_PAGE_OPTION_URL_STATES = frozenset({"WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE"})
+
+
+def _job_site_for_persist(
+    *,
+    terminal_state: str,
+    page_option_url: str,
+    pre_run_job_site: str,
+) -> str:
+    """Return job_site column value — never substitute company_website on locate failure."""
+    st = (terminal_state or "").strip()
+    pre = (pre_run_job_site or "").strip()
+    purl = (page_option_url or "").strip()
+    if st in _PERSIST_PAGE_OPTION_URL_STATES:
+        return purl
+    if pre:
+        return pre
+    return ""
+
+
 def _save_company(
     short_name: str,
     company_website: str,
@@ -1653,6 +1673,7 @@ def _save_company(
     parse_type: Optional[str] = None,
     job_tag: Optional[str] = None,
     parse_instructions: Optional[Dict[str, Any]] = None,
+    pre_run_job_site: Optional[str] = None,
     ) -> None:
     """Save company result to database, then transition state.
     
@@ -1669,7 +1690,16 @@ def _save_company(
         parse_type: Optional parse type (legacy)
         job_tag: Optional job tag (legacy)
         parse_instructions: Optional parse_instructions blob
+        pre_run_job_site: Pre-run job_site column; fetched from DB when omitted
     """
+    if pre_run_job_site is None:
+        row = get_company(short_name)
+        pre_run_job_site = str((row or {}).get("job_site") or "")
+    job_site_to_write = _job_site_for_persist(
+        terminal_state=state,
+        page_option_url=page_option_url,
+        pre_run_job_site=pre_run_job_site,
+    )
     cd: Dict[str, Any] = {}
     if no_jobs_message:
         cd["no_jobs_message"] = no_jobs_message
@@ -1681,7 +1711,7 @@ def _save_company(
     company_name = _extract_company_name_from_url(company_website or page_option_url)
     update_company(short_name,
         company_website=company_website,
-        job_site=page_option_url,
+        job_site=job_site_to_write,
         company_name=company_name,
     )
     if cd:
