@@ -195,3 +195,10 @@ Use existing `TestFindJobPage` / `run_company_task` monkeypatch patterns in the 
 - **§2.6 state machine:** Terminal states unchanged; only **job_site** column write on failure paths.
 - **§3.3 imports:** No new cross-layer imports.
 - **§3.5 naming:** Helper follows `_snake_case` private function convention in `roster.py`.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-671/AST-673-preserve-job-site-on-find-job-page-failure`  
+**Product commits:** `9244c148` (Stage 1 — `_job_site_for_persist` + `_save_company`), `80d15c71` (Stage 2 — `find_job_page` stored-URL redirect), `d2c1fd7f` (Stage 3 — `jobs_found_process_job_site` empty baseline return shape)
