@@ -30,7 +30,8 @@ from src.data.database import (
     sum_cost_by_batch,
 )
 from src.core.timesheets import record_timesheet_entry
-from src.external.anthropic import send_to_anthropic, getTimestampPrefix, extract_api_response_text
+from src.external.anthropic import send_to_anthropic, getTimestampPrefix
+from src.utils.llm_external import extract_api_response_text
 from src.external.deepseek import send_to_deepseek
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,

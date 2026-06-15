@@ -145,3 +145,30 @@ dbg = get_logger(__name__, debug_flag=True)  # always src.external.anthropic whe
 | §3.6 debug/ | No spike or `debug/` repo output. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness`  
+**Product commits:** `<build-sha>` — global `~/.cursor/skills/review-child/SKILL.md` §5g + §5/§5a cross-refs; **Implementation record** below (skill not in repo git)
+
+---
+
+## Implementation record (AST-688 build)
+
+**Skill path:** `~/.cursor/skills/review-child/SKILL.md` (global; not versioned in `astral` git)
+
+**Changes applied:**
+
+1. **§5 intro** — sentence added: when diff touches LLM external modules or shared utils helpers, apply **§5g**.
+2. **§5a Layer compliance (B2)** — appended LLM provider cross-ref to **§5g**.
+3. **§5a Logging (E1)** — appended LLM external module-prefix cross-ref to **§5g**.
+4. **§5g External layer cleanliness (AST-680 / AST-688)** — inserted after **§5f**, before **§6**, containing:
+   - When to apply / contract source / severity
+   - fix-now table: cross-external import, shared helper placement, hard-coded sibling logger, provider prefix mismatch, misleading func_name, debug contract on touched paths
+   - Verification hints, grandfather, coexistence, not fix-now
+   - **Sample review comment (external cleanliness)** block (verbatim per plan Stage 1 step 3)
+
+**Verification:** Parent AST-680 staging pattern (`INFO src.external.anthropic: send_to_deepseek` + `provider=deepseek` detail) maps to **Provider prefix mismatch** fix-now under §5g.
+
