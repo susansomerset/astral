@@ -154,3 +154,15 @@ None **fix-now**.
 |----------|--------|
 | — | Ada: none — proceed **resolve-child** if no open **discuss** threads. |
 | advisory | Epic rollup: confirm AST-687/688 sibling commits land with parent **AST-655** merge, not mistaken for AST-685 scope. |
+
+## Resolution (resolve-child, 2026-06-15)
+
+**Radia review @ `d37d388e`:** fix-now none — clean resolve.
+
+| Finding | Resolution |
+|---------|------------|
+| **Stage 1 / plan fidelity** | No product changes — `a74e0def` already matches plan; migration chain and zero AST-678 symbols verified on publish ref. |
+| **Betty manifest** | No product changes — `d7df703f` / `bb18a3df` test+bible cleanup; test-child manifest items 1–4 green. |
+| **advisory** — AST-687/688 sibling commits on publish ref | Acknowledged — LLM attribution tests + bible README block are sibling scope; no conflict with AST-685 revert. Track at merge-parent / those tickets. |
+
+**§9a dry-run:** `origin/sub/AST-655/AST-685-uat-revert-ast-678-agent-task-auto-migration` merges cleanly into `origin/dev` and `origin/ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what`.
