@@ -111,3 +111,28 @@ No conflicts requiring `conf-!!-NONE`.
 | 2 | `b2a99973` | Frontend: remove commit tip from admin deploy footer UI |
 
 **Tip:** `b2a99973`
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer` (tip `9846f148`)
+
+### What's solid
+
+- `deploy_status.py`: `_git_head_info`, git subprocess, and commit keys removed; payload is `uptime`, `uptime_seconds`, optional `environment` only — matches plan Stage 1 and parent AC.
+- `AdminDeployFooter.tsx` + `App.css`: commit span/tooltip and `.nav-deploy-commit` removed; env · uptime layout preserved; poll interval and error branch unchanged.
+- Plan-enumerated component tests and Betty bible rows (`deploy_status.md`, `components.md`) align with the slimmer API shape.
+- No remaining `commit_short` / `commit_message` references under `src/`. Layer imports and logging rules unchanged (§3.3, §1.5 N/A).
+
+### Issues
+
+| Severity | Location | Issue |
+|----------|----------|-------|
+| fix-now | branch commit `a0e02d28` | **Cross-ticket scope:** AST-676 craft-rubric test + bible additions (`test_agent.py`, `test_config.py`, `docs/test-bible/core/agent.md`, `docs/test-bible/utils/config.md`) landed on this AST-658 child ref. AST-676 parent is AST-655 (User Testing on Ada). Revert `a0e02d28` on this sub branch or ensure those files exist only on the AST-676 publish ref before `merge-parent`. |
+| advisory | — | AST-676 hunks are additive tests/docs only; they do not block AST-679 functional AC but pollute the child diff. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Revert `a0e02d28` on `sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer` and republish (or confirm AST-676 branch already carries equivalent commits) | Katherine |
+| No product-code changes required for AST-679 scope | — |
