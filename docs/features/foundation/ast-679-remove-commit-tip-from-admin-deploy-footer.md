@@ -100,3 +100,14 @@ The plan is binding. Execute stages in order. One commit per stage on the active
 | §3.5 naming | Existing names retained; only commit-specific names removed. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Branch:** `sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `74df6a58` | Backend: remove commit fields from deploy status payload |
+| 2 | `b2a99973` | Frontend: remove commit tip from admin deploy footer UI |
+
+**Tip:** `b2a99973`
