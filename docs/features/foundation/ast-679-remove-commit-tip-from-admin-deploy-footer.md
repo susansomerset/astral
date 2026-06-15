@@ -136,3 +136,16 @@ No conflicts requiring `conf-!!-NONE`.
 |--------|-------|
 | Revert `a0e02d28` on `sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer` and republish (or confirm AST-676 branch already carries equivalent commits) | Katherine |
 | No product-code changes required for AST-679 scope | — |
+
+## Resolution
+
+**Date:** 2026-06-15
+
+| Radia item | Action |
+|------------|--------|
+| fix-now: AST-676 spill (`a0e02d28`) | Reverted on publish ref — removed `test_agent.py`, `test_config.py`, `agent.md`, `config.md` hunks that belong on AST-676 / AST-655 only |
+| advisory: diff pollution | Addressed by same revert |
+
+No product-code changes; AST-679 scope unchanged.
+
+**Commits:** `fix(AST-679): review feedback — revert AST-676 test spill from sub branch`
