@@ -160,6 +160,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | `src/core/agent.py` | `tests/component/core/test_agent.py` | yes |
 | `src/core/roster.py` | `tests/component/core/test_roster.py` | yes |
 | `src/core/intake.py` | `tests/component/core/test_intake.py` | yes |
+| `src/core/bootstrap.py` | `tests/component/core/test_bootstrap.py` | no |
 
 **AST-486 (consult layering):** **`TestTrackerFacades.test_ast486_consult_layer_facades_delegate_to_database`** asserts **`tracker.get_company`**, **`tracker.append_agent_response`**, and **`tracker.list_timesheets`** forward to **`database`** (`consult.py` consumes **`tracker`** only for those paths).
 
@@ -1796,6 +1797,24 @@ Retire candidate **Board Searches** nav/route/page and hide **`gaze_board`** fro
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/test_routes.test.tsx
 ```
+
+## 7.13zzw Core bootstrap runtime startup (**AST-654**, parent **AST-383**)
+
+**AST-383 (parent epic):** Move Flask process startup (LLM env validation → `sync_agent_tasks` → `start_scheduler`) from **`src/ui/server.py`** into **`src/core/bootstrap.py`**. UI calls **`bootstrap_runtime()`** once after blueprint registration — no direct **`src.data`** import in **`server.py`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-654** | Ordered **`bootstrap_runtime()`** pipeline; fail-fast **`_validate_runtime_coupling()`** before DB sync | `src/core/bootstrap.py`, `src/ui/server.py` | **`tests/component/core/test_bootstrap.py`** (full file); **`tests/component/ui/test_server.py::TestServeReact`** ( **`server_client`** stubs **`bootstrap_runtime`** ); **`tests/component/ui/conftest.py`** **`server_client`** fixture |
+
+**AST-654** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/ui/test_server.py
+```
+
+**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** are dispatch-row keys (e.g. **`consult_do`**, **`prefilter`**) resolved via **`resolve_dispatch_task_config_key()`** into **`TASK_CONFIG`** agent keys — raw membership in **`TASK_CONFIG`** fails server import until **`bootstrap.py`** aligns validation with that helper.
 
 ## 7.13zzv UAT — craft_resume_base Generate does not persist artifacts (**AST-650**, parent **AST-601**)
 
