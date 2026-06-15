@@ -251,3 +251,15 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Publish ref:** `origin/sub/AST-675/ast-690-uat-env-label-click-popup-for-merge-ticket-list`  
 **Product commit:** `4a17067c` (Stage 1 — click popup on env label; `AdminDeployFooter.tsx` + `App.css`)
+
+---
+
+## Resolution (2026-06-15)
+
+**Publish ref:** `origin/sub/AST-675/ast-690-uat-env-label-click-popup-for-merge-ticket-list` @ `fd9e663b` (Radia review — fix-now: none)
+
+Radia review clean — no fix-now, discuss, or product changes. Merged `origin/dev`, `origin/ftr/ast-675-create-a-ticket-log-in-utils`, and publish ref on epic worktree `work690`; §9a dry-run clean against `origin/dev` and `origin/ftr/ast-675-create-a-ticket-log-in-utils`.
+
+**Advisory (no action):** `key={line}` collision unlikely; loose `listbox` ARIA acceptable for admin footer; poll-while-open edge case harmless.
+
+**Outcome:** Admin deploy footer environment label opens click-to-toggle popup with up to 20 merge-ticket lines (`ticket_id` + `fmtTime`); static span when no history; native `title` removed.
