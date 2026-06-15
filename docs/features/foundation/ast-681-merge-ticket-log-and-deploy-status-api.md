@@ -197,6 +197,13 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 ---
 
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-675/ast-681-merge-ticket-log-and-deploy-status-api`  
+**Product commits:** `612386bf` (config + `merge_ticket_log` utils + seed `data/merge_ticket_log.json`), `d0258f33` (`merge_tickets` on deploy-status payload + `scripts/append_merge_ticket_log.py`)
+
+---
+
 ## Self-review (ASTRAL_CODE_RULES)
 
 | Rule | Assessment |
