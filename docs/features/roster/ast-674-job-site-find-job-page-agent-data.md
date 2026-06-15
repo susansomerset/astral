@@ -227,3 +227,13 @@ No `conf-!!-NONE` conflicts identified.
 ### Recommended actions
 
 None — **resolve-child** may proceed.
+
+---
+
+## Resolution (2026-06-15)
+
+**Outcome:** — clean (no product changes; Radia review had no fix-now items).
+
+**Publish ref:** `origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data` @ `cd270ad5` (includes Radia `docs(AST-674): Radia review — clean`).
+
+**§9a:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-669-find-job-page-job-doesnt-display-the-agent-content`.
