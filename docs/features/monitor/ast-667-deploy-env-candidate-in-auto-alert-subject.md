@@ -210,3 +210,12 @@ Proceed to **resolve-child** (no code changes required).
 
 - `_resolve_candidate_last_name` uses `or {}` on optional profile fields — bounded: missing data omits `/LastName` rather than inventing a value; acceptable for non-raising alert formatting (§3.2 monitor never raises).
 
+---
+
+## Resolution
+
+**Date:** 2026-06-15  
+**Review:** Radia @ `e528330e` — **fix-now:** none; **discuss:** none.
+
+No product changes required. Cherry-picked Radia review doc onto epic worktree; manifest re-run green (16 passed). §9a dry-run clean into `origin/dev` and `origin/ftr/AST-660-include-astral-deploy-env-in-email-alert-header`. Advanced to **User Testing**.
+
