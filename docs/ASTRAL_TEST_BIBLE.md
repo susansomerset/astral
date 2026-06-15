@@ -1,5 +1,7 @@
 This is the reference to existing tests, including unit/component and integration testing.
 
+> **AST-598 migration:** Canonical content now lives under **`docs/test-bible/`** (see **`docs/test-bible/README.md`**). This monolith is retained until Radia **review-child** confirms the tree is complete; Betty appends new manifests to per-component files, not here.
+
 **Owner:** **Betty** — maintained via **`qa-astral`**: use it to decide which **existing** tests apply to an issue (manifest-only is OK when coverage already matches), which tests a change **breaks** and must be revised, and when to **append or correct** this file so the map stays true. **Engineers do not commit** this file or other **test-tree** paths — see **`docs/ASTRAL_TEAM_WORKFLOW.md`** § Test ownership.
 
 ## 2. Where tests live
@@ -1637,6 +1639,25 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
+
+## 7.13zzna Execution History direct candidate switch (**AST-662**, parent **AST-656**)
+
+**AST-656 (parent):** Execution History **`/admin/performance`** on-page **Candidate** dropdown must apply direct candidate-to-candidate changes without an intermediate **All** selection — dropdown display, URL **`candidate_id`**, ledger fetch, table rows, and total cost stay in sync. UI-only fix on shared **`useAdminCandidateFilter`** (**`manualPinRef`** nav-sync guard) plus memoized **`urlBacked`** on **`AdminPerformanceMonitor`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-662** | Direct A→B switch; hook manual-pin guard; stable **`urlBacked`** on Execution History | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `AdminPerformanceMonitor.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` (direct **`c1`→`c2`** urlBacked case); **`AST-634`** describe + new direct-switch case in `test_AdminPerformanceMonitor.test.tsx` |
+
+**AST-662** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-634|direct urlBacked|direct candidate switch"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** and hook file when parent UAT runs — **§7.13zzn** **AST-634** cases must stay green.
 
 ## 7.13zzo Auto retry — union claim/count + per-entity batch retry routing (**AST-641**, **AST-642**, parent **AST-630**)
 
