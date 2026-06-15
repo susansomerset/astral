@@ -444,6 +444,24 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-677 · AST-655
+
+**AST-677 (child):** Company Watch Criteria Artifacts page **`taskKey`** rename only — **`craft_company_prefilter`** → **`craft_prefilter_rubric`**. Stored artifact **`company_prefilter`** unchanged. Backend **`TASK_CONFIG`** + schema validation covered by **AST-676**; admin prompt bodies are **AST-678**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **Generate** / **Regenerate** POST **`/api/candidates/{id}/generate/craft_prefilter_rubric`** via **`ArtifactEditor`** | `src/ui/frontend/src/pages/ArtifactsCompanyWatchCriteria.tsx` | **`tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx`** — routed page render (**§6c**); **`AST-677: Generate POSTs craft_prefilter_rubric`** |
+| — | Backend task key + rubric **`importance`** schema (regression) | `src/utils/config.py`, `src/core/agent.py` | **`TestAst676CraftRubricSchema`** (`test_config.py`); **`TestResponseSchemaBranches::test_ast676_*`** (`test_agent.py`) |
+
+**AST-677** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+---
+
 ### AST-659 · AST-639
 
 **AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
