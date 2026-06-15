@@ -3791,6 +3791,136 @@ We appreciate you!
 """
 
 
+
+# AST-678: shared importance explainer for all six craft_*_rubric agent_task prompts.
+_AST678_CRAFT_RUBRIC_TASK_KEYS: Tuple[str, ...] = (
+    "craft_prefilter_rubric",
+    "craft_joblist_rubric",
+    "craft_jobdesc_rubric",
+    "craft_get_rubric",
+    "craft_do_rubric",
+    "craft_like_rubric",
+)
+_AST678_IMPORTANCE_MARKER = "AST-678_VECTOR_IMPORTANCE"
+_AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER = """## Vector importance (1–10)
+
+Each criterion you return is a scoring **vector**. Assign every vector an integer **`importance`** from **1** (lowest priority) to **10** (highest priority). You **must** return `importance` on **every** criterion in your JSON — do not omit it or leave priority implicit.
+
+Spread importance meaningfully when vectors differ in how much they should move the consult score. Avoid assigning **5** to every vector when priorities clearly differ.
+
+### Weight multipliers (importance → score contribution)
+
+Importance scales each vector's contribution to the overall consult score:
+
+- 1 → 30% of baseline
+- 2 → 49%
+- 3 → 68%
+- 4 → 87%
+- 5 → 106% (baseline)
+- 6 → 125%
+- 7 → 144%
+- 8 → 163%
+- 9 → 182%
+- 10 → 200%
+
+These match the runtime table in `ASTRAL_CONFIG["consult_importance"]` (AST-358 / AST-429).
+
+### How importance combines with grades and confidence at scoring time
+
+At runtime each vector receives a letter grade (**A–D**, plus **F** and **X**) and a **confidence** integer **1–5**. Consult scoring combines all three:
+
+- **Counted vectors** contribute: `(equal base share among counted vectors) × (grade density) × (importance multiplier) × (confidence multiplier)`.
+- **Grade density** uses universal letter values (A highest, D lowest) times the confidence multiplier (1 → 0%, 2 → 25%, 3 → 50%, 4 → 75%, 5 → 100% of grade value).
+- **F** with confidence **2–5** is a **dealbreaker** — the rubric fails immediately regardless of other vectors.
+- **X** (cannot evaluate) and **confidence 1** vectors are **excluded** from the scored numerator (they do not add points; remaining vectors share the base).
+- The summed contribution is normalized to a **0–10** consult score and compared to the stage pass threshold.
+
+Return `importance` as an integer field **1–10** alongside `label` and `content` on each criterion object.
+
+<!-- AST-678_VECTOR_IMPORTANCE -->"""
+
+
+def _patch_ast678_importance_into_user_prompt(user_prompt: str) -> str:
+    """Insert shared importance explainer into craft rubric user_prompt (idempotent)."""
+    if _AST678_IMPORTANCE_MARKER in user_prompt:
+        return user_prompt
+    token = "{$RESPONSE_SCHEMA}"
+    if token in user_prompt:
+        idx = user_prompt.index(token)
+        return user_prompt[:idx].rstrip() + "\n\n" + _AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER + "\n\n" + user_prompt[idx:]
+    if not user_prompt.strip():
+        return _AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER
+    return user_prompt.rstrip() + "\n\n" + _AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER
+
+
+def _apply_ast678_craft_rubric_importance_migration(conn: sqlite3.Connection) -> None:
+    """AST-678: craft_company_prefilter → craft_prefilter_rubric; patch six rubric user_prompts."""
+    _agent_task_sel = """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                                cache_prompt_d, nocache_prompt, system_prompt, run_next
+                         FROM agent_task WHERE task_key = ? AND current = 1 LIMIT 1"""
+
+    def _load_current(task_key: str):
+        try:
+            return conn.execute(_agent_task_sel, (task_key,)).fetchone()
+        except sqlite3.Error:
+            return None
+
+    now = _utc_now()
+    old_row = _load_current("craft_company_prefilter")
+    new_row = _load_current("craft_prefilter_rubric")
+    if old_row is not None:
+        new_blank = (
+            new_row is None
+            or (not (new_row[1] or "").strip() and not (new_row[2] or "").strip())
+        )
+        if new_blank:
+            patched_up = _patch_ast678_importance_into_user_prompt(old_row[1] or "")
+            _save_agent_task_on_connection(
+                conn,
+                "craft_prefilter_rubric",
+                now=now,
+                agent_id=old_row[0],
+                user_prompt=patched_up,
+                cache_prompt=old_row[2],
+                cache_prompt_b=old_row[3],
+                cache_prompt_c=old_row[4],
+                cache_prompt_d=old_row[5],
+                nocache_prompt=old_row[6],
+                system_prompt=old_row[7],
+                run_next=old_row[8],
+            )
+        try:
+            conn.execute(
+                "UPDATE agent_task SET current = 0 WHERE task_key = 'craft_company_prefilter' AND current = 1"
+            )
+        except sqlite3.Error:
+            pass
+
+    for task_key in _AST678_CRAFT_RUBRIC_TASK_KEYS:
+        row = _load_current(task_key)
+        if not row:
+            continue
+        up_raw = row[1] or ""
+        new_up = _patch_ast678_importance_into_user_prompt(up_raw)
+        if new_up == up_raw:
+            continue
+        _save_agent_task_on_connection(
+            conn,
+            task_key,
+            now=now,
+            agent_id=row[0],
+            user_prompt=new_up,
+            cache_prompt=row[2],
+            cache_prompt_b=row[3],
+            cache_prompt_c=row[4],
+            cache_prompt_d=row[5],
+            nocache_prompt=row[6],
+            system_prompt=row[7],
+            run_next=row[8],
+        )
+    conn.commit()
+
+
 def _patch_ast561_take_jd_into_prompt(text: str) -> str:
     """Insert take_jd bullet before take_do when prose exists but take_jd is missing."""
     if "take_jd" in text:
@@ -3937,6 +4067,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
             cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_task)").fetchall()}
     _apply_ast469_select_job_page_run_next_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
+    _apply_ast678_craft_rubric_importance_migration(conn)
     _agent_task_schema_ensured = True
 
 
