@@ -24,6 +24,7 @@ Config sections:
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
   AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
+  MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
 """
 
 import json
@@ -1633,6 +1634,14 @@ TRACKER_CONFIG = {
         "bot_threshold":          2,   # signal hits ≥ this → bot block
         "date_pattern_threshold": 5,   # ≥ this date-stamp matches → job board listing → missing
     },
+}
+
+# ---------------------------------------------------------------------------
+# MERGE_TICKET_LOG_CONFIG: append-only parent epic land history (AST-675/681).
+# Shipped in-repo; finish-up appends via scripts/append_merge_ticket_log.py.
+# ---------------------------------------------------------------------------
+MERGE_TICKET_LOG_CONFIG = {
+    "log_path": _PROJECT_ROOT / "data" / "merge_ticket_log.json",
 }
 
 # ---------------------------------------------------------------------------
