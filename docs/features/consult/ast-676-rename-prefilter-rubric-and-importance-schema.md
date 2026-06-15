@@ -129,5 +129,26 @@ All six rubric **Generate** runs fail schema validation until models return `imp
 | Field | Value |
 |-------|-------|
 | Branch | `origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` |
-| Tip | `faf4d24f` |
-| Status | Code Complete — pending Betty qa-child (plan stage 3 component tests) |
+| Tip | `e0089dc2` |
+| Status | Review Posted (Radia) |
+
+### What's solid
+
+- Plan stages 1–3 land as specified: shared `_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA`, `craft_company_prefilter` → `craft_prefilter_rubric` in `TASK_CONFIG`, int `min`/`max` + bool rejection in `_validate_response_schema`, spike script key list, Betty manifest tests + bible blocks.
+- §1.3 DRY: one criterion schema wired to all six Phase B rubric craft tasks; validator change is minimal and localized.
+- Sibling boundaries respected: no `src/ui/frontend/**`, no admin prompt DB work, `company_prefilter` artifact key unchanged; only `ArtifactsCompanyWatchCriteria.tsx` still references old task key (AST-677 scope).
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| advisory | `src/utils/config.py` | `importance` bounds are literal `min: 1`, `max: 10` on the schema field, not bound to `ASTRAL_CONFIG["consult_importance"]`. Plan documents this as intentional; if consult bounds change later, schema must be updated manually. |
+| advisory | epic sequencing | Company Watch UI still calls `craft_company_prefilter` until **AST-677**; rubric Generate will fail schema validation until models return `importance` (**AST-678**). Both documented in Self-Assessment Risk — no surprise. |
+
+### Recommended actions
+
+| Item | Owner | Action |
+|------|-------|--------|
+| — | — | No fix-now items. Proceed to **resolve-child** if discuss items are acknowledged. |
+| UI task key | AST-677 | Rename `taskKey` in `ArtifactsCompanyWatchCriteria.tsx` when that sibling lands. |
+| Prompt bodies | AST-678 | Ensure craft rubric prompts emit `importance` per criterion so Generate passes post-merge. |
