@@ -77,3 +77,9 @@ On Execution History (`/admin/performance`), the expanded batch log panel shows 
 | §3.6 Spike output | N/A — no spike artifacts. |
 
 No conflicts flagged. Plan is implementable as written.
+
+## Review
+
+- **Branch:** `origin/sub/AST-670/AST-672-execution-history-copy-left`
+- **Commit:** `1729776c`
+- **Built:** 2026-06-15 — Stage 1 complete (`.dispatch-log-toolbar` `flex-start`); Stage 2 test assertions deferred to Betty per build-child test-tree ban.
