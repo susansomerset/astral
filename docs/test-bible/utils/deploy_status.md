@@ -18,3 +18,14 @@
 | --- | --- |
 | Env set → raw label | `TestGetDeployLabel::test_returns_env_when_set` |
 | Unset / whitespace → `Astral` | `TestGetDeployLabel::test_returns_astral_when_unset`, `test_returns_astral_when_whitespace_only` |
+
+---
+
+### AST-679
+
+**AST-658 child:** Remove commit tip from `get_deploy_status_payload()` — no git subprocess; payload is `uptime`, `uptime_seconds`, and optional `environment` only (no `commit_short` / `commit_message` keys).
+
+| Behavior | Tests |
+| --- | --- |
+| Uptime without env | `TestGetDeployStatusPayload::test_includes_uptime_without_environment` — no commit keys; `"environment" not in payload` |
+| Uptime + env when set | `TestGetDeployStatusPayload::test_includes_environment_when_set` — `staging`, `1h1m`; no commit keys |
