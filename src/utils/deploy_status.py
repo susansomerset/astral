@@ -1,12 +1,9 @@
 """Server-side deploy status for admin nav footer (AST-646)."""
 
 import os
-import subprocess
 import time
-from pathlib import Path
 
 _PROCESS_BOOT_TIME = time.time()
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def format_uptime_seconds(seconds: float) -> str:
@@ -47,38 +44,9 @@ def ui_llm_debug(*, explicit_debug: bool = False) -> bool:
     return explicit_debug or is_local_deploy_env()
 
 
-def _git_head_info() -> tuple[str, str]:
-    cwd = _REPO_ROOT
-    try:
-        rev = subprocess.run(
-            ["git", "rev-parse", "--short=7", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            cwd=cwd,
-        )
-        if rev.returncode != 0 or not rev.stdout.strip():
-            return ("unknown", "")
-        commit_short = rev.stdout.strip()
-        log = subprocess.run(
-            ["git", "log", "-1", "--format=%s"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            cwd=cwd,
-        )
-        commit_message = log.stdout.strip() if log.returncode == 0 else ""
-        return (commit_short, commit_message)
-    except (OSError, subprocess.TimeoutExpired):
-        return ("unknown", "")
-
-
 def get_deploy_status_payload() -> dict:
     uptime_seconds = max(0.0, time.time() - _PROCESS_BOOT_TIME)
-    commit_short, commit_message = _git_head_info()
     payload = {
-        "commit_short": commit_short,
-        "commit_message": commit_message,
         "uptime": format_uptime_seconds(uptime_seconds),
         "uptime_seconds": int(uptime_seconds),
     }
