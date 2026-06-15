@@ -151,3 +151,13 @@ Susan's AC: log **prefix** must identify the provider external module; detail li
 | §3.5 naming | Pass — `llm_external.py` matches utils snake_case; public function names describe behavior. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-680/AST-687-llm-external-log-attribution`  
+**Product commits:** `3cf168d1` (Stage 1 — `src/utils/llm_external.py`), `17fa2bee` (Stage 2 — rewire anthropic/deepseek/agent imports; `emit_llm_call_debug(logger_name=__name__)` at all emit sites)
+
+**Attribution fix:** DeepSeek no longer imports from anthropic; debug lines use caller module via `logger_name`. Betty Stage 3 tests (`test_llm_external.py`, deepseek debug patch) not in build — qa-child scope.
+
