@@ -114,3 +114,12 @@ Susan UAT: **AST-678** added an idempotent forward migration in `database.py` th
 | §3.5 naming | N/A. |
 
 No conflicts flagged.
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-655/AST-685-uat-revert-ast-678-agent-task-auto-migration`  
+**Product commit:** `a74e0def` — Stage 1: removed AST-678 constants, `_patch_ast678_importance_into_user_prompt`, `_apply_ast678_craft_rubric_importance_migration`, and call from `_ensure_agent_task_schema`.
+
+**Local verification:** `python3 -m compileall -q src/data/database.py` passes; `rg '678|ast678|AST678' src/data/database.py` — no matches.
+
+**Betty follow-on:** QA manifest in this plan (delete `test_ast678_craft_rubric_importance_migration.py`, bible cleanup) — not in this build (test-tree ban).
