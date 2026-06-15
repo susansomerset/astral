@@ -234,3 +234,14 @@ Use existing `TestFindJobPage` / `run_company_task` monkeypatch patterns in the 
 | fix-now | None — ready for `resolve-child` / merge. |
 | discuss | Optional: normalize `find_job_page` failure return `job_site` to match persisted column (empty or pre-run URL). |
 | advisory | Update `_save_company` docstring when touching file next. |
+
+---
+
+## Resolution (2026-06-15)
+
+Radia review **fix-now: none**. Resolve pass:
+
+- **`find_job_page` PJL-failure returns** (~1343, ~1353): return dict `job_site` now uses `_job_site_for_persist` (same as DB write) instead of `company_website`.
+- **`_save_company` docstring**: `page_option_url` described as input to `_job_site_for_persist`.
+
+No test-tree changes; Betty manifest re-run green on resolve commit.

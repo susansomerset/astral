@@ -1340,7 +1340,11 @@ async def find_job_page(
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
+            pre_js = str((company or {}).get("job_site") or "")
+            job_site_out = _job_site_for_persist(
+                terminal_state="NO_JOBLIST", page_option_url=company_website, pre_run_job_site=pre_js,
+            )
+            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site_out, "response_type": "NO_JOBLIST_FOUND"}
 
         # Scrape PJL pages (text + DOM + visible + links in one page load each)
         assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
@@ -1350,7 +1354,11 @@ async def find_job_page(
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
+            pre_js = str((company or {}).get("job_site") or "")
+            job_site_out = _job_site_for_persist(
+                terminal_state="NO_JOBLIST", page_option_url=company_website, pre_run_job_site=pre_js,
+            )
+            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site_out, "response_type": "NO_JOBLIST_FOUND"}
 
         return await _find_job_page_from_assembled(
             short_name=short_name,
@@ -1689,7 +1697,7 @@ def _save_company(
         short_name: Company short name
         company_website: Original company website URL
         state: Company state (UPPERCASE from COMPANY_STATES)
-        page_option_url: URL of the page option (becomes job_site)
+        page_option_url: Candidate listings URL from locate path; persisted via _job_site_for_persist
         raw_response: Raw API response for agent_responses blob (includes response_type for audit)
         no_jobs_message: Optional message for NO_OPENINGS
         parse_type: Optional parse type (legacy)
