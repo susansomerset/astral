@@ -123,3 +123,34 @@ No conflicts flagged.
 **Local verification:** `python3 -m compileall -q src/data/database.py` passes; `rg '678|ast678|AST678' src/data/database.py` — no matches.
 
 **Betty follow-on:** QA manifest in this plan (delete `test_ast678_craft_rubric_importance_migration.py`, bible cleanup) — not in this build (test-tree ban).
+
+---
+
+## Radia review (AST-685)
+
+**Ref:** `origin/sub/AST-655/AST-685-uat-revert-ast-678-agent-task-auto-migration` @ `bb18a3df`  
+**Baseline:** `origin/dev` @ `1833e6b9`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| **Stage 1 / plan** | `a74e0def` removes the full AST-678 block (~131 lines) and drops `_apply_ast678_craft_rubric_importance_migration(conn)` from `_ensure_agent_task_schema`; chain ends `_apply_ast469` → `_apply_ast561` → `_agent_task_schema_ensured = True`. Zero `678`/`AST678` symbols remain in `database.py`. |
+| **UAT intent** | No undo migration; no replacement explainer in product code — matches plan decisions and ticket boundaries (AST-676/677/686 out of scope). |
+| **Betty manifest** | `d7df703f` deletes `test_ast678_craft_rubric_importance_migration.py`; bible § AST-678 replaced with § AST-685 + sibling manual-paste notes in `pages.md` / `config.md`. |
+| **ASTRAL_CODE_RULES** | Subtractive data-layer change only — no new imports, logging, layer bends, or SQL bind surface. |
+
+### Issues
+
+None **fix-now**.
+
+### Advisory
+
+- Publish ref also carries sibling **AST-687** / **AST-688** commits (`e690760b`, `f9201d8c`) — LLM attribution tests + bible README manifest block. Not AST-685 deliverables; no conflict with the revert. Track under those tickets / merge-parent rollup.
+
+### Recommended actions
+
+| Severity | Action |
+|----------|--------|
+| — | Ada: none — proceed **resolve-child** if no open **discuss** threads. |
+| advisory | Epic rollup: confirm AST-687/688 sibling commits land with parent **AST-655** merge, not mistaken for AST-685 scope. |
