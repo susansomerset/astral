@@ -1000,6 +1000,7 @@ class TestDispatchOne:
         task = {"id": 6, "task_key": "evaluate_jd", "candidate_id": "cand-1", "auto_mode": 1}
         await dispatcher_mod._dispatch_one(task)
         alert.assert_called_once()
+        assert alert.call_args.args[4] == "cand-1"
 
     @pytest.mark.asyncio
     async def test_ledger_write_failure_is_logged(self, monkeypatch: pytest.MonkeyPatch) -> None:
