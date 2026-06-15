@@ -126,3 +126,9 @@ Susan cannot switch the Execution History **Candidate** dropdown directly from o
 | §3.6 Spike output | N/A — no investigation artifacts. |
 
 No conflicts flagged. Plan is implementable as written.
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-656/AST-662-execution-history-candidate-switch`  
+**Tip:** `24495c35`  
+**Built:** Stage 1 — `manualPinRef` guard in `useAdminCandidateFilter`. Stage 2 — memoized `urlBacked` on `AdminPerformanceMonitor`. Stage 3 component tests deferred to Betty per build-child test-tree ban (AC6 coverage in qa-child manifest).
