@@ -208,6 +208,8 @@ def admin_client() -> Iterator[FlaskClient]:
 
 @pytest.fixture
 def server_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[FlaskClient]:
+    # AST-654: server import calls bootstrap_runtime(); stub before reload.
+    monkeypatch.setattr("src.core.bootstrap.bootstrap_runtime", lambda: None)
     monkeypatch.setattr("src.core.dispatcher.start_scheduler", lambda: None)
     monkeypatch.setattr("src.data.database.sync_agent_tasks", lambda *args, **kwargs: None)
     import ui.auth as auth_mod

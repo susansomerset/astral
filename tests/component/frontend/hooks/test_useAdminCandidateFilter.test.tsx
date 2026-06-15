@@ -89,4 +89,30 @@ describe("useAdminCandidateFilter", () => {
     rerender()
     expect(result.current.candidateFilter).toBe("")
   })
+
+  it("direct urlBacked switch from c1 to c2 does not revert to nav default", async () => {
+    localStorage.setItem("astral_selected_candidate", "c1")
+    let urlValue = "c1"
+    const setValue = vi.fn((next: string) => {
+      urlValue = next
+    })
+    const { result, rerender } = renderHook(
+      () =>
+        useAdminCandidateFilter({
+          urlBacked: { value: urlValue, setValue },
+          urlPresentDisablesSync: true,
+        }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.candidateFilter).toBe("c1"))
+
+    act(() => result.current.setCandidateFilter("c2"))
+    expect(setValue).toHaveBeenCalledWith("c2")
+    rerender()
+    expect(result.current.candidateFilter).toBe("c2")
+    expect(result.current.syncWithNav).toBe(false)
+
+    rerender()
+    expect(result.current.candidateFilter).toBe("c2")
+  })
 })

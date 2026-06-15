@@ -1,0 +1,66 @@
+# Api Admin
+
+**Test module:** `tests/component/ui/api/test_api_admin.py`
+
+## Coverage map
+
+| Source | Test file | Branch lock |
+| --- | --- | --- |
+| `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py` | yes |
+
+---
+
+### AST-485 · AST-461 · AST-549
+
+Roster trio **`find_job_page`**, **`select_job_page`**, **`parse_job_list`** (company **TO_WATCH**); **`locate_job_page`** is not schedulable (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — schedulable defaults now come from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); schedulable keys merge config derivation.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schedulable roster trio defaults | `src/utils/config.py` | **`TestAst471DispatchConfigHelpers::test_ast485_roster_dispatch_trio_matches_config_defaults`** (`tests/component/utils/test_config.py`) |
+| **`task_keys`** roster trio + **`adhoc_entities`** config fallback | `src/ui/api/api_admin.py`, `src/data/database.py` | **`test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template`**, **`test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults`** (`tests/component/ui/api/test_api_admin.py` **`TestApiAdminBranchGaps`**) |
+| Nav-links preview (**`find`** / **`select`** / legacy **`locate`**) | `src/ui/api/api_admin.py` | **`TestAdhocHelpers::test_build_adhoc_live_content_company_paths`** (`test_api_admin.py`) |
+
+Narrow (**`test-astral`** **AST-485** / **AST-549** regression tip):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_ast485_roster_dispatch_trio_matches_config_defaults \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths
+```
+
+---
+
+### AST-492 · AST-495 · AST-491
+
+**`LLM_PROVIDER_CONFIG`**, **`DEEPSEEK_MODEL_PRICING`**, Ada tier helpers (**`resolve_brain_setting_to_anthropic_agent_key`**, **`resolve_brain_setting_to_deepseek_tier_meta`**, **`validate_allowed_brain_setting`**, **`infer_brain_setting_from_legacy_model_code`**); product may keep thin wrappers (**`admin_brain_setting_catalog()`**, **`anthropic_agent_key_for_brain_setting`**). **`component` tests compare admin payloads using resolve + **`get_model`** only. **`save_agent`** / **`get_agent`** / **`list_agents`** **`brain_setting`** column + migration off legacy **`model_code`**. **`do_task`** resolves tiers to **`AGENT_CONFIG`** keys and calls **`send_to_anthropic`** when **`active_provider`** is **`anthropic`**; when **`deepseek`**, **`resolve_brain_setting_to_deepseek_tier_meta`** feeds **`send_to_deepseek`** (**`vendor_model`**, **`tier_meta`**, same block assembly as Anthropic) per **AST-493**. **`GET /api/admin/agents/brain_settings`** returns tier rows (label + default temperature / max tokens from **`AGENT_CONFIG`**) for Manage Agents (**AST-495**). **`AdminAgentPrompts`** loads that catalog and posts **`brain_setting`** on create/update.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tier helpers + env gate + DeepSeek tier meta + tier rows vs resolve | `src/utils/config.py` | **`TestAst492LlmBrainTierConfig`** (`tests/component/utils/test_config.py`) |
+| Agent persistence + insert requires **`brain_setting`** | `src/data/database.py` | **`tests/component/data/database/test_agents.py`** |
+| **`do_task`** — Anthropic (**`send_to_anthropic`**) vs DeepSeek (**`send_to_deepseek`**) | `src/core/agent.py` | **`TestAst492BrainSettingDoTask`** (`tests/component/core/test_agent.py`) |
+| Agent CRUD + **`/agents/brain_settings`** catalog; PUT **`model_code`** present but empty after strip skips infer shim when other kwargs update | `src/ui/api/api_admin.py` | **`TestAdminConfigAndAgents`** (`tests/component/ui/api/test_api_admin.py`) |
+| Admin **`_resolve_adhoc`** — infer **`Medium`** when **`brain_setting`** / legacy **`model_code`** absent (**`infer_brain_setting_from_legacy_model_code`**); DeepSeek **`tier_meta`** + unknown provider | `src/ui/api/api_admin.py`, `src/utils/config.py` | **`TestAdhocHelpers::test_adhoc_entities_and_resolve`**, **`TestAst492ResolveAdhocApiAdmin`** (`tests/component/ui/api/test_api_admin.py`) |
+| **`_enrich_tasks`** — unknown **`LLM_PROVIDER_CONFIG.active_provider`** (neither **`anthropic`** nor **`deepseek`**) skips catalog pricing | `src/ui/api/api_admin.py` | **`TestEnrichTasks::test_enrich_tasks_unknown_llm_provider_skips_tier_catalog_lookups`** |
+| Manage Agents page (**`brain_settings`** + **`brain_setting`** column) | `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | **`AdminAgentPrompts`** (`tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`) |
+
+Manifest (**`AST-492`** + **`AST-495`** on **`dev-betty`** after merging both publish tips + conflict resolution):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/data/database/test_agents.py \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_adhoc_entities_and_resolve \
+  tests/component/ui/api/test_api_admin.py::TestAst492ResolveAdhocApiAdmin \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks::test_enrich_tasks_unknown_llm_provider_skips_tier_catalog_lookups
+```
+
+**`AdminAgentPrompts`** Vitest (**`AST-495`**): from repo root,
+
+`cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`
+
+(or rely on the full **`./scripts/testing/run_component_tests.sh`** with no args — that runs all Vitest component tests too).

@@ -1,5 +1,7 @@
 This is the reference to existing tests, including unit/component and integration testing.
 
+> **AST-598 migration:** Canonical content now lives under **`docs/test-bible/`** (see **`docs/test-bible/README.md`**). This monolith is retained until Radia **review-child** confirms the tree is complete; Betty appends new manifests to per-component files, not here.
+
 **Owner:** **Betty** — maintained via **`qa-astral`**: use it to decide which **existing** tests apply to an issue (manifest-only is OK when coverage already matches), which tests a change **breaks** and must be revised, and when to **append or correct** this file so the map stays true. **Engineers do not commit** this file or other **test-tree** paths — see **`docs/ASTRAL_TEAM_WORKFLOW.md`** § Test ownership.
 
 ## 2. Where tests live
@@ -160,6 +162,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | `src/core/agent.py` | `tests/component/core/test_agent.py` | yes |
 | `src/core/roster.py` | `tests/component/core/test_roster.py` | yes |
 | `src/core/intake.py` | `tests/component/core/test_intake.py` | yes |
+| `src/core/bootstrap.py` | `tests/component/core/test_bootstrap.py` | no |
 
 **AST-486 (consult layering):** **`TestTrackerFacades.test_ast486_consult_layer_facades_delegate_to_database`** asserts **`tracker.get_company`**, **`tracker.append_agent_response`**, and **`tracker.list_timesheets`** forward to **`database`** (`consult.py` consumes **`tracker`** only for those paths).
 
@@ -1637,6 +1640,25 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
 
+## 7.13zzna Execution History direct candidate switch (**AST-662**, parent **AST-656**)
+
+**AST-656 (parent):** Execution History **`/admin/performance`** on-page **Candidate** dropdown must apply direct candidate-to-candidate changes without an intermediate **All** selection — dropdown display, URL **`candidate_id`**, ledger fetch, table rows, and total cost stay in sync. UI-only fix on shared **`useAdminCandidateFilter`** (**`manualPinRef`** nav-sync guard) plus memoized **`urlBacked`** on **`AdminPerformanceMonitor`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-662** | Direct A→B switch; hook manual-pin guard; stable **`urlBacked`** on Execution History | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `AdminPerformanceMonitor.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` (direct **`c1`→`c2`** urlBacked case); **`AST-634`** describe + new direct-switch case in `test_AdminPerformanceMonitor.test.tsx` |
+
+**AST-662** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-634|direct urlBacked|direct candidate switch"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** and hook file when parent UAT runs — **§7.13zzn** **AST-634** cases must stay green.
+
 ## 7.13zzo Auto retry — union claim/count + per-entity batch retry routing (**AST-641**, **AST-642**, parent **AST-630**)
 
 **AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
@@ -1796,6 +1818,41 @@ Retire candidate **Board Searches** nav/route/page and hide **`gaze_board`** fro
 
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/test_routes.test.tsx
+```
+
+## 7.13zzw Core bootstrap runtime startup (**AST-654**, parent **AST-383**)
+
+**AST-383 (parent epic):** Move Flask process startup (LLM env validation → `sync_agent_tasks` → `start_scheduler`) from **`src/ui/server.py`** into **`src/core/bootstrap.py`**. UI calls **`bootstrap_runtime()`** once after blueprint registration — no direct **`src.data`** import in **`server.py`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-654** | Ordered **`bootstrap_runtime()`** pipeline; fail-fast **`_validate_runtime_coupling()`** before DB sync | `src/core/bootstrap.py`, `src/ui/server.py` | **`tests/component/core/test_bootstrap.py`** (full file); **`tests/component/ui/test_server.py::TestServeReact`** ( **`server_client`** stubs **`bootstrap_runtime`** ); **`tests/component/ui/conftest.py`** **`server_client`** fixture |
+
+**AST-654** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/ui/test_server.py
+```
+
+**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** are dispatch-row keys (e.g. **`consult_do`**, **`prefilter`**) resolved via **`resolve_dispatch_task_config_key()`** into **`TASK_CONFIG`** agent keys — raw membership in **`TASK_CONFIG`** fails server import until **`bootstrap.py`** aligns validation with that helper.
+
+## 7.13zzx Themed confirm — admin native `window.confirm` migration (**AST-659**, parent **AST-639**)
+
+**AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-659** | Data Management upsert apply; Manage Candidates logical delete + clear API key → themed **`alertdialog`** (confirm/cancel) | `src/ui/frontend/src/pages/AdminDataManagement.tsx`, `AdminManageCandidates.tsx` | **`tests/component/frontend/pages/test_AdminDataManagement.test.tsx`** — **`alertdialog`** **"Apply upsert"** → **Apply** on upsert success + API **`ok:false`** paths (**§6c** routed page); **`tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`** — **"Clear API key"** / **"Delete candidate"** confirm paths; **AC5 regression:** **`tests/component/frontend/pages/test_CandidateIntake.test.tsx`** (existing **`useUserConfirm`** — unchanged) |
+
+**AST-659** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
 ```
 
 ## 7.13zzv UAT — craft_resume_base Generate does not persist artifacts (**AST-650**, parent **AST-601**)

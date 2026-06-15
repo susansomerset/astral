@@ -115,8 +115,12 @@ export default function PerformanceMonitor() {
   }, [setSearchParams])
 
   const urlCandidate = candidateIdFromParams(searchParams)
+  const urlBacked = useMemo(
+    () => ({ value: urlCandidate, setValue: setCandidateParam }),
+    [urlCandidate, setCandidateParam],
+  )
   const { candidateFilter, setCandidateFilter, syncWithNav, candidates } = useAdminCandidateFilter({
-    urlBacked: { value: urlCandidate, setValue: setCandidateParam },
+    urlBacked,
     urlPresentDisablesSync: true,
   })
 

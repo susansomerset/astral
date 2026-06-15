@@ -51,20 +51,10 @@ app.register_blueprint(boards_bp)
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
 
-# --- Sync agent_task rows at startup ---
-# B2: UI layer normally avoids `src.data`; this path stays until AST-383 moves
-# startup sync behind `core.bootstrap` (see plan AST-385 / AST-383).
-from src.utils.config import get_task_keys, validate_llm_provider_environment  # noqa: E402
+# --- Runtime bootstrap (validation → agent_task sync → scheduler) ---
+from src.core.bootstrap import bootstrap_runtime  # noqa: E402
 
-validate_llm_provider_environment()
-
-from src.data import database  # noqa: E402
-
-database.sync_agent_tasks(get_task_keys())
-
-# --- Start dispatch scheduler ---
-from src.core.dispatcher import start_scheduler  # noqa: E402
-start_scheduler()
+bootstrap_runtime()
 
 # --- Serve React app ---
 

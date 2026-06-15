@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Optional per-file frontend branch locks after Vitest (see docs/ASTRAL_TEST_BIBLE.md §6b).
+"""Optional per-file frontend branch locks after Vitest (see docs/test-bible/README.md §6b).
 
 Runs after `npm run test:component:coverage`. Product default: **risk-based frontend tests** —
 `LOCKED_AT_100` is empty, so any non-empty list is an explicit adoption of stricter gates.
