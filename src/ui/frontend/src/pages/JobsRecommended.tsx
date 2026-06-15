@@ -151,7 +151,7 @@ export default function Recommended() {
                 {sec.label} ({sec.jobs.length})
               </h2>
               <div className="list-page-table-wrap">
-                <table className="list-page-table" style={{ tableLayout: "auto" }}>
+                <table className="list-page-table">
                   <thead>
                     <tr>
                       <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>

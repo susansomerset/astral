@@ -380,20 +380,20 @@ export default function ScheduledActions() {
               <table className="list-page-table">
                 <thead>
                   <tr>
-                    <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0, frozenN, { width: "9%" })} onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
-                    <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1, frozenN, { width: "14%" })} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
-                    <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2, frozenN, { width: "7%" })} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
-                    <th className="sortable" style={{ width: "12%" }} onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
-                    <th className="sortable" style={{ width: "6%", textAlign: "right" }} onClick={() => toggleSort("score_floor")}>Floor{sortIcon("score_floor")}</th>
-                    <th className="sortable" style={{ width: "5%", textAlign: "center" }} onClick={() => toggleSort("auto_mode")}>AUTO{sortIcon("auto_mode")}</th>
-                    <th style={{ width: "7.9%", textAlign: "center" }}>Run</th>
-                    <th className="sortable" style={{ width: "4%", textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
-                    <th className="sortable" style={{ width: "5.2%", textAlign: "right" }}  onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
-                    <th className="sortable" style={{ width: "4%", textAlign: "right" }}  onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
-                    <th className="sortable" style={{ width: "4%", textAlign: "right" }}  onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
-                    <th className="sortable" style={{ width: "4%", textAlign: "right" }}  onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
-                    <th className="sortable" style={{ width: "4%", textAlign: "right" }}  onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
-                    <th className="sortable" style={{ width: "12.6%" }} onClick={() => toggleSort("last_run_at")}>Last Run{sortIcon("last_run_at")}</th>
+                    <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0, frozenN)} onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
+                    <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1, frozenN)} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
+                    <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2, frozenN)} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
+                    <th className="sortable" onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
+                    <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("score_floor")}>Floor{sortIcon("score_floor")}</th>
+                    <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("auto_mode")}>AUTO{sortIcon("auto_mode")}</th>
+                    <th style={{ textAlign: "center" }}>Run</th>
+                    <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
+                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
+                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
+                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
+                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
+                    <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
+                    <th className="sortable" onClick={() => toggleSort("last_run_at")}>Last Run{sortIcon("last_run_at")}</th>
                   </tr>
                 </thead>
                 <tbody>

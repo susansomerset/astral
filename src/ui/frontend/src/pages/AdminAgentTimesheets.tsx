@@ -215,7 +215,6 @@ export default function AgentTimesheets() {
         emptyMessage="No timesheet entries found."
         selectable
         onSelectionChange={setSelectedRows}
-        horizontalScrollable
         idField="agent_req_id"
         actions={<button className="timesheet-export-btn" onClick={handleExport}>Export CSV</button>}
       />
