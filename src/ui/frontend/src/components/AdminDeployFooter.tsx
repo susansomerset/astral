@@ -1,11 +1,28 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import api from "../lib/api"
+import { fmtTime } from "../lib/fmt"
+
+type MergeTicket = {
+  ticket_id: string
+  recorded_at: string
+}
 
 type DeployStatus = {
   environment?: string
   uptime: string
   uptime_seconds: number
+  merge_tickets?: MergeTicket[]
+}
+
+const MERGE_TICKET_TOOLTIP_LIMIT = 20
+
+function formatMergeTicketTooltip(mergeTickets: MergeTicket[] | undefined): string | undefined {
+  if (!mergeTickets?.length) return undefined
+  return mergeTickets
+    .slice(0, MERGE_TICKET_TOOLTIP_LIMIT)
+    .map(({ ticket_id, recorded_at }) => `${ticket_id} ${fmtTime(recorded_at)}`)
+    .join("\n")
 }
 
 export default function AdminDeployFooter() {
@@ -45,7 +62,12 @@ export default function AdminDeployFooter() {
     <div className="nav-deploy-footer" aria-label="Deploy status">
       {status!.environment != null && (
         <>
-          <span className="nav-deploy-env">{status!.environment}</span>
+          <span
+            className="nav-deploy-env"
+            title={formatMergeTicketTooltip(status!.merge_tickets)}
+          >
+            {status!.environment}
+          </span>
           <span className="nav-deploy-sep">·</span>
         </>
       )}
