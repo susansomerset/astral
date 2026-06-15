@@ -202,3 +202,28 @@ No `conf-!!-NONE` conflicts identified.
 **Publish ref:** `origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data`  
 **Product commits:** `d58c8900` (Stage 1 — `_is_verified_job_site_distinct` + distinct job_site redirect gate), `bfea6ed2` (Stage 2 — NO_JOBLIST without LLM INFO logs on both early-exit paths)  
 **Stage 3 audit:** `dispatcher._dispatch_one` already sets `log_batch_id.set(entity_batch_id)` before `run_company_task` for `find_job_page`; no roster guard added.
+
+---
+
+## Radia review (2026-06-15)
+
+**Diff:** `origin/dev...origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data`  
+**Verdict:** Clean — no fix-now items.
+
+### What's solid
+
+| Stage | Check |
+|-------|-------|
+| 1 | `_is_verified_job_site_distinct` reuses `_normalize_company_url_for_dedupe`; redirect gate matches plan and AC #1 |
+| 2 | Both no-LLM **NO_JOBLIST** exits in `find_job_page` emit INFO with `reason=` + counts (AC #4) |
+| 3 | `dispatcher._dispatch_one` sets `log_batch_id.set(entity_batch_id)` before `run_company_task`; no preemptive roster guard needed |
+| 4 | Betty manifest (`TestJobSiteDistinct674`, `TestFindJobPageAst674`) covers AC 1–4 including entity `log_batch_id` on `select_job_page` |
+
+### Advisory
+
+- Sub tip includes **AST-676** / **AST-679** test-bible commits from `origin/tests` merge (`a0e02d28`, `d997407b`) — tests/docs only, no AST-674 product scope creep; harmless at merge time.
+- `_is_verified_job_site_distinct` sits immediately above `find_job_page` (not after `_job_site_for_persist` per plan line hint) — better locality; no action.
+
+### Recommended actions
+
+None — **resolve-child** may proceed.
