@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import api from "../lib/api"
 import { fmtTime } from "../lib/fmt"
@@ -17,18 +17,19 @@ type DeployStatus = {
 
 const MERGE_TICKET_TOOLTIP_LIMIT = 20
 
-function formatMergeTicketTooltip(mergeTickets: MergeTicket[] | undefined): string | undefined {
-  if (!mergeTickets?.length) return undefined
+function mergeTicketDisplayLines(mergeTickets: MergeTicket[] | undefined): string[] {
+  if (!mergeTickets?.length) return []
   return mergeTickets
     .slice(0, MERGE_TICKET_TOOLTIP_LIMIT)
     .map(({ ticket_id, recorded_at }) => `${ticket_id} ${fmtTime(recorded_at)}`)
-    .join("\n")
 }
 
 export default function AdminDeployFooter() {
   const { loading: authLoading } = useAuth()
   const [status, setStatus] = useState<DeployStatus | null>(null)
   const [error, setError] = useState(false)
+  const [ticketsOpen, setTicketsOpen] = useState(false)
+  const envWrapRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     if (authLoading) return
@@ -48,6 +49,17 @@ export default function AdminDeployFooter() {
     return () => clearInterval(interval)
   }, [authLoading])
 
+  useEffect(() => {
+    if (!ticketsOpen) return
+    function handler(e: MouseEvent) {
+      if (envWrapRef.current && !envWrapRef.current.contains(e.target as Node)) {
+        setTicketsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [ticketsOpen])
+
   if (authLoading || (!status && !error)) return null
 
   if (error) {
@@ -58,15 +70,34 @@ export default function AdminDeployFooter() {
     )
   }
 
+  const ticketLines = mergeTicketDisplayLines(status!.merge_tickets)
+  const envInteractive = ticketLines.length > 0
+
   return (
     <div className="nav-deploy-footer" aria-label="Deploy status">
       {status!.environment != null && (
         <>
-          <span
-            className="nav-deploy-env"
-            title={formatMergeTicketTooltip(status!.merge_tickets)}
-          >
-            {status!.environment}
+          <span className="nav-deploy-env-wrap" ref={envWrapRef}>
+            {envInteractive ? (
+              <button
+                type="button"
+                className="nav-deploy-env nav-deploy-env-btn"
+                aria-expanded={ticketsOpen}
+                aria-haspopup="listbox"
+                onClick={() => setTicketsOpen(open => !open)}
+              >
+                {status!.environment}
+              </button>
+            ) : (
+              <span className="nav-deploy-env">{status!.environment}</span>
+            )}
+            {ticketsOpen && envInteractive && (
+              <ul className="nav-deploy-tickets-popup" role="listbox" aria-label="Recent merge tickets">
+                {ticketLines.map(line => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
           </span>
           <span className="nav-deploy-sep">·</span>
         </>
