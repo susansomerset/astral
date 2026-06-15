@@ -3,6 +3,8 @@
 import os
 import time
 
+from src.utils.merge_ticket_log import read_merge_ticket_log
+
 _PROCESS_BOOT_TIME = time.time()
 
 
@@ -53,4 +55,6 @@ def get_deploy_status_payload() -> dict:
     env = _resolve_environment()
     if env is not None:
         payload["environment"] = env
+    entries = read_merge_ticket_log()
+    payload["merge_tickets"] = list(reversed(entries))
     return payload
