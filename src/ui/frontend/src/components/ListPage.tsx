@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, typ
 import { formatCell } from "../lib/fmt"
 import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
+import { useListTableColumnMeasure } from "../lib/useListTableColumnMeasure"
 import ListTableTruncatedCell from "./ListTableTruncatedCell"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,6 +151,7 @@ export default function ListPage<T extends Row>({
 
   // Column resizing — restored from localStorage
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => loadLayout(title).widths || {})
+  const tableRef = useRef<HTMLTableElement>(null)
 
   // Persist layout changes to localStorage
   useEffect(() => { saveLayout(title, colOrder, colWidths) }, [title, colOrder, colWidths])
@@ -263,6 +265,14 @@ export default function ListPage<T extends Row>({
   const showCheckboxes = selectable || hasBulk
   const primarySortKey = userSort?.key ?? null
 
+  const { checkboxWidthPx, mergedWidths } = useListTableColumnMeasure(
+    tableRef,
+    colOrder,
+    showCheckboxes,
+    colWidths,
+    [sorted.length, frozenN, truncateChars],
+  )
+
   function colTypeConfig(col: Column<T>): ColumnTypeConfig | null {
     if (!col.type || !uiConfig) return null
     return uiConfig.column_types[col.type] ?? null
@@ -275,7 +285,7 @@ export default function ListPage<T extends Row>({
 
   function frozenCellStyle(dataColIndex: number | null, base: CSSProperties): CSSProperties {
     if (dataColIndex == null) return base
-    const left = stickyLeftPx(dataColIndex, colWidths, colOrder, showCheckboxes, frozenN)
+    const left = stickyLeftPx(dataColIndex, mergedWidths, colOrder, showCheckboxes, frozenN, checkboxWidthPx)
     if (left == null) return base
     return { ...base, left }
   }
@@ -331,7 +341,7 @@ export default function ListPage<T extends Row>({
         <p className="list-page-status">{emptyMessage}</p>
       ) : (
         <div className="list-page-table-wrap list-page-table-wrap--scroll">
-          <table className="list-page-table">
+          <table ref={tableRef} className="list-page-table">
             <thead>
               <tr>
                 {showCheckboxes && (
