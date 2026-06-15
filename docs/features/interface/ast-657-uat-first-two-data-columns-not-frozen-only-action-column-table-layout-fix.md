@@ -216,6 +216,34 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review
 
 - **Branch:** `origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns`
-- **Diff:** `origin/dev...origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns`
-- **Tip:** `f3c6c5bc`
-- **Radia:** pending
+- **Diff:** `origin/dev...9870490e` (product: `origin/dev` → `9870490e` two-dot for UI files; three-dot reported merge-base ambiguity — bootstrap/AST-654 not in branch delta vs `origin/dev`)
+- **Tip:** `9870490e`
+- **Radia:** 2026-06-15 — **findings** (discuss only)
+
+### What's solid
+
+| Area | Assessment |
+|------|------------|
+| Root cause / plan | Autosize (AST-652) broke sticky offsets that relied on 120px / 40px fallbacks; fix measures header `offsetWidth` after layout and merges with user-resized widths — matches plan hypothesis. |
+| Stage 1 | `mergeWidthsForSticky`, `measureListTableColumnWidths`, extended `stickyLeftPx(checkboxWidthPx)`, `useListTableColumnMeasure` hook. |
+| Stage 2 | ListPage `tableRef` + merged widths in `frozenCellStyle`; `ScheduledPhaseTable` inner component (valid hook-per-table); CSS re-declares `position: sticky` on frozen th/td. |
+| §1.3 DRY | Shared measure hook for ListPage and Scheduled Actions. |
+| Boundaries | No config/backend/autosize/truncation changes. |
+| Tests | Unit tests for merge, measure, checkbox width param; ListPage test asserts cumulative `left` on frozen headers; `9870490e` adds `widthsEqual` guard against measure-hook re-render loop. |
+
+### Issues
+
+| Severity | Location | Note |
+|----------|----------|------|
+| **discuss** | Manual UAT (Susan repro) | Component tests run in jsdom where `offsetWidth` is **0** — ListPage AST-657 test explicitly falls back to 120px chain, **not** real measured widths. **UAT on Agent Timesheets** (wide table, scroll right) is the gate for this bug: checkbox + first **two data columns** must stay visible; action column stays right. |
+| **discuss** | First paint | Before `useLayoutEffect` measure, offsets use 40px checkbox + 120px column fallbacks — brief misalignment possible on first frame until measure runs. Acceptable if UAT passes after paint; flag if Susan sees flash. |
+
+### Advisory
+
+- `9870490e` infinite re-render fix (`widthsEqual`, stable `orderedKeysKey` / `persistedKey` deps) is appropriate — keep.
+- Re-measure triggers on resize (`persistedKey`), col order, row count, `frozenN` — aligns with plan.
+
+### Recommended actions
+
+1. **resolve-child:** Confirm Susan UAT repro on Agent Timesheets horizontal scroll (primary AC).
+2. No code fix-now from review unless UAT fails.
