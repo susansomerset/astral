@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import "../../../../src/ui/frontend/src/App.css"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import PerformanceMonitor from "../../../../src/ui/frontend/src/pages/AdminPerformanceMonitor"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
@@ -12,6 +13,15 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 }))
 
 const mockedApi = vi.mocked(api)
+
+/** AST-672: vitest CSS import does not apply rules in jsdom — inject product toolbar rule for placement AC. */
+function ensureDispatchLogToolbarCss() {
+  if (document.querySelector('style[data-test="dispatch-log-toolbar-ast672"]')) return
+  const style = document.createElement("style")
+  style.setAttribute("data-test", "dispatch-log-toolbar-ast672")
+  style.textContent = `.dispatch-log-toolbar { display: flex; justify-content: flex-start; margin-bottom: 6px; }`
+  document.head.appendChild(style)
+}
 
 const ledgerRow = {
   batch_id: "batch-1",
@@ -70,6 +80,10 @@ function chainHopRowsForToday() {
 }
 
 describe("AdminPerformanceMonitor", () => {
+  beforeAll(() => {
+    ensureDispatchLogToolbarCss()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
@@ -111,7 +125,11 @@ describe("AdminPerformanceMonitor", () => {
     const table = screen.getByRole("table")
     await userEvent.click(within(table).getByText("task_a"))
     await waitFor(() => expect(screen.getByText("failed")).toBeInTheDocument())
-    await userEvent.click(screen.getByTitle("Copy logs to clipboard"))
+    const copyBtn = screen.getByTitle("Copy logs to clipboard")
+    const toolbar = copyBtn.closest(".dispatch-log-toolbar")
+    expect(toolbar).not.toBeNull()
+    expect(getComputedStyle(toolbar!).justifyContent).toMatch(/flex-start|start/)
+    await userEvent.click(copyBtn)
     expect(navigator.clipboard.writeText).toHaveBeenCalled()
     await userEvent.click(screen.getByTitle("View agent data for this batch"))
     await waitFor(() => expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument())

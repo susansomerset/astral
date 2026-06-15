@@ -424,6 +424,26 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-672 · AST-670
+
+**AST-670 (parent):** Left-align the **Copy logs to clipboard** control in the Execution History expanded batch log toolbar (`.dispatch-log-toolbar` **`justify-content: flex-start`**). Copy payload, **Copied** feedback, and all other Execution History behavior unchanged.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-672** | Log toolbar copy control left-aligned (CSS only) | `src/ui/frontend/src/App.css` (`.dispatch-log-toolbar`) | **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — **`loads ledger rows, filters, expands logs, and opens batch modal`**: import **`App.css`**; assert toolbar **`justify-content`** is **`flex-start`** after expand; clipboard copy regression |
+
+**AST-672** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "loads ledger rows"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** when parent UAT runs full epic.
+
+---
+
 ### AST-659 · AST-639
 
 **AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
