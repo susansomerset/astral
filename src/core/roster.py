@@ -1249,7 +1249,7 @@ async def jobs_found_process_job_site(
     """AST-469: JOBS_FOUND — fresh scrape of stored job_site; same select→parse chain as TO_WATCH locate (no stale job_list_visible)."""
     job_site = (job_site or "").strip()
     if not job_site:
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "MISSING_JOB_SITE"}
+        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": "", "response_type": "MISSING_JOB_SITE"}
 
     _strip_company_data_keys(short_name, ("job_list_visible",))
 
