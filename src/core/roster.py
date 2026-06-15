@@ -1323,6 +1323,11 @@ async def find_job_page(
 
     # Load company data for possible_job_links + nav_links
     company = get_company(short_name)
+    pre_job_site = str((company or {}).get("job_site") or "").strip()
+    if pre_job_site:
+        return await jobs_found_process_job_site(
+            short_name, company_website, pre_job_site, debug=debug, ctx=ctx,
+        )
     cdata = (company.get("company_data") or {}) if company else {}
     possible_job_links = cdata.get("possible_job_links") or []
     nav_links = cdata.get("nav_links") or ""
