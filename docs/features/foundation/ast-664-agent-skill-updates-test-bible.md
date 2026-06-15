@@ -251,15 +251,32 @@ When a skill needs “which bible file for this test or module,” apply this mi
 | Field | Value |
 |-------|-------|
 | **Branch** | `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` |
-| **Build commit** | *(tip after `code(AST-664)`)* |
+| **Build commit** | `d5a55d2d` (tip after `merge-tests(AST-664)`) |
 | **Reviewer** | Radia (`review-child` after Tests Passed) |
+| **Diff baseline** | `origin/dev...origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` |
 
 ### What's solid
 
-- All eight skills + four agent handoffs + hook align with parent **AST-598** AC #5–6 and Chuckles parent checklist.
-- `qa-child` no longer instructs Betty to write `docs/ASTRAL_TEST_BIBLE.md`; manifest contract uses `### AST-NNN` in component files.
-- Engineer ban paths consistent across build/test/resolve skills and AGENTS files.
+- All eight global skills + four agent handoffs + `engineer.sh` hook align with parent **AST-598** AC #5–6 and Chuckles parent checklist.
+- `qa-child` sole authority is **`docs/test-bible/**`**; no instruction to append new manifests to the monolith; **`### AST-NNN`** registry and per-path shasum contract present.
+- Engineer ban paths list **`docs/test-bible/**`** alongside transitional **`docs/ASTRAL_TEST_BIBLE.md`** in **build-child**, **test-child**, **resolve-child**, and engineer **AGENTS.md** files; hook blocks **`docs/test-bible/*`** (verified in Implementation record).
+- **review-child**, **dispatch-parent**, **check-linear**, **do-all-the-things** read/skip paths point at the tree + **README.md**.
+- Betty manifest block in **`docs/test-bible/README.md`** correctly documents narrowed **`tests/component`** smoke (skips zero-arg **LOCKED_AT_100** gate for workflow-only child).
+- **`test_api_admin.py`** **`run_task`** mock fix (**AST-653** handoff) is Betty-owned and matches manifest.
 
 ### Issues
 
-*(Radia fills after review.)*
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **advisory** | Branch diff vs plan “repo commit plan only” | Three-dot diff includes **AST-663** tree, workflow doc pointer updates, and Betty **merge-tests** commits — expected on integrated **`sub/*`** after **`ftr`** merge; not engineer scope creep on **AST-664** product path. |
+| **advisory** | **`.gitignore`** `/AGENTS.md` | Anchors ignore to repo root (**AST-663**); good hygiene, outside **AST-664** Implementation record. |
+
+**fix-now:** none  
+**discuss:** none
+
+### Recommended actions
+
+| Action | Owner |
+| --- | --- |
+| **resolve-child** — no product changes required | Ada |
+| Parent **AST-598** — retire monolith after all siblings **User Testing** | Radia gate (separate pass) |
