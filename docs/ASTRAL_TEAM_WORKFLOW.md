@@ -36,7 +36,7 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 ## Test ownership
 
-**Betty** (`qa-child`) is the only role that commits under **`tests/`**, **`scripts/test_*.py`**, **`scripts/testing/`**, and **`docs/ASTRAL_TEST_BIBLE.md`** (new coverage, revisions, harness, bible).
+**Betty** (`qa-child`) is the only role that commits under **`tests/`**, **`scripts/test_*.py`**, **`scripts/testing/`**, and **`docs/test-bible/**`** (new coverage, revisions, harness, bible). The monolith **`docs/ASTRAL_TEST_BIBLE.md`** remains Betty-owned until AST-598 retirement after Radia review.
 
 **Engineers** (`build-child`, `test-child`, `resolve-child`): **product** (and plan docs when the skill says so) only. If the manifest fails and you believe the **test** is wrong, or resolve needs a test change: **`[qa-handoff]`** as the **first line** of a Linear comment — **do not** patch test-tree paths yourself. Betty picks up **`Tests Ready`** + **`[qa-handoff]`** and **`Review Posted`** + **`[qa-handoff]`** (see **`qa-child`** §1 **C**).
 

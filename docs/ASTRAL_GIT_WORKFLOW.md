@@ -2,7 +2,7 @@
 
 Authoritative git workflow for Astral. Supersedes all prior branch law in `orientation-astral`, Joan `git-*` skills, and related pipeline skills. **If a skill disagrees with this document, this document wins.**
 
-**Test corpus:** `docs/ASTRAL_TEST_BIBLE.md` (monolith until AST-598 breakdown lands).
+**Test corpus:** `docs/test-bible/` (per-component tree; monolith `docs/ASTRAL_TEST_BIBLE.md` retained until AST-598 Radia review).
 
 ---
 
@@ -78,7 +78,7 @@ Structural enforcement — not prose rules.
 
 | Role | Blocked paths |
 |------|---------------|
-| Engineer (Ada, Hedy, Katherine) | `tests/`, `docs/ASTRAL_TEST_BIBLE.md` |
+| Engineer (Ada, Hedy, Katherine) | `tests/`, `docs/ASTRAL_TEST_BIBLE.md`, `docs/test-bible/**` |
 | Betty | `src/`, `docs/features/` |
 | Radia | `src/`, `tests/` |
 
@@ -149,7 +149,7 @@ resolve(AST-NNN): — findings addressed
 
 ## The tests branch
 
-`origin/tests` is Betty's permanent branch — single source of truth for all test code and `docs/ASTRAL_TEST_BIBLE.md` updates. Betty works in the permanent **`astral-tests`** worktree on local `tests` tracking `origin/tests`.
+`origin/tests` is Betty's permanent branch — single source of truth for all test code and **`docs/test-bible/**`** updates (and transitional edits to the monolith until AST-598 retirement). Betty works in the permanent **`astral-tests`** worktree on local `tests` tracking `origin/tests`.
 
 ### Betty's workflow
 
@@ -260,7 +260,7 @@ Legacy `worktree/<IssueID>` local branch names from old worktree helpers should 
 - Rebase of any branch pushed to origin
 - Force-push to any branch on origin
 - Simultaneous child subs on the same parent
-- Engineer commits to `tests/` or `docs/ASTRAL_TEST_BIBLE.md`
+- Engineer commits to `tests/`, `docs/ASTRAL_TEST_BIBLE.md`, or `docs/test-bible/**`
 - Betty commits to `src/` or `docs/features/` (except `merge-tests()` merge commit on sub)
 - `tests` merging into `dev` or `main`
 - Any agent creating `ftr/` or `sub/` refs

@@ -1,5 +1,7 @@
 This is the reference to existing tests, including unit/component and integration testing.
 
+> **AST-598 migration:** Canonical content now lives under **`docs/test-bible/`** (see **`docs/test-bible/README.md`**). This monolith is retained until Radia **review-child** confirms the tree is complete; Betty appends new manifests to per-component files, not here.
+
 **Owner:** **Betty** — maintained via **`qa-astral`**: use it to decide which **existing** tests apply to an issue (manifest-only is OK when coverage already matches), which tests a change **breaks** and must be revised, and when to **append or correct** this file so the map stays true. **Engineers do not commit** this file or other **test-tree** paths — see **`docs/ASTRAL_TEAM_WORKFLOW.md`** § Test ownership.
 
 ## 2. Where tests live
