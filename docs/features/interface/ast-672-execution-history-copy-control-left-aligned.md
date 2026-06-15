@@ -80,6 +80,29 @@ No conflicts flagged. Plan is implementable as written.
 
 ## Review
 
-- **Branch:** `origin/sub/AST-670/AST-672-execution-history-copy-left`
-- **Commit:** `1729776c`
-- **Built:** 2026-06-15 — Stage 1 complete (`.dispatch-log-toolbar` `flex-start`); Stage 2 test assertions deferred to Betty per build-child test-tree ban.
+- **Branch:** `origin/sub/AST-670/AST-672-execution-history-copy-left` @ `4460e707`
+- **Baseline:** `origin/dev` (three-dot diff)
+- **Reviewed:** 2026-06-15 — Radia
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan Stage 1 | `App.css` `.dispatch-log-toolbar` `flex-end` → `flex-start` only; no TSX or copy-handler edits — matches ticket AC1–5 and boundaries. |
+| Scope | `scope-minor` footprint holds: one CSS property + test extension; no backend, ledger, or sibling-ticket smuggling. |
+| §3.2 / G1 | No new hardcoded state; placement stays in global CSS where dispatch-log styles already live. |
+| Copy behavior | `LogViewer` clipboard join + **Copied** feedback unchanged; integration test still clicks copy and asserts `writeText`. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | `test_AdminPerformanceMonitor.test.tsx` — `ensureDispatchLogToolbarCss()` | Plan Stage 2 ⚠️ said: if Vitest/jsdom cannot read `App.css`, stop with 🛑 — **do not** inject inline styles. Betty documented the inject workaround in the QA manifest; product CSS is correct, but the assertion is sourced from the injected `<style>` tag, so reverting `App.css` to `flex-end` would **not** fail this test. Confirm Susan accepts documented inject vs Vitest CSS pipeline fix. |
+| **advisory** | `docs/test-bible/frontend/pages.md` § AST-672 | Manifest row cites `import App.css` as the guard; actual test relies on `beforeAll` inject per Betty's note — align bible wording when inject stays. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| discuss (test inject) | **Susan / Katherine:** accept inject as standing jsdom workaround **or** remove inject and fix component-test CSS loading so `getComputedStyle` reads real `App.css`. |
+| advisory (bible) | Betty or resolve-child: update AST-672 manifest bullet to match chosen approach. |
