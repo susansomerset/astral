@@ -223,3 +223,43 @@ When a skill needs “which bible file for this test or module,” apply this mi
 - **§3.3 imports / §3.5 naming:** Not applicable.
 - **§3.6 debug/spikes:** Not applicable.
 - **No conflicts** with code rules; workflow-only change.
+
+## Implementation record
+
+**Built 2026-06-14** on `astral-AST-598`. Global skills/agents/hook updated (not in astral git except this plan):
+
+| File | Change |
+| --- | --- |
+| `~/.cursor/skills/qa-child/SKILL.md` | Sole authority → `docs/test-bible/**`; `### AST-NNN` manifest blocks; per-path shasum; Component file selection subsection; rollup/conflict routing for per-component files |
+| `~/.cursor/agents/betty-AGENTS.md` | Ownership + README session read path |
+| `~/.cursor/skills/build-child/SKILL.md` | Test-tree ban includes `docs/test-bible/**` |
+| `~/.cursor/skills/test-child/SKILL.md` | Ban + README/component read + merge bullet |
+| `~/.cursor/skills/resolve-child/SKILL.md` | Pre-commit diff guard includes `docs/test-bible/**` |
+| `~/.cursor/skills/review-child/SKILL.md` | Read-only README + component file pointers |
+| `~/.cursor/skills/dispatch-parent/SKILL.md` | Hot files → `docs/test-bible/**` |
+| `~/.cursor/skills/check-linear/SKILL.md` | Conflict example → `docs/test-bible/core/dispatcher.md` |
+| `~/.cursor/skills/do-all-the-things/SKILL.md` | Resume skip list + FIX-UAT bible gate |
+| `~/.cursor/agents/ada-AGENTS.md` | Workspace guard ban line |
+| `~/.cursor/agents/hedy-AGENTS.md` | Same |
+| `~/.cursor/agents/katherine-AGENTS.md` | Same |
+| `~/.cursor/hooks/pre-commit/engineer.sh` | Already had `docs/test-bible/*` — verified blocks staged `docs/test-bible/README.md` (hook exit 1) |
+
+**Repo commit:** plan doc + Implementation record only; no `src/**`, `tests/**`, or `docs/test-bible/**` edits.
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| **Branch** | `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` |
+| **Build commit** | *(tip after `code(AST-664)`)* |
+| **Reviewer** | Radia (`review-child` after Tests Passed) |
+
+### What's solid
+
+- All eight skills + four agent handoffs + hook align with parent **AST-598** AC #5–6 and Chuckles parent checklist.
+- `qa-child` no longer instructs Betty to write `docs/ASTRAL_TEST_BIBLE.md`; manifest contract uses `### AST-NNN` in component files.
+- Engineer ban paths consistent across build/test/resolve skills and AGENTS files.
+
+### Issues
+
+*(Radia fills after review.)*
