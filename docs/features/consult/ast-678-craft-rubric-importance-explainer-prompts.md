@@ -222,3 +222,17 @@ Incorrect explainer placement or duplicate patches could confuse model outputs o
 
 **Production deploy (Susan):** after staging merge, `python3 scripts/push_tables_to_prod.py agent_task` (optional pre-check: `python3 scripts/spikes/ast438_admin_prompt_rubric_diagnostic.py --prompt-only`).
 
+## Resolution (resolve-child, 2026-06-15)
+
+**Radia review @ `1325d02b`:** fix-now none — clean resolve.
+
+| Finding | Resolution |
+|---------|------------|
+| **discuss** — 15-file three-dot diff vs stacked AST-676/677/674 on ftr | Expected epic stacking; AST-678-only product scope is `database.py` migration (+ Betty tests, plan doc). No sibling re-touch. |
+| **discuss** — `except sqlite3.Error: pass` on `craft_company_prefilter` retire `UPDATE` | Acknowledged. Matches low-risk migration pattern; AST-561 uses early return on read failure. Tighten only if retire failures surface in prod. |
+| **advisory** — literal multiplier prose vs `ASTRAL_CONFIG` | Accepted plan tradeoff (documented in plan Stage 1). |
+| **advisory** — Generate smoke (AC 3) | Deferred to UAT — confirm on one rubric Artifacts page once **AST-677** is on ftr. |
+| **advisory** — production `push_tables_to_prod.py agent_task` | Susan path documented in build stub; out of band. |
+
+**§9a dry-run:** `origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts` merges cleanly into `origin/dev` and `origin/ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what`.
+
