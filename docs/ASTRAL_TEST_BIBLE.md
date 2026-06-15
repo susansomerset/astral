@@ -1638,6 +1638,25 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
 
+## 7.13zzna Execution History direct candidate switch (**AST-662**, parent **AST-656**)
+
+**AST-656 (parent):** Execution History **`/admin/performance`** on-page **Candidate** dropdown must apply direct candidate-to-candidate changes without an intermediate **All** selection — dropdown display, URL **`candidate_id`**, ledger fetch, table rows, and total cost stay in sync. UI-only fix on shared **`useAdminCandidateFilter`** (**`manualPinRef`** nav-sync guard) plus memoized **`urlBacked`** on **`AdminPerformanceMonitor`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-662** | Direct A→B switch; hook manual-pin guard; stable **`urlBacked`** on Execution History | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `AdminPerformanceMonitor.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` (direct **`c1`→`c2`** urlBacked case); **`AST-634`** describe + new direct-switch case in `test_AdminPerformanceMonitor.test.tsx` |
+
+**AST-662** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-634|direct urlBacked|direct candidate switch"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** and hook file when parent UAT runs — **§7.13zzn** **AST-634** cases must stay green.
+
 ## 7.13zzo Auto retry — union claim/count + per-entity batch retry routing (**AST-641**, **AST-642**, parent **AST-630**)
 
 **AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.

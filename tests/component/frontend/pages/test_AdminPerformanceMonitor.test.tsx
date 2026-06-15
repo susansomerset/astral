@@ -400,5 +400,35 @@ describe("AdminPerformanceMonitor", () => {
       await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
       await waitFor(() => expect(calls.some(u => u.includes("candidate_id=c2"))).toBe(true))
     }, 15000)
+
+    it("direct candidate switch c1 to c2 refetches ledger without All intermediate step", async () => {
+      const rowC1 = { ...ledgerRow, batch_id: "b-c1", candidate_id: "c1", task_key: "task_c1" }
+      const rowC2 = { ...ledgerRow, batch_id: "b-c2", candidate_id: "c2", task_key: "task_c2" }
+      const calls: string[] = []
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?")) {
+          calls.push(url)
+          if (url.includes("candidate_id=c2")) return { json: async () => [rowC2] } as Response
+          if (url.includes("candidate_id=c1")) return { json: async () => [rowC1] } as Response
+          return { json: async () => [rowC1, rowC2] } as Response
+        }
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [rowC1] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => adminCandidates } as Response
+        }
+      })
+      localStorage.setItem("astral_selected_candidate", "c1")
+      renderPerformanceMonitor("/admin/performance?candidate_id=c1")
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("task_c1")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.options.length).toBeGreaterThan(2))
+      await userEvent.selectOptions(candidateSelect, "c2")
+      await waitFor(() => expect(calls.some(u => u.includes("candidate_id=c2"))).toBe(true))
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("task_c2")).toBeInTheDocument())
+      expect(within(screen.getByRole("table")).queryByText("task_c1")).not.toBeInTheDocument()
+      expect(candidateSelect.value).toBe("c2")
+    }, 20000)
   })
 })
