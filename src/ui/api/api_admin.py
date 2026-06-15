@@ -19,6 +19,7 @@ from src.data.database import (
 )
 
 from src.core.consult import list_timesheets
+from src.utils.deploy_status import ui_llm_debug
 from src.utils.cost_calculator import sum_calc_cost_components
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
@@ -1016,6 +1017,7 @@ def adhoc_test():
             max_tokens=resolved["max_tokens"],
             api_key_override=resolved["api_key_override"],
             task_key_uuid=resolved["task_key_uuid"],
+            debug=ui_llm_debug(),
         ))
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
