@@ -172,3 +172,22 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Verification:** Parent AST-680 staging pattern (`INFO src.external.anthropic: send_to_deepseek` + `provider=deepseek` detail) maps to **Provider prefix mismatch** fix-now under §5g.
 
+---
+
+## Resolution (2026-06-15 — resolve-child, Radia review)
+
+**Review ref:** Radia `review-child` comment on AST-688 (2026-06-15) — **discuss:** `code(AST-688)` @ `1a6a6ea3` bundles sibling **AST-687** product commits on the AST-688 publish ref.
+
+**Addressed (branch law):**
+
+| Item | Resolution |
+|------|------------|
+| Cross-ticket scope on publish ref | **AST-688 deliverable** remains doc/skill-only (§5g + Implementation record). All `src/**` changes are owned by **AST-687** (`origin/sub/AST-680/AST-687-llm-external-log-attribution`); reviewed separately with no fix-now. |
+| Why product appears on AST-688 tip | Epic worktree build order landed AST-687 product on the shared integration line before AST-688 `code()` commit; Betty documented intentional spill so AST-688 regression manifest could run AST-687 pytest gate on the same publish ref. |
+| merge-parent / ftr rollup | **No double-count:** `merge-child` merges each `sub/*` into `ftr/*` once; duplicate ancestry dedupes at merge. Review scope for AST-688 is §5g + plan doc commits only (`eb441a67`, `1a6a6ea3` doc portions, `ae8bf703`, `f9201d8c`, `2e28583d`). |
+| Future builds | Doc/skill-only tickets should not re-commit sibling `src/**` — keep product on the owning child sub-branch (lesson from this spill). |
+
+**Advisory (no change):** Global skill file is correct audit trail via Implementation record; §5g sample comment referencing `_emit_llm_call_debug` is intentional bug-pattern illustration.
+
+**Publish after resolve:** `origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness` — resolution doc commit only.
+
