@@ -1891,6 +1891,38 @@ class TestResponseSchemaBranches:
         assert parsed["agent_payload"]["search_terms"] == "site:linkedin.com foo\nbar"
         assert agent_mod._validate_response_schema(parsed, schema, "craft_company_search_terms") is None
 
+    def test_ast676_int_bounds_and_bool_rejection(self) -> None:
+        schema = {"importance": {"type": "int", "required": True, "min": 1, "max": 10}}
+        ok = {"agent_payload": {"importance": 5}}
+        assert agent_mod._validate_response_schema(ok, schema, "task") is None
+        missing = agent_mod._validate_response_schema({"agent_payload": {}}, schema, "task")
+        assert missing is not None and "Missing required field 'importance'" in missing
+        assert "must be int, got bool" in agent_mod._validate_response_schema(
+            {"agent_payload": {"importance": True}}, schema, "task"
+        )
+        assert "must be >= 1" in agent_mod._validate_response_schema(
+            {"agent_payload": {"importance": 0}}, schema, "task"
+        )
+        assert "must be <= 10" in agent_mod._validate_response_schema(
+            {"agent_payload": {"importance": 11}}, schema, "task"
+        )
+
+    def test_ast676_craft_rubric_criteria_schema(self) -> None:
+        schema = TASK_CONFIG["craft_prefilter_rubric"]["response_schema"]
+        ok = {
+            "agent_payload": {
+                "criteria": [{"label": "L", "content": "c", "importance": 5}],
+            },
+        }
+        assert agent_mod._validate_response_schema(ok, schema, "craft_prefilter_rubric") is None
+        bad = {
+            "agent_payload": {
+                "criteria": [{"label": "L", "content": "c"}],
+            },
+        }
+        err = agent_mod._validate_response_schema(bad, schema, "craft_prefilter_rubric")
+        assert err is not None and "criteria[0]" in err
+
     def test_effective_entity_type_defaults_candidate_for_craft(self) -> None:
         tc = TASK_CONFIG["craft_company_search_terms"]
         assert agent_mod._effective_entity_type(tc, "somerset") == "candidate"

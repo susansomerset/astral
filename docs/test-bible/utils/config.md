@@ -221,4 +221,24 @@ Structured **`run_next`** hop observability: parent → child **`task_key`**, **
   tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry
 ```
 
+---
+
+### AST-676 · AST-655
+
+Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubric`** (stored artifact **`company_prefilter`** unchanged). All six Phase B rubric craft tasks share **`_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA`** — each `criteria` item requires integer **`importance`** in **1–10** at **`do_task`** schema validation. UI rename (**AST-677**) and admin prompts (**AST-678**) are sibling scope.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Task key + shared rubric schema | `src/utils/config.py` | **`TestAst676CraftRubricSchema`** (`tests/component/utils/test_config.py`) |
+| Int min/max + bool rejection in validator | `src/core/agent.py` (`_validate_response_schema`) | **`TestResponseSchemaBranches::test_ast676_*`** (`tests/component/core/test_agent.py`) |
+
+**AST-676** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst676CraftRubricSchema \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema
+```
+
 ```
