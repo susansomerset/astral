@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -15,7 +15,6 @@ describe("AdminDataManagement", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
-    vi.spyOn(window, "confirm").mockReturnValue(true)
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     })
@@ -80,6 +79,8 @@ describe("AdminDataManagement", () => {
       target: { value: '[{"id":1}]' },
     })
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Apply upsert" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Apply" }))
     await waitFor(() =>
       expect(screen.getByText(/Upsert completed: inserted 2, updated 1, skipped 3/)).toBeInTheDocument(),
     )
@@ -100,6 +101,8 @@ describe("AdminDataManagement", () => {
 
     fireEvent.change(screen.getByPlaceholderText(/Paste Copy Output JSON array here/), { target: { value: "[]" } })
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Apply upsert" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Apply" }))
     await waitFor(() => expect(screen.getByText("bad payload")).toBeInTheDocument())
   }, 15000)
 
