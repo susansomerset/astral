@@ -13,7 +13,7 @@
 
 ### AST-681
 
-Append-only JSON log under `data/merge_ticket_log.json`; sole writer is `append_merge_ticket_log` (finish-up CLI in sibling AST-683). Read path returns oldest-first file order; deploy status reverses for API.
+Append-only JSON log under `data/merge_ticket_log.json`; sole writer is `append_merge_ticket_log` (CLI) invoked by finish-up `record-landed-parent.sh` (AST-683). Read path returns oldest-first file order; deploy status reverses for API. Finish-up shell wiring: `dev/record_landed_parent.md`.
 
 | Behavior | Tests |
 | --- | --- |
