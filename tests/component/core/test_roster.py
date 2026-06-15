@@ -1229,6 +1229,187 @@ class TestFindJobPageAst673:
         assert update.call_args.kwargs["job_site"] == "https://confirmed.example/jobs"
 
 
+class TestJobSiteDistinct674:
+    @pytest.mark.parametrize(
+        "job_site,company_website,expected",
+        [
+            ("https://careers.example/jobs", "https://example.com", True),
+            ("https://example.com", "https://example.com", False),
+            ("https://example.com/", "https://example.com", False),
+            ("", "https://example.com", False),
+        ],
+    )
+    def test_is_verified_job_site_distinct(
+        self, job_site: str, company_website: str, expected: bool
+    ) -> None:
+        assert roster_mod._is_verified_job_site_distinct(job_site, company_website) is expected
+
+
+class TestFindJobPageAst674:
+    @pytest.mark.asyncio
+    async def test_distinct_job_site_delegates_before_empty_pjl_exit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        company = _company(
+            job_site="https://careers.example/jobs",
+            company_website="https://example.com",
+            company_data={},
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        jf = AsyncMock(return_value={"state": "WATCH", "job_site": "https://careers.example/jobs"})
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", jf)
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        out = await roster_mod.find_job_page(
+            "https://example.com",
+            short_name="acme",
+            company_website="https://example.com",
+            ctx={"entity_batch_id": "find_job_page-674"},
+        )
+        jf.assert_awaited_once_with(
+            "acme",
+            "https://example.com",
+            "https://careers.example/jobs",
+            debug=False,
+            ctx={"entity_batch_id": "find_job_page-674"},
+        )
+        save.assert_not_called()
+        assert out["state"] == "WATCH"
+
+    @pytest.mark.asyncio
+    async def test_equal_job_site_falls_through_to_pjl_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        company = _company(
+            job_site="https://example.com",
+            company_website="https://example.com",
+            company_data={},
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        jf = AsyncMock()
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", jf)
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        out = await roster_mod.find_job_page(
+            "https://example.com", short_name="acme", company_website="https://example.com"
+        )
+        jf.assert_not_awaited()
+        save.assert_called_once()
+        assert out["state"] == "NO_JOBLIST"
+
+    @pytest.mark.asyncio
+    async def test_no_pjl_emits_no_llm_log(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        company = _company(company_website="https://example.com", company_data={})
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        with caplog.at_level("INFO", logger="src.core.roster"):
+            await roster_mod.find_job_page(
+                "https://example.com", short_name="acme", company_website="https://example.com"
+            )
+        assert any("NO_JOBLIST without LLM" in r.message and "reason=no_pjl_or_nav" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_all_pjl_scrapes_failed_emits_no_llm_log(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        company = _company(
+            company_website="https://example.com",
+            company_data={"possible_job_links": [1], "nav_links": "1. https://example.com/jobs"},
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(
+            roster_mod,
+            "_fetch_job_links_content",
+            AsyncMock(return_value=("   ", {}, {}, {})),
+        )
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        with caplog.at_level("INFO", logger="src.core.roster"):
+            await roster_mod.find_job_page(
+                "https://example.com", short_name="acme", company_website="https://example.com"
+            )
+        assert any(
+            "NO_JOBLIST without LLM" in r.message and "reason=all_pjl_scrapes_failed" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_find_assembled_select_job_page_uses_entity_log_batch_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils import logging as logging_mod
+
+        entity_batch = "find_job_page-674-entity"
+        token = logging_mod.log_batch_id.set(entity_batch)
+        captured: Dict[str, Any] = {}
+
+        async def capture_do_task(task_key: str, **kwargs: Any) -> Dict[str, Any]:
+            captured["task_key"] = task_key
+            captured["batch"] = logging_mod.log_batch_id.get()
+            captured["ctx"] = dict(kwargs.get("ctx") or {})
+            return {
+                "success": True,
+                "parsed_response": {"response_type": "JOBLIST_NO_JOBS", "selected_page": 1},
+            }
+
+        monkeypatch.setattr(roster_mod, "do_task", capture_do_task)
+        monkeypatch.setattr(
+            roster_mod,
+            "_check_parse_results",
+            AsyncMock(
+                return_value={
+                    "short_name": "acme",
+                    "state": "NO_OPENINGS",
+                    "job_site": "https://careers.example/jobs",
+                    "response_type": "JOBLIST_NO_JOBS",
+                }
+            ),
+        )
+        try:
+            await roster_mod._find_job_page_from_assembled(
+                short_name="acme",
+                company_website="https://example.com",
+                assembled_content="asm",
+                page_url_map={1: "https://careers.example/jobs"},
+                page_dom_map={1: "<motion/>"},
+                visible_map={1: ""},
+                nav_links="",
+                browser_context=MagicMock(),
+                debug=False,
+                ctx={"entity_batch_id": entity_batch, "astral_candidate_id": "c674"},
+            )
+        finally:
+            logging_mod.log_batch_id.reset(token)
+
+        assert captured["task_key"] == "select_job_page"
+        assert captured["batch"] == entity_batch
+        assert captured["ctx"]["entity_batch_id"] == entity_batch
+        assert captured["ctx"]["astral_candidate_id"] == "c674"
+
+
 class TestSaveCompany:
     def test_persists_optional_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
         update = MagicMock()
