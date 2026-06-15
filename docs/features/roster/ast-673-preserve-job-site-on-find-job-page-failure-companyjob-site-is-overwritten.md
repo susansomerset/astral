@@ -202,3 +202,35 @@ Use existing `TestFindJobPage` / `run_company_task` monkeypatch patterns in the 
 
 **Publish ref:** `origin/sub/AST-671/AST-673-preserve-job-site-on-find-job-page-failure`  
 **Product commits:** `9244c148` (Stage 1 — `_job_site_for_persist` + `_save_company`), `80d15c71` (Stage 2 — `find_job_page` stored-URL redirect), `d2c1fd7f` (Stage 3 — `jobs_found_process_job_site` empty baseline return shape)
+
+---
+
+## Radia review (2026-06-15)
+
+**Diff:** `origin/dev...origin/sub/AST-671/AST-673-preserve-job-site-on-find-job-page-failure` (`90d5115a`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 match plan: `_job_site_for_persist` + `_save_company` wiring, stored-URL redirect in `find_job_page`, empty baseline return in `jobs_found_process_job_site`. |
+| AC coverage | Betty manifest maps AC 1–5 (`TestJobSiteForPersist673`, `TestFindJobPageAst673`, `TestJobsFoundProcessJobSite469` extensions). |
+| §2.6 state machine | Terminal states unchanged; only `job_site` column write semantics differ on failure. |
+| §1.3 DRY | One helper covers all 14 `page_option_url=company_website` call sites — correct tradeoff vs per-callsite edits. |
+| Boundaries | No AST-674 agent-data / batch_id work; no config/dispatcher/UI churn. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | `find_job_page` lines ~1343, ~1353 | Return dict still sets `"job_site": company_website` on PJL-failure paths while `_save_company` persists `""` (empty baseline). `run_company_task` does not re-persist from the return dict — DB is correct per AC. Align return shape in a follow-up if any caller displays result `job_site`. |
+| **advisory** | `_save_company` docstring ~1692 | Still says `page_option_url` "becomes job_site"; helper now mediates — docstring stale. |
+| **advisory** | `_save_company` ~1700–1702 | Extra `get_company` read on every save when `pre_run_job_site` omitted — acceptable per plan; note if hot-path profiling ever matters. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child` / merge. |
+| discuss | Optional: normalize `find_job_page` failure return `job_site` to match persisted column (empty or pre-run URL). |
+| advisory | Update `_save_company` docstring when touching file next. |
