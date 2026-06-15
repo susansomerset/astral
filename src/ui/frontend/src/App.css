@@ -228,10 +228,6 @@ body {
   margin: 0 4px;
   opacity: 0.6;
 }
-.nav-deploy-commit {
-  color: var(--text-secondary);
-  cursor: default;
-}
 .nav-deploy-uptime {
   color: var(--text-muted);
 }

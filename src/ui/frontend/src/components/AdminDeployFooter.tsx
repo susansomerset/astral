@@ -4,8 +4,6 @@ import api from "../lib/api"
 
 type DeployStatus = {
   environment?: string
-  commit_short: string
-  commit_message: string
   uptime: string
   uptime_seconds: number
 }
@@ -51,10 +49,6 @@ export default function AdminDeployFooter() {
           <span className="nav-deploy-sep">·</span>
         </>
       )}
-      <span className="nav-deploy-commit" title={status!.commit_message || undefined}>
-        {status!.commit_short}
-      </span>
-      <span className="nav-deploy-sep">·</span>
       <span className="nav-deploy-uptime">{status!.uptime}</span>
     </div>
   )

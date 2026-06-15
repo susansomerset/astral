@@ -131,8 +131,6 @@ class TestDeployStatus:
         self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         expected = {
-            "commit_short": "abc1234",
-            "commit_message": "test msg",
             "uptime": "5m",
             "uptime_seconds": 300,
             "environment": "local",
@@ -146,8 +144,6 @@ class TestDeployStatus:
         self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         payload = {
-            "commit_short": "deadbeef",
-            "commit_message": "",
             "uptime": "<1m",
             "uptime_seconds": 10,
         }
@@ -159,7 +155,6 @@ class TestDeployStatus:
     def test_admin_uptime_format_samples_via_payload_builder(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(ds_mod, "_git_head_info", lambda: ("abc1234", "msg"))
         monkeypatch.setattr(ds_mod, "_PROCESS_BOOT_TIME", 0.0)
         cases = [
             (30, "<1m"),

@@ -190,15 +190,16 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
-### AST-646 · AST-651 · AST-653 · AST-640
+### AST-646 · AST-651 · AST-653 · AST-679 · AST-640
 
-**AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label when `ASTRAL_DEPLOY_ENV` is any non-empty string (after strip), short commit hash with message tooltip, and server-formatted uptime. Non-admins keep the existing footer spacer; no deploy API call.
+**AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label when `ASTRAL_DEPLOY_ENV` is any non-empty string (after strip) and server-formatted uptime (AST-679 removed commit hash/tooltip). Non-admins keep the existing footer spacer; no deploy API call.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-646** | `GET /api/deploy_status` (`@require_admin`); `deploy_status.py` payload builder; `AdminDeployFooter` + admin gate in `NavigationShell` | `src/utils/deploy_status.py`, `src/ui/api/api_system.py`, `src/ui/frontend/src/components/{AdminDeployFooter,NavigationShell}.tsx` | `tests/component/utils/test_deploy_status.py`; `tests/component/ui/api/test_api_system.py::TestDeployStatus`; `tests/component/frontend/components/test_AdminDeployFooter.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx` (admin footer visible; non-admin absent) |
 | **AST-651** | UAT: drop `DEPLOY_STATUS_CONFIG` allowlist — `_resolve_environment()` returns stripped raw `ASTRAL_DEPLOY_ENV`; whitespace-only omits label | `src/utils/deploy_status.py`, `src/utils/config.py`, `env.example` | **`tests/component/utils/test_deploy_status.py::TestResolveEnvironment`** — **`test_non_allowlisted_value_returns_raw`** (`eu-west`), **`test_whitespace_only_returns_none`**; keep **`test_valid_local`**, **`test_unset_returns_none`**, payload tests unchanged. No UI/API test edits (mocks unchanged). |
 | **AST-653** | UAT: on `ASTRAL_DEPLOY_ENV=local`, UI-initiated LLM paths auto-enable debug via `is_local_deploy_env()` / `ui_llm_debug()`; non-local unchanged | `src/utils/deploy_status.py`, `src/ui/api/{api_intake,api_admin,api_candidate,api_boards}.py`, `src/core/{dispatcher,candidate,boards}.py` | **`tests/component/utils/test_deploy_status.py::TestLocalDeployDebug`** — local/staging/unset OR semantics for `is_local_deploy_env` and `ui_llm_debug`; existing **`TestResolveEnvironment`** + payload tests unchanged. No log-string golden tests (AST-538 gating only). |
+| **AST-679** | AST-658: drop commit tip from deploy status API + admin footer — env (when set) and uptime only; no git subprocess | `src/utils/deploy_status.py`, `AdminDeployFooter.tsx`, `App.css` | **`TestGetDeployStatusPayload`** — renamed **`test_includes_uptime_without_environment`**; drop `_git_head_info` mocks/assertions. **`TestDeployStatus`** — expected JSON without commit keys. **`test_AdminDeployFooter.test.tsx`** — env + uptime only; no commit text/tooltip. **`test_NavigationShell.test.tsx`** — deploy_status mocks without commit fields |
 
 **AST-646** narrowed run:
 
@@ -224,6 +225,18 @@ cd src/ui/frontend && npm run test:component -- \
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_deploy_status.py::TestLocalDeployDebug
+```
+
+**AST-679** narrowed run (same surface as AST-646; commit keys removed):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py::TestGetDeployStatusPayload \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
 ```
 
 ---

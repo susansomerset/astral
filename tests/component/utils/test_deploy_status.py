@@ -86,23 +86,19 @@ class TestLocalDeployDebug:
 
 
 class TestGetDeployStatusPayload:
-    def test_includes_commit_and_uptime_without_environment(
+    def test_includes_uptime_without_environment(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
         monkeypatch.setattr(ds, "_PROCESS_BOOT_TIME", 1_000_000.0)
         monkeypatch.setattr("time.time", lambda: 1_000_045.0)
-        monkeypatch.setattr(ds, "_git_head_info", lambda: ("abc1234", "fix things"))
         payload = ds.get_deploy_status_payload()
-        assert payload["commit_short"] == "abc1234"
-        assert payload["commit_message"] == "fix things"
         assert payload["uptime"] == "<1m"
         assert payload["uptime_seconds"] == 45
         assert "environment" not in payload
 
     def test_includes_environment_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
-        monkeypatch.setattr(ds, "_git_head_info", lambda: ("deadbeef", "ship it"))
         monkeypatch.setattr(ds, "_PROCESS_BOOT_TIME", 0.0)
         monkeypatch.setattr("time.time", lambda: 3661.0)
         payload = ds.get_deploy_status_payload()
