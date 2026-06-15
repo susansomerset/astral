@@ -185,5 +185,28 @@ No conflicts identified.
 ## Review
 
 **Built:** `code(AST-667): deploy label helper for alert subject` → `code(AST-667): AUTO alert subject deploy env and candidate last name` → `code(AST-667): pass candidate_id to auto_run_error`  
-**Branch:** `origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject` @ `29180f5f`
+**Branch:** `origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject` @ `b7784856`  
+**Diff baseline:** `origin/dev...origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Three production files + tests match stages 1–3; dispatcher passes `candidate_id` from `_dispatch_one`; body/trigger/gmail path untouched. |
+| AC 1–6 | `TestAutoRunErrorSubjectPrefix` covers env labels, case, Astral/whitespace fallbacks, last-name suffix/omit; dispatcher asserts arg[4]; existing AST-393 alert test isolated with `delenv`. |
+| §1.3 DRY | `get_deploy_label()` wraps `_resolve_environment()` — single env read path. |
+| §3.3 layers | `core` → `utils.deploy_status` + existing `data.database`; no UI/external violations. |
+| §2.4 / §2.6 | No batch claim or state-machine changes. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+Proceed to **resolve-child** (no code changes required).
+
+### Advisory
+
+- `_resolve_candidate_last_name` uses `or {}` on optional profile fields — bounded: missing data omits `/LastName` rather than inventing a value; acceptable for non-raising alert formatting (§3.2 monitor never raises).
 
