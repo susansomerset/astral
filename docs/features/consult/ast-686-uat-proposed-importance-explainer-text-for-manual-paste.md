@@ -153,3 +153,35 @@ No conflicts flagged.
 **Local verification:** `rg '678|ast678|_apply_ast678|database\.py' docs/consult/` — no matches; no `src/` paths in commit.
 
 **Susan path:** Review PROPOSED block on Linear or open the `.txt` file; after approval, paste into Manage Tasks `user_prompt` for all six `craft_*_rubric` tasks before `{$RESPONSE_SCHEMA}` — manual only, no deploy script in this ticket.
+
+---
+
+## Radia review (AST-686)
+
+**Ref:** `origin/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste` @ `317d1141`  
+**Baseline:** `origin/dev`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| **Stage 1 / plan** | `ab6c83e9` adds **only** `docs/consult/craft-rubric-importance-explainer-proposed.txt` — 3-line `#` paste guide + shared explainer prose; no `AST-678_VECTOR_IMPORTANCE` marker. |
+| **Ticket AC #2** | Linear **AST-686** description has **`## PROPOSED importance explainer`**, GitHub link to file, and inline prose matching file body (excluding `#` guide lines). |
+| **Multiplier fidelity** | Weight table (30%…200%) matches `ASTRAL_CONFIG["consult_importance"]["multipliers"]` in `config.py` (0.30…2.00). |
+| **Boundaries** | No `src/` in `code(AST-686)`; `rg '678|ast678|_apply_ast678|database.py' docs/consult/` — no matches. |
+| **Betty manifest** | `bec76850` registers docs-only audit manifest in test-bible README — no pytest required per plan. |
+
+### Issues
+
+None **fix-now**.
+
+### Advisory
+
+- Publish ref includes merged sibling work (**AST-685** revert, **AST-687**/**AST-688** tests) from epic rollup — not AST-686 deliverables; no conflict with docs-only scope.
+
+### Recommended actions
+
+| Severity | Action |
+|----------|--------|
+| — | Ada: none — proceed **resolve-child** if no open **discuss** threads. |
+| — | Susan: review PROPOSED prose on Linear or in `.txt`; after approval, manual paste into all six `craft_*_rubric` Manage Tasks prompts. |
