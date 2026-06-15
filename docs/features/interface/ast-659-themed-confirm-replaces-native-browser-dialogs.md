@@ -213,3 +213,15 @@ No conflicts — plan is safe to implement as written.
 | 1 | Revert AST-657 test additions in `test_listTableLayout.test.ts` and `test_ListPage_listTableLayout.test.tsx` on this publish ref (keep AST-659 page-test changes). | `resolve-child` |
 | 2 | If bible AST-657 row must stay, ensure it documents tests that match product on the same ref; otherwise trim to AST-659 §7.13zzx only. | Betty / engineer per handoff |
 | 3 | No product changes required for themed confirm — admin page wiring is correct as built. | — |
+
+## Resolution (2026-06-15)
+
+**Radia review:** `eeeb1a4f` — themed confirm product solid; fix-now was cross-ticket AST-657 test/bible contamination on this `sub/*`.
+
+**Resolved:**
+
+- Reverted `test_listTableLayout.test.ts` and `test_ListPage_listTableLayout.test.tsx` to `origin/dev` (removed AST-657 cases that referenced product not on this branch).
+- Removed **AST-657** bible row from §7.13zzt; **AST-659** §7.13zzx manifest unchanged.
+- No product code changes — admin `useUserConfirm` wiring shipped as built.
+
+**Verify:** Betty manifest (29 passed, 2 skipped); `test_listTableLayout.test.ts` no longer fails on missing exports at this ref.
