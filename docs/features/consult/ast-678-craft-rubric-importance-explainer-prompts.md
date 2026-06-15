@@ -189,6 +189,28 @@ Incorrect explainer placement or duplicate patches could confuse model outputs o
 - Stages 1 → 3 in order; one `code()` commit per stage on epic worktree; publish each to **`origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`** via `git push origin HEAD:sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`.
 - Do not edit `src/utils/config.py`, `src/core/agent.py`, `src/ui/frontend/**`, or consult scoring paths during **build-child**.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts` @ `1325d02b`
+
+### What's solid
+
+- AST-678 footprint matches plan Stages 1–2: explainer constant, patch helper, migration wired into `_ensure_agent_task_schema`.
+- Explainer prose matches plan; idempotent marker; inserts before `{$RESPONSE_SCHEMA}`; `user_prompt` only.
+- Prefilter `agent_task` rename copies `craft_company_prefilter` → `craft_prefilter_rubric` when new row blank; retires old key.
+- Component tests cover patch placement, idempotency, prefilter rename, all six keys.
+
+### Issues
+
+| Severity | Finding |
+|----------|---------|
+| **discuss** | Epic stacking on sub vs ftr — expected; AST-678-only product scope is `database.py` migration. |
+| **discuss** | `except sqlite3.Error: pass` on prefilter retire `UPDATE` — acceptable for merge; tighten later if needed. |
+| **advisory** | Literal multiplier prose vs `ASTRAL_CONFIG` — documented plan tradeoff. |
+| **advisory** | Generate smoke deferred until AST-677 on ftr. |
+
+**fix-now:** none.
+
 ## Review stub (Ada / build)
 
 **Publish ref:** `origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`  
@@ -199,3 +221,4 @@ Incorrect explainer placement or duplicate patches could confuse model outputs o
 **Generate smoke:** not run — requires **AST-677** UI task key on same ftr line.
 
 **Production deploy (Susan):** after staging merge, `python3 scripts/push_tables_to_prod.py agent_task` (optional pre-check: `python3 scripts/spikes/ast438_admin_prompt_rubric_diagnostic.py --prompt-only`).
+
