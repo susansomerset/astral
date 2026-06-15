@@ -123,3 +123,11 @@ All six rubric **Generate** runs fail schema validation until models return `imp
 
 - Stages 1 → 3 in order; one `code()` commit per stage on epic worktree; publish each to **`origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema`** via `git push origin HEAD:sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema`.
 - Do not edit `src/ui/frontend/**`, admin prompt seed/migration scripts, or `docs/features/**` except this plan file during **build-child**.
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Branch | `origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` |
+| Tip | `faf4d24f` |
+| Status | Code Complete — pending Betty qa-child (plan stage 3 component tests) |
