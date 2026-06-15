@@ -151,7 +151,7 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review stub (Ada / build)
 
 **Publish ref:** `origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness`  
-**Product commits:** `<build-sha>` — global `~/.cursor/skills/review-child/SKILL.md` §5g + §5/§5a cross-refs; **Implementation record** below (skill not in repo git)
+**Product commits:** `1a6a6ea37474248bd9455feb4423af5495ecff66` — global `~/.cursor/skills/review-child/SKILL.md` §5g + §5/§5a cross-refs; **Implementation record** below (skill not in repo git)
 
 ---
 
