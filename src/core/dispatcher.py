@@ -25,6 +25,7 @@ from src.data.database import (
 
 from src.data import database
 from src.core.agent import _current_agent_task_run_next, compute_batch_cost
+from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
     INFLOW_CONFIG,
@@ -478,7 +479,8 @@ async def _dispatch_one(task: Dict) -> None:
     candidate_id = task["candidate_id"]
     timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
     is_click = not bool(task.get("auto_mode"))
-    debug = bool(task.get("debug"))
+    ui_initiated = bool(task.get("_ui_initiated"))
+    debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
     if debug:
         logger.set_debug_flag(True)
 
@@ -706,7 +708,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         _sched_log.info("[%s] thread exited and cleared from registry", task.get("task_key", task_id))
 
 
-def run_task(task_id: int) -> bool:
+def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     """Spawn a daemon thread for task_id if not already running. Returns True if started."""
     with _registry_lock:
         if task_id in _task_registry:
@@ -722,6 +724,7 @@ def run_task(task_id: int) -> bool:
     ts = task.get("trigger_state")
     cid = task.get("candidate_id", "")
     task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
+    task["_ui_initiated"] = ui_initiated
 
     with _registry_lock:
         _task_registry[task_id] = {

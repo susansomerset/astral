@@ -26,6 +26,7 @@ from src.core.candidate import (
     save_candidate_data,
 )
 from src.utils.config import CANDIDATE_STATES, TASK_CONFIG, UI_CONFIG
+from src.utils.deploy_status import ui_llm_debug
 
 candidate_bp = Blueprint("candidate", __name__, url_prefix="/api/candidates")
 
@@ -254,5 +255,7 @@ def generate_artifact(candidate_id, task_key):
     if task_key == "craft_resume_base":
         live = (cd.get("context") or {}).get("starting_resume_text", "")
 
-    body, status = run_candidate_artifact_generation(candidate_id, task_key, live)
+    body, status = run_candidate_artifact_generation(
+        candidate_id, task_key, live, debug=ui_llm_debug()
+    )
     return jsonify(body), status

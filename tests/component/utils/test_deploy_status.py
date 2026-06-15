@@ -41,6 +41,36 @@ class TestResolveEnvironment:
         assert ds._resolve_environment() is None
 
 
+class TestLocalDeployDebug:
+    def test_is_local_deploy_env_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        assert ds.is_local_deploy_env() is True
+
+    def test_is_local_deploy_env_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "LOCAL")
+        assert ds.is_local_deploy_env() is True
+
+    def test_is_local_deploy_env_false_for_staging(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        assert ds.is_local_deploy_env() is False
+
+    def test_is_local_deploy_env_false_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        assert ds.is_local_deploy_env() is False
+
+    def test_ui_llm_debug_explicit_overrides_non_local(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        assert ds.ui_llm_debug(explicit_debug=True) is True
+
+    def test_ui_llm_debug_local_without_explicit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        assert ds.ui_llm_debug() is True
+
+    def test_ui_llm_debug_false_non_local_no_explicit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        assert ds.ui_llm_debug() is False
+
+
 class TestGetDeployStatusPayload:
     def test_includes_commit_and_uptime_without_environment(
         self, monkeypatch: pytest.MonkeyPatch

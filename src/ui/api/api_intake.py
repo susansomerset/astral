@@ -16,13 +16,15 @@ from src.core.intake import (
     post_intake_build,
     post_intake_turn,
 )
+from src.utils.deploy_status import ui_llm_debug
 from ui.auth import require_auth
 
 intake_bp = Blueprint("intake", __name__, url_prefix="/api/candidates")
 
 
 def _debug_flag() -> bool:
-    return request.args.get("debug", "").lower() in ("1", "true", "yes")
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    return ui_llm_debug(explicit_debug=explicit)
 
 
 def _runtime_error_response(exc: RuntimeError):

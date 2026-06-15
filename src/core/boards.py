@@ -479,6 +479,7 @@ def run_board_search_generation(
     board_search_id: str,
     task_key: str,
     live_content: Optional[str],
+    debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
     """Run craft_board_search_* via do_task; board_search row merged into ctx."""
     if task_key not in _BOARD_SEARCH_TASK_KEYS:
@@ -525,6 +526,7 @@ def run_board_search_generation(
                     live_content=live_content or "",
                     index=row["candidate_id"],
                     ctx=ctx,
+                    debug=debug,
                 )
             )
         except Exception as e:
