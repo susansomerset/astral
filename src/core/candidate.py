@@ -697,6 +697,7 @@ def run_candidate_artifact_generation(
     candidate_id: str,
     task_key: str,
     live_content: Optional[str],
+    debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
     candidate = database.get_candidate(candidate_id)
@@ -733,6 +734,7 @@ def run_candidate_artifact_generation(
                     live_content=live_content or "",
                     index=candidate_id,
                     ctx=candidate,
+                    debug=debug,
                 )
             )
         except Exception as e:

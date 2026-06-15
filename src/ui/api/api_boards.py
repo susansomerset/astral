@@ -22,6 +22,7 @@ from src.core.boards import (
     update_board_search,
 )
 from src.utils.config import get_board_entry, list_adopted_boards
+from src.utils.deploy_status import ui_llm_debug
 from ui.auth import require_auth
 
 boards_bp = Blueprint("boards", __name__, url_prefix="/api/boards")
@@ -199,7 +200,9 @@ def remove_search(board_search_id):
 def generate_search(board_search_id, task_key):
     if task_key not in _BOARD_SEARCH_TASK_KEYS:
         return jsonify({"error": f"Unknown board search task: {task_key}"}), 400
-    body, status = run_board_search_generation(board_search_id, task_key, None)
+    body, status = run_board_search_generation(
+        board_search_id, task_key, None, debug=ui_llm_debug()
+    )
     return jsonify(body), status
 
 
