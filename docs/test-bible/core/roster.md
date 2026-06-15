@@ -92,3 +92,27 @@ Equivalent harness:
   tests/component/core/test_roster.py::TestJobsFoundProcessJobSite469::test_missing_site_response \
   tests/component/core/test_roster.py::TestJobsFoundProcessJobSite469::test_scrape_empty_preserves_pre_run_job_site
 ```
+
+---
+
+### AST-674 · AST-669
+
+**AST-674 (child):** **`find_job_page`** delegates to **`jobs_found_process_job_site`** only when stored **job_site** normalizes to a URL **distinct from** **company_website** (**`_is_verified_job_site_distinct`**). Equal or empty **job_site** keeps the PJL discovery path. Early **NO_JOBLIST** exits without **`do_task`** emit INFO **`NO_JOBLIST without LLM — reason=…`** so Susan can distinguish no-LLM-by-design from missing **agent_data**. Stage 3 audit: **`dispatcher._dispatch_one`** already sets **`log_batch_id`** to entity **`batch_id`** before **`run_company_task`** — **`select_job_page`** **agent_data** keys to the Execution History row Susan clicked.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Distinct **job_site**, 0 PJLs → **`jobs_found_process_job_site`**, not instant PJL **NO_JOBLIST** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst674::test_distinct_job_site_delegates_before_empty_pjl_exit` |
+| 1 (neg) | **job_site** equals **company_website** → PJL path, **`jobs_found_process_job_site`** not called | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst674::test_equal_job_site_falls_through_to_pjl_path` |
+| 2–3 | Stored-URL chain: **`select_job_page`** **`do_task`** sees entity **`log_batch_id`** + dispatcher **`ctx`** | `src/core/roster.py`, `src/core/dispatcher.py`, `src/core/agent.py` | `tests/component/core/test_roster.py::TestFindJobPageAst674::test_find_assembled_select_job_page_uses_entity_log_batch_id` |
+| 4 | No-LLM **NO_JOBLIST** logs **`reason=no_pjl_or_nav`** / **`all_pjl_scrapes_failed`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestFindJobPageAst674::test_no_pjl_emits_no_llm_log`; `::test_all_pjl_scrapes_failed_emits_no_llm_log` |
+| 5 | Other dispatch **`do_task`** paths unchanged | existing suite | `tests/component/core/test_agent.py` (existing **`do_task`** / **AST-531** coverage — no new roster-only smoke) |
+
+**Helper:** `tests/component/core/test_roster.py::TestJobSiteDistinct674::test_is_verified_job_site_distinct`
+
+**AST-674** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestJobSiteDistinct674 \
+  tests/component/core/test_roster.py::TestFindJobPageAst674
+```

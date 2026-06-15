@@ -1292,6 +1292,13 @@ async def jobs_found_process_job_site(
         )
 
 
+def _is_verified_job_site_distinct(job_site: str, company_website: str) -> bool:
+    """True when stored job_site is non-empty and not the same URL as company_website (Susan AC)."""
+    js = _normalize_company_url_for_dedupe(job_site)
+    cw = _normalize_company_url_for_dedupe(company_website)
+    return bool(js) and js != cw
+
+
 async def find_job_page(
     url: str,
     short_name: Optional[str] = None,
@@ -1324,7 +1331,12 @@ async def find_job_page(
     # Load company data for possible_job_links + nav_links
     company = get_company(short_name)
     pre_job_site = str((company or {}).get("job_site") or "").strip()
-    if pre_job_site:
+    if _is_verified_job_site_distinct(pre_job_site, company_website):
+        logger.info(
+            "[%s] find_job_page: stored job_site path (%s)",
+            short_name,
+            pre_job_site,
+        )
         return await jobs_found_process_job_site(
             short_name, company_website, pre_job_site, debug=debug, ctx=ctx,
         )
@@ -1337,6 +1349,14 @@ async def find_job_page(
 
     async with create_browser_context() as browser_context:
         if not possible_job_links or not nav_links:
+            logger.info(
+                "[%s] find_job_page: NO_JOBLIST without LLM — reason=no_pjl_or_nav "
+                "pjl_count=%d nav_links_chars=%d verified_job_site=%s",
+                short_name,
+                len(possible_job_links),
+                len(nav_links or ""),
+                "yes" if _is_verified_job_site_distinct(pre_job_site, company_website) else "no",
+            )
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
@@ -1351,6 +1371,14 @@ async def find_job_page(
             possible_job_links, nav_links, browser_context, debug=debug,
         )
         if not assembled_content.strip():
+            logger.info(
+                "[%s] find_job_page: NO_JOBLIST without LLM — reason=all_pjl_scrapes_failed "
+                "pjl_count=%d nav_links_chars=%d verified_job_site=%s",
+                short_name,
+                len(possible_job_links),
+                len(nav_links or ""),
+                "yes" if _is_verified_job_site_distinct(pre_job_site, company_website) else "no",
+            )
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
