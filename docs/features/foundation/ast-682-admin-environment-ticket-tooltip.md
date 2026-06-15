@@ -180,6 +180,7 @@ No conflicts requiring `conf-!!-NONE`.
 
 ---
 
-## Review stub
+## Review stub (Katherine / build)
 
-_(Radia fills after review-child.)_
+**Publish ref:** `origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip`  
+**Product commit:** `01dec4cf` (Stage 1 — `AdminDeployFooter.tsx` merge-ticket `title` tooltip via `fmtTime`, cap 20)
