@@ -244,3 +244,10 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §1.5 Logging | N/A — no backend changes |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-675/ast-690-uat-env-label-click-popup-for-merge-ticket-list`  
+**Product commit:** `4a17067c` (Stage 1 — click popup on env label; `AdminDeployFooter.tsx` + `App.css`)
