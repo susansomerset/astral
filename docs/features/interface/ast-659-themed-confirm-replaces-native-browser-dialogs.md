@@ -175,3 +175,11 @@ Reference pattern: `tests/component/frontend/pages/test_CandidateIntake.test.tsx
 | §3.5 naming | No new files; existing flat `pages/` names preserved. |
 
 No conflicts — plan is safe to implement as written.
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-639/AST-659-themed-confirm-native-browser`  
+**Tip:** `36ada25c`  
+**Built:** Stage 1 — `AdminDataManagement.tsx` upsert apply → `useUserConfirm` ("Apply upsert"). Stage 2 — `AdminManageCandidates.tsx` delete + clear-key with danger variant. Stage 3 — page Vitest specs click through `alertdialog` instead of `window.confirm` mock. Stage 4 — audit: only `UserPrompt.tsx` / `Modal.tsx` fallbacks remain in `src/ui/frontend`.
+
+**Betty manifest (Code Complete):** run `test_AdminDataManagement.test.tsx` + `test_AdminManageCandidates.test.tsx` per plan Stage 3; extend cancel-path coverage if desired.
