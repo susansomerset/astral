@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any, Callable, Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -100,3 +101,32 @@ class TestSendToDeepseekTimesheetMapping:
         )
         assert row["calc_cost_output"] == pytest.approx(expected["calc_cost_output"])
         assert row["calc_cost_cache_write"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_debug_true_emits_under_deepseek_module(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(response_text="plain")
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        get_logger_calls: list[tuple[str, dict[str, Any]]] = []
+
+        def _track_get_logger(name: str, **kwargs: Any) -> MagicMock:
+            get_logger_calls.append((name, kwargs))
+            return MagicMock()
+
+        with patch("src.utils.llm_external.get_logger", side_effect=_track_get_logger):
+            await deepseek_mod.send_to_deepseek(
+                [{"type": "text", "text": "hi"}],
+                vendor_model="deepseek-v4-pro",
+                tier_meta={"thinking": False},
+                response_format="text",
+                prompt_label="select_job_page",
+                debug=True,
+            )
+
+        assert any(
+            name == "src.external.deepseek" and kwargs.get("debug_flag") is True
+            for name, kwargs in get_logger_calls
+        )
