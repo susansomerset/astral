@@ -152,3 +152,17 @@ All six rubric **Generate** runs fail schema validation until models return `imp
 | — | — | No fix-now items. Proceed to **resolve-child** if discuss items are acknowledged. |
 | UI task key | AST-677 | Rename `taskKey` in `ArtifactsCompanyWatchCriteria.tsx` when that sibling lands. |
 | Prompt bodies | AST-678 | Ensure craft rubric prompts emit `importance` per criterion so Generate passes post-merge. |
+
+## Resolution (`resolve-child`)
+
+**Date:** 2026-06-15
+
+**Against:** Radia `review-child` § **Review** on `origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` @ **`e4074d1a`**.
+
+**Product / plan**
+
+- **`fix-now`:** None — shared `_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA`, `craft_company_prefilter` → `craft_prefilter_rubric`, int `min`/`max` + bool rejection in `_validate_response_schema`, spike script key list, and Betty manifest tests are as-reviewed; publish tip already includes **`docs(AST-676): Radia review — …`** before this appendix.
+- **Discuss — epic sequencing:** Accepted as documented in Self-Assessment Risk — Company Watch UI still calls `craft_company_prefilter` until **AST-677**; rubric Generate fails schema validation until models return `importance` (**AST-678**). No product changes in this resolve pass.
+- **Advisory — literal `importance` bounds (1–10):** Accepted per plan Stage 1 decision — bounds stay literal on the schema field rather than dynamic `"bounds": "consult_importance"` indirection; manual sync if `ASTRAL_CONFIG["consult_importance"]` changes later.
+
+**Integration:** §9a dry-runs vs **`origin/dev`** and **`origin/ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what`** — both clean before **User Testing**.
