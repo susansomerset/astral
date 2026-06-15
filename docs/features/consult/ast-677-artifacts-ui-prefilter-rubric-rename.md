@@ -96,3 +96,18 @@ No conflicts — plan is safe to implement as written.
 |------|-------|--------|
 | — | — | **No fix-now items.** Proceed to **resolve-child**. |
 | Prompt bodies | AST-678 | Ensure craft rubric prompts emit `importance` so Generate passes post-rename. |
+
+## Resolution (`resolve-child`)
+
+**Date:** 2026-06-15
+
+**Against:** Radia `review-child` § **Review** on `origin/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename` @ **`27f2a582`**.
+
+**Product / plan**
+
+- **`fix-now`:** None — `ArtifactsCompanyWatchCriteria.tsx` `taskKey` → `craft_prefilter_rubric`, Betty page test, and Radia review doc are as-reviewed; no product commits in this resolve pass.
+- **Discuss:** None.
+- **Advisory — sibling epic commits on diff:** Accepted — ftr integration carries **AST-676** / **AST-674** / **AST-679** siblings; AST-677 delta remains one TSX line + page test.
+- **Advisory — Generate until AST-678:** Accepted per Self-Assessment Risk — schema validation may fail until prompt bodies emit `importance`; rename is correct regardless.
+
+**Integration:** §9a dry-runs vs **`origin/dev`** and **`origin/ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what`** — both clean before **User Testing**.
