@@ -1,6 +1,15 @@
 import { useLayoutEffect, useState, type RefObject } from "react"
 import { mergeWidthsForSticky, measureListTableColumnWidths } from "./listTableLayout"
 
+function widthsEqual(a: Record<string, number>, b: Record<string, number>): boolean {
+  const aKeys = Object.keys(a)
+  if (aKeys.length !== Object.keys(b).length) return false
+  for (const k of aKeys) {
+    if (a[k] !== b[k]) return false
+  }
+  return true
+}
+
 export function useListTableColumnMeasure(
   tableRef: RefObject<HTMLTableElement | null>,
   orderedKeys: string[],
@@ -13,6 +22,9 @@ export function useListTableColumnMeasure(
     mergeWidthsForSticky(persistedWidths, {}),
   )
 
+  const orderedKeysKey = orderedKeys.join("\0")
+  const persistedKey = JSON.stringify(persistedWidths)
+
   useLayoutEffect(() => {
     const table = tableRef.current
     if (!table) return
@@ -21,10 +33,13 @@ export function useListTableColumnMeasure(
       orderedKeys,
       hasCheckbox,
     )
-    setCheckboxWidthPx(cb)
-    setMergedWidths(mergeWidthsForSticky(persistedWidths, dataWidths))
+    setCheckboxWidthPx(prev => (prev === cb ? prev : cb))
+    setMergedWidths(prev => {
+      const next = mergeWidthsForSticky(persistedWidths, dataWidths)
+      return widthsEqual(prev, next) ? prev : next
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps -- plan deps array for re-measure triggers
-  }, [tableRef, orderedKeys, hasCheckbox, persistedWidths, ...deps])
+  }, [tableRef, orderedKeysKey, hasCheckbox, persistedKey, ...deps])
 
   return { checkboxWidthPx, mergedWidths }
 }

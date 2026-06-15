@@ -49,6 +49,7 @@ const DATA_COL_KEYS = [
 ] as const
 
 const DATA_COL_KEYS_ARR = [...DATA_COL_KEYS]
+const NO_PERSISTED_WIDTHS: Record<string, number> = {}
 
 interface ScheduledPhaseTableProps {
   rows: DispatchTask[]
@@ -84,7 +85,7 @@ function ScheduledPhaseTable({
     tableRef,
     DATA_COL_KEYS_ARR,
     false,
-    {},
+    NO_PERSISTED_WIDTHS,
     [rows.length, frozenN],
   )
 
