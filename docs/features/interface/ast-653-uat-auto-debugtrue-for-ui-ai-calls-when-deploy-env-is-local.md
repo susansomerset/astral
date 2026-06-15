@@ -189,3 +189,14 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Built:** `code(AST-653): deploy_status local-env debug helpers` → `code(AST-653): wire ui_llm_debug on intake adhoc and generate APIs` → `code(AST-653): pass debug through generate runners and UI dispatch Run`  
 **Branch:** `origin/sub/AST-640/AST-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local` @ `22d41ce9`
+
+---
+
+## Resolution
+
+**Date:** 2026-06-15  
+**Radia review:** fix-now none; discuss none; advisory only (bible §7.13zzt AST-652 carryover from merge-tests — harmless, no action).
+
+**Outcome:** No product changes from review. Shipped as built @ `38a64deb` (product `22d41ce9`, Betty tests `94bbe18e`, merge-tests `38a64deb`). §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-640`.
+
+**UAT verify:** `ASTRAL_DEPLOY_ENV=local`, restart server, sign in as admin — nav footer shows `local`. Run Ad Hoc **Test**, intake turn, or dispatch **Run** without debug toggle; server logs emit AST-538 debug-contract lines. On staging/production (env ≠ local), debug only when explicitly requested.
