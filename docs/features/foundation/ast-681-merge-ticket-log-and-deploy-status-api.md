@@ -245,3 +245,13 @@ No conflicts requiring `conf-!!-NONE`.
 ### Recommended actions
 
 None — **resolve-child** may proceed (no product changes required).
+
+---
+
+## Resolution (2026-06-15)
+
+**Publish ref:** `origin/sub/AST-675/ast-681-merge-ticket-log-and-deploy-status-api` @ `08ded1c0` (Radia `docs(AST-681): Radia review — clean`)
+
+Radia review clean — no fix-now, discuss, or product changes. Merged `origin/dev`, `origin/ftr/ast-675-create-a-ticket-log-in-utils`, and publish ref on epic worktree; §9a dry-run clean against `origin/dev` and `origin/ftr/ast-675-create-a-ticket-log-in-utils`.
+
+**Outcome:** Append-only merge ticket log, deploy-status `merge_tickets` payload, and append CLI ready for sibling wiring (AST-682 tooltip, AST-683 finish-up).
