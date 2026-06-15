@@ -212,3 +212,10 @@ No conflicts requiring `conf-!!-NONE`.
 - Stages 1 → 2 in order; one `code()` commit per stage on epic worktree; publish each to **`origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns`** via `git push origin HEAD:sub/AST-633/AST-657-uat-freeze-first-n-data-columns`.
 - After Stage 2, run `cd src/ui/frontend && npm run build` before handoff to test-child.
 - Deviation → Linear comment on **AST-657** with 🛑 template from plan-child §6.
+
+## Review
+
+- **Branch:** `origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns`
+- **Diff:** `origin/dev...origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns`
+- **Tip:** `f3c6c5bc`
+- **Radia:** pending
