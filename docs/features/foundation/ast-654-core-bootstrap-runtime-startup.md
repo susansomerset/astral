@@ -153,3 +153,14 @@ Expect process import to complete without `ImportError` / `RuntimeError`. Do **n
 | DRY §1.3 | No duplicate sync/scheduler calls in server — single `bootstrap_runtime()` entry |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-383/AST-654-core-bootstrap-runtime-startup` @ `60433538`.
+
+**Stages delivered:**
+- Stage 1: `src/core/bootstrap.py` — `3f742853`.
+- Stage 2: `src/ui/server.py` calls `bootstrap_runtime()` only — `60433538`.
+- Stage 3: `rg` clean (no `src.data` in `server.py`); `py_compile` pass. Flask debug reloader may double-run module-level bootstrap; `start_scheduler` is idempotent.
+
+**Betty:** manifest at **Code Complete** — layer grep on `server.py`, bootstrap import smoke if env configured.
