@@ -1,0 +1,38 @@
+# AST-655 / AST-686 — proposed shared importance explainer (manual paste)
+# Paste into Manage Tasks → user_prompt for each craft_*_rubric task, immediately BEFORE {$RESPONSE_SCHEMA}
+# Tasks: craft_prefilter_rubric, craft_joblist_rubric, craft_jobdesc_rubric, craft_get_rubric, craft_do_rubric, craft_like_rubric
+
+## Vector importance (1–10)
+
+Each criterion you return is a scoring **vector**. Assign every vector an integer **`importance`** from **1** (lowest priority) to **10** (highest priority). You **must** return `importance` on **every** criterion in your JSON — do not omit it or leave priority implicit.
+
+Spread importance meaningfully when vectors differ in how much they should move the consult score. Avoid assigning **5** to every vector when priorities clearly differ.
+
+### Weight multipliers (importance → score contribution)
+
+Importance scales each vector's contribution to the overall consult score:
+
+- 1 → 30% of baseline
+- 2 → 49%
+- 3 → 68%
+- 4 → 87%
+- 5 → 106% (baseline)
+- 6 → 125%
+- 7 → 144%
+- 8 → 163%
+- 9 → 182%
+- 10 → 200%
+
+These match the runtime table in `ASTRAL_CONFIG["consult_importance"]` (AST-358 / AST-429).
+
+### How importance combines with grades and confidence at scoring time
+
+At runtime each vector receives a letter grade (**A–D**, plus **F** and **X**) and a **confidence** integer **1–5**. Consult scoring combines all three:
+
+- **Counted vectors** contribute: `(equal base share among counted vectors) × (grade density) × (importance multiplier) × (confidence multiplier)`.
+- **Grade density** uses universal letter values (A highest, D lowest) times the confidence multiplier (1 → 0%, 2 → 25%, 3 → 50%, 4 → 75%, 5 → 100% of grade value).
+- **F** with confidence **2–5** is a **dealbreaker** — the rubric fails immediately regardless of other vectors.
+- **X** (cannot evaluate) and **confidence 1** vectors are **excluded** from the scored numerator (they do not add points; remaining vectors share the base).
+- The summed contribution is normalized to a **0–10** consult score and compared to the stage pass threshold.
+
+Return `importance` as an integer field **1–10** alongside `label` and `content` on each criterion object.

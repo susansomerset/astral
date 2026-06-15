@@ -446,7 +446,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-677 · AST-655
 
-**AST-677 (child):** Company Watch Criteria Artifacts page **`taskKey`** rename only — **`craft_company_prefilter`** → **`craft_prefilter_rubric`**. Stored artifact **`company_prefilter`** unchanged. Backend **`TASK_CONFIG`** + schema validation covered by **AST-676**; admin prompt bodies are **AST-678**.
+**AST-677 (child):** Company Watch Criteria Artifacts page **`taskKey`** rename only — **`craft_company_prefilter`** → **`craft_prefilter_rubric`**. Stored artifact **`company_prefilter`** unchanged. Backend **`TASK_CONFIG`** + schema validation covered by **AST-676**; admin prompt bodies: Susan pastes approved explainer via Manage Tasks (**AST-685** reverts auto-migration; see sibling UAT explainer-text bug).
 
 | AC | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
