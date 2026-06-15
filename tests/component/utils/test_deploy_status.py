@@ -23,6 +23,20 @@ class TestFormatUptimeSeconds:
         assert ds.format_uptime_seconds(3 * 86400 + 22 * 3600 + 7 * 60) == "3d22h07m"
 
 
+class TestGetDeployLabel:
+    def test_returns_env_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        assert ds.get_deploy_label() == "local"
+
+    def test_returns_astral_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        assert ds.get_deploy_label() == "Astral"
+
+    def test_returns_astral_when_whitespace_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "   ")
+        assert ds.get_deploy_label() == "Astral"
+
+
 class TestResolveEnvironment:
     def test_unset_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
