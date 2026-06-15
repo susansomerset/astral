@@ -247,3 +247,9 @@ No conflicts requiring `conf-!!-NONE`.
 
 1. **resolve-child:** Confirm Susan UAT repro on Agent Timesheets horizontal scroll (primary AC).
 2. No code fix-now from review unless UAT fails.
+
+## Resolution
+
+- **2026-06-15 (Katherine resolve-child):** No product commits — Radia review **findings** only (discuss: jsdom cannot assert real measured widths; Susan UAT on Agent Timesheets is the gate; first-paint fallback flash if visible).
+- **§9a:** `origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns` @ `d9ca5a55` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-633`**.
+- **Outcome:** Ticket → **User Testing** (implementer assignee unchanged).
