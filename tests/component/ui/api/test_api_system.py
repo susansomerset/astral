@@ -134,6 +134,7 @@ class TestDeployStatus:
             "uptime": "5m",
             "uptime_seconds": 300,
             "environment": "local",
+            "merge_tickets": [],
         }
         monkeypatch.setattr(system_mod, "get_deploy_status_payload", lambda: expected)
         resp = system_client.get("/api/deploy_status", headers=auth_headers)
@@ -146,6 +147,7 @@ class TestDeployStatus:
         payload = {
             "uptime": "<1m",
             "uptime_seconds": 10,
+            "merge_tickets": [],
         }
         monkeypatch.setattr(system_mod, "get_deploy_status_payload", lambda: payload)
         resp = system_client.get("/api/deploy_status", headers=auth_headers)
