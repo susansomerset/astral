@@ -188,3 +188,14 @@ Incorrect explainer placement or duplicate patches could confuse model outputs o
 
 - Stages 1 → 3 in order; one `code()` commit per stage on epic worktree; publish each to **`origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`** via `git push origin HEAD:sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`.
 - Do not edit `src/utils/config.py`, `src/core/agent.py`, `src/ui/frontend/**`, or consult scoring paths during **build-child**.
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`  
+**Product commit:** `e0cf5bb3` — Stage 1: `_AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER`, `_patch_ast678_importance_into_user_prompt`, `_apply_ast678_craft_rubric_importance_migration` wired into `_ensure_agent_task_schema`.
+
+**Local verification (temp copy of `data/astral.db`):** all six `craft_*_rubric` current rows have `AST-678_VECTOR_IMPORTANCE` marker; no current `craft_company_prefilter` row.
+
+**Generate smoke:** not run — requires **AST-677** UI task key on same ftr line.
+
+**Production deploy (Susan):** after staging merge, `python3 scripts/push_tables_to_prod.py agent_task` (optional pre-check: `python3 scripts/spikes/ast438_admin_prompt_rubric_diagnostic.py --prompt-only`).
