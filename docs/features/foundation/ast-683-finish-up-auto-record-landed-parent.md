@@ -199,3 +199,13 @@ None (fix-now).
 
 - **Advisory:** On next real `finish-up` for AST-675, confirm `data/merge_ticket_log.json` on `origin/dev` gains one `AST-675` entry (plan Stage 3 manual verify — not automated).
 - **Advisory:** Re-running `merge-parent.sh` after a successful record will append a duplicate parent id (append-only log by design); acceptable per parent epic unless dedup is added later.
+
+---
+
+## Resolution (2026-06-15)
+
+**Publish ref:** `origin/sub/AST-675/ast-683-finish-up-auto-record-landed-parent` @ `b79c15a2` (Radia `docs(AST-683): Radia review — clean`)
+
+Radia review clean — no fix-now, discuss, or product changes. Merged `origin/dev`, `origin/ftr/ast-675-create-a-ticket-log-in-utils`, and publish ref on epic worktree `work683`; §9a dry-run clean against `origin/dev` and `origin/ftr/ast-675-create-a-ticket-log-in-utils`.
+
+**Outcome:** `merge-parent.sh` invokes `record-landed-parent.sh` after successful ftr land push; append-only merge ticket log entry + follow-up `dev` commit wired for finish-up.
