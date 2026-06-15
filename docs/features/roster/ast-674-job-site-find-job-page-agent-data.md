@@ -194,3 +194,11 @@ After **prep-uat** lands on staging:
 - **§3.5 naming:** `_is_verified_job_site_distinct` follows roster `_` helper convention.
 
 No `conf-!!-NONE` conflicts identified.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data`  
+**Product commits:** `d58c8900` (Stage 1 — `_is_verified_job_site_distinct` + distinct job_site redirect gate), `bfea6ed2` (Stage 2 — NO_JOBLIST without LLM INFO logs on both early-exit paths)  
+**Stage 3 audit:** `dispatcher._dispatch_one` already sets `log_batch_id.set(entity_batch_id)` before `run_company_task` for `find_job_page`; no roster guard added.
