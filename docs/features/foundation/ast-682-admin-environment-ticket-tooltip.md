@@ -213,3 +213,13 @@ No conflicts requiring `conf-!!-NONE`.
 ### Recommended actions
 
 None — **resolve-child** may proceed (no product changes required).
+
+---
+
+## Resolution (2026-06-15)
+
+**Publish ref:** `origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip` @ `fbfe4238` (Radia `docs(AST-682): Radia review — clean`)
+
+Radia review clean — no fix-now, discuss, or product changes. Merged `origin/dev`, `origin/ftr/ast-675-create-a-ticket-log-in-utils`, and publish ref on epic worktree `work682`; §9a dry-run clean against `origin/dev` and `origin/ftr/ast-675-create-a-ticket-log-in-utils`. `npx tsc -b --noEmit` passes.
+
+**Outcome:** Admin deploy footer environment label shows up to 20 merge-ticket lines via native `title` tooltip; non-admin and absent-env behavior unchanged.
