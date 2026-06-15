@@ -37,7 +37,7 @@ from src.utils.config import (
 
 AST438_TASK_KEYS = frozenset({
     "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get", "grade_like",
-    "craft_company_prefilter", "craft_joblist_rubric", "craft_jobdesc_rubric",
+    "craft_prefilter_rubric", "craft_joblist_rubric", "craft_jobdesc_rubric",
     "craft_get_rubric", "craft_do_rubric", "craft_like_rubric",
 })
 
