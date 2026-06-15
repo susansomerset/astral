@@ -1,0 +1,225 @@
+# AST-664 — Agent skill updates for test-bible tree
+
+- **Linear (this ticket):** [AST-664](https://linear.app/astralcareermatch/issue/AST-664/agent-skill-updates-for-test-bible-tree-restructure-astral-test)
+- **Parent:** [AST-598](https://linear.app/astralcareermatch/issue/AST-598/restructure-astral-test-biblemd-into-per-component-bible-files)
+- **Publish ref:** `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` (child of AST-598; not Linear `gitBranchName`)
+
+## Summary
+
+Update global Cursor skills and Betty’s AGENTS handoff so the **per-component test bible tree** (`docs/test-bible/**`) is the sole workflow authority for manifests, engineer bans, rollup/shasum verification, and read-only review context — replacing instructions that still point at the monolith `docs/ASTRAL_TEST_BIBLE.md`. Confirm the engineer pre-commit hook blocks `docs/test-bible/**`. No product code, no bible content migration (sibling **AST-663**), no edits under `tests/`.
+
+## Dependency note
+
+**AST-663** (`blockedBy` in Linear) delivered the `docs/test-bible/` tree on **`origin/ftr/ast-598-restructure-astral_test_biblemd-into-per-component-bible`**. Before **build-child**, verify that ref contains `docs/test-bible/README.md` and the layer index. The monolith may still exist until Radia retires it; skills must treat **`docs/test-bible/**`** as canonical for new manifest work while allowing transitional mentions of the monolith only as “retired / do not edit.”
+
+## Path resolution helper (use in all skills)
+
+When a skill needs “which bible file for this test or module,” apply this mirror (also documented in `docs/test-bible/README.md`):
+
+| Test path pattern | Bible path |
+| --- | --- |
+| `tests/component/<layer>/test_<module>.py` | `docs/test-bible/<layer>/<module>.md` |
+| `tests/component/data/database/test_<cluster>.py` | `docs/test-bible/data/database/<cluster>.md` |
+| `tests/component/ui/api/test_api_<name>.py` | `docs/test-bible/ui/api/api_<name>.md` |
+| `tests/component/frontend/<folder>/test_*.tsx` | `docs/test-bible/frontend/<folder>.md` (folder-level, not per file) |
+| Cross-cutting standards (§2, §6, §6c, §7.12, appendix) | `docs/test-bible/README.md` |
+
+**Manifest headers:** Ticket blocks use `### AST-NNN` inside the component bible file(s) for modules that ticket touched — **not** monolith `§7.13z*` numbering.
+
+## Out of scope (explicit)
+
+| Item | Owner |
+| --- | --- |
+| Bible content split / migration | **AST-663** (Betty) |
+| `docs/ASTRAL_TEAM_WORKFLOW.md`, `docs/ASTRAL_GIT_WORKFLOW.md` repo edits | **AST-663** (already on `ftr`) |
+| Deleting `docs/ASTRAL_TEST_BIBLE.md` | **AST-598** after Radia gate |
+| Historical `docs/features/**` plan mentions of monolith | Opportunistic only — do not bulk-edit |
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+| --- | --- | --- |
+| `~/.cursor/skills/qa-child/SKILL.md` | Manifest contract → `docs/test-bible/**`; rollup/shasum; drop §7.13z* | global skill |
+| `~/.cursor/agents/betty-AGENTS.md` | Ownership + session read path | global agent |
+| `~/.cursor/skills/build-child/SKILL.md` | Engineer test-tree ban paths | global skill |
+| `~/.cursor/skills/test-child/SKILL.md` | Ban + context read paths | global skill |
+| `~/.cursor/skills/resolve-child/SKILL.md` | Pre-commit diff guard paths | global skill |
+| `~/.cursor/skills/review-child/SKILL.md` | Read-only bible pointers | global skill |
+| `~/.cursor/skills/dispatch-parent/SKILL.md` | Hot-file / orientation read list | global skill |
+| `~/.cursor/skills/check-linear/SKILL.md` | Merge-conflict example path | global skill |
+| `~/.cursor/skills/do-all-the-things/SKILL.md` | Resume skip list + FIX-UAT bible gate | global skill |
+| `~/.cursor/agents/ada-AGENTS.md` | Workspace guard ban line (match build-child) | global agent |
+| `~/.cursor/agents/hedy-AGENTS.md` | Same | global agent |
+| `~/.cursor/agents/katherine-AGENTS.md` | Same | global agent |
+| `~/.cursor/hooks/pre-commit/engineer.sh` | Verify `docs/test-bible/*` blocked (add if missing) | global hook |
+| `docs/features/foundation/ast-664-agent-skill-updates-test-bible.md` | This plan + Implementation record | docs (repo) |
+
+**No** `src/**`, `tests/**`, or `docs/test-bible/**` edits in **AST-664** commits.
+
+## Stage 1: `qa-child` — sole authority and manifest contract
+
+**Done when:** `~/.cursor/skills/qa-child/SKILL.md` names **`docs/test-bible/**`** as Betty’s sole bible write surface; manifest steps cite **file paths + pytest node ids** and `### AST-NNN` blocks; rollup/shasum/land-preflight sections reference per-component files; no instruction tells Betty to append new manifests to `docs/ASTRAL_TEST_BIBLE.md`.
+
+1. In the YAML **`description:`** front matter (lines 3–8), replace **`ASTRAL_TEST_BIBLE`** with **`docs/test-bible/**`** (per-component tree mirroring `tests/component/`).
+
+2. In **§ intro paragraph** (line ~13 “sole authority on **`docs/ASTRAL_TEST_BIBLE.md`**”): Replace with sole authority on **`docs/test-bible/**`** — the per-component tree mirroring **`tests/component/`**. Betty edits **only** the component file(s) for modules this ticket touches plus **`docs/test-bible/README.md`** when cross-cutting standards change.
+
+3. Replace every remaining **`docs/ASTRAL_TEST_BIBLE.md`** reference in the skill using this mapping:
+   - **Authority / read-before-manifest:** → **`docs/test-bible/README.md`** for standards + grep/read the component file(s) from the **Path resolution helper** for modules in the plan diff.
+   - **Engineer ban cross-ref:** → **`docs/test-bible/**`** (engineers never commit bible files).
+   - **§6c UI manifest rules:** → **`docs/test-bible/README.md` §6c** (not monolith §6c).
+   - **§7.13z* registry / epic § layout:** → Before adding a manifest block, read existing **`### AST-NNN`** headings in the target component file(s) on **`origin/ftr/<parent-segment>`** — do not duplicate the same ticket block; prefer one **`### AST-NNN`** per child in the file for the primary test module.
+   - **Rollup conflict routing:** → If rollup conflicts **only** under **`docs/test-bible/**`**, **`@Betty`** re-runs **`qa-child`**: merge **`origin/ftr/<parent-segment>`**, keep rolled **`### AST-NNN`** blocks, append this child’s block only in the correct component file(s).
+   - **shasum verify (§ Test Bible Verify):** → When bible changed this pass, for **each** touched path under **`docs/test-bible/`**, record **`git show origin/<publish-ref>:<path> | shasum`** in the Linear manifest comment (one line per file, or a single line listing paths + combined note if only README moved).
+   - **§3 FIX-UAT full re-read gate:** → Full tree re-read **only** if **`docs/test-bible/**`** changed on **`origin/ftr/<parent-segment>`** since this parent’s last qa pass; otherwise grep manifest-relevant sections in README + touched component files and the bug plan delta only.
+   - **§6 manifest bullet “from ASTRAL_TEST_BIBLE”:** → “from **`docs/test-bible/`** component file(s) and the repo”.
+   - **§7 git add paths:** → **`git add`** test-tree paths **plus** **`docs/test-bible/**`** paths Betty updated (not **`docs/ASTRAL_TEST_BIBLE.md`** unless AST-598 retirement pass explicitly retires the monolith — out of scope here).
+   - **§10 Linear comment shasum:** → Same per-path shasum rule as Verify bullet above.
+
+4. In **§ Test Bible — sole authority** rules list (items 1, 3, 7, Land preflight, Chuckles `@Betty` paragraph): replace monolith filename with **`docs/test-bible/**`** and per-component rollup wording from step 3.
+
+5. Remove **§7.13z* registry** heading text; replace section title with **`### AST-NNN manifest registry`** and body from step 3 epic § layout bullet.
+
+6. Add one short subsection after **§6 Design the manifest** (before **§ Test Bible**):
+
+   **`#### Component file selection (AST-598)`**
+
+   > For each manifest line, name the pytest path. Map to bible file via the mirror table in **`docs/test-bible/README.md`** (see this plan **Path resolution helper**). Append new **`### AST-NNN`** blocks only inside those component files. Standards-only updates (§6c, branch locks, harness appendix) go in **`docs/test-bible/README.md`** once — not duplicated in every component file.
+
+7. Do **not** change Betty git surface, **`merge-tests()`** mechanics, **`astral-tests`** worktree rules, or Linear status gates.
+
+⚠️ **Decision:** During monolith retirement transition, **`qa-child`** may still *read* the monolith on old branches for historical context, but must **never instruct Betty to write** new manifests to **`docs/ASTRAL_TEST_BIBLE.md`**.
+
+## Stage 2: `betty-AGENTS.md`
+
+**Done when:** Betty’s handoff doc points at the tree and README; no “read monolith at session start” without tree path.
+
+1. In **`~/.cursor/agents/betty-AGENTS.md`**, line 3: change **`docs/ASTRAL_TEST_BIBLE.md`** → **`docs/test-bible/**`** (per-component test bible; Betty sole writer).
+
+2. Line 28 **Standards**: Replace **`Read docs/ASTRAL_TEST_BIBLE.md at session start`** with **`Read docs/test-bible/README.md at session start; open component file(s) per ticket using the mirror in README § Tree layout`**.
+
+3. **Test ownership** (if present elsewhere): engineers do not commit **`docs/test-bible/**`**.
+
+## Stage 3: Engineer skills — test-tree ban paths
+
+**Done when:** **`build-child`**, **`test-child`**, and **`resolve-child`** ban **`docs/test-bible/**`** alongside the transitional monolith ban; context reads point at tree + README.
+
+### 3a. `build-child/SKILL.md`
+
+1. In **§7 Test-tree ban** (line ~115): extend the ban list to:
+
+   **`tests/`**, **`scripts/test_*.py`**, **`scripts/testing/`**, **`docs/ASTRAL_TEST_BIBLE.md`**, **`docs/test-bible/**`**.
+
+   Add one sentence: **Betty** owns all bible paths under **`docs/test-bible/**`** at **Code Complete** (`qa-child`).
+
+### 3b. `test-child/SKILL.md`
+
+1. **§2 Test-tree ban** (line ~14): same path list as **3a**.
+
+2. **§3 Load the run book** (line ~55): Replace monolith-only read with:
+
+   > **`docs/test-bible/README.md`** and the component bible file(s) for manifest modules — context for why Betty chose paths; do **not** override her manifest silently.
+
+3. **§5 git** (line ~78): Replace **`ASTRAL_TEST_BIBLE.md`** in merge bullet with **`docs/test-bible/**`** (Betty publishes tests + bible to **`sub/*`**).
+
+### 3c. `resolve-child/SKILL.md`
+
+1. **§9 pre-commit diff guard** (line ~104): extend to:
+
+   **`tests/`**, **`scripts/test_*.py`**, **`scripts/testing/`**, **`docs/ASTRAL_TEST_BIBLE.md`**, **`docs/test-bible/**`**.
+
+## Stage 4: `review-child` — read-only pointers
+
+**Done when:** Review skill tells Radia to read README + relevant component file(s), not the monolith as primary.
+
+1. **§3 Read the rules** (line ~47): Replace optional monolith read with:
+
+   > **`docs/test-bible/README.md`** for standards; **`docs/test-bible/<layer>/<module>.md`** (per **Path resolution helper**) for coverage intent matching the ticket manifest or diff — **read-only**; Betty owns edits via **`qa-child`**.
+
+2. **§ Reviewer scope** intro (line ~21): replace **`docs/ASTRAL_TEST_BIBLE.md`** in the list with **`docs/test-bible/**`**.
+
+## Stage 5: Orchestration skills — `dispatch-parent`, `check-linear`, `do-all-the-things`
+
+**Done when:** Dispatch hot-file list, check-linear conflict example, and do-all-the-things resume/FIX-UAT gates use tree paths.
+
+### 5a. `dispatch-parent/SKILL.md`
+
+1. **Hot files** list (line ~96): replace **`docs/ASTRAL_TEST_BIBLE.md`** with **`docs/test-bible/**`**.
+
+### 5b. `check-linear/SKILL.md`
+
+1. **§4 routine comment example** (line ~288): replace example conflict path:
+
+   **`docs/test-bible/core/dispatcher.md (@Betty White)`** (illustrative per-component path; any **`docs/test-bible/**`** file is Betty-owned).
+
+### 5c. `do-all-the-things/SKILL.md`
+
+1. **resume-spawn template** (lines ~121, ~153): replace **`ASTRAL_TEST_BIBLE`** in the “Do NOT re-read” list with **`docs/test-bible/`** (tree).
+
+2. **§4f FIX-UAT qa-child note** (line ~414): replace bible full re-read condition with:
+
+   > bible full re-read only if **`docs/test-bible/**`** changed on **`origin/ftr/<parent>`** since last qa on this parent
+
+## Stage 6: Engineer AGENTS + pre-commit hook verification
+
+**Done when:** Engineer personas and hook match skill ban paths; no repo commit required if hook already correct.
+
+1. Read **`~/.cursor/hooks/pre-commit/engineer.sh`**. The **`case`** statement must include **`docs/test-bible/*)`** alongside **`docs/ASTRAL_TEST_BIBLE.md`**. If missing, add **`docs/test-bible/*)`** to the same blocked branch (do **not** remove monolith block until AST-598 deletes the file).
+
+2. In **`~/.cursor/agents/ada-AGENTS.md`**, **`hedy-AGENTS.md`**, **`katherine-AGENTS.md`**: update workspace guard line 3–4 equivalent to:
+
+   **`Never commit to tests/`, `docs/ASTRAL_TEST_BIBLE.md`, or `docs/test-bible/**` — pre-commit hook enforces.**
+
+3. **Verification (no pytest):** From **`astral-AST-598`**, run:
+
+   ```bash
+   git diff --cached --name-only >/dev/null  # ensure clean staging
+   echo 'docs/test-bible/core/agent.md' | GIT_INDEX_FILE=/dev/null \
+     bash -c 'source ~/.cursor/hooks/pre-commit/engineer.sh' 2>&1 || true
+   ```
+
+   Manually stage a dummy path test if needed: `git add -N docs/test-bible/README.md 2>/dev/null; git diff --cached --name-only | head -1` — confirm hook prints **`engineer hook: blocked path`**. Reset: `git reset HEAD docs/test-bible/README.md 2>/dev/null`.
+
+⚠️ **Decision:** Hook and **`~/.cursor/agents/*`** live outside **`astral`** git; **Implementation record** below mirrors verification output for UAT.
+
+## Stage 7: Repo plan publish and implementation record
+
+**Done when:** Plan on **`origin/sub/AST-598/AST-664-agent-skill-updates-test-bible`**; Linear **Plan Ready** with labels and GitHub link.
+
+1. On **`astral-AST-598`** epic worktree, implement **Stages 1–6** on global paths first.
+
+2. Append **`## Implementation record`** to the bottom of **this** plan file listing each global file touched and a one-line summary of what changed (auditable mirror for Susan/Chuckles — same pattern as **AST-556**).
+
+3. Commit **only** `docs/features/foundation/ast-664-agent-skill-updates-test-bible.md` on epic worktree:
+
+   **`docs(AST-664): plan — agent skill updates for test-bible tree`**
+
+   If **build-child** already ran Stages 1–6, use instead:
+
+   **`code(AST-664): agent skill updates for test-bible tree`**
+
+   with Implementation record populated.
+
+4. Publish:
+
+   ```bash
+   git push origin HEAD:sub/AST-598/AST-664-agent-skill-updates-test-bible
+   ```
+
+5. Confirm **`git log origin/sub/AST-598/AST-664-agent-skill-updates-test-bible -1 --oneline`**.
+
+## Self-Assessment
+
+**Scope:** `scope-Single-Component` — Global workflow skills and agent handoff files only; no `src/` or test corpus.
+
+**Conf:** `conf-high` — Parent **AST-598** definition and Chuckles **[check-linear] file checklist** on the parent fix the target paths and contract; **AST-663** tree is on **`ftr`**.
+
+**Risk:** `risk-Medium` — Stale monolith references in skills would mis-route Betty manifests or let engineers commit bible files; wrong rollup wording could recreate merge pain under **`docs/test-bible/**`**.
+
+## ASTRAL_CODE_RULES self-review
+
+- **§1.3 DRY:** Path mirror table defined once in this plan and referenced from **`qa-child`** — no duplicate mirror prose in every skill.
+- **§2.1 config / §2.4 batch / §2.6 state machine:** Not applicable — no product code.
+- **§3.3 imports / §3.5 naming:** Not applicable.
+- **§3.6 debug/spikes:** Not applicable.
+- **No conflicts** with code rules; workflow-only change.
