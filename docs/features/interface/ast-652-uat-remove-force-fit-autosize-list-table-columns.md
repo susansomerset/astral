@@ -155,3 +155,9 @@ None — fix-now or discuss.
 ### Recommended actions
 
 Proceed to resolve-child / parent UAT — no code changes required from this review.
+
+## Resolution
+
+- **2026-06-14 (Katherine resolve-child):** No product commits — Radia review **clean** (no fix-now or discuss). **Advisory** items (column resize under auto layout; Scheduled Actions frozen offsets) left for **Susan UAT**.
+- **§9a:** `origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns` @ `3159afb8` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-633`**.
+- **Outcome:** Ticket → **User Testing** (implementer assignee unchanged).
