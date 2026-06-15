@@ -164,3 +164,32 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 3: `rg` clean (no `src.data` in `server.py`); `py_compile` pass. Flask debug reloader may double-run module-level bootstrap; `start_scheduler` is idempotent.
 
 **Betty:** manifest at **Code Complete** — layer grep on `server.py`, bootstrap import smoke if env configured.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-383/AST-654-core-bootstrap-runtime-startup` @ `9088ec20`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | `bootstrap_runtime()` runs validation → `sync_agent_tasks(get_task_keys())` → `start_scheduler()` in order; AST-381 paths not invoked |
+| B2 layer | `server.py` has zero `src.data` imports; bootstrap lives in core with allowed data/core/utils imports |
+| Fail-fast | `_validate_runtime_coupling()` raises `RuntimeError` on LLM env, empty task keys, and coupling gaps — no swallowed startup failures |
+| Tests | `test_bootstrap.py` covers validation branches and call ordering; `conftest.server_client` stubs `bootstrap_runtime` before server reload |
+| Dispatch coupling | Validation uses `resolve_dispatch_task_config_key` (not naive `key in TASK_CONFIG`) — matches live dispatch-row → agent-key mapping |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now or discuss items |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Cherry-pick or merge sub tip; proceed to `resolve-child` if no open threads | Hedy |
+| Optional: update `ASTRAL_CODE_RULES.md` §3.2 server.py bullet (scheduler now in `core/bootstrap`) | AST-385 or follow-up |
+
+**Verdict:** Clean — approve for merge integration.
