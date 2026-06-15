@@ -280,3 +280,17 @@ When a skill needs “which bible file for this test or module,” apply this mi
 | --- | --- |
 | **resolve-child** — no product changes required | Ada |
 | Parent **AST-598** — retire monolith after all siblings **User Testing** | Radia gate (separate pass) |
+
+## Resolution
+
+**Resolved 2026-06-14** on `astral-AST-598` @ `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible`.
+
+| Item | Outcome |
+| --- | --- |
+| **fix-now** | None — Radia review confirmed global skills/agents/hook + Betty manifest align with **AST-598** AC #5–6. |
+| **discuss** | None. |
+| **advisory** | **AST-663** / **ftr** noise on **`sub/*` diff** and **`.gitignore`** `/AGENTS.md` — acknowledged; out of **AST-664** engineer scope. |
+| **Product / repo** | No **`src/**`** changes. Plan doc carries Implementation record + Review (Radia **`1918f4cd`**). Global skill edits remain on workstation per Implementation record. |
+| **§9a dry-run** | `origin/sub/…/AST-664-…` merges cleanly into **`origin/dev`** and **`origin/ftr/ast-598-restructure-astral_test_biblemd-into-per-component-bible`**. |
+
+**Linear:** **User Testing** — assignee **Ada** (implementer unchanged).
