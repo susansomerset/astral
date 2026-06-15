@@ -60,3 +60,39 @@ Update the Company Watch Criteria Artifacts page so **Generate** calls **`craft_
 | §1.3 DRY | Reuses existing `ArtifactEditor`; no new abstractions. |
 
 No conflicts — plan is safe to implement as written.
+
+## Built
+
+**Built:** `code(AST-677): point Company Watch Criteria Generate at craft_prefilter_rubric`  
+**Branch:** `origin/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename` @ `93a0d8ec`
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Branch | `origin/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename` |
+| Tip (reviewed) | `00398468` |
+| Baseline | `origin/dev` (three-dot diff) |
+| Status | Review Posted (Radia) |
+
+### What's solid
+
+- Plan Stage 1 lands exactly: `ArtifactsCompanyWatchCriteria.tsx` `taskKey` → `craft_prefilter_rubric`; `artifactKey="company_prefilter"` and title unchanged.
+- `grep craft_company_prefilter src/ui/frontend/` is clean — no stale frontend references.
+- §3.3 / §3.2 layer compliance: one-line UI wrapper only; no new imports, no `src/data` / `src/external` from frontend.
+- §2.1 config: UI passes canonical backend key string; no duplicate task registry in React (matches other Artifacts pages).
+- Betty manifest: `AST-677: Generate POSTs craft_prefilter_rubric` asserts POST `/api/candidates/{id}/generate/craft_prefilter_rubric` via `ArtifactEditor` Regenerate flow.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| advisory | epic sequencing | Rubric **Generate** may still fail `_validate_response_schema` until **AST-678** prompt bodies emit `importance` — documented in Self-Assessment Risk; rename-only ticket does not fix that. |
+| advisory | Linear AST-677 description | Git branch line cites `AST-657` slug; authoritative publish ref is `sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename`. |
+
+### Recommended actions
+
+| Item | Owner | Action |
+|------|-------|--------|
+| — | — | **No fix-now items.** Proceed to **resolve-child**. |
+| Prompt bodies | AST-678 | Ensure craft rubric prompts emit `importance` so Generate passes post-rename. |
