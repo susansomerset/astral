@@ -185,3 +185,17 @@ None **fix-now**.
 |----------|--------|
 | — | Ada: none — proceed **resolve-child** if no open **discuss** threads. |
 | — | Susan: review PROPOSED prose on Linear or in `.txt`; after approval, manual paste into all six `craft_*_rubric` Manage Tasks prompts. |
+
+---
+
+## Resolution (2026-06-15)
+
+**Publish ref:** `origin/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste` @ `c928f95d` (Radia review doc) → resolve tip after `resolve(AST-686)` push.
+
+**Radia review:** Clean — no **fix-now** / **discuss** items. Took Radia doc commit `c928f95d` on publish ref (already merged on epic worktree).
+
+**Product changes:** None beyond Stage 1 (`ab6c83e9` — `docs/consult/craft-rubric-importance-explainer-proposed.txt` + Linear **PROPOSED** block).
+
+**§9a:** Dry-run merge into `origin/dev` and `origin/ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what` — clean before **User Testing**.
+
+**Susan path:** Review PROPOSED prose on Linear or open the `.txt` file; after approval, manual paste into Manage Tasks `user_prompt` for all six `craft_*_rubric` tasks before `{$RESPONSE_SCHEMA}`.
