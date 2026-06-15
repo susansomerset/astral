@@ -1198,7 +1198,7 @@ def run_dtask(task_id):
     err = _candidate_dispatch_api_key_error(row.get("candidate_id"))
     if err:
         return jsonify({"error": err, "started": False}), 400
-    started = run_task(task_id)
+    started = run_task(task_id, ui_initiated=True)
     return jsonify({"started": started})
 
 
