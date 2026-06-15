@@ -218,3 +218,30 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.6 local debug | Log is shipped `data/`, not `debug/` — intentional per parent AC |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Radia review (2026-06-15)
+
+**Diff:** `origin/dev...origin/sub/AST-675/ast-681-merge-ticket-log-and-deploy-status-api` @ `61482c0f`  
+**Verdict:** Clean — no fix-now items.
+
+### What's solid
+
+| Stage | Check |
+|-------|-------|
+| 1 | `MERGE_TICKET_LOG_CONFIG` + shipped `data/merge_ticket_log.json` seed `[]`; append-only read/write in `merge_ticket_log.py`; atomic write via temp file + `replace`; ticket id normalized to `AST-<n>` |
+| 2 | `get_deploy_status_payload()` always includes `merge_tickets` (most recent first); `api_system.py` unchanged — shape flows through existing route |
+| 3 | `scripts/append_merge_ticket_log.py` — single arg, stderr usage on bad argv, JSON line stdout on success |
+| Tests | Betty manifest covers empty/missing log, order, non-array rejection, invalid id, no truncation, deploy payload order, API expected keys |
+
+**Rules:** utils → stdlib + `config` only; no logging in new paths; temp-file cleanup re-raises (not silent failure); sibling scope (AST-682 tooltip, AST-683 finish-up) not smuggled.
+
+### Advisory
+
+- Malformed JSON (syntax) on read raises `JSONDecodeError`; non-array top-level raises `ValueError` — both fail the admin deploy-status path rather than resetting the file, matching plan escalation intent.
+- Read-modify-write without file lock assumes single-writer (finish-up CLI); concurrent append could interleave — acceptable per parent AC until proven otherwise.
+
+### Recommended actions
+
+None — **resolve-child** may proceed (no product changes required).
