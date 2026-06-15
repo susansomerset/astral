@@ -166,3 +166,12 @@ No conflicts requiring `conf-!!-NONE`.
 
 - Stages run in order; one commit ritual per stage on epic worktree; publish each to **`origin/sub/AST-675/ast-683-finish-up-auto-record-landed-parent`** via build-child / Joan.
 - Do not implement AST-681 log storage, AST-682 tooltip, or backfill.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-675/ast-683-finish-up-auto-record-landed-parent`  
+**Product commits:** `f2742e3a` (`scripts/git/record-landed-parent.sh`), `efd736f1` (wire `merge-parent.sh` after ftr land push)
+
+**Note for Betty (Stage 3):** Component test `tests/component/scripts/test_record_landed_parent.py` per plan — manifest at Code Complete.
