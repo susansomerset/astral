@@ -183,3 +183,33 @@ No conflicts — plan is safe to implement as written.
 **Built:** Stage 1 — `AdminDataManagement.tsx` upsert apply → `useUserConfirm` ("Apply upsert"). Stage 2 — `AdminManageCandidates.tsx` delete + clear-key with danger variant. Stage 3 — page Vitest specs click through `alertdialog` instead of `window.confirm` mock. Stage 4 — audit: only `UserPrompt.tsx` / `Modal.tsx` fallbacks remain in `src/ui/frontend`.
 
 **Betty manifest (Code Complete):** run `test_AdminDataManagement.test.tsx` + `test_AdminManageCandidates.test.tsx` per plan Stage 3; extend cancel-path coverage if desired.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-639/AST-659-themed-confirm-native-browser` @ `5b55ccc8`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | All three production `window.confirm` sites migrated: upsert apply (`"Apply upsert"` / `"Apply"`), logical delete and clear API key (`variant: "danger"`). Validation order and API/toast behavior unchanged. |
+| Audit (AC3) | `rg window.confirm src/ui/frontend/pages` — zero matches; only `UserPrompt.tsx` / `Modal.tsx` documented fallbacks remain. |
+| Tests (in-scope) | `test_AdminDataManagement` and `test_AdminManageCandidates` click through `alertdialog` per plan; `test_CandidateIntake` api-mock stubs only (AC5 regression). |
+| §3.3 imports | Pages import `useUserConfirm` from `../components/UserPrompt` at module top; no layer violations. |
+| Self-assessment | Conf/risk accurate for the themed-confirm work; implementation matches `Single-Component` intent for the two admin pages. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `tests/component/frontend/lib/test_listTableLayout.test.ts` (AST-657 cases) | Imports `mergeWidthsForSticky`, `measureListTableColumnWidths`; calls `stickyLeftPx(..., checkboxWidthPx)` 6-arg form. **None of these exist** on `listTableLayout.ts` at this publish ref. Verified: **3 failed / 4 passed** when this file runs. |
+| **fix-now** | `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` (`AST-657: frozen data columns get cumulative sticky left offsets after measure`) | Expects post-measure sticky offsets; `useListTableColumnMeasure` / measured-width product not on this branch. Out of AST-659 scope. |
+| **discuss** | Cross-ticket boundary (§5d) | Plan scope = two admin pages + two page specs. Diff also adds **AST-657** list-table tests + bible row (`§7.13zzy` adjacent AST-657 entry) with **no** AST-657 product in the three-dot diff. Narrowed AST-659 manifest does not run the broken files — full suite / `test_listTableLayout.test.ts` will fail. Revert AST-657 hunks from this sub-branch or land them only with AST-657 product on `sub/AST-639/AST-657-*`. |
+
+### Recommended actions
+
+| # | Action | Owner |
+|---|--------|-------|
+| 1 | Revert AST-657 test additions in `test_listTableLayout.test.ts` and `test_ListPage_listTableLayout.test.tsx` on this publish ref (keep AST-659 page-test changes). | `resolve-child` |
+| 2 | If bible AST-657 row must stay, ensure it documents tests that match product on the same ref; otherwise trim to AST-659 §7.13zzx only. | Betty / engineer per handoff |
+| 3 | No product changes required for themed confirm — admin page wiring is correct as built. | — |
