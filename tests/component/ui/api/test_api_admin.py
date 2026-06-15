@@ -568,7 +568,7 @@ class TestDispatchTasks:
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": "c1"})
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
-        monkeypatch.setattr(admin_mod, "run_task", lambda task_id: True)
+        monkeypatch.setattr(admin_mod, "run_task", lambda task_id, ui_initiated=False: True)
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).get_json()["started"] is True
         monkeypatch.setattr(admin_mod, "drain_task", lambda task_id: {"drained": True})
         monkeypatch.setattr(admin_mod, "cancel_task", lambda task_id: {"killed": True})

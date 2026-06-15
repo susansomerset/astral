@@ -203,7 +203,4 @@ When `src/ui/frontend/package.json` is present, the script also runs Vitest comp
 
 **Scope:** Global Cursor skills (`qa-child`, `test-child`, `build-child`, `review-child`, `resolve-child`, `dispatch-parent`, `check-linear`, `do-all-the-things`), Betty/engineer **`AGENTS.md`** handoffs, and **`~/.cursor/hooks/pre-commit/engineer.sh`** — manifest contract, engineer ban paths, rollup/shasum, and read-only review pointers use **`docs/test-bible/**`** instead of the monolith. Repo commit on **`origin/sub/AST-598/AST-664-agent-skill-updates-test-bible`**: plan doc + **Implementation record** only (no `src/**`, `tests/**`, or bible content migration — sibling **AST-663**).
 
-**Manifest focus (existing coverage — no new tests):**
-
-1. **`./scripts/testing/run_component_tests.sh`** — full harness regression; no product or test-tree changes on this ticket.
-2. **Manual verification (Implementation record in plan doc):** eight skills + four agent handoffs updated; engineer pre-commit blocks staged **`docs/test-bible/**`** (verified against **`docs/test-bible/README.md`**).
+**Broken / obsolete tests (AST-664 return pass):** `TestDispatchTasks::test_scheduler_and_run_controls` — `run_task` mock must accept **`ui_initiated`** (**AST-653** on `origin/dev`).
