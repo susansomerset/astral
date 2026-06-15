@@ -79,6 +79,32 @@ describe("ListPage AST-647 list table layout", () => {
     expect(getComputedStyle(table).width).not.toBe("100%")
   })
 
+  it("AST-657: frozen data columns get cumulative sticky left offsets after measure", async () => {
+    const { default: ListPage } = await import("../../../../src/ui/frontend/src/components/ListPage")
+    renderWithProviders(
+      <ListPage
+        title="Measured freeze"
+        columns={[
+          { key: "name", label: "Name" },
+          { key: "amount", label: "Amount" },
+          { key: "note", label: "Note" },
+        ]}
+        rows={[{ id: "1", name: "Alpha", amount: 2, note: "ok" }]}
+        selectable
+        rowActions={() => <button type="button">act</button>}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument())
+    const headers = screen.getAllByRole("columnheader")
+    // jsdom offsetWidth is 0 — second frozen column still advances via width fallback (120px).
+    await waitFor(() => expect(headers[2].style.left).toBe("120px"))
+    const parseLeft = (el: HTMLElement) => parseFloat(el.style.left || "0")
+    expect(parseLeft(headers[2])).toBeGreaterThan(parseLeft(headers[1]))
+    expect(headers[1]).toHaveClass("list-table-cell-frozen")
+    expect(headers[2]).toHaveClass("list-table-cell-frozen")
+    expect(headers[3]).not.toHaveClass("list-table-cell-frozen")
+  })
+
   it("honors frozenDataColumns override over ui_config", async () => {
     const { default: ListPage } = await import("../../../../src/ui/frontend/src/components/ListPage")
     renderWithProviders(

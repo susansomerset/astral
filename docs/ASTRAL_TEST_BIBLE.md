@@ -1757,6 +1757,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-647** | `UI_CONFIG` defaults; shared `listTableLayout` / `uiConfig` / `ListTableTruncatedCell`; ListPage freeze + truncate; **AdminScheduledActions** bespoke table with `frozenDataColumns={3}` | `src/utils/config.py`, `src/ui/frontend/src/lib/{listTableLayout,uiConfig}.ts`, `ListPage.tsx`, `ListTableTruncatedCell.tsx`, `App.css`, `AdminScheduledActions.tsx` | `tests/component/frontend/lib/test_listTableLayout.test.ts`; `tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx`; `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx`; `tests/component/frontend/components/test_ListPage.test.tsx` (api mock + `/api/system/ui_config` — **uiConfig** extract regression); `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-647: phase table freezes first three data columns`** + candidate-filter test fixes; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults` |
 | **AST-652** | UAT: drop force-fit (`table-layout: fixed` / `width: 100%`); default `.list-page-table` autosize; remove `horizontalScrollable` gate and redundant `--auto` / inline overrides; Scheduled Actions phase tables drop `%` column widths | `App.css`, `ListPage.tsx`, `AdminAgentTimesheets.tsx`, `AdminCostReconciliation.tsx`, `AdminScheduledActions.tsx`, `JobsInReview.tsx`, `JobsRecommended.tsx`, `JobsSkipped.tsx` | `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` — **`AST-652: default list-page-table uses autosize layout`**; `tests/component/frontend/components/test_ListPage.test.tsx` (drop obsolete `horizontalScrollable` prop); re-run **AST-647** manifest rows above (freeze/truncate unchanged) |
+| **AST-657** | UAT: under autosize, measure rendered `<th>` widths after layout; `mergeWidthsForSticky` + `useListTableColumnMeasure` feed `stickyLeftPx` so **N** left data columns stay sticky (not only action column) | `listTableLayout.ts`, `useListTableColumnMeasure.ts`, `ListPage.tsx`, `AdminScheduledActions.tsx`, `App.css` | `tests/component/frontend/lib/test_listTableLayout.test.ts` — **`AST-657:`** `mergeWidthsForSticky`, `measureListTableColumnWidths`, measured checkbox `stickyLeftPx`; `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` — **`AST-657: frozen data columns get cumulative sticky left offsets after measure`**; re-run **AST-647** `test_AdminScheduledActions.test.tsx` phase-freeze case |
 
 **AST-652** narrowed run:
 
@@ -1815,6 +1816,23 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** are dispatch-row keys (e.g. **`consult_do`**, **`prefilter`**) resolved via **`resolve_dispatch_task_config_key()`** into **`TASK_CONFIG`** agent keys — raw membership in **`TASK_CONFIG`** fails server import until **`bootstrap.py`** aligns validation with that helper.
+
+## 7.13zzx Themed confirm — admin native `window.confirm` migration (**AST-659**, parent **AST-639**)
+
+**AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-659** | Data Management upsert apply; Manage Candidates logical delete + clear API key → themed **`alertdialog`** (confirm/cancel) | `src/ui/frontend/src/pages/AdminDataManagement.tsx`, `AdminManageCandidates.tsx` | **`tests/component/frontend/pages/test_AdminDataManagement.test.tsx`** — **`alertdialog`** **"Apply upsert"** → **Apply** on upsert success + API **`ok:false`** paths (**§6c** routed page); **`tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`** — **"Clear API key"** / **"Delete candidate"** confirm paths; **AC5 regression:** **`tests/component/frontend/pages/test_CandidateIntake.test.tsx`** (existing **`useUserConfirm`** — unchanged) |
+
+**AST-659** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
+```
 
 ## 7.13zzv UAT — craft_resume_base Generate does not persist artifacts (**AST-650**, parent **AST-601**)
 
