@@ -164,3 +164,16 @@ No conflicts flagged. Plan is implementable as written.
 | follow-up | Only if Timesheets shows same defect: memoize `urlBacked` on that page (no hook change needed). |
 
 **Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
+
+## Resolution
+
+**Date:** 2026-06-15 · **Review:** Radia @ `8e9998d8` · **Product tip:** `24495c35`
+
+| Item | Outcome |
+|------|---------|
+| fix-now | None — ship as reviewed. |
+| discuss | None. |
+| advisory — `manualPinRef` never cleared | Accepted; `syncWithNav === false` after manual pick covers session; ref only guards stale render window. |
+| advisory — `AdminAgentTimesheets` inline `urlBacked` | Deferred per plan boundary; follow-up only if UAT reports same defect on Timesheets. |
+
+**Tests:** Betty manifest green (Katherine `test-child`); Radia diff clean @ `8e9998d8`.
