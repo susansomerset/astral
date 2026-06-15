@@ -198,3 +198,23 @@ Requires **Python 3.10+** (creates `.venv` on first run). `ASTRAL_DB_DIR` defaul
 With zero arguments the harness selects **`tests/component`** wholesale. Passing paths, node IDs, or **`pytest`** flags after the script name forwards them verbatim as the **`pytest`** target list (narrow manifest runs without silently expanding to the full tree). Only the default full selection runs **`check_per_file_coverage.py`**.
 
 When `src/ui/frontend/package.json` is present, the script also runs Vitest component tests under `tests/component/frontend/` — **only** when invoked with **zero** trailing arguments (narrowed pytest paths skip Vitest).
+
+### AST-664 (parent AST-598)
+
+**Scope:** Global Cursor skills (`qa-child`, `test-child`, `build-child`, `review-child`, `resolve-child`, `dispatch-parent`, `check-linear`, `do-all-the-things`), Betty/engineer **`AGENTS.md`** handoffs, and **`~/.cursor/hooks/pre-commit/engineer.sh`** — manifest contract, engineer ban paths, rollup/shasum, and read-only review pointers use **`docs/test-bible/**`** instead of the monolith. Repo commit on **`origin/sub/AST-598/AST-664-agent-skill-updates-test-bible`**: plan doc + **Implementation record** only (no `src/**` product commits; Betty **`test(AST-664)`** mock fix only).
+
+**Manifest (test-child) — narrowed (workflow-only; do not use zero-arg harness):**
+
+Zero-arg **`./scripts/testing/run_component_tests.sh`** runs **`check_per_file_coverage.py`** (`LOCKED_AT_100`); on **`sub/*`** publish replay many locks are below 100% unrelated to this ticket (see **`docs/test-bible/utils/config.md` AST-483 note**). **Pass criterion: pytest green** on narrowed args — **not** full branch-lock gate.
+
+1. **Pytest smoke (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component
+```
+
+Expect **all pytest passed** (includes **`TestDispatchTasks::test_scheduler_and_run_controls`** after **`ui_initiated`** mock fix). Skips **`$# == 0`** coverage gate and Vitest tail per Appendix A.
+
+2. **Plan audit (required):** Implementation record in **`docs/features/foundation/ast-664-agent-skill-updates-test-bible.md`** lists eight skills + four agent handoffs + hook verification (read-only spot-check).
+
+**Broken / obsolete tests (Betty return pass):** `TestDispatchTasks::test_scheduler_and_run_controls` — `run_task` mock accepts **`ui_initiated`** (**AST-653** on `origin/dev`).
