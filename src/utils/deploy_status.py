@@ -32,6 +32,16 @@ def _resolve_environment() -> str | None:
     return raw
 
 
+def is_local_deploy_env() -> bool:
+    raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip()
+    return raw.lower() == "local"
+
+
+def ui_llm_debug(*, explicit_debug: bool = False) -> bool:
+    """True when caller explicitly requested debug or server deploy env is local."""
+    return explicit_debug or is_local_deploy_env()
+
+
 def _git_head_info() -> tuple[str, str]:
     cwd = _REPO_ROOT
     try:
