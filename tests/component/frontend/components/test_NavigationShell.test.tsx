@@ -59,8 +59,6 @@ describe("NavigationShell", () => {
           ok: true,
           json: async () => ({
             environment: "local",
-            commit_short: "abc1234",
-            commit_message: "nav footer",
             uptime: "1h15m",
             uptime_seconds: 4500,
           }),
@@ -83,7 +81,6 @@ describe("NavigationShell", () => {
     expect(localStorage.getItem("astral_selected_candidate")).toBe("c2")
     await waitFor(() => expect(screen.getByLabelText("Deploy status")).toBeInTheDocument())
     expect(screen.getByText("local")).toBeInTheDocument()
-    expect(screen.getByText("abc1234")).toBeInTheDocument()
     expect(screen.getByText("1h15m")).toBeInTheDocument()
   })
 
@@ -132,8 +129,6 @@ describe("NavigationShell", () => {
         return {
           ok: true,
           json: async () => ({
-            commit_short: "abc1234",
-            commit_message: "",
             uptime: "5m",
             uptime_seconds: 300,
           }),

@@ -18,7 +18,7 @@ describe("AdminDeployFooter", () => {
     mockedApi.mockReset()
   })
 
-  it("renders environment, commit tooltip, and uptime when deploy_status succeeds", async () => {
+  it("renders environment and uptime when deploy_status succeeds", async () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/me") {
         return {
@@ -31,8 +31,6 @@ describe("AdminDeployFooter", () => {
           ok: true,
           json: async () => ({
             environment: "local",
-            commit_short: "abc1234",
-            commit_message: "ship deploy footer",
             uptime: "5m",
             uptime_seconds: 300,
           }),
@@ -44,7 +42,6 @@ describe("AdminDeployFooter", () => {
     renderWithProviders(<AdminDeployFooter />)
     await waitFor(() => expect(screen.getByLabelText("Deploy status")).toBeInTheDocument())
     expect(screen.getByText("local")).toBeInTheDocument()
-    expect(screen.getByText("abc1234")).toHaveAttribute("title", "ship deploy footer")
     expect(screen.getByText("5m")).toBeInTheDocument()
   })
 
@@ -60,8 +57,6 @@ describe("AdminDeployFooter", () => {
         return {
           ok: true,
           json: async () => ({
-            commit_short: "deadbeef",
-            commit_message: "",
             uptime: "<1m",
             uptime_seconds: 10,
           }),
@@ -71,7 +66,7 @@ describe("AdminDeployFooter", () => {
     })
 
     renderWithProviders(<AdminDeployFooter />)
-    await waitFor(() => expect(screen.getByText("deadbeef")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("<1m")).toBeInTheDocument())
     expect(screen.queryByText("local")).not.toBeInTheDocument()
   })
 
