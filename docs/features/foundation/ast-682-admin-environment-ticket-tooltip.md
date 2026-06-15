@@ -184,3 +184,32 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Publish ref:** `origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip`  
 **Product commit:** `01dec4cf` (Stage 1 — `AdminDeployFooter.tsx` merge-ticket `title` tooltip via `fmtTime`, cap 20)
+
+---
+
+## Radia review (2026-06-15)
+
+**Diff:** `origin/dev...origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip` @ `989dd99b` (AST-682 product `01dec4cf`, tests `7556b3c1`; branch stacks resolved AST-681)  
+**Verdict:** Clean — no fix-now items.
+
+### What's solid
+
+| Check | Result |
+|-------|--------|
+| Stage 1 plan fidelity | Single-file product change: `AdminDeployFooter.tsx` only — types, `formatMergeTicketTooltip`, `title` on `.nav-deploy-env` |
+| AC 4 (20 lines, id + timestamp, line breaks) | `.slice(0, 20)` + `fmtTime(recorded_at)` + `\n` join on native `title` |
+| AC 5 (env absent) | Env span not rendered when `environment` unset — no tooltip surface |
+| AC 6 (non-admin) | `NavigationShell` gating unchanged; footer still admin-only |
+| AC 7 (uptime / poll / error) | 30s poll, error branch, uptime span untouched |
+| Empty / missing `merge_tickets` | Helper returns `undefined` → no `title` attribute |
+| Tests (Betty manifest) | Tooltip present, empty omits title, 20-line cap, uptime without title |
+
+**Rules:** Frontend-only; `fmtTime` from `lib/fmt` — no layer violations; display cap 20 is UI concern per plan §2.1; no backend/API/finish-up scope smuggled (sibling AST-681 already reviewed).
+
+### Advisory
+
+- Native `title` tooltips are browser-dependent for multiline rendering; acceptable per plan decision (matches pre-AST-679 pattern).
+
+### Recommended actions
+
+None — **resolve-child** may proceed (no product changes required).
