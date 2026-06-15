@@ -144,3 +144,12 @@ Susan UAT on **AST-655**: **AST-678** shipped the shared importance explainer as
 | §1.3 DRY | Single `.txt` source; Linear description duplicates for approval UX (ticket AC), not a second authoring surface. |
 
 No conflicts flagged.
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste`  
+**Product commit:** `ab6c83e9` — Stage 1: `docs/consult/craft-rubric-importance-explainer-proposed.txt` (paste guide + shared explainer prose); Linear **AST-686** description appended with **`## PROPOSED importance explainer`**.
+
+**Local verification:** `rg '678|ast678|_apply_ast678|database\.py' docs/consult/` — no matches; no `src/` paths in commit.
+
+**Susan path:** Review PROPOSED block on Linear or open the `.txt` file; after approval, paste into Manage Tasks `user_prompt` for all six `craft_*_rubric` tasks before `{$RESPONSE_SCHEMA}` — manual only, no deploy script in this ticket.
