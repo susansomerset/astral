@@ -182,3 +182,10 @@ Betty adds to **Tests Ready** manifest. If omitted, engineer adds only:
 | §3.5 naming | `is_local_deploy_env`, `ui_llm_debug` match deploy_status module role |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Built:** `code(AST-653): deploy_status local-env debug helpers` → `code(AST-653): wire ui_llm_debug on intake adhoc and generate APIs` → `code(AST-653): pass debug through generate runners and UI dispatch Run`  
+**Branch:** `origin/sub/AST-640/AST-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local` @ `22d41ce9`
