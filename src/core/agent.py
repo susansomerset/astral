@@ -1012,8 +1012,17 @@ def _validate_response_schema(
             return f"Field '{field_name}' must be bool, got {type(val).__name__}"
         if type_spec == "str" and not isinstance(val, str):
             return f"Field '{field_name}' must be str, got {type(val).__name__}"
-        if type_spec == "int" and not isinstance(val, int):
-            return f"Field '{field_name}' must be int, got {type(val).__name__}"
+        if type_spec == "int":
+            if isinstance(val, bool):
+                return f"Field '{field_name}' must be int, got bool"
+            if not isinstance(val, int):
+                return f"Field '{field_name}' must be int, got {type(val).__name__}"
+            min_val = field_spec.get("min")
+            max_val = field_spec.get("max")
+            if min_val is not None and val < min_val:
+                return f"Field '{field_name}' must be >= {min_val}, got {val}"
+            if max_val is not None and val > max_val:
+                return f"Field '{field_name}' must be <= {max_val}, got {val}"
         if type_spec == "list" and not isinstance(val, list):
             return f"Field '{field_name}' must be list, got {type(val).__name__}"
         if type_spec in ("object", "dict") and not isinstance(val, dict):
