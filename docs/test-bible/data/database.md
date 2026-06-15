@@ -102,3 +102,23 @@ Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backf
   tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass \
   -q
 ```
+
+---
+
+### AST-678 · AST-655
+
+**AST-678 (child):** Shared **`_AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER`** constant + idempotent **`_apply_ast678_craft_rubric_importance_migration`** in **`database.py`**: renames **`craft_company_prefilter`** → **`craft_prefilter_rubric`** in **`agent_task`** store and inserts importance explainer (marker **`AST-678_VECTOR_IMPORTANCE`**) into all six **`craft_*_rubric`** **`user_prompt`** bodies before **`{$RESPONSE_SCHEMA}`**. Schema validation (**AST-676**) and UI task key (**AST-677**) are sibling scope.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 2 | Explainer inserted before **`{$RESPONSE_SCHEMA}`**; idempotent patch | `src/data/database.py` (`_patch_ast678_importance_into_user_prompt`) | **`tests/component/data/test_ast678_craft_rubric_importance_migration.py::TestAst678PatchHelper::test_patch_inserts_before_response_schema`** |
+| 2–3 | Migration idempotent; all six keys receive marker | `src/data/database.py` (`_apply_ast678_craft_rubric_importance_migration`) | **`::TestAst678CraftRubricImportanceMigration::test_migration_idempotent`**; **`::test_all_six_keys_receive_marker`** |
+| 2 | Prefilter task-key rename in **`agent_task`** | `src/data/database.py` | **`::TestAst678CraftRubricImportanceMigration::test_prefilter_task_key_rename`** |
+| 3–4 | Generate returns **`importance`** (manual smoke post-**AST-677** on ftr) | admin **`agent_task`** + **AST-676** schema | Engineer manual per plan Stage 3 — not automated here |
+
+**AST-678** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_ast678_craft_rubric_importance_migration.py
+```
