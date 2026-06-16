@@ -90,6 +90,26 @@ describe("useAdminCandidateFilter", () => {
     expect(result.current.candidateFilter).toBe("")
   })
 
+  it("inline urlBacked identity churn does not spam setValue from nav sync", async () => {
+    localStorage.setItem("astral_selected_candidate", "c1")
+    let urlValue = ""
+    const setValue = vi.fn((next: string) => {
+      urlValue = next
+    })
+    const { rerender } = renderHook(
+      () =>
+        useAdminCandidateFilter({
+          urlBacked: { value: urlValue, setValue },
+          urlPresentDisablesSync: false,
+        }),
+      { wrapper },
+    )
+    await waitFor(() => expect(setValue).toHaveBeenCalled())
+    const afterInit = setValue.mock.calls.length
+    for (let i = 0; i < 5; i += 1) rerender()
+    expect(setValue.mock.calls.length).toBe(afterInit)
+  })
+
   it("direct urlBacked switch from c1 to c2 does not revert to nav default", async () => {
     localStorage.setItem("astral_selected_candidate", "c1")
     let urlValue = "c1"
