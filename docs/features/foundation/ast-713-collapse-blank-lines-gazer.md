@@ -134,3 +134,13 @@ Expected test cases for Betty (reference only — do not commit from engineer):
 | §3.5 naming | `collapse_consecutive_blank_lines` describes behavior; matches ticket language |
 
 No conflicts requiring `Conf: !!-NONE`.
+
+## Review stub
+
+| Field | Value |
+|-------|-------|
+| **Publish ref** | `origin/sub/AST-710/AST-713-collapse-blank-lines-gazer` |
+| **Built tip** | `8740dead` |
+| **Stages** | 1 — `collapse_consecutive_blank_lines` in `formatting.py` (`29e41c98`); 2 — `scrape_jd_batch` post-scrape normalize (`8740dead`); 3 — `fetch_website_batch` homepage normalize (`8740dead`) |
+| **Stage 4** | Manual case table verified in build (`python3 -c` against plan cases — all pass) |
+| **Betty next** | `tests/component/utils/test_formatting.py` per plan Stage 4 reference table |
