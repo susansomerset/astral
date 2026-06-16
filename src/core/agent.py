@@ -1669,7 +1669,7 @@ async def do_task(
                 raw_text = extract_api_response_text(api_resp)
             except ValueError:
                 pass
-    if debug and raw_text and len(raw_text.splitlines()) > 50:
+    if debug and raw_text and raw_text.strip():
         _dbg = _do_task_debug_logger(debug)
         _dbg.debug_detail(
             f"raw_response task_key={task_key} lines={len(raw_text.splitlines())} chars={len(raw_text)}"
@@ -1830,13 +1830,10 @@ async def do_task(
         if isinstance(literal, str) and literal.strip():
             dbg = _do_task_debug_logger(debug)
             lines = [ln for ln in literal.splitlines() if ln.strip()]
-            logger.info(
-                "[DEBUG] do_task('%s'): literal encoded agent_payload (%d lines, %d chars):\n%s",
-                task_key,
-                len(lines),
-                len(literal),
-                literal,
+            dbg.debug_detail(
+                f"encoded_payload task_key={task_key} lines={len(lines)} chars={len(literal)}"
             )
+            dbg.debug_detail_block(literal)
 
     # For encoded output types: normalize rubric shapes or decode compact string, then validate.
     post_rubric_decode = False
