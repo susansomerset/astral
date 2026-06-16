@@ -222,28 +222,27 @@ jobs:
 **Scenarios:**
 - tests/integration/scenarios/test_candidate_nav_api.py — seeded SQLite + GET /api/candidates + GET /api/nav_config with Bearer auth; 401 without auth
 
-**Pass criterion:** integration harness green; component zero-arg harness unchanged
+**Pass criterion:** integration harness green on publish ref tip (`./scripts/testing/run_integration_tests.sh` exit 0). Zero-arg `./scripts/testing/run_component_tests.sh` is **not** an AST-711 closure gate — roster prefilter reds on `origin/dev` baseline are unrelated (Betty `cec444b` / `[qa-handoff]`).
 ```
 
 ## QA expectations (Betty manifest — test-child gate)
 
 After Ada **Code Complete**, Betty runs `qa-child` and publishes `merge-tests(AST-711)` to `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` before **Tests Ready**.
 
-**Tests Ready manifest for Ada (`test-child`):**
+**Tests Ready manifest for Ada (`test-child`) — authoritative @ `cec444b`:**
 
 ```bash
 ./scripts/testing/run_integration_tests.sh
-./scripts/testing/run_component_tests.sh
 ```
 
-Pass criterion: both commands exit 0 on the publish ref tip.
+Pass criterion: exit 0 on publish ref tip. **Not gated:** zero-arg `./scripts/testing/run_component_tests.sh` (dev-baseline roster drift; track separately).
 
 ## Execution contract (build-child)
 
 - Execute Ada stages **1 → 2 → 3** in order; one commit per stage on epic worktree; publish each to `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario`.
 - **Do not** commit under `tests/` or `docs/test-bible/**` — Betty Stage 4 owns those paths.
 - If `NAV_CONFIG` gates make the Stage 4b nav assertion ambiguous at build time, stop with **`🛑`** on **AST-512** naming the chosen path + expected `enabled` for `LIVE_PROMPTS` vs `NEW`.
-- After Betty lands tests, Ada **test-child** runs the manifest above; failures in product code → fix on epic worktree; failures in test/manifest → `[qa-handoff]` to Betty.
+- After Betty lands tests, Ada **test-child** runs the integration harness manifest above; failures in product code → fix on epic worktree; failures in test/manifest → `[qa-handoff]` to Betty.
 
 ## Self-Assessment
 
@@ -274,7 +273,7 @@ No plan conflicts requiring `conf-!!-NONE`.
 | **Built tip** | `1252ff2` |
 | **Stages** | 1 — `integration_io` + external guards (`5f73b60`); 2 — `run_integration_tests.sh` (`ec8f562`); 3 — CI workflow (`1252ff2`) |
 | **Betty next** | Stage 4 — `tests/integration/` scenario + bible tier docs |
-| **test-child manifest** | `./scripts/testing/run_integration_tests.sh` then `./scripts/testing/run_component_tests.sh` |
+| **test-child manifest** | `./scripts/testing/run_integration_tests.sh` only (Betty `cec444b`) |
 
 ## Radia review (2026-06-16)
 
@@ -303,3 +302,11 @@ No plan conflicts requiring `conf-!!-NONE`.
 |--------|-------|
 | Resolve manifest alignment (keep dual gate or formalize integration-only closure) | Susan / Chuckles |
 | `resolve-child` — no product fix-now items | Ada |
+
+## Resolution (2026-06-16)
+
+**Radia review @ `13f76cc`:** No fix-now product items. Integration harness green (3 passed).
+
+**Discuss closed:** Betty narrowed Tests Ready manifest to integration-only (`cec444b` → `13f76cc`) after Ada `[qa-handoff]` — roster component failures reproduce on `origin/dev`, not AST-711. Plan doc QA/manifest sections updated here to match bible + Betty handoff; integration-only is the AST-711 closure bar.
+
+**Product tip:** `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` @ `e8c309d` (Radia doc) + this resolve doc commit.
