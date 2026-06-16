@@ -1002,6 +1002,45 @@ def _company_used_inflow_prefilter(short_name: str) -> bool:
     return False
 
 
+async def scrape_company_homepage_content(
+    short_name: str,
+    company_website: str,
+    *,
+    browser_context=None,
+) -> Dict[str, Any]:
+    """Scrape homepage visible text and nav_links without agent evaluation (AST-701 fetch_website)."""
+    out: Dict[str, Any] = {
+        "company_website": company_website,
+        "visible_text": "",
+        "enumerated_nav_links": "",
+        "error": None,
+    }
+    try:
+        visible_text, final_url = await get_visible_text(
+            company_website, context=browser_context, return_final_url=True
+        )
+    except Exception as scrape_err:
+        out["error"] = str(scrape_err)
+        return out
+    if final_url and final_url != company_website:
+        update_company(short_name, company_website=final_url)
+        company_website = final_url
+        out["company_website"] = company_website
+    out["visible_text"] = visible_text or ""
+    if not out["visible_text"].strip():
+        out["error"] = "No visible text extracted"
+        return out
+    try:
+        url_list = await extract_site_page_list(
+            company_website, max_depth=1, verify=False, context=browser_context
+        )
+        if url_list:
+            out["enumerated_nav_links"] = enumerate_array("", url_list)
+    except Exception as nav_err:
+        logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): {nav_err}")
+    return out
+
+
 async def prefilter_company(
     short_name: str,
     company_website: str,
@@ -1020,38 +1059,18 @@ async def prefilter_company(
         result["error"] = "No company_website"
         return result
     try:
-        # Step 1: scrape homepage visible text; detect redirects
-        try:
-            visible_text, final_url = await get_visible_text(
-                company_website, context=browser_context, return_final_url=True
-            )
-        except Exception as scrape_err:
+        scrape = await scrape_company_homepage_content(
+            short_name, company_website, browser_context=browser_context
+        )
+        if scrape.get("error"):
             transition_company_state(short_name, "CANNOT_READ_WEBSITE")
-            save_company_data(short_name, {"prefilter_company_notes": str(scrape_err)})
-            result["error"] = str(scrape_err)
+            save_company_data(short_name, {"prefilter_company_notes": scrape["error"]})
+            result["error"] = scrape["error"]
             result["state"] = "CANNOT_READ_WEBSITE"
             return result
-        # If the site redirected, persist the canonical URL going forward
-        if final_url and final_url != company_website:
-            update_company(short_name, company_website=final_url)
-            company_website = final_url
-        if not visible_text.strip():
-            transition_company_state(short_name, "CANNOT_READ_WEBSITE")
-            save_company_data(short_name, {"prefilter_company_notes": "No visible text extracted"})
-            result["error"] = "No visible text extracted"
-            result["state"] = "CANNOT_READ_WEBSITE"
-            return result
-
-        # Step 2: extract nav_links from homepage (reuse browser context, uses canonical URL)
-        enumerated_nav_links = ""
-        try:
-            url_list = await extract_site_page_list(
-                company_website, max_depth=1, verify=False, context=browser_context
-            )
-            if url_list:
-                enumerated_nav_links = enumerate_array("", url_list)
-        except Exception as nav_err:
-            logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): {nav_err}")
+        company_website = scrape["company_website"]
+        visible_text = scrape["visible_text"]
+        enumerated_nav_links = scrape["enumerated_nav_links"]
 
         # Step 3: assemble live_content with homepage + nav_links
         parts = [f"[company_id={short_name}]", f"\n## Homepage Content\n{visible_text}"]
