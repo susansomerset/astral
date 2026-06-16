@@ -164,7 +164,7 @@ No conflicts flagged.
 | Field | Value |
 |-------|-------|
 | **Publish ref** | `origin/sub/AST-710/AST-714-backfill-collapse-blank-lines-company-job-data` |
-| **Built tip** | *(pending push)* |
+| **Built tip** | `76575751` |
 | **Stages** | 1 — `scripts/migrations/backfill_collapse_blank_lines.py` |
 | **Manual verify** | `.venv/bin/python scripts/migrations/backfill_collapse_blank_lines.py --dry-run` — local DB smoke (scanned/updated/unchanged summary) |
 | **Betty next** | Optional component test for migration script if manifest warrants; engineer did not edit `tests/` |
