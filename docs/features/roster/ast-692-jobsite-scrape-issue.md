@@ -225,3 +225,31 @@ No unresolved conflicts.
 
 **Publish ref:** `origin/sub/AST-684/AST-692-jobsite-scrape-issue`  
 **Product commits:** `e59dfa0` (Stage 1 — config state/transitions/schema), `8ee1887` (Stage 2 — roster terminal handling)
+
+---
+
+## Radia review (2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-684/AST-692-jobsite-scrape-issue` @ `13d7d1e`  
+**Verdict:** Clean — no fix-now items.
+
+### What's solid
+
+| Stage | Check |
+|-------|-------|
+| 1 | `COMPANY_STATES`, `company_state_transitions` (TO_WATCH / JOBS_FOUND / PREFILTER_PASSED → JOBSITE_SCRAPE_ISSUE), `select_job_page` schema fields, `ROSTER_CONFIG` scrape_issue_state + company_data_keys — match plan Stage 1 |
+| 2 | `_check_parse_results` branch after JOBLIST_NO_JOBS, before JOBLIST_TITLES; strips `job_list_visible`; persists summary/evidence via `_save_company`; `JOBSITE_SCRAPE_ISSUE` in `_PERSIST_PAGE_OPTION_URL_STATES` so `job_site` = attempted careers URL |
+| 3 | `_find_job_page_from_assembled` unchanged routing — non-JOBLIST_TITLES (including JOBSITE_SCRAPE_ISSUE) falls through to `_check_parse_results` per plan Stage 2 §4 |
+| 4 | `agent.py` unchanged; AST-469 guard (`response_type != "JOBLIST_TITLES"` → clear `effective_next`) verified; Betty agent test confirms single-hop |
+
+**§2.6 state machine:** Terminal state with no batch_criteria (human inspection) — per plan decision.
+
+### Advisory
+
+- Sub tip ancestry includes **AST-689** test-bible commits from `origin/tests` merge — tests/docs only; AST-692 product commits (`e59dfa0`, `8ee1887`) stay within plan file table.
+- End-to-end staging repro (PagerDuty shell-only → Grace emits JOBSITE_SCRAPE_ISSUE) still depends on Susan's Manage Tasks prompt update + **AST-689** ftr rollup — out of scope for this ticket's code review.
+- `test_check_parse_results_jobsite_scrape_issue` asserts summary but not evidence kwarg — harmless; evidence path is wired in `_save_company`.
+
+### Recommended actions
+
+None — **resolve-child** may proceed.
