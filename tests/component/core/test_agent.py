@@ -408,6 +408,38 @@ class TestAst697PrefilterBracketLinkDecode:
         assert "culture_links_to_explore" not in job
 
 
+class TestAst699LetterPipePositionPrefix:
+    """AST-699: position-prefixed letter-pipe lines must not misroute to _decode_payload."""
+
+    def test_position_prefixed_letter_pipe_bracket_tails(self) -> None:
+        out = consult_mod._normalize_rubric_task_response(
+            "prefilter_company",
+            _ast603_prefilter_task_config(),
+            "0|A|B|A|[35]|[22,34,39,52,53]",
+            _ast603_prefilter_ctx(),
+        )
+        job = out["jobs"][0]
+        assert [g["grade"] for g in job["grades"]] == ["A", "B", "A"]
+        assert job["possible_job_links"] == [35]
+        assert job["culture_links_to_explore"] == [22, 34, 39, 52, 53]
+
+    def test_bare_letter_pipe_bracket_tails(self) -> None:
+        out = consult_mod._normalize_rubric_task_response(
+            "prefilter_company",
+            _ast603_prefilter_task_config(),
+            "A|B|A|[35]|[22,34,39,52,53]",
+            _ast603_prefilter_ctx(),
+        )
+        job = out["jobs"][0]
+        assert job["possible_job_links"] == [35]
+        assert job["culture_links_to_explore"] == [22, 34, 39, 52, 53]
+
+    def test_should_decode_as_encoded_line_routing(self) -> None:
+        assert consult_mod._should_decode_as_encoded_line("0|A|B|A|[35]|[22,34,39,52,53]") is False
+        assert consult_mod._should_decode_as_encoded_line("000|RCA3|MPB3|USA3|[59,60]|[51,46,53]") is True
+        assert consult_mod._should_decode_as_encoded_line("A|B|A|15|13,16,14") is False
+
+
 class TestAst698DoTaskDebugRawResponse:
     @pytest.mark.asyncio
     async def test_short_raw_response_emits_under_debug_contract(

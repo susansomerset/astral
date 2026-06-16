@@ -114,6 +114,30 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope; av
 
 ---
 
+### AST-699 · AST-696
+
+**UAT fix:** **`_normalize_rubric_task_response`** gates **`_decode_payload`** with **`_should_decode_as_encoded_line`** — position-prefixed letter-pipe lines like **`0|A|B|A|[35]|[22,34,39,52,53]`** fall through to **`_job_from_letter_pipe`** instead of misrouting on **`^\d{1,3}\|`** alone. True encoded lines (**`000|RCA3|…`**) unchanged (**AST-697**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Position-prefixed letter-pipe bracket tails | `src/core/consult.py` (`_should_decode_as_encoded_line`, `_normalize_rubric_task_response`) | `tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix::test_position_prefixed_letter_pipe_bracket_tails` |
+| Bare letter-pipe bracket tails (regression) | `src/core/consult.py` | `tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix::test_bare_letter_pipe_bracket_tails` |
+| Encoded vs letter routing helper | `src/core/consult.py` | `tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix::test_should_decode_as_encoded_line_routing` |
+| Encoded bracket tails unchanged (**AST-697**) | `src/core/consult.py`, `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails`; `TestAst697PrefilterBracketLinkDecode` |
+| Numeric letter-pipe tails unchanged (**AST-603**) | `src/core/consult.py` | `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_letter_pipe_parses_grades_and_link_indices` |
+
+**AST-699** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize::test_letter_pipe_parses_grades_and_link_indices \
+  -q
+```
+
+---
+
 ### AST-619 · AST-543
 
 **AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
