@@ -90,6 +90,7 @@ class TestGetDeployStatusPayload:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        monkeypatch.setattr(ds, "read_merge_ticket_log", lambda: [])
         monkeypatch.setattr(ds, "_PROCESS_BOOT_TIME", 1_000_000.0)
         monkeypatch.setattr("time.time", lambda: 1_000_045.0)
         payload = ds.get_deploy_status_payload()
@@ -100,6 +101,7 @@ class TestGetDeployStatusPayload:
 
     def test_includes_environment_when_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        monkeypatch.setattr(ds, "read_merge_ticket_log", lambda: [])
         monkeypatch.setattr(ds, "_PROCESS_BOOT_TIME", 0.0)
         monkeypatch.setattr("time.time", lambda: 3661.0)
         payload = ds.get_deploy_status_payload()
