@@ -132,3 +132,10 @@ Betty adds manifest rows in **astral-tests** for position-prefixed letter-pipe b
 | §1.5.1 debug | Out of scope (**AST-698**). |
 
 No conflicts requiring **Conf: !!-NONE**.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-696/AST-699-uat-possible-job-links-dropped-letter-pipe-brackets`  
+**Build tip:** `82b5e62`
