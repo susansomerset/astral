@@ -260,3 +260,34 @@ No unresolved conflicts.
 | **Publish ref** | `origin/sub/AST-684/AST-689-dynamic-scrape-readiness` |
 | **Tip SHA** | `94021d6` |
 | **Stages** | config `4cfeec0`, playwright `676001b`, roster wire `94021d6` |
+
+---
+
+## Radia review (2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-684/AST-689-dynamic-scrape-readiness` @ `e7c579c`  
+**Verdict:** Clean — no fix-now items.
+
+### What's solid
+
+| Stage | Check |
+|-------|-------|
+| 1 | `ROSTER_CONFIG["scrape_readiness"]` block + `roster_scrape_readiness_config()` env overrides match plan Stage 1 |
+| 2 | `wait_for_careers_list_readiness` in `playwright.py` — bounded poll, listing selectors, optional `load_all_jobs`, deterministic return dict; no logging in external layer |
+| 3 | `_fetch_job_links_content` calls readiness after `get_page` before `extract_visible_text`; AST-538 `debug_index` / `debug_detail` only when `debug=True`; proceeds on timeout (AST-692 boundary respected) |
+| 4 | Betty manifest `TestAst689ScrapeReadiness` + readiness mock on existing scrape-debug test per bible |
+
+**§5f (debug):** Per-page index headers use universal `index N/M`, URL identifier, outcome; detail lines record ready/visible_chars/listing_hits/wait_ms/load_all_jobs_ran; failure path adds best-effort note. No emission when `debug=False`.
+
+**§5b (exceptions):** `except Exception: pass` on per-selector `locator().count()` is plan-specified (skip bad selectors); acceptable.
+
+### Advisory
+
+- Sub tip three-dot diff vs `origin/dev` includes sibling AST-684 children (674, 687, 681, etc.) merged on the branch — AST-689 product commits (`4cfeec0`, `676001b`, `94021d6`) stay within plan file table; no boundary smuggle in engineer commits.
+- `roster_scrape_readiness_config()` is called inside the per-page loop — could hoist once before the loop; negligible cost vs Playwright I/O.
+- Readiness polls call `extract_visible_text` each iteration, then `_fetch_job_links_content` extracts again — per plan; duplicate DOM walk on ready path is acceptable tradeoff for stability detection.
+- Generic listing selectors may false-ready on nav/footer `a[href*='/job']` hits — inherent heuristic risk; plan Self-Assessment **Medium**; tune via config if staging repro shows false positives.
+
+### Recommended actions
+
+None — **resolve-child** may proceed.
