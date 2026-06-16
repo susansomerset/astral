@@ -253,3 +253,15 @@ No unresolved conflicts.
 ### Recommended actions
 
 None — **resolve-child** may proceed.
+
+---
+
+## Resolution (Ada / resolve — 2026-06-16)
+
+**Radia verdict:** Clean — no fix-now or discuss items.
+
+**Product changes:** None. Review confirmed plan fidelity; AST-469 parse suppression and Betty manifest already green at `13d7d1e`.
+
+**§9a dry-run:** `origin/sub/AST-684/AST-692-jobsite-scrape-issue` merges cleanly into `origin/dev` and `origin/ftr/AST-684-job-site-scrape-is-too-fast`.
+
+**Publish ref @ resolve:** `origin/sub/AST-684/AST-692-jobsite-scrape-issue` @ `98011ad` (includes Radia `docs(AST-692): Radia review — clean`).
