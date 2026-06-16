@@ -2166,6 +2166,20 @@ class TestRosterCoverageGaps:
     async def test_fetch_job_links_content_dom_new_links_and_scrape_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
+            "wait_for_careers_list_readiness",
+            AsyncMock(
+                return_value={
+                    "ready": True,
+                    "outcome": "ready",
+                    "visible_chars": 0,
+                    "listing_hits": 0,
+                    "wait_ms": 0,
+                    "load_all_jobs_ran": False,
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            roster_mod,
             "parse_enumerate_array",
             MagicMock(return_value={1: "https://acme.com/jobs", 2: "https://acme.com/about"}),
         )
@@ -3255,3 +3269,111 @@ class TestAst506InflowResolve:
         assert ok["total_passed"] == 1
         assert no_site["total_passed"] == 1
         assert err["total_errors"] == 1
+
+
+class TestAst689ScrapeReadiness:
+    """AST-689: careers-list scrape readiness gate before select_job_page extract."""
+
+    @pytest.mark.asyncio
+    async def test_wait_for_careers_list_readiness_ready_on_listing_hits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.external import playwright as pw_mod
+        from src.external.playwright import wait_for_careers_list_readiness
+
+        poll_n = {"n": 0}
+
+        async def count_side_effect() -> int:
+            poll_n["n"] += 1
+            return 0 if poll_n["n"] == 1 else 2
+
+        locator = MagicMock()
+        locator.count = AsyncMock(side_effect=count_side_effect)
+        page = MagicMock()
+        page.locator = MagicMock(return_value=locator)
+        page.wait_for_timeout = AsyncMock()
+        monkeypatch.setattr(
+            pw_mod,
+            "extract_visible_text",
+            AsyncMock(side_effect=[{"text": "x" * 100}, {"text": "x" * 200}]),
+        )
+
+        result = await wait_for_careers_list_readiness(
+            page,
+            {
+                "max_wait_ms": 5000,
+                "poll_interval_ms": 10,
+                "min_listing_hits": 1,
+                "listing_selectors": ["a[href*='/job']"],
+                "run_load_all_jobs": False,
+            },
+        )
+        assert result["ready"] is True
+        assert result["outcome"] == "ready"
+        assert result["listing_hits"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_wait_for_careers_list_readiness_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.external import playwright as pw_mod
+        from src.external.playwright import wait_for_careers_list_readiness
+
+        locator = MagicMock()
+        locator.count = AsyncMock(return_value=0)
+        page = MagicMock()
+        page.locator = MagicMock(return_value=locator)
+        page.wait_for_timeout = AsyncMock()
+        monkeypatch.setattr(pw_mod, "extract_visible_text", AsyncMock(return_value={"text": "short"}))
+
+        result = await wait_for_careers_list_readiness(
+            page,
+            {
+                "max_wait_ms": 100,
+                "poll_interval_ms": 50,
+                "stability_polls": 2,
+                "min_visible_chars": 400,
+                "min_listing_hits": 1,
+                "listing_selectors": ["a"],
+                "run_load_all_jobs": False,
+            },
+        )
+        assert result["ready"] is False
+        assert result["outcome"] == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_fetch_job_links_content_calls_readiness(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        call_order: List[str] = []
+        readiness = AsyncMock(
+            return_value={
+                "ready": True,
+                "outcome": "ready",
+                "visible_chars": 500,
+                "listing_hits": 3,
+                "wait_ms": 100,
+                "load_all_jobs_ran": False,
+            }
+        )
+
+        async def readiness_track(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            call_order.append("readiness")
+            return await readiness(*args, **kwargs)
+
+        extract = AsyncMock(return_value={"text": "Role A"})
+
+        async def extract_track(*args: Any, **kwargs: Any) -> Dict[str, str]:
+            call_order.append("extract")
+            return await extract(*args, **kwargs)
+
+        monkeypatch.setattr(roster_mod, "wait_for_careers_list_readiness", readiness_track)
+        monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/jobs"}))
+        page = AsyncMock()
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=page))
+        monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
+        monkeypatch.setattr(roster_mod, "extract_visible_text", extract_track)
+        monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value="<div/>"))
+        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+
+        await roster_mod._fetch_job_links_content([1], "1. https://acme.com/jobs", AsyncMock(), debug=True)
+
+        readiness.assert_awaited_once()
+        extract.assert_awaited_once()
+        assert call_order == ["readiness", "extract"]
