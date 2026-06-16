@@ -218,3 +218,24 @@ Expect **all pytest passed** (includes **`TestDispatchTasks::test_scheduler_and_
 2. **Plan audit (required):** Implementation record in **`docs/features/foundation/ast-664-agent-skill-updates-test-bible.md`** lists eight skills + four agent handoffs + hook verification (read-only spot-check).
 
 **Broken / obsolete tests (Betty return pass):** `TestDispatchTasks::test_scheduler_and_run_controls` — `run_task` mock accepts **`ui_initiated`** (**AST-653** on `origin/dev`).
+
+### AST-688 (parent AST-680)
+
+**Scope:** Global **`review-child`** **§5g** external layer cleanliness rubric (**§5** / **§5a** cross-refs + sample review comment). Plan + **Implementation record** on **`origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness`**; skill path **`~/.cursor/skills/review-child/SKILL.md`** (not repo git). **No new Betty tests** — parent forbids log-string manifest; sibling **AST-687** owns product attribution.
+
+**Manifest (test-child):**
+
+1. **Plan audit (required):** **`docs/features/agent/ast-688-radia-review-criteria-external-cleanliness.md`** — **Implementation record** lists **§5g** table, verification hints, and sample review comment block; matches global skill (read-only spot-check).
+
+2. **Regression (required):** Publish ref includes sibling **AST-687** product from **`code(AST-688)`** spill — run **AST-687** narrowed manifest (**`docs/test-bible/utils/llm_external.md`**):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_llm_external.py \
+  tests/component/external/test_deepseek.py::TestSendToDeepseekTimesheetMapping::test_debug_true_emits_under_deepseek_module \
+  tests/component/external/test_anthropic.py \
+  -q
+```
+
+**Pass criterion:** item 1 complete + pytest green on item 2 — not zero-arg harness / branch-lock gate.
+
