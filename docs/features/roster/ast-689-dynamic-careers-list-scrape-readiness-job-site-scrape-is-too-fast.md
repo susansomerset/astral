@@ -291,3 +291,21 @@ No unresolved conflicts.
 ### Recommended actions
 
 None — **resolve-child** may proceed.
+
+---
+
+## Resolution (resolve-child)
+
+**Date:** 2026-06-16 (**Review Posted → User Testing**)
+
+**Review:** Radia @ `7e8984c` — **clean**, no fix-now or discuss items.
+
+| Item | Outcome |
+|------|---------|
+| **fix-now** | 0 — no product or plan doc changes required |
+| **discuss** | 0 |
+| **advisory** | Acknowledged — generic selector false-ready risk tunable via config; per-page config read and double extract acceptable per plan |
+
+**§9a dry-run:** `origin/sub/AST-684/AST-689-dynamic-scrape-readiness` merges cleanly into `origin/dev` and `origin/ftr/AST-684-job-site-scrape-is-too-fast`.
+
+**Publish tip:** `7e8984c` (`docs(AST-689): Radia review — clean`)
