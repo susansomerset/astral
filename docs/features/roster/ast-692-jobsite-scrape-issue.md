@@ -218,3 +218,10 @@ No unresolved conflicts.
 - Implements parent AC **3** and **4** (terminal **JOBSITE_SCRAPE_ISSUE**, no **parse_job_list** on that run, Execution History inspectable payload).
 - Does **not** implement parent AC **1** / **2** (honest scrape text + readiness debug) — [AST-689](https://linear.app/astralcareermatch/issue/AST-689).
 - Does **not** change **select_job_page** prompt prose — Susan owns Manage Tasks update teaching Grace **JOBSITE_SCRAPE_ISSUE**.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-684/AST-692-jobsite-scrape-issue`  
+**Product commits:** `e59dfa0` (Stage 1 — config state/transitions/schema), `8ee1887` (Stage 2 — roster terminal handling)
