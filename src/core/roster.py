@@ -635,14 +635,13 @@ async def run_company_task(
             return {**zero, "total_failed": 1}
 
         elif input_state in ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"):
-            result = await prefilter_company(short_name, company_website, ctx=ctx, debug=debug)
-            pass_states = ROSTER_CONFIG["prefilter"].get("pass_states", [])
-            if result.get("error"):
-                logger.error(f"[{short_name}] prefilter error: {result['error']}")
-                return {**zero, "total_errors": 1}
-            if result.get("state") in pass_states:
-                return {**zero, "total_passed": 1}
-            return {**zero, "total_failed": 1}
+            tk = (dispatch_task_key or "").strip()
+            logger.warning(
+                "run_company_task: monolithic WEBSITE_FOUND dispatch removed for %s "
+                "(dispatch_task_key=%r; use fetch_website or HOMEPAGE_READY prefilter batch)",
+                short_name, tk or None,
+            )
+            return {**zero, "total_errors": 1}
 
         elif input_state == "NO_OPENINGS":
             r = await process_recheck_no_openings(entity, batch_id, ctx=ctx, debug=debug)
@@ -1041,6 +1040,56 @@ async def scrape_company_homepage_content(
     return out
 
 
+def _apply_prefilter_decoded_company_outcome(
+    short_name: str,
+    flat: Dict[str, Any],
+    cfg: Dict[str, Any],
+    ctx: Optional[Dict[str, Any]],
+    *,
+    nav_links_from_data: str = "",
+) -> str:
+    """Shared post-decode prefilter outcome: hydrate, verdict, persist, transition."""
+    from src.core.consult import (
+        _render_pass_fail,
+        _render_score,
+        _rubric_criteria_from_cd,
+        _hydrate_grade_reasons_from_rubric,
+    )
+
+    grades = flat.get("grades") or []
+    rubric_list = _rubric_criteria_from_cd((ctx or {}).get("candidate_data") or {}, "company_prefilter")
+    if grades and rubric_list:
+        _hydrate_grade_reasons_from_rubric(grades, rubric_list)
+    verdict_state = _render_pass_fail("prefilter_company", grades)
+    if _company_used_inflow_prefilter(short_name):
+        new_state = verdict_state
+    elif verdict_state == cfg["pass_state"]:
+        new_state = cfg["legacy_pass_state"]
+    else:
+        new_state = cfg["legacy_fail_state"]
+
+    decision = "TO_WATCH" if new_state in ("TO_WATCH", "PREFILTER_PASSED") else "IGNORE"
+    notes = " | ".join(
+        f"{g['vector']}={g['grade']}: {g['reason']}" for g in grades if g.get("reason")
+    )
+    data_to_save: Dict[str, Any] = {
+        "prefilter_grades": grades,
+        "prefilter_company_notes": notes,
+    }
+    if verdict_state == cfg["pass_state"] and rubric_list:
+        task_cfg = TASK_CONFIG.get("prefilter_company") or {}
+        _, score = _render_score(task_cfg, rubric_list, grades, 0.0)
+        data_to_save["prefilter_score"] = float(score)
+    if nav_links_from_data:
+        data_to_save["nav_links"] = nav_links_from_data
+    data_to_save["possible_job_links"] = flat.get("possible_job_links") or []
+    if decision == "TO_WATCH" or new_state == "PREFILTER_PASSED":
+        data_to_save["culture_links_to_explore"] = flat.get("culture_links_to_explore") or []
+    save_company_data(short_name, data_to_save)
+    transition_company_state(short_name, new_state)
+    return new_state
+
+
 async def prefilter_company(
     short_name: str,
     company_website: str,
@@ -1112,54 +1161,22 @@ async def prefilter_company(
         except ValueError as shape_err:
             return _prefilter_fail(short_name, cfg, result, str(shape_err))
 
-        grades = flat.get("grades") or []
-        from src.core.consult import (
-            _render_pass_fail,
-            _render_score,
-            _rubric_criteria_from_cd,
-            _hydrate_grade_reasons_from_rubric,
-        )
-
-        rubric_list = _rubric_criteria_from_cd((ctx or {}).get("candidate_data") or {}, "company_prefilter")
-        if grades and rubric_list:
-            try:
-                _hydrate_grade_reasons_from_rubric(grades, rubric_list)
-            except ValueError as hydrate_err:
-                return _prefilter_fail(short_name, cfg, result, str(hydrate_err))
-        verdict_state = _render_pass_fail("prefilter_company", grades)
-        if _company_used_inflow_prefilter(short_name):
-            new_state = verdict_state
-        elif verdict_state == cfg["pass_state"]:
-            new_state = cfg["legacy_pass_state"]
-        else:
-            new_state = cfg["legacy_fail_state"]
+        try:
+            new_state = _apply_prefilter_decoded_company_outcome(
+                short_name,
+                flat,
+                cfg,
+                ctx,
+                nav_links_from_data=enumerated_nav_links,
+            )
+        except ValueError as outcome_err:
+            return _prefilter_fail(short_name, cfg, result, str(outcome_err))
 
         decision = "TO_WATCH" if new_state in ("TO_WATCH", "PREFILTER_PASSED") else "IGNORE"
-
+        grades = flat.get("grades") or []
         notes = " | ".join(
             f"{g['vector']}={g['grade']}: {g['reason']}" for g in grades if g.get("reason")
         )
-
-        # Step 5: persist everything to company_data
-        data_to_save: Dict[str, Any] = {
-            "prefilter_grades": grades,
-            "prefilter_company_notes": notes,
-        }
-        if verdict_state == cfg["pass_state"] and rubric_list:
-            try:
-                task_cfg = TASK_CONFIG.get("prefilter_company") or {}
-                _, score = _render_score(task_cfg, rubric_list, grades, 0.0)
-                data_to_save["prefilter_score"] = float(score)
-            except ValueError as score_err:
-                return _prefilter_fail(short_name, cfg, result, str(score_err))
-        if enumerated_nav_links:
-            data_to_save["nav_links"] = enumerated_nav_links
-        data_to_save["possible_job_links"] = flat.get("possible_job_links") or []
-        if decision == "TO_WATCH" or new_state == "PREFILTER_PASSED":
-            data_to_save["culture_links_to_explore"] = flat.get("culture_links_to_explore") or []
-        save_company_data(short_name, data_to_save)
-
-        transition_company_state(short_name, new_state)
         result["decision"] = decision
         result["state"] = new_state
         result["notes"] = notes
@@ -1171,6 +1188,276 @@ async def prefilter_company(
         result["error"] = str(e)
     return result
 
+
+def _company_homepage_ready(company: Dict[str, Any]) -> bool:
+    cd = company.get("company_data") or {}
+    return len((cd.get("homepage_text") or "").strip()) > 0
+
+
+def _prefilter_batch_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any]) -> Optional[str]:
+    st = (entity_state or "").strip()
+    if not st:
+        return cfg.get("error_state")
+    retry = COMPANY_STATES.get(st, {}).get("retry_state")
+    if retry:
+        return retry
+    if st == cfg.get("retry_state"):
+        return cfg.get("error_state")
+    return cfg.get("error_state")
+
+
+def _transition_prefilter_batch_failures(companies: List[Dict[str, Any]], cfg: Dict[str, Any]) -> None:
+    by_dest: Dict[str, List[str]] = {}
+    for company in companies:
+        short_name = company.get("short_name")
+        if not short_name:
+            continue
+        dest = _prefilter_batch_fail_dest(company.get("state"), cfg)
+        if dest:
+            by_dest.setdefault(dest, []).append(short_name)
+    for dest, names in by_dest.items():
+        for short_name in names:
+            transition_company_state(short_name, dest)
+
+
+async def _run_batch_company_prefilter(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_chunk_index: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Pattern-A company prefilter batch: one do_task, position-indexed decode, shared outcome helper."""
+    from src.core import tracker
+    from src.core.consult import _hydrate_response_jobs_grade_reasons, _rubric_criteria_from_cd
+
+    agent_task_key = "prefilter_company"
+    cfg = ROSTER_CONFIG["prefilter"]
+    pass_states = cfg.get("pass_states") or []
+    normalized: List[Dict[str, Any]] = []
+    for company in companies:
+        short_name = company["short_name"]
+        normalized.append({
+            "astral_job_id": short_name,
+            "short_name": short_name,
+            "state": company.get("state"),
+            "company_data": company.get("company_data") or {},
+        })
+    companies = normalized
+    input_by_id = {c["short_name"]: c for c in companies}
+    short_names = [c["short_name"] for c in companies]
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func="roster._run_batch_company_prefilter",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start n={len(companies)}",
+        )
+        logger.debug_detail(
+            f"batch_id={batch_id} batch_chunk_index={batch_chunk_index!r} short_names={short_names}"
+        )
+
+    def assemble(batch_companies: List[Dict[str, Any]]) -> str:
+        blocks: List[str] = []
+        for company in batch_companies:
+            sn = company["short_name"]
+            cd = company.get("company_data") or {}
+            homepage = (cd.get("homepage_text") or "").strip()
+            nav = cd.get("nav_links") or ""
+            parts = [f"[company_id={sn}]", f"\n## Homepage Content\n{homepage}"]
+            if nav:
+                parts.append(f"\n## Navigation Links\n{nav}")
+            blocks.append("\n".join(parts))
+        return enumerate_array(
+            "COMPANY PREFILTER ROWS",
+            blocks,
+            index_key="index",
+            index_values=[f"{i:03d}" for i in range(len(batch_companies))],
+        )
+
+    rubric_list = _rubric_criteria_from_cd((ctx or {}).get("candidate_data") or {}, "company_prefilter")
+    vector_labels = _vector_labels_from_ctx(ctx)
+    task_ctx = {
+        **(ctx or {}),
+        "batch_entities": companies,
+        "batch_size": len(companies),
+        "vector_labels": vector_labels,
+    }
+    do_index = f"prefilter_company_batch_{batch_id}"
+    if batch_chunk_index is not None:
+        do_index = f"{do_index}_c{batch_chunk_index}"
+    result = await do_task(
+        task_key=agent_task_key,
+        live_content=assemble(companies),
+        index=do_index,
+        ctx=task_ctx,
+        debug=debug,
+    )
+
+    if not result.get("success"):
+        if debug:
+            logger.debug_index(
+                func="roster._run_batch_company_prefilter",
+                index=1,
+                total=1,
+                identifier=batch_id,
+                outcome="do_task failed — batch error transition",
+            )
+            logger.debug_detail(f"error={result.get('error')!r}")
+        _transition_prefilter_batch_failures(companies, cfg)
+        return {"passed": 0, "failed": 0, "total": len(companies)}
+
+    parsed = result.get("parsed_response") or {}
+    response_jobs = parsed.get("jobs") or []
+    try:
+        _hydrate_response_jobs_grade_reasons(response_jobs, rubric_list)
+    except ValueError as hydrate_err:
+        logger.error("[prefilter_company_batch] grade reason hydration failed: %s", hydrate_err)
+        _transition_prefilter_batch_failures(companies, cfg)
+        return {"passed": 0, "failed": 0, "total": len(companies)}
+
+    sent_ids = set(input_by_id.keys())
+    received_ids = {rj["astral_job_id"] for rj in response_jobs}
+    missing = sent_ids - received_ids
+    fabricated = received_ids - sent_ids
+    missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
+
+    if missing:
+        logger.warning(
+            "[prefilter_company_batch] batch incomplete: %d/%d IDs omitted: %s",
+            len(missing), len(sent_ids), sorted(missing),
+        )
+        _transition_prefilter_batch_failures(missing_rows, cfg)
+
+    passed = failed = 0
+    bad_grades: Set[str] = set()
+
+    for job_idx, response_job in enumerate(response_jobs, start=1):
+        aid = response_job["astral_job_id"]
+        if aid in fabricated:
+            continue
+        input_company = input_by_id[aid]
+        nav_links = (input_company.get("company_data") or {}).get("nav_links") or ""
+        try:
+            new_state = _apply_prefilter_decoded_company_outcome(
+                aid,
+                response_job,
+                cfg,
+                ctx,
+                nav_links_from_data=nav_links,
+            )
+        except Exception as e:
+            bad_grades.add(aid)
+            if debug:
+                logger.debug_index(
+                    func="roster._run_batch_company_prefilter",
+                    index=job_idx,
+                    total=len(response_jobs),
+                    identifier=aid,
+                    outcome="process failed",
+                )
+                logger.debug_detail(f"short_name={aid} error={e!r} grades={response_job.get('grades')!r}")
+            logger.warning("[%s] prefilter batch process failed: %s | grades: %s", aid, e, response_job.get("grades"))
+            continue
+        if debug:
+            grades = response_job.get("grades") or []
+            links_count = len(response_job.get("possible_job_links") or []) + len(
+                response_job.get("culture_links_to_explore") or []
+            )
+            logger.debug_index(
+                func="roster.prefilter_company_batch",
+                index=job_idx,
+                total=len(response_jobs),
+                identifier=aid,
+                outcome=str(new_state),
+            )
+            logger.debug_detail(
+                f"short_name={aid} grades={len(grades)} links={links_count} state={new_state!r}"
+            )
+        if new_state in pass_states:
+            passed += 1
+        else:
+            failed += 1
+
+    if bad_grades:
+        bad_rows = [input_by_id[aid] for aid in bad_grades if aid in input_by_id]
+        _transition_prefilter_batch_failures(bad_rows, cfg)
+
+    agent_ref = result.get("agent_ref")
+    if agent_ref:
+        entity_type = TASK_CONFIG.get(agent_task_key, {}).get("entity_type", "company")
+        processed_ids = received_ids - fabricated - bad_grades
+        for aid in processed_ids:
+            try:
+                tracker.append_agent_response(entity_type, aid, agent_ref)
+            except Exception:
+                logger.debug("append_agent_response failed for %s", aid, exc_info=True)
+
+    if debug and missing:
+        for mi, mid in enumerate(sorted(missing), start=1):
+            row = input_by_id.get(mid)
+            dest = _prefilter_batch_fail_dest(row.get("state") if row else None, cfg)
+            logger.debug_index(
+                func="roster._run_batch_company_prefilter",
+                index=mi,
+                total=len(missing),
+                identifier=mid,
+                outcome=f"missing from response -> {dest or '?'}",
+            )
+
+    return {"passed": passed, "failed": failed, "total": len(companies)}
+
+
+async def prefilter_company_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Batch company prefilter from HOMEPAGE_READY rows (AST-702)."""
+    ready: List[Dict[str, Any]] = []
+    not_ready: List[Dict[str, Any]] = []
+    for company in companies:
+        if _company_homepage_ready(company):
+            ready.append(company)
+        else:
+            not_ready.append(company)
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(
+            f"prefilter_company_batch batch_id={batch_id} ready={len(ready)} not_ready={len(not_ready)}"
+        )
+
+    for ni, company in enumerate(not_ready, start=1):
+        short_name = company["short_name"]
+        transition_company_state(short_name, "CANNOT_READ_WEBSITE")
+        save_company_data(short_name, {"prefilter_company_notes": "No homepage_text in company_data"})
+        if debug:
+            logger.debug_index(
+                func="roster.prefilter_company_batch",
+                index=ni,
+                total=len(not_ready),
+                identifier=short_name,
+                outcome="readiness skip -> CANNOT_READ_WEBSITE",
+            )
+
+    if not ready:
+        return {
+            "passed": 0,
+            "failed": 0,
+            "total": len(companies),
+            "skipped": len(not_ready),
+        }
+
+    batch_result = await _run_batch_company_prefilter(batch_id, ready, ctx=ctx, debug=debug)
+    batch_result["total"] = len(companies)
+    if not_ready:
+        batch_result["skipped"] = len(not_ready)
+    return batch_result
 
 
 # ---- Find job page ----
