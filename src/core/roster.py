@@ -635,7 +635,7 @@ async def run_company_task(
             return {**zero, "total_failed": 1}
 
         elif input_state in ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"):
-            result = await prefilter_company(short_name, company_website, ctx=ctx)
+            result = await prefilter_company(short_name, company_website, ctx=ctx, debug=debug)
             pass_states = ROSTER_CONFIG["prefilter"].get("pass_states", [])
             if result.get("error"):
                 logger.error(f"[{short_name}] prefilter error: {result['error']}")
@@ -1002,10 +1002,17 @@ def _company_used_inflow_prefilter(short_name: str) -> bool:
     return False
 
 
-async def prefilter_company(short_name: str, company_website: str, ctx: Optional[Dict[str, Any]] = None, browser_context=None) -> Dict[str, Any]:
+async def prefilter_company(
+    short_name: str,
+    company_website: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    browser_context=None,
+) -> Dict[str, Any]:
     """Scrape company homepage + nav_links, call Estelle's prefilter task (graded rubric
     + culture page selection in one API call), persist result.
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
+    debug: forwarded to do_task for AST-538 contract debug on the LLM hop.
     browser_context: optional shared BrowserSession to reuse across a batch.
     Returns {decision, state, notes, error}."""
     result: Dict[str, Any] = {"decision": None, "state": None, "notes": None, "error": None}
@@ -1063,6 +1070,7 @@ async def prefilter_company(short_name: str, company_website: str, ctx: Optional
             live_content=live_content,
             index=short_name,
             ctx=task_ctx,
+            debug=debug,
         )
 
         cfg = ROSTER_CONFIG.get("prefilter", {})
