@@ -144,3 +144,29 @@ No conflicts requiring `Conf: !!-NONE`.
 | **Stages** | 1 — `collapse_consecutive_blank_lines` in `formatting.py` (`29e41c98`); 2 — `scrape_jd_batch` post-scrape normalize (`8740dead`); 3 — `fetch_website_batch` homepage normalize (`8740dead`) |
 | **Stage 4** | Manual case table verified in build (`python3 -c` against plan cases — all pass) |
 | **Betty next** | `tests/component/utils/test_formatting.py` per plan Stage 4 reference table |
+
+## Radia review (2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-710/AST-713-collapse-blank-lines-gazer` @ `554db853`
+
+### What's solid
+
+- Plan Stages 1–3 implemented exactly: `collapse_consecutive_blank_lines` in `formatting.py` (no `config` import); `scrape_jd_batch` normalizes after successful `get_visible_text` and before empty-text gate / `_prune_jd`; `fetch_website_batch` normalizes `homepage_text` only — `nav_links` untouched.
+- Acceptance criteria covered: consecutive blank/whitespace-only runs collapse to one blank line; non-empty line order and content preserved; all-whitespace input still fails JD empty gate via `not text.strip()` after normalize.
+- Layer compliance (§3.3): core → utils import only; utils helper is pure (no cross-layer imports).
+- Tests manifest-aligned: unit cases match plan Stage 4 table; gazer integration tests assert collapsed save payloads on both batch paths.
+- Self-Assessment footprint matches diff (`Single-Component`, low risk).
+
+### Issues
+
+| Severity | Location | Note |
+|----------|----------|------|
+| — | — | No fix-now or discuss items |
+
+### Recommended actions
+
+| Action | Owner | Note |
+|--------|-------|------|
+| — | — | Ready for `resolve-child` / merge when pipeline says so |
+
+**Advisory (non-blocking):** `collapse_consecutive_blank_lines` passthrough for non-`str` inputs (`return text` when not `None`) mirrors defensive patterns in sibling formatting helpers; production scrape paths always pass `str`. Optional future tighten: return `""` for non-str or drop the branch if callers are typed.
