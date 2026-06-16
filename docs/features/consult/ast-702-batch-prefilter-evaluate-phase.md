@@ -228,3 +228,11 @@ Wrong batch ID reconciliation, state routing, or cutover timing would mis-grade 
 - **§3.5 naming:** Dispatch key **`prefilter`**, agent task **`prefilter_company`**, holding state **`HOMEPAGE_READY`** — consistent with existing registry.
 
 No conflicts requiring plan revision.
+
+---
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` @ `46b279f`
+
+**Built:** four `code(AST-702)` commits — config (`HOMEPAGE_READY` prefilter trigger, batch mode, state transitions), `_apply_prefilter_decoded_company_outcome` + `prefilter_company_batch` / `_run_batch_company_prefilter`, consult `prefilter` routing, monolithic `WEBSITE_FOUND` dispatch removal, dispatch DB migration off `WEBSITE_FOUND_RETRY` prefilter retry seed.
