@@ -261,3 +261,20 @@ No conflicts requiring plan revision.
 | Advisory | Diff vs `origin/dev` includes full AST-701 stack (expected on stacked sub branch before ftr→dev merge). |
 | Advisory | `_run_batch_company_prefilter` parallels `_run_batch_consult` rather than calling it — plan-approved; future refactor could DRY if company/job batch scaffolds converge. |
 | Advisory | `TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` self-mocks `prefilter_company_batch` (tautological); Betty may want a real `do_task` debug assert in a follow-on — not blocking. |
+
+## Resolution (`resolve-child`)
+
+**Date:** 2026-06-16
+
+**Against:** Radia `review-child` on `origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` @ **`f747284`**.
+
+**Product / plan**
+
+- **fix-now:** None — review clean; no product commits in this pass.
+- **Advisory (stacked AST-701 diff):** Expected on sub branch before ftr→dev merge; no change.
+- **Advisory (parallel batch scaffold vs `_run_batch_consult`):** Plan-approved; no refactor in this ticket.
+- **Advisory (tautological debug test):** Accepted; Betty may tighten in a follow-on — not blocking.
+
+**§9a dry-run:** `origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-700-prefilter-as-batch-process`**.
+
+**Manifest:** Betty manifest (15 tests) green @ **`ba3ccc9`** — no `[qa-handoff]`.
