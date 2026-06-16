@@ -1,5 +1,4 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import AdminDeployFooter from "../../../../src/ui/frontend/src/components/AdminDeployFooter"
@@ -20,6 +19,8 @@ describe("AdminDeployFooter", () => {
     mockedApi.mockReset()
     setFmtTimezone("UTC")
   })
+
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   it("renders environment and uptime when deploy_status succeeds", async () => {
     mockedApi.mockImplementation(async (url: string) => {
@@ -48,7 +49,7 @@ describe("AdminDeployFooter", () => {
     expect(screen.getByText("5m")).toBeInTheDocument()
   })
 
-  it("opens merge ticket popup on environment button click when merge_tickets present", async () => {
+  it("shows merge ticket tooltip after 500ms hover on env wrap when merge_tickets present", async () => {
     const recent = "2026-05-13T12:00:00Z"
     const older = "2026-05-13T11:00:00Z"
     mockedApi.mockImplementation(async (url: string) => {
@@ -76,22 +77,32 @@ describe("AdminDeployFooter", () => {
     })
 
     renderWithProviders(<AdminDeployFooter />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "local" })).toBeInTheDocument())
-    const envBtn = screen.getByRole("button", { name: "local" })
-    expect(envBtn).not.toHaveAttribute("title")
-    expect(envBtn).toHaveAttribute("aria-expanded", "false")
+    await waitFor(() => expect(screen.getByText("local")).toBeInTheDocument())
+    const envLabel = screen.getByText("local")
+    expect(envLabel).toHaveClass("nav-deploy-env-interactive")
+    expect(envLabel).not.toHaveAttribute("title")
+    expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument()
 
-    await userEvent.click(envBtn)
-    const popup = screen.getByRole("listbox", { name: "Recent merge tickets" })
-    expect(envBtn).toHaveAttribute("aria-expanded", "true")
-    const items = within(popup).getAllByRole("listitem")
-    expect(items).toHaveLength(2)
-    expect(items[0]).toHaveTextContent(`AST-675 ${fmtTime(recent, "UTC")}`)
-    expect(items[1]).toHaveTextContent(`AST-646 ${fmtTime(older, "UTC")}`)
+    const envWrap = envLabel.closest(".nav-deploy-env-wrap")
+    expect(envWrap).not.toBeNull()
+    fireEvent.mouseEnter(envWrap!)
+
+    await delay(200)
+    expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument()
+
+    await waitFor(
+      () => expect(screen.getByRole("tooltip", { name: "Recent merge tickets" })).toBeInTheDocument(),
+      { timeout: 800 },
+    )
+    const tooltip = screen.getByRole("tooltip", { name: "Recent merge tickets" })
+    const lines = within(tooltip).getAllByText(/AST-\d+/)
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toHaveTextContent(`AST-675 ${fmtTime(recent)}`)
+    expect(lines[1]).toHaveTextContent(`AST-646 ${fmtTime(older)}`)
     expect(screen.getByText("5m")).not.toHaveAttribute("title")
   })
 
-  it("closes merge ticket popup on second click or outside mousedown", async () => {
+  it("hides merge ticket tooltip before 500ms hover and on mouse leave", async () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/me") {
         return {
@@ -114,19 +125,27 @@ describe("AdminDeployFooter", () => {
     })
 
     renderWithProviders(<AdminDeployFooter />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "dev" })).toBeInTheDocument())
-    const envBtn = screen.getByRole("button", { name: "dev" })
+    await waitFor(() => expect(screen.getByText("dev")).toBeInTheDocument())
+    const envWrap = screen.getByText("dev").closest(".nav-deploy-env-wrap")!
 
-    await userEvent.click(envBtn)
-    expect(screen.getByRole("listbox", { name: "Recent merge tickets" })).toBeInTheDocument()
+    fireEvent.mouseEnter(envWrap)
+    await delay(200)
+    expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument()
 
-    await userEvent.click(envBtn)
-    expect(screen.queryByRole("listbox", { name: "Recent merge tickets" })).not.toBeInTheDocument()
+    fireEvent.mouseLeave(envWrap)
+    await delay(600)
+    expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument()
 
-    await userEvent.click(envBtn)
-    expect(screen.getByRole("listbox", { name: "Recent merge tickets" })).toBeInTheDocument()
-    fireEvent.mouseDown(document.body)
-    expect(screen.queryByRole("listbox", { name: "Recent merge tickets" })).not.toBeInTheDocument()
+    fireEvent.mouseEnter(envWrap)
+    await waitFor(
+      () => expect(screen.getByRole("tooltip", { name: "Recent merge tickets" })).toBeInTheDocument(),
+      { timeout: 800 },
+    )
+
+    fireEvent.mouseLeave(envWrap)
+    await waitFor(
+      () => expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument(),
+    )
   })
 
   it("renders static environment span when merge_tickets empty or missing", async () => {
@@ -153,12 +172,13 @@ describe("AdminDeployFooter", () => {
 
     renderWithProviders(<AdminDeployFooter />)
     await waitFor(() => expect(screen.getByText("staging")).toBeInTheDocument())
-    expect(screen.queryByRole("button", { name: "staging" })).not.toBeInTheDocument()
-    expect(screen.getByText("staging")).not.toHaveAttribute("title")
-    expect(screen.queryByRole("listbox", { name: "Recent merge tickets" })).not.toBeInTheDocument()
+    const envLabel = screen.getByText("staging")
+    expect(envLabel).not.toHaveClass("nav-deploy-env-interactive")
+    expect(envLabel).not.toHaveAttribute("title")
+    expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument()
   })
 
-  it("caps merge ticket popup at 20 list items", async () => {
+  it("caps merge ticket tooltip at 20 lines", async () => {
     const merge_tickets = Array.from({ length: 25 }, (_, i) => ({
       ticket_id: `AST-${i}`,
       recorded_at: "2026-05-13T12:00:00Z",
@@ -185,14 +205,20 @@ describe("AdminDeployFooter", () => {
     })
 
     renderWithProviders(<AdminDeployFooter />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "prod" })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole("button", { name: "prod" }))
-    const popup = screen.getByRole("listbox", { name: "Recent merge tickets" })
-    const items = within(popup).getAllByRole("listitem")
-    expect(items).toHaveLength(20)
-    expect(items[0]).toHaveTextContent("AST-0")
-    expect(items[19]).toHaveTextContent("AST-19")
-    expect(within(popup).queryByText(/AST-24/)).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("prod")).toBeInTheDocument())
+    const envWrap = screen.getByText("prod").closest(".nav-deploy-env-wrap")!
+    fireEvent.mouseEnter(envWrap)
+    await waitFor(
+      () => expect(screen.getByRole("tooltip", { name: "Recent merge tickets" })).toBeInTheDocument(),
+      { timeout: 800 },
+    )
+
+    const tooltip = screen.getByRole("tooltip", { name: "Recent merge tickets" })
+    const lines = within(tooltip).getAllByText(/^AST-\d+/)
+    expect(lines).toHaveLength(20)
+    expect(lines[0]).toHaveTextContent("AST-0")
+    expect(lines[19]).toHaveTextContent("AST-19")
+    expect(within(tooltip).queryByText(/AST-24/)).not.toBeInTheDocument()
   })
 
   it("omits environment label when API payload has no environment", async () => {
