@@ -69,3 +69,27 @@ Equivalent harness:
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-713 · AST-710
+
+**Collapse consecutive blank lines** in gazer visible-text save paths — **`scrape_jd_batch`** (JD **`job_description`**) and **`fetch_website_batch`** (**`homepage_text`**) call **`collapse_consecutive_blank_lines`** immediately after scrape, before empty-text gating / persist. **`nav_links`** and **`_prune_jd`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| JD post-scrape normalize + empty gate order | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestScrapeJdBatch::test_collapses_consecutive_blank_lines_before_save` |
+| Homepage post-scrape normalize | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_collapses_consecutive_blank_lines_in_homepage_text` |
+| Shared helper | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines` |
+
+**AST-713** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines \
+  tests/component/core/test_gazer.py::TestScrapeJdBatch::test_collapses_consecutive_blank_lines_before_save \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_collapses_consecutive_blank_lines_in_homepage_text \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.

@@ -208,6 +208,35 @@ class TestFetchWebsiteBatch:
             {"homepage_text": "homepage body", "nav_links": "1. /about\n2. /jobs"},
         )
 
+    @pytest.mark.asyncio
+    async def test_collapses_consecutive_blank_lines_in_homepage_text(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "intro\n\n\n\nbody",
+                    "enumerated_nav_links": "1. /about",
+                    "error": None,
+                }
+            ),
+        )
+        companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        save.assert_called_once_with(
+            "acme",
+            {"homepage_text": "intro\n\nbody", "nav_links": "1. /about"},
+        )
+
 
 class TestScrapeJdBatch:
     @pytest.mark.asyncio
@@ -273,6 +302,24 @@ class TestScrapeJdBatch:
         out = await gazer_mod.scrape_jd_batch("batch-1", [job], debug=False)
         assert out == {"passed": 1, "failed": 0, "total": 1}
         assert job["job_data"]["note"] == "keep"
+
+    @pytest.mark.asyncio
+    async def test_collapses_consecutive_blank_lines_before_save(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_job_data", save)
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="ok"))
+        raw_jd = "role summary\n\n\n\n" + ("detail " * 120)
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=raw_jd))
+        job = {"astral_job_id": "job-9", "job_link": "https://example.com/j", "job_title": "Role"}
+        out = await gazer_mod.scrape_jd_batch("batch-1", [job])
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        saved = job["job_data"]["job_description"]
+        assert "\n\n\n" not in saved
+        assert saved.startswith("role summary\n\n")
 
 
 class TestScrapeOne:

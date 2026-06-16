@@ -63,6 +63,26 @@ class TestFormatGradeDisplay:
         assert fmt.format_grade_display({"vector": "V", "grade": "B"}) == "V: B"
 
 
+# Branches: None/non-str; consecutive blanks; whitespace-only lines; preserve content.
+class TestCollapseConsecutiveBlankLines:
+    def test_collapses_runs_of_blank_lines(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines("line1\n\n\nline2") == "line1\n\nline2"
+        assert fmt.collapse_consecutive_blank_lines("line1\n \n\t\nline2") == "line1\n\nline2"
+
+    def test_preserves_single_blank_and_non_blank_content(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines("line1\nline2") == "line1\nline2"
+        assert fmt.collapse_consecutive_blank_lines("  content  ") == "  content  "
+        assert fmt.collapse_consecutive_blank_lines("only") == "only"
+
+    def test_empty_and_whitespace_only_input(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines("") == ""
+        assert fmt.collapse_consecutive_blank_lines("\n\n\n") == ""
+
+    def test_none_and_non_string_passthrough(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines(None) == ""  # type: ignore[arg-type]
+        assert fmt.collapse_consecutive_blank_lines(7) == 7  # type: ignore[arg-type]
+
+
 # Branches: empty delimiter raises; strip/filter empties.
 class TestSplitToList:
     def test_rejects_empty_delimiter(self) -> None:
