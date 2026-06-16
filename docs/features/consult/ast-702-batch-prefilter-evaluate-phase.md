@@ -233,6 +233,31 @@ No conflicts requiring plan revision.
 
 ## Review
 
-**Diff:** `origin/dev...origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` @ `46b279f`
+**Diff:** `origin/dev...origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` @ `ba3ccc9`
 
-**Built:** four `code(AST-702)` commits — config (`HOMEPAGE_READY` prefilter trigger, batch mode, state transitions), `_apply_prefilter_decoded_company_outcome` + `prefilter_company_batch` / `_run_batch_company_prefilter`, consult `prefilter` routing, monolithic `WEBSITE_FOUND` dispatch removal, dispatch DB migration off `WEBSITE_FOUND_RETRY` prefilter retry seed.
+**Built:** four `code(AST-702)` commits + `test(AST-702)` manifest on stacked AST-701 base (`merge-resume` from `origin/ftr/AST-700`). Evaluate phase: config cutover (`HOMEPAGE_READY` prefilter trigger, `batch_call_mode=1`, state graph), `_apply_prefilter_decoded_company_outcome` + `prefilter_company_batch` / `_run_batch_company_prefilter`, consult `prefilter` routing, monolithic `WEBSITE_FOUND` dispatch removal, dispatch DB migration + retry seed swap.
+
+### What's solid
+
+- **Plan fidelity:** All six stages — config (`input_state=HOMEPAGE_READY`, `retry_state`, transitions, `_DISPATCH_BATCH_CALL_MODE_ONE`), shared outcome helper, readiness split + Pattern-A batch runner, consult routing with `skipped` in error math, monolithic cutover (warning + `total_errors` on misconfigured `WEBSITE_FOUND`), DB migration + `_RETRY_TASK_SEED` swap to `fetch_website`.
+- **§1.3 DRY:** Post-decode outcome centralized in `_apply_prefilter_decoded_company_outcome`; `prefilter_company` and batch path share it.
+- **§2.1 / §2.6:** Dispatch trigger/batch mode from config; `_dispatch_trigger_state_for_task_key("prefilter")` reads `ROSTER_CONFIG["prefilter"]["input_state"]`; core owns transitions via roster helpers.
+- **§2.4 batch:** `batch_call_mode=1` + full-entity consult pass; pass/fail/skip counts normalized; dispatcher test confirms `HOMEPAGE_READY`-only claim states.
+- **§2.8 coat-check:** Not-ready rows → `CANNOT_READ_WEBSITE` with explicit notes; no empty `homepage_text` persistence.
+- **§1.5.1 debug:** Batch start, per-company index lines, missing-ID detail, summary — gated on `debug=True`; mirrors job batch patterns.
+- **§5d boundaries:** AST-701 scrape (`fetch_website`) preserved; no rubric/decode changes; AC7 dual-path removal enforced.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| — | — | **None (fix-now / discuss).** |
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| — | Proceed to **resolve-child** — no engineer changes required. |
+| Advisory | Diff vs `origin/dev` includes full AST-701 stack (expected on stacked sub branch before ftr→dev merge). |
+| Advisory | `_run_batch_company_prefilter` parallels `_run_batch_consult` rather than calling it — plan-approved; future refactor could DRY if company/job batch scaffolds converge. |
+| Advisory | `TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` self-mocks `prefilter_company_batch` (tautological); Betty may want a real `do_task` debug assert in a follow-on — not blocking. |
