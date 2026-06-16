@@ -22,6 +22,7 @@ export function navDefaultCandidateFilter(selectedId: string | null): AdminCandi
 export function useAdminCandidateFilter(options?: Options) {
   const { candidates, selectedId } = useCandidate()
   const urlBacked = options?.urlBacked
+  const urlSetValue = urlBacked?.setValue
 
   const [syncWithNav, setSyncWithNav] = useState(() => {
     if (urlBacked && options?.urlPresentDisablesSync && urlBacked.value) return false
@@ -37,10 +38,10 @@ export function useAdminCandidateFilter(options?: Options) {
 
   const applyFilter = useCallback(
     (next: AdminCandidateFilterValue) => {
-      if (urlBacked) urlBacked.setValue(next)
+      if (urlSetValue) urlSetValue(next)
       else setLocalFilter(next)
     },
-    [urlBacked],
+    [urlSetValue],
   )
 
   const setCandidateFilter = useCallback(
