@@ -239,3 +239,25 @@ Expect **all pytest passed** (includes **`TestDispatchTasks::test_scheduler_and_
 
 **Pass criterion:** item 1 complete + pytest green on item 2 — not zero-arg harness / branch-lock gate.
 
+### AST-686 (parent AST-655)
+
+**Scope:** Docs-only UAT — standalone **`docs/consult/craft-rubric-importance-explainer-proposed.txt`** for Susan manual paste into Manage Tasks; **no** `src/`, **no** migrations, **no** pytest. Sibling **AST-685** reverted **AST-678** auto-migration.
+
+**Manifest (test-child):**
+
+1. **Artifact audit (required):** **`docs/consult/craft-rubric-importance-explainer-proposed.txt`** on publish ref; weight-multiplier lines (30%…200%) match **`ASTRAL_CONFIG["consult_importance"]["multipliers"]`** in **`src/utils/config.py`** (read-only reference).
+
+2. **Scope gate (required):**
+
+```bash
+rg '678|ast678|_apply_ast678|database\.py' docs/consult/
+```
+
+Expect **no matches**.
+
+3. **Product gate (required):** **`code(AST-686)`** commit **`ab6c83e9`** touches **only** **`docs/consult/craft-rubric-importance-explainer-proposed.txt`** — no `src/` paths on this ticket.
+
+4. **Linear audit (required):** **AST-686** description contains **`## PROPOSED importance explainer`**; body matches file prose (excluding three `#` paste-guide lines).
+
+**Pass criterion:** items 1–4 complete — **no pytest** / zero-arg harness / branch-lock gate.
+

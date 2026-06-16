@@ -116,3 +116,26 @@ Equivalent harness:
   tests/component/core/test_roster.py::TestJobSiteDistinct674 \
   tests/component/core/test_roster.py::TestFindJobPageAst674
 ```
+
+---
+
+### AST-689 · AST-684
+
+**AST-689 (child):** Config-driven **`wait_for_careers_list_readiness`** in **`playwright.py`**; **`_fetch_job_links_content`** polls after **`get_page`** before **`extract_visible_text`**; AST-538 debug headers when **`debug=True`**. Failure proceeds best-effort (**AST-692** owns **JOBSITE_SCRAPE_ISSUE**). **`roster_scrape_readiness_config()`** env overrides for timing knobs.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Readiness helper exits **ready** on listing selector hits | `src/external/playwright.py` | `tests/component/core/test_roster.py::TestAst689ScrapeReadiness::test_wait_for_careers_list_readiness_ready_on_listing_hits` |
+| 2 | Bounded wait returns **timeout** when listings never appear | `src/external/playwright.py` | `tests/component/core/test_roster.py::TestAst689ScrapeReadiness::test_wait_for_careers_list_readiness_timeout` |
+| 3 | **`_fetch_job_links_content`** invokes readiness before extract | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst689ScrapeReadiness::test_fetch_job_links_content_calls_readiness` |
+| — | Existing PJL scrape debug test must not hit 20s gate | `src/core/roster.py` | `tests/component/core/test_roster.py::TestRosterCoverageGaps::test_fetch_job_links_content_dom_new_links_and_scrape_debug` (readiness mock) |
+
+**AST-689** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst689ScrapeReadiness \
+  tests/component/core/test_roster.py::TestRosterCoverageGaps::test_fetch_job_links_content_dom_new_links_and_scrape_debug
+```
+
+**Broken / obsolete (Betty fix):** **`test_fetch_job_links_content_dom_new_links_and_scrape_debug`** — without readiness mock, real gate waits **`max_wait_ms=20000`** per page (~21s test time).
