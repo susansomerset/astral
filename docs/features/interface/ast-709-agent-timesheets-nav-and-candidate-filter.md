@@ -197,3 +197,31 @@ When picking tests in **qa-child**, cover at minimum the Stage 3 tests above plu
 **Built:** Stage 1 — `useAdminCandidateFilter`: `applyFilter` depends on `urlSetValue` not `urlBacked` object. Stage 2 — `AdminAgentTimesheets`: memoized `urlBacked` (AST-662 parity). Stage 3 component tests deferred to Betty per build-child test-tree ban.
 
 **Betty manifest (Code Complete):** see **QA manifest (Betty)** above.
+
+---
+
+## Radia review (2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter` @ `b512ac1`  
+**Verdict:** Clean — no fix-now items.
+
+### What's solid
+
+| Stage | Check |
+|-------|-------|
+| 1 | `useAdminCandidateFilter`: `applyFilter` depends on `urlSetValue` (`urlBacked?.setValue`) instead of whole `urlBacked` object — stops nav-sync effect from re-firing on every parent re-render |
+| 2 | `AdminAgentTimesheets`: memoized `urlBacked` matches `AdminPerformanceMonitor.tsx` AST-662 pattern |
+| 3 | Hook test `inline urlBacked identity churn does not spam setValue from nav sync`; page tests for c1→c2 refetch and nav click to Scheduled Actions with pathname assertion |
+
+**Plan fidelity:** Diff footprint matches Self-Assessment (`Single-Component`, two production files + Betty manifest tests). Out-of-scope items untouched (NavigationShell, nav config, timesheet API, backend).
+
+**Rubric (§5a):** UI-only changes; imports at module top; no cross-layer violations; no new logging, silent catches, or hardcoded candidate state strings.
+
+### Advisory
+
+- Nav-escape test uses `renderWithProviders` + nested `Routes` under `NavigationShell` instead of plan’s `createMemoryRouter`/`RouterProvider` stack — simpler, still exercises sidebar `NavLink` navigation and AC1; acceptable deviation.
+- Manual UAT item 2 (non-admin nav item, e.g. Jobs Recommended) remains staging-only per plan QA manifest — not required in component tests.
+
+### Recommended actions
+
+None — **resolve-child** may proceed.
