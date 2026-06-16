@@ -2082,16 +2082,16 @@ LLM_PROVIDER_CONFIG = {
             BRAIN_BIG: {"agent_config_key": "claude-opus-4-6"},
         },
         "deepseek": {
-            # Parent AST-491: Little = v4-flash non-thinking; Medium/Big thinking; Big = pro.
+            # AST-694: Little = v4-flash non-thinking; Medium = v4-pro non-thinking; Big = v4-pro thinking.
             BRAIN_LITTLE: {
                 "vendor_model": "deepseek-v4-flash",
                 "thinking": False,
                 "reasoning_effort": None,
             },
             BRAIN_MEDIUM: {
-                "vendor_model": "deepseek-v4-flash",
-                "thinking": True,
-                "reasoning_effort": "high",
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": False,
+                "reasoning_effort": None,
             },
             BRAIN_BIG: {
                 "vendor_model": "deepseek-v4-pro",
