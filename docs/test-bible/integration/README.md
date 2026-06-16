@@ -32,6 +32,23 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 **Maintainer:** Betty (`qa-child`).
 
+## Joan operator (AST-712)
+
+**Trigger:** after `origin/dev` lands and Susan’s Railway **test** service deploy completes (Chuckles post-`push-dev` / `prep-uat`, or Susan manual invoke).
+
+**Commands:**
+
+```bash
+./scripts/testing/verify_integration_deploy_ref.sh
+./scripts/testing/run_railway_integration_tests.sh
+```
+
+**Skill:** `~/.cursor/skills/integration-operator/SKILL.md`
+
+**Failure triage:** non-zero exit → Joan opens Linear **Discussion** for Chuckles with repro log under `debug/integration-operator/`; Joan does not patch product or enable live external I/O.
+
+**Operator contract:** see [`docs/integration-operator/README.md`](../../integration-operator/README.md) (controlled-vs-live table — do not duplicate here).
+
 ### AST-711
 
 **Harness (AST-711 gate — integration only):**
@@ -47,3 +64,24 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 **Pass criterion:** integration harness green on publish ref tip.
 
 **Out of scope for this ticket:** zero-arg `./scripts/testing/run_component_tests.sh` — full component tree is red on `origin/dev` today from unrelated roster prefilter/rubric expectations (`WEBSITE_FOUND_RETRY` vs `TO_WATCH`); not caused by AST-711 product (`integration_io` + harness + CI only). Track roster component fixes separately; do not block AST-711 closure on zero-arg component gate.
+
+### AST-712
+
+**Harness sanity (required):**
+
+```bash
+./scripts/testing/run_integration_tests.sh
+```
+
+**Operator scripts — syntax check (required):**
+
+```bash
+bash -n scripts/testing/verify_integration_deploy_ref.sh
+bash -n scripts/testing/run_railway_integration_tests.sh
+```
+
+**Railway E2E (Susan/Chuckles when test host live):** run `integration-operator` skill per § Joan operator above — not required for Betty/test-child closure when Railway CLI absent.
+
+**Pass criterion:** items 1–2 exit 0 on publish ref tip.
+
+**Out of scope:** zero-arg `run_component_tests.sh`; production Railway smoke.
