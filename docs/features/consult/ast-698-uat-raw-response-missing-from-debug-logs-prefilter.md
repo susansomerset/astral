@@ -139,3 +139,10 @@ Betty may add manifest rows in **astral-tests** for debug passthrough + short **
 | §2.1 config | No config changes. |
 
 No conflicts requiring **Conf: !!-NONE**.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-696/AST-698-uat-raw-response-missing-from-debug-logs-prefilter`  
+**Build tip:** `9dfe83e` (`b471bd6` Stage 1 roster debug passthrough; `9dfe83e` Stage 2 agent debug contract)
