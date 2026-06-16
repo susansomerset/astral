@@ -1932,11 +1932,15 @@ ASTRAL_CONFIG = {
                 "    - 1: The source doesn't say it out loud, but it's possible.\n"
                 "    - 0: Use only with grade X (not applicable / no signal).\n"
                 "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After grade segments you may append link index fields: JOB:<indices> and CULT:<indices> "
-                "(comma-separated ints), or JSON keys possible_job_links / culture_links_to_explore. "
-                "Software normalizes all listed shapes.\n"
-                "\nExample:\n"
-                "000|RCA3|MPB3|USA3|JOB:59,60|CULT:51,46,53,50,45"
+                "After all grade segments, append two optional link_set bracket fields (positional): "
+                "first tail → possible job page indices (1–5 ints from the enumerated nav list); "
+                "second tail → culture link indices (1–5 ints). "
+                "Alternate shapes: JOB:<indices> and CULT:<indices> prefixes, or JSON keys "
+                "possible_job_links / culture_links_to_explore. Software normalizes all listed shapes.\n"
+                "\nExamples:\n"
+                "000|ERC2|MEA3|PGA2|[13]|[3,6,19]\n"
+                "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]\n"
+                "000|RCA3|MPB3|USA3|JOB:59,60|CULT:51,46,53"
             ),
         },
     },
@@ -3038,6 +3042,8 @@ def stringify_response_schema(task_key: str) -> str:
     if "_encoded" in output_type:
         if output_type == "grades_encoded_notes":
             example = "000|ERC3|MEA4|PGA4|optional notes after grades"
+        elif output_type == "grades_encoded_prefilter_links":
+            example = "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
         elif "_meta" in output_type:
             example = "000|ERC3|MEA4|PGA5|2983982372|Job Title|https://example.com/jobs/123"
         else:
