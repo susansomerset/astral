@@ -165,4 +165,4 @@ No `conf-!!-NONE` conflicts.
 ## Review
 
 **Branch:** `origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode`  
-**Build tip:** pending (2 product commits: config schema/instructions, consult decode helper + agent wiring)
+**Build tip:** `bbdcb7a` (2 product commits: config schema/instructions, consult decode helper + agent wiring)
