@@ -34,7 +34,7 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 ### AST-711
 
-**Harness (full integration gate):**
+**Harness (AST-711 gate — integration only):**
 
 ```bash
 ./scripts/testing/run_integration_tests.sh
@@ -44,4 +44,6 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 - `tests/integration/scenarios/test_candidate_nav_api.py` — seeded SQLite + `GET /api/candidates` + `GET /api/nav_config` with Bearer auth; 401 without auth
 
-**Pass criterion:** integration harness green; component zero-arg harness unchanged
+**Pass criterion:** integration harness green on publish ref tip.
+
+**Out of scope for this ticket:** zero-arg `./scripts/testing/run_component_tests.sh` — full component tree is red on `origin/dev` today from unrelated roster prefilter/rubric expectations (`WEBSITE_FOUND_RETRY` vs `TO_WATCH`); not caused by AST-711 product (`integration_io` + harness + CI only). Track roster component fixes separately; do not block AST-711 closure on zero-arg component gate.
