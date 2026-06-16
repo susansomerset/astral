@@ -110,8 +110,24 @@ def _rubric_criteria_from_cd(cd: dict, rubric_key: Optional[str]) -> list:
         return []
     raw = (cd or {}).get("artifacts", {}).get(rubric_key)
     if isinstance(raw, list):
-        return raw
-    return (raw or {}).get("criteria") or []
+        artifact = raw
+    else:
+        artifact = (raw or {}).get("criteria") or []
+    if rubric_key == "company_prefilter":
+        from src.utils.config import EMBEDDED_COMPANY_PREFILTER_CRITERIA
+
+        embedded_codes = {
+            str(c.get("code")).strip().upper()
+            for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
+            if isinstance(c, dict) and c.get("code")
+        }
+        tail = [
+            c
+            for c in artifact
+            if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
+        ]
+        return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+    return artifact
 
 
 def _vector_labels_map(rubric_criteria: list) -> Dict[str, str]:
@@ -126,7 +142,9 @@ def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, le
         if not isinstance(item, dict):
             continue
         lab = _strip_code(str(item.get("label") or "").strip())
-        if lab != target:
+        code = str(item.get("code") or "").strip().upper()
+        t_upper = target.upper()
+        if lab != target and code != t_upper:
             continue
         gd = item.get("grade_descriptions")
         if isinstance(gd, list):
@@ -466,7 +484,9 @@ def _importance_for_label(rubric_criteria: list, vector_label: str) -> float:
         if not isinstance(item, dict):
             continue
         lab = _strip_code(str(item.get("label") or "").strip())
-        if lab != target:
+        code = str(item.get("code") or "").strip().upper()
+        t_upper = target.upper()
+        if lab != target and code != t_upper:
             continue
         imp = item.get("importance")
         if imp is None:
