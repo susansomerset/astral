@@ -94,4 +94,4 @@ No conflicts identified.
 ## Review stub (Ada — build)
 
 - **Publish ref:** `origin/sub/AST-694/AST-695-deepseek-brain-tier-mapping-update`
-- **Product commit:** `code(AST-695)` — Medium tier → `deepseek-v4-pro`, thinking off; AST-694 comment on deepseek tier block.
+- **Product commit:** `1d7bc60` — Medium tier → `deepseek-v4-pro`, thinking off; AST-694 comment on deepseek tier block.
