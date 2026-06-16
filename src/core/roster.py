@@ -28,6 +28,7 @@ from src.external.playwright import (
     create_browser_context,
     BrowserSession,
     normalize_url,
+    wait_for_careers_list_readiness,
 )
 from src.external.google_cse import GoogleCseHit, search_google_cse
 from src.core.agent import do_task
@@ -50,7 +51,15 @@ from src.data.database import (
     COMPANY_BATCH_SORT_COLUMNS,
 )
 from src.utils.logging import get_logger
-from src.utils.config import ASTRAL_CONFIG, COMPANY_STATES, INFLOW_CONFIG, ROSTER_CONFIG, TASK_CONFIG, validate_value
+from src.utils.config import (
+    ASTRAL_CONFIG,
+    COMPANY_STATES,
+    INFLOW_CONFIG,
+    ROSTER_CONFIG,
+    TASK_CONFIG,
+    roster_scrape_readiness_config,
+    validate_value,
+)
 from src.utils.formatting import enumerate_array, parse_enumerate_array, find_job_containers
 
 # Logger for this module
@@ -1440,6 +1449,30 @@ async def _fetch_job_links_content(
             # Single page load — extract text, DOM, and links from the same navigation
             pg = await get_page(browser_context, url)
             try:
+                readiness_cfg = roster_scrape_readiness_config()
+                ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
+                if debug:
+                    log = logger
+                    log.set_debug_flag(True)
+                    total_pages = len(possible_job_links)
+                    log.debug_index(
+                        func="roster._fetch_job_links_content.scrape_readiness",
+                        index=page_num,
+                        total=total_pages,
+                        identifier=url,
+                        outcome=ready_meta.get("outcome")
+                        or ("ready" if ready_meta.get("ready") else "timeout"),
+                    )
+                    log.debug_detail(
+                        f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
+                        f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
+                        f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
+                    )
+                    if not ready_meta.get("ready"):
+                        log.debug_detail(
+                            "readiness gate exhausted — proceeding with best-effort extract "
+                            "(AST-692 owns JOBSITE_SCRAPE_ISSUE)"
+                        )
                 vt_result = await extract_visible_text(pg)
                 visible_text = vt_result.get("text", "") or ""
                 dom_html = await extract_page_dom(pg)
