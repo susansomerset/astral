@@ -1,4 +1,4 @@
-"""AST-683: finish-up record-landed-parent helper + merge-parent wiring."""
+"""AST-683 / AST-693: record-landed-parent helper + merge-parent / prep-uat wiring."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RECORD_SCRIPT = REPO_ROOT / "scripts/git/record-landed-parent.sh"
 MERGE_PARENT_SH = REPO_ROOT / "scripts/git/merge-parent.sh"
+PREP_UAT_LAND_SH = REPO_ROOT / "scripts/git/prep-uat-land.sh"
 APPEND_SCRIPT = REPO_ROOT / "scripts/append_merge_ticket_log.py"
 
 _FAKE_GIT = """#!/usr/bin/env bash
@@ -157,4 +158,15 @@ class TestMergeParentShell:
     def test_merge_parent_shell_references_record_helper(self) -> None:
         text = MERGE_PARENT_SH.read_text(encoding="utf-8")
         assert "record-landed-parent.sh" in text
+        assert 'grep -oiE \'AST-[0-9]+\'' in text or 'grep -oiE "AST-[0-9]+"' in text
+
+
+class TestPrepUatLandShell:
+    def test_prep_uat_land_shell_wires_record_helper_after_push(self) -> None:
+        text = PREP_UAT_LAND_SH.read_text(encoding="utf-8")
+        push_idx = text.index('git -C "$MAIN" push origin dev')
+        record_idx = text.index("record-landed-parent.sh")
+        result_idx = text.index("RESULT: prep-uat-land status=ok")
+        assert push_idx < record_idx < result_idx
+        assert "BLOCKED: parent segment must contain AST-NNN" in text
         assert 'grep -oiE \'AST-[0-9]+\'' in text or 'grep -oiE "AST-[0-9]+"' in text
