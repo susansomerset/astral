@@ -384,3 +384,29 @@ class TestAst702PrefilterDispatchMigration:
 
         assert ("prefilter", "WEBSITE_FOUND_RETRY") not in _RETRY_TASK_SEED
         assert ("fetch_website", "WEBSITE_FOUND_RETRY") in _RETRY_TASK_SEED
+
+
+class TestAst703PrefilterMigrationUniqueCollision:
+    """AST-703 UAT: legacy dual prefilter rows migrate without UNIQUE violation."""
+
+    def test_schema_migrates_when_both_website_found_and_retry_exist(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
+        db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'prefilter'",
+                ("c703",),
+            ).fetchone()[0]
+            row = conn.execute(
+                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'prefilter'",
+                ("c703",),
+            ).fetchone()
+            assert n == 1
+            assert tuple(row) == ("HOMEPAGE_READY", 1)
+        finally:
+            conn.close()

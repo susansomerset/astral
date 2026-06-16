@@ -162,6 +162,18 @@ Roster batch runner: **`docs/test-bible/core/roster.md`** (**AST-702**).
 
 ---
 
+### AST-703 · AST-700
+
+**UAT fix:** Admin **`GET /api/admin/dispatch_tasks`** no longer 500 when legacy **`prefilter`** rows existed at both **`WEBSITE_FOUND`** and **`WEBSITE_FOUND_RETRY`** — migration DELETE-before-UPDATE in **`_ensure_dispatch_task_schema`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Migration collision | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision` |
+
+**AST-703** narrowed run: **`docs/test-bible/core/roster.md`** (**AST-703**).
+
+---
+
 ### AST-619 · AST-543
 
 **AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
