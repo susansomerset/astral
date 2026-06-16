@@ -42,6 +42,8 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 | Dev | [`dev/`](dev/) | `tests/component/dev/` |
 
+| Integration | [`integration/`](integration/) | `tests/integration/` |
+
 
 
 ### Retired monolith section map
@@ -75,7 +77,7 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 ## 2. Where tests live
 
 - **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`).
-- **Integration tests:** `tests/integration/` is a placeholder only until a separate program opens integration work.
+- **Integration tests:** `tests/integration/` — multi-layer in-process scenarios; see [`integration/README.md`](integration/README.md).
 - **Data layer carve-out (§4a):** `tests/component/data/database/` holds cluster files for `src/data/database.py`; see `tests/component/data/database/_README.md`.
 
 ## 4a. `database.py` cluster tests

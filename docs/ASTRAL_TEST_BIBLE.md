@@ -7,7 +7,7 @@ This is the reference to existing tests, including unit/component and integratio
 ## 2. Where tests live
 
 - **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`).
-- **Integration tests:** `tests/integration/` is a placeholder only until a separate program opens integration work.
+- **Integration tests:** See `docs/test-bible/integration/README.md`.
 - **Data layer carve-out (§4a):** `tests/component/data/database/` holds cluster files for `src/data/database.py`; see `tests/component/data/database/_README.md`.
 
 ## 4a. `database.py` cluster tests
