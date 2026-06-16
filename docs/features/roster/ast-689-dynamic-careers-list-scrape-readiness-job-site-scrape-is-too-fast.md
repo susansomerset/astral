@@ -250,3 +250,13 @@ No unresolved conflicts.
 
 - **In scope:** Readiness wait + debug on all roster scrapes feeding **select_job_page**.
 - **Out of scope:** **JOBSITE_SCRAPE_ISSUE** / terminal state (**AST-692**), **select_job_page** prompt semantics, **AST-666** hang class, gazer-only paths unless wired here via `_fetch_job_links_content`.
+
+---
+
+## Review stub (post-build — build-child §11)
+
+| Item | Value |
+|------|-------|
+| **Publish ref** | `origin/sub/AST-684/AST-689-dynamic-scrape-readiness` |
+| **Tip SHA** | `94021d6` |
+| **Stages** | config `4cfeec0`, playwright `676001b`, roster wire `94021d6` |
