@@ -225,3 +225,16 @@ When picking tests in **qa-child**, cover at minimum the Stage 3 tests above plu
 ### Recommended actions
 
 None — **resolve-child** may proceed.
+
+## Resolution
+
+**Date:** 2026-06-16 · **Review:** Radia @ `d19a6a0` · **Product tip:** `13aa5e4` · **Tests tip:** `b512ac1`
+
+| Item | Outcome |
+|------|---------|
+| fix-now | None — ship as reviewed. |
+| discuss | None. |
+| advisory — nav-escape test uses `renderWithProviders` + nested `Routes` | Accepted; still covers sidebar `NavLink` + pathname AC1. |
+| advisory — non-admin nav escape (Jobs Recommended, etc.) | Manual UAT per plan QA manifest; no component test required. |
+
+**Tests:** Betty manifest green (Katherine `test-child`); Radia diff clean @ `d19a6a0`.
