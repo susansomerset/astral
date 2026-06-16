@@ -103,6 +103,39 @@ def _encoded_prefilter_response(grades: List[Dict[str, Any]], **job_extra: Any) 
     return {"jobs": [job]}
 
 
+_RC_VECTOR = "Reality Check"
+_RC_REASON = "Company is clearly real, active, and independently verifiable."
+
+
+def _rc_grade(grade: str = "A", confidence: int = 5, reason: str = "") -> Dict[str, Any]:
+    row: Dict[str, Any] = {"grade": grade, "vector": _RC_VECTOR, "confidence": confidence}
+    if reason:
+        row["reason"] = reason
+    return row
+
+
+def _prefilter_grades(*rows: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Embedded RC (AST-707) plus artifact vectors for company_prefilter mocks."""
+    if any(r.get("vector") == _RC_VECTOR for r in rows):
+        return list(rows)
+    return [_rc_grade()] + list(rows)
+
+
+def _patch_prefilter_candidate_rubric(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Coat-check paths load rubric from candidate artifacts when candidate_id is set."""
+    monkeypatch.setattr(
+        "src.core.candidate.get_candidate",
+        MagicMock(return_value=_prefilter_rubric_ctx().get("candidate_data") or {}),
+    )
+
+
+def _hydrated_prefilter_notes(*, include_fit: bool = False) -> str:
+    parts = [f"Reality Check=A: {_RC_REASON}"]
+    if include_fit:
+        parts.append("fit=A: one")
+    return " | ".join(parts)
+
+
 def _company(
     short_name: str = "acme",
     *,
@@ -682,9 +715,7 @@ class TestPrefilterCompany:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5}],
-                    ),
+                    "parsed_response": _encoded_prefilter_response([_rc_grade()]),
                 }
             ),
         )
@@ -734,14 +765,16 @@ class TestPrefilterCompany:
                 {
                     "success": True,
                     "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}],
+                        _prefilter_grades({"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}),
                         possible_job_links=[1],
                     ),
                 },
                 {
                     "success": True,
                     "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"}],
+                        _prefilter_grades(
+                            {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                        ),
                         possible_job_links=[2],
                         culture_links_to_explore=[3],
                     ),
@@ -798,7 +831,7 @@ class TestAst507EncodedPrefilter:
                 return_value={
                     "success": True,
                     "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}],
+                        _prefilter_grades({"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}),
                     ),
                 }
             ),
@@ -827,10 +860,10 @@ class TestAst507EncodedPrefilter:
                 return_value={
                     "success": True,
                     "parsed_response": _encoded_prefilter_response(
-                        [
+                        _prefilter_grades(
                             {"grade": "F", "vector": "fit", "confidence": 1},
                             {"grade": "A", "vector": "culture", "confidence": 5},
-                        ],
+                        ),
                     ),
                 }
             ),
@@ -852,7 +885,7 @@ class TestAst507EncodedPrefilter:
                 return_value={
                     "success": True,
                     "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5}],
+                        _prefilter_grades({"grade": "A", "vector": "fit", "confidence": 5}),
                     ),
                 }
             ),
@@ -913,7 +946,10 @@ class TestAst603ConsultParityHydration:
         )
         assert out["state"] == "PREFILTER_PASSED"
         saved = save.call_args[0][1]
-        assert "real company" in saved["prefilter_company_notes"]
+        notes = saved["prefilter_company_notes"]
+        assert "independently verifiable" in notes  # embedded RC (AST-707)
+        assert "decent fit" in notes
+        assert "US based" in notes
         assert saved["possible_job_links"] == [77]
         assert saved["culture_links_to_explore"] == [75, 76]
 
@@ -972,9 +1008,7 @@ class TestAst698PrefilterDebugPassthrough:
         do_task = AsyncMock(
             return_value={
                 "success": True,
-                "parsed_response": _encoded_prefilter_response(
-                    [{"grade": "A", "vector": "fit", "confidence": 5}],
-                ),
+                "parsed_response": _encoded_prefilter_response([_rc_grade()]),
             }
         )
         monkeypatch.setattr(roster_mod, "do_task", do_task)
@@ -1032,11 +1066,15 @@ class TestAst702PrefilterCompanyBatch:
                         "jobs": [
                             {
                                 "astral_job_id": "passco",
-                                "grades": [{"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"}],
+                                "grades": _prefilter_grades(
+                                    {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                                ),
                             },
                             {
                                 "astral_job_id": "failco",
-                                "grades": [{"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}],
+                                "grades": _prefilter_grades(
+                                    {"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"},
+                                ),
                             },
                         ],
                     },
@@ -1759,15 +1797,13 @@ class TestCoatCheckHandlers:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5, "reason": "ok"}],
-                    ),
+                    "parsed_response": _encoded_prefilter_response([_rc_grade()]),
                 }
             ),
         )
         monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
         out = await roster_mod._fetch_prefilter_notes(_company())
-        assert out == "fit=A: ok"
+        assert out == _hydrated_prefilter_notes()
 
     @pytest.mark.asyncio
     async def test_website_content_requires_nav_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2116,6 +2152,12 @@ class TestFetchPrefilterNotesBranches:
         monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
         monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
+        _patch_prefilter_candidate_rubric(monkeypatch)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value={**_company(), "candidate_id": "cand-1"}),
+        )
         monkeypatch.setattr(
             roster_mod,
             "do_task",
@@ -2123,7 +2165,9 @@ class TestFetchPrefilterNotesBranches:
                 return_value={
                     "success": True,
                     "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5, "reason": "ok"}],
+                        _prefilter_grades(
+                            {"grade": "A", "vector": "fit", "confidence": 5, "reason": "ok"},
+                        ),
                         possible_job_links=[1],
                         culture_links_to_explore=[2],
                     ),
@@ -2132,7 +2176,9 @@ class TestFetchPrefilterNotesBranches:
         )
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "save_company_data", save)
-        assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
+        assert await roster_mod._fetch_prefilter_notes({**_company(), "candidate_id": "cand-1"}) == (
+            _hydrated_prefilter_notes(include_fit=True)
+        )
         save.assert_called_once()
 
         monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
@@ -2394,9 +2440,7 @@ class TestFetchPrefilterNotesMoreBranches:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5}],
-                    ),
+                    "parsed_response": _encoded_prefilter_response([_rc_grade(grade="X")]),
                 }
             ),
         )
@@ -2531,16 +2575,16 @@ class TestRosterCoverageGaps:
             "do_task",
             AsyncMock(return_value={
                 "success": True,
-                "parsed_response": {
-                    "grades": [{"grade": "A", "vector": "fit", "reason": "ok"}],
-                    "possible_job_links": [1],
-                    "culture_links_to_explore": [2],
-                },
+                "parsed_response": _encoded_prefilter_response(
+                    [_rc_grade()],
+                    possible_job_links=[1],
+                    culture_links_to_explore=[2],
+                ),
             }),
         )
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "save_company_data", save)
-        assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
+        assert await roster_mod._fetch_prefilter_notes(_company()) == _hydrated_prefilter_notes()
         save.assert_called_once()
 
     def test_validate_parse_job_list_skips_blank_job_ids(self) -> None:
@@ -2629,9 +2673,7 @@ class TestRosterCoverageGaps:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": _encoded_prefilter_response(
-                        [{"grade": "A", "vector": "fit", "confidence": 5}],
-                    ),
+                    "parsed_response": _encoded_prefilter_response([_rc_grade(grade="X")]),
                 }
             ),
         )
