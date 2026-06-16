@@ -5017,13 +5017,13 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE dispatch_task")
         conn.execute("ALTER TABLE dispatch_task_new RENAME TO dispatch_task")
         conn.commit()
-    # AST-702: prefilter batch claims HOMEPAGE_READY; retry scrape is fetch_website only.
-    conn.execute(
-        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
-        "WHERE task_key = 'prefilter' AND trigger_state IN ('WEBSITE_FOUND', 'WEBSITE_FOUND_RETRY')"
-    )
+    # AST-702 / AST-703: drop obsolete prefilter retry companions before retargeting base row.
     conn.execute(
         "DELETE FROM dispatch_task WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND_RETRY'"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
     )
     conn.commit()
     _ensure_gaze_board_dispatch_tasks(conn)
