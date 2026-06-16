@@ -2024,6 +2024,82 @@ async def extract_page_content(page_option_url: str, context: BrowserSession) ->
         raise
 
 
+async def wait_for_careers_list_readiness(
+    page: PageHandle,
+    cfg: Dict[str, Any],
+) -> Dict[str, Any]:  # pragma: no cover
+    """Poll until careers-list content appears or bounded wait exhausts (AST-689)."""
+    max_wait_ms = int(cfg.get("max_wait_ms") or 20000)
+    poll_interval_ms = int(cfg.get("poll_interval_ms") or 500)
+    stability_polls = int(cfg.get("stability_polls") or 2)
+    min_visible_chars = int(cfg.get("min_visible_chars") or 400)
+    min_listing_hits = int(cfg.get("min_listing_hits") or 1)
+    listing_selectors = cfg.get("listing_selectors") or []
+    run_load_all_jobs_flag = bool(cfg.get("run_load_all_jobs", True))
+    load_all_jobs_after_ms = int(cfg.get("load_all_jobs_after_ms") or 3000)
+
+    started = time.monotonic()
+    stable_count = 0
+    last_len = 0
+    load_all_jobs_ran = False
+    ready = False
+    visible_chars = 0
+    listing_hits = 0
+
+    while True:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        if elapsed_ms >= max_wait_ms:
+            break
+
+        vt = await extract_visible_text(page)
+        visible_len = len(vt.get("text") or "")
+        visible_chars = visible_len
+
+        listing_hits = 0
+        for sel in listing_selectors:
+            try:
+                listing_hits += await page.locator(sel).count()
+            except Exception:
+                pass
+
+        if listing_hits >= min_listing_hits:
+            ready = True
+            break
+
+        if visible_len >= min_visible_chars and visible_len == last_len:
+            stable_count += 1
+        else:
+            stable_count = 0
+        last_len = visible_len
+
+        if stable_count >= stability_polls:
+            ready = True
+            break
+
+        if run_load_all_jobs_flag and not load_all_jobs_ran and elapsed_ms >= load_all_jobs_after_ms:
+            await load_all_jobs(page, "roster")
+            load_all_jobs_ran = True
+
+        await page.wait_for_timeout(poll_interval_ms)
+
+    wait_ms = int((time.monotonic() - started) * 1000)
+    if visible_chars == 0:
+        outcome = "empty"
+    elif ready:
+        outcome = "ready"
+    else:
+        outcome = "timeout"
+
+    return {
+        "ready": ready,
+        "outcome": outcome,
+        "visible_chars": visible_chars,
+        "listing_hits": listing_hits,
+        "wait_ms": wait_ms,
+        "load_all_jobs_ran": load_all_jobs_ran,
+    }
+
+
 async def load_all_jobs(page: PageHandle, short_name: str = "unknown") -> None:  # pragma: no cover
     """Trigger lazy loading to get all jobs on the page.
 
