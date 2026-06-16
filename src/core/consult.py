@@ -1707,7 +1707,20 @@ async def run_consult_task(
     from src.core import roster
 
     if entity_type == "company":
-        from src.core import roster
+        task_key = (dispatch_task_key or "").strip()
+        if task_key == "fetch_website":
+            from src.core.gazer import fetch_website_batch
+            r = await fetch_website_batch(batch_id, entities, debug=debug)
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            errors = max(0, total - passed - failed)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
         return await roster.run_company_task(
             input_state, entities[0], batch_id, ctx, debug,
             dispatch_task_key=dispatch_task_key,
