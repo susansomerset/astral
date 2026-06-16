@@ -1642,6 +1642,30 @@ async def _check_parse_results(
             logger.test(f"[find_job_page] JOBLIST_NO_JOBS: {no_jobs_msg}")
         return {"short_name": short_name, "state": "NO_OPENINGS", "job_site": job_site_url, "response_type": response_type}
 
+    if response_type == "JOBSITE_SCRAPE_ISSUE":
+        summary = str(result.get("scrape_issue_summary") or "").strip()
+        evidence = str(result.get("scrape_issue_evidence") or "").strip()
+        _strip_company_data_keys(short_name, ("job_list_visible",))
+        _save_company(
+            short_name=short_name,
+            company_website=company_website,
+            state=ROSTER_CONFIG["locate_job_page"]["scrape_issue_state"],
+            page_option_url=job_site_url,
+            raw_response=result,
+            jobsite_scrape_issue_summary=summary or None,
+            jobsite_scrape_issue_evidence=evidence or None,
+        )
+        if debug:
+            logger.test(
+                f"[find_job_page] JOBSITE_SCRAPE_ISSUE: summary={summary!r} job_site={job_site_url}"
+            )
+        return {
+            "short_name": short_name,
+            "state": ROSTER_CONFIG["locate_job_page"]["scrape_issue_state"],
+            "job_site": job_site_url,
+            "response_type": response_type,
+        }
+
     if response_type == "JOBLIST_TITLES":
         # Deprecated direct path: tests and legacy callers; find_job_page uses run_next chain (AST-469).
         return await _finalize_joblist_titles_select_only(
@@ -1684,7 +1708,9 @@ def _derive_shortname_from_url(url: str) -> str:
 
 
 
-_PERSIST_PAGE_OPTION_URL_STATES = frozenset({"WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE"})
+_PERSIST_PAGE_OPTION_URL_STATES = frozenset({
+    "WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE",
+})
 
 
 def _job_site_for_persist(
@@ -1715,6 +1741,8 @@ def _save_company(
     job_tag: Optional[str] = None,
     parse_instructions: Optional[Dict[str, Any]] = None,
     pre_run_job_site: Optional[str] = None,
+    jobsite_scrape_issue_summary: Optional[str] = None,
+    jobsite_scrape_issue_evidence: Optional[str] = None,
     ) -> None:
     """Save company result to database, then transition state.
     
@@ -1732,6 +1760,8 @@ def _save_company(
         job_tag: Optional job tag (legacy)
         parse_instructions: Optional parse_instructions blob
         pre_run_job_site: Pre-run job_site column; fetched from DB when omitted
+        jobsite_scrape_issue_summary: Optional Grace summary for JOBSITE_SCRAPE_ISSUE
+        jobsite_scrape_issue_evidence: Optional page-text evidence for JOBSITE_SCRAPE_ISSUE
     """
     if pre_run_job_site is None:
         row = get_company(short_name)
@@ -1744,6 +1774,10 @@ def _save_company(
     cd: Dict[str, Any] = {}
     if no_jobs_message:
         cd["no_jobs_message"] = no_jobs_message
+    if jobsite_scrape_issue_summary:
+        cd["jobsite_scrape_issue_summary"] = jobsite_scrape_issue_summary
+    if jobsite_scrape_issue_evidence:
+        cd["jobsite_scrape_issue_evidence"] = jobsite_scrape_issue_evidence
     if parse_instructions:
         cd["parse_instructions"] = parse_instructions
     elif parse_type or job_tag:
