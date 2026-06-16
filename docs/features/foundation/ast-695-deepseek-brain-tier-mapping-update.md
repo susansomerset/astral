@@ -95,3 +95,28 @@ No conflicts identified.
 
 - **Publish ref:** `origin/sub/AST-694/AST-695-deepseek-brain-tier-mapping-update`
 - **Product commit:** `1d7bc60` — Medium tier → `deepseek-v4-pro`, thinking off; AST-694 comment on deepseek tier block.
+
+## Radia review (AST-695)
+
+**Diff:** `origin/dev...origin/sub/AST-694/AST-695-deepseek-brain-tier-mapping-update` @ `ab17e54`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 matches plan exactly: `BRAIN_MEDIUM` → `deepseek-v4-pro`, `thinking: False`, `reasoning_effort: None`; block comment updated to AST-694 wording; Little/Big untouched; no scope creep into `agent.py`, `deepseek.py`, pricing, or Anthropic tier map. |
+| Self-Assessment | Scope `minor` / Conf `high` align with the four-file diff (config + config test + plan + bible). |
+| §2.1 config | Tier literals remain in `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"]`; `BRAIN_*` constants preserved. |
+| Tests | `test_resolve_deepseek_tier_meta` now asserts Medium → pro non-thinking alongside existing Little/Big rows; Betty manifest in `docs/test-bible/utils/config.md` documents narrowed pytest gate. |
+| Layer / imports | Config-only product edit; no new cross-layer imports, logging, batch, or external-layer changes (§5f/§5g N/A). |
+
+### Issues
+
+None (**fix-now:** 0 · **discuss:** 0).
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| — | Proceed to **`resolve-child`** — no product changes required from review. |
+| Advisory | `TestAst492BrainSettingDoTask` and `TestAst492ResolveAdhocApiAdmin` remain **Little-tier** fixtures; Medium coverage is sufficient at `resolve_brain_setting_to_deepseek_tier_meta` — same resolution path `do_task` / `_resolve_adhoc` already use. Optional future hardening: add a Medium-tier adhoc/`do_task` assertion if Susan wants end-to-end Medium SKU logging in component tests. |
