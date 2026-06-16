@@ -120,3 +120,12 @@ None (**fix-now:** 0 · **discuss:** 0).
 | --- | --- |
 | — | Proceed to **`resolve-child`** — no product changes required from review. |
 | Advisory | `TestAst492BrainSettingDoTask` and `TestAst492ResolveAdhocApiAdmin` remain **Little-tier** fixtures; Medium coverage is sufficient at `resolve_brain_setting_to_deepseek_tier_meta` — same resolution path `do_task` / `_resolve_adhoc` already use. Optional future hardening: add a Medium-tier adhoc/`do_task` assertion if Susan wants end-to-end Medium SKU logging in component tests. |
+
+## Resolution (Ada — resolve)
+
+**Date:** 2026-06-16  
+**Review ref:** `origin/sub/AST-694/AST-695-deepseek-brain-tier-mapping-update` @ `d2fbf26`
+
+Radia posted **fix-now: none**, **discuss: none**. No product changes required — `code(AST-695)` @ `1d7bc60` stands as shipped. Advisory (optional Medium-tier `do_task`/adhoc component assertions) deferred; config resolution test + existing Little-tier dispatch fixtures cover the resolution path.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-694-deepseek-brain-model-changes`.
