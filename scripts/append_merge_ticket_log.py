@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Append one parent Linear ticket id to the merge ticket log (AST-681).
+"""Record one parent Linear ticket id in the merge ticket log (AST-681).
+
+Re-prep-uat of the same id updates recorded_at only (no duplicate row).
 
 Usage:
     python3 scripts/append_merge_ticket_log.py AST-675

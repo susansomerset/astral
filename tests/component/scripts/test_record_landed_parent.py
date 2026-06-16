@@ -144,7 +144,7 @@ class TestRecordLandedParent:
             text=True,
             check=True,
         )
-        assert "finish-up(AST-999)" in log_result.stdout
+        assert "prep-uat(AST-999)" in log_result.stdout
 
     def test_record_landed_parent_missing_append_script_blocks(self, tmp_path: Path) -> None:
         repo = _mini_repo(tmp_path, with_append=False)
@@ -155,10 +155,9 @@ class TestRecordLandedParent:
 
 
 class TestMergeParentShell:
-    def test_merge_parent_shell_references_record_helper(self) -> None:
+    def test_merge_parent_shell_does_not_record_merge_ticket_log(self) -> None:
         text = MERGE_PARENT_SH.read_text(encoding="utf-8")
-        assert "record-landed-parent.sh" in text
-        assert 'grep -oiE \'AST-[0-9]+\'' in text or 'grep -oiE "AST-[0-9]+"' in text
+        assert "record-landed-parent.sh" not in text
 
 
 class TestPrepUatLandShell:

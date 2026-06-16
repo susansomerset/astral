@@ -62,3 +62,14 @@ class TestAppendMergeTicketLog:
         for n in (100, 200, 300):
             mtl.append_merge_ticket_log(f"AST-{n}")
         assert len(mtl.read_merge_ticket_log()) == 3
+
+    def test_append_same_id_updates_timestamp_no_duplicate(self, log_path: Path) -> None:
+        first = mtl.append_merge_ticket_log("AST-700")
+        mtl.append_merge_ticket_log("AST-100")
+        second = mtl.append_merge_ticket_log("AST-700")
+        entries = mtl.read_merge_ticket_log()
+        assert len(entries) == 2
+        assert entries[0]["ticket_id"] == "AST-100"
+        assert entries[1]["ticket_id"] == "AST-700"
+        assert entries[1]["recorded_at"] >= first["recorded_at"]
+        assert second["recorded_at"] == entries[1]["recorded_at"]

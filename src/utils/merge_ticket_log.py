@@ -1,4 +1,4 @@
-"""Append-only merge ticket log for deploy status (AST-681)."""
+"""Merge ticket log for deploy status (AST-681). Prep-uat records parent ids."""
 
 import json
 import os
@@ -35,10 +35,12 @@ def read_merge_ticket_log() -> list[dict]:
 
 
 def append_merge_ticket_log(ticket_id: str) -> dict:
+    """Record parent id for deploy UI. Re-prep-uat of same id updates timestamp only."""
     normalized = _normalize_ticket_id(ticket_id)
     recorded_at = datetime.now(timezone.utc).isoformat()
     entry = {"ticket_id": normalized, "recorded_at": recorded_at}
     entries = read_merge_ticket_log()
+    entries = [e for e in entries if e.get("ticket_id") != normalized]
     entries.append(entry)
     path = _log_path()
     path.parent.mkdir(parents=True, exist_ok=True)
