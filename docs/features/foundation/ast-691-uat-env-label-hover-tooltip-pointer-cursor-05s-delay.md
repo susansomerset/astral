@@ -257,3 +257,11 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §1.5 Logging | N/A — no backend changes |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Built:** `sub/AST-675/ast-691-uat-env-label-hover-tooltip-pointer-cursor-05s-delay` @ `3ae44a1364b3c2d19d9325e4c4679ed5659d38ad`
+
+**Stage 1:** Hover-delay tooltip replaces AST-690 click popup; pointer cursor on interactive env label; 500ms delay; plain div lines, no bullets.
