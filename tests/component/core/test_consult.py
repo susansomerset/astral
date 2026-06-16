@@ -70,6 +70,52 @@ class TestRubricHelpers:
         assert consult_mod._rubric_criteria_from_cd(cd, None) == []
         assert consult_mod._rubric_criteria_from_cd(cd, "missing") == []
 
+    def test_merges_embedded_rc_for_company_prefilter(self) -> None:
+        cd = {
+            "artifacts": {
+                "company_prefilter": [
+                    {
+                        "code": "MP",
+                        "label": "Mission & Product",
+                        "importance": 5,
+                        "grade_descriptions": [{"grade": "B", "description": "ok mp"}],
+                    },
+                    {
+                        "code": "RC",
+                        "label": "Duplicate RC",
+                        "importance": 1,
+                        "grade_descriptions": [{"grade": "A", "description": "dup"}],
+                    },
+                ]
+            }
+        }
+        rubric = consult_mod._rubric_criteria_from_cd(cd, "company_prefilter")
+        assert rubric[0]["code"] == "RC"
+        assert rubric[0]["label"] == "Reality Check"
+        assert len(rubric) == 2
+
+    def test_hydrates_rc_by_code_without_artifact_row(self) -> None:
+        cd = {
+            "artifacts": {
+                "company_prefilter": [
+                    {
+                        "code": "MP",
+                        "label": "Mission & Product",
+                        "importance": 5,
+                        "grade_descriptions": [{"grade": "B", "description": "ok mp"}],
+                    },
+                ]
+            }
+        }
+        rubric = consult_mod._rubric_criteria_from_cd(cd, "company_prefilter")
+        grades = [
+            {"vector": "RC", "grade": "D", "confidence": 3},
+            {"vector": "MP", "grade": "B", "confidence": 3},
+        ]
+        consult_mod._hydrate_grade_reasons_from_rubric(grades, rubric)
+        assert grades[0]["reason"]
+        assert grades[1]["reason"] == "ok mp"
+
     def test_maps_vector_labels(self) -> None:
         criteria = [{"code": "CR", "label": "Culture"}]
         assert consult_mod._vector_labels_map(criteria) == {"CR": "Culture"}
@@ -103,6 +149,12 @@ class TestImportanceForLabelBranches:
     def test_raises_when_label_missing(self) -> None:
         with pytest.raises(ValueError, match="no rubric criterion"):
             consult_mod._importance_for_label([_rubric_item("fit")], "ghost")
+
+    def test_importance_matches_by_code(self) -> None:
+        from src.utils.config import EMBEDDED_COMPANY_PREFILTER_CRITERIA, importance_multiplier
+
+        criteria = list(EMBEDDED_COMPANY_PREFILTER_CRITERIA)
+        assert consult_mod._importance_for_label(criteria, "RC") == pytest.approx(importance_multiplier(8))
 
 
 class TestRenderScore:
@@ -1115,6 +1167,13 @@ class TestRubricLookup:
     def test_raises_when_vector_is_unknown(self) -> None:
         with pytest.raises(ValueError, match="No rubric criterion matching vector"):
             consult_mod._lookup_rubric_reason_for_grade([_rubric_item()], "Missing", "A")
+
+    def test_matches_criterion_by_code(self) -> None:
+        from src.utils.config import EMBEDDED_COMPANY_PREFILTER_CRITERIA
+
+        criteria = list(EMBEDDED_COMPANY_PREFILTER_CRITERIA)
+        expected = criteria[0]["grade_descriptions"][3]["description"]
+        assert consult_mod._lookup_rubric_reason_for_grade(criteria, "RC", "D") == expected
 
     def test_hydration_skips_non_dict_rows(self) -> None:
         grades = ["bad", {"vector": "Fit", "grade": "A"}]

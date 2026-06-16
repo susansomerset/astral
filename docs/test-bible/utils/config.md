@@ -274,6 +274,18 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 ---
 
+### AST-707 · AST-700
+
+**AST-707:** **`EMBEDDED_COMPANY_PREFILTER_CRITERIA`** — canonical **RC** row prepended for **`company_prefilter`** hydration (artifact rows with duplicate **RC** code deduped).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Embedded RC registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
+
+Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/roster.md`** (**AST-707**).
+
+---
+
 ### AST-695 · AST-694
 
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.
