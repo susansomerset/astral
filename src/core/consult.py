@@ -171,6 +171,21 @@ _LINK_PREFIX_RE = re.compile(r"^(?:JOB|CULT):(.+)$", re.I)
 _ENCODED_LINE_RE = re.compile(r"^\d{1,3}\|")
 
 
+def _should_decode_as_encoded_line(text: str) -> bool:
+    """True when a pipe line has AST-357 encoded grade segments (e.g. RCA3), not letter-pipe grades."""
+    from src.core.agent import _GRADE_SEG
+
+    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), text.strip())
+    fields = [f.strip() for f in line.split("|")]
+    if fields and re.match(r"^\d{1,3}$", fields[0]):
+        fields = fields[1:]
+    for f in fields:
+        norm = "".join(ch for ch in f if ch not in " -:")
+        if _GRADE_SEG.match(norm):
+            return True
+    return False
+
+
 def _parse_link_index_field(field: str) -> List[int]:
     """Comma/bracket/JOB:/CULT: index lists → list[int]."""
     if field is None:
@@ -418,7 +433,7 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
             except json.JSONDecodeError:
                 pass
         first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-        if _ENCODED_LINE_RE.match(first_line):
+        if _ENCODED_LINE_RE.match(first_line) and _should_decode_as_encoded_line(text):
             from src.core.agent import _decode_payload
 
             output_type = task_config.get("output_type", "")
