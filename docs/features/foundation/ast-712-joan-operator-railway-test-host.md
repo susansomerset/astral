@@ -310,3 +310,31 @@ No plan conflicts requiring `conf-!!-NONE`.
 | **Stages** | 1 — operator docs + env.example (`d07658b`); 2 — verify + railway run scripts (`a0b8c14`); 3 — Joan skill (operator machine); 4 — Betty bible § Joan operator |
 | **Betty next** | Stage 4 bible appendix |
 | **test-child manifest** | `run_integration_tests.sh` + `bash -n` on operator scripts; Railway E2E via Susan/Chuckles when host live |
+
+## Radia review (2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-512/AST-712-joan-operator-railway-test-host` @ `fc1f013` (AST-712 slice: operator docs, scripts, env.example, Joan skill on operator machine, Betty bible § Joan operator; includes AST-711 dependency stack)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| **Plan fidelity** | Stages 1–4 land: `docs/integration-operator/*`, `env.example` block, both operator scripts match plan spec, Joan skill at `~/.cursor/skills/integration-operator/SKILL.md`, bible § Joan operator + AST-712 manifest. |
+| **§2.1 / §3.6** | Operator vars env-only in `env.example`; logs under `debug/integration-operator/` (parent `debug/` gitignored). |
+| **Scripts** | `verify_integration_deploy_ref.sh` and `run_railway_integration_tests.sh` match plan; `bash -n` clean; `run_integration_tests.sh` not modified by AST-712 commits. |
+| **Operator contract** | Controlled-vs-live table in README matches plan; Joan skill failure triage + Discussion template present. |
+| **Manifest** | Integration harness green locally (3 passed); operator script syntax checks pass. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `docs/integration-operator/RAILWAY_TEST_HOST.md` § Harness env vars | Lists `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` — wrong names. `tests/integration/conftest.py` and `src/external/gmail.py` require `GMAIL_USER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`. Susan provisioning from this checklist will fail harness import on Railway. |
+| **discuss** | `run_railway_integration_tests.sh` | Inner `railway run` invokes `./scripts/testing/run_integration_tests.sh` (venv bootstrap via `ensure_component_venv.sh`). Confirm Railway test service build/install matches that path or document `ASTRAL_PYTHON` for the deployed container — not verifiable without live host. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Fix Railway env var names in `RAILWAY_TEST_HOST.md` to mirror `conftest.py` / `gmail.py` | Ada (`resolve-child`) |
+| After fix, Susan provisions test host; Chuckles/Joan run Railway E2E once | Susan / Chuckles |
