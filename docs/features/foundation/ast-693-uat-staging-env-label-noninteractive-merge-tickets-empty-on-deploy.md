@@ -193,3 +193,13 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.6 Data files | `data/merge_ticket_log.json` is shipped in-repo per AST-681 — not gitignored |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Built:** `sub/AST-675/ast-693-uat-staging-env-label-noninteractive-merge-tickets-empty-on-deploy` @ `51f6c001f46214245ad476f2031b882d26276f36`
+
+**Stage 1:** Bootstrapped `data/merge_ticket_log.json` with AST-675 via append CLI; deploy_status returns non-empty `merge_tickets`.
+
+**Stage 2:** `prep-uat-land.sh` calls `record-landed-parent.sh` after land push (same parent-id extraction as `merge-parent.sh`).
