@@ -10,9 +10,9 @@ Susan provisions and maintains the dedicated Railway **integration test** servic
 
 3. **Environment label** — Set `ASTRAL_DEPLOY_ENV=integration-test` on the test service (admin nav footer visibility only; optional).
 
-4. **Harness env vars** — Set placeholder values on the Railway service (not committed to git). Mirror `tests/integration/conftest.py` import-time needs:
-   - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (dummy placeholders)
-   - `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID` (dummy placeholders)
+4. **Harness env vars** — Set placeholder values on the Railway service (not committed to git). Mirror `tests/integration/conftest.py` import-time needs and `src/external/gmail.py` `_REQUIRED_VARS`:
+   - `GMAIL_USER` (e.g. `astral.test@example.com`)
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (dummy OAuth placeholders)
    - `ANTHROPIC_API_KEY` (dummy placeholder)
    - `ASTRAL_ALLOWED_IPS=` (empty for test harness)
 

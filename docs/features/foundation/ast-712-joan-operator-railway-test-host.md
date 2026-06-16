@@ -338,3 +338,9 @@ No plan conflicts requiring `conf-!!-NONE`.
 |--------|-------|
 | Fix Railway env var names in `RAILWAY_TEST_HOST.md` to mirror `conftest.py` / `gmail.py` | Ada (`resolve-child`) |
 | After fix, Susan provisions test host; Chuckles/Joan run Railway E2E once | Susan / Chuckles |
+
+## Resolution (2026-06-16)
+
+**Radia review @ `fc1f013`:** One **fix-now** — `RAILWAY_TEST_HOST.md` listed wrong Gmail OAuth env names (`GMAIL_CLIENT_ID`, etc.). Updated checklist to `GMAIL_USER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` matching `tests/integration/conftest.py` and `src/external/gmail.py`.
+
+**Discuss (open):** `run_railway_integration_tests.sh` venv bootstrap on Railway container — validate when Susan provisions test host; document `ASTRAL_PYTHON` on operator `.env` if `ensure_component_venv.sh` path differs in deploy image.
