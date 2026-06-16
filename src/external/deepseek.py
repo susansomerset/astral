@@ -23,7 +23,7 @@ from src.utils.formatting import (
     looks_like_encoded_grades_text,
     clean_encoded_agent_payload,
 )
-from src.external.anthropic import extract_api_response_text, _emit_llm_call_debug
+from src.utils.llm_external import extract_api_response_text, emit_llm_call_debug
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
 __all__ = ["send_to_deepseek"]
@@ -249,7 +249,8 @@ async def send_to_deepseek(
             if debug:
                 raw_text = extract_api_response_text(response) if response.content else ""
                 stop_reason = getattr(response, "stop_reason", "?")
-                _emit_llm_call_debug(
+                emit_llm_call_debug(
+                    logger_name=__name__,
                     func_name="send_to_deepseek",
                     prompt_label=prompt_label,
                     model=vendor_model,
@@ -343,7 +344,8 @@ async def send_to_deepseek(
             duration = (datetime.now() - start_time).total_seconds()
             log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=str(e))
             if debug:
-                _emit_llm_call_debug(
+                emit_llm_call_debug(
+                    logger_name=__name__,
                     func_name="send_to_deepseek",
                     prompt_label=prompt_label,
                     model=vendor_model,
@@ -362,7 +364,8 @@ async def send_to_deepseek(
         duration = (datetime.now() - start_time).total_seconds()
         log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=str(e))
         if debug:
-            _emit_llm_call_debug(
+            emit_llm_call_debug(
+                logger_name=__name__,
                 func_name="send_to_deepseek",
                 prompt_label=prompt_label,
                 model=vendor_model,

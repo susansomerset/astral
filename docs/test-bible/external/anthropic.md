@@ -12,7 +12,7 @@
 
 ### AST-620 · AST-546
 
-**AST-546 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/external/anthropic.py`** and **`src/external/deepseek.py`** — shared **`_emit_llm_call_debug`** helper, Style D index + **`|`** detail lines (model, task key, timing, tokens, truncated response preview via **`debug_detail_block`**); retire hand-rolled **`[DEBUG]`** blocks. **`log_llm_batch_summary`** and non-debug INFO/ERROR timing lines unchanged when **`debug=False`**. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
+**AST-546 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/external/anthropic.py`** and **`src/external/deepseek.py`** — shared debug helper (now **`emit_llm_call_debug`** in **`src/utils/llm_external.py`** per **AST-687**), Style D index + **`|`** detail lines (model, task key, timing, tokens, truncated response preview via **`debug_detail_block`**); retire hand-rolled **`[DEBUG]`** blocks. **`log_llm_batch_summary`** and non-debug INFO/ERROR timing lines unchanged when **`debug=False`**. Attribution locks: **`docs/test-bible/utils/llm_external.md`** (**AST-687**).
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
