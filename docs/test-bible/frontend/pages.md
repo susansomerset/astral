@@ -424,6 +424,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-709 · AST-705
+
+**AST-705 (parent):** Nav menu stops working while on Agent Timesheets — sidebar clicks flicker then snap back to `/admin/agent_timesheets`. Root cause: inline **`urlBacked`** object on **`AdminAgentTimesheets`** plus unstable **`applyFilter`** deps on whole **`urlBacked`** in shared hook (AST-662 fixed Execution History only).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-709** | Stabilize **`applyFilter`** via **`urlSetValue`** dep; memoize **`urlBacked`** on Agent Timesheets (AST-662 parity) | `useAdminCandidateFilter.ts`, `AdminAgentTimesheets.tsx` | **`AST-709 nav and candidate filter`** describe in **`test_AdminAgentTimesheets.test.tsx`**; **`inline urlBacked identity churn does not spam setValue from nav sync`** in **`test_useAdminCandidateFilter.test.tsx`**; regression **`AST-634 admin candidate filter`** describe in same page file |
+
+**AST-709** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  -t "AST-709|inline urlBacked|AST-634 admin candidate filter"
+```
+
+**Regression guard:** full **`test_useAdminCandidateFilter.test.tsx`** when sibling URL-backed admin pages change shared hook.
+
+---
+
 ### AST-672 · AST-670
 
 **AST-670 (parent):** Left-align the **Copy logs to clipboard** control in the Execution History expanded batch log toolbar (`.dispatch-log-toolbar` **`justify-content: flex-start`**). Copy payload, **Copied** feedback, and all other Execution History behavior unchanged.
