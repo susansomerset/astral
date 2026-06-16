@@ -139,3 +139,26 @@ Equivalent harness:
 ```
 
 **Broken / obsolete (Betty fix):** **`test_fetch_job_links_content_dom_new_links_and_scrape_debug`** — without readiness mock, real gate waits **`max_wait_ms=20000`** per page (~21s test time).
+
+---
+
+### AST-692 · AST-684
+
+**AST-692 (child):** Grace **JOBSITE_SCRAPE_ISSUE** → terminal company state **JOBSITE_SCRAPE_ISSUE** via **`_check_parse_results`** / **`_save_company`**; structured **`jobsite_scrape_issue_*`** in **`company_data`**; **`job_list_visible`** stripped; no **`parse_job_list`** chain (**AST-469** guard in **`agent.py`** unchanged).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`_check_parse_results`** maps **JOBSITE_SCRAPE_ISSUE** → terminal state + persisted summary | `src/core/roster.py`, `src/utils/config.py` | `tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue::test_check_parse_results_jobsite_scrape_issue` |
+| 2 | **`_find_job_page_from_assembled`** routes to **`_check_parse_results`**, not **`_finalize_joblist_titles_after_chain`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue::test_find_job_page_from_assembled_jobsite_scrape_issue_no_chain` |
+| 3 | Unknown response types still **NO_JOBLIST** (no bleed from scrape-issue branch) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue::test_unknown_response_type_still_no_joblist` |
+| 4 | **`do_task`** suppresses **parse_job_list** when **response_type** ≠ **JOBLIST_TITLES** | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst692JobsiteScrapeIssueAgent::test_select_job_page_suppresses_parse_chain_for_jobsite_scrape_issue` |
+
+**AST-692** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue \
+  tests/component/core/test_agent.py::TestAst692JobsiteScrapeIssueAgent
+```
+
+**Prerequisite (integration):** sibling **AST-689** readiness on **`origin/ftr/AST-684-job-site-scrape-is-too-fast`** for end-to-end staging repro — not required for this pytest slice.

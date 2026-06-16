@@ -1787,6 +1787,46 @@ class TestAst469ResolveRunNextLive:
         assert captured.get("JOB_LIST_VISIBLE") == "Role listing plain text"
 
 
+class TestAst692JobsiteScrapeIssueAgent:
+    """AST-692: agent suppresses parse_job_list when select_job_page returns JOBSITE_SCRAPE_ISSUE."""
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_suppresses_parse_chain_for_jobsite_scrape_issue(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def resolve_prompt(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            if task_key == "select_job_page":
+                return _agent_rows(run_next="parse_job_list")
+            return _agent_rows(run_next="")
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve_prompt)
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "response_type": "JOBSITE_SCRAPE_ISSUE",
+                    "selected_page": 1,
+                    "scrape_issue_summary": "shell only",
+                },
+                "api_response": _api_response("sel"),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+
+        out = await agent_mod.do_task(
+            "select_job_page",
+            live_content="<root>shell page</root>",
+            index="co-692",
+            ctx={"candidate_data": {}, "resolve_run_next_live": lambda _p: ("<div/>", "visible")},
+            store_agent_data=False,
+        )
+
+        assert out["success"] is True
+        assert out.get("parsed_response", {}).get("response_type") == "JOBSITE_SCRAPE_ISSUE"
+        assert send.await_count == 1
+
 class TestRunAdhoc:
     async def test_requires_model_code(self) -> None:
         with pytest.raises(ValueError, match="requires model_code"):

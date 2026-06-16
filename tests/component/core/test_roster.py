@@ -3377,3 +3377,102 @@ class TestAst689ScrapeReadiness:
         readiness.assert_awaited_once()
         extract.assert_awaited_once()
         assert call_order == ["readiness", "extract"]
+
+
+class TestAst692JobsiteScrapeIssue:
+    """AST-692: JOBSITE_SCRAPE_ISSUE terminal roster flow — no parse_job_list chain."""
+
+    @pytest.mark.asyncio
+    async def test_check_parse_results_jobsite_scrape_issue(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        strip = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+        monkeypatch.setattr(roster_mod, "_strip_company_data_keys", strip)
+        result = {
+            "response_type": "JOBSITE_SCRAPE_ISSUE",
+            "selected_page": 1,
+            "scrape_issue_summary": "Listing region empty",
+            "scrape_issue_evidence": "Filters visible, zero titles",
+        }
+        out = await roster_mod._check_parse_results(
+            result,
+            "JOBSITE_SCRAPE_ISSUE",
+            "acme",
+            "https://acme.com",
+            "https://acme.com/jobs",
+            {},
+            debug=True,
+        )
+        assert out["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert out["job_site"] == "https://acme.com/jobs"
+        assert out["response_type"] == "JOBSITE_SCRAPE_ISSUE"
+        strip.assert_called_once_with("acme", ("job_list_visible",))
+        save.assert_called_once()
+        kwargs = save.call_args.kwargs
+        assert kwargs["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert kwargs["page_option_url"] == "https://acme.com/jobs"
+        assert kwargs["jobsite_scrape_issue_summary"] == "Listing region empty"
+        assert kwargs["raw_response"]["scrape_issue_summary"] == "Listing region empty"
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_from_assembled_jobsite_scrape_issue_no_chain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "response_type": "JOBSITE_SCRAPE_ISSUE",
+                    "selected_page": 1,
+                    "scrape_issue_summary": "shell only",
+                },
+            }
+        )
+        check = AsyncMock(
+            return_value={
+                "short_name": "acme",
+                "state": "JOBSITE_SCRAPE_ISSUE",
+                "job_site": "https://acme.com/jobs",
+                "response_type": "JOBSITE_SCRAPE_ISSUE",
+            }
+        )
+        fin_chain = AsyncMock()
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        monkeypatch.setattr(roster_mod, "_check_parse_results", check)
+        monkeypatch.setattr(roster_mod, "_finalize_joblist_titles_after_chain", fin_chain)
+
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme",
+            company_website="https://acme.com",
+            assembled_content="=== PAGE 1 ===",
+            page_url_map={1: "https://acme.com/jobs"},
+            page_dom_map={1: "<div/>"},
+            visible_map={1: "filters only"},
+            nav_links="1. https://acme.com/jobs",
+            browser_context=MagicMock(),
+            debug=False,
+            ctx=None,
+            chain_parse=True,
+        )
+
+        do_task.assert_awaited_once()
+        assert do_task.await_args.args[0] == "select_job_page"
+        check.assert_awaited_once()
+        fin_chain.assert_not_awaited()
+        assert out["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert out["response_type"] == "JOBSITE_SCRAPE_ISSUE"
+
+    @pytest.mark.asyncio
+    async def test_unknown_response_type_still_no_joblist(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+        out = await roster_mod._check_parse_results(
+            {"response_type": "OTHER"},
+            "OTHER",
+            "acme",
+            "https://acme.com",
+            "https://acme.com/jobs",
+            {},
+        )
+        assert out["state"] == "NO_JOBLIST"
+        assert out["response_type"] == "OTHER"
