@@ -306,7 +306,7 @@ No plan conflicts requiring `conf-!!-NONE`.
 | Field | Value |
 |-------|-------|
 | **Publish ref** | `origin/sub/AST-512/AST-712-joan-operator-railway-test-host` |
-| **Built tip** | _(after build-child)_ |
-| **Stages** | 1 — operator docs + env.example; 2 — verify + railway run scripts; 3 — Joan skill; 4 — Betty bible § Joan operator |
+| **Built tip** | `a0b8c14` (repo) + `~/.cursor/skills/integration-operator/SKILL.md` (Stage 3, not in git) |
+| **Stages** | 1 — operator docs + env.example (`d07658b`); 2 — verify + railway run scripts (`a0b8c14`); 3 — Joan skill (operator machine); 4 — Betty bible § Joan operator |
 | **Betty next** | Stage 4 bible appendix |
 | **test-child manifest** | `run_integration_tests.sh` + `bash -n` on operator scripts; Railway E2E via Susan/Chuckles when host live |
