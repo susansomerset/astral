@@ -184,3 +184,9 @@ Touches prefilter hydration and **`_render_score`** for every company prefilter 
 | §3.3 imports | Lazy import of **`EMBEDDED_COMPANY_PREFILTER_CRITERIA`** inside **`company_prefilter`** branch. |
 
 No conflicts requiring **`!!-NONE`**.
+
+---
+
+## Review stub
+
+- `code(AST-707): embedded RC registry and prefilter hydration merge` @ `<sha>` — `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration`
