@@ -90,3 +90,8 @@ No conflicts identified.
 - **build-child:** One stage → one `code(AST-695)` commit on epic worktree; publish via `git push origin HEAD:sub/AST-694/AST-695-deepseek-brain-tier-mapping-update`.
 - **Do not** edit `tests/` during build — Betty owns manifest + `merge-tests`.
 - If `DEEPSEEK_MODEL_PRICING` lacks a row for a tier `vendor_model` after the edit, stop and comment on AST-694 (should not happen — pro row already exists).
+
+## Review stub (Ada — build)
+
+- **Publish ref:** `origin/sub/AST-694/AST-695-deepseek-brain-tier-mapping-update`
+- **Product commit:** `code(AST-695)` — Medium tier → `deepseek-v4-pro`, thinking off; AST-694 comment on deepseek tier block.
