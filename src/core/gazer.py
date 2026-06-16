@@ -30,6 +30,7 @@ from src.data.database import (
     update_company_last_scan_at,
 )
 from src.external.playwright import create_browser_context, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
+from src.utils.formatting import collapse_consecutive_blank_lines
 from src.utils.logging import get_logger
 
 _log = get_logger(__name__)
@@ -176,6 +177,7 @@ async def scrape_jd_batch(
             transition_job_state([aid], fail_state)
             failed += 1
             return
+        text = collapse_consecutive_blank_lines(text)
         if not text or not text.strip():
             if debug:
                 _log.debug_index(
@@ -328,7 +330,7 @@ async def fetch_website_batch(
                 failed += 1
                 return
             canonical = scrape["company_website"]
-            visible_text = scrape["visible_text"]
+            visible_text = collapse_consecutive_blank_lines(scrape["visible_text"])
             nav_links = scrape.get("enumerated_nav_links") or ""
             nav_count = len([ln for ln in nav_links.splitlines() if ln.strip()]) if nav_links else 0
             redirect = "yes" if canonical != original_website else "no"

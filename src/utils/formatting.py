@@ -145,6 +145,27 @@ def split_to_list(value: str, delimiter: str = ",") -> List[str]:
     return [part.strip() for part in value.split(delimiter) if part.strip()]
 
 
+def collapse_consecutive_blank_lines(text: str) -> str:
+    """Collapse runs of blank lines to a single blank line.
+
+    A line is blank when it is empty or contains only whitespace (spaces, tabs).
+    Non-empty lines keep their original string (no strip/reformat of content).
+    """
+    if not text or not isinstance(text, str):
+        return "" if text is None else text
+    out: List[str] = []
+    prev_blank = False
+    for line in text.splitlines():
+        if not line.strip():
+            if not prev_blank:
+                out.append("")
+            prev_blank = True
+        else:
+            out.append(line)
+            prev_blank = False
+    return "\n".join(out)
+
+
 def parse_text(raw_html: str) -> str:
     """Extract visible text from HTML: drop tags, join text runs with single spaces.
 
