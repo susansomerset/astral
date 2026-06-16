@@ -809,7 +809,10 @@ COMPANY_STATES = {
     "NEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WEBSITE_FOUND_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "HOMEPAGE_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "HOMEPAGE_READY": {
+        "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
+        "retry_state": "WEBSITE_FOUND_RETRY",
+    },
     "NO_WEBSITE": {},
     "WEBSITE_REVIEW": {},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -869,7 +872,7 @@ INTAKE_CONFIG = {
 ROSTER_CONFIG = {
     "prefilter": {
         "task_key": "prefilter_company",
-        "input_state": "WEBSITE_FOUND",
+        "input_state": "HOMEPAGE_READY",
         "pass_state": "PREFILTER_PASSED",
         "fail_state": "PREFILTER_FAILED",
         "pass_states": ["PREFILTER_PASSED", "TO_WATCH"],
@@ -1247,7 +1250,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "qualify_job_listings", "evaluate_jd", "consult_do", "consult_get",
+    "prefilter", "qualify_job_listings", "evaluate_jd", "consult_do", "consult_get",
     "consult_like", "gaze_board",
 })
 
@@ -1797,6 +1800,13 @@ ASTRAL_CONFIG = {
         ("WEBSITE_FOUND_RETRY", "PREFILTER_FAILED"),
         ("WEBSITE_FOUND_RETRY", "WEBSITE_FOUND_RETRY"),
         ("WEBSITE_FOUND_RETRY", "ERROR_PREFILTER"),
+        ("HOMEPAGE_READY", "PREFILTER_PASSED"),
+        ("HOMEPAGE_READY", "PREFILTER_FAILED"),
+        ("HOMEPAGE_READY", "TO_WATCH"),
+        ("HOMEPAGE_READY", "IGNORE"),
+        ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"),
+        ("HOMEPAGE_READY", "ERROR_PREFILTER"),
+        ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE"),
         ("TO_WATCH", "WATCH"),
         ("TO_WATCH", "HARD_PARSE"),
         ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),
