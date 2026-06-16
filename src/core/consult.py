@@ -195,6 +195,30 @@ def _parse_link_index_field(field: str) -> List[int]:
     return out
 
 
+def _apply_prefilter_encoded_link_meta(job: dict, meta: list[str]) -> None:
+    """Map JOB:/CULT: prefixes and positional bracket link_set tails onto job row (AST-697)."""
+    possible: List[int] = []
+    culture: List[int] = []
+    positional: List[str] = []
+    for m in meta:
+        if re.match(r"^JOB:", m, re.I):
+            possible.extend(_parse_link_index_field(m))
+            continue
+        if re.match(r"^CULT:", m, re.I):
+            culture.extend(_parse_link_index_field(m))
+            continue
+        positional.append(m)
+    if positional and not possible:
+        possible = _parse_link_index_field(positional[0])
+    if len(positional) > 1:
+        for lf in positional[1:]:
+            culture.extend(_parse_link_index_field(lf))
+    if possible:
+        job["possible_job_links"] = possible
+    if culture:
+        job["culture_links_to_explore"] = culture
+
+
 def _extract_grade_letter(val: Any) -> Optional[str]:
     if isinstance(val, dict):
         g = val.get("grade") or val.get("Grade")

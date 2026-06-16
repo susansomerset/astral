@@ -227,13 +227,9 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         }
         if with_meta:
             if output_type == "grades_encoded_prefilter_links":
-                from src.core.consult import _parse_link_index_field
+                from src.core.consult import _apply_prefilter_encoded_link_meta
 
-                for m in meta:
-                    if re.match(r"^JOB:", m, re.I):
-                        job["possible_job_links"] = _parse_link_index_field(m)
-                    elif re.match(r"^CULT:", m, re.I):
-                        job["culture_links_to_explore"] = _parse_link_index_field(m)
+                _apply_prefilter_encoded_link_meta(job, meta)
             else:
                 for i, key in enumerate(("company_job_id", "job_title", "job_link")):
                     if i < len(meta):

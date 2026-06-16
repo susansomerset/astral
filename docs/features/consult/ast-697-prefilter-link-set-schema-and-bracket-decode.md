@@ -161,3 +161,8 @@ No `conf-!!-NONE` conflicts.
 - If a repro payload category from **AST-603** fails after Stage 2, stop with 🛑 comment on **AST-696** (parent) citing payload line and failing assertion — do not broaden scope to other tasks.
 
 ---
+
+## Review
+
+**Branch:** `origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode`  
+**Build tip:** pending (2 product commits: config schema/instructions, consult decode helper + agent wiring)
