@@ -207,3 +207,11 @@ Incorrect scrape persistence or state transitions would block companies between 
 - **§3.5 naming:** Dispatch task key **`fetch_website`** matches job-side **`scrape_jd`** verb_noun pattern; holding state **`HOMEPAGE_READY`** mirrors **`JD_READY`**.
 
 No conflicts requiring plan revision.
+
+---
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state` @ `4f6037b`
+
+**Built:** five `code(AST-701)` commits — config (`HOMEPAGE_READY`, `fetch_website` dispatch registry), `scrape_company_homepage_content`, `fetch_website_batch`, consult routing, `_RETRY_TASK_SEED` for `fetch_website`.
