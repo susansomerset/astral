@@ -876,6 +876,45 @@ class TestAst603ConsultParityHydration:
         assert "prefilter_score" in save.call_args[0][1]
 
 
+class TestAst698PrefilterDebugPassthrough:
+    @pytest.mark.asyncio
+    async def test_prefilter_company_forwards_debug_to_do_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            roster_mod, "get_visible_text", AsyncMock(return_value=("hello", "https://acme.com"))
+        )
+        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(
+            roster_mod, "get_company", MagicMock(return_value=_company(state_history=[]))
+        )
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": _encoded_prefilter_response(
+                    [{"grade": "A", "vector": "fit", "confidence": 5}],
+                ),
+            }
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        await roster_mod.prefilter_company("acme", "https://acme.com", debug=True)
+        assert do_task.await_args is not None
+        assert do_task.await_args.kwargs.get("debug") is True
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_forwards_debug_to_prefilter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        prefilter = AsyncMock(return_value={"state": "PREFILTER_PASSED"})
+        monkeypatch.setattr(roster_mod, "prefilter_company", prefilter)
+        entity = _company()
+        await roster_mod.run_company_task("WEBSITE_FOUND", entity, "batch-1", debug=True)
+        assert prefilter.await_args is not None
+        assert prefilter.await_args.kwargs.get("debug") is True
+
+
 class TestFindJobPage:
     @pytest.mark.asyncio
     async def test_missing_links_short_circuits(self, monkeypatch: pytest.MonkeyPatch) -> None:

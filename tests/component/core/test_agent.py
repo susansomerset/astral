@@ -408,6 +408,95 @@ class TestAst697PrefilterBracketLinkDecode:
         assert "culture_links_to_explore" not in job
 
 
+class TestAst698DoTaskDebugRawResponse:
+    @pytest.mark.asyncio
+    async def test_short_raw_response_emits_under_debug_contract(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        short_body = '{\n  "agent_performance": {},\n  "agent_payload": "0|CRA2"\n}'
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_performance": {}, "agent_payload": "0|CRA2"},
+                    "api_response": _api_response(short_body),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        assert out["success"] is True
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "raw_response task_key=evaluate_jd" in combined
+        assert "agent_payload" in combined
+
+    @pytest.mark.asyncio
+    async def test_encoded_payload_uses_contract_helpers_not_legacy_info(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(return_value=_strict_batch_llm_ok(api_label="envelope")),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "encoded_payload task_key=evaluate_jd" in combined
+        assert "literal encoded agent_payload" not in combined
+
+    @pytest.mark.asyncio
+    async def test_debug_false_skips_raw_response_contract_lines(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(return_value=_strict_batch_llm_ok(api_label="envelope")),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=False,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "raw_response task_key=" not in combined
+        assert "encoded_payload task_key=" not in combined
+
+
 class TestPromptHelpers:
     def test_resolves_system_prompt_and_chain_tokens(self) -> None:
         agent_row = {"content": "agent {$TASK}", "model_code": "claude"}

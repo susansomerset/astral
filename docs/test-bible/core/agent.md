@@ -77,3 +77,26 @@ Config registry tests: **`TestAst676CraftRubricSchema`** in **`docs/test-bible/u
 | Output type registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
 
 See **`docs/test-bible/core/consult.md`** (**AST-697**) for decode-path manifest rows.
+
+---
+
+### AST-698 · AST-696
+
+**UAT fix:** **`do_task`** emits **`raw_response`** contract lines for any non-empty API body when **`debug=True`** (retired **>50 lines** gate); encoded tasks log **`encoded_payload`** via **`debug_detail`** / **`debug_detail_block`** instead of **`[DEBUG] logger.info`**. Roster **`prefilter_company`** accepts **`debug`** and forwards it from **`run_company_task`** on **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Short-body **`raw_response`** under debug | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse::test_short_raw_response_emits_under_debug_contract` |
+| Encoded payload contract (no legacy **`literal encoded agent_payload`**) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse::test_encoded_payload_uses_contract_helpers_not_legacy_info` |
+| **`debug=False`** unchanged | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse::test_debug_false_skips_raw_response_contract_lines` |
+
+**AST-698** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse \
+  tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough \
+  -q
+```
+
+Roster passthrough manifest: **`docs/test-bible/core/roster.md`** (**AST-698**).

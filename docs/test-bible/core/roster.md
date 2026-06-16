@@ -162,3 +162,20 @@ Equivalent harness:
 ```
 
 **Prerequisite (integration):** sibling **AST-689** readiness on **`origin/ftr/AST-684-job-site-scrape-is-too-fast`** for end-to-end staging repro — not required for this pytest slice.
+
+---
+
+### AST-698 · AST-696
+
+**UAT fix:** **`prefilter_company`** forwards **`debug`** to **`do_task`**; **`run_company_task`** passes batch **`debug`** on **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`**. Agent hop emission: **`docs/test-bible/core/agent.md`** (**AST-698**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`prefilter_company` → `do_task` debug passthrough** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_prefilter_company_forwards_debug_to_do_task` |
+| **`run_company_task` → `prefilter_company` debug passthrough** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_run_company_task_forwards_debug_to_prefilter` |
+
+**AST-698** narrowed run (roster slice):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough -q
+```
