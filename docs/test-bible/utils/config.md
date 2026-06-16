@@ -225,7 +225,7 @@ Structured **`run_next`** hop observability: parent → child **`task_key`**, **
 
 ### AST-676 · AST-655
 
-Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubric`** (stored artifact **`company_prefilter`** unchanged). All six Phase B rubric craft tasks share **`_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA`** — each `criteria` item requires integer **`importance`** in **1–10** at **`do_task`** schema validation. UI rename (**AST-677**) and admin prompts (**AST-678**) are sibling scope.
+Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubric`** (stored artifact **`company_prefilter`** unchanged). All six Phase B rubric craft tasks share **`_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA`** — each `criteria` item requires integer **`importance`** in **1–10** at **`do_task`** schema validation. UI rename (**AST-677**) is sibling scope; admin prompt bodies are manual paste (**AST-685** reverts **AST-678** auto-migration).
 
 | Area | Source | Component tests |
 | --- | --- | --- |

@@ -224,6 +224,42 @@ body {
   color: var(--text-secondary);
   text-transform: lowercase;
 }
+.nav-deploy-env-wrap {
+  position: relative;
+  display: inline-block;
+}
+.nav-deploy-env-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-family: inherit;
+  color: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.nav-deploy-tickets-popup {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  min-width: 200px;
+  max-width: 280px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  background: var(--bg-elevated, var(--bg-deep));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.nav-deploy-tickets-popup li {
+  white-space: nowrap;
+}
 .nav-deploy-sep {
   margin: 0 4px;
   opacity: 0.6;

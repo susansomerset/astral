@@ -105,20 +105,27 @@ Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backf
 
 ---
 
-### AST-678 · AST-655
+### AST-685 · AST-655
 
-**AST-678 (child):** Shared **`_AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER`** constant + idempotent **`_apply_ast678_craft_rubric_importance_migration`** in **`database.py`**: renames **`craft_company_prefilter`** → **`craft_prefilter_rubric`** in **`agent_task`** store and inserts importance explainer (marker **`AST-678_VECTOR_IMPORTANCE`**) into all six **`craft_*_rubric`** **`user_prompt`** bodies before **`{$RESPONSE_SCHEMA}`**. Schema validation (**AST-676**) and UI task key (**AST-677**) are sibling scope.
+**AST-685 (UAT revert):** Removes **AST-678** `_apply_ast678_craft_rubric_importance_migration` and related helpers from **`database.py`**. No forward migration auto-patches **`agent_task.user_prompt`** at schema init; Susan pastes approved explainer via Manage Tasks (sibling UAT explainer-text bug). **AST-676** schema + **AST-677** UI task key unchanged.
 
 | AC | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| 2 | Explainer inserted before **`{$RESPONSE_SCHEMA}`**; idempotent patch | `src/data/database.py` (`_patch_ast678_importance_into_user_prompt`) | **`tests/component/data/test_ast678_craft_rubric_importance_migration.py::TestAst678PatchHelper::test_patch_inserts_before_response_schema`** |
-| 2–3 | Migration idempotent; all six keys receive marker | `src/data/database.py` (`_apply_ast678_craft_rubric_importance_migration`) | **`::TestAst678CraftRubricImportanceMigration::test_migration_idempotent`**; **`::test_all_six_keys_receive_marker`** |
-| 2 | Prefilter task-key rename in **`agent_task`** | `src/data/database.py` | **`::TestAst678CraftRubricImportanceMigration::test_prefilter_task_key_rename`** |
-| 3–4 | Generate returns **`importance`** (manual smoke post-**AST-677** on ftr) | admin **`agent_task`** + **AST-676** schema | Engineer manual per plan Stage 3 — not automated here |
+| Revert | Zero AST-678 symbols in **`database.py`**; migration not called from **`_ensure_agent_task_schema`** | `src/data/database.py` | **`tests/component/data/test_database.py`** — existing import/smoke; **`test_ast678_craft_rubric_importance_migration.py`** deleted |
+| Regression | **`importance`** schema validation intact | `src/utils/config.py`, `src/core/agent.py` | **AST-676** narrowed run (see **`docs/test-bible/utils/config.md`**) |
+| Regression | UI **`craft_prefilter_rubric`** task key | `src/ui/frontend/src/pages/ArtifactsCompanyWatchCriteria.tsx` | **AST-677** narrowed run (see **`docs/test-bible/frontend/pages.md`**) |
 
-**AST-678** narrowed run:
+**AST-685** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/data/test_ast678_craft_rubric_importance_migration.py
+  tests/component/data/test_database.py \
+  tests/component/utils/test_config.py::TestAst676CraftRubricSchema \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema
+```
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
 ```
