@@ -275,3 +275,31 @@ No plan conflicts requiring `conf-!!-NONE`.
 | **Stages** | 1 — `integration_io` + external guards (`5f73b60`); 2 — `run_integration_tests.sh` (`ec8f562`); 3 — CI workflow (`1252ff2`) |
 | **Betty next** | Stage 4 — `tests/integration/` scenario + bible tier docs |
 | **test-child manifest** | `./scripts/testing/run_integration_tests.sh` then `./scripts/testing/run_component_tests.sh` |
+
+## Radia review (2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` @ `13f76cc`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| **Plan fidelity** | Stages 1–4 land as specced: `integration_io.py`, six external entry guards, standalone harness, CI workflow, Betty integration tree + bible tier. |
+| **Layer contract** | Real SQLite + auth stub + minimal Flask (`system_bp` + `candidate_bp`); no API↔core mocks. Guards are no-ops outside `ASTRAL_INTEGRATION_MODE=1`. |
+| **§3.3 / §5g** | External modules import `utils` only (`integration_io`); no cross-external LLM imports; playwright guard on `_launch_browser` covers all launch paths. |
+| **§2.1 config** | Harness flags env-only in `integration_io.py`, not `config.py`. |
+| **Scenario** | Nav assertion uses stable `Jobs` / `/jobs/in_review` gates tied to `LIVE_PROMPTS` vs `NEW` from real DB — matches plan Stage 4b. |
+| **Isolation** | `run_component_tests.sh` unchanged vs `origin/dev`; integration harness green locally (3 passed). |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | `docs/test-bible/integration/README.md` § AST-711 | Plan QA + this doc’s **test-child manifest** still require zero-arg `./scripts/testing/run_component_tests.sh` green on publish ref; `cec444b` narrows pass criterion to integration-only and documents unrelated roster red on `origin/dev`. Confirm Susan’s override is the closure bar for AST-711 vs updating plan/manifest to match. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Resolve manifest alignment (keep dual gate or formalize integration-only closure) | Susan / Chuckles |
+| `resolve-child` — no product fix-now items | Ada |
