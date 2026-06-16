@@ -189,4 +189,4 @@ No conflicts requiring **`!!-NONE`**.
 
 ## Review stub
 
-- `code(AST-707): embedded RC registry and prefilter hydration merge` @ `<sha>` — `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration`
+- `code(AST-707): embedded RC registry and prefilter hydration merge` @ `c4a25ee1` — `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration`
