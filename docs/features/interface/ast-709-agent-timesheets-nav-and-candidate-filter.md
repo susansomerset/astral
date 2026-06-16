@@ -189,3 +189,11 @@ When picking tests in **qa-child**, cover at minimum the Stage 3 tests above plu
 - Stage 3 tests are Betty-owned per test-tree ban unless Susan directs engineer to land them in build.
 - Do not edit `tests/` during plan-child or build stages 1–2 (Betty owns test-tree).
 - Blocking ambiguity → comment on **AST-705** with 🛑 template from **plan-child**.
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter`  
+**Tip:** `13aa5e4`  
+**Built:** Stage 1 — `useAdminCandidateFilter`: `applyFilter` depends on `urlSetValue` not `urlBacked` object. Stage 2 — `AdminAgentTimesheets`: memoized `urlBacked` (AST-662 parity). Stage 3 component tests deferred to Betty per build-child test-tree ban.
+
+**Betty manifest (Code Complete):** see **QA manifest (Betty)** above.
