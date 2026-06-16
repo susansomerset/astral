@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, process_gaze_board_batch, scrape_jd_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
+In-scope: scrape_one, process_gazer_batch, process_gaze_board_batch, scrape_jd_batch, fetch_website_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
 from roster for callers that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record); batch lifecycle (claim, release) is owned by CLI.
 """
@@ -16,6 +16,8 @@ from src.core.roster import (
     get_new_company_batch,
     clear_company_batch,
     save_company_data,
+    scrape_company_homepage_content,
+    transition_company_state,
 )
 from src.utils.config import BOARD_SEARCH_STATES, GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
@@ -256,6 +258,119 @@ async def scrape_jd_batch(
             f"pass_state={pass_state!r} fail_state={fail_state!r}"
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
+
+
+async def fetch_website_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Scrape homepage + nav_links for WEBSITE_FOUND companies (AST-701).
+    Transitions each company to HOMEPAGE_READY (pass) or CANNOT_READ_WEBSITE (fail).
+    Returns {"passed": N, "failed": N, "total": N}."""
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_website_batch: no internet connectivity, aborting batch {batch_id} "
+            f"({len(companies)} companies)"
+        )
+    if debug:
+        _log.set_debug_flag(True)
+    cfg = GAZER_CONFIG["fetch_website"]
+    pass_state = cfg["pass_state"]
+    fail_state = cfg["fail_state"]
+    notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
+    company_total = len(companies)
+    passed = failed = 0
+
+    if debug and company_total > 0:
+        _log.debug_index(
+            func="gazer.fetch_website_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {company_total} company/companies",
+        )
+
+    async with create_browser_context() as browser_context:
+
+        async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
+            nonlocal passed, failed
+            short_name = company.get("short_name") or ""
+            original_website = (company.get("company_website") or "").strip()
+            if not original_website:
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_website_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome=f"failed — no company_website -> {fail_state}",
+                    )
+                transition_company_state(short_name, fail_state)
+                save_company_data(short_name, {notes_key: "No company_website"})
+                failed += 1
+                return
+            scrape = await scrape_company_homepage_content(
+                short_name, original_website, browser_context=browser_context
+            )
+            if scrape.get("error"):
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_website_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome=f"failed — {scrape['error']!s} -> {fail_state}",
+                    )
+                    _log.debug_detail(f"company_website={original_website!r}")
+                transition_company_state(short_name, fail_state)
+                save_company_data(short_name, {notes_key: scrape["error"]})
+                failed += 1
+                return
+            canonical = scrape["company_website"]
+            visible_text = scrape["visible_text"]
+            nav_links = scrape.get("enumerated_nav_links") or ""
+            nav_count = len([ln for ln in nav_links.splitlines() if ln.strip()]) if nav_links else 0
+            redirect = "yes" if canonical != original_website else "no"
+            data_to_save: Dict[str, Any] = {"homepage_text": visible_text}
+            if nav_links:
+                data_to_save["nav_links"] = nav_links
+            save_company_data(short_name, data_to_save)
+            transition_company_state(short_name, pass_state)
+            passed += 1
+            if debug:
+                _log.debug_index(
+                    func="gazer.fetch_website_batch",
+                    index=company_index,
+                    total=company_total,
+                    identifier=_gazer_company_identifier(company),
+                    outcome=(
+                        f"passed -> {pass_state} ({len(visible_text)} chars "
+                        f"redirect={redirect} nav={nav_count} links)"
+                    ),
+                )
+                _log.debug_detail(
+                    f"company_website={original_website!r} canonical={canonical!r} "
+                    f"homepage_chars={len(visible_text)} nav_links={nav_count}"
+                )
+
+        sem = asyncio.Semaphore(3)
+
+        async def _limited(company: Dict[str, Any], company_index: int) -> None:
+            async with sem:
+                await _fetch_one(company, company_index)
+
+        await asyncio.gather(
+            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            return_exceptions=False,
+        )
+
+    if debug:
+        _log.debug_detail(
+            f"summary passed={passed} failed={failed} total={company_total} "
+            f"pass_state={pass_state!r} fail_state={fail_state!r}"
+        )
+    return {"passed": passed, "failed": failed, "total": len(companies)}
 
 
 def _compiled_title_patterns(ctx: Dict[str, Any]) -> List[Any]:

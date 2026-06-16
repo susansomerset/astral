@@ -138,6 +138,18 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope; av
 
 ---
 
+### AST-701 · AST-700
+
+**AST-701:** Company **`entity_type`** dispatch with **`dispatch_task_key=fetch_website`** routes to **`fetch_website_batch`** (not **`run_company_task`** / **`prefilter_company`**). Returns normalized **`total_processed` / `total_passed` / `total_failed` / `total_errors`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`fetch_website`** routing | `src/core/consult.py` (`run_consult_task`) | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch` |
+
+Gazer batch manifest: **`docs/test-bible/core/gazer.md`** (**AST-701**).
+
+---
+
 ### AST-619 · AST-543
 
 **AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.

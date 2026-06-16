@@ -4690,6 +4690,7 @@ _RETRY_TASK_SEED = [
     ("qualify_job_listings", "VALID_TITLE_RETRY"),
     ("evaluate_jd",          "JD_READY_RETRY"),
     ("prefilter",            "WEBSITE_FOUND_RETRY"),
+    ("fetch_website",        "WEBSITE_FOUND_RETRY"),
 ]
 
 

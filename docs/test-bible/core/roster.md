@@ -179,3 +179,15 @@ Equivalent harness:
 ```bash
 .venv/bin/python -m pytest tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough -q
 ```
+
+---
+
+### AST-701 · AST-700
+
+**AST-701:** Shared **`scrape_company_homepage_content`** — homepage scrape + nav enumeration without agent hop; **`prefilter_company`** calls helper (behavior unchanged). **`fetch_website_batch`** persistence uses **`homepage_text`** + optional **`nav_links`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scrape helper error / redirect / empty text / nav failure | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` |
+
+Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-701**).

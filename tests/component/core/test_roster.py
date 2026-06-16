@@ -562,6 +562,63 @@ class TestProcessRecheckNoOpenings:
         uc.assert_called_once_with("acme", job_site="https://final.example/path")
 
 
+class TestAst701ScrapeCompanyHomepageContent:
+    @pytest.mark.asyncio
+    async def test_scrape_exception_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "get_visible_text",
+            AsyncMock(side_effect=RuntimeError("blocked")),
+        )
+        out = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
+        assert out["error"] == "blocked"
+        assert out["visible_text"] == ""
+
+    @pytest.mark.asyncio
+    async def test_redirect_and_empty_text_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "get_visible_text",
+            AsyncMock(side_effect=[
+                ("hello", "https://canonical.example"),
+                ("   ", "https://acme.com"),
+            ]),
+        )
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(
+            roster_mod,
+            "extract_site_page_list",
+            AsyncMock(return_value=["https://canonical.example/about"]),
+        )
+        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
+        redirected = await roster_mod.scrape_company_homepage_content("acme", "https://old.example")
+        assert redirected["error"] is None
+        assert redirected["company_website"] == "https://canonical.example"
+        assert redirected["enumerated_nav_links"] == "1. /about"
+        update.assert_called_once_with("acme", company_website="https://canonical.example")
+
+        empty = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
+        assert empty["error"] == "No visible text extracted"
+
+    @pytest.mark.asyncio
+    async def test_nav_failure_is_non_fatal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "get_visible_text",
+            AsyncMock(return_value=("hello world", "https://acme.com")),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "extract_site_page_list",
+            AsyncMock(side_effect=RuntimeError("nav boom")),
+        )
+        out = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
+        assert out["error"] is None
+        assert out["visible_text"] == "hello world"
+        assert out["enumerated_nav_links"] == ""
+
+
 class TestPrefilterCompany:
     @pytest.mark.asyncio
     async def test_requires_company_website(self) -> None:

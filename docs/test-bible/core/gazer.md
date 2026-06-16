@@ -42,3 +42,30 @@ Equivalent harness:
 | `debug=False` unchanged | All **`debug=False`** rows above; full-file branch lock |
 
 **Betty test fix (AST-622):** Extended **`test_gazer.py`** for **`LOCKED_AT_100`** on new **`debug=True`/`False`** branch pairs — not golden log-line asserts.
+
+---
+
+### AST-701 · AST-700
+
+**AST-701:** **`fetch_website_batch`** mirrors **`scrape_jd_batch`** — scrape homepage visible text + **`nav_links`** for **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`** companies; pass **`HOMEPAGE_READY`**, fail **`CANNOT_READ_WEBSITE`** with **`prefilter_company_notes`**. Shared **`scrape_company_homepage_content`** helper in roster (**`prefilter_company`** refactor unchanged observable outcomes). Consult routes **`dispatch_task_key=fetch_website`** before **`run_company_task`**. Config: **`HOMEPAGE_READY`**, **`GAZER_CONFIG["fetch_website"]`**, **`homepage_text`** company_data key, dispatch registry. Database: **`_RETRY_TASK_SEED`** companion **`WEBSITE_FOUND_RETRY`** row.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`fetch_website_batch`** connectivity / missing URL / scrape fail / pass persist | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch` |
+| **`run_consult_task`** company routing | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch` |
+| **`scrape_company_homepage_content`** helper | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` |
+| Config state + dispatch registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig` |
+| Retry dispatch seed | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst701FetchWebsiteRetrySeed` |
+
+**AST-701** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst701FetchWebsiteRetrySeed
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.

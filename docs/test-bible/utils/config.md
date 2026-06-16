@@ -254,6 +254,16 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 ---
 
+### AST-701 · AST-700
+
+**AST-701:** **`HOMEPAGE_READY`** company state; **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`** → **`HOMEPAGE_READY`** / **`CANNOT_READ_WEBSITE`** transitions; **`GAZER_CONFIG["fetch_website"]`**; **`homepage_text`** in **`ROSTER_CONFIG["company_data_keys"]`**; **`fetch_website`** schedulable dispatch key (**`trigger_state=WEBSITE_FOUND`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| State + transitions + gazer config | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig` |
+
+---
+
 ### AST-695 · AST-694
 
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.

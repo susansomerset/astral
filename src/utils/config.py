@@ -809,6 +809,7 @@ COMPANY_STATES = {
     "NEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WEBSITE_FOUND_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "HOMEPAGE_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "NO_WEBSITE": {},
     "WEBSITE_REVIEW": {},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -911,6 +912,7 @@ ROSTER_CONFIG = {
         "error_state": "ERROR_GAZE",
     },
     "company_data_keys": {
+        "homepage_text": "homepage_text",
         "nav_links": "nav_links",
         "parse_instructions": "parse_instructions",
         "website_content": "website_content",
@@ -1001,6 +1003,11 @@ GAZER_CONFIG = {
             "JD_SCRAPE_FAIL_MISSING",
             "JD_SCRAPE_FAIL_CLOSED",
         ],
+    },
+    "fetch_website": {
+        "fallback_batch_size": 10,
+        "pass_state": "HOMEPAGE_READY",
+        "fail_state": "CANNOT_READ_WEBSITE",
     },
     # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
     "gaze": {
@@ -1231,7 +1238,7 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
 
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
-    "prefilter", "find_job_page", "select_job_page", "parse_job_list",
+    "prefilter", "fetch_website", "find_job_page", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "gaze_board",
     "inflow_discovery", "inflow_resolve_website",
     "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
@@ -1245,7 +1252,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "find_job_page", "select_job_page", "parse_job_list",
+    "prefilter", "fetch_website", "find_job_page", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website",
 })
 
@@ -1283,6 +1290,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "VALID_TITLE"
     if task_key == "scrape_jd":
         return "PASSED_JOBLIST"
+    if task_key == "fetch_website":
+        return "WEBSITE_FOUND"
     if task_key == "evaluate_jd":
         return "JD_READY"
     if task_key == "consult_do":
@@ -1778,6 +1787,10 @@ ASTRAL_CONFIG = {
         ("WEBSITE_FOUND", "PREFILTER_FAILED"),
         ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"),
         ("WEBSITE_FOUND", "ERROR_PREFILTER"),
+        ("WEBSITE_FOUND", "HOMEPAGE_READY"),
+        ("WEBSITE_FOUND", "CANNOT_READ_WEBSITE"),
+        ("WEBSITE_FOUND_RETRY", "HOMEPAGE_READY"),
+        ("WEBSITE_FOUND_RETRY", "CANNOT_READ_WEBSITE"),
         ("WEBSITE_FOUND_RETRY", "TO_WATCH"),
         ("WEBSITE_FOUND_RETRY", "IGNORE"),
         ("WEBSITE_FOUND_RETRY", "PREFILTER_PASSED"),

@@ -198,6 +198,7 @@ class TestAst535DispatchTaskTripleUnique:
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
+            db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
             create_sql = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='dispatch_task'"
@@ -320,3 +321,24 @@ class TestAst641UnionClaimCount:
             "score_floor": 7.0,
         }
         assert db.count_eligible_for_dispatch_task(task) == 2
+
+
+class TestAst701FetchWebsiteRetrySeed:
+    """AST-701: _RETRY_TASK_SEED clones fetch_website -> WEBSITE_FOUND_RETRY companion row."""
+
+    def test_schema_backfill_clones_fetch_website_retry_row(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c701", "fetch_website", min_count=1, trigger_state="WEBSITE_FOUND")
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            row = conn.execute(
+                "SELECT trigger_state FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = ? AND trigger_state = ?",
+                ("c701", "fetch_website", "WEBSITE_FOUND_RETRY"),
+            ).fetchone()
+            assert row is not None
+            assert row[0] == "WEBSITE_FOUND_RETRY"
+        finally:
+            conn.close()
