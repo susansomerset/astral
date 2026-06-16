@@ -212,6 +212,29 @@ No conflicts requiring plan revision.
 
 ## Review
 
-**Diff:** `origin/dev...origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state` @ `4f6037b`
+**Diff:** `origin/dev...origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state` @ `cb6cc37`
 
-**Built:** five `code(AST-701)` commits — config (`HOMEPAGE_READY`, `fetch_website` dispatch registry), `scrape_company_homepage_content`, `fetch_website_batch`, consult routing, `_RETRY_TASK_SEED` for `fetch_website`.
+**Built:** five `code(AST-701)` commits + `test(AST-701)` manifest — config (`HOMEPAGE_READY`, `fetch_website` dispatch registry), `scrape_company_homepage_content`, `fetch_website_batch`, consult routing, `_RETRY_TASK_SEED` for `fetch_website`; Betty manifest in gazer/consult/roster/config/database component tests.
+
+### What's solid
+
+- **Plan fidelity:** All five stages land — config scaffolding, shared scrape helper with `prefilter_company` refactor (observable outcomes preserved), `fetch_website_batch` mirroring `scrape_jd_batch`, consult routing before `run_company_task`, retry seed. Scope stays scrape-phase only; no AST-702 cutover or agent/rubric changes.
+- **§2.1 / §2.6:** States, transitions, and `GAZER_CONFIG["fetch_website"]` pass/fail targets live in `config.py`; core chooses states via `transition_company_state` / `save_company_data`.
+- **§1.3 DRY:** Homepage scrape logic centralized in `scrape_company_homepage_content`; both call paths share it.
+- **§2.4 batch:** Returns normalized pass/fail/total counts; consult maps to dispatcher totals; semaphore=3 matches `scrape_jd_batch`.
+- **§1.5.1 debug:** `debug=True` gates `set_debug_flag`, per-company `debug_index` (`index N/M`), `debug_detail` metadata, batch-end summary — aligned with sibling gazer batch pattern.
+- **§5d boundaries:** Legacy `prefilter` / `WEBSITE_FOUND` path untouched; operational dual-dispatch note documented in plan (AST-702 cutover).
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| — | — | **None (fix-now / discuss).** |
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| — | Proceed to **resolve-child** — no engineer changes required. |
+| Advisory | Plan Stage 3 mentions truncated homepage preview in `debug_detail`; implementation logs char counts + URLs only (same as `scrape_jd_batch` success path). Optional polish if operators want content snippets during UAT — not blocking. |
+| Advisory | Do not enable `auto_mode=1` on both `prefilter` and `fetch_website` until AST-702 cutover (plan decision; ops, not code). |
