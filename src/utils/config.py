@@ -1034,6 +1034,32 @@ RUBRIC_ARTIFACT_KEYS = frozenset(
 # Rubric criteria lists (importance + grade tables) — consult rubrics plus company_prefilter (AST-359).
 RUBRIC_CRITERIA_ARTIFACT_KEYS = RUBRIC_ARTIFACT_KEYS | frozenset({"company_prefilter"})
 
+# AST-707: embedded company_prefilter vectors — merged before candidate artifact criteria (embedded wins on code).
+EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
+    {
+        "code": "RC",
+        "label": "Reality Check",
+        "importance": 8,
+        "content": (
+            "Reality Check — assess whether the company is real and operating as represented.\n"
+            "A = clearly real and verifiable\n"
+            "B = appears real with minor gaps\n"
+            "C = mixed signals; legitimacy uncertain\n"
+            "D = significant doubt about reality or representation\n"
+            "E = strong evidence of misrepresentation\n"
+            "F = not a real company or clearly fraudulent"
+        ),
+        "grade_descriptions": [
+            {"grade": "A", "description": "Company is clearly real, active, and independently verifiable."},
+            {"grade": "B", "description": "Company appears real with minor verification gaps."},
+            {"grade": "C", "description": "Mixed signals; legitimacy uncertain."},
+            {"grade": "D", "description": "Significant doubt the company is real or operating as represented."},
+            {"grade": "E", "description": "Strong evidence of misrepresentation or shell entity."},
+            {"grade": "F", "description": "Not a real company or clearly fraudulent."},
+        ],
+    },
+)
+
 # AST-595: resume artifact chain hop order (canonical copy also in BUILD_CONFIG['resume_artifact_chain']).
 RESUME_ARTIFACT_COMPOUND_PREFIX = "BUILD_ARTIFACTS."
 _RESUME_ARTIFACT_HOP_TASK_KEYS = (
