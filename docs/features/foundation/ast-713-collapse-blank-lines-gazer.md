@@ -170,3 +170,11 @@ No conflicts requiring `Conf: !!-NONE`.
 | — | — | Ready for `resolve-child` / merge when pipeline says so |
 
 **Advisory (non-blocking):** `collapse_consecutive_blank_lines` passthrough for non-`str` inputs (`return text` when not `None`) mirrors defensive patterns in sibling formatting helpers; production scrape paths always pass `str`. Optional future tighten: return `""` for non-str or drop the branch if callers are typed.
+
+## Resolution (2026-06-16)
+
+**Review ref:** Radia comment @ `c0e3050f` — fix-now: none; discuss: none.
+
+**Product changes:** None required. Implementation already matched plan and AC; Betty manifest green at `554db853`; advisory non-str passthrough left as-is (consistent with sibling formatting helpers).
+
+**§9a dry-run:** `origin/sub/AST-710/AST-713-collapse-blank-lines-gazer` merges cleanly into `origin/dev` and `origin/ftr/AST-710-remove-empty-lines-from-visible-text`.
