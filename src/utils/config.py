@@ -887,6 +887,26 @@ ROSTER_CONFIG = {
         "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
         "max_depth": 2,
     },
+    "scrape_readiness": {
+        "max_wait_ms": 20000,
+        "poll_interval_ms": 500,
+        "stability_polls": 2,
+        "min_visible_chars": 400,
+        "min_listing_hits": 1,
+        "run_load_all_jobs": True,
+        "load_all_jobs_after_ms": 3000,
+        "listing_selectors": [
+            "[class*='job-list']",
+            "[class*='JobList']",
+            "[class*='job-listing']",
+            "[class*='opening']",
+            "[data-testid*='job']",
+            "a[href*='/job']",
+            "a[href*='/jobs/']",
+            "li[class*='job']",
+            "article[class*='job']",
+        ],
+    },
     "gaze": {
         "error_state": "ERROR_GAZE",
     },
@@ -920,6 +940,20 @@ ROSTER_CONFIG = {
         "recruitee": r"recruitee\.com",
     },
 }
+
+
+def roster_scrape_readiness_config() -> Dict[str, Any]:
+    """Return ROSTER_CONFIG['scrape_readiness'] with optional env overrides."""
+    cfg = dict(ROSTER_CONFIG.get("scrape_readiness") or {})
+    for key, env_name in (
+        ("max_wait_ms", "ROSTER_SCRAPE_READINESS_MAX_WAIT_MS"),
+        ("poll_interval_ms", "ROSTER_SCRAPE_READINESS_POLL_INTERVAL_MS"),
+    ):
+        raw = os.environ.get(env_name, "").strip()
+        if raw.isdigit():
+            cfg[key] = int(raw)
+    return cfg
+
 
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
 INFLOW_CONFIG = {
