@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -38,6 +38,30 @@ def _prefilter_rubric_ctx(*, multi_vector: bool = False) -> Dict[str, Any]:
             },
         )
     return {"candidate_data": {"artifacts": {"company_prefilter": criteria}}}
+
+
+def _artifact_mp_us_only_ctx() -> Dict[str, Any]:
+    """AST-707 UAT repro: company_prefilter artifact without RC (embedded supplies RC)."""
+    return {
+        "candidate_data": {
+            "artifacts": {
+                "company_prefilter": [
+                    {
+                        "code": "MP",
+                        "label": "Mission & Product",
+                        "importance": 5,
+                        "grade_descriptions": [{"grade": "B", "description": "ok mp"}],
+                    },
+                    {
+                        "code": "US",
+                        "label": "US Presence",
+                        "importance": 3,
+                        "grade_descriptions": [{"grade": "A", "description": "us ok"}],
+                    },
+                ]
+            }
+        }
+    }
 
 
 def _ast603_prefilter_rubric_ctx() -> Dict[str, Any]:
@@ -1070,6 +1094,65 @@ class TestAst702PrefilterBatchHelpers:
         cfg = ROSTER_CONFIG["prefilter"]
         assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "WEBSITE_FOUND_RETRY"
         assert roster_mod._prefilter_batch_fail_dest("WEBSITE_FOUND_RETRY", cfg) == "ERROR_PREFILTER"
+
+
+class TestAst707EmbeddedRcBatchHydration:
+    @pytest.mark.asyncio
+    async def test_batch_prefilter_hydrates_embedded_rc_when_missing_from_artifact(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """UAT repro: artifact MP/US only + grades with vector RC must not mass-retry on hydration."""
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state_history=[])))
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "acme",
+                                "grades": [
+                                    {"grade": "D", "vector": "Reality Check", "confidence": 3},
+                                    {"grade": "B", "vector": "Mission & Product", "confidence": 3},
+                                    {"grade": "A", "vector": "US Presence", "confidence": 3},
+                                ],
+                            },
+                        ],
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {"homepage_text": "Acme Corp builds widgets in the USA."},
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch(
+            "batch-rc",
+            companies,
+            ctx=_artifact_mp_us_only_ctx(),
+            debug=False,
+        )
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        retry_calls = [
+            call.args[1]
+            for call in transition.call_args_list
+            if call.args[0] == "acme"
+        ]
+        assert "WEBSITE_FOUND_RETRY" not in retry_calls
+        assert save.called
+        saved_grades = save.call_args.args[1].get("prefilter_grades") or []
+        rc_row = next(g for g in saved_grades if g.get("vector") == "Reality Check")
+        assert rc_row.get("reason")
 
 
 class TestFindJobPage:

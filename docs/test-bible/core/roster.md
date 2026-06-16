@@ -209,6 +209,20 @@ Consult routing + config + dispatcher + database: **`docs/test-bible/core/consul
 
 ---
 
+### AST-707 · AST-700
+
+**UAT fix:** Batch **`prefilter_company_batch`** must hydrate **RC** grades when candidate **`company_prefilter`** artifact has **MP/US** only — embedded **RC** from **`config.py`** via **`_rubric_criteria_from_cd`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch RC hydration (no mass **WEBSITE_FOUND_RETRY**) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst707EmbeddedRcBatchHydration` |
+
+Consult merge + config registry: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/utils/config.md`** (**AST-707**).
+
+**AST-707** narrowed run: **`docs/test-bible/core/consult.md`** (**AST-707**).
+
+---
+
 ### AST-703 · AST-700
 
 **UAT fix:** **`_ensure_dispatch_task_schema`** DELETE **`prefilter`/`WEBSITE_FOUND_RETRY`** before UPDATE **`prefilter`/`WEBSITE_FOUND` → `HOMEPAGE_READY`** — avoids triple-unique collision when legacy candidates had both rows.

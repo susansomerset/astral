@@ -905,6 +905,20 @@ class TestAst702PrefilterBatchConfig:
         assert d["entity_type"] == "company"
 
 
+class TestAst707EmbeddedPrefilterConfig:
+    """AST-707: embedded RC criterion for company_prefilter hydration."""
+
+    def test_embedded_rc_registry(self) -> None:
+        rows = cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA
+        assert len(rows) == 1
+        rc = rows[0]
+        assert rc["code"] == "RC"
+        assert rc["label"] == "Reality Check"
+        assert rc["importance"] == 8
+        grades = {g["grade"] for g in rc["grade_descriptions"]}
+        assert grades == {"A", "B", "C", "D", "E", "F"}
+
+
 class TestAst701FetchWebsiteConfig:
     """AST-701: HOMEPAGE_READY state, fetch_website gazer batch + dispatch registry."""
 

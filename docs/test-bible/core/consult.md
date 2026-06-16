@@ -174,6 +174,30 @@ Roster batch runner: **`docs/test-bible/core/roster.md`** (**AST-702**).
 
 ---
 
+### AST-707 · AST-700
+
+**UAT fix:** **`EMBEDDED_COMPANY_PREFILTER_CRITERIA`** in **`config.py`** supplies global **RC** (Reality Check); **`_rubric_criteria_from_cd`** prepends embedded rows for **`company_prefilter`**; **`_lookup_rubric_reason_for_grade`** and **`_importance_for_label`** match criterion **code** or **label** so batch prefilter hydration succeeds when the candidate artifact omits **RC**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Embedded RC registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
+| Merge + code-aware lookup | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRubricHelpers::test_merges_embedded_rc_for_company_prefilter`; `TestRubricHelpers::test_hydrates_rc_by_code_without_artifact_row`; `TestRubricLookup::test_matches_criterion_by_code`; `TestImportanceForLabelBranches::test_importance_matches_by_code` |
+| Batch hydration regression | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst707EmbeddedRcBatchHydration::test_batch_prefilter_hydrates_embedded_rc_when_missing_from_artifact` |
+
+**AST-707** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig \
+  tests/component/core/test_consult.py::TestRubricHelpers::test_merges_embedded_rc_for_company_prefilter \
+  tests/component/core/test_consult.py::TestRubricHelpers::test_hydrates_rc_by_code_without_artifact_row \
+  tests/component/core/test_consult.py::TestRubricLookup::test_matches_criterion_by_code \
+  tests/component/core/test_consult.py::TestImportanceForLabelBranches::test_importance_matches_by_code \
+  tests/component/core/test_roster.py::TestAst707EmbeddedRcBatchHydration::test_batch_prefilter_hydrates_embedded_rc_when_missing_from_artifact
+```
+
+---
+
 ### AST-619 · AST-543
 
 **AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
