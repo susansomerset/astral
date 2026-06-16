@@ -88,3 +88,12 @@ Betty may add a collision regression row to `TestAst702PrefilterDispatchMigratio
 | §3.3 imports | No import or layer changes. |
 
 No conflicts requiring **Conf: !!-NONE**.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-700/AST-703-uat-dispatch-task-migration-unique-collision`  
+**Build tip:** `ad2d51b`
+
+**Built:** Stage 1 — reorder AST-702 prefilter dispatch migration: DELETE `prefilter`/`WEBSITE_FOUND_RETRY` before UPDATE `prefilter`/`WEBSITE_FOUND` → `HOMEPAGE_READY` + `batch_call_mode=1`.
