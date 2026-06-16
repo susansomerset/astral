@@ -138,6 +138,77 @@ class TestValidateTitleBatch:
         assert out["failed"] == 1
 
 
+def _mock_browser_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    @asynccontextmanager
+    async def _browser():
+        yield MagicMock()
+
+    monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+
+
+class TestFetchWebsiteBatch:
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_website_batch("batch-1", [])
+
+    @pytest.mark.asyncio
+    async def test_missing_website_and_scrape_errors_fail(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(return_value={"company_website": "https://acme.com", "visible_text": "", "error": "bad scrape"}),
+        )
+        companies = [
+            {"short_name": "co-empty", "company_website": ""},
+            {"short_name": "co-bad", "company_website": "https://acme.com"},
+        ]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert transition.call_count == 2
+        assert save.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_success_persists_homepage_and_nav_links(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://canonical.example",
+                    "visible_text": "homepage body",
+                    "enumerated_nav_links": "1. /about\n2. /jobs",
+                    "error": None,
+                }
+            ),
+        )
+        companies = [{"short_name": "acme", "company_website": "https://old.example"}]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY")
+        save.assert_called_once_with(
+            "acme",
+            {"homepage_text": "homepage body", "nav_links": "1. /about\n2. /jobs"},
+        )
+
+
 class TestScrapeJdBatch:
     @pytest.mark.asyncio
     async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -881,6 +881,34 @@ class TestAst492LlmBrainTierConfig:
         cfg.validate_llm_provider_environment()
 
 
+class TestAst701FetchWebsiteConfig:
+    """AST-701: HOMEPAGE_READY state, fetch_website gazer batch + dispatch registry."""
+
+    def test_homepage_ready_state_and_transitions(self) -> None:
+        assert "HOMEPAGE_READY" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("WEBSITE_FOUND", "HOMEPAGE_READY") in transitions
+        assert ("WEBSITE_FOUND", "CANNOT_READ_WEBSITE") in transitions
+        assert ("WEBSITE_FOUND_RETRY", "HOMEPAGE_READY") in transitions
+        assert ("WEBSITE_FOUND_RETRY", "CANNOT_READ_WEBSITE") in transitions
+
+    def test_gazer_fetch_website_config(self) -> None:
+        entry = cfg.GAZER_CONFIG["fetch_website"]
+        assert entry["pass_state"] == "HOMEPAGE_READY"
+        assert entry["fail_state"] == "CANNOT_READ_WEBSITE"
+        assert entry["fallback_batch_size"] == 10
+
+    def test_dispatch_registry_and_homepage_text_key(self) -> None:
+        from src.utils.config import _dispatch_trigger_state_for_task_key
+
+        assert "fetch_website" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert _dispatch_trigger_state_for_task_key("fetch_website") == "WEBSITE_FOUND"
+        assert cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"] == "homepage_text"
+        defaults = cfg.dispatch_task_admin_defaults("fetch_website")
+        assert defaults["trigger_state"] == "WEBSITE_FOUND"
+        assert defaults["entity_type"] == "company"
+
+
 class TestAst507EncodedPrefilterConfig:
     """AST-507: PREFILTER_PASSED/FAILED states, transitions, grades_encoded prefilter task."""
 

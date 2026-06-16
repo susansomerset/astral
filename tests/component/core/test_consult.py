@@ -1462,6 +1462,25 @@ class TestRunConsultTaskRoutes:
         assert out["total_passed"] == 1
 
     @pytest.mark.asyncio
+    async def test_routes_fetch_website_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.gazer.fetch_website_batch",
+            AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1}),
+        )
+        out = await consult_mod.run_consult_task(
+            "company",
+            "WEBSITE_FOUND",
+            [{"short_name": "co-1"}, {"short_name": "co-2"}],
+            "batch-1",
+            {},
+            dispatch_task_key="fetch_website",
+        )
+        assert out["total_processed"] == 2
+        assert out["total_passed"] == 1
+        assert out["total_failed"] == 1
+        assert out["total_errors"] == 0
+
+    @pytest.mark.asyncio
     async def test_routes_qualify_and_evaluate_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(consult_mod, "qualify_job_listings", AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1}))
         monkeypatch.setattr(consult_mod, "evaluate_jd_batch", AsyncMock(return_value={"total": 3, "passed": 2, "failed": 1}))
