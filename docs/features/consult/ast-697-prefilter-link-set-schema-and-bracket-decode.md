@@ -165,4 +165,37 @@ No `conf-!!-NONE` conflicts.
 ## Review
 
 **Branch:** `origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode`  
-**Build tip:** `bbdcb7a` (2 product commits: config schema/instructions, consult decode helper + agent wiring)
+**Build tip:** `12f848d` (product + Betty manifest merge)
+
+---
+
+## Radia review (review-child 2026-06-16)
+
+**Diff:** `origin/dev...origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode`
+
+### What's solid
+
+- **Plan fidelity:** Stage 1 (`stringify_response_schema` bracket example + `payload_instructions`) and Stage 2 (`_apply_prefilter_encoded_link_meta` + `_decode_payload` delegate) match the combined plan; roster untouched as scoped.
+- **§1.3 DRY:** Link parsing stays in `consult._parse_link_index_field`; encoded decode delegates via one helper instead of duplicating prefix/bracket logic in `agent.py`.
+- **§2.1 config:** Canonical example `000|ERC2|MEA3|PGA2|[13]|[3,6,19]` and positional-tail docs live in `config.py` — verified in shell against `stringify_response_schema("prefilter_company")`.
+- **§3.3 layer compliance:** `agent` → `consult` lazy import matches existing `_normalize_rubric_task_response` pattern (line ~1845); no UI/external/data layer bends.
+- **Regression coverage:** Manifest rows cover Susan canonical brackets, RCA/MPB/USA brackets, `JOB:`/`CULT:` prefix tails, grades-only omission, and normalizer path via `TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails`.
+- **§5f / §5g:** Not applicable — no new `debug=` surfaces or LLM external changes.
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| **discuss** | Plan decision text says `JOB:16\|[51,46]` should map the bracket tail to culture when a prefix fills job links, but `_apply_prefilter_encoded_link_meta` only reads culture from `positional[1:]` when `len(positional) > 1`, so a lone bracket tail after `JOB:` is still dropped. Same as pre-697 prefix-only `_decode_payload` (not a regression); `_job_from_letter_pipe` would assign it to culture. Confirm whether mixed encoded lines need parity or bracket-after-prefix remains out of scope. | `src/core/consult.py` `_apply_prefilter_encoded_link_meta` |
+| **advisory** | `_apply_prefilter_encoded_link_meta` inlines `re.match(r"^JOB:"…)` / `^CULT:` while `_LINK_PREFIX_RE` sits one function above — minor duplication only. | `src/core/consult.py` |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Resolve **discuss** on mixed `JOB:` + lone bracket tail (parity vs out-of-scope) before UAT if production models emit that shape | Susan / Ada |
+| None blocking for merge | — |
+
+**Counts:** 0 fix-now · 1 discuss · 1 advisory
+
+— Radia
