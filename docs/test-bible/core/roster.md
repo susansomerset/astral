@@ -206,3 +206,25 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 | Debug passthrough on batch | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` |
 
 Consult routing + config + dispatcher + database: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/utils/config.md`** (**AST-702**).
+
+---
+
+### AST-703 · AST-700
+
+**UAT fix:** **`_ensure_dispatch_task_schema`** DELETE **`prefilter`/`WEBSITE_FOUND_RETRY`** before UPDATE **`prefilter`/`WEBSITE_FOUND` → `HOMEPAGE_READY`** — avoids triple-unique collision when legacy candidates had both rows.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dual-row migration idempotency | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision` |
+
+Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases).
+
+**AST-703** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration
+```
+
+**Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
