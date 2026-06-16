@@ -208,11 +208,15 @@ def _apply_prefilter_encoded_link_meta(job: dict, meta: list[str]) -> None:
             culture.extend(_parse_link_index_field(m))
             continue
         positional.append(m)
+    culture_pos: List[str]
     if positional and not possible:
         possible = _parse_link_index_field(positional[0])
-    if len(positional) > 1:
-        for lf in positional[1:]:
-            culture.extend(_parse_link_index_field(lf))
+        culture_pos = positional[1:]
+    else:
+        # Prefix filled job links — remaining positionals map to culture (plan: JOB:16|[51,46]).
+        culture_pos = positional
+    for lf in culture_pos:
+        culture.extend(_parse_link_index_field(lf))
     if possible:
         job["possible_job_links"] = possible
     if culture:

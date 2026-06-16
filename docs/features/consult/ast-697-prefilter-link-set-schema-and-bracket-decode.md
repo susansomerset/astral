@@ -199,3 +199,13 @@ No `conf-!!-NONE` conflicts.
 **Counts:** 0 fix-now · 1 discuss · 1 advisory
 
 — Radia
+
+---
+
+## Resolution (resolve-child 2026-06-16)
+
+**Discuss (mixed `JOB:` + lone bracket tail):** Plan Stage 2 decision required `JOB:16|[51,46]` → job links from prefix, bracket tail → culture. `_apply_prefilter_encoded_link_meta` now routes all positional fields to culture when a prefix already filled `possible_job_links` (matches `_job_from_letter_pipe` ordering). No test-tree edits — Betty may extend manifest if Susan wants explicit coverage.
+
+**Advisory (regex duplication):** Left inline `^JOB:`/`^CULT:` checks — distinct from `_LINK_PREFIX_RE` strip path; cosmetic only.
+
+**Product commit:** `fix(AST-697): review feedback — mixed JOB prefix + bracket culture tail`
