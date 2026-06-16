@@ -238,3 +238,21 @@ No conflicts requiring plan revision.
 | — | Proceed to **resolve-child** — no engineer changes required. |
 | Advisory | Plan Stage 3 mentions truncated homepage preview in `debug_detail`; implementation logs char counts + URLs only (same as `scrape_jd_batch` success path). Optional polish if operators want content snippets during UAT — not blocking. |
 | Advisory | Do not enable `auto_mode=1` on both `prefilter` and `fetch_website` until AST-702 cutover (plan decision; ops, not code). |
+
+---
+
+## Resolution (`resolve-child`)
+
+**Date:** 2026-06-16
+
+**Against:** Radia `review-child` on `origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state` @ **`bcc5630`**.
+
+**Product / plan**
+
+- **fix-now:** None — review clean; no product commits in this pass.
+- **Advisory (debug_detail homepage preview):** Accepted as parity with `scrape_jd_batch`; no change in AST-701.
+- **Advisory (dual dispatch ops):** Documented in plan Stage 1 decision; AST-702 owns cutover.
+
+**§9a dry-run:** `origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-700-prefilter-as-batch-process`**.
+
+**Manifest:** Betty narrowed run (11 tests) green @ **`cb6cc37`** — no `[qa-handoff]`.
