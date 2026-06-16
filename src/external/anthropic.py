@@ -26,6 +26,7 @@ from src.utils.formatting import (
     clean_encoded_agent_payload,
 )
 from src.utils.llm_external import extract_api_response_text, emit_llm_call_debug
+from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
 __all__ = ["send_to_anthropic", "getTimestampPrefix"]
@@ -213,6 +214,7 @@ async def send_to_anthropic(
     system_blocks → API `system` param (supports cache_control).
     content_blocks → messages[user].
     Returns dict with success, api_response, parsed_response, timesheet, error."""
+    require_controlled_external_io("anthropic.send_to_anthropic")
     start_time = datetime.now()
     calltime = start_time.strftime("%Y-%m-%d %H:%M:%S")
 

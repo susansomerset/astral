@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Response
 from bs4 import BeautifulSoup
 from src.utils.config import ASTRAL_CONFIG
+from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger
 from src.utils.url_merge import merge_url_query_params
 
@@ -62,6 +63,7 @@ async def _launch_browser(pw, headless: bool = True) -> Browser:  # pragma: no c
     Raises:
         Exception: If Firefox cannot be launched
     """
+    require_controlled_external_io("playwright._launch_browser")
     _log_browser_env()
     _log.debug("Launching Firefox (headless=%s)...", headless)
     try:

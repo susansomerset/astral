@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# record-landed-parent.sh — append parent epic id to merge ticket log on dev after land (AST-683).
+# record-landed-parent.sh — record parent epic id on dev after prep-uat land (AST-683/693).
 # Usage: record-landed-parent.sh <main-repo-path> <parent-id>
 set -euo pipefail
 MAIN="${1:?main repo path}"
@@ -16,6 +16,6 @@ if git -C "$MAIN" diff --cached --quiet; then
   echo "BLOCKED: merge ticket log unchanged after append for ${PARENT_ID}" >&2
   exit 1
 fi
-git -C "$MAIN" commit -m "finish-up(${PARENT_ID}): record landed parent in merge ticket log"
+git -C "$MAIN" commit -m "prep-uat(${PARENT_ID}): record parent in merge ticket log"
 git -C "$MAIN" push origin dev
 echo "RESULT: record-landed-parent status=ok parent=${PARENT_ID}"

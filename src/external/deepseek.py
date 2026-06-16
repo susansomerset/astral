@@ -24,6 +24,7 @@ from src.utils.formatting import (
     clean_encoded_agent_payload,
 )
 from src.utils.llm_external import extract_api_response_text, emit_llm_call_debug
+from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
 __all__ = ["send_to_deepseek"]
@@ -181,6 +182,7 @@ async def send_to_deepseek(
     record_timesheet: Optional[Callable[..., None]] = None,
 ) -> Dict[str, Any]:
     """Send blocks to DeepSeek Anthropic-compatible API; timesheet via record_timesheet callback."""
+    require_controlled_external_io("deepseek.send_to_deepseek")
     start_time = datetime.now()
     calltime = start_time.strftime("%Y-%m-%d %H:%M:%S")
 

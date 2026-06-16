@@ -13,7 +13,7 @@
 
 ### AST-681
 
-Append-only JSON log under `data/merge_ticket_log.json`; sole writer is `append_merge_ticket_log` (CLI) invoked by finish-up `record-landed-parent.sh` (AST-683). Read path returns oldest-first file order; deploy status reverses for API. Finish-up shell wiring: `dev/record_landed_parent.md`.
+Prep-uat records parent ids in `data/merge_ticket_log.json`; sole writer is `append_merge_ticket_log` (CLI) via `record-landed-parent.sh`. Same parent re-landed updates `recorded_at` only. Read path returns oldest-first file order; deploy status reverses for API. Shell wiring: `dev/record_landed_parent.md`.
 
 | Behavior | Tests |
 | --- | --- |
@@ -22,7 +22,8 @@ Append-only JSON log under `data/merge_ticket_log.json`; sole writer is `append_
 | Non-array JSON → `ValueError` | `TestReadMergeTicketLog::test_read_rejects_non_array` |
 | Append normalizes id + ISO timestamp | `TestAppendMergeTicketLog::test_append_and_read_preserves_order` |
 | Invalid ticket id → `ValueError` | `TestAppendMergeTicketLog::test_append_rejects_invalid_id` |
-| Append-only — no truncation | `TestAppendMergeTicketLog::test_append_never_truncates` |
+| Distinct ids accumulate | `TestAppendMergeTicketLog::test_append_never_truncates` |
+| Same id → update timestamp, no duplicate | `TestAppendMergeTicketLog::test_append_same_id_updates_timestamp_no_duplicate` |
 
 **Manifest pytest gate (AST-681):**
 

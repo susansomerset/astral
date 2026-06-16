@@ -11,6 +11,8 @@ from typing import Sequence, TypedDict
 
 import requests
 
+from src.utils.integration_io import require_controlled_external_io
+
 GOOGLE_CSE_API_URL = "https://www.googleapis.com/customsearch/v1"
 _DEFAULT_REQUEST_TIMEOUT_SEC = 60
 
@@ -74,6 +76,7 @@ def search_google_cse(
 
     ``days``: when set, passes ``dateRestrict=d<N>`` (results indexed within the last N days).
     """
+    require_controlled_external_io("google_cse.search_google_cse")
     try:
         api_key = os.environ["GOOGLE_CSE_API_KEY"]
         cx = os.environ["GOOGLE_CSE_ID"]

@@ -1716,7 +1716,7 @@ TRACKER_CONFIG = {
 
 # ---------------------------------------------------------------------------
 # MERGE_TICKET_LOG_CONFIG: append-only parent epic land history (AST-675/681).
-# Shipped in-repo; finish-up appends via scripts/append_merge_ticket_log.py.
+# Shipped in-repo; prep-uat appends via scripts/append_merge_ticket_log.py.
 # ---------------------------------------------------------------------------
 MERGE_TICKET_LOG_CONFIG = {
     "log_path": _PROJECT_ROOT / "data" / "merge_ticket_log.json",
