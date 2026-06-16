@@ -150,6 +150,18 @@ Gazer batch manifest: **`docs/test-bible/core/gazer.md`** (**AST-701**).
 
 ---
 
+### AST-702 · AST-700
+
+**AST-702:** **`dispatch_task_key=prefilter`** routes to **`prefilter_company_batch`** with **`skipped`** folded into **`total_errors`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`prefilter`** batch routing | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` |
+
+Roster batch runner: **`docs/test-bible/core/roster.md`** (**AST-702**).
+
+---
+
 ### AST-619 · AST-543
 
 **AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.

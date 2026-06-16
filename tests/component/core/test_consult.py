@@ -1481,6 +1481,25 @@ class TestRunConsultTaskRoutes:
         assert out["total_errors"] == 0
 
     @pytest.mark.asyncio
+    async def test_routes_prefilter_company_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.roster.prefilter_company_batch",
+            AsyncMock(return_value={"total": 3, "passed": 2, "failed": 1, "skipped": 1}),
+        )
+        out = await consult_mod.run_consult_task(
+            "company",
+            "HOMEPAGE_READY",
+            [{"short_name": "c1"}, {"short_name": "c2"}, {"short_name": "c3"}],
+            "batch-1",
+            {},
+            dispatch_task_key="prefilter",
+        )
+        assert out["total_processed"] == 3
+        assert out["total_passed"] == 2
+        assert out["total_failed"] == 1
+        assert out["total_errors"] == 0
+
+    @pytest.mark.asyncio
     async def test_routes_qualify_and_evaluate_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(consult_mod, "qualify_job_listings", AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1}))
         monkeypatch.setattr(consult_mod, "evaluate_jd_batch", AsyncMock(return_value={"total": 3, "passed": 2, "failed": 1}))

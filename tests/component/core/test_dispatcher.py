@@ -493,13 +493,13 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
         task = {
             "entity_type": "company",
-            "trigger_state": "WEBSITE_FOUND",
+            "trigger_state": "HOMEPAGE_READY",
             "task_key": "prefilter",
             "batch_call_mode": 1,
             "batch_size": 10,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert claim.call_args.kwargs["states"] == ["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"]
+        assert claim.call_args.kwargs["states"] == ["HOMEPAGE_READY"]
 
     @pytest.mark.asyncio
     async def test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities(

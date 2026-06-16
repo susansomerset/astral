@@ -258,23 +258,17 @@ class TestAst469LocateParseResolver:
 
 class TestRunCompanyTask:
     @pytest.mark.asyncio
-    async def test_prefilter_pass_and_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "prefilter_company",
-            AsyncMock(side_effect=[
-                {"state": "PREFILTER_PASSED"},
-                {"state": "PREFILTER_FAILED"},
-                {"error": "boom"},
-            ]),
+    async def test_website_found_monolithic_dispatch_removed(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-702: scrape+evaluate on WEBSITE_FOUND removed; batch uses HOMEPAGE_READY via consult."""
+        prefilter = AsyncMock()
+        monkeypatch.setattr(roster_mod, "prefilter_company", prefilter)
+        out = await roster_mod.run_company_task(
+            "WEBSITE_FOUND", _company(), "batch-1", dispatch_task_key="prefilter",
         )
-        entity = _company()
-        passed = await roster_mod.run_company_task("WEBSITE_FOUND", entity, "batch-1")
-        failed = await roster_mod.run_company_task("WEBSITE_FOUND", entity, "batch-1")
-        errored = await roster_mod.run_company_task("WEBSITE_FOUND", entity, "batch-1")
-        assert passed["total_passed"] == 1
-        assert failed["total_failed"] == 1
-        assert errored["total_errors"] == 1
+        assert out["total_errors"] == 1
+        prefilter.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_locate_job_page_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -381,10 +375,14 @@ class TestRunCompanyTask:
         assert unknown["total_errors"] == 1
 
     @pytest.mark.asyncio
-    async def test_exceptions_return_error_summary(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "prefilter_company", AsyncMock(side_effect=RuntimeError("boom")))
-        out = await roster_mod.run_company_task("WEBSITE_FOUND", _company(), "batch-1")
+    async def test_website_found_retry_returns_error_without_prefilter(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        prefilter = AsyncMock()
+        monkeypatch.setattr(roster_mod, "prefilter_company", prefilter)
+        out = await roster_mod.run_company_task("WEBSITE_FOUND_RETRY", _company(), "batch-1")
         assert out["total_errors"] == 1
+        prefilter.assert_not_called()
 
 
 class TestAst535ToWatchDispatchTaskKeyRouting:
@@ -961,15 +959,117 @@ class TestAst698PrefilterDebugPassthrough:
         assert do_task.await_args.kwargs.get("debug") is True
 
     @pytest.mark.asyncio
-    async def test_run_company_task_forwards_debug_to_prefilter(
-        self, monkeypatch: pytest.MonkeyPatch
+    async def test_prefilter_company_batch_forwards_debug_to_do_task(
+        self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        prefilter = AsyncMock(return_value={"state": "PREFILTER_PASSED"})
-        monkeypatch.setattr(roster_mod, "prefilter_company", prefilter)
-        entity = _company()
-        await roster_mod.run_company_task("WEBSITE_FOUND", entity, "batch-1", debug=True)
-        assert prefilter.await_args is not None
-        assert prefilter.await_args.kwargs.get("debug") is True
+        batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", batch)
+        company = _company(
+            state="HOMEPAGE_READY",
+            company_data={"homepage_text": "hello world"},
+        )
+        await roster_mod.prefilter_company_batch("batch-1", [company], debug=True)
+        assert batch.await_args is not None
+        assert batch.await_args.kwargs.get("debug") is True
+
+
+class TestAst702PrefilterCompanyBatch:
+    @pytest.mark.asyncio
+    async def test_skips_not_ready_without_do_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        do_task = AsyncMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        companies = [
+            {"short_name": "empty", "state": "HOMEPAGE_READY", "company_data": {}},
+            {"short_name": "blank", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "  "}},
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-skip", companies, debug=False)
+        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2}
+        do_task.assert_not_called()
+        assert transition.call_count == 2
+        save.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_batch_pass_and_fail_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "passco",
+                                "grades": [{"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"}],
+                            },
+                            {
+                                "astral_job_id": "failco",
+                                "grades": [{"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}],
+                            },
+                        ],
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        companies = [
+            {
+                "short_name": "passco",
+                "state": "HOMEPAGE_READY",
+                "company_data": {"homepage_text": "good homepage", "nav_links": "1. /about"},
+            },
+            {
+                "short_name": "failco",
+                "state": "HOMEPAGE_READY",
+                "company_data": {"homepage_text": "other homepage"},
+            },
+        ]
+        ctx = _prefilter_rubric_ctx()
+        out = await roster_mod.prefilter_company_batch("batch-mix", companies, ctx=ctx, debug=False)
+        assert out["passed"] == 1
+        assert out["failed"] == 1
+        assert out["total"] == 2
+        assert out.get("skipped", 0) == 0
+
+    @pytest.mark.asyncio
+    async def test_do_task_failure_transitions_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "api down"}),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {"homepage_text": "hello"},
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-fail", companies, debug=False)
+        assert out == {"passed": 0, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+
+
+class TestAst702PrefilterBatchHelpers:
+    def test_company_homepage_ready(self) -> None:
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": "hi"}})
+        assert not roster_mod._company_homepage_ready({"company_data": {}})
+        assert not roster_mod._company_homepage_ready({"company_data": {"homepage_text": "  "}})
+
+    def test_prefilter_batch_fail_dest_from_homepage_ready(self) -> None:
+        cfg = ROSTER_CONFIG["prefilter"]
+        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "WEBSITE_FOUND_RETRY"
+        assert roster_mod._prefilter_batch_fail_dest("WEBSITE_FOUND_RETRY", cfg) == "ERROR_PREFILTER"
 
 
 class TestFindJobPage:

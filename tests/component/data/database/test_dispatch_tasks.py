@@ -342,3 +342,45 @@ class TestAst701FetchWebsiteRetrySeed:
             assert row[0] == "WEBSITE_FOUND_RETRY"
         finally:
             conn.close()
+
+
+class TestAst702PrefilterDispatchMigration:
+    """AST-702: prefilter rows migrate to HOMEPAGE_READY batch mode; obsolete retry rows removed."""
+
+    def test_schema_migrates_prefilter_base_row_to_homepage_ready(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c702", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            row = conn.execute(
+                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'prefilter'",
+                ("c702",),
+            ).fetchone()
+            assert tuple(row) == ("HOMEPAGE_READY", 1)
+        finally:
+            conn.close()
+
+    def test_schema_deletes_obsolete_prefilter_retry_companion_row(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c702b", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND_RETRY'",
+                ("c702b",),
+            ).fetchone()[0]
+            assert n == 0
+        finally:
+            conn.close()
+
+    def test_retry_task_seed_omits_prefilter_website_found_retry(self) -> None:
+        from src.data.database import _RETRY_TASK_SEED
+
+        assert ("prefilter", "WEBSITE_FOUND_RETRY") not in _RETRY_TASK_SEED
+        assert ("fetch_website", "WEBSITE_FOUND_RETRY") in _RETRY_TASK_SEED

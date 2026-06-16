@@ -881,6 +881,30 @@ class TestAst492LlmBrainTierConfig:
         cfg.validate_llm_provider_environment()
 
 
+class TestAst702PrefilterBatchConfig:
+    """AST-702: HOMEPAGE_READY prefilter dispatch + batch_call_mode."""
+
+    def test_prefilter_input_state_and_retry_on_homepage_ready(self) -> None:
+        pf = cfg.ROSTER_CONFIG["prefilter"]
+        assert pf["input_state"] == "HOMEPAGE_READY"
+        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "WEBSITE_FOUND_RETRY"
+
+    def test_homepage_ready_evaluate_transitions(self) -> None:
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("HOMEPAGE_READY", "PREFILTER_PASSED") in transitions
+        assert ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY") in transitions
+        assert ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE") in transitions
+
+    def test_prefilter_dispatch_batch_mode_and_defaults(self) -> None:
+        from src.utils.config import _dispatch_batch_call_mode_for
+
+        assert _dispatch_batch_call_mode_for("prefilter") == 1
+        d = cfg.dispatch_task_admin_defaults("prefilter")
+        assert d["trigger_state"] == "HOMEPAGE_READY"
+        assert d["batch_call_mode"] == 1
+        assert d["entity_type"] == "company"
+
+
 class TestAst701FetchWebsiteConfig:
     """AST-701: HOMEPAGE_READY state, fetch_website gazer batch + dispatch registry."""
 

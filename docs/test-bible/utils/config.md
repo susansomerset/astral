@@ -264,6 +264,16 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 ---
 
+### AST-702 · AST-700
+
+**AST-702:** **`ROSTER_CONFIG["prefilter"]["input_state"]` → `HOMEPAGE_READY`**; **`HOMEPAGE_READY.retry_state` → `WEBSITE_FOUND_RETRY`**; evaluate-outcome transitions; **`prefilter`** in **`_DISPATCH_BATCH_CALL_MODE_ONE`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Input state + batch mode + transitions | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig` |
+
+---
+
 ### AST-695 · AST-694
 
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.

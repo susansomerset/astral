@@ -191,3 +191,18 @@ Equivalent harness:
 | Scrape helper error / redirect / empty text / nav failure | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` |
 
 Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-701**).
+
+---
+
+### AST-702 · AST-700
+
+**AST-702:** **`prefilter_company_batch`** from **`HOMEPAGE_READY`** rows; readiness gate on **`homepage_text`**; **`_apply_prefilter_decoded_company_outcome`** shared helper; **`run_company_task`** no longer runs monolithic **`prefilter_company`** on **`WEBSITE_FOUND`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch runner + readiness skip | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch` |
+| Fail-dest helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers` |
+| Monolithic dispatch removed | `src/core/roster.py` | `tests/component/core/test_roster.py::TestRunCompanyTask::test_website_found_monolithic_dispatch_removed` |
+| Debug passthrough on batch | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` |
+
+Consult routing + config + dispatcher + database: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/utils/config.md`** (**AST-702**).
