@@ -336,6 +336,77 @@ class TestAst603RubricNormalize:
         assert consult_mod._parse_link_index_field("JOB:16") == [16]
         assert consult_mod._parse_link_index_field("CULT:38,3") == [38, 3]
 
+    def test_lovable_encoded_line_with_bracket_tails(self) -> None:
+        # AST-697: positional bracket link_set tails via consult normalizer (AST-603 path).
+        out = consult_mod._normalize_rubric_task_response(
+            "prefilter_company",
+            _ast603_prefilter_task_config(),
+            "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]",
+            _ast603_prefilter_ctx(),
+        )
+        job = out["jobs"][0]
+        assert job["possible_job_links"] == [59, 60]
+        assert job["culture_links_to_explore"] == [51, 46, 53]
+
+
+class TestAst697PrefilterBracketLinkDecode:
+    """AST-697: bracket link_set tails in _decode_payload and shared consult helper."""
+
+    @staticmethod
+    def _prefilter_decode_ctx() -> Dict[str, Any]:
+        return {
+            "batch_entities": [{"astral_job_id": "co-acme"}],
+            "vector_labels": {
+                "RC": "Reality Check",
+                "MP": "Mission Product Orientation",
+                "US": "US Presence",
+            },
+        }
+
+    def test_decode_payload_susan_canonical_bracket_tails(self) -> None:
+        ctx = {
+            "batch_entities": [{"astral_job_id": "acme"}],
+            "vector_labels": {"ER": "Example", "ME": "Mission", "PG": "Product"},
+        }
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|ERC2|MEA3|PGA2|[13]|[3,6,19]",
+            ctx,
+        )["jobs"][0]
+        assert job["possible_job_links"] == [13]
+        assert job["culture_links_to_explore"] == [3, 6, 19]
+
+    def test_decode_payload_bracket_tails_rca_mpb_usa(self) -> None:
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]",
+            self._prefilter_decode_ctx(),
+        )["jobs"][0]
+        assert job["possible_job_links"] == [59, 60]
+        assert job["culture_links_to_explore"] == [51, 46, 53]
+
+    def test_decode_payload_job_cult_prefix_unchanged(self) -> None:
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|RCA3|MPB3|USA3|JOB:16|CULT:38,3,27",
+            self._prefilter_decode_ctx(),
+        )["jobs"][0]
+        assert job["possible_job_links"] == [16]
+        assert job["culture_links_to_explore"] == [38, 3, 27]
+
+    def test_decode_payload_grades_only_omits_link_keys(self) -> None:
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|RCA3|MPB3|USA3",
+            self._prefilter_decode_ctx(),
+        )["jobs"][0]
+        assert "possible_job_links" not in job
+        assert "culture_links_to_explore" not in job
+
 
 class TestPromptHelpers:
     def test_resolves_system_prompt_and_chain_tokens(self) -> None:

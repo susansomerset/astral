@@ -223,6 +223,11 @@ class TestStringifyResponseSchema:
         assert out["agent_payload"]["candidate_name"] == "<candidate_name>"
         assert out["agent_performance"]["status"] == "success | failure"
 
+    def test_prefilter_company_schema_shows_bracket_link_set_tails(self) -> None:
+        # AST-697: RESPONSE_SCHEMA example documents positional bracket link_set tails.
+        env = json.loads(cfg.stringify_response_schema("prefilter_company"))
+        assert env["agent_payload"] == "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
+
 
 # Branches: default empty agent; explicit prompt.
 class TestChainContextSelectedAgent:
