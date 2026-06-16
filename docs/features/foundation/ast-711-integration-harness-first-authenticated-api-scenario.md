@@ -265,3 +265,13 @@ Pass criterion: both commands exit 0 on the publish ref tip.
 | §3.5 naming | `run_integration_tests.sh` parallels `run_component_tests.sh`; scenario file under `scenarios/` |
 
 No plan conflicts requiring `conf-!!-NONE`.
+
+## Review stub
+
+| Field | Value |
+|-------|-------|
+| **Publish ref** | `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` |
+| **Built tip** | `1252ff2` |
+| **Stages** | 1 — `integration_io` + external guards (`5f73b60`); 2 — `run_integration_tests.sh` (`ec8f562`); 3 — CI workflow (`1252ff2`) |
+| **Betty next** | Stage 4 — `tests/integration/` scenario + bible tier docs |
+| **test-child manifest** | `./scripts/testing/run_integration_tests.sh` then `./scripts/testing/run_component_tests.sh` |
