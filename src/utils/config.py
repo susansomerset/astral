@@ -302,6 +302,8 @@ TASK_CONFIG = {
             "job_titles": {"type": "list", "required": False},
             "no_jobs_message": {"type": "str", "required": False},
             "try_links": {"type": "list", "required": False},
+            "scrape_issue_summary": {"type": "str", "required": False},
+            "scrape_issue_evidence": {"type": "str", "required": False},
         },
         "response_format": "json",
         "context_format": "select_job_page_{index}",
@@ -824,6 +826,7 @@ COMPANY_STATES = {
     "BOT_BLOCK": {},
     "ERROR_PREFILTER": {},
     "ERROR_LOCATE_JOB_PAGE": {},
+    "JOBSITE_SCRAPE_ISSUE": {},
     "ERROR_GAZE": {},
 }
 
@@ -881,6 +884,7 @@ ROSTER_CONFIG = {
         "dispatch_input_states": ["TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED"],
         "pass_states": ["WATCH"],
         "error_state": "ERROR_LOCATE_JOB_PAGE",
+        "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
         "max_depth": 2,
     },
     "gaze": {
@@ -894,6 +898,8 @@ ROSTER_CONFIG = {
         "prefilter_score": "prefilter_score",
         # AST-469: persisted job-list visible text (select confirm path). No coat-check handler — explicit storage only.
         "job_list_visible": "job_list_visible",
+        "jobsite_scrape_issue_summary": "jobsite_scrape_issue_summary",
+        "jobsite_scrape_issue_evidence": "jobsite_scrape_issue_evidence",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -1766,6 +1772,9 @@ ASTRAL_CONFIG = {
         ("PREFILTER_PASSED", "NO_OPENINGS"),
         ("PREFILTER_PASSED", "NO_JOBLIST"),
         ("PREFILTER_PASSED", "BOT_BLOCK"),
+        ("TO_WATCH", "JOBSITE_SCRAPE_ISSUE"),
+        ("JOBS_FOUND", "JOBSITE_SCRAPE_ISSUE"),
+        ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE"),
     ],
 
     # --- Candidate state machine (candidate) ---
