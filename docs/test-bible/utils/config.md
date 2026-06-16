@@ -241,4 +241,25 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
   tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema
 ```
 
+---
+
+### AST-695 · AST-694
+
+**Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DeepSeek tier meta resolution | `src/utils/config.py` | **`TestAst492LlmBrainTierConfig::test_resolve_deepseek_tier_meta`** |
+| **`do_task`** DeepSeek vendor_model + tier_meta | `src/core/agent.py` | **`TestAst492BrainSettingDoTask::test_send_to_deepseek_receives_vendor_model_and_tier_meta`** |
+| Admin **`_resolve_adhoc`** DeepSeek payload | `src/ui/api/api_admin.py` | **`TestAst492ResolveAdhocApiAdmin::test_resolve_adhoc_deepseek_sets_tier_meta_and_vendor_as_model_code`** |
+
+**AST-695** narrowed run (**pass criterion:** pytest green — not zero-arg harness / branch-lock gate):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig::test_resolve_deepseek_tier_meta \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask::test_send_to_deepseek_receives_vendor_model_and_tier_meta \
+  tests/component/ui/api/test_api_admin.py::TestAst492ResolveAdhocApiAdmin::test_resolve_adhoc_deepseek_sets_tier_meta_and_vendor_as_model_code
+```
+
 ```

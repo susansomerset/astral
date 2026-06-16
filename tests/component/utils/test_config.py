@@ -798,6 +798,9 @@ class TestAst492LlmBrainTierConfig:
         little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
         assert little["vendor_model"] == "deepseek-v4-flash"
         assert little["thinking"] is False
+        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
+        assert medium["vendor_model"] == "deepseek-v4-pro"
+        assert medium["thinking"] is False
         big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
         assert big["vendor_model"] == "deepseek-v4-pro"
         assert big["thinking"] is True
