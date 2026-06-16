@@ -16,6 +16,7 @@ type DeployStatus = {
 }
 
 const MERGE_TICKET_TOOLTIP_LIMIT = 20
+const MERGE_TICKET_HOVER_DELAY_MS = 500
 
 function mergeTicketDisplayLines(mergeTickets: MergeTicket[] | undefined): string[] {
   if (!mergeTickets?.length) return []
@@ -28,7 +29,8 @@ export default function AdminDeployFooter() {
   const { loading: authLoading } = useAuth()
   const [status, setStatus] = useState<DeployStatus | null>(null)
   const [error, setError] = useState(false)
-  const [ticketsOpen, setTicketsOpen] = useState(false)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const envWrapRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
@@ -50,15 +52,24 @@ export default function AdminDeployFooter() {
   }, [authLoading])
 
   useEffect(() => {
-    if (!ticketsOpen) return
-    function handler(e: MouseEvent) {
-      if (envWrapRef.current && !envWrapRef.current.contains(e.target as Node)) {
-        setTicketsOpen(false)
-      }
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [ticketsOpen])
+  }, [])
+
+  function handleEnvWrapMouseEnter() {
+    if (!envInteractive) return
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => setTooltipVisible(true), MERGE_TICKET_HOVER_DELAY_MS)
+  }
+
+  function handleEnvWrapMouseLeave() {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    setTooltipVisible(false)
+  }
 
   if (authLoading || (!status && !error)) return null
 
@@ -77,26 +88,33 @@ export default function AdminDeployFooter() {
     <div className="nav-deploy-footer" aria-label="Deploy status">
       {status!.environment != null && (
         <>
-          <span className="nav-deploy-env-wrap" ref={envWrapRef}>
-            {envInteractive ? (
-              <button
-                type="button"
-                className="nav-deploy-env nav-deploy-env-btn"
-                aria-expanded={ticketsOpen}
-                aria-haspopup="listbox"
-                onClick={() => setTicketsOpen(open => !open)}
+          <span
+            className="nav-deploy-env-wrap"
+            ref={envWrapRef}
+            onMouseEnter={handleEnvWrapMouseEnter}
+            onMouseLeave={handleEnvWrapMouseLeave}
+          >
+            <span
+              className={
+                envInteractive
+                  ? "nav-deploy-env nav-deploy-env-interactive"
+                  : "nav-deploy-env"
+              }
+            >
+              {status!.environment}
+            </span>
+            {tooltipVisible && envInteractive && (
+              <div
+                className="nav-deploy-tickets-tooltip"
+                role="tooltip"
+                aria-label="Recent merge tickets"
               >
-                {status!.environment}
-              </button>
-            ) : (
-              <span className="nav-deploy-env">{status!.environment}</span>
-            )}
-            {ticketsOpen && envInteractive && (
-              <ul className="nav-deploy-tickets-popup" role="listbox" aria-label="Recent merge tickets">
                 {ticketLines.map(line => (
-                  <li key={line}>{line}</li>
+                  <div key={line} className="nav-deploy-tickets-tooltip-line">
+                    {line}
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </span>
           <span className="nav-deploy-sep">·</span>
