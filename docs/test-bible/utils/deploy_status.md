@@ -27,8 +27,8 @@
 
 | Behavior | Tests |
 | --- | --- |
-| Uptime without env | `TestGetDeployStatusPayload::test_includes_uptime_without_environment` — no commit keys; `"environment" not in payload`; `merge_tickets: []` |
-| Uptime + env when set | `TestGetDeployStatusPayload::test_includes_environment_when_set` — `staging`, `1h1m`; no commit keys; `merge_tickets: []` |
+| Uptime without env | `TestGetDeployStatusPayload::test_includes_uptime_without_environment` — no commit keys; `"environment" not in payload`; `merge_tickets: []` with **`read_merge_ticket_log` monkeypatched empty** (AST-693 seeded log on disk) |
+| Uptime + env when set | `TestGetDeployStatusPayload::test_includes_environment_when_set` — `staging`, `1h1m`; no commit keys; `merge_tickets: []` with **`read_merge_ticket_log` monkeypatched empty** |
 
 ---
 

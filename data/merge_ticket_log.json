@@ -8,7 +8,12 @@
     "recorded_at": "2026-06-16T01:01:34.400341+00:00"
   },
   {
+<<<<<<< HEAD
     "ticket_id": "AST-640",
     "recorded_at": "2026-06-16T01:02:34.680265+00:00"
+=======
+    "ticket_id": "AST-675",
+    "recorded_at": "2026-06-16T01:02:30.602097+00:00"
+>>>>>>> origin/ftr/ast-675-create-a-ticket-log-in-utils
   }
 ]
