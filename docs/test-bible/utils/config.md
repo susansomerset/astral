@@ -243,6 +243,17 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 ---
 
+### AST-697 · AST-696
+
+**`stringify_response_schema("prefilter_company")`** shows Susan's canonical bracket **link_set** example; **`grades_encoded_prefilter_links`** payload instructions document positional tails before **`JOB:`** / **`CULT:`** alternates. Decode wiring lives in **`docs/test-bible/core/consult.md`** and **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema example | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| Output type key | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
+
+---
+
 ### AST-695 · AST-694
 
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.

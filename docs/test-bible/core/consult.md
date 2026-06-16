@@ -91,6 +91,29 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope; av
 
 ---
 
+### AST-697 · AST-696
+
+**AST-697** fixes **prefilter_company** prompt contract and decode: **`stringify_response_schema`** shows bracket **link_set** tails (`000|ERC2|MEA3|PGA2|[13]|[3,6,19]`); **`_apply_prefilter_encoded_link_meta`** maps positional bracket tails and existing **`JOB:`** / **`CULT:`** prefixes onto **`possible_job_links`** / **`culture_links_to_explore`**. **`_decode_payload`** delegates to the shared helper. Roster persist unchanged (**AST-603**). Grades-only encoded lines omit link keys.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bracket **link_set** decode + prefix precedence | `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode`; `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails` |
+| **`_decode_payload`** wiring | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode` |
+| **`stringify_response_schema`** bracket example | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+
+**AST-697** narrowed run (includes **AST-603** prefix-tail regression):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails \
+  tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize \
+  tests/component/core/test_roster.py::TestAst603ConsultParityHydration \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded
+```
+
+---
+
 ### AST-619 · AST-543
 
 **AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
