@@ -74,12 +74,11 @@ Equivalent harness:
 
 ### AST-713 · AST-710
 
-**Collapse consecutive blank lines** in gazer visible-text save paths — **`scrape_jd_batch`** (JD **`job_description`**) and **`fetch_website_batch`** (**`homepage_text`**) call **`collapse_consecutive_blank_lines`** immediately after scrape, before empty-text gating / persist. **`nav_links`** and **`_prune_jd`** unchanged.
+**Collapse consecutive blank lines** in gazer JD visible-text save — **`scrape_jd_batch`** (**`job_description`**) calls **`collapse_consecutive_blank_lines`** immediately after scrape, before empty-text gating / persist. Homepage normalize moved to **`scrape_company_homepage_content`** per **AST-715**. **`nav_links`** and **`_prune_jd`** unchanged.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | JD post-scrape normalize + empty gate order | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestScrapeJdBatch::test_collapses_consecutive_blank_lines_before_save` |
-| Homepage post-scrape normalize | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_collapses_consecutive_blank_lines_in_homepage_text` |
 | Shared helper | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines` |
 
 **AST-713** narrowed run:
@@ -88,7 +87,28 @@ Equivalent harness:
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines \
   tests/component/core/test_gazer.py::TestScrapeJdBatch::test_collapses_consecutive_blank_lines_before_save \
-  tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_collapses_consecutive_blank_lines_in_homepage_text \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-715 · AST-710
+
+**UAT fix:** Homepage blank-line collapse at **`scrape_company_homepage_content`** (post-**`get_visible_text`**, pre-empty gate) — not redundant **`fetch_website_batch`** wrapper. **`prefilter_company`** callers receive normalized **`visible_text`**. Gazer persists helper output as-is.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Collapse at shared scrape helper | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_collapses_consecutive_blank_lines_at_scrape` |
+| **`fetch_website_batch`** passthrough persist | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_persists_normalized_visible_text_from_scrape_helper` |
+
+**AST-715** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_collapses_consecutive_blank_lines_at_scrape \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_persists_normalized_visible_text_from_scrape_helper \
   -q
 ```
 

@@ -209,7 +209,7 @@ class TestFetchWebsiteBatch:
         )
 
     @pytest.mark.asyncio
-    async def test_collapses_consecutive_blank_lines_in_homepage_text(
+    async def test_persists_normalized_visible_text_from_scrape_helper(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
@@ -223,7 +223,7 @@ class TestFetchWebsiteBatch:
             AsyncMock(
                 return_value={
                     "company_website": "https://acme.com",
-                    "visible_text": "intro\n\n\n\nbody",
+                    "visible_text": "intro\n\nbody",
                     "enumerated_nav_links": "1. /about",
                     "error": None,
                 }

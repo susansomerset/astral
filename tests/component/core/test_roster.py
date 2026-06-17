@@ -673,6 +673,25 @@ class TestAst701ScrapeCompanyHomepageContent:
         assert out["visible_text"] == "hello world"
         assert out["enumerated_nav_links"] == ""
 
+    @pytest.mark.asyncio
+    async def test_collapses_consecutive_blank_lines_at_scrape(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "get_visible_text",
+            AsyncMock(return_value=("intro\n\n\n\nbody", "https://acme.com")),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "extract_site_page_list",
+            AsyncMock(return_value=["https://acme.com/about"]),
+        )
+        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
+        out = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
+        assert out["error"] is None
+        assert out["visible_text"] == "intro\n\nbody"
+
 
 class TestPrefilterCompany:
     @pytest.mark.asyncio
