@@ -194,6 +194,29 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-715 · AST-710
+
+**UAT fix:** **`collapse_consecutive_blank_lines`** in **`scrape_company_homepage_content`** immediately after **`get_visible_text`**, before empty-text error gate — single normalize site for homepage scrape (**AST-701** DRY). Redundant gazer **`fetch_website_batch`** collapse removed (**AST-713** regression).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Collapse at scrape helper | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_collapses_consecutive_blank_lines_at_scrape` |
+
+Gazer passthrough: **`docs/test-bible/core/gazer.md`** (**AST-715**).
+
+**AST-715** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_collapses_consecutive_blank_lines_at_scrape \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_persists_normalized_visible_text_from_scrape_helper \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-702 · AST-700
 
 **AST-702:** **`prefilter_company_batch`** from **`HOMEPAGE_READY`** rows; readiness gate on **`homepage_text`**; **`_apply_prefilter_decoded_company_outcome`** shared helper; **`run_company_task`** no longer runs monolithic **`prefilter_company`** on **`WEBSITE_FOUND`**.
