@@ -126,3 +126,12 @@ assert collapse_consecutive_blank_lines("line1\n\n\nline2") == "line1\n\nline2"
 | §3.5 naming | Reuse existing helper name |
 
 No conflicts requiring `Conf: !!-NONE`.
+
+## Review stub
+
+| Field | Value |
+|-------|-------|
+| **Publish ref** | `origin/sub/AST-710/AST-715-fetch-website-runtime-blank-line-collapse` |
+| **Built tip** | `e8fcf9a` |
+| **Stages** | 1 — `scrape_company_homepage_content` collapse (`af07653`); 2 — remove gazer duplicate (`e8fcf9a`) |
+| **Betty next** | `TestAst701ScrapeCompanyHomepageContent` collapse-at-scrape; adjust gazer fetch test if needed |
