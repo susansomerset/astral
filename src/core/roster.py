@@ -60,7 +60,12 @@ from src.utils.config import (
     roster_scrape_readiness_config,
     validate_value,
 )
-from src.utils.formatting import enumerate_array, parse_enumerate_array, find_job_containers
+from src.utils.formatting import (
+    collapse_consecutive_blank_lines,
+    enumerate_array,
+    parse_enumerate_array,
+    find_job_containers,
+)
 
 # Logger for this module
 logger = get_logger(__name__)
@@ -1025,7 +1030,8 @@ async def scrape_company_homepage_content(
         update_company(short_name, company_website=final_url)
         company_website = final_url
         out["company_website"] = company_website
-    out["visible_text"] = visible_text or ""
+    visible_text = collapse_consecutive_blank_lines(visible_text or "")
+    out["visible_text"] = visible_text
     if not out["visible_text"].strip():
         out["error"] = "No visible text extracted"
         return out
