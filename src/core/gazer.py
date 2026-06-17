@@ -330,7 +330,7 @@ async def fetch_website_batch(
                 failed += 1
                 return
             canonical = scrape["company_website"]
-            visible_text = collapse_consecutive_blank_lines(scrape["visible_text"])
+            visible_text = scrape["visible_text"]
             nav_links = scrape.get("enumerated_nav_links") or ""
             nav_count = len([ln for ln in nav_links.splitlines() if ln.strip()]) if nav_links else 0
             redirect = "yes" if canonical != original_website else "no"
