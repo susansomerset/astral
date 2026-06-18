@@ -284,3 +284,37 @@ No unresolved conflicts.
 **Product commits:** `f504d77c` (Stage 1 — config), `6f933343` (Stages 2–4 — parse dispatch, monolith removal, admin/scripts)
 
 **Publish ref:** `origin/sub/AST-716/parse-job-list-dispatch-refactor` @ `2a3563d9`
+
+---
+
+## Radia review (2026-06-18)
+
+**Diff:** `origin/dev...origin/sub/AST-716/parse-job-list-dispatch-refactor` (`3e93586`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (core) | `JOBLIST_IDENTIFIED_RETRY` / `COULD_NOT_PARSE_JOBLIST` + transitions; `ROSTER_CONFIG["parse_job_list"]`; `locate_job_page.dispatch_input_states` → **`JOBS_FOUND`** only; `find_job_page` removed from schedulable keys; `_dispatch_trigger_state_for_task_key("parse_job_list")` → `JOBLIST_IDENTIFIED`. |
+| Monolith removal | **`find_job_page()`** deleted; `run_company_task` no longer routes TO_WATCH / PREFILTER_PASSED locate trio; `run_select_job_page_dispatch` PJL_READY-only with warning on other states; legacy monolith tests skipped. |
+| Parse dispatch | `_scrape_list_page_dom_for_parse` + readiness; `_resolve_selected_pjl_url`; failure ladder (`JOBLIST_IDENTIFIED` → retry, retry → terminal); `_finalize_parse_dispatch_success` → **`WATCH`** + first **`job_site`** write; failures use **`pre_run_job_site=""`** (**AST-673**). |
+| JOBS_FOUND | **`jobs_found_process_job_site`** branch unchanged behind narrowed `dispatch_input_states`. |
+| Admin / scripts | Adhoc live-content drops **`find_job_page`**; `scripts/test_find_job_page.py` deprecated stub. |
+| AC / tests | Betty manifest (`TestAst721ParseJobListDispatch`, routing, config, dispatcher seed key, admin adhoc) matches plan matrix. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | Ops / dispatch rows | Plan documents Susan must **deactivate** legacy `find_job_page` @ TO_WATCH/PREFILTER_PASSED and seed decomposed rows — code no longer routes them (`total_errors`). Confirm admin cutover before UAT on live companies still on monolith rows. |
+| **advisory** | `_scrape_list_page_dom_for_parse` ~844–845 | Bare **`except Exception: return ""`** — scrape errors become empty-DOM parse failures (retry/terminal) with no log line. Acceptable bounded tradeoff today; add **`debug_detail`** or warning if ops need scrape-fail vs empty-page distinction. |
+| **advisory** | `gazer.py` ~748–754 | Failure message still says **"re-run find_job_page"** — monolith removed; stale operator string when parse_instructions missing. |
+| **advisory** | `save_company_data` **`parse_job_list_notes`** | Written on failure but not registered in **`ROSTER_CONFIG["company_data_keys"]`** — minor config completeness. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child` / merge. |
+| discuss | Confirm Susan deactivates legacy dispatch rows per plan table before parent UAT. |
+| advisory | Update gazer "re-run find_job_page" copy when touching gaze path; optional scrape-error log in `_scrape_list_page_dom_for_parse`. |
