@@ -194,6 +194,32 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-720 · AST-716
+
+**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`** (legacy **`TO_WATCH`** rows unchanged until AST-721).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PJL map + try_links ledger helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlMapsAndLedger` |
+| PJL_READY select outcomes + `run_company_task` routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch` |
+| Selection states + dispatch trigger | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst720SelectJobPageConfig` |
+
+**Broken / obsolete (Betty revision):** **`TestAst549DispatchAdminDefaults::test_ast485_roster_dispatch_trio_matches_config_defaults`** — **`select_job_page`** default trigger is **`PJL_READY`**, not **`TO_WATCH`**.
+
+**AST-720** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst720SelectJobPageConfig \
+  tests/component/core/test_roster.py::TestAst720PjlMapsAndLedger \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-719 · AST-716
 
 **PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for additive scrape. Does not write **`job_site`**.

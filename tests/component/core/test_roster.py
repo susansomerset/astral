@@ -675,6 +675,231 @@ class TestAst719PjlRosterHelpers:
         assert merged.count("acme.com/careers") == 1
 
 
+        assert merged.count("acme.com/careers") == 1
+
+
+class TestAst720PjlMapsAndLedger:
+    """AST-720: persisted PJL assembly + try_links ledger merge."""
+
+    def test_pjl_maps_prefers_assembled_content(self) -> None:
+        cdata = {
+            "pjl_assembled_content": "=== PAGE 1: https://acme.com/careers ===\nroles",
+            "pjl_scrape_pages": [{"url": "https://acme.com/other", "visible_text": "skip"}],
+        }
+        assembled, url_map, vis_map = roster_mod._pjl_maps_from_company_data(cdata)
+        assert assembled.startswith("=== PAGE 1:")
+        assert url_map == {1: "https://acme.com/other"}
+        assert vis_map == {1: "skip"}
+
+    def test_pjl_maps_rebuilds_from_scrape_pages_when_assembled_empty(self) -> None:
+        cdata = {
+            "pjl_scrape_pages": [{"url": "https://acme.com/careers", "visible_text": "roles"}],
+        }
+        assembled, url_map, vis_map = roster_mod._pjl_maps_from_company_data(cdata)
+        assert "roles" in assembled
+        assert url_map == {1: "https://acme.com/careers"}
+        assert vis_map == {1: "roles"}
+
+    def test_merge_try_links_appends_new_normalized_urls(self) -> None:
+        nav = "1: https://acme.com/careers\n2: https://acme.com/newjobs"
+        updated = roster_mod._merge_try_links_into_pjl_ledger(
+            "acme",
+            [2],
+            nav,
+            "",
+            ["acme.com/careers"],
+        )
+        assert updated == ["acme.com/careers", "https://acme.com/newjobs"]
+
+    def test_nav_links_for_try_links_prefers_pjl_nav(self) -> None:
+        assert roster_mod._nav_links_for_try_links(
+            {"pjl_nav_links": "1: /pjl", "nav_links": "1: /home"}
+        ) == "1: /pjl"
+
+
+class TestAst720PjlReadySelectDispatch:
+    """AST-720: PJL_READY decomposed select_job_page outcomes."""
+
+    @staticmethod
+    def _pjl_ready_company(**extra: Any) -> Dict[str, Any]:
+        company_data = {
+            "pjl_assembled_content": "=== PAGE 1: https://acme.com/careers ===\nopen roles",
+            "pjl_scrape_pages": [{"url": "https://acme.com/careers", "visible_text": "open roles"}],
+            "possible_joblist_links": ["acme.com/careers"],
+            "nav_links": "1: https://acme.com/careers",
+        }
+        company_data.update(extra)
+        return _company(
+            state="PJL_READY",
+            company_website="https://acme.com",
+            company_data=company_data,
+        )
+
+    @pytest.mark.asyncio
+    async def test_joblist_titles_identified_without_job_site_column(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        company = self._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        update = MagicMock()
+        save = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "JOBLIST_TITLES",
+                        "selected_page": 1,
+                        "job_titles": ["Engineer"],
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(
+            company, "batch-720", debug=True
+        )
+        assert out["state"] == "JOBLIST_IDENTIFIED"
+        assert out["job_site"] == ""
+        assert out["response_type"] == "JOBLIST_TITLES"
+        update.assert_called_once()
+        assert update.call_args.kwargs.get("job_site") == ""
+        save.assert_called()
+        saved = save.call_args_list[0][0][1]
+        assert saved["job_titles"] == ["Engineer"]
+        assert saved["selected_pjl_url"] == "https://acme.com/careers"
+
+    @pytest.mark.asyncio
+    async def test_try_links_appends_ledger_and_retries(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        company = self._pjl_ready_company(
+            pjl_nav_links="1: https://acme.com/careers\n2: https://acme.com/newjobs",
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        save = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "TRY_LINKS",
+                        "try_links": [2],
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
+        assert out["state"] == "PREFILTER_PASSED_RETRY"
+        assert out["job_site"] == ""
+        transition.assert_called_once_with("acme", "PREFILTER_PASSED_RETRY")
+        saved = save.call_args[0][1]
+        assert saved["possible_joblist_links"] == [
+            "acme.com/careers",
+            "https://acme.com/newjobs",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_try_links_exhausted_routes_no_pjl_selected(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        company = self._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "TRY_LINKS",
+                        "try_links": ["https://acme.com/careers"],
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
+        assert out["state"] == "NO_PJL_SELECTED"
+        assert out["job_site"] == ""
+
+    @pytest.mark.asyncio
+    async def test_jobsite_scrape_issue_suppresses_job_site(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        company = self._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "JOBSITE_SCRAPE_ISSUE",
+                        "selected_page": 1,
+                        "scrape_issue_summary": "blocked",
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
+        assert out["state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert out["job_site"] == ""
+
+    @pytest.mark.asyncio
+    async def test_empty_assembled_routes_no_pjl_selected(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        company = _company(
+            state="PJL_READY",
+            company_website="https://acme.com",
+            company_data={},
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock())
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-720")
+        assert out["state"] == "NO_PJL_SELECTED"
+        assert out["response_type"] == "NO_PJL_ASSEMBLED"
+        roster_mod.do_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_pjl_ready_select_key(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        select = AsyncMock(return_value={"state": "JOBLIST_IDENTIFIED"})
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", select)
+        entity = self._pjl_ready_company()
+        out = await roster_mod.run_company_task(
+            "PJL_READY", entity, "batch-720", dispatch_task_key="select_job_page",
+        )
+        assert out["total_passed"] == 1
+        select.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_pjl_ready_wrong_key_errors(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        entity = self._pjl_ready_company()
+        out = await roster_mod.run_company_task(
+            "PJL_READY", entity, "batch-720", dispatch_task_key="find_job_page",
+        )
+        assert out["total_errors"] == 1
+
+
 class TestAst701ScrapeCompanyHomepageContent:
     @pytest.mark.asyncio
     async def test_scrape_exception_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
