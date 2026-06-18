@@ -199,14 +199,14 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
-    expect(screen.getByText(/D\. Job Analysis \(1\)/)).toBeInTheDocument()
-    expect(screen.getByText(/C\. Company Roster \(1\)/)).toBeInTheDocument()
+    expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
+    expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
-    const jobPanel = screen.getByText(/D\. Job Analysis \(1\)/).closest(".collapsible-panel") as HTMLElement
+    const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
     await waitFor(() => expect(within(jobPanel).getByText("scan_jobs")).toBeVisible())
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Collapse section" }))
-    expect(within(jobPanel).getByText("scan_jobs")).not.toBeVisible()
+    await waitFor(() => expect(within(jobPanel).queryByText("scan_jobs")).not.toBeInTheDocument())
   }, 20000)
 
 
@@ -219,8 +219,8 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
-    expect(screen.getByText(/D\. Job Analysis \(1\)/)).toBeInTheDocument()
-    expect(screen.getByText(/C\. Company Roster \(1\)/)).toBeInTheDocument()
+    expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
+    expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.queryByText(/phase/i)).not.toBeInTheDocument()
   }, 20000)
 
@@ -278,9 +278,10 @@ describe("AdminScheduledActions", () => {
       },
     })
     renderWithProviders(<ScheduledActions />)
-    await waitFor(() => expect(screen.getAllByText("∞").length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
     await expandFirstPhaseSection()
+    await waitFor(() => expect(screen.getAllByText("∞").length).toBeGreaterThan(0))
     expect(screen.getAllByText("—").length).toBeGreaterThan(0)
 
     await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "scan_jobs")
@@ -613,8 +614,8 @@ describe("AdminScheduledActions", () => {
       await selectAllCandidatesFilter()
       const rosterPanel = screen.getByText(/C\. Company Roster/).closest(".collapsible-panel") as HTMLElement
       await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
-      const row = within(rosterPanel.getByRole("table")).getAllByRole("row")[1]
-      const cells = within(row).getAllByRole("cell")
+      const row = within(rosterPanel).getByRole("table").querySelectorAll("tbody tr")[0]
+      const cells = within(row as HTMLElement).getAllByRole("cell")
       expect(cells[cells.length - 2]).toHaveTextContent("—")
     }, 20000)
 
@@ -624,7 +625,7 @@ describe("AdminScheduledActions", () => {
       await selectAllCandidatesFilter()
       const jobPanel = screen.getByText(/D\. Job Analysis/).closest(".collapsible-panel") as HTMLElement
       await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
-      const tbody = within(jobPanel.getByRole("table")).getAllByRole("rowgroup")[1]
+      const tbody = within(jobPanel).getByRole("table").querySelector("tbody") as HTMLElement
       const candidateCells = within(tbody).getAllByRole("row").map(r => within(r).getAllByRole("cell")[11].textContent)
       expect(candidateCells[0]).toContain("c1")
       expect(candidateCells[1]).toContain("c2")
