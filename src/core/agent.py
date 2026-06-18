@@ -959,15 +959,17 @@ def _capture_rubric_vector_feedback(
     from src.core.candidate import rubric_criteria_for_task
 
     criteria = rubric_criteria_for_task(candidate_id, owner_task_key)
-    expected_codes = frozenset(
+    code_to_uuid = list_rubric_vector_uuid_by_code(candidate_id, owner_task_key)
+    # DB-backed codes only — embedded-only vectors (e.g. prefilter RC) lack UUID rows (AST-724 discuss).
+    criteria_codes = frozenset(
         str(c.get("code") or "").strip().upper()
         for c in criteria
         if isinstance(c, dict) and c.get("code")
     )
+    expected_codes = frozenset(c for c in criteria_codes if c in code_to_uuid)
     if not expected_codes:
         return
     perf_dict = perf if isinstance(perf, dict) else {}
-    code_to_uuid = list_rubric_vector_uuid_by_code(candidate_id, owner_task_key)
     parsed_rows = parse_vector_reviews(perf_dict.get("vector_reviews"), expected_codes, code_to_uuid)
     if parsed_rows is None:
         try:
@@ -982,7 +984,15 @@ def _capture_rubric_vector_feedback(
         except Exception:
             logger.debug("store_feedback_block failed", exc_info=True)
         if debug:
-            _do_task_debug_logger(debug).debug_detail(
+            dbg = _do_task_debug_logger(debug)
+            dbg.debug_index(
+                func="_capture_rubric_vector_feedback",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="vector feedback unparseable",
+            )
+            dbg.debug_detail(
                 "vector feedback unparseable — stored raw FEEDBACK block"
             )
         return
@@ -998,14 +1008,15 @@ def _capture_rubric_vector_feedback(
         return
     if debug:
         dbg = _do_task_debug_logger(debug)
-        dbg.debug_index(
-            func="_capture_rubric_vector_feedback",
-            index=1,
-            total=max(len(parsed_rows), 1),
-            identifier=task_key,
-            outcome="vector feedback recorded",
-        )
-        for row in parsed_rows:
+        total = len(parsed_rows)
+        for idx, row in enumerate(parsed_rows, start=1):
+            dbg.debug_index(
+                func="_capture_rubric_vector_feedback",
+                index=idx,
+                total=total,
+                identifier=str(row.get("code") or task_key),
+                outcome="vector feedback recorded",
+            )
             dbg.debug_detail(
                 f"{row.get('code')} R/{row.get('relevance')} "
                 f"C/{row.get('clarity')} V/{row.get('verdict')} recorded"

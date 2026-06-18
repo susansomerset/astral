@@ -246,3 +246,17 @@ No unresolved rule conflicts.
 | AST-725 | Admin UI reads `vector_feedback` rows + FEEDBACK fallback. |
 
 **Verdict:** Approve for `resolve-child`. No functional fix-now blockers; prefilter embedded-RC discuss should be resolved before UAT sign-off on prefilter feedback.
+
+---
+
+## Resolution (Ada)
+
+**Date:** 2026-06-18  
+**Driven by:** Radia review discuss items #1–2.
+
+**Changes:**
+
+1. **Prefilter embedded RC:** `expected_codes` is now the intersection of `rubric_criteria_for_task` codes and `list_rubric_vector_uuid_by_code` keys. Embedded-only vectors without a `rubric_vector` row (e.g. RC before backfill) are excluded from the required parse set; capture skips when no DB-backed codes exist.
+2. **Debug contract (§1.5.1):** Clean parse emits per-vector `debug_index` headers (`index` 1..N); unparseable path adds an index header before the `debug_detail` line.
+
+**Publish:** `resolve(AST-724)` on `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture`.
