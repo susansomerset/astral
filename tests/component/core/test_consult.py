@@ -2251,6 +2251,7 @@ class TestQualifyJobListings:
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2414,6 +2415,59 @@ class TestQualifyJobListings:
         )
         assert out["failed"] == 1
         transition.assert_called()
+
+
+class TestAst733QualifyIdentityCollision:
+    @pytest.mark.asyncio
+    async def test_collision_skips_save_and_transition_counts_failed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=False))
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-1",
+                                "grades": [_pass_grade()],
+                                "job_title": "Engineer",
+                                "job_link": "https://example.com/jobs/1",
+                                "company_job_id": "dup-1",
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {
+                "astral_job_id": "job-1",
+                "state": "VALID_TITLE",
+                "company": "co",
+                "job_title": "Engineer",
+                "job_data": {"raw_job_listing": "listing text"},
+            }
+        ]
+        rubric = [_rubric_item()]
+        out = await consult_mod.qualify_job_listings(
+            "batch-collision",
+            jobs,
+            {"candidate_data": {"artifacts": {"joblist_rubric": rubric}}},
+            debug=False,
+        )
+        assert out["passed"] == 0 and out["failed"] == 1
+        save.assert_not_called()
+        transition.assert_not_called()
 
 
 class TestEvaluateJdBatch:

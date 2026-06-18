@@ -48,6 +48,14 @@ class TestIngestJobs:
         assert counts["new"] == 1 and counts["duplicates"] == 0 and counts["invalid_title"] == 1
         save.assert_called_once()
 
+    def test_counts_identity_duplicate_bounce_from_save_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod.database, "raw_job_listing_is_duplicate", lambda *args, **kwargs: False)
+        monkeypatch.setattr(tracker_mod.database, "save_job", MagicMock(return_value=False))
+
+        counts = tracker_mod.ingest_jobs("co", "batch-1", ["Engineer role listing"])
+
+        assert counts == {"new": 0, "duplicates": 1, "invalid_title": 0}
+
 
 # Branches: merge vs replace save_job_data.
 class TestIngestBoardListings:
@@ -148,6 +156,28 @@ class TestIngestBoardListings:
         assert counts == {"new": 1, "duplicates": 0, "invalid_title": 1}
         save_job.assert_called_once()
 
+    def test_counts_identity_duplicate_bounce_from_save_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_company",
+            lambda _short: {"short_name": _short},
+        )
+        monkeypatch.setattr(tracker_mod.database, "save_company", MagicMock())
+        monkeypatch.setattr(tracker_mod.database, "update_company", MagicMock())
+        monkeypatch.setattr(tracker_mod.database, "board_listing_is_duplicate", lambda _c, _b, _k: False)
+        monkeypatch.setattr(tracker_mod.database, "save_job", MagicMock(return_value=False))
+        monkeypatch.setattr(tracker_mod.database, "record_board_search_run", MagicMock())
+        counts = tracker_mod.ingest_board_listings(
+            "cand-board",
+            "tst",
+            "search-dup",
+            "batch-dup",
+            ['<a href="https://jobs.example/1">Engineer opening</a>'],
+            title_matchers=None,
+            parse_instructions={},
+        )
+        assert counts == {"new": 0, "duplicates": 1, "invalid_title": 0}
+
 
 class TestSaveJobData:
     def test_merge_and_replace_delegate_to_database(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,6 +275,85 @@ class TestInitializeJob:
         assert kwargs["job_title"] == "Title"
         assert kwargs["job_data"] == {"extra": "value"}
         assert "grades" not in (kwargs["job_data"] or {})
+
+
+# Branches: canonical lookup; delete single row; collision delete on qualify path.
+class TestAst733InitializeJobCollision:
+    def test_deletes_current_row_when_canonical_exists(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job(
+            "canonical",
+            company="acme",
+            state="NEW",
+            job_title="Engineer",
+            company_job_id="ext-1",
+            job_link="https://canonical.example/j",
+        )
+        db.save_job(
+            "collision",
+            company="acme",
+            state="NEW",
+            job_title="Temp",
+            company_job_id="old",
+            job_link="https://collision.example/y",
+        )
+
+        assert tracker_mod.initialize_job(
+            "collision",
+            "acme",
+            {
+                "company_job_id": "ext-1",
+                "job_title": "Engineer",
+                "job_link": "https://new.example/j",
+            },
+        ) is False
+        assert db.get_job("collision") is None
+        canonical = db.get_job("canonical")
+        assert canonical is not None
+        assert canonical["job_title"] == "Engineer"
+        assert canonical["company_job_id"] == "ext-1"
+
+    def test_saves_when_no_collision(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job("job-new", company="acme", state="NEW", job_link="https://x.example/y")
+
+        assert tracker_mod.initialize_job(
+            "job-new",
+            "acme",
+            {
+                "company_job_id": "ext-99",
+                "job_title": "Engineer",
+                "job_link": "https://example.com/j",
+            },
+        ) is True
+        row = db.get_job("job-new")
+        assert row is not None
+        assert row["company_job_id"] == "ext-99"
+        assert row["job_title"] == "Engineer"
+
+    def test_incomplete_identity_skips_collision_lookup(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job(
+            "job-a",
+            company="acme",
+            state="NEW",
+            job_title="Only",
+            company_job_id="x",
+            job_link="https://a.example",
+        )
+        lookup = MagicMock(return_value="canonical")
+        monkeypatch.setattr(tracker_mod.database, "get_job_id_by_identity", lookup)
+        db.save_job("job-b", company="acme", state="NEW", job_title="Pending", job_link="https://b.example")
+
+        assert tracker_mod.initialize_job(
+            "job-b",
+            "acme",
+            {"job_title": "Only", "job_link": "https://b.example"},
+        ) is True
+        lookup.assert_not_called()
 
 
 # Branches: missing job; invalid transition; score optional on transition.

@@ -273,3 +273,23 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 | Table-backed rubric helpers + grade hydration | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRubricHelpers` |
 | Roster prefilter reads | `src/core/roster.py` | existing **AST-507** / **AST-603** roster regression rows (no new file) |
 
+
+### AST-733 · AST-728
+
+**`qualify_job_listings`** passing path: when **`tracker.initialize_job`** returns **`False`** (identity collision), skip **`save_job_data`** and state transition; batch returns **`fail_state`** for that job and continues without raising.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Qualify batch collision wiring | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst733QualifyIdentityCollision` |
+
+**AST-733** narrowed run (full manifest):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_jobs.py::TestAst733JobIdentityHelpers \
+  tests/component/core/test_tracker.py::TestAst733InitializeJobCollision \
+  tests/component/core/test_consult.py::TestAst733QualifyIdentityCollision \
+  tests/component/core/test_tracker.py::TestInitializeJob \
+  tests/component/core/test_consult.py::TestQualifyJobListings::test_runs_debug_and_passing_job_path \
+  -q
+```

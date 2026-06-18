@@ -74,3 +74,32 @@ Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core
   tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
   tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job
 ```
+
+---
+
+### AST-732 · AST-728
+
+**`ingest_jobs`** and **`ingest_board_listings`** increment **`duplicates`** (not **`new`**) when **`database.save_job`** returns **`False`** on identity duplicate insert bounce. Pre-insert listing dedup unchanged. Facade **`tracker.save_job`** passthrough bool.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ingest count wiring | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestIngestJobs::test_counts_identity_duplicate_bounce_from_save_job`, `TestIngestBoardListings::test_counts_identity_duplicate_bounce_from_save_job` |
+
+See **`docs/test-bible/data/database/jobs.md`** for index + **`save_job`** bounce tests.
+
+### AST-733 · AST-728
+
+**`initialize_job`** returns **`False`** when another row already owns the complete **`(company, job_title, company_job_id)`** triple — current row deleted, canonical row untouched. Incomplete triples skip collision check. IntegrityError fallback deletes current row when **AST-732** index catches a race.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Collision delete + bool return | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst733InitializeJobCollision` |
+
+**AST-733** narrowed run (tracker slice):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_tracker.py::TestAst733InitializeJobCollision \
+  tests/component/core/test_tracker.py::TestInitializeJob \
+  -q
+```
