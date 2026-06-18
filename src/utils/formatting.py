@@ -105,6 +105,30 @@ def parse_enumerate_array(text: str) -> Dict[int, str]:
     return result
 
 
+def normalize_link(url: str) -> str:
+    """Pure PJL URL key: strip scheme, drop fragment, trim trailing slashes and index filenames."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    lower = url.lower()
+    for prefix in ("https://", "http://", "//"):
+        if lower.startswith(prefix):
+            url = url[len(prefix):]
+            lower = url.lower()
+            break
+    if "#" in url:
+        url = url.split("#", 1)[0]
+    url = url.lower()
+    while "//" in url:
+        url = url.replace("//", "/")
+    url = url.rstrip("/")
+    for suffix in ("/index.html", "/index.htm", "/index.php"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)].rstrip("/")
+            break
+    return url
+
+
 def value_to_str(val: object) -> str:
     """Coerce a resolved token value to a string for prompt insertion.
     Arrays of {label, content} objects auto-render as markdown h3 sections.

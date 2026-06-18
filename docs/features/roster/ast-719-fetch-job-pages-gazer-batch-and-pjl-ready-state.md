@@ -288,3 +288,59 @@
 | §3.5 naming | snake_case keys; task_key **`fetch_job_pages`** matches dispatch convention |
 
 No unresolved conflicts.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape`  
+**Product commits:** `04e39cf4` (Stage 1 — config), `6d0a31cf` (Stage 2 — PJL scrape helpers), `437bfe70` (Stage 3 — `fetch_job_pages_batch`), `e9df44c2` (Stage 4 — consult routing)
+
+---
+
+## Radia review (2026-06-18)
+
+**Diff:** `origin/dev...origin/sub/AST-716/fetch-job-pages-batch-scrape` (`f6f9b66`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (core) | `PJL_READY` state + transition, `GAZER_CONFIG["fetch_job_pages"]`, dispatch registry (`fetch_job_pages` schedulable, `trigger_state=PREFILTER_PASSED`), consult short-circuit before `run_company_task`. |
+| Batch shell | `fetch_job_pages_batch` mirrors `fetch_website_batch`: connectivity gate, semaphore=3, per-company `debug_index`, `{passed, failed, total}` return. |
+| Additive ledger | `_pjl_scrape_ledger_keys` + skip-in-loop tested; `_merge_pjl_scrape_record` dedupes empty/duplicate; `_assemble_pjl_content` section format matches plan template. |
+| AC / tests | Betty manifest covers gazer batch (pass/skip/fail), consult routing, roster helpers, config — all green on publish ref. |
+| §2.6 / AST-673 | No `job_site` / `update_company(..., job_site=…)` on fetch hop. |
+| Boundaries | No `select_job_page` / `find_job_page` removal / AST-720–721 scope. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `gazer.fetch_job_pages_batch` ~440–441 | AST-718 ledger entries are scheme-less (`acme.com/careers`). Plan Stage 2 requires prepending `https://` when no scheme before navigation. `get_page` calls `page.goto(url)` verbatim — scheme-less keys will fail in real Playwright. Tests mock `_scrape_pjl_page` so this slipped through. |
+| **discuss** | `GAZER_CONFIG["fetch_job_pages"]["fail_state"]` | Plan specified `NO_JOBLIST`; implementation + bible use `JOBSITE_SCRAPE_ISSUE`. Tests encode the latter — confirm Susan intent; update plan if scrape-fail terminal is deliberate. |
+| **discuss** | `gazer.fetch_job_pages_batch` vs plan `scrape_company_pjl_pages_additive` | Plan put batch orchestration in roster (mirror `scrape_company_homepage_content`); implementation keeps loop/persist/transition in gazer and imports roster `_` helpers. Works + tested, but inverts AST-701 layering. Consider public roster helper + thin gazer shell in resolve. |
+| **discuss** | `_fetch_job_links_content` ~1901+ | Plan Stage 2 required refactor to call extracted scrape helper; monolith still duplicates readiness/visible/page_links path inline. Observable monolith behavior unchanged — DRY debt. |
+| **discuss** | `pjl_nav_links` vs plan `possible_joblist_links` append | New links from PJL scrape go to `pjl_nav_links`, not ledger extension on `possible_joblist_links`. Different persistence shape than plan — confirm AST-720 consumer expectations. |
+| **advisory** | `fetch_job_pages_batch` debug ~446–451 | Per-URL `debug_index` uses `identifier=short_name` not `url_key`; nested company-index + URL-index headers — readable but not plan's `identifier=url_key` wording. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | Prepend `https://` (single branch) before `_scrape_pjl_page` when `possible_joblist_links` entry lacks scheme. |
+| discuss | Confirm `JOBSITE_SCRAPE_ISSUE` vs `NO_JOBLIST` fail terminal; align plan doc if intentional. |
+| discuss | Optional resolve: roster public additive helper + thin gazer; share scrape path with `_fetch_job_links_content`. |
+| advisory | Debug identifier on per-URL lines when touching batch debug again. |
+
+---
+
+## Resolution (2026-06-18)
+
+**Radia fix-now:** `_scrape_pjl_page` prepends `https://` when the ledger key lacks a scheme before `get_page` — scheme-less `possible_joblist_links` from AST-718 navigate correctly in real Playwright.
+
+**Discuss (no code change this pass):**
+- `fail_state` is **`JOBSITE_SCRAPE_ISSUE`** (shipped + bible + Betty manifest); plan draft `NO_JOBLIST` superseded at build.
+- Gazer-orchestrated batch + `pjl_nav_links` persistence accepted; AST-720 consumes `pjl_assembled_content` / scrape ledger.
+
+**Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape`
