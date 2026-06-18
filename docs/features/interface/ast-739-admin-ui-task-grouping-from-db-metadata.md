@@ -257,3 +257,14 @@ None (**fix-now** / **discuss**).
 | Advisory | Stale docstring still says "TASK_CONFIG first" on `_dispatch_task_key_form_meta` — grouping is now DB-backed. | `src/ui/api/api_admin.py` |
 | Advisory | Stray `# placeholder removed = "qualify_job_listings"` in test module header (Betty cleanup). | `tests/component/data/database/test_agent_tasks.py` |
 | Advisory | Duplicate section-key `useMemo` in two pages — acceptable per plan Self-Review; shared helper only if Susan asks. | `AdminTaskPrompts.tsx`, `AdminScheduledActions.tsx` |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Review ref:** Radia comment @ `c002406` — clean, no fix-now / discuss.
+
+No product changes required. §9a dry-run: `origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` merges cleanly into `origin/dev` and `origin/ftr/AST-734-organizing-tasks`.
+
+Advisory items (stale `_dispatch_task_key_form_meta` docstring, Betty test header cleanup, shared section helper) deferred — non-blocking per Radia.
