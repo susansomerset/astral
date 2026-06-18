@@ -248,13 +248,38 @@ Driven by: plan-child re-run on epic worktree; align with AST-724 FEEDBACK fallb
 Changes: Added BatchAgentDataModal FEEDBACK tab order; batch_id → modal on detail table; memoized urlBacked on candidate filter (AST-709 parity).
 ```
 
-## Review (build-child)
+## Review (Radia)
 
-**Diff:** `origin/dev...origin/sub/AST-378/AST-725-admin-vector-feedback-screen` (code tip `71fc6c1`)  
-**Stages:** 3 commits — data/config queries; admin API; React page + nav + FEEDBACK modal tab.
+**Diff:** `origin/dev...origin/sub/AST-378/AST-725-admin-vector-feedback-screen` (code tip `9aa2d71`)  
+**Reviewed:** 2026-06-18  
+**Note:** Three-dot diff includes sibling **AST-722/723/724** commits not yet on `origin/dev`; review scoped to AST-725 Stages 1–3.
+
+### What's solid
 
 | Area | Notes |
-|------|--------|
-| Data | `list_vector_feedback`, `aggregate_vector_feedback_by_vector`; owner→run key expansion via `task_keys_for_rubric_owner` |
-| API | `/api/admin/vector_feedback`, `/summary`, `/task_keys` |
-| UI | `AdminVectorFeedback` summary + detail tables; batch → `BatchAgentDataModal` |
+|------|-------|
+| Plan fidelity | `task_keys_for_rubric_owner` + `rubric_owner_task_key_choices`; `list_vector_feedback` + `aggregate_vector_feedback_by_vector`; three admin routes with `@require_admin`; `AdminVectorFeedback` summary + detail tables; memoized `urlBacked`; batch → `BatchAgentDataModal`; FEEDBACK tab order; nav + route. |
+| Owner vs run keys | Detail/summary filters expand owner → consumer + craft run keys per plan; summary joins active `rubric_vector` (`current=1`). |
+| §1.1 inventory | Header documents new query helpers. |
+| §2.1 config | Nav item + owner/run mapping in `config.py`; dist formatting uses `RUBRIC_FEEDBACK_CONFIG` value order. |
+| §3.3 layers | `api_admin` → data/utils; React via `/api/admin/*` only; no core imports in frontend. |
+| Read-only scope | No mutations; exploration UI only. |
+| Tests / bible | Betty manifest covers config helpers, admin API routes, page summary/detail/modal, FEEDBACK tab. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | `AdminVectorFeedback.tsx` | `FEEDBACK_TYPE_LABELS` / `FEEDBACK_VALUES` hardcoded in React (plan-allowed fallback); drift risk if `RUBRIC_FEEDBACK_CONFIG` changes. |
+| advisory | `api_admin._enrich_vector_feedback_row` | Adds `feedback_type_label` but detail column still shows raw `feedback_type` key. |
+| advisory | `AdminVectorFeedback.tsx` date inputs | Default 7-day window in `filters` useMemo not written to URL on first load — API calls work; URL bookmark slightly out of sync. |
+| advisory | Diff baseline | Full AST-722–724 stack in `origin/dev...` until ftr → dev. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| UAT | Smoke `/admin/vector_feedback` with candidate + owner task; batch link → FEEDBACK tab on unparseable runs. |
+| follow-up | Optional: show `feedback_type_label` in detail column; expose feedback enums via ui_config. |
+
+**Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
