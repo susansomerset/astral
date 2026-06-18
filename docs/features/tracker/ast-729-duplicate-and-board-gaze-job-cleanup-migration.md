@@ -190,3 +190,13 @@ No unresolved conflicts.
 **Review tip:** `ed23b5d`
 
 **Built:** Stages 1–3 — `cleanup_duplicate_and_board_gaze_jobs.py` with board-gaze bulk delete (`__board__*` prefix from config), identity dedupe (earliest `created_at` survivor, `astral_job_id` tie-break), `--dry-run` / phase skip / `--company` filters, operator runbook in module docstring; `py_compile` passes.
+
+---
+
+## Resolution
+
+**Date:** 2026-06-17  
+**Review:** Radia — no fix-now or discuss items; advisory only (branch-name alignment, SQLite `NULLS LAST`, orphan refs intentional).  
+**Product changes:** None — clean review pass.  
+**Publish ref:** `origin/sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration` @ `41a75860`  
+**§9a:** Merges cleanly into `origin/dev` and `origin/ftr/AST-728-duplicate-jobs-ingested`.
