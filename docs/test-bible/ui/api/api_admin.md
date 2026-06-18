@@ -86,3 +86,15 @@ Read-only **`GET /api/admin/vector_feedback`**, **`/vector_feedback/summary`**, 
 ```
 
 Routed page: **`docs/test-bible/frontend/pages.md`** (**AST-725**).
+
+### AST-738 · AST-734
+
+Manage Tasks grouping metadata reads/writes DB columns only — backward-compat `phase`/`seq` keys derived from `task_group_name` / `task_seq` until **AST-740**. `_enrich_tasks` spreads `_grouping_from_agent_task_row`; `/dispatch_tasks/task_keys` unchanged (still config-derived).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_grouping_from_agent_task_row` + GET/PUT `/tasks/<task_key>` | `src/ui/api/api_admin.py` | `TestAst738TaskGroupingApi` |
+| Obsolete assumption fix | `tests/component/ui/api/test_api_admin.py` | `TestTaskRoutes::test_preview_task_and_get_update` (mock must include DB grouping fields) |
+
+See primary data manifest: `docs/test-bible/data/database/agent_tasks.md` (**AST-738**).
+
