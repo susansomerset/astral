@@ -1293,14 +1293,16 @@ def _apply_prefilter_decoded_company_outcome(
     notes = " | ".join(
         f"{g['vector']}={g['grade']}: {g['reason']}" for g in grades if g.get("reason")
     )
-    data_to_save: Dict[str, Any] = {
-        "prefilter_grades": grades,
-        "prefilter_company_notes": notes,
-    }
+    prefilter_score = None
     if verdict_state == cfg["pass_state"] and rubric_list:
         task_cfg = TASK_CONFIG.get("prefilter_company") or {}
         _, score = _render_score(task_cfg, rubric_list, grades, 0.0)
-        data_to_save["prefilter_score"] = float(score)
+        prefilter_score = float(score)
+    data_to_save: Dict[str, Any] = {
+        "prefilter_grades": grades,
+        "prefilter_company_notes": notes or "",
+        "prefilter_score": prefilter_score,
+    }
     if nav_links_from_data:
         data_to_save["nav_links"] = nav_links_from_data
     data_to_save["possible_job_links"] = link_indices
@@ -2801,6 +2803,24 @@ def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
     return get_company_job_counts(short_name)
 
 
+def _dedupe_agent_responses_latest(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep one agent_responses ref per task_key — latest created_at wins; preserve first-seen key order."""
+    best_by_key: Dict[str, Dict[str, Any]] = {}
+    key_order: List[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        key = (entry.get("task_key") or "").strip()
+        if not key:
+            continue
+        if key not in best_by_key:
+            key_order.append(key)
+        prev = best_by_key.get(key)
+        if prev is None or (entry.get("created_at") or "") >= (prev.get("created_at") or ""):
+            best_by_key[key] = entry
+    return [best_by_key[key] for key in key_order]
+
+
 def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Expand the entity's agent_responses column entries with their block content.
 
@@ -2816,7 +2836,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     Duplicate block types get a counter suffix: NO_CACHE, NO_CACHE (2).
     """
-    entries = entity.get("agent_responses") or []
+    entries = _dedupe_agent_responses_latest(entity.get("agent_responses") or [])
     if not entries:
         return []
 
@@ -2859,7 +2879,9 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         if is_scored:
             grades_key = task_cfg.get("grades_key")
-            entry["vector_grades"] = entity.get("job_data", {}).get(grades_key) if grades_key else None
+            data_blob = entity.get("job_data") if entity.get("astral_job_id") else entity.get("company_data")
+            data_blob = data_blob if isinstance(data_blob, dict) else {}
+            entry["vector_grades"] = data_blob.get(grades_key) if grades_key else None
             entry["rubric_artifact"] = task_cfg.get("rubric_artifact")
 
         enriched.append(entry)
