@@ -48,6 +48,14 @@ class TestIngestJobs:
         assert counts["new"] == 1 and counts["duplicates"] == 0 and counts["invalid_title"] == 1
         save.assert_called_once()
 
+    def test_counts_identity_duplicate_bounce_from_save_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod.database, "raw_job_listing_is_duplicate", lambda *args, **kwargs: False)
+        monkeypatch.setattr(tracker_mod.database, "save_job", MagicMock(return_value=False))
+
+        counts = tracker_mod.ingest_jobs("co", "batch-1", ["Engineer role listing"])
+
+        assert counts == {"new": 0, "duplicates": 1, "invalid_title": 0}
+
 
 # Branches: merge vs replace save_job_data.
 class TestIngestBoardListings:
@@ -147,6 +155,28 @@ class TestIngestBoardListings:
         )
         assert counts == {"new": 1, "duplicates": 0, "invalid_title": 1}
         save_job.assert_called_once()
+
+    def test_counts_identity_duplicate_bounce_from_save_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_company",
+            lambda _short: {"short_name": _short},
+        )
+        monkeypatch.setattr(tracker_mod.database, "save_company", MagicMock())
+        monkeypatch.setattr(tracker_mod.database, "update_company", MagicMock())
+        monkeypatch.setattr(tracker_mod.database, "board_listing_is_duplicate", lambda _c, _b, _k: False)
+        monkeypatch.setattr(tracker_mod.database, "save_job", MagicMock(return_value=False))
+        monkeypatch.setattr(tracker_mod.database, "record_board_search_run", MagicMock())
+        counts = tracker_mod.ingest_board_listings(
+            "cand-board",
+            "tst",
+            "search-dup",
+            "batch-dup",
+            ['<a href="https://jobs.example/1">Engineer opening</a>'],
+            title_matchers=None,
+            parse_instructions={},
+        )
+        assert counts == {"new": 0, "duplicates": 1, "invalid_title": 0}
 
 
 class TestSaveJobData:
