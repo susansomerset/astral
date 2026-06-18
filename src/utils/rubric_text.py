@@ -6,6 +6,7 @@ whitespace, optional ``=``, ``==``, or ``:``, optional whitespace. At least two
 consecutive lines from the bottom must match.
 """
 
+import hashlib
 import re
 from typing import Dict, List
 
@@ -43,6 +44,13 @@ def parse_trailing_grade_table_lines(content: str) -> List[Dict[str, str]]:
             raise ValueError(f"invalid grade line in trailing block: {ln!r}")
         out.append({"grade": m.group(1).upper(), "description": m.group(2).strip()})
     return out
+
+
+def rubric_vector_content_fingerprint(label: str, content: str) -> str:
+    """Normalized label+content identity for rubric_vector versioning (AST-378)."""
+    combined = f"{label or ''}{content or ''}"
+    normalized = re.sub(r"[^a-z0-9]", "", combined.lower())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def ensure_criterion_grade_table(item: dict) -> None:

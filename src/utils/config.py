@@ -266,6 +266,7 @@ TASK_CONFIG = {
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
         "scored": True,
+        "grades_key": "prefilter_grades",
         "rubric_artifact": "company_prefilter",
         "pass_threshold": 0.0,
         "pass_state": "PREFILTER_PASSED",
@@ -777,7 +778,10 @@ def get_task_keys() -> list:
 # BLOCK_TYPES: content block type enum for agent_data table.
 # Maps to the prompt assembly structure in src/core/agent.py.
 # ---------------------------------------------------------------------------
-BLOCK_TYPES = ["SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE", "TASK", "RESPONSE"]
+BLOCK_TYPES = [
+    "SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE",
+    "TASK", "RESPONSE", "FEEDBACK",
+]
 
 # ---------------------------------------------------------------------------
 # ENTITY_TYPES: valid entity type strings used across agent_data, dispatch_ledger,
@@ -1065,6 +1069,52 @@ RUBRIC_ARTIFACT_KEYS = frozenset(
 
 # Rubric criteria lists (importance + grade tables) — consult rubrics plus company_prefilter (AST-359).
 RUBRIC_CRITERIA_ARTIFACT_KEYS = RUBRIC_ARTIFACT_KEYS | frozenset({"company_prefilter"})
+
+# AST-723: artifact UI keys → rubric_vector owner task_key (consumer tasks, not craft_*).
+RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY: Dict[str, str] = {
+    "company_prefilter": "prefilter_company",
+    "joblist_rubric": "qualify_job_listings",
+    "jobdesc_rubric": "evaluate_jd",
+    "do_rubric": "grade_do",
+    "get_rubric": "grade_get",
+    "like_rubric": "grade_like",
+}
+CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY: Dict[str, str] = {
+    "craft_prefilter_rubric": "company_prefilter",
+    "craft_joblist_rubric": "joblist_rubric",
+    "craft_jobdesc_rubric": "jobdesc_rubric",
+    "craft_get_rubric": "get_rubric",
+    "craft_do_rubric": "do_rubric",
+    "craft_like_rubric": "like_rubric",
+}
+_RUBRIC_OWNER_TASK_BY_CONSUMER_TASK_KEY = frozenset(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values())
+
+
+def rubric_owner_task_key(task_key: str) -> Optional[str]:
+    """Return rubric_vector owner task_key for a consumer or craft rubric task."""
+    if task_key in _RUBRIC_OWNER_TASK_BY_CONSUMER_TASK_KEY:
+        return task_key
+    artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+    if artifact:
+        return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact)
+    return None
+
+
+def task_keys_for_rubric_owner(owner_task_key: str) -> frozenset[str]:
+    """Run task_keys that write vector_feedback for this rubric owner (consumer + craft)."""
+    if not owner_task_key:
+        return frozenset()
+    keys = {owner_task_key}
+    for craft, artifact in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
+        if RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact) == owner_task_key:
+            keys.add(craft)
+    return frozenset(keys)
+
+
+def rubric_owner_task_key_choices() -> tuple[str, ...]:
+    """Sorted owner task_keys for Admin Vector Feedback task filter."""
+    return tuple(sorted(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values()))
+
 
 # AST-707: embedded company_prefilter vectors — merged before candidate artifact criteria (embedded wins on code).
 EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
@@ -2067,6 +2117,46 @@ ASTRAL_CONFIG = {
     },
 }
 
+# Rubric vector feedback type/value codes (AST-722 / AST-378). AST-724 validates envelope against this.
+RUBRIC_FEEDBACK_CONFIG = {
+    "feedback_types": {
+        "relevance": {
+            "label": "Relevance",
+            "value_codes": ("A", "O", "S", "R", "N"),
+        },
+        "clarity": {
+            "label": "Clarity",
+            "value_codes": ("A", "O", "S", "R", "N"),
+        },
+        "verdict": {
+            "label": "Verdict",
+            "value_codes": ("K", "E", "D"),
+        },
+    },
+    "value_labels": {
+        "A": "Always",
+        "O": "Often",
+        "S": "Sometimes",
+        "R": "Rarely",
+        "N": "Never",
+        "K": "Keep",
+        "E": "Edit",
+        "D": "Drop",
+    },
+    "prompt_suffix": (
+        "Vector rubric review (agent_performance only — not agent_payload): include "
+        "vector_reviews as a JSON list of strings. One string per rubric vector code "
+        "you were given, format CODE + R + {A|O|S|R|N} + C + {A|O|S|R|N} + V + {K|E|D} "
+        '(example: "Q1RAOCVK"). agent_performance.status reflects only whether you '
+        'could perform the task — never "failure" because grades or verdicts were harsh.'
+    ),
+}
+
+
+def is_rubric_backed_task(task_key: str) -> bool:
+    """True when task_key is a consumer or craft rubric task (AST-724)."""
+    return rubric_owner_task_key(task_key) is not None
+
 
 def importance_multiplier(n: int) -> float:
     """Return the configured multiplier for rubric importance (AST-359 / AST-358)."""
@@ -2457,6 +2547,7 @@ NAV_CONFIG = [
             {"label": "Scheduled Actions", "path": "/admin/scheduled_actions"},
             {"label": "Execution History", "path": "/admin/performance_monitor"},
             {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+            {"label": "Vector Feedback", "path": "/admin/vector_feedback"},
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
             {"label": "Manage Agents", "path": "/admin/agent_prompts"},
@@ -3063,14 +3154,10 @@ TOKEN_SOURCES = {
     # artifacts (AI-produced / human-revised)
     "BASE_RESUME":          {"source": "candidate", "path": "artifacts.base_resume", "serialize": "resume_sections_json"},
     "BIO_SUMMARY":          {"source": "candidate", "path": "context.bio_summary"},
-    "COMPANY_PREFILTER":    {"source": "candidate", "path": "artifacts.company_prefilter"},
     # Resolved from company_search_terms table via agent overlay (AST-525); path kept for registry.
     "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms"},
-    "JOBLIST_RUBRIC":       {"source": "candidate", "path": "artifacts.joblist_rubric"},
-    "JOBDESC_RUBRIC":       {"source": "candidate", "path": "artifacts.jobdesc_rubric"},
-    "GET_RUBRIC":           {"source": "candidate", "path": "artifacts.get_rubric"},
-    "LIKE_RUBRIC":          {"source": "candidate", "path": "artifacts.like_rubric"},
-    "DO_RUBRIC":            {"source": "candidate", "path": "artifacts.do_rubric"},
+    # Resolved from rubric_vector rows for active task owner (AST-723).
+    "RUBRIC_VECTORS":       {"source": "rubric"},
 
     # config-driven (resolved via named function, not dot-path)
     "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema"},
@@ -3102,10 +3189,10 @@ TOKEN_SOURCES = {
 # AST-513: phase token → persisted job_data grades_key + rubric artifact key.
 JOB_TOKEN_CONFIG = {
     "analysis_phases": {
-        "ANALYSIS_JD":   {"grades_key": "jd_grades",   "rubric_artifact": "jobdesc_rubric"},
-        "ANALYSIS_DO":   {"grades_key": "do_grades",   "rubric_artifact": "do_rubric"},
-        "ANALYSIS_GET":  {"grades_key": "get_grades",  "rubric_artifact": "get_rubric"},
-        "ANALYSIS_LIKE": {"grades_key": "like_grades", "rubric_artifact": "like_rubric"},
+        "ANALYSIS_JD":   {"grades_key": "jd_grades",   "rubric_artifact": "jobdesc_rubric", "rubric_owner_task_key": "evaluate_jd"},
+        "ANALYSIS_DO":   {"grades_key": "do_grades",   "rubric_artifact": "do_rubric", "rubric_owner_task_key": "grade_do"},
+        "ANALYSIS_GET":  {"grades_key": "get_grades",  "rubric_artifact": "get_rubric", "rubric_owner_task_key": "grade_get"},
+        "ANALYSIS_LIKE": {"grades_key": "like_grades", "rubric_artifact": "like_rubric", "rubric_owner_task_key": "grade_like"},
     },
 }
 
@@ -3292,6 +3379,18 @@ def resolve_tokens(
         if spec["source"] == "pronoun":
             pref = _pronoun_preference_key(candidate_data)
             return PRONOUN_FORMS[pref][name]
+        if spec["source"] == "rubric":
+            from src.core.candidate import rubric_criteria_for_token
+
+            owner = rubric_owner_task_key(task_key)
+            if not owner:
+                _log.warning("Token {$%s} unresolved — task %r has no rubric owner", name, task_key)
+                return ""
+            cid = (candidate_data or {}).get("_astral_candidate_id") or ""
+            if not cid:
+                _log.warning("Token {$%s} unresolved — missing candidate id (task=%s)", name, task_key)
+                return ""
+            return _value_to_str(rubric_criteria_for_token(cid, owner))
         return match.group(0)
     return _TOKEN_RE.sub(_replace, text)
 

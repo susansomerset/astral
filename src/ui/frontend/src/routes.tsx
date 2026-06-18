@@ -45,6 +45,7 @@ import WritingPreferences from "./pages/CandidateWritingPreferences"
 import ScheduledActions from "./pages/AdminScheduledActions"
 import PerformanceMonitor from "./pages/AdminPerformanceMonitor"
 import AgentTimesheets from "./pages/AdminAgentTimesheets"
+import VectorFeedback from "./pages/AdminVectorFeedback"
 import CostReconciliation from "./pages/AdminCostReconciliation"
 import ManageCandidates from "./pages/AdminManageCandidates"
 import AgentPrompts from "./pages/AdminAgentPrompts"
@@ -107,6 +108,7 @@ const routes: RouteObject[] = [
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },
           { path: "admin/performance_monitor", element: <AdminRoute><PerformanceMonitor /></AdminRoute> },
           { path: "admin/agent_timesheets", element: <AdminRoute><AgentTimesheets /></AdminRoute> },
+          { path: "admin/vector_feedback", element: <AdminRoute><VectorFeedback /></AdminRoute> },
           { path: "admin/cost_reconciliation", element: <AdminRoute><CostReconciliation /></AdminRoute> },
           { path: "admin/manage_candidates", element: <AdminRoute><ManageCandidates /></AdminRoute> },
           { path: "admin/agent_prompts", element: <AdminRoute><AgentPrompts /></AdminRoute> },

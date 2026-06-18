@@ -5,7 +5,7 @@ import api from "../lib/api"
 import { sumCalcCostComponents } from "../lib/timesheetCost"
 
 // Block types in canonical display order (matches BLOCK_TYPES in config.py)
-const BLOCK_TYPE_ORDER = ["SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE", "TASK", "RESPONSE"]
+const BLOCK_TYPE_ORDER = ["SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE", "TASK", "RESPONSE", "FEEDBACK"]
 
 interface AgentDataBlock {
   agent_data_id: string

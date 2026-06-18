@@ -16,6 +16,8 @@ from src.data.database import (
     get_dispatch_row_or_seed_preview_meta,
     ALLOWED_CONFIG_TABLES,
     apply_config_table_upsert,
+    list_vector_feedback,
+    aggregate_vector_feedback_by_vector,
 )
 
 from src.core.consult import list_timesheets
@@ -56,6 +58,8 @@ from src.utils.config import (
     resolve_brain_setting_to_anthropic_agent_key,
     resolve_brain_setting_to_deepseek_tier_meta,
     validate_allowed_brain_setting,
+    RUBRIC_FEEDBACK_CONFIG,
+    rubric_owner_task_key_choices,
 )
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
 from src.core.agent import (
@@ -538,6 +542,92 @@ def export_timesheets_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=timesheets.csv"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Vector feedback (AST-725)
+# ---------------------------------------------------------------------------
+
+def _feedback_value_label(value: str) -> str:
+    return (RUBRIC_FEEDBACK_CONFIG.get("value_labels") or {}).get(value, value)
+
+
+def _feedback_type_label(feedback_type: str) -> str:
+    meta = (RUBRIC_FEEDBACK_CONFIG.get("feedback_types") or {}).get(feedback_type) or {}
+    return meta.get("label") or feedback_type
+
+
+_VECTOR_FEEDBACK_COLUMNS = [
+    {"key": "created_at", "label": "Date", "type": "datetime"},
+    {"key": "candidate_id", "label": "Candidate", "type": "str"},
+    {"key": "task_key", "label": "Task", "type": "str"},
+    {"key": "batch_id", "label": "Batch", "type": "str"},
+    {"key": "vector_code", "label": "Vector", "type": "str"},
+    {"key": "vector_label", "label": "Label", "type": "str"},
+    {"key": "feedback_type", "label": "Type", "type": "str"},
+    {"key": "value", "label": "Value", "type": "str"},
+    {"key": "value_label", "label": "Value label", "type": "str"},
+    {"key": "agent_data_id", "label": "Agent data", "type": "str"},
+    {"key": "vector_feedback_id", "label": "Feedback ID", "type": "str"},
+]
+
+_VECTOR_FEEDBACK_SUMMARY_COLUMNS = [
+    {"key": "code", "label": "Vector", "type": "str"},
+    {"key": "label", "label": "Label", "type": "str"},
+    {"key": "importance", "label": "Importance", "type": "int"},
+    {"key": "batch_count", "label": "Batches", "type": "int"},
+    {"key": "feedback_row_count", "label": "Feedback rows", "type": "int"},
+    {"key": "relevance_dist", "label": "Relevance", "type": "str"},
+    {"key": "clarity_dist", "label": "Clarity", "type": "str"},
+    {"key": "verdict_dist", "label": "Verdict", "type": "str"},
+]
+
+
+def _vector_feedback_filters() -> dict:
+    keys = (
+        "candidate_id", "owner_task_key", "task_key", "batch_id",
+        "vector_code", "feedback_type", "value", "date_from", "date_to",
+    )
+    out = {k: request.args[k] for k in keys if request.args.get(k)}
+    if out.get("owner_task_key"):
+        out.pop("task_key", None)
+    return out
+
+
+def _enrich_vector_feedback_row(row: dict) -> dict:
+    out = dict(row)
+    out["value_label"] = _feedback_value_label(str(out.get("value") or ""))
+    ft = str(out.get("feedback_type") or "")
+    out["feedback_type_label"] = _feedback_type_label(ft)
+    return out
+
+
+@admin_bp.route("/vector_feedback")
+@require_admin
+def list_vector_feedback_admin():
+    rows = [_enrich_vector_feedback_row(r) for r in list_vector_feedback(**_vector_feedback_filters())]
+    if request.args.get("req_dict"):
+        return jsonify({"columns": _VECTOR_FEEDBACK_COLUMNS, "rows": rows})
+    return jsonify(rows)
+
+
+@admin_bp.route("/vector_feedback/summary")
+@require_admin
+def list_vector_feedback_summary():
+    candidate_id = request.args.get("candidate_id")
+    owner_task_key = request.args.get("owner_task_key") or request.args.get("task_key")
+    if not candidate_id or not owner_task_key:
+        return jsonify({"error": "candidate_id and owner_task_key required"}), 400
+    rows = aggregate_vector_feedback_by_vector(candidate_id, owner_task_key)
+    if request.args.get("req_dict"):
+        return jsonify({"columns": _VECTOR_FEEDBACK_SUMMARY_COLUMNS, "rows": rows})
+    return jsonify(rows)
+
+
+@admin_bp.route("/vector_feedback/task_keys")
+@require_admin
+def list_vector_feedback_task_keys():
+    return jsonify(list(rubric_owner_task_key_choices()))
 
 
 # ---------------------------------------------------------------------------
