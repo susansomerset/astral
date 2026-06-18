@@ -111,3 +111,34 @@ class TestAst732SaveJobDuplicateBounce:
         row = db.get_job("job-1")
         assert row is not None
         assert row["state"] == "RECOMMENDED"
+
+
+# Branches: identity lookup; single-row delete (post-qualify collision path).
+class TestAst733JobIdentityHelpers:
+    def test_get_job_id_by_identity_finds_canonical_excludes_self(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job(
+            "canonical", company="acme", state="NEW", job_title="Eng", company_job_id="99"
+        )
+        db.save_job(
+            "collision", company="acme", state="NEW", job_title="Other", company_job_id="old"
+        )
+        assert db.get_job_id_by_identity("acme", "Eng", "99") == "canonical"
+        assert (
+            db.get_job_id_by_identity("acme", "Eng", "99", exclude_astral_job_id="canonical")
+            is None
+        )
+        assert (
+            db.get_job_id_by_identity("acme", "Eng", "99", exclude_astral_job_id="collision")
+            == "canonical"
+        )
+
+    def test_delete_job_removes_row(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job("job-del", company="acme", state="NEW", job_title="X")
+        assert db.delete_job("job-del") is True
+        assert db.get_job("job-del") is None
+        assert db.delete_job("") is False
+        assert db.delete_job("missing") is False

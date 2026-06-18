@@ -25,3 +25,13 @@ Partial unique index **`idx_job_identity_unique`** on **`(company, job_title, co
   tests/component/core/test_tracker.py::TestIngestJobs::test_counts_new_and_duplicate_rows \
   -q
 ```
+
+### AST-733 · AST-728
+
+**`get_job_id_by_identity`** and **`delete_job`** support post-qualify collision handling. **`delete_job`** does not cascade related records.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Identity lookup + single-row delete | `src/data/database.py` | `tests/component/data/database/test_jobs.py::TestAst733JobIdentityHelpers` |
+
+See **`docs/test-bible/core/tracker.md`** and **`docs/test-bible/core/consult.md`** for **`initialize_job`** / **`qualify_job_listings`** wiring.
