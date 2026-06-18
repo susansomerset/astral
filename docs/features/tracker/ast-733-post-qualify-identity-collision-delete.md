@@ -119,3 +119,13 @@ When `qualify_job_listings` delivers structured metadata (`company_job_id`, `job
 - **§3.3 Imports:** `consult` → `tracker` → `database` (unchanged layering); `sqlite3` in tracker for IntegrityError fallback only.
 - **Data layer no log:** Lookup/delete return values only.
 - **No conflicts** requiring plan revision.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-728/AST-733-post-qualify-identity-collision-delete`  
+**Diff baseline:** `origin/dev`  
+**Review tip:** `00f6d163`
+
+**Built:** Stages 1–4 — `get_job_id_by_identity` + `delete_job` in database; `initialize_job` collision delete with bool return and IntegrityError fallback; `qualify_job_listings` skips save/transition on collision (returns fail_state); stacked AST-732; compile passes.
