@@ -2127,7 +2127,19 @@ RUBRIC_FEEDBACK_CONFIG = {
         "E": "Edit",
         "D": "Drop",
     },
+    "prompt_suffix": (
+        "Vector rubric review (agent_performance only — not agent_payload): include "
+        "vector_reviews as a JSON list of strings. One string per rubric vector code "
+        "you were given, format CODE + R + {A|O|S|R|N} + C + {A|O|S|R|N} + V + {K|E|D} "
+        '(example: "Q1RAOCVK"). agent_performance.status reflects only whether you '
+        'could perform the task — never "failure" because grades or verdicts were harsh.'
+    ),
 }
+
+
+def is_rubric_backed_task(task_key: str) -> bool:
+    """True when task_key is a consumer or craft rubric task (AST-724)."""
+    return rubric_owner_task_key(task_key) is not None
 
 
 def importance_multiplier(n: int) -> float:
