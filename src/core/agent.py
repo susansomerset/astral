@@ -292,7 +292,11 @@ def _job_context_for_call(
     builder = getattr(_consult, "build_job_token_context", None)
     if builder is None:
         return None
-    return builder(_job_row_from_ctx(ctx or {}, str(index)), cd)
+    cd_copy = dict(cd)
+    cid = str((ctx or {}).get("astral_candidate_id") or "")
+    if cid:
+        cd_copy["_astral_candidate_id"] = cid
+    return builder(_job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid)
 
 
 def resolved_task_system(
@@ -1319,6 +1323,7 @@ async def do_task(
         from src.core.candidate import company_search_terms_joined_text
         joined = company_search_terms_joined_text(candidate_id)
         cd = dict(cd)
+        cd["_astral_candidate_id"] = candidate_id
         arts = dict(cd.get("artifacts") or {})
         arts["company_search_terms"] = joined
         cd["artifacts"] = arts

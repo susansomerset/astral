@@ -1114,10 +1114,10 @@ def clear_company_batch(batch_id: str) -> int:
 # ---- Prefilter ----
 
 def _vector_labels_from_ctx(ctx: Optional[Dict[str, Any]]) -> Dict[str, str]:
-    from src.core.consult import _rubric_criteria_from_cd
+    from src.core.candidate import rubric_criteria_for_task
 
-    cd = (ctx or {}).get("candidate_data") or {}
-    criteria = _rubric_criteria_from_cd(cd, "company_prefilter")
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "")
+    criteria = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
     return {item["code"]: item["label"] for item in criteria if item.get("code") and item.get("label")}
 
 
@@ -1258,12 +1258,13 @@ def _apply_prefilter_decoded_company_outcome(
     from src.core.consult import (
         _render_pass_fail,
         _render_score,
-        _rubric_criteria_from_cd,
         _hydrate_grade_reasons_from_rubric,
     )
+    from src.core.candidate import rubric_criteria_for_task
 
     grades = flat.get("grades") or []
-    rubric_list = _rubric_criteria_from_cd((ctx or {}).get("candidate_data") or {}, "company_prefilter")
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "")
+    rubric_list = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
     if grades and rubric_list:
         _hydrate_grade_reasons_from_rubric(grades, rubric_list)
     verdict_state = _render_pass_fail("prefilter_company", grades)
@@ -1469,7 +1470,8 @@ async def _run_batch_company_prefilter(
 ) -> Dict[str, Any]:
     """Pattern-A company prefilter batch: one do_task, position-indexed decode, shared outcome helper."""
     from src.core import tracker
-    from src.core.consult import _hydrate_response_jobs_grade_reasons, _rubric_criteria_from_cd
+    from src.core.consult import _hydrate_response_jobs_grade_reasons
+    from src.core.candidate import rubric_criteria_for_task
 
     agent_task_key = "prefilter_company"
     cfg = ROSTER_CONFIG["prefilter"]
@@ -1518,7 +1520,8 @@ async def _run_batch_company_prefilter(
             index_values=[f"{i:03d}" for i in range(len(batch_companies))],
         )
 
-    rubric_list = _rubric_criteria_from_cd((ctx or {}).get("candidate_data") or {}, "company_prefilter")
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "")
+    rubric_list = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
     vector_labels = _vector_labels_from_ctx(ctx)
     task_ctx = {
         **(ctx or {}),
@@ -2591,16 +2594,16 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
         except ValueError:
             return None
         grades = flat.get("grades") or []
-        from src.core.candidate import get_candidate
-        from src.core.consult import _hydrate_grade_reasons_from_rubric, _rubric_criteria_from_cd
+        from src.core.consult import _hydrate_grade_reasons_from_rubric
+        from src.core.candidate import get_candidate, rubric_criteria_for_task
 
         company_row = get_company(short_name) or {}
         candidate_id = company_row.get("candidate_id")
-        cd: Dict[str, Any] = {}
-        if candidate_id:
-            cand = get_candidate(candidate_id) or {}
-            cd = {"artifacts": cand.get("artifacts") or {}}
-        rubric_list = _rubric_criteria_from_cd(cd, "company_prefilter")
+        rubric_list = (
+            rubric_criteria_for_task(str(candidate_id), "prefilter_company")
+            if candidate_id
+            else []
+        )
         if grades and rubric_list:
             try:
                 _hydrate_grade_reasons_from_rubric(grades, rubric_list)
