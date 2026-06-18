@@ -953,13 +953,23 @@ class TestAst507EncodedPrefilterConfig:
     def test_company_states_and_transitions(self) -> None:
         assert "PREFILTER_PASSED" in cfg.COMPANY_STATES
         assert "PREFILTER_FAILED" in cfg.COMPANY_STATES
+        assert "NO_PREFILTER_JOBLISTS" in cfg.COMPANY_STATES
         assert "WEBSITE_FOUND_RETRY" in cfg.COMPANY_STATES
         assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "WEBSITE_FOUND_RETRY"
+        assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "NO_PREFILTER_JOBLISTS"
+        assert cfg.ROSTER_CONFIG["prefilter"]["pjl_url_data_key"] == "possible_joblist_links"
+        assert (
+            cfg.ROSTER_CONFIG["company_data_keys"]["possible_joblist_links"]
+            == "possible_joblist_links"
+        )
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("WEBSITE_FOUND", "PREFILTER_PASSED") in transitions
         assert ("WEBSITE_FOUND", "PREFILTER_FAILED") in transitions
+        assert ("WEBSITE_FOUND", "NO_PREFILTER_JOBLISTS") in transitions
         assert ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY") in transitions
         assert ("WEBSITE_FOUND", "ERROR_PREFILTER") in transitions
+        assert ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS") in transitions
+        assert "NO_PREFILTER_JOBLISTS" not in cfg.ROSTER_CONFIG["prefilter"]["pass_states"]
 
     def test_prefilter_company_grades_encoded(self) -> None:
         entry = cfg.TASK_CONFIG["prefilter_company"]
