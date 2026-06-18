@@ -365,3 +365,19 @@ No unresolved rule conflicts.
 | ops | Run `--dry-run` backfill in staging; AC#9 vector-count verify before any `--purge-artifacts --confirm-purge`. |
 
 **Verdict:** Approve for `resolve-child`. No fix-now blockers.
+
+---
+
+## Resolution (Ada)
+
+**Resolved:** 2026-06-18 · publish tip after resolve
+
+| Radia item | Action |
+|------------|--------|
+| discuss — `_rubric_vector_backfill_swept` dead guard | Removed from `database.py` and `tests/component/data/conftest.py` reset list. No startup sweep in AST-722 scope (backfill is CLI-only). |
+| discuss — `_ensure_vector_feedback_table` not called on AST-722 paths | Deferred to **AST-724** first feedback write; DDL + test lazy-create remain. |
+| discuss — backfill all-or-nothing idempotency | Accepted: dry-run + AC#9 verify before purge; no transaction wrap in this ticket. |
+| advisory — purge direct SQL UPDATE | No change — implementation correct vs `_deep_merge` delete limitation. |
+| advisory — extra blank lines | Trimmed before rubric_vector section. |
+
+**Commits:** `resolve(AST-722): …` on `origin/sub/AST-378/AST-722-rubric-storage-schema-backfill`.

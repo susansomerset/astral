@@ -26,7 +26,6 @@ _SCHEMA_FLAGS = (
     "_company_search_terms_migration_swept",
     "_rubric_vector_schema_ensured",
     "_vector_feedback_schema_ensured",
-    "_rubric_vector_backfill_swept",
 )
 
 

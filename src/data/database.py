@@ -163,7 +163,6 @@ _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
 _vector_feedback_schema_ensured = False
-_rubric_vector_backfill_swept = False
 _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
@@ -3264,8 +3263,6 @@ def sync_company_search_terms(candidate_id: str, terms: List[str]) -> None:
             conn.close()
 
     _run_with_retry(_with_conn)
-
-
 
 
 # ---- rubric_vector / vector_feedback (AST-722) ----
