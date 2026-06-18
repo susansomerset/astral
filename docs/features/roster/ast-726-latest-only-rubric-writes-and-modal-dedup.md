@@ -165,6 +165,17 @@ No unresolved conflicts.
 ## Review
 
 **Branch:** `origin/sub/AST-717/AST-726-latest-only-rubric-writes-and-modal-dedup`  
-**Build tip:** `ce43c29`
+**Diff baseline:** `origin/dev`  
+**Review tip:** `53a4547`
 
 **Built:** Stages 1–4 — `append_agent_response` upsert by `task_key`; latest-only rubric outcome fields on job/company blobs; `get_entity_agent_story` dedupe + company `vector_grades`; `prefilter_company` `grades_key`; §2.4.1 rules update.
+
+### Radia review (AST-726)
+
+| | |
+|---|---|
+| **What's solid** | Plan stages 1–4 match diff: `database.append_agent_response` upsert + `ValueError` on missing `task_key`; consult notes always persisted (empty clears stale); `qualify_job_listings` `joblist_score` on scored pass; prefilter `prefilter_score`/`prefilter_company_notes` always written (`None`/`""` clears); `_dedupe_agent_responses_latest` + company `vector_grades` from `company_data`; `grades_key` on `prefilter_company`; §2.4.1 rules updated. Layer/batch rules clean — no new cross-layer imports; transitions unchanged. Betty manifest covers upsert, dedupe, notes clear, prefilter score clear. |
+| **Issues** | None **fix-now**. |
+| **Discuss** | Write-path upsert appends replaced `task_key` at array tail — rerunning one phase can reorder modal tabs when other keys were listed earlier (read-path dedupe preserves post-write array order; cosmetic only). |
+| **Advisory** | `qualify_job_listings` fail path omits `joblist_score` when score is non-numeric (test documents intent); stale score could linger if a job passed joblist then fails on rerun — prefilter explicitly clears via `None`; align in a follow-up only if UAT shows confusion. Legacy `agent_responses` rows with empty `task_key` are skipped by dedupe (new writes fail loud); **AST-727** backfill scope. |
+| **Recommended actions** | Hedy: **resolve-child** — no code changes required unless Susan wants tab-order stability or joblist fail score clear in this epic. |
