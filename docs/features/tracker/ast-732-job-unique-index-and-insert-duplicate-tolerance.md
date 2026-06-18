@@ -123,6 +123,39 @@ Add a durable unique identity constraint on the `job` table and make **insert-ti
 
 **Branch:** `origin/sub/AST-728/AST-732-job-unique-index-and-insert-duplicate-tolerance`  
 **Diff baseline:** `origin/dev`  
-**Review tip:** `de01c479`
+**Review tip:** `d469273`
 
-**Built:** Stages 1–4 — partial unique index `idx_job_identity_unique` in `_ensure_job_schema`; `save_job` returns bool with INSERT-only identity duplicate bounce; `ingest_jobs` / `ingest_board_listings` count bounces in `duplicates`; tracker `save_job` facade passthrough; compile passes.
+**Built:** Stages 1–4 — partial unique index `idx_job_identity_unique` in `_ensure_job_schema`; `save_job` returns bool with INSERT-only identity duplicate bounce (`conn.rollback()` on bounce); `ingest_jobs` / `ingest_board_listings` count bounces in `duplicates`; tracker `save_job` facade passthrough; Betty manifest + component tests on `origin/tests` merge.
+
+### What's solid
+
+- Plan fidelity: partial unique index SQL matches spec (complete triple only); idempotent lazy migration with no IntegrityError swallow on index build; `_is_job_identity_unique_violation` helper with narrow message match; INSERT-only catch with rollback; UPDATE path still raises for AST-733 collisions.
+- Ingest wiring: `ingest_jobs` and `ingest_board_listings` check `save_job` bool after existing pre-insert dedup; return dict shape preserved.
+- Layer rules: data layer returns bool, no logging added; core interprets signal; no new cross-layer imports.
+- Tests: index creation/idempotency, insert bounce vs incomplete triple vs update path, ingest duplicate count wiring — aligned with test-bible manifest.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| — | — | No fix-now items. |
+
+### Recommended actions
+
+| Severity | Location | Action |
+| --- | --- | --- |
+| advisory | diff vs `origin/dev` | Diff includes AST-729 test-bible + component tests (sibling not on dev yet) via `merge-tests` — expected epic stacking; not AST-732 product scope. |
+| advisory | operator runbook | Environments with duplicate complete triples must run AST-729 cleanup before index migration — already documented in plan prerequisite. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Resolved by:** Hedy (resolve-child)
+
+Radia posted **no fix-now** items. Advisory notes (sibling AST-729 tests stacked via `merge-tests`; AST-729 cleanup prerequisite before index migration) accepted as documented.
+
+**§9a dry-run:** `origin/sub/AST-728/AST-732-job-unique-index-and-insert-duplicate-tolerance` @ `5559ade` merges cleanly into **`origin/dev`** and **`origin/ftr/duplicate-jobs-ingested`**.
+
+**Product changes in resolve:** none — review clean. Manifest re-run: 11 passed.
