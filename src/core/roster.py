@@ -1089,6 +1089,7 @@ def _apply_prefilter_decoded_company_outcome(
     ctx: Optional[Dict[str, Any]],
     *,
     nav_links_from_data: str = "",
+    debug: bool = False,
 ) -> str:
     """Shared post-decode prefilter outcome: hydrate, verdict, persist, transition."""
     from src.core.consult import (
@@ -1149,6 +1150,17 @@ def _apply_prefilter_decoded_company_outcome(
         data_to_save["culture_links_to_explore"] = flat.get("culture_links_to_explore") or []
     save_company_data(short_name, data_to_save)
     transition_company_state(short_name, new_state)
+    if debug:
+        logger.debug_index(
+            func="roster._apply_prefilter_decoded_company_outcome",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"prefilter routing short_name={short_name} -> {new_state}",
+        )
+        logger.debug_detail(
+            f"link_indices={link_indices!r} hydrated_count={len(pjl_urls)} decomposed={on_decomposed}"
+        )
     return new_state
 
 
@@ -1230,6 +1242,7 @@ async def prefilter_company(
                 cfg,
                 ctx,
                 nav_links_from_data=enumerated_nav_links,
+                debug=debug,
             )
         except ValueError as outcome_err:
             return _prefilter_fail(short_name, cfg, result, str(outcome_err))
@@ -1410,6 +1423,7 @@ async def _run_batch_company_prefilter(
                 cfg,
                 ctx,
                 nav_links_from_data=nav_links,
+                debug=debug,
             )
         except Exception as e:
             bad_grades.add(aid)
