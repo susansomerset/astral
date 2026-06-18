@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -37,6 +38,24 @@ _JOB_STATE_LIST = list(JOB_STATES.keys())
 _JOB_COLUMN_FIELDS = {"company_job_id", "job_title", "job_link"}  # initialize_job: parsed_job keys -> job table columns
 _JOB_REQUIRED_COLUMN_FIELDS = {"job_title", "job_link"}           # subset that must be present
 _BOARD_LISTING_LINK_RE = re.compile(r'''href\s*=\s*["']([^"']+)["']''', re.I)
+
+
+def _identity_triple_complete(company_job_id: Optional[str], job_title: Optional[str]) -> bool:
+    return bool(
+        company_job_id and job_title
+        and str(company_job_id).strip()
+        and str(job_title).strip()
+    )
+
+
+def _is_job_identity_unique_violation(exc: sqlite3.IntegrityError) -> bool:
+    msg = str(exc).lower()
+    return "idx_job_identity_unique" in msg or (
+        "unique constraint failed" in msg
+        and "job.company" in msg
+        and "job.job_title" in msg
+        and "job.company_job_id" in msg
+    )
 
 # ---- Ingest ----
 
@@ -488,10 +507,11 @@ def initialize_job(
     astral_job_id: str,
     company: str,
     parsed_job: Dict[str, Any],
-    ) -> None:
+    ) -> bool:
     """Populate structured job fields from AI-parsed thumbprint data. One-time per job.
     Splits parsed_job: column fields -> top-level job columns, everything else -> merge into job_data.
-    Consult calls initialize_job and transition_job_state separately (no composite)."""
+    Consult calls initialize_job and transition_job_state separately (no composite).
+    Returns True when saved; False when current row deleted due to identity collision."""
     # These columns are NULL at ingest and can't be NOT NULL in the schema due to lifecycle;
     # initialize_job is the enforcement point the database can't provide.
     missing = _JOB_REQUIRED_COLUMN_FIELDS - parsed_job.keys()
@@ -504,14 +524,33 @@ def initialize_job(
     # Flatten nested job_data dict — decoded payloads pack extras there; merge into top-level metadata
     if isinstance(metadata.get("job_data"), dict):
         metadata.update(metadata.pop("job_data"))
-    database.save_job(
-        astral_job_id,
-        company_job_id=col_kwargs["company_job_id"],
-        job_title=col_kwargs["job_title"],
-        job_link=col_kwargs["job_link"],
-        job_data=metadata if metadata else None,
-        merge=True,
-    )
+    cid = col_kwargs.get("company_job_id")
+    title = col_kwargs.get("job_title")
+    if _identity_triple_complete(cid, title):
+        canonical = database.get_job_id_by_identity(
+            company,
+            str(title).strip(),
+            str(cid).strip(),
+            exclude_astral_job_id=astral_job_id,
+        )
+        if canonical is not None:
+            database.delete_job(astral_job_id)
+            return False
+    try:
+        database.save_job(
+            astral_job_id,
+            company_job_id=col_kwargs["company_job_id"],
+            job_title=col_kwargs["job_title"],
+            job_link=col_kwargs["job_link"],
+            job_data=metadata if metadata else None,
+            merge=True,
+        )
+    except sqlite3.IntegrityError as e:
+        if _is_job_identity_unique_violation(e):
+            database.delete_job(astral_job_id)
+            return False
+        raise
+    return True
 
 # ---- State transition ----
 
