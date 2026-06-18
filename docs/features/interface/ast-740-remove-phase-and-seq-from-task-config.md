@@ -144,7 +144,7 @@ Follow **build-child** stage commits on epic worktree; publish each `code(AST-74
 
 ## Review stub
 
-**Built:** `origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` @ _(pending publish)_
+**Built:** `origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` @ `1fb8582`
 
 **Product:** Removed all `phase`/`seq` from `TASK_CONFIG`; added `JOB_ARTIFACT_ENTRY_TASK_KEYS`; consult routes artifact hops via explicit frozenset; dropped backward-compat `phase`/`seq` from `_grouping_from_agent_task_row`.
 
