@@ -24,6 +24,9 @@ _SCHEMA_FLAGS = (
     "_board_search_run_schema_ensured",
     "_company_search_terms_schema_ensured",
     "_company_search_terms_migration_swept",
+    "_rubric_vector_schema_ensured",
+    "_vector_feedback_schema_ensured",
+    "_rubric_vector_backfill_swept",
 )
 
 

@@ -2895,3 +2895,113 @@ class TestAst513JobTokenContext:
         assert ctx["RESUME_SECTION_CATALOG"]
         assert "professional_summary:" in ctx["RESUME_SECTION_CATALOG"]
         assert "job_agent_editable=" in ctx["RESUME_SECTION_CATALOG"]
+
+
+class TestAst726LatestOnlyConsultOutcomes:
+    """AST-726: latest-only rubric outcome fields on job blobs."""
+
+    def test_apply_render_verdict_always_persists_notes_including_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        cfg = consult_mod._consult_orchestration("consult_do")
+        ctx = {"candidate_data": {"artifacts": {"do_rubric": [_rubric_item()]}}}
+        consult_mod._apply_render_verdict_decoded_job(
+            "consult_do",
+            "job-726",
+            {"grades": [_pass_grade()], "notes": ""},
+            cfg,
+            ctx,
+        )
+        assert save.call_args.args[1]["do_notes"] == ""
+
+    @pytest.mark.asyncio
+    async def test_qualify_job_listings_persists_joblist_score_on_pass(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-726",
+                                "grades": [_pass_grade()],
+                                "job_title": "Engineer",
+                                "job_link": "https://example.com/jobs/726",
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {
+                "astral_job_id": "job-726",
+                "state": "VALID_TITLE",
+                "company": "co",
+                "job_title": "Engineer",
+                "job_site": "site",
+                "job_data": {"raw_job_listing": "listing text"},
+            }
+        ]
+        rubric = [_rubric_item()]
+        out = await consult_mod.qualify_job_listings(
+            "batch-726",
+            jobs,
+            {"candidate_data": {"artifacts": {"joblist_rubric": rubric}}},
+            debug=False,
+        )
+        assert out["passed"] == 1
+        saved = save.call_args.args[1]
+        assert "joblist_grades" in saved
+        assert "joblist_score" in saved
+        assert saved["joblist_score"] is not None
+
+    @pytest.mark.asyncio
+    async def test_qualify_job_listings_persists_joblist_score_on_fail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-726",
+                                "grades": [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [{"astral_job_id": "job-726", "state": "VALID_TITLE", "company": "co", "job_data": {}}]
+        rubric = [_rubric_item()]
+        out = await consult_mod.qualify_job_listings(
+            "batch-726-fail",
+            jobs,
+            {"candidate_data": {"artifacts": {"joblist_rubric": rubric}}},
+            debug=False,
+        )
+        assert out["failed"] == 1
+        saved = save.call_args.args[1]
+        assert "joblist_grades" in saved
+        # F-grade fail path has no numeric score — joblist_score omitted per _latest_score_value gate

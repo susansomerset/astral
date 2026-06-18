@@ -1279,3 +1279,24 @@ class TestAst676CraftRubricSchema:
             items = cfg.TASK_CONFIG[task_key]["response_schema"]["criteria"]["items_schema"]
             assert items["importance"] == self._IMPORTANCE_SPEC
 
+
+class TestAst722RubricFeedbackConfig:
+    """AST-722: FEEDBACK block type + RUBRIC_FEEDBACK_CONFIG for vector feedback envelope."""
+
+    def test_feedback_in_block_types(self) -> None:
+        assert "FEEDBACK" in cfg.BLOCK_TYPES
+
+    def test_rubric_feedback_config_shapes(self) -> None:
+        fc = cfg.RUBRIC_FEEDBACK_CONFIG
+        assert set(fc["feedback_types"]) == {"relevance", "clarity", "verdict"}
+        assert fc["feedback_types"]["relevance"]["value_codes"] == ("A", "O", "S", "R", "N")
+        assert fc["feedback_types"]["verdict"]["value_codes"] == ("K", "E", "D")
+        assert fc["value_labels"]["E"] == "Edit"
+
+
+
+class TestAst726PrefilterGradesKey:
+    """AST-726: prefilter_company grades_key for entity story vector_grades."""
+
+    def test_prefilter_company_grades_key(self) -> None:
+        assert cfg.TASK_CONFIG["prefilter_company"]["grades_key"] == "prefilter_grades"
