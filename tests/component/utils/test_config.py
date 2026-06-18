@@ -631,11 +631,10 @@ class TestAst471DispatchConfigHelpers:
 
     def test_ast485_roster_dispatch_trio_matches_config_defaults(self) -> None:
         assert "locate_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        for k in ("find_job_page", "parse_job_list"):
-            assert k in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-            d = cfg.dispatch_task_admin_defaults(k)
-            assert d["trigger_state"] == "TO_WATCH"
-            assert d["entity_type"] == "company"
+        assert "find_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        parse = cfg.dispatch_task_admin_defaults("parse_job_list")
+        assert parse["trigger_state"] == "JOBLIST_IDENTIFIED"
+        assert parse["entity_type"] == "company"
         sel = cfg.dispatch_task_admin_defaults("select_job_page")
         assert sel["trigger_state"] == "PJL_READY"
         assert sel["entity_type"] == "company"
@@ -919,6 +918,39 @@ class TestAst707EmbeddedPrefilterConfig:
         assert rc["importance"] == 8
         grades = {g["grade"] for g in rc["grade_descriptions"]}
         assert grades == {"A", "B", "C", "D", "E", "F"}
+
+
+class TestAst721ParseJobListConfig:
+    """AST-721: JOBLIST_IDENTIFIED parse_job_list dispatch; find_job_page monolith removed."""
+
+    def test_parse_states_and_transitions(self) -> None:
+        assert "JOBLIST_IDENTIFIED_RETRY" in cfg.COMPANY_STATES
+        assert "COULD_NOT_PARSE_JOBLIST" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
+        assert ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST") in transitions
+
+    def test_parse_job_list_roster_config(self) -> None:
+        parse = cfg.ROSTER_CONFIG["parse_job_list"]
+        assert parse["dispatch_trigger_state"] == "JOBLIST_IDENTIFIED"
+        assert parse["retry_trigger_state"] == "JOBLIST_IDENTIFIED_RETRY"
+        assert parse["pass_state"] == "WATCH"
+        assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
+        assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
+        assert parse["selected_pjl_url_key"] == "selected_pjl_url"
+
+    def test_locate_job_page_jobs_found_only(self) -> None:
+        locate = cfg.ROSTER_CONFIG["locate_job_page"]
+        assert locate["dispatch_input_states"] == ["JOBS_FOUND"]
+
+    def test_dispatch_trigger_and_schedulable_keys(self) -> None:
+        from src.utils.config import _dispatch_trigger_state_for_task_key
+
+        assert _dispatch_trigger_state_for_task_key("parse_job_list") == "JOBLIST_IDENTIFIED"
+        assert "parse_job_list" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "find_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
 
 class TestAst720SelectJobPageConfig:
