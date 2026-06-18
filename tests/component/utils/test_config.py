@@ -631,12 +631,14 @@ class TestAst471DispatchConfigHelpers:
 
     def test_ast485_roster_dispatch_trio_matches_config_defaults(self) -> None:
         assert "locate_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        trio = ("find_job_page", "select_job_page", "parse_job_list")
-        for k in trio:
+        for k in ("find_job_page", "parse_job_list"):
             assert k in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
             d = cfg.dispatch_task_admin_defaults(k)
             assert d["trigger_state"] == "TO_WATCH"
             assert d["entity_type"] == "company"
+        sel = cfg.dispatch_task_admin_defaults("select_job_page")
+        assert sel["trigger_state"] == "PJL_READY"
+        assert sel["entity_type"] == "company"
 
     def test_passed_like_trigger_attachs_analysis_upshot_scored(self) -> None:
         assert cfg.dispatch_task_admin_defaults("analysis_upshot")["trigger_state"] == "PASSED_LIKE"
@@ -917,6 +919,37 @@ class TestAst707EmbeddedPrefilterConfig:
         assert rc["importance"] == 8
         grades = {g["grade"] for g in rc["grade_descriptions"]}
         assert grades == {"A", "B", "C", "D", "E", "F"}
+
+
+class TestAst720SelectJobPageConfig:
+    """AST-720: PJL_READY select_job_page dispatch + selection states."""
+
+    def test_selection_states_and_transitions(self) -> None:
+        assert "JOBLIST_IDENTIFIED" in cfg.COMPANY_STATES
+        assert "PREFILTER_PASSED_RETRY" in cfg.COMPANY_STATES
+        assert "NO_PJL_SELECTED" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("PJL_READY", "JOBLIST_IDENTIFIED") in transitions
+        assert ("PJL_READY", "PREFILTER_PASSED_RETRY") in transitions
+        assert ("PJL_READY", "NO_PJL_SELECTED") in transitions
+        assert ("PREFILTER_PASSED_RETRY", "PJL_READY") in transitions
+
+    def test_select_job_page_roster_config(self) -> None:
+        sel = cfg.ROSTER_CONFIG["select_job_page"]
+        assert sel["dispatch_trigger_state"] == "PJL_READY"
+        assert sel["identified_state"] == "JOBLIST_IDENTIFIED"
+        assert sel["retry_state"] == "PREFILTER_PASSED_RETRY"
+        assert sel["exhausted_state"] == "NO_PJL_SELECTED"
+        assert sel["selected_pjl_url_key"] == "selected_pjl_url"
+        keys = cfg.ROSTER_CONFIG["company_data_keys"]
+        assert keys["selected_pjl_url"] == "selected_pjl_url"
+
+    def test_dispatch_trigger_and_fetch_job_pages_retry_states(self) -> None:
+        from src.utils.config import _dispatch_trigger_state_for_task_key
+
+        assert _dispatch_trigger_state_for_task_key("select_job_page") == "PJL_READY"
+        retry_states = cfg.GAZER_CONFIG["fetch_job_pages"]["fetch_job_pages_trigger_states"]
+        assert retry_states == ["PREFILTER_PASSED", "PREFILTER_PASSED_RETRY"]
 
 
 class TestAst719FetchJobPagesConfig:
