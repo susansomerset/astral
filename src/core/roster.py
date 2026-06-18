@@ -680,6 +680,30 @@ async def run_company_task(
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
+        elif input_state == ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]:
+            tk = (dispatch_task_key or "").strip()
+            if tk != "select_job_page":
+                logger.warning(
+                    "run_company_task: PJL_READY expects select_job_page, got %s", tk
+                )
+                return {**zero, "total_errors": 1}
+            result = await run_select_job_page_dispatch(entity, batch_id, ctx, debug)
+            sel_cfg = ROSTER_CONFIG["select_job_page"]
+            if result.get("error"):
+                logger.error(f"[{short_name}] select_job_page error: {result['error']}")
+                return {**zero, "total_errors": 1}
+            terminal_ok = frozenset({
+                sel_cfg.get("identified_state"),
+                sel_cfg.get("exhausted_state"),
+                sel_cfg.get("retry_state"),
+                "NO_OPENINGS",
+                "JOBSITE_SCRAPE_ISSUE",
+                "NO_JOBLIST",
+            })
+            if result.get("state") in sel_cfg.get("pass_states", []) or result.get("state") in terminal_ok:
+                return {**zero, "total_passed": 1}
+            return {**zero, "total_failed": 1}
+
         elif input_state in frozenset(
             ROSTER_CONFIG.get("locate_job_page", {}).get("dispatch_input_states") or ("TO_WATCH",)
         ):
@@ -743,41 +767,79 @@ async def run_select_job_page_dispatch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """TO_WATCH entry: select_job_page only — no run_next parse chain (AST-535)."""
+    """PJL_READY decomposed entry or TO_WATCH legacy select-only (AST-535 / AST-720)."""
+    _ = batch_id
     short_name = entity.get("short_name", "")
     company_website = entity.get("company_website", "")
     company = get_company(short_name)
     cdata = (company.get("company_data") or {}) if company else {}
-    possible_job_links = cdata.get("possible_job_links") or []
-    nav_links = cdata.get("nav_links") or ""
-    if not possible_job_links or not nav_links:
-        _save_company(short_name=short_name, company_website=company_website,
-                      state="NO_JOBLIST", page_option_url=company_website,
-                      raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
-    ctx_no_chain = {k: v for k, v in (ctx or {}).items() if k != "resolve_run_next_live"}
-    async with create_browser_context() as browser_context:
-        assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
-            possible_job_links, nav_links, browser_context, debug=debug,
-        )
-        if not assembled_content.strip():
+    row_state = (company or {}).get("state") or ""
+    entity_state = entity.get("state") or row_state
+    if entity_state != "PJL_READY" and row_state != "PJL_READY":
+        possible_job_links = cdata.get("possible_job_links") or []
+        nav_links = cdata.get("nav_links") or ""
+        if not possible_job_links or not nav_links:
             _save_company(short_name=short_name, company_website=company_website,
                           state="NO_JOBLIST", page_option_url=company_website,
-                          raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
+                          raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
             return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
-        return await _find_job_page_from_assembled(
-            short_name=short_name,
-            company_website=company_website,
-            assembled_content=assembled_content,
-            page_url_map=page_url_map,
-            page_dom_map=page_dom_map,
-            visible_map=visible_map,
-            nav_links=nav_links,
-            browser_context=browser_context,
-            debug=debug,
-            ctx=ctx_no_chain,
-            chain_parse=False,
+        ctx_no_chain = {k: v for k, v in (ctx or {}).items() if k != "resolve_run_next_live"}
+        async with create_browser_context() as browser_context:
+            assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
+                possible_job_links, nav_links, browser_context, debug=debug,
+            )
+            if not assembled_content.strip():
+                _save_company(short_name=short_name, company_website=company_website,
+                              state="NO_JOBLIST", page_option_url=company_website,
+                              raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
+                return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
+            return await _find_job_page_from_assembled(
+                short_name=short_name,
+                company_website=company_website,
+                assembled_content=assembled_content,
+                page_url_map=page_url_map,
+                page_dom_map=page_dom_map,
+                visible_map=visible_map,
+                nav_links=nav_links,
+                browser_context=browser_context,
+                debug=debug,
+                ctx=ctx_no_chain,
+                chain_parse=False,
+            )
+
+    assembled_content, page_url_map, visible_map = _pjl_maps_from_company_data(cdata)
+    if not assembled_content.strip():
+        _save_company(short_name=short_name, company_website=company_website,
+                      state="NO_PJL_SELECTED", page_option_url=company_website,
+                      raw_response={"response_type": "NO_PJL_ASSEMBLED"})
+        return {"short_name": short_name, "state": "NO_PJL_SELECTED", "job_site": "", "response_type": "NO_PJL_ASSEMBLED"}
+    nav_links = _nav_links_for_try_links(cdata)
+    if debug:
+        logger.test(
+            f"index 1/1 | {short_name} | select_job_page | "
+            f"pages={len(page_url_map)} assembled_chars={len(assembled_content)}"
         )
+    ctx_no_chain = {k: v for k, v in (ctx or {}).items() if k != "resolve_run_next_live"}
+    result = await _find_job_page_from_assembled(
+        short_name=short_name,
+        company_website=company_website,
+        assembled_content=assembled_content,
+        page_url_map=page_url_map,
+        page_dom_map={},
+        visible_map=visible_map,
+        nav_links=nav_links,
+        browser_context=None,
+        debug=debug,
+        ctx=ctx_no_chain,
+        chain_parse=False,
+        decomposed=True,
+    )
+    if debug:
+        logger.test(
+            f"index 1/1 | {short_name} | select_job_page outcome | "
+            f"state={result.get('state')!r} response_type={result.get('response_type')!r}"
+        )
+    return result
 
 
 async def _scrape_job_site_dom(job_site: str, browser_context: BrowserSession, debug: bool = False) -> str:
@@ -1547,10 +1609,11 @@ async def _find_job_page_from_assembled(
     page_dom_map: Dict[int, str],
     visible_map: Dict[int, str],
     nav_links: str,
-    browser_context: BrowserSession,
+    browser_context: Optional[BrowserSession],
     debug: bool,
     ctx: Optional[Dict[str, Any]],
     chain_parse: bool = True,
+    decomposed: bool = False,
 ) -> Dict[str, Any]:
     """AST-469: shared select_job_page + optional TRY_LINK retry + run_next parse chain.
     chain_parse=False: select-only dispatch entry (AST-535) — no run_next parse resolver."""
@@ -1594,6 +1657,52 @@ async def _find_job_page_from_assembled(
             break
 
         try_links = parsed_top.get("try_links") or []
+        if decomposed:
+            sel_cfg = ROSTER_CONFIG["select_job_page"]
+            if not try_links or not try_link_retry_pending:
+                _save_company(
+                    short_name=short_name, company_website=company_website,
+                    state=sel_cfg["exhausted_state"], page_option_url=company_website,
+                    raw_response=parsed_top, suppress_job_site=True,
+                )
+                return {
+                    "short_name": short_name,
+                    "state": sel_cfg["exhausted_state"],
+                    "job_site": "",
+                    "response_type": response_type,
+                }
+            company_row = get_company(short_name)
+            cdata = (company_row.get("company_data") or {}) if company_row else {}
+            pjl_url_key = sel_cfg["pjl_url_data_key"]
+            ledger = list(cdata.get(pjl_url_key) or [])
+            updated = _merge_try_links_into_pjl_ledger(
+                short_name,
+                try_links,
+                cdata.get("nav_links") or "",
+                cdata.get("pjl_nav_links") or "",
+                ledger,
+            )
+            if updated != ledger:
+                save_company_data(short_name, {pjl_url_key: updated})
+                transition_company_state(short_name, sel_cfg["retry_state"])
+                return {
+                    "short_name": short_name,
+                    "state": sel_cfg["retry_state"],
+                    "job_site": "",
+                    "response_type": response_type,
+                }
+            _save_company(
+                short_name=short_name, company_website=company_website,
+                state=sel_cfg["exhausted_state"], page_option_url=company_website,
+                raw_response=parsed_top, suppress_job_site=True,
+            )
+            return {
+                "short_name": short_name,
+                "state": sel_cfg["exhausted_state"],
+                "job_site": "",
+                "response_type": response_type,
+            }
+
         if not try_links or not try_link_retry_pending:
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website, raw_response=parsed_top)
@@ -1620,6 +1729,11 @@ async def _find_job_page_from_assembled(
     pp = res.get("run_next_parent_parsed")
 
     if response_type == "JOBLIST_TITLES":  # pragma: no branch
+        if decomposed:
+            return await _finalize_joblist_identified(
+                parsed_top, short_name, company_website, job_site_url,
+                visible_map, selected_page, response_type, debug, ctx,
+            )
         if chain_parse and pp is not None:  # pragma: no branch
             return await _finalize_joblist_titles_after_chain(
                 parsed_top, res, short_name, company_website, job_site_url,
@@ -1633,7 +1747,7 @@ async def _find_job_page_from_assembled(
     return await _check_parse_results(
         parsed_top, response_type, short_name, company_website, job_site_url,
         page_dom_map=page_dom_map, selected_page=selected_page,
-        debug=debug, ctx=ctx,
+        debug=debug, ctx=ctx, decomposed=decomposed,
     )
 
 
@@ -1884,6 +1998,64 @@ def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
     return "\n\n".join(sections)
 
 
+def _pjl_maps_from_company_data(
+    cdata: dict,
+) -> Tuple[str, Dict[int, str], Dict[int, str]]:
+    assembled = (cdata.get("pjl_assembled_content") or "").strip()
+    pages = cdata.get("pjl_scrape_pages") or []
+    if not assembled and pages:
+        assembled = _assemble_pjl_content(pages)
+    page_url_map: Dict[int, str] = {}
+    visible_map: Dict[int, str] = {}
+    for i, row in enumerate(pages, 1):
+        url = row.get("url") or ""
+        if url:
+            page_url_map[i] = url
+        text = (row.get("visible_text") or "").strip()
+        if text:
+            visible_map[i] = text
+    if not assembled and not pages:
+        return "", {}, {}
+    return assembled, page_url_map, visible_map
+
+
+def _nav_links_for_try_links(cdata: dict) -> str:
+    return (cdata.get("pjl_nav_links") or cdata.get("nav_links") or "").strip()
+
+
+def _resolve_try_link_normalized(
+    item: Any, pjl_nav_links: str, nav_links: str
+) -> str:
+    if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit()):
+        url_map = parse_enumerate_array(pjl_nav_links or nav_links or "")
+        raw = url_map.get(int(item))
+        return normalize_link(raw or "")
+    return normalize_link(str(item))
+
+
+def _merge_try_links_into_pjl_ledger(
+    short_name: str,
+    try_links: list,
+    nav_links: str,
+    pjl_nav_links: str,
+    existing: List[str],
+) -> List[str]:
+    _ = short_name
+    out = list(existing or [])
+    seen = {normalize_link(u) for u in out if normalize_link(u)}
+    for item in try_links or []:
+        key = _resolve_try_link_normalized(item, pjl_nav_links, nav_links)
+        if key and key not in seen:
+            seen.add(key)
+            if isinstance(item, int) or (isinstance(item, str) and str(item).isdigit()):
+                url_map = parse_enumerate_array(pjl_nav_links or nav_links or "")
+                raw = url_map.get(int(item)) or ""
+                out.append(raw if raw else str(item))
+            else:
+                out.append(str(item))
+    return out
+
+
 async def _fetch_job_links_content(
     possible_job_links: List[int],
     nav_links: str,
@@ -1976,6 +2148,52 @@ async def _fetch_job_links_content(
                 logger.test(f"  PJL #{page_num}: {url} — scrape failed: {e}")
 
     return "\n\n".join(sections), page_url_map, page_dom_map, page_visible_map
+
+
+async def _finalize_joblist_identified(
+    select_parsed: Dict[str, Any],
+    short_name: str,
+    company_website: str,
+    job_site_url: str,
+    visible_map: Dict[int, str],
+    selected_page: Optional[int],
+    response_type: str,
+    debug: bool,
+    ctx: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """AST-720: JOBLIST_TITLES on PJL_READY path — no parse, job_site column unset."""
+    _ = ctx
+    sel_cfg = ROSTER_CONFIG["select_job_page"]
+    job_titles = select_parsed.get("job_titles", [])
+    save_company_data(short_name, {
+        "job_titles": job_titles,
+        sel_cfg["selected_pjl_url_key"]: job_site_url,
+    })
+    vis_save = ""
+    if selected_page is not None:
+        try:
+            vis_save = (visible_map.get(int(selected_page)) or "").strip()
+        except (TypeError, ValueError):
+            vis_save = ""
+    if vis_save:
+        save_company_data(short_name, {"job_list_visible": vis_save})
+    _save_company(
+        short_name=short_name, company_website=company_website,
+        state=sel_cfg["identified_state"], page_option_url=job_site_url,
+        raw_response=select_parsed, suppress_job_site=True,
+    )
+    if debug:
+        logger.test(
+            f"index 1/1 | {short_name} | JOBLIST_IDENTIFIED | "
+            f"selected_url={job_site_url} titles={len(job_titles)}"
+        )
+    return {
+        "short_name": short_name,
+        "state": sel_cfg["identified_state"],
+        "job_site": "",
+        "response_type": response_type,
+        "job_titles": job_titles,
+    }
 
 
 async def _finalize_joblist_titles_after_chain(
@@ -2134,20 +2352,23 @@ async def _check_parse_results(
     selected_page: Optional[int] = None,
     debug: bool = False,
     ctx: Optional[Dict[str, Any]] = None,
+    decomposed: bool = False,
 ) -> Dict[str, Any]:
     """Map select_job_page response_type to company state.
 
     AST-469: JOBLIST_TITLES is finalized in find_job_page (run_next chain); no longer handled here.
     """
+    suppress = decomposed
     if response_type == "JOBLIST_NO_JOBS":
         no_jobs_msg = result.get("no_jobs_message", "")
         _strip_company_data_keys(short_name, ("job_list_visible",))
         _save_company(short_name=short_name, company_website=company_website,
                            state="NO_OPENINGS", page_option_url=job_site_url,
-                           raw_response=result, no_jobs_message=no_jobs_msg)
+                           raw_response=result, no_jobs_message=no_jobs_msg,
+                           suppress_job_site=suppress)
         if debug:
             logger.test(f"[find_job_page] JOBLIST_NO_JOBS: {no_jobs_msg}")
-        return {"short_name": short_name, "state": "NO_OPENINGS", "job_site": job_site_url, "response_type": response_type}
+        return {"short_name": short_name, "state": "NO_OPENINGS", "job_site": "" if suppress else job_site_url, "response_type": response_type}
 
     if response_type == "JOBSITE_SCRAPE_ISSUE":
         summary = str(result.get("scrape_issue_summary") or "").strip()
@@ -2161,6 +2382,7 @@ async def _check_parse_results(
             raw_response=result,
             jobsite_scrape_issue_summary=summary or None,
             jobsite_scrape_issue_evidence=evidence or None,
+            suppress_job_site=suppress,
         )
         if debug:
             logger.test(
@@ -2169,7 +2391,7 @@ async def _check_parse_results(
         return {
             "short_name": short_name,
             "state": ROSTER_CONFIG["locate_job_page"]["scrape_issue_state"],
-            "job_site": job_site_url,
+            "job_site": "" if suppress else job_site_url,
             "response_type": response_type,
         }
 
@@ -2250,6 +2472,7 @@ def _save_company(
     pre_run_job_site: Optional[str] = None,
     jobsite_scrape_issue_summary: Optional[str] = None,
     jobsite_scrape_issue_evidence: Optional[str] = None,
+    suppress_job_site: bool = False,
     ) -> None:
     """Save company result to database, then transition state.
     
@@ -2273,11 +2496,14 @@ def _save_company(
     if pre_run_job_site is None:
         row = get_company(short_name)
         pre_run_job_site = str((row or {}).get("job_site") or "")
-    job_site_to_write = _job_site_for_persist(
-        terminal_state=state,
-        page_option_url=page_option_url,
-        pre_run_job_site=pre_run_job_site,
-    )
+    if suppress_job_site:
+        job_site_to_write = ""
+    else:
+        job_site_to_write = _job_site_for_persist(
+            terminal_state=state,
+            page_option_url=page_option_url,
+            pre_run_job_site=pre_run_job_site,
+        )
     cd: Dict[str, Any] = {}
     if no_jobs_message:
         cd["no_jobs_message"] = no_jobs_message
