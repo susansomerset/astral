@@ -180,3 +180,13 @@ Binding per **plan-child**: stages **1 → 2 → 3** in order; **one commit per 
 | §3.6 spikes | Any investigation under `debug/spikes/AST-729/` only. |
 
 No unresolved conflicts.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration`  
+**Diff baseline:** `origin/dev`  
+**Review tip:** `ed23b5d`
+
+**Built:** Stages 1–3 — `cleanup_duplicate_and_board_gaze_jobs.py` with board-gaze bulk delete (`__board__*` prefix from config), identity dedupe (earliest `created_at` survivor, `astral_job_id` tie-break), `--dry-run` / phase skip / `--company` filters, operator runbook in module docstring; `py_compile` passes.
