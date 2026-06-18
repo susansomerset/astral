@@ -318,3 +318,13 @@ No unresolved conflicts.
 | fix-now | None — ready for `resolve-child` / merge. |
 | discuss | Confirm Susan deactivates legacy dispatch rows per plan table before parent UAT. |
 | advisory | Update gazer "re-run find_job_page" copy when touching gaze path; optional scrape-error log in `_scrape_list_page_dom_for_parse`. |
+
+---
+
+## Resolution (2026-06-18)
+
+**Radia fix-now:** none — clean sign-off @ `bd8fa7d`.
+
+**Discuss (deferred):** Susan deactivates legacy monolith dispatch rows and seeds decomposed `fetch_job_pages` → `select_job_page` → `parse_job_list` before parent UAT — code no longer routes TO_WATCH/PREFILTER_PASSED monolith.
+
+**Publish ref:** `origin/sub/AST-716/parse-job-list-dispatch-refactor`
