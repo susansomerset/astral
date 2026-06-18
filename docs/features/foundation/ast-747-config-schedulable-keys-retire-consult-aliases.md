@@ -191,3 +191,11 @@ No conflicts requiring `!!-NONE`.
 - **AST-748** must land before Susan can run migrated `grade_*` rows end-to-end.
 - **Betty** updates component tests referencing `consult_do` in `task_keys` metadata — do not edit tests in this ticket.
 - **`resolve_dispatch_task_config_key`** remains imported by `consult.py` until **AST-748** removes those call sites.
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Build date | 2026-06-18 |
+| Publish ref | `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` @ `6eb729e` |
+| Commits | `e0c9e27` config · `627a5f9` admin API · `6eb729e` rules doc |
