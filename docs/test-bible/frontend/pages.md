@@ -545,3 +545,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Prerequisite:** **AST-738** data/API grouping on publish tip (sibling `merge-tests`).
 
+### AST-746 · AST-744
+
+Susan UAT: visible gap between **Candidate** / **Task** and **Entity** overlapping **State** on Scheduled Actions phase tables. Root cause: `useListTableColumnMeasure` ran while `CollapsiblePanel` body was `hidden` (`offsetWidth === 0` → 120px `stickyLeftPx` fallback). Fix mounts `ScheduledPhaseTable` only when section expanded; locks frozen column widths; defers sticky `left` until predecessor columns measure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-746: phase table mounts on expand; measured sticky left avoids 120px fallback gap`**; re-run **`AST-647: phase table freezes first three data columns`** |
+
+**AST-746** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned.
+
+**Builds on:** **AST-647**, **AST-652**, **AST-657** list-table layout manifests in **`docs/test-bible/frontend/components.md`**.
+
