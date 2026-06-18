@@ -751,6 +751,18 @@ def list_dtasks():
     return jsonify(rows)
 
 
+def _catalog_task_grouping_meta(catalog_key: str) -> dict:
+    """Grouping fields from current agent_task row; empty defaults when missing."""
+    row = database.get_agent_task(catalog_key) or {}
+    seq = row.get("task_seq")
+    return {
+        "task_group_order": (row.get("task_group_order") or ""),
+        "task_group_name": (row.get("task_group_name") or ""),
+        "task_seq": float(seq) if seq is not None else None,
+        "task_name": (row.get("task_name") or ""),
+    }
+
+
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions defaults: TASK_CONFIG first; schedulable keys merge config derivation."""
     catalog_key = resolve_dispatch_task_config_key(task_key)
@@ -765,9 +777,8 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
-        "phase": cfg.get("phase"),
-        "seq": cfg.get("seq"),
         "is_scored": dispatch_task_key_is_scored(task_key),
+        **_catalog_task_grouping_meta(catalog_key),
     }
 
 
@@ -792,8 +803,10 @@ def dispatch_task_keys():
             seen[k] = {
                 "entity_type": (r.get("entity_type") or "") or "",
                 "trigger_state": (r.get("trigger_state") or "") or "",
-                "phase": None,
-                "seq": None,
+                "task_group_order": "",
+                "task_group_name": "",
+                "task_seq": None,
+                "task_name": "",
                 "is_scored": dispatch_claim_uses_score_floor(r.get("trigger_state")),
             }
     hidden = admin_hidden_dispatch_task_keys()

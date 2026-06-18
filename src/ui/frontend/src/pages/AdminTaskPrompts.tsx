@@ -13,8 +13,10 @@ interface AgentTask {
   task_key_uuid: string | null
   agent_id: string
   run_next?: string
-  phase: string | null
-  seq: number | null
+  task_group_order: string
+  task_group_name: string
+  task_seq: number | null
+  task_name: string
   model_code: string | null
   system_prompt_tokens: number
   base_cache_tokens: number
@@ -148,7 +150,7 @@ export default function TaskPrompts() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast]   = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-  const [openPhase, setOpenPhase] = useState<string | null>(null)
+  const [openSection, setOpenSection] = useState<string | null>(null)
 
   const [agentIds, setAgentIds]     = useState<string[]>([])
   const [tokenList, setTokenList]   = useState<string[]>([])
@@ -165,6 +167,10 @@ export default function TaskPrompts() {
   const [editCacheD, setEditCacheD] = useState("")
   const [editNocache, setEditNocache] = useState("")
   const [editRunNext, setEditRunNext] = useState("")
+  const [editGroupOrder, setEditGroupOrder] = useState("")
+  const [editGroupName, setEditGroupName] = useState("")
+  const [editTaskSeq, setEditTaskSeq] = useState("")
+  const [editTaskName, setEditTaskName] = useState("")
   const [editOpenPanel, setEditOpenPanel] = useState<TabKey | null>(null)
   const [defaultPanelPreference, setDefaultPanelPreference] = useState<TabKey>(() => readDefaultEditPanel())
 
@@ -205,31 +211,38 @@ export default function TaskPrompts() {
     })
   }, [loadAll])
 
-  // Group by phase, sort sections alphabetically, rows by seq within
   const sections = useMemo(() => {
-    const byPhase: Record<string, AgentTask[]> = {}
+    const bySectionKey: Record<string, AgentTask[]> = {}
     for (const t of tasks) {
-      const p = t.phase || "(unassigned)"
-      if (!byPhase[p]) byPhase[p] = []
-      byPhase[p].push(t)
+      const name = t.task_group_name || "(unassigned)"
+      const key = `${t.task_group_order || ""}\u0000${name}`
+      if (!bySectionKey[key]) bySectionKey[key] = []
+      bySectionKey[key].push(t)
     }
-    return Object.entries(byPhase)
+    return Object.entries(bySectionKey)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([phase, rows]) => ({
-        phase,
-        rows: [...rows].sort((a, b) => (a.seq ?? 999) - (b.seq ?? 999)),
+      .map(([sectionKey, rows]) => ({
+        sectionKey,
+        groupName: rows[0]?.task_group_name || "(unassigned)",
+        rows: [...rows].sort((a, b) => {
+          const as_ = a.task_seq ?? 999
+          const bs_ = b.task_seq ?? 999
+          if (as_ !== bs_) return as_ - bs_
+          return a.task_key.localeCompare(b.task_key)
+        }),
       }))
   }, [tasks])
+
+  const resolvedOpenSection = useMemo(() => {
+    if (sections.length === 0) return null
+    if (openSection != null && sections.some(s => s.sectionKey === openSection)) return openSection
+    return null
+  }, [sections, openSection])
 
   const taskKeyOptions = useMemo(
     () => [...new Set(tasks.map(t => t.task_key))].sort((a, b) => a.localeCompare(b)),
     [tasks],
   )
-  const resolvedOpenPhase = useMemo(() => {
-    if (sections.length === 0) return null
-    if (openPhase != null && sections.some(s => s.phase === openPhase)) return openPhase
-    return null
-  }, [sections, openPhase])
 
   const runNextSelectKeys = useMemo(() => {
     if (!editTask) return taskKeyOptions
@@ -279,6 +292,10 @@ export default function TaskPrompts() {
       setEditUser(full.user_prompt || "")
       setEditNocache(full.nocache_prompt || "")
       setEditRunNext((full.run_next as string) || "")
+      setEditGroupOrder(String(full.task_group_order ?? ""))
+      setEditGroupName(String(full.task_group_name ?? ""))
+      setEditTaskSeq(full.task_seq != null ? String(full.task_seq) : "")
+      setEditTaskName(String(full.task_name ?? ""))
       const def = readDefaultEditPanel()
       setEditOpenPanel(def)
       setDefaultPanelPreference(def)
@@ -301,6 +318,10 @@ export default function TaskPrompts() {
         cache_prompt_d: editCacheD,
         nocache_prompt: editNocache,
         run_next: editRunNext,
+        task_group_order: editGroupOrder,
+        task_group_name: editGroupName,
+        task_seq: editTaskSeq.trim() === "" ? null : parseFloat(editTaskSeq),
+        task_name: editTaskName,
       }),
     })
       .then(r => {
@@ -351,21 +372,20 @@ export default function TaskPrompts() {
       ) : sections.length === 0 ? (
         <div className="list-page-status">No tasks configured.</div>
       ) : sections.map(sec => (
-          <div key={sec.phase} style={{ marginBottom: 12 }}>
+          <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
             <CollapsiblePanel
-              label={<>{sec.phase} ({sec.rows.length})</>}
-              expanded={resolvedOpenPhase === sec.phase}
+              label={<>{sec.groupName} ({sec.rows.length})</>}
+              expanded={resolvedOpenSection === sec.sectionKey}
               onExpandedChange={next => {
-                if (next) setOpenPhase(sec.phase)
-                else setOpenPhase(null)
+                if (next) setOpenSection(sec.sectionKey)
+                else setOpenSection(null)
               }}
             >
               <div className="list-page-table-wrap">
                 <table className="list-page-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 36, textAlign: "right" }}>Seq</th>
-                      <th>Task Key</th>
+                      <th>Task</th>
                       <th>Run next</th>
                       <th>Agent</th>
                       <th>Model</th>
@@ -382,10 +402,9 @@ export default function TaskPrompts() {
                   <tbody>
                     {sec.rows.map(row => (
                       <tr key={row.task_key} className="clickable" onClick={() => openEdit(row)}>
-                        <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{row.seq ?? "—"}</td>
                         <td>
                           {!row.task_ready && <span style={{ color: "#f87171", marginRight: 5 }}>●</span>}
-                          {row.task_key}
+                          {row.task_name || row.task_key}
                         </td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.run_next || "—"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.agent_id || "—"}</td>
@@ -416,11 +435,26 @@ export default function TaskPrompts() {
       >
         {editTask && (
           <div style={{ display: "flex", gap: 24, marginBottom: 12, fontSize: 13, color: "var(--text-secondary)" }}>
-            <span><strong>Phase:</strong> {editTask.phase || "—"}</span>
-            <span><strong>Seq:</strong> {editTask.seq != null ? editTask.seq : "—"}</span>
             <span><strong>Model:</strong> {editTask.model_code || "—"}</span>
           </div>
         )}
+
+        <div className="dep-field">
+          <label className="dep-field-label">Group order</label>
+          <input className="dep-input" value={editGroupOrder} onChange={e => setEditGroupOrder(e.target.value)} />
+        </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Group name</label>
+          <input className="dep-input" value={editGroupName} onChange={e => setEditGroupName(e.target.value)} />
+        </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Task sequence</label>
+          <input className="dep-input" type="number" step="any" value={editTaskSeq} onChange={e => setEditTaskSeq(e.target.value)} />
+        </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Task name</label>
+          <input className="dep-input" value={editTaskName} onChange={e => setEditTaskName(e.target.value)} />
+        </div>
 
         <div className="dep-field">
           <label className="dep-field-label">Agent</label>
