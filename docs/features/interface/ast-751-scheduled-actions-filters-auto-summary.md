@@ -277,3 +277,15 @@ Refresh the Scheduled Actions admin screen: per-group AUTO-on summaries in colla
 | §3.5 naming | Follow existing `admin-filters`, `CollapsiblePanel`, `sortRowsWithinSection` naming. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `9408943`
+
+Stage 1: expanded client-side filters (Floor min/max, AUTO, Debug, Freq, Min count, Batch size, Run counts) with AND intersection. Stage 2: section headers `{autoOn} / {total} AUTO`. Stage 3: column reorder — Candidate/Avail/Last run rightmost; Available zero/null → em dash; frozen cols Task/Entity/State. Stage 4: All-candidate default sort by `available_count` desc within task. Component tests deferred to Betty per build-child test-tree ban.
+
+## Review (Radia)
+
+<!-- Radia fills after review-child -->
