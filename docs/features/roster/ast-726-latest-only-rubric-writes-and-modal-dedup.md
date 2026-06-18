@@ -179,3 +179,16 @@ No unresolved conflicts.
 | **Discuss** | Write-path upsert appends replaced `task_key` at array tail — rerunning one phase can reorder modal tabs when other keys were listed earlier (read-path dedupe preserves post-write array order; cosmetic only). |
 | **Advisory** | `qualify_job_listings` fail path omits `joblist_score` when score is non-numeric (test documents intent); stale score could linger if a job passed joblist then fails on rerun — prefilter explicitly clears via `None`; align in a follow-up only if UAT shows confusion. Legacy `agent_responses` rows with empty `task_key` are skipped by dedupe (new writes fail loud); **AST-727** backfill scope. |
 | **Recommended actions** | Hedy: **resolve-child** — no code changes required unless Susan wants tab-order stability or joblist fail score clear in this epic. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Resolved by:** Hedy (resolve-child)
+
+Radia posted **no fix-now** items. Discuss (upsert tail-append tab reorder) and advisory (`qualify_job_listings` fail-path score clear, legacy empty `task_key` rows) accepted as documented — out of scope for this ticket; **AST-727** owns legacy backfill.
+
+**§9a dry-run:** `origin/sub/AST-717/AST-726-latest-only-rubric-writes-and-modal-dedup` @ `cfa2ad8` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-717-store-only-latest-rubric-results-in-entity-data`**.
+
+**Product changes in resolve:** none — review clean.
