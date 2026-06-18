@@ -3505,6 +3505,138 @@ def count_rubric_vectors_for_candidate_task(
     return _run_with_retry(_with_conn)
 
 
+def _retire_rubric_vector_row_on_connection(
+    conn: sqlite3.Connection, rubric_vector_uuid: str, *, now: str
+) -> None:
+    conn.execute(
+        "UPDATE rubric_vector SET current = 0, updated_at = ? WHERE rubric_vector_uuid = ?",
+        (now, rubric_vector_uuid),
+    )
+
+
+def _update_rubric_vector_importance_on_connection(
+    conn: sqlite3.Connection, rubric_vector_uuid: str, importance: int, *, now: str
+) -> None:
+    conn.execute(
+        "UPDATE rubric_vector SET importance = ?, updated_at = ? WHERE rubric_vector_uuid = ?",
+        (importance, now, rubric_vector_uuid),
+    )
+
+
+def sync_rubric_vectors_from_criteria(
+    candidate_id: str,
+    owner_task_key: str,
+    criteria_list: List[dict],
+) -> None:
+    """Upsert current rubric_vector rows with fingerprint-gated retire/insert (AST-723)."""
+    from src.utils import rubric_text
+
+    if not candidate_id or not str(candidate_id).strip() or not owner_task_key:
+        return
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_rubric_vector_table(conn)
+            task_key_uuid = _resolve_current_agent_task_uuid(conn, owner_task_key)
+            if not task_key_uuid:
+                raise ValueError(f"No current agent_task for {owner_task_key!r}")
+            now = _utc_now()
+            rows = conn.execute(
+                """SELECT rubric_vector_uuid, code, content_fingerprint
+                   FROM rubric_vector
+                   WHERE candidate_id = ? AND task_key = ? AND current = 1""",
+                (candidate_id, owner_task_key),
+            ).fetchall()
+            current_by_code: Dict[str, Dict[str, Any]] = {}
+            for r in rows:
+                code = str(r[1] or "").strip().upper()
+                if code:
+                    current_by_code[code] = {
+                        "rubric_vector_uuid": r[0],
+                        "content_fingerprint": r[2],
+                    }
+            incoming_codes: set[str] = set()
+            for idx, item in enumerate(criteria_list):
+                if not isinstance(item, dict):
+                    raise ValueError(f"criterion {idx + 1} must be an object")
+                code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
+                label = (item.get("label") or "").strip() or code
+                content = item.get("content") or ""
+                if not str(content).strip():
+                    raise ValueError(f"criterion {code!r} content is empty")
+                importance = int(item.get("importance") or 5)
+                fingerprint = rubric_text.rubric_vector_content_fingerprint(label, content)
+                code_key = code.upper()
+                incoming_codes.add(code_key)
+                existing = current_by_code.get(code_key)
+                if existing:
+                    if existing["content_fingerprint"] == fingerprint:
+                        _update_rubric_vector_importance_on_connection(
+                            conn,
+                            existing["rubric_vector_uuid"],
+                            importance,
+                            now=now,
+                        )
+                    else:
+                        _retire_rubric_vector_row_on_connection(
+                            conn, existing["rubric_vector_uuid"], now=now
+                        )
+                        conn.execute(
+                            """INSERT INTO rubric_vector (
+                                   rubric_vector_uuid, candidate_id, task_key, task_key_uuid,
+                                   code, label, content, importance, content_fingerprint,
+                                   current, created_at, updated_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                str(uuid.uuid4()),
+                                candidate_id,
+                                owner_task_key,
+                                task_key_uuid,
+                                code,
+                                label,
+                                content,
+                                importance,
+                                fingerprint,
+                                1,
+                                now,
+                                now,
+                            ),
+                        )
+                else:
+                    conn.execute(
+                        """INSERT INTO rubric_vector (
+                               rubric_vector_uuid, candidate_id, task_key, task_key_uuid,
+                               code, label, content, importance, content_fingerprint,
+                               current, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            str(uuid.uuid4()),
+                            candidate_id,
+                            owner_task_key,
+                            task_key_uuid,
+                            code,
+                            label,
+                            content,
+                            importance,
+                            fingerprint,
+                            1,
+                            now,
+                            now,
+                        ),
+                    )
+            for code_key, row in current_by_code.items():
+                if code_key not in incoming_codes:
+                    _retire_rubric_vector_row_on_connection(
+                        conn, row["rubric_vector_uuid"], now=now
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
 def purge_legacy_rubric_artifact_keys(candidate_id: str) -> List[str]:
     """Remove legacy rubric criteria keys from candidate_data.artifacts (AST-722)."""
     if not candidate_id or not str(candidate_id).strip():
@@ -4096,6 +4228,79 @@ def _patch_ast561_take_jd_into_prompt(text: str) -> str:
     return text + "\n\n### take_jd (AST-561)\n\n" + _AST561_TAKE_JD_PROMPT_LINE
 
 
+_AST723_RUBRIC_VECTORS_MARKER = "AST-723_RUBRIC_VECTORS_TOKEN"
+_AST723_RUBRIC_TOKEN_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
+    ("{$COMPANY_PREFILTER}", "{$RUBRIC_VECTORS}"),
+    ("{$JOBLIST_RUBRIC}", "{$RUBRIC_VECTORS}"),
+    ("{$JOBDESC_RUBRIC}", "{$RUBRIC_VECTORS}"),
+    ("{$GET_RUBRIC}", "{$RUBRIC_VECTORS}"),
+    ("{$DO_RUBRIC}", "{$RUBRIC_VECTORS}"),
+    ("{$LIKE_RUBRIC}", "{$RUBRIC_VECTORS}"),
+)
+_ast723_rubric_token_migration_applied = False
+
+
+def _patch_ast723_rubric_tokens(text_val: str) -> str:
+    out = text_val or ""
+    for old, new in _AST723_RUBRIC_TOKEN_REPLACEMENTS:
+        out = out.replace(old, new)
+    return out
+
+
+def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> None:
+    """AST-723: replace per-artifact rubric tokens with {$RUBRIC_VECTORS} on current agent_task rows."""
+    global _ast723_rubric_token_migration_applied
+    if _ast723_rubric_token_migration_applied:
+        return
+    cols = (
+        "task_key",
+        "agent_id",
+        "user_prompt",
+        "cache_prompt",
+        "cache_prompt_b",
+        "cache_prompt_c",
+        "cache_prompt_d",
+        "nocache_prompt",
+        "system_prompt",
+        "run_next",
+    )
+    try:
+        rows = conn.execute(
+            f"""SELECT {", ".join(cols)} FROM agent_task WHERE current = 1"""
+        ).fetchall()
+    except sqlite3.Error:
+        return
+    now = _utc_now()
+    for row in rows:
+        task_key = row[0]
+        values = list(row[1:])
+        user_raw = values[1] or ""
+        if _AST723_RUBRIC_VECTORS_MARKER in user_raw:
+            continue
+        patched = [_patch_ast723_rubric_tokens(v or "") for v in values]
+        if patched == [v or "" for v in values]:
+            continue
+        new_up = patched[1]
+        if _AST723_RUBRIC_VECTORS_MARKER not in new_up:
+            new_up = f"{new_up.rstrip()}\n<!-- {_AST723_RUBRIC_VECTORS_MARKER} -->"
+        _save_agent_task_on_connection(
+            conn,
+            task_key,
+            now=now,
+            agent_id=values[0],
+            user_prompt=new_up,
+            cache_prompt=patched[2],
+            cache_prompt_b=patched[3],
+            cache_prompt_c=patched[4],
+            cache_prompt_d=patched[5],
+            nocache_prompt=patched[6],
+            run_next=values[8],
+            system_prompt=patched[7],
+        )
+    conn.commit()
+    _ast723_rubric_token_migration_applied = True
+
+
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
     """AST-561: version analysis_upshot user_prompt with take_jd; seed when row exists but prose empty."""
     try:
@@ -4230,6 +4435,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                 conn.commit()
             cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_task)").fetchall()}
     _apply_ast469_select_job_page_run_next_migration(conn)
+    _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _agent_task_schema_ensured = True
 
