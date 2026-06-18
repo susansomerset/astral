@@ -274,3 +274,13 @@ Active decomposed rows: **`fetch_job_pages` @ `PREFILTER_PASSED`** (**AST-719**)
 | §3.3 imports | No new cross-layer violations |
 
 No unresolved conflicts.
+
+---
+
+## Review stub (build-child)
+
+**Branch:** `sub/AST-716/parse-job-list-dispatch-refactor`
+
+**Product commits:** `f504d77c` (Stage 1 — config), `6f933343` (Stages 2–4 — parse dispatch, monolith removal, admin/scripts)
+
+**Publish ref:** `origin/sub/AST-716/parse-job-list-dispatch-refactor` @ `6f933343`
