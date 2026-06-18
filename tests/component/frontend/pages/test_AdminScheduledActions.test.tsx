@@ -48,8 +48,8 @@ const dispatchTask = {
 }
 
 const taskKeysConfig = {
-  scan_jobs: { entity_type: "job", trigger_state: "NEW", phase: "D. Job Analysis", seq: 2, is_scored: true },
-  watch_cos: { entity_type: "company", trigger_state: "WATCH", phase: "C. Company Roster", seq: 1, is_scored: false },
+  scan_jobs: { entity_type: "job", trigger_state: "NEW", task_group_order: "D. Job Analysis", task_group_name: "D. Job Analysis", task_seq: 2, task_name: "scan_jobs", is_scored: true },
+  watch_cos: { entity_type: "company", trigger_state: "WATCH", task_group_order: "C. Company Roster", task_group_name: "C. Company Roster", task_seq: 1, task_name: "watch_cos", is_scored: false },
 }
 
 const sparseRow = {
@@ -102,7 +102,7 @@ describe("AdminScheduledActions", () => {
     const threads = extra?.threads ?? {
       1: { running, draining: false, task_key: "scan_jobs", candidate_id: "c1", is_auto: false },
     }
-    const keysDefault = { scan_jobs: { entity_type: "job", trigger_state: "NEW", phase: "D. Job Analysis", seq: 1, is_scored: true } }
+    const keysDefault = { scan_jobs: { entity_type: "job", trigger_state: "NEW", task_group_order: "D. Job Analysis", task_group_name: "D. Job Analysis", task_seq: 1, task_name: "scan_jobs", is_scored: true } }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
         return { ok: true, json: async () => candidates } as Response
@@ -184,7 +184,7 @@ describe("AdminScheduledActions", () => {
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
   }, 20000)
 
-  it("groups rows into phase sections and allows zero expanded", async () => {
+  it("groups rows into DB grouping sections and allows zero expanded", async () => {
     mockApi(false, {
       tasks: [dispatchTask, sparseRow],
       taskKeysPayload: taskKeysConfig,
@@ -201,6 +201,21 @@ describe("AdminScheduledActions", () => {
     await waitFor(() => expect(within(jobPanel).getByText("scan_jobs")).toBeVisible())
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Collapse section" }))
     expect(within(jobPanel).getByText("scan_jobs")).not.toBeVisible()
+  }, 20000)
+
+
+  it("AST-739: task_keys grouping metadata drives section labels", async () => {
+    mockApi(false, {
+      tasks: [dispatchTask, sparseRow],
+      taskKeysPayload: taskKeysConfig,
+      threads: {},
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await selectAllCandidatesFilter()
+    expect(screen.getByText(/D\. Job Analysis \(1\)/)).toBeInTheDocument()
+    expect(screen.getByText(/C\. Company Roster \(1\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/phase/i)).not.toBeInTheDocument()
   }, 20000)
 
   it("AST-647: phase table freezes first three data columns", async () => {

@@ -493,6 +493,47 @@ class TestAst738TaskGroupingApi:
         assert "task_seq" in resp.get_json()["error"]
 
 
+# AST-739: dispatch task_keys returns DB grouping metadata (not config phase/seq).
+class TestAst739DispatchTaskKeysGrouping:
+    def test_dispatch_task_keys_grouping_from_agent_task_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_group_order": "Z-order",
+                "task_group_name": "Z-name",
+                "task_seq": 4.5,
+                "task_name": "Pretty",
+            }
+            if task_key == "grade_do"
+            else None,
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["consult_do"]["task_group_name"] == "Z-name"
+        assert keys["consult_do"]["task_group_order"] == "Z-order"
+        assert keys["consult_do"]["task_seq"] == 4.5
+        assert keys["consult_do"]["task_name"] == "Pretty"
+        assert "phase" not in keys["consult_do"]
+        assert "seq" not in keys["consult_do"]
+
+    def test_dispatch_task_keys_orphan_empty_grouping(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [{"task_key": "orphan_only", "entity_type": "job", "trigger_state": "NEW"}],
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["orphan_only"]["task_group_order"] == ""
+        assert keys["orphan_only"]["task_group_name"] == ""
+        assert keys["orphan_only"]["task_seq"] is None
+        assert keys["orphan_only"]["task_name"] == ""
+
+
 # Branches: timesheet list/export with optional req_dict filters.
 class TestTimesheets:
     def test_list_and_export_timesheets(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1185,8 +1226,10 @@ class TestApiAdminBranchGaps:
         assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
         assert keys["parse_job_list"]["entity_type"] == "company"
         assert keys["parse_job_list"]["trigger_state"] == "JOBLIST_IDENTIFIED"
-        assert keys["consult_do"]["phase"] == cfg.TASK_CONFIG["grade_do"]["phase"]
-        assert keys["consult_do"]["seq"] == cfg.TASK_CONFIG["grade_do"]["seq"]
+        # AST-739: consult_do resolves grade_do catalog row for grouping — not TASK_CONFIG phase/seq.
+        assert "phase" not in keys["consult_do"]
+        assert "seq" not in keys["consult_do"]
+        assert "task_group_name" in keys["consult_do"]
 
     def test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task_by_key", lambda tk: None)
