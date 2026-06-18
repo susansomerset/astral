@@ -122,3 +122,11 @@ Susan wants task grouping and ordering editable in admin without redeploying con
 | §3.5 naming | Snake_case fields match ticket spec. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ `1e6ab76` (`5b62160` data layer + seed, `1e6ab76` admin API).
+
+**Out of build scope (Betty / qa-child):** component/API tests per build-child test-tree ban; React modal/list (AST-739).
