@@ -144,3 +144,16 @@ Betty may add component tests (schema ensure no longer re-inserts deleted `*_RET
 | §3.6 debug output | Inventory at Susan-specified `debug/startup_db_inventory.md` with explicit gitignore exception — not under `debug/spikes/`. |
 
 No conflicts requiring **Conf: !!-NONE**.
+
+---
+
+## Built (AST-745)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `88b48ed` | Remove `_RETRY_TASK_SEED`, `_ensure_gaze_board_dispatch_tasks`, and retry insert loop from `_ensure_dispatch_task_schema` |
+| 2 | (this commit) | `debug/startup_db_inventory.md` + `.gitignore` exception |
+
+**Publish ref:** `origin/sub/AST-741/AST-745-stop-dispatch-retry-seed`
+
+**Review:** _(Radia — pending)_
