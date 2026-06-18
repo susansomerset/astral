@@ -97,8 +97,6 @@ TASK_CONFIG = {
     # PREP CANDIDATE ARTIFACTS PROMPTS
     # CRAFT RESUME BASE - Judith 3
     "craft_resume_base": {
-        "phase": "A. Candidate Context",
-        "seq": 1,
         "response_schema": {
             "resume_structure": {"type": "dict", "required": True},
             "candidate_name": {"type": "str", "required": True},
@@ -119,8 +117,6 @@ TASK_CONFIG = {
     },
     # BOOTSTRAP CANDIDATE CONTEXT - Estelle 3
     "bootstrap_candidate_context": {
-        "phase": "A. Candidate Context",
-        "seq": 2,
         "response_schema": {
             "bio_summary": {"type": "str", "required": True},
             "strengths": {"type": "str", "required": True},
@@ -135,8 +131,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "intake_initiate_candidate": {
-        "phase": "A. Candidate Intake",
-        "seq": 1,
         "response_schema": {
             "ready_to_build": {"type": "bool", "required": True},
             "assistant_message": {"type": "str", "required": True},
@@ -148,8 +142,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "intake_candidate_response": {
-        "phase": "A. Candidate Intake",
-        "seq": 2,
         "response_schema": {
             "ready_to_build": {"type": "bool", "required": True},
             "assistant_message": {"type": "str", "required": True},
@@ -161,8 +153,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "intake_build_request": {
-        "phase": "A. Candidate Intake",
-        "seq": 3,
         "response_schema": {
             "context.bio_summary": {"type": "str", "required": True},
             "context.backstory": {"type": "str", "required": True},
@@ -180,8 +170,6 @@ TASK_CONFIG = {
     },
     # Phase B. Candidate Artifacts
     "craft_prefilter_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 1,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -189,8 +177,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_joblist_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 2,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -198,8 +184,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_jobdesc_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 3,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -207,8 +191,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_get_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 4,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -216,8 +198,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_do_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 5,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -225,8 +205,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_like_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 6,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -234,8 +212,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_company_search_terms": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 8,
         "response_schema": {
             "search_terms": {"type": "str", "required": True},
         },
@@ -248,8 +224,6 @@ TASK_CONFIG = {
     # Phase C. Company Roster
     # VET COMPANY PROMPT - Estelle 3
     "find_company_website": {
-        "phase": "C. Company Roster",
-        "seq": 1,
         "response_schema": {
             "task_success": {"type": "bool", "required": True},
             "website": {"type": "str", "required": True},
@@ -261,8 +235,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "prefilter_company": {
-        "phase": "C. Company Roster",
-        "seq": 2,
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
         "scored": True,
@@ -295,8 +267,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "select_job_page": {
-        "phase": "C. Company Roster",
-        "seq": 4,
         "response_schema": {
             "selected_page": {"type": "int", "required": True},
             "response_type": {"type": "str", "required": True},
@@ -313,8 +283,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "parse_job_list": {
-        "phase": "C. Company Roster",
-        "seq": 6,
         "response_schema": {
             "job_container": {"type": "str", "required": True},
             "job_tag": {"type": "str", "required": True},
@@ -327,8 +295,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "vet_inflow_discovery": {
-        "phase": "C. Company Roster",
-        "seq": 7,
         "response_schema": {
             "results": {
                 "type": "list",
@@ -350,8 +316,6 @@ TASK_CONFIG = {
     # Phase D. Run Time Job Analysis
     # RUNTIME JOB VETTING PROMPTS - Ruth 1
     "qualify_job_listings": {
-        "phase": "D. Job Analysis",
-        "seq": 1,
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
         "output_type": "grades_encoded_meta",
         "scored": True,
@@ -388,8 +352,6 @@ TASK_CONFIG = {
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
-        "phase": "D. Job Analysis",
-        "seq": 2,
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
         "output_type": "grades_encoded",
         "scored": True,
@@ -423,8 +385,6 @@ TASK_CONFIG = {
     # RUNTIME JOB ANALYSIS PROMPTS
     # DO ANALYSIS - Grace 2
     "grade_do": {
-        "phase": "D. Job Analysis",
-        "seq": 3,
         "scored": True,
         "grades_key": "do_grades",
         "rubric_artifact": "do_rubric",
@@ -451,8 +411,6 @@ TASK_CONFIG = {
     },
     # GET ANALYSIS - Atlas 3 (needs ATS recommendations, so higher caliber model)
     "grade_get": {
-        "phase": "D. Job Analysis",
-        "seq": 4,
         "scored": True,
         "grades_key": "get_grades",
         "rubric_artifact": "get_rubric",
@@ -479,8 +437,6 @@ TASK_CONFIG = {
     },
     # LIKE ANALYSIS - Grace 2
     "grade_like": {
-        "phase": "D. Job Analysis",
-        "seq": 5,
         "scored": True,
         "grades_key": "like_grades",
         "rubric_artifact": "like_rubric",
@@ -508,8 +464,6 @@ TASK_CONFIG = {
     },
     # JAR synthesis upshot — Opus/json (AST-480). Dispatch score_floor only; Chuckles/board: persist under job_data.analysis_upshot.
     "analysis_upshot": {
-        "phase": "D. Job Analysis",
-        "seq": 6,
         "scored": True,
         "response_format": "json",
         "response_schema": {
@@ -547,12 +501,10 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
 
-    # Phase E. Job Artifacts — dumb chain registry (AST-450). Ordering is agent_task.run_next
-    # in Admin only. Prompt authors: caller chain tokens {$CALLER_CACHE_A}–{$CALLER_CACHE_D} / AST-455; avoid
+    # Phase E. Job Artifacts — dumb chain registry (AST-450). Group order is DB task_seq (AST-734).
+    # Prompt authors: caller chain tokens {$CALLER_CACHE_A}–{$CALLER_CACHE_D} / AST-455; avoid
     # duplicating --- CACHED CONTEXT --- in child prompts (AST-303). Details: AST-313.
     "anticipate_scan": {
-        "phase": "E. Job Artifacts",
-        "seq": 1,
         "print_label": "Anticipate Scan",
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
@@ -564,8 +516,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "contemplate_job": {
-        "phase": "E. Job Artifacts",
-        "seq": 2,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -576,8 +526,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "advise_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 3,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -589,8 +537,6 @@ TASK_CONFIG = {
     },
     # Structure-keyed resume draft hop (AST-551 / AST-594); section bodies validated at runtime.
     "draft_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 4,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -603,8 +549,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "check_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 5,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -615,8 +559,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "finalize_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 6,
         "response_schema": {
             "candidate_name": {"type": "str", "required": False},
             "candidate_title": {"type": "str", "required": False},
@@ -633,8 +575,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "draft_cover_letter": {
-        "phase": "E. Job Artifacts",
-        "seq": 7,
         "nocache_prompt": (
             "Return JSON only. Fields re_line and body are required prose from you. "
             "Leave signature empty — the server injects {$COVER_LETTER_SIGNATURE} at build time; "
@@ -653,8 +593,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "check_cover_letter": {
-        "phase": "E. Job Artifacts",
-        "seq": 8,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -665,8 +603,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "finalize_cover_letter": {
-        "phase": "E. Job Artifacts",
-        "seq": 9,
         "response_schema": {
             "re_line": {"type": "str", "required": False},
             "body": {"type": "str", "required": False},
@@ -677,8 +613,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "propose_application_responses": {
-        "phase": "E. Job Artifacts",
-        "seq": 10,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -689,6 +623,20 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
 }
+
+# Dispatch consult hops that enter the job-artifact chain (AST-534 / AST-740).
+# Excludes draft_cover_letter — cover-letter chain uses _run_craft_job_cover_letter_batch.
+JOB_ARTIFACT_ENTRY_TASK_KEYS = frozenset({
+    "anticipate_scan",
+    "contemplate_job",
+    "advise_job_resume",
+    "draft_job_resume",
+    "check_job_resume",
+    "finalize_job_resume",
+    "check_cover_letter",
+    "finalize_cover_letter",
+    "propose_application_responses",
+})
 
 
 # ---------------------------------------------------------------------------

@@ -141,3 +141,11 @@ No conflicts requiring `conf-!!-NONE`.
 ## Execution contract
 
 Follow **build-child** stage commits on epic worktree; publish each `code(AST-740)` to `origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config`. Blocking ambiguity → `🛑 Stage N blocked:` comment on [AST-734](https://linear.app/astralcareermatch/issue/AST-734/organizing-tasks) parent with step, issue, and options. Do not edit `tests/`, frontend pages, or database seed/migration.
+
+## Review stub
+
+**Built:** `origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` @ _(pending publish)_
+
+**Product:** Removed all `phase`/`seq` from `TASK_CONFIG`; added `JOB_ARTIFACT_ENTRY_TASK_KEYS`; consult routes artifact hops via explicit frozenset; dropped backward-compat `phase`/`seq` from `_grouping_from_agent_task_row`.
+
+**Tests:** Betty — update `test_config.py` / `test_api_admin.py` phase/seq assertions per Stage 4 table.
