@@ -274,3 +274,38 @@ No unresolved conflicts.
 
 **Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor`  
 **Product commits:** `7b58fc12` (Stage 1 — config), `74ae5627` (Stages 2–4 — PJL helpers, decomposed routing, `run_company_task` PJL_READY entry), `c0e88d99` (AST-538 debug_index)
+
+---
+
+## Radia review (2026-06-18)
+
+**Diff:** `origin/dev...origin/sub/AST-716/select-job-page-dispatch-refactor` (`5ffabcc`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (core) | `JOBLIST_IDENTIFIED` / `PREFILTER_PASSED_RETRY` / `NO_PJL_SELECTED` states + PJL_READY transitions; `ROSTER_CONFIG["select_job_page"]`; `_dispatch_trigger_state_for_task_key("select_job_page")` → `PJL_READY`; `fetch_job_pages_trigger_states` for retry loop. |
+| PJL_READY path | `run_select_job_page_dispatch` loads persisted assembly via `_pjl_maps_from_company_data`; no entry scrape; `decomposed=True` in `_find_job_page_from_assembled`; legacy `TO_WATCH` body behind state gate unchanged. |
+| Outcomes | `JOBLIST_TITLES` → `_finalize_joblist_identified` with `suppress_job_site=True`; `TRY_LINKS` ledger append + retry / exhausted; `JOBSITE_SCRAPE_ISSUE` / empty assembled covered; `run_company_task` PJL_READY + `select_job_page` key guard. |
+| AST-673 | `JOBLIST_IDENTIFIED` ∉ `_PERSIST_PAGE_OPTION_URL_STATES`; decomposed returns `job_site=""`; tests assert `update_company` not called with `job_site`. |
+| AC / tests | Betty manifest (`TestAst720PjlMapsAndLedger`, `TestAst720PjlReadySelectDispatch`, config + `run_company_task` routing) matches routing matrix. |
+| Boundaries | No `parse_job_list` / monolith removal / AST-721 scope. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | `config.py` transitions | Plan Stage 1 listed `("PREFILTER_PASSED_RETRY", "NO_JOBLIST")` — not appended (only `PJL_READY` / `JOBSITE_SCRAPE_ISSUE` from retry). No current decomposed path hits it; add if monolith/retry combo needs it. |
+| **discuss** | `_merge_try_links_into_pjl_ledger` ~2044–2053 | Appends raw resolved URLs to `possible_joblist_links` (e.g. `https://acme.com/newjobs`) alongside AST-718 normalized keys (`acme.com/careers`). Dedupe uses `normalize_link` on read — works today, but mixed ledger format may confuse downstream consumers; plan asked normalized keys only. |
+| **discuss** | `run_company_task` ~693–695 | Plan showed `transition_company_state` to `locate_job_page.error_state` on `result.get("error")`; impl logs + `total_errors` only. Low risk if dispatch errors are rare. |
+| **advisory** | `_finalize_joblist_identified` ~2183 | Debug uses `logger.test` string, not `debug_detail` under Style D header — minor AST-538 drift on identified path. |
+| **advisory** | `_find_job_page_from_assembled` ~1633–1637 | Decomposed `SELECT_FAILED` still maps to `NO_JOBLIST` with return `job_site=company_website` (column safe — `NO_JOBLIST` ∉ persist set); return shape mismatch vs empty `job_site` on other decomposed exits. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child` / merge. |
+| discuss | Optional: normalize keys on `try_links` ledger append; add `PREFILTER_PASSED_RETRY → NO_JOBLIST` if retry+monolith path needs it. |
+| advisory | Align `_finalize_joblist_identified` debug with `debug_detail` when touching file next. |
