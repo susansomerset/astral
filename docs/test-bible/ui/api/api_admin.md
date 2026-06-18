@@ -109,3 +109,11 @@ See primary data manifest: `docs/test-bible/data/database/agent_tasks.md` (**AST
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 
+### AST-740 · AST-734
+
+`_grouping_from_agent_task_row` returns DB grouping fields only — drops backward-compat `phase`/`seq` keys from Manage Tasks GET/PUT payloads.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No `phase`/`seq` on task routes | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi`, `TestTaskRoutes::test_preview_task_and_get_update` |
+

@@ -138,25 +138,24 @@ class TestAst454SevenSegmentPersistence:
         assert row["cache_prompt_d"] == ""
         assert row["user_prompt"] == "uu"
 
-# AST-738: global-per-task_key grouping columns seeded from TASK_CONFIG phase/seq.
+# AST-738/740: grouping columns; seed defaults unassigned when TASK_CONFIG lacks phase/seq (AST-740).
 class TestAst738TaskGroupingMetadata:
-    def test_seed_values_for_task_key_from_config(self) -> None:
+    def test_seed_values_for_task_key_unassigned_without_config_phase(self) -> None:
         vals = seed_values_for_task_key(TASK_KEY_CRAFT)
-        assert vals["task_group_name"] == "A. Candidate Context"
-        assert vals["task_group_order"] == "A. Candidate Context"
-        assert vals["task_seq"] == 1.0
+        assert vals["task_group_name"] == "(unassigned)"
+        assert vals["task_group_order"] == "ZZZ"
+        assert vals["task_seq"] == 999.0
         assert vals["task_name"] == TASK_KEY_CRAFT
 
-    def test_new_row_defaults_grouping_from_config(self, sqlite_in_memory) -> None:
+    def test_new_row_defaults_grouping_unassigned_without_config_phase(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_agent_task(TASK_KEY_QJL, agent_id="agent-1", user_prompt="prompt")
         row = db.get_agent_task(TASK_KEY_QJL)
-        expected = seed_values_for_task_key(TASK_KEY_QJL)
         assert row is not None
-        assert row["task_group_name"] == expected["task_group_name"]
-        assert row["task_group_order"] == expected["task_group_order"]
-        assert row["task_seq"] == expected["task_seq"]
-        assert row["task_name"] == expected["task_name"]
+        assert row["task_group_name"] == "(unassigned)"
+        assert row["task_group_order"] == "ZZZ"
+        assert row["task_seq"] == 999.0
+        assert row["task_name"] == TASK_KEY_QJL
 
     def test_grouping_only_edit_keeps_version_uuid(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
