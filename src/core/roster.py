@@ -704,38 +704,28 @@ async def run_company_task(
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
-        elif input_state in frozenset(
-            ROSTER_CONFIG.get("locate_job_page", {}).get("dispatch_input_states") or ("TO_WATCH",)
+        elif input_state in (
+            ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"],
+            ROSTER_CONFIG["parse_job_list"]["retry_trigger_state"],
         ):
-            locate_states = frozenset(
-                ROSTER_CONFIG.get("locate_job_page", {}).get("dispatch_input_states") or ("TO_WATCH",)
-            )
             tk = (dispatch_task_key or "").strip()
-            if not tk and input_state in locate_states:
-                tk = "find_job_page"
-            error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
-            pass_states = ROSTER_CONFIG.get("locate_job_page", {}).get("pass_states", [])
-            if tk == "find_job_page":
-                result = await find_job_page(
-                    url=company_website, short_name=short_name,
-                    company_website=company_website, debug=debug, ctx=ctx,
-                )
-            elif tk == "select_job_page":
-                result = await run_select_job_page_dispatch(entity, batch_id, ctx, debug)
-            elif tk == "parse_job_list":
-                result = await run_parse_job_list_dispatch(entity, batch_id, ctx, debug)
-            else:
+            if tk != "parse_job_list":
                 logger.warning(
-                    "run_company_task: unhandled dispatch_task_key=%s for input_state=%s %s",
-                    tk, input_state, short_name,
+                    "run_company_task: %s expects parse_job_list, got %s",
+                    input_state, tk,
                 )
                 return {**zero, "total_errors": 1}
+            result = await run_parse_job_list_dispatch(entity, batch_id, ctx, debug)
+            parse_cfg = ROSTER_CONFIG["parse_job_list"]
             if result.get("error"):
-                logger.error(f"[{short_name}] {tk} error: {result['error']}")
-                if error_state:
-                    transition_company_state(short_name, error_state)
+                logger.error(f"[{short_name}] parse_job_list error: {result['error']}")
                 return {**zero, "total_errors": 1}
-            if result.get("state") in pass_states:
+            ok_states = frozenset({
+                parse_cfg["pass_state"],
+                parse_cfg["retry_state"],
+                parse_cfg["terminal_fail_state"],
+            })
+            if result.get("state") in ok_states:
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
@@ -767,7 +757,7 @@ async def run_select_job_page_dispatch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """PJL_READY decomposed entry or TO_WATCH legacy select-only (AST-535 / AST-720)."""
+    """PJL_READY decomposed select_job_page entry (AST-720)."""
     _ = batch_id
     short_name = entity.get("short_name", "")
     company_website = entity.get("company_website", "")
@@ -776,36 +766,11 @@ async def run_select_job_page_dispatch(
     row_state = (company or {}).get("state") or ""
     entity_state = entity.get("state") or row_state
     if entity_state != "PJL_READY" and row_state != "PJL_READY":
-        possible_job_links = cdata.get("possible_job_links") or []
-        nav_links = cdata.get("nav_links") or ""
-        if not possible_job_links or not nav_links:
-            _save_company(short_name=short_name, company_website=company_website,
-                          state="NO_JOBLIST", page_option_url=company_website,
-                          raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
-        ctx_no_chain = {k: v for k, v in (ctx or {}).items() if k != "resolve_run_next_live"}
-        async with create_browser_context() as browser_context:
-            assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
-                possible_job_links, nav_links, browser_context, debug=debug,
-            )
-            if not assembled_content.strip():
-                _save_company(short_name=short_name, company_website=company_website,
-                              state="NO_JOBLIST", page_option_url=company_website,
-                              raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
-                return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
-            return await _find_job_page_from_assembled(
-                short_name=short_name,
-                company_website=company_website,
-                assembled_content=assembled_content,
-                page_url_map=page_url_map,
-                page_dom_map=page_dom_map,
-                visible_map=visible_map,
-                nav_links=nav_links,
-                browser_context=browser_context,
-                debug=debug,
-                ctx=ctx_no_chain,
-                chain_parse=False,
-            )
+        logger.warning(
+            "run_select_job_page_dispatch: unexpected state %s for %s (PJL_READY only)",
+            entity_state or row_state, short_name,
+        )
+        return {"short_name": short_name, "state": entity_state or row_state, "error": "unexpected_state"}
 
     assembled_content, page_url_map, visible_map = _pjl_maps_from_company_data(cdata)
     if not assembled_content.strip():
@@ -848,13 +813,108 @@ async def run_select_job_page_dispatch(
     return result
 
 
-async def _scrape_job_site_dom(job_site: str, browser_context: BrowserSession, debug: bool = False) -> str:
-    """Load job_site once and return culled page DOM for parse_job_list dispatch entry."""
-    pg = await get_page(browser_context, job_site)
+async def _scrape_list_page_dom_for_parse(
+    url: str, browser_context: BrowserSession, debug: bool = False,
+) -> str:
+    """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
     try:
-        return (await extract_page_dom(pg)) or ""
-    finally:
-        await close_page(pg)
+        pg = await get_page(browser_context, url)
+        try:
+            readiness_cfg = roster_scrape_readiness_config()
+            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
+            if debug:
+                log = logger
+                log.set_debug_flag(True)
+                log.debug_index(
+                    func="roster._scrape_list_page_dom_for_parse",
+                    index=1,
+                    total=1,
+                    identifier=url,
+                    outcome=ready_meta.get("outcome")
+                    or ("ready" if ready_meta.get("ready") else "timeout"),
+                )
+                log.debug_detail(
+                    f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
+                    f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
+                    f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
+                )
+            return (await extract_page_dom(pg)) or ""
+        finally:
+            await close_page(pg)
+    except Exception:
+        return ""
+
+
+def _resolve_selected_pjl_url(cdata: dict) -> str:
+    key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
+    return str(cdata.get(key) or "").strip()
+
+
+def _parse_dispatch_failure_state(input_state: str) -> str:
+    st = (input_state or "").strip()
+    parse_cfg = ROSTER_CONFIG["parse_job_list"]
+    if st == parse_cfg["dispatch_trigger_state"]:
+        return parse_cfg["retry_state"]
+    if st == parse_cfg["retry_trigger_state"]:
+        return parse_cfg["terminal_fail_state"]
+    return parse_cfg["terminal_fail_state"]
+
+
+def _save_parse_dispatch_failure(
+    short_name: str,
+    company_website: str,
+    list_url: str,
+    input_state: str,
+    raw_response: Optional[Dict[str, Any]] = None,
+    notes: Optional[str] = None,
+    response_type: str = "PARSE_DISPATCH_FAIL",
+) -> Dict[str, Any]:
+    fail_state = _parse_dispatch_failure_state(input_state)
+    if notes:
+        save_company_data(short_name, {"parse_job_list_notes": notes})
+    _save_company(
+        short_name=short_name,
+        company_website=company_website,
+        state=fail_state,
+        page_option_url=list_url or company_website,
+        raw_response=raw_response or {"response_type": response_type},
+        pre_run_job_site="",
+    )
+    return {
+        "short_name": short_name,
+        "state": fail_state,
+        "job_site": "",
+        "response_type": response_type,
+    }
+
+
+def _finalize_parse_dispatch_success(
+    short_name: str,
+    company_website: str,
+    list_url: str,
+    dom_html: str,
+    parsed: Dict[str, Any],
+    job_titles: List[Any],
+) -> Dict[str, Any]:
+    container = (parsed.get("job_container") or "").strip()
+    job_tag = (parsed.get("job_tag") or "").strip()
+    container_index = _compute_container_index(dom_html, container, job_titles)
+    parse_instructions = {"container": container, "job_tag": job_tag, "container_index": container_index}
+    save_company_data(short_name, {"parse_instructions": parse_instructions})
+    _save_company(
+        short_name=short_name,
+        company_website=company_website,
+        state="WATCH",
+        page_option_url=list_url,
+        raw_response=parsed,
+    )
+    return {
+        "short_name": short_name,
+        "state": "WATCH",
+        "job_site": list_url,
+        "response_type": "PARSE_DISPATCH_OK",
+        "parse_instructions": parse_instructions,
+    }
 
 
 async def run_parse_job_list_dispatch(
@@ -863,50 +923,83 @@ async def run_parse_job_list_dispatch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """TO_WATCH entry: parse_job_list on stored job_site (AST-535)."""
+    """JOBLIST_IDENTIFIED / JOBLIST_IDENTIFIED_RETRY: DOM reload + parse_job_list (AST-721)."""
+    _ = batch_id
     short_name = entity.get("short_name", "")
     company_website = entity.get("company_website", "")
-    job_site = str(entity.get("job_site") or "").strip()
-    if not job_site:
-        logger.warning("run_parse_job_list_dispatch: missing job_site for %s", short_name)
-        return {"short_name": short_name, "state": "NO_JOBLIST", "error": "missing job_site"}
+    input_state = str(entity.get("state") or "").strip()
+    allowed = (
+        ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"],
+        ROSTER_CONFIG["parse_job_list"]["retry_trigger_state"],
+    )
+    if input_state not in allowed:
+        logger.warning(
+            "run_parse_job_list_dispatch: unexpected state %s for %s", input_state, short_name,
+        )
+        return {"short_name": short_name, "state": input_state, "error": "unexpected_state"}
     company = get_company(short_name)
     cdata = (company.get("company_data") or {}) if company else {}
+    list_url = _resolve_selected_pjl_url(cdata)
+    if not list_url:
+        return _save_parse_dispatch_failure(
+            short_name, company_website, "", input_state,
+            notes="missing selected_pjl_url", response_type="PARSE_DISPATCH_MISSING_URL",
+        )
     job_titles = cdata.get("job_titles") or []
+    if not job_titles:
+        return _save_parse_dispatch_failure(
+            short_name, company_website, list_url, input_state,
+            notes="missing job_titles", response_type="PARSE_DISPATCH_MISSING_TITLES",
+        )
+    if debug:
+        log = logger
+        log.set_debug_flag(True)
+        log.debug_index(
+            func="roster.run_parse_job_list_dispatch",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"url={list_url} titles={len(job_titles)} state={input_state}",
+        )
     async with create_browser_context() as browser_context:
-        dom_html = await _scrape_job_site_dom(job_site, browser_context, debug=debug)
+        dom_html = await _scrape_list_page_dom_for_parse(list_url, browser_context, debug=debug)
         if not dom_html.strip():
-            _save_company(short_name=short_name, company_website=company_website,
-                          state="NO_JOBLIST", page_option_url=company_website,
-                          raw_response={"response_type": "PARSE_DISPATCH_EMPTY_DOM", "job_site": job_site})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site, "response_type": "PARSE_DISPATCH_EMPTY_DOM"}
+            return _save_parse_dispatch_failure(
+                short_name, company_website, list_url, input_state,
+                notes="empty dom after reload", response_type="PARSE_DISPATCH_EMPTY_DOM",
+            )
         containers = find_job_containers(dom_html, job_titles)
         if not containers:
-            _save_company(short_name=short_name, company_website=company_website,
-                          state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site,
-                          raw_response={"response_type": "PARSE_DISPATCH_NO_CONTAINERS"})
-            return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site, "response_type": "PARSE_DISPATCH_NO_CONTAINERS"}
+            return _save_parse_dispatch_failure(
+                short_name, company_website, list_url, input_state,
+                notes="containers not found for titles", response_type="PARSE_DISPATCH_NO_CONTAINERS",
+            )
         dom_joined = "\n".join(containers)
         parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
         container = (parsed.get("job_container") or "").strip()
         job_tag = (parsed.get("job_tag") or "").strip()
         if not container or not job_tag:
-            save_company_data(short_name, {"parse_job_list_notes": "parse returned empty container or job_tag"})
-            _save_company(short_name=short_name, company_website=company_website,
-                          state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site, raw_response=parsed)
-            return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site, "response_type": "PARSE_DISPATCH_INVALID"}
-        err, _, _ = _validate_parse_job_list_raw_job_listings(dom_joined, container, job_tag, parsed.get("job_ids", []))
+            return _save_parse_dispatch_failure(
+                short_name, company_website, list_url, input_state,
+                raw_response=parsed, notes="parse returned empty container or job_tag",
+                response_type="PARSE_DISPATCH_INVALID",
+            )
+        err, _, _ = _validate_parse_job_list_raw_job_listings(
+            dom_joined, container, job_tag, parsed.get("job_ids", []),
+        )
         if err:
-            save_company_data(short_name, {"parse_job_list_notes": err})
-            _save_company(short_name=short_name, company_website=company_website,
-                          state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site, raw_response=parsed)
-            return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site, "response_type": "PARSE_DISPATCH_VALIDATION"}
-        container_index = _compute_container_index(dom_html, container, job_titles)
-        parse_instructions = {"container": container, "job_tag": job_tag, "container_index": container_index}
-        save_company_data(short_name, {"parse_instructions": parse_instructions})
-        _save_company(short_name=short_name, company_website=company_website,
-                      state="WATCH", page_option_url=job_site, raw_response=parsed)
-        return {"short_name": short_name, "state": "WATCH", "job_site": job_site, "response_type": "PARSE_DISPATCH_OK", "parse_instructions": parse_instructions}
+            return _save_parse_dispatch_failure(
+                short_name, company_website, list_url, input_state,
+                raw_response=parsed, notes=err, response_type="PARSE_DISPATCH_VALIDATION",
+            )
+        result = _finalize_parse_dispatch_success(
+            short_name, company_website, list_url, dom_html, parsed, job_titles,
+        )
+    if debug:
+        log = logger
+        log.set_debug_flag(True)
+        log.debug_detail(f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}")
+    return result
 
 
 async def process_recheck_no_openings(
@@ -1810,115 +1903,6 @@ async def jobs_found_process_job_site(
             ctx=ctx,
         )
 
-
-def _is_verified_job_site_distinct(job_site: str, company_website: str) -> bool:
-    """True when stored job_site is non-empty and not the same URL as company_website (Susan AC)."""
-    js = _normalize_company_url_for_dedupe(job_site)
-    cw = _normalize_company_url_for_dedupe(company_website)
-    return bool(js) and js != cw
-
-
-async def find_job_page(
-    url: str,
-    short_name: Optional[str] = None,
-    company_website: Optional[str] = None,
-    debug: bool = False,
-    ctx: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-    """Find job listing page on a company website.
-
-    Loads possible_job_links from prefilter, scrapes those pages,
-    calls select_job_page AI to confirm which page has jobs (with one TRY_LINKS
-    retry), then saves job_site + job_titles for downstream parse_job_list.
-
-    Returns dict with: short_name, state, job_site, response_type.
-    """
-    if debug:
-        logger.set_debug_flag(True)
-        # Stdlib only: quiet third-party HTTP/SDK chatter (not app loggers; cf. anthropic.py).
-        import logging as _stdlib_log
-
-        _stdlib_log.getLogger("httpcore").setLevel(_stdlib_log.WARNING)
-        _stdlib_log.getLogger("httpx").setLevel(_stdlib_log.WARNING)
-        _stdlib_log.getLogger("anthropic").setLevel(_stdlib_log.WARNING)
-
-    if not short_name:
-        short_name = _derive_shortname_from_url(url)
-    if not company_website:
-        company_website = url
-
-    # Load company data for possible_job_links + nav_links
-    company = get_company(short_name)
-    pre_job_site = str((company or {}).get("job_site") or "").strip()
-    if _is_verified_job_site_distinct(pre_job_site, company_website):
-        logger.info(
-            "[%s] find_job_page: stored job_site path (%s)",
-            short_name,
-            pre_job_site,
-        )
-        return await jobs_found_process_job_site(
-            short_name, company_website, pre_job_site, debug=debug, ctx=ctx,
-        )
-    cdata = (company.get("company_data") or {}) if company else {}
-    possible_job_links = cdata.get("possible_job_links") or []
-    nav_links = cdata.get("nav_links") or ""
-
-    if debug:
-        logger.test(f"[find_job_page] {short_name}: {len(possible_job_links)} PJLs, nav_links={len(nav_links)} chars")
-
-    async with create_browser_context() as browser_context:
-        if not possible_job_links or not nav_links:
-            logger.info(
-                "[%s] find_job_page: NO_JOBLIST without LLM — reason=no_pjl_or_nav "
-                "pjl_count=%d nav_links_chars=%d verified_job_site=%s",
-                short_name,
-                len(possible_job_links),
-                len(nav_links or ""),
-                "yes" if _is_verified_job_site_distinct(pre_job_site, company_website) else "no",
-            )
-            _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website,
-                               raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "No possible_job_links from prefilter"})
-            pre_js = str((company or {}).get("job_site") or "")
-            job_site_out = _job_site_for_persist(
-                terminal_state="NO_JOBLIST", page_option_url=company_website, pre_run_job_site=pre_js,
-            )
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site_out, "response_type": "NO_JOBLIST_FOUND"}
-
-        # Scrape PJL pages (text + DOM + visible + links in one page load each)
-        assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
-            possible_job_links, nav_links, browser_context, debug=debug,
-        )
-        if not assembled_content.strip():
-            logger.info(
-                "[%s] find_job_page: NO_JOBLIST without LLM — reason=all_pjl_scrapes_failed "
-                "pjl_count=%d nav_links_chars=%d verified_job_site=%s",
-                short_name,
-                len(possible_job_links),
-                len(nav_links or ""),
-                "yes" if _is_verified_job_site_distinct(pre_job_site, company_website) else "no",
-            )
-            _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website,
-                               raw_response={"response_type": "NO_JOBLIST_FOUND", "reason": "All PJL scrapes failed"})
-            pre_js = str((company or {}).get("job_site") or "")
-            job_site_out = _job_site_for_persist(
-                terminal_state="NO_JOBLIST", page_option_url=company_website, pre_run_job_site=pre_js,
-            )
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site_out, "response_type": "NO_JOBLIST_FOUND"}
-
-        return await _find_job_page_from_assembled(
-            short_name=short_name,
-            company_website=company_website,
-            assembled_content=assembled_content,
-            page_url_map=page_url_map,
-            page_dom_map=page_dom_map,
-            visible_map=visible_map,
-            nav_links=nav_links,
-            browser_context=browser_context,
-            debug=debug,
-            ctx=ctx,
-        )
 
 def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
     return {
