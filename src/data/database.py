@@ -47,6 +47,7 @@ Retry/log/crash on transient DB errors; domain outcomes
 via return values (duplicate -> False, no records -> False / count).
 """
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -67,6 +68,7 @@ from src.utils.config import (
     PRONOUN_PREFERENCE_OPTIONS,
     ASTRAL_CONFIG,
     BLOCK_TYPES,
+    CHARS_PER_TOKEN,
     BOARD_SEARCH_STATES,
     BOARDS_CONFIG,
     CANDIDATE_STATES,
@@ -3345,6 +3347,112 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
         )
         conn.commit()
     _vector_feedback_schema_ensured = True
+
+
+def store_feedback_block(
+    entity_type: str,
+    task_key: str,
+    batch_id: str,
+    body: str,
+    *,
+    index: Optional[str] = None,
+    created_at: Optional[str] = None,
+) -> str:
+    """Persist FEEDBACK agent_data block; returns agent_data_id (AST-724)."""
+    content_hash = hashlib.sha256(
+        f"{batch_id}:FEEDBACK:{index or ''}:{body}".encode()
+    ).hexdigest()[:16]
+    agent_data_id = f"{batch_id}-feedback-{content_hash}"
+    save_agent_data(
+        agent_data_id=agent_data_id,
+        entity_type=entity_type,
+        task_key=task_key,
+        batch_id=batch_id,
+        block_type="FEEDBACK",
+        block_data=body,
+        token_size=len(body) // CHARS_PER_TOKEN if body else 0,
+        created_at=created_at,
+    )
+    return agent_data_id
+
+
+def list_rubric_vector_uuid_by_code(candidate_id: str, owner_task_key: str) -> Dict[str, str]:
+    """Uppercased rubric code → rubric_vector_uuid for active rows (AST-724)."""
+    if not candidate_id or not str(candidate_id).strip() or not owner_task_key:
+        return {}
+
+    def _with_conn() -> Dict[str, str]:
+        conn = _get_connection()
+        try:
+            _ensure_rubric_vector_table(conn)
+            rows = conn.execute(
+                """SELECT code, rubric_vector_uuid FROM rubric_vector
+                   WHERE candidate_id = ? AND task_key = ? AND current = 1""",
+                (candidate_id, owner_task_key),
+            ).fetchall()
+            return {
+                str(r[0]).strip().upper(): r[1]
+                for r in rows
+                if r[0] and r[1]
+            }
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def insert_vector_feedback_rows(
+    vector_rows: List[Dict[str, str]],
+    *,
+    candidate_id: str,
+    batch_id: str,
+    task_key: str,
+    agent_data_id: Optional[str] = None,
+) -> None:
+    """Insert one row per feedback type per parsed vector (AST-724)."""
+    if not vector_rows:
+        return
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_vector_feedback_table(conn)
+            for row in vector_rows:
+                rubric_uuid = row.get("rubric_vector_uuid")
+                if not rubric_uuid:
+                    continue
+                for feedback_type, key in (
+                    ("relevance", "relevance"),
+                    ("clarity", "clarity"),
+                    ("verdict", "verdict"),
+                ):
+                    value = row.get(key)
+                    if not value:
+                        continue
+                    conn.execute(
+                        """INSERT INTO vector_feedback
+                           (vector_feedback_id, rubric_vector_uuid, candidate_id,
+                            batch_id, task_key, feedback_type, value,
+                            agent_data_id, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            str(uuid.uuid4()),
+                            rubric_uuid,
+                            candidate_id,
+                            batch_id,
+                            task_key,
+                            feedback_type,
+                            value,
+                            agent_data_id,
+                            _utc_now(),
+                        ),
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
 
 
 def _insert_rubric_vector_row_on_connection(
