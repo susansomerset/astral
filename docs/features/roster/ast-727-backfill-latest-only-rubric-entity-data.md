@@ -163,3 +163,16 @@ No unresolved conflicts.
 | **Discuss** | Branch diff vs `origin/dev` also carries **AST-726** runtime sibling changes (upsert, consult/roster saves, story dedupe) — expected epic stacking on one publish ref; AST-727-specific scope is script + normalizer export only. |
 | **Advisory** | Job write path imports private `database._get_connection` / `_ensure_job_schema` / `_run_with_retry` — plan authorized copying the append pattern without a new public API; same precedent as `bootstrap_candidate.py`. Non-dict `agent_responses` elements are dropped by the normalizer without a dedicated stat counter (test covers `"bad"` skip). |
 | **Recommended actions** | Hedy → **resolve-child** — no code changes required. Susan: run `--dry-run` full scan, spot-check noisy entities, then live run after backup per script docstring. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Resolved by:** Hedy (resolve-child)
+
+Radia posted **no fix-now** items. Discuss (AST-726 sibling commits stacked on publish ref) and advisory (private database helpers for job SET; non-dict ref skip without stat counter) accepted as documented.
+
+**§9a dry-run:** `origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data` @ `63f4d3b` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-717-store-only-latest-rubric-results-in-entity-data`**.
+
+**Product changes in resolve:** none — review clean.
