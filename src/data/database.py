@@ -155,6 +155,7 @@ def decrypt_value(ciphertext: str) -> str:
 
 _company_schema_ensured = False
 _job_schema_ensured = False
+_JOB_IDENTITY_UNIQUE_INDEX = "idx_job_identity_unique"
 _candidate_schema_ensured = False
 _company_candidate_fk_ensured = False
 _company_job_scan_schema_ensured = False
@@ -1208,6 +1209,21 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
                 if "duplicate column name" not in str(e).lower():
                     raise
     # AST-479: LIKE passes stay PASSED_LIKE for analysis_upshot queue; do not auto-promote to BUILD_ARTIFACTS.
+    # AST-732: partial unique index on complete identity triples; NULL/empty company_job_id or job_title excluded.
+    idx_row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+        (_JOB_IDENTITY_UNIQUE_INDEX,),
+    ).fetchone()
+    if idx_row is None:
+        conn.execute(f"""
+            CREATE UNIQUE INDEX {_JOB_IDENTITY_UNIQUE_INDEX}
+            ON job (company, job_title, company_job_id)
+            WHERE company_job_id IS NOT NULL
+              AND job_title IS NOT NULL
+              AND TRIM(company_job_id) != ''
+              AND TRIM(job_title) != ''
+        """)
+        conn.commit()
     _job_schema_ensured = True
 
 def get_company_job_counts(short_name: str) -> Dict[str, int]:
@@ -1267,6 +1283,63 @@ def get_company_job_ids(company: str) -> List[str]:
     finally:
         conn.close()
 
+
+
+
+def get_job_id_by_identity(
+    company: str,
+    job_title: str,
+    company_job_id: str,
+    *,
+    exclude_astral_job_id: Optional[str] = None,
+) -> Optional[str]:
+    """Return astral_job_id of first row matching complete identity triple, or None."""
+    def _with_conn() -> Optional[str]:
+        conn = _get_connection()
+        try:
+            _ensure_job_schema(conn)
+            sql = (
+                "SELECT astral_job_id FROM job"
+                " WHERE company = ? AND job_title = ? AND company_job_id = ?"
+            )
+            params: List[Any] = [company, job_title, company_job_id]
+            if exclude_astral_job_id is not None:
+                sql += " AND astral_job_id != ?"
+                params.append(exclude_astral_job_id)
+            sql += " LIMIT 1"
+            row = conn.execute(sql, tuple(params)).fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def delete_job(astral_job_id: str) -> bool:
+    """Delete single job row by astral_job_id. Does not cascade related records."""
+    if not astral_job_id:
+        return False
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_job_schema(conn)
+            cursor = conn.execute("DELETE FROM job WHERE astral_job_id = ?", (astral_job_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def _is_job_identity_unique_violation(exc: sqlite3.IntegrityError) -> bool:
+    msg = str(exc).lower()
+    return _JOB_IDENTITY_UNIQUE_INDEX.lower() in msg or (
+        "unique constraint failed" in msg
+        and "job.company" in msg
+        and "job.job_title" in msg
+        and "job.company_job_id" in msg
+    )
+
 def save_job(
     astral_job_id: str,
     *,
@@ -1281,15 +1354,16 @@ def save_job(
     state_changed_at: Optional[str] = None,
     latest_score: Optional[float] = None,
     board_search_id: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
     """Upsert a job row. Insert if new (company and state required); update provided fields if exists.
     job_data: merge=True deep-merges with existing; merge=False overwrites.
     state_history: always overwrites (caller manages append via get_job + append + save_job).
     latest_score: most recent numeric grade score (0-10); written through for batch priority sorting (AST-350).
+    Returns True on insert/update; False when new-row insert bounces on identity duplicate (complete triple).
     Raises ValueError if inserting without company/state."""
     now = _utc_now()
 
-    def _with_conn() -> None:
+    def _with_conn() -> bool:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
@@ -1306,15 +1380,21 @@ def save_job(
                     raise ValueError("state required for new job")
                 jdata_str = json.dumps(job_data) if job_data else "{}"
                 hist_str = json.dumps(state_history) if state_history else "[]"
-                conn.execute(
-                    """INSERT INTO job (
-                        astral_job_id, company, company_job_id, job_title, job_link, job_data,
-                        state, state_history, batch_id, batch_created_at,
-                        board_search_id, created_at, updated_at, state_changed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
-                    (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
-                     state, hist_str, board_search_id, now, now, state_changed_at or now),
-                )
+                try:
+                    conn.execute(
+                        """INSERT INTO job (
+                            astral_job_id, company, company_job_id, job_title, job_link, job_data,
+                            state, state_history, batch_id, batch_created_at,
+                            board_search_id, created_at, updated_at, state_changed_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+                        (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
+                         state, hist_str, board_search_id, now, now, state_changed_at or now),
+                    )
+                except sqlite3.IntegrityError as e:
+                    if _is_job_identity_unique_violation(e):
+                        conn.rollback()
+                        return False
+                    raise
             else:
                 # UPDATE: only set provided (non-None) fields
                 sets: List[str] = []
@@ -1343,7 +1423,7 @@ def save_job(
                     sets.append("state_history = ?")
                     params.append(json.dumps(state_history))
                 if not sets:
-                    return
+                    return True
                 sets.append("updated_at = ?")
                 params.append(now)
                 params.append(astral_job_id)
@@ -1352,10 +1432,11 @@ def save_job(
                     tuple(params),
                 )
             conn.commit()
+            return True
         finally:
             conn.close()
 
-    _run_with_retry(_with_conn)
+    return _run_with_retry(_with_conn)
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     """Select single job by astral_job_id. Returns dict with parsed job_data/state_history, or None."""

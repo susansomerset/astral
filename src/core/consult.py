@@ -1310,7 +1310,10 @@ async def qualify_job_listings(
                 logger.debug_detail(f"relative job_link: {job_link!r}")
             logger.warning(f"  {aid} skipped — relative job_link: {job_link}")
             raise ValueError(f"relative job_link: {job_link}")
-        tracker.initialize_job(aid, input_job["company"], response_job)
+        if not tracker.initialize_job(aid, input_job["company"], response_job):
+            if not debug:
+                logger.info(f"  {aid} -> deleted (identity collision)")
+            return cfg["fail_state"]
         _save_joblist_result()
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         if not debug:
