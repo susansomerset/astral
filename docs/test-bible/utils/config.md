@@ -395,3 +395,25 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
+### AST-724 · AST-378
+
+**`is_rubric_backed_task`** gates rubric-backed **`do_task`** prompt suffix injection and vector-feedback capture; **`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** documents the **`vector_reviews`** envelope contract.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Rubric-backed consumer/craft gate | `src/utils/config.py` | `TestAst724RubricBackedTask::test_is_rubric_backed_consumer_and_craft` |
+| Prompt suffix in config | `src/utils/config.py` | `TestAst724RubricBackedTask::test_prompt_suffix_present_in_rubric_feedback_config` |
+
+**AST-724** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst724RubricBackedTask \
+  tests/component/utils/test_rubric_feedback.py \
+  tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture \
+  tests/component/data/database/test_rubric_vectors.py::TestAst724VectorFeedbackRows \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

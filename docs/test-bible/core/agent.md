@@ -100,3 +100,27 @@ See **`docs/test-bible/core/consult.md`** (**AST-697**) for decode-path manifest
 ```
 
 Roster passthrough manifest: **`docs/test-bible/core/roster.md`** (**AST-698**).
+
+---
+
+### AST-724 · AST-378
+
+**`do_task`** SUCCESS-path lenient capture of **`vector_reviews`** on rubric-backed tasks: clean parse → **`vector_feedback`** rows; unparseable → **`FEEDBACK`** agent_data block only. Parse failures never fail the run.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `agent_performance.status` normalization | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_agent_performance_status_normalizes_dict_and_string` |
+| Owner task + candidate resolution | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_rubric_feedback_owner_and_candidate_resolves_from_cd_and_ctx` |
+| Clean parse → vector_feedback rows | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
+| Unparseable → FEEDBACK block | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_unparseable_stores_feedback_block_not_rows` |
+| Non-success skips capture | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_non_success_skips_capture` |
+
+**AST-724** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture \
+  -q
+```
+
+Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. Data layer: **`docs/test-bible/data/database/rubric_vectors.md`**.
