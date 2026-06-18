@@ -247,3 +247,14 @@ Revision 1 — 2026-06-18
 Driven by: plan-child re-run on epic worktree; align with AST-724 FEEDBACK fallback inspect path
 Changes: Added BatchAgentDataModal FEEDBACK tab order; batch_id → modal on detail table; memoized urlBacked on candidate filter (AST-709 parity).
 ```
+
+## Review (build-child)
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-725-admin-vector-feedback-screen` (code tip `71fc6c1`)  
+**Stages:** 3 commits — data/config queries; admin API; React page + nav + FEEDBACK modal tab.
+
+| Area | Notes |
+|------|--------|
+| Data | `list_vector_feedback`, `aggregate_vector_feedback_by_vector`; owner→run key expansion via `task_keys_for_rubric_owner` |
+| API | `/api/admin/vector_feedback`, `/summary`, `/task_keys` |
+| UI | `AdminVectorFeedback` summary + detail tables; batch → `BatchAgentDataModal` |
