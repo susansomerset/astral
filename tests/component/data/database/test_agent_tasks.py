@@ -1,4 +1,4 @@
-"""Component tests for agent_task table cluster (AST-392, AST-454)."""
+"""Component tests for agent_task table cluster (AST-392, AST-454, AST-738)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,15 @@ import sqlite3
 
 import pytest
 
+from scripts.migrations.backfill_task_grouping_metadata import (
+    backfill_task_grouping_metadata,
+    seed_values_for_task_key,
+)
 
 TASK_KEY_QJL = "qualify_job_listings"
+TASK_KEY_CRAFT = "craft_resume_base"
+
+# placeholder removed = "qualify_job_listings"
 
 
 class TestSaveAgentTask:
@@ -130,3 +137,87 @@ class TestAst454SevenSegmentPersistence:
         assert row["cache_prompt_c"] == ""
         assert row["cache_prompt_d"] == ""
         assert row["user_prompt"] == "uu"
+
+# AST-738: global-per-task_key grouping columns seeded from TASK_CONFIG phase/seq.
+class TestAst738TaskGroupingMetadata:
+    def test_seed_values_for_task_key_from_config(self) -> None:
+        vals = seed_values_for_task_key(TASK_KEY_CRAFT)
+        assert vals["task_group_name"] == "A. Candidate Context"
+        assert vals["task_group_order"] == "A. Candidate Context"
+        assert vals["task_seq"] == 1.0
+        assert vals["task_name"] == TASK_KEY_CRAFT
+
+    def test_new_row_defaults_grouping_from_config(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(TASK_KEY_QJL, agent_id="agent-1", user_prompt="prompt")
+        row = db.get_agent_task(TASK_KEY_QJL)
+        expected = seed_values_for_task_key(TASK_KEY_QJL)
+        assert row is not None
+        assert row["task_group_name"] == expected["task_group_name"]
+        assert row["task_group_order"] == expected["task_group_order"]
+        assert row["task_seq"] == expected["task_seq"]
+        assert row["task_name"] == expected["task_name"]
+
+    def test_grouping_only_edit_keeps_version_uuid(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(TASK_KEY_QJL, agent_id="agent-a", user_prompt="same-user")
+        u1 = db.get_agent_task(TASK_KEY_QJL)["task_key_uuid"]
+        db.save_agent_task(
+            TASK_KEY_QJL,
+            task_group_name="Custom Group",
+            task_seq=42.0,
+            task_name="Pretty Label",
+        )
+        row = db.get_agent_task(TASK_KEY_QJL)
+        assert row["task_key_uuid"] == u1
+        assert row["task_group_name"] == "Custom Group"
+        assert row["task_seq"] == 42.0
+        assert row["task_name"] == "Pretty Label"
+
+    def test_segment_edit_copies_grouping_forward(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(
+            TASK_KEY_QJL,
+            agent_id="agent-1",
+            user_prompt="v1",
+            task_group_name="Keep Group",
+            task_seq=3.0,
+        )
+        uuid1 = db.get_agent_task(TASK_KEY_QJL)["task_key_uuid"]
+        db.save_agent_task(TASK_KEY_QJL, user_prompt="v2")
+        row = db.get_agent_task(TASK_KEY_QJL)
+        assert row["user_prompt"] == "v2"
+        assert row["task_key_uuid"] != uuid1
+        assert row["task_group_name"] == "Keep Group"
+        assert row["task_seq"] == 3.0
+
+    def test_list_candidate_tasks_includes_grouping_columns(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(
+            TASK_KEY_QJL,
+            agent_id="agent-1",
+            user_prompt="p",
+            task_group_order="D. Job Analysis",
+            task_group_name="D. Job Analysis",
+            task_seq=1.0,
+            task_name="Qualify",
+        )
+        listed = db.list_candidate_tasks()
+        ours = next(t for t in listed if t["task_key"] == TASK_KEY_QJL)
+        assert ours["task_group_order"] == "D. Job Analysis"
+        assert ours["task_group_name"] == "D. Job Analysis"
+        assert ours["task_seq"] == 1.0
+        assert ours["task_name"] == "Qualify"
+
+    def test_backfill_skips_when_operator_already_seeded(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(TASK_KEY_QJL, agent_id="a1", user_prompt="p", task_group_name="Edited")
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            counts = backfill_task_grouping_metadata(conn, dry_run=True)
+            assert counts["updated"] == 0
+            assert counts["skipped"] >= 1
+        finally:
+            conn.close()
+

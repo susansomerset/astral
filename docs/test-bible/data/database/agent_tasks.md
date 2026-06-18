@@ -2,4 +2,31 @@
 
 **Test module:** `tests/component/data/database/test_agent_tasks.py`
 
-_(Coverage map and manifest blocks appended by Betty `qa-child`.)_
+## Coverage map
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven-segment versioning (**AST-454**) | `src/data/database.py` | `TestAst454SevenSegmentPersistence`, `TestSaveAgentTask` |
+| Grouping metadata columns + seed (**AST-738**) | `src/data/database.py`, `scripts/migrations/backfill_task_grouping_metadata.py` | `TestAst738TaskGroupingMetadata` |
+
+### AST-738 · AST-734
+
+Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_group_name`, `task_seq`, `task_name`. One-time seed copies `TASK_CONFIG` `phase`/`seq` via `backfill_task_grouping_metadata` (global guard when any `current=1` row has non-empty `task_group_name`). `save_agent_task` seeds new rows, copies grouping on segment version, and metadata-only grouping edits do not retire the row. `list_candidate_tasks` returns all four columns.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seed helper + backfill guard | `scripts/migrations/backfill_task_grouping_metadata.py` | `TestAst738TaskGroupingMetadata::test_seed_values_for_task_key_from_config`, `test_backfill_skips_when_operator_already_seeded` |
+| Insert defaults, metadata-only update, version copy-forward, list columns | `src/data/database.py` | `TestAst738TaskGroupingMetadata` (remaining methods) |
+| Manage Tasks GET/PUT + `_enrich_tasks` backward-compat `phase`/`seq` | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst738TaskGroupingApi`; revised `TestTaskRoutes::test_preview_task_and_get_update` |
+
+**AST-738** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst738TaskGroupingMetadata \
+  tests/component/ui/api/test_api_admin.py::TestAst738TaskGroupingApi \
+  tests/component/ui/api/test_api_admin.py::TestTaskRoutes::test_preview_task_and_get_update \
+  -q
+```
+
+**Out of scope (siblings):** React Manage Tasks / Scheduled Actions layout (**AST-739**); `TASK_CONFIG` `phase`/`seq` removal (**AST-740**).
