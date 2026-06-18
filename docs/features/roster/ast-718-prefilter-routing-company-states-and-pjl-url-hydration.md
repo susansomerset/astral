@@ -293,3 +293,11 @@ No unresolved conflicts.
 | fix-now | Batch debug: thread position into `_apply_prefilter_decoded_company_outcome`; eliminate duplicate `debug_index` on batch path. |
 | discuss | None. |
 | advisory | `_has_dealbreaker_f` optional dedupe with `_render_pass_fail` when touching file next. |
+
+---
+
+## Resolution (2026-06-18)
+
+**Radia fix-now:** `_apply_prefilter_decoded_company_outcome` now accepts `debug_index` / `debug_total` (default `1/1` for monolithic `prefilter_company`). `_run_batch_company_prefilter` passes `job_idx` / `len(response_jobs)` and drops the redundant per-item `debug_index` block — one routing header + `debug_detail` per company on the batch path.
+
+**Publish ref:** `origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`
