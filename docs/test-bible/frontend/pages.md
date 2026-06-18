@@ -557,7 +557,8 @@ Susan UAT: visible gap between **Candidate** / **Task** and **Entity** overlappi
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-746|AST-647"
 ```
 
 **Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned.
