@@ -109,3 +109,13 @@ Susan UAT on **Scheduled Actions**: visible whitespace between **Candidate** and
 | §3.5 Naming | Follows existing `scheduledFrozenStyle` / `DATA_COL_KEYS` conventions. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap`  
+**Tip:** `36f61c2`  
+**Built:** Stage 1 — mount `ScheduledPhaseTable` only when phase section expanded; remeasure deps include sort icons; `scheduledFrozenStyle` locks frozen widths and defers sticky `left` until predecessor columns measured.
+
+**Out of build scope (Betty / qa-child):** component test assertions per build-child test-tree ban; manual UAT on multiple phase sections.
