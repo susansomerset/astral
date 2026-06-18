@@ -2803,7 +2803,7 @@ def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
     return get_company_job_counts(short_name)
 
 
-def _dedupe_agent_responses_latest(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def dedupe_agent_responses_latest(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Keep one agent_responses ref per task_key — latest created_at wins; preserve first-seen key order."""
     best_by_key: Dict[str, Dict[str, Any]] = {}
     key_order: List[str] = []
@@ -2821,6 +2821,27 @@ def _dedupe_agent_responses_latest(entries: List[Dict[str, Any]]) -> List[Dict[s
     return [best_by_key[key] for key in key_order]
 
 
+def normalize_agent_responses_for_backfill(entries: Any) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Prepare entity agent_responses for latest-only storage (AST-727 backfill)."""
+    raw = entries if isinstance(entries, list) else []
+    dropped_empty_key = 0
+    filtered: List[Dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        key = (entry.get("task_key") or "").strip()
+        if not key:
+            dropped_empty_key += 1
+            continue
+        filtered.append(entry)
+    before_dedupe = len(filtered)
+    normalized = dedupe_agent_responses_latest(filtered)
+    return normalized, {
+        "dropped_empty_key": dropped_empty_key,
+        "deduped_removed": before_dedupe - len(normalized),
+    }
+
+
 def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Expand the entity's agent_responses column entries with their block content.
 
@@ -2836,7 +2857,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     Duplicate block types get a counter suffix: NO_CACHE, NO_CACHE (2).
     """
-    entries = _dedupe_agent_responses_latest(entity.get("agent_responses") or [])
+    entries = dedupe_agent_responses_latest(entity.get("agent_responses") or [])
     if not entries:
         return []
 
