@@ -1090,6 +1090,8 @@ def _apply_prefilter_decoded_company_outcome(
     *,
     nav_links_from_data: str = "",
     debug: bool = False,
+    debug_index: int = 1,
+    debug_total: int = 1,
 ) -> str:
     """Shared post-decode prefilter outcome: hydrate, verdict, persist, transition."""
     from src.core.consult import (
@@ -1153,8 +1155,8 @@ def _apply_prefilter_decoded_company_outcome(
     if debug:
         logger.debug_index(
             func="roster._apply_prefilter_decoded_company_outcome",
-            index=1,
-            total=1,
+            index=debug_index,
+            total=debug_total,
             identifier=short_name,
             outcome=f"prefilter routing short_name={short_name} -> {new_state}",
         )
@@ -1424,6 +1426,8 @@ async def _run_batch_company_prefilter(
                 ctx,
                 nav_links_from_data=nav_links,
                 debug=debug,
+                debug_index=job_idx,
+                debug_total=len(response_jobs),
             )
         except Exception as e:
             bad_grades.add(aid)
@@ -1438,21 +1442,6 @@ async def _run_batch_company_prefilter(
                 logger.debug_detail(f"short_name={aid} error={e!r} grades={response_job.get('grades')!r}")
             logger.warning("[%s] prefilter batch process failed: %s | grades: %s", aid, e, response_job.get("grades"))
             continue
-        if debug:
-            grades = response_job.get("grades") or []
-            links_count = len(response_job.get("possible_job_links") or []) + len(
-                response_job.get("culture_links_to_explore") or []
-            )
-            logger.debug_index(
-                func="roster.prefilter_company_batch",
-                index=job_idx,
-                total=len(response_jobs),
-                identifier=aid,
-                outcome=str(new_state),
-            )
-            logger.debug_detail(
-                f"short_name={aid} grades={len(grades)} links={links_count} state={new_state!r}"
-            )
         if new_state in pass_states:
             passed += 1
         else:

@@ -31,6 +31,18 @@ class TestEnumerateArray:
         assert fmt.enumerate_array("", ["only"]) == "1: only"
 
 
+# Branches: empty; scheme strip; fragment drop; slash collapse; index suffix strip.
+class TestNormalizeLink:
+    def test_plan_examples(self) -> None:
+        assert fmt.normalize_link("https://Acme.com/careers/") == "acme.com/careers"
+        assert fmt.normalize_link("http://www.acme.com/jobs/index.html") == "www.acme.com/jobs"
+        assert fmt.normalize_link("//careers.acme.com/openings//") == "careers.acme.com/openings"
+
+    def test_empty_and_whitespace(self) -> None:
+        assert fmt.normalize_link("") == ""
+        assert fmt.normalize_link("   ") == ""
+
+
 # Branches: blank lines; bad prefix; non-int index; happy path.
 class TestParseEnumerateArray:
     def test_parses_numbered_lines(self) -> None:

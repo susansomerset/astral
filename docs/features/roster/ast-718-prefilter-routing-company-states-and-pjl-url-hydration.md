@@ -260,3 +260,44 @@ No unresolved conflicts.
 
 **Publish ref:** `origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`  
 **Product commits:** `17d796f1` (Stage 1 — config), `08783707` (Stage 2 — `normalize_link`), `597fb106` (Stage 3 — routing + hydration), `40efc65a` (Stage 4 — AST-538 debug)
+
+---
+
+## Radia review (2026-06-18)
+
+**Diff:** `origin/dev...origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration` (`2736a6d`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–4 land as specced: `NO_PREFILTER_JOBLISTS` config + transitions, `normalize_link()`, decomposed-path routing in `_apply_prefilter_decoded_company_outcome`, coat-check hydration in `_fetch_prefilter_notes`, AST-538 debug forward on monolithic + batch call sites. |
+| AC / tests | Betty manifest (`TestAst718PrefilterPjlRouting`, config/formatting units, legacy `TO_WATCH` via cfg override, batch HOMEPAGE_READY pass/fail split) matches routing matrix. |
+| §2.1 / §2.6 | New state and routing keys in config; transitions appended; `transition_company_state` only — no ad hoc state writes. |
+| §3.3 layers | `normalize_link()` utils-pure; roster imports formatting only; consult lazy-import in outcome helper is pre-existing. |
+| Boundaries | No `find_job_page` / dispatcher / AST-719–721 scope. `job_site` untouched on prefilter path. |
+| Self-Assessment | Scope `Single-Component` matches diff footprint; legacy branch preserved and explicitly tested with `input_state=""` override. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `roster._apply_prefilter_decoded_company_outcome` ~1153–1163; `_run_batch_company_prefilter` ~1441–1455 | **AST-538 batch debug:** helper always emits `debug_index(index=1, total=1)`; batch loop also emits per-item `debug_index` with correct `job_idx/total`. Plan Stage 4 asked to reuse batch position — batch debug runs get duplicate headers and wrong `1/1` on the routing line. Pass `debug_index`/`debug_total` into the helper from the batch loop (monolithic keeps `1/1`), and drop the redundant batch-loop header or consolidate into one index + `debug_detail` routing line. |
+| **advisory** | `roster._has_dealbreaker_f` ~1036 | Duplicates `_render_pass_fail` F/conf≥2 check already folded into `verdict_state == cfg["fail_state"]`. Harmless; plan mandated explicit helper — optional DRY trim in a later pass. |
+| **advisory** | `roster._company_on_decomposed_pjl_path` ~1013 | `cfg["input_state"] == "HOMEPAGE_READY"` makes monolithic `prefilter_company` always decomposed (post AST-702). Legacy `TO_WATCH` only via helper call with cleared `input_state` — intentional per plan; worth knowing when reading older WEBSITE_FOUND monolithic tests. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | Batch debug: thread position into `_apply_prefilter_decoded_company_outcome`; eliminate duplicate `debug_index` on batch path. |
+| discuss | None. |
+| advisory | `_has_dealbreaker_f` optional dedupe with `_render_pass_fail` when touching file next. |
+
+---
+
+## Resolution (2026-06-18)
+
+**Radia fix-now:** `_apply_prefilter_decoded_company_outcome` now accepts `debug_index` / `debug_total` (default `1/1` for monolithic `prefilter_company`). `_run_batch_company_prefilter` passes `job_idx` / `len(response_jobs)` and drops the redundant per-item `debug_index` block — one routing header + `debug_detail` per company on the batch path.
+
+**Publish ref:** `origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`
