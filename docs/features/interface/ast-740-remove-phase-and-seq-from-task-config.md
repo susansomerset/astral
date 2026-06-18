@@ -172,3 +172,11 @@ None (**fix-now** / **discuss**).
 
 - `scripts/migrations/backfill_task_grouping_metadata.py` still reads `TASK_CONFIG` `phase`/`seq` for one-time seed — after AST-740, fresh catalog inserts default to `(unassigned)` / `999.0` (Betty revised `TestAst738TaskGroupingMetadata` accordingly). Expected post-epic; new catalog keys added after deploy need admin grouping edits.
 - `JOB_ARTIFACT_ENTRY_TASK_KEYS` lives after the `TASK_CONFIG` dict (not inline before `anticipate_scan` as plan sketch showed) — functionally correct and cleaner.
+
+## Resolution
+
+**2026-06-18** — Radia review @ `0a0e0c7`: **no fix-now or discuss items.** No product changes required.
+
+§9a dry-run: `origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` merges cleanly into `origin/dev` and `origin/ftr/AST-734-organizing-tasks`.
+
+**Shipped:** `JOB_ARTIFACT_ENTRY_TASK_KEYS` frozenset; all `phase`/`seq` removed from `TASK_CONFIG`; consult artifact-hop routing via constant; backward-compat `phase`/`seq` dropped from `_grouping_from_agent_task_row`. Betty manifest green @ `b12ed93`.
