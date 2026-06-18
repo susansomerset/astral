@@ -125,6 +125,7 @@ def _rubric_rows_to_criteria(rows: list) -> list:
         try:
             rubric_text.ensure_criterion_grade_table(item)
         except ValueError:
+            # Legacy/backfill rows may lack trailing grade tables; consult hydrates on demand.
             pass
         out.append(item)
     return out
@@ -287,6 +288,7 @@ def preview_task_prompt(
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
     cd = candidate.get("candidate_data") or {}
+    cid = candidate.get("astral_candidate_id") or candidate_id
     jc: Optional[Dict[str, str]] = None
     if astral_job_id and str(astral_job_id).strip():
         job = database.get_job(str(astral_job_id).strip())
@@ -295,7 +297,6 @@ def preview_task_prompt(
         from src.core.consult import build_job_token_context
 
         jc = build_job_token_context(job, cd, candidate_id=cid or "")
-    cid = candidate.get("astral_candidate_id") or candidate_id
     if cid:
         joined = company_search_terms_joined_text(cid)
         cd = dict(cd)

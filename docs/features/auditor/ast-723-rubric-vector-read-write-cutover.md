@@ -320,3 +320,15 @@ No conflicts requiring plan revision.
 | AST-724 | `_ensure_vector_feedback_table` on first feedback write (carried from AST-722 discuss). |
 
 **Verdict:** One fix-now — resolve then UAT. Cutover architecture is sound.
+
+## Resolution
+
+**Resolved:** 2026-06-18 (Hedy, `resolve-child`)
+
+| Item | Action |
+|------|--------|
+| fix-now — `preview_task_prompt` `cid` before job block | Moved `cid = candidate.get("astral_candidate_id") or candidate_id` above `build_job_token_context(..., candidate_id=cid)` so job-scoped previews no longer raise `UnboundLocalError`. |
+| discuss — `_rubric_rows_to_criteria` silent parse | Comment documents intentional tolerance for legacy/backfill rows without trailing grade tables. |
+| discuss — sync `importance` default `5` | No change — path always runs after `normalize_rubric_artifacts_on_save` on API save; backfill script normalizes separately. |
+
+**Publish tip after resolve:** `origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` (see git log).
