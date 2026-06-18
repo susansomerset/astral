@@ -56,7 +56,7 @@ interface ScheduledPhaseTableProps {
   frozenN: number
   truncateChars: number
   threadStatus: Record<number, ThreadEntry>
-  allTaskKeys: Record<string, { entity_type: string; trigger_state: string; phase: string | null; seq: number | null; is_scored?: boolean }>
+  allTaskKeys: Record<string, { entity_type: string; trigger_state: string; task_group_order: string; task_group_name: string; task_seq: number | null; task_name: string; is_scored?: boolean }>
   toggleSort: (col: string) => void
   sortIcon: (col: string) => string
   openEdit: (row: DispatchTask) => void
@@ -218,9 +218,9 @@ export default function ScheduledActions() {
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
-  const [allTaskKeys, setAllTaskKeys] = useState<Record<string, { entity_type: string; trigger_state: string; phase: string | null; seq: number | null; is_scored?: boolean }>>({})
+  const [allTaskKeys, setAllTaskKeys] = useState<Record<string, { entity_type: string; trigger_state: string; task_group_order: string; task_group_name: string; task_seq: number | null; task_name: string; is_scored?: boolean }>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[] }>({ job: [], company: [] })
-  const [openPhase, setOpenPhase] = useState<string | null>(null)
+  const [openSection, setOpenSection] = useState<string | null>(null)
 
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
@@ -301,8 +301,8 @@ export default function ScheduledActions() {
   const sortRowsWithinSection = useCallback((rows: DispatchTask[]) => {
     return [...rows].sort((a, b) => {
       if (sortCol === "_default") {
-        const as_ = allTaskKeys[a.task_key]?.seq ?? 999
-        const bs_ = allTaskKeys[b.task_key]?.seq ?? 999
+        const as_ = allTaskKeys[a.task_key]?.task_seq ?? 999
+        const bs_ = allTaskKeys[b.task_key]?.task_seq ?? 999
         if (as_ !== bs_) return sortDir === "asc" ? as_ - bs_ : bs_ - as_
         const tk = a.task_key.localeCompare(b.task_key)
         if (tk !== 0) return tk
@@ -326,22 +326,28 @@ export default function ScheduledActions() {
   }, [data, candidateFilter, taskKeyFilter])
 
   const sections = useMemo(() => {
-    const byPhase: Record<string, DispatchTask[]> = {}
+    const bySectionKey: Record<string, DispatchTask[]> = {}
     for (const row of filteredRows) {
-      const p = allTaskKeys[row.task_key]?.phase || "(unassigned)"
-      if (!byPhase[p]) byPhase[p] = []
-      byPhase[p].push(row)
+      const meta = allTaskKeys[row.task_key]
+      const name = meta?.task_group_name || "(unassigned)"
+      const key = `${meta?.task_group_order || ""}\u0000${name}`
+      if (!bySectionKey[key]) bySectionKey[key] = []
+      bySectionKey[key].push(row)
     }
-    return Object.entries(byPhase)
+    return Object.entries(bySectionKey)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([phase, rows]) => ({ phase, rows: sortRowsWithinSection(rows) }))
+      .map(([sectionKey, rows]) => ({
+        sectionKey,
+        groupName: allTaskKeys[rows[0]?.task_key]?.task_group_name || "(unassigned)",
+        rows: sortRowsWithinSection(rows),
+      }))
   }, [filteredRows, allTaskKeys, sortRowsWithinSection])
 
-  const resolvedOpenPhase = useMemo(() => {
+  const resolvedOpenSection = useMemo(() => {
     if (sections.length === 0) return null
-    if (openPhase != null && sections.some(s => s.phase === openPhase)) return openPhase
+    if (openSection != null && sections.some(s => s.sectionKey === openSection)) return openSection
     return null
-  }, [sections, openPhase])
+  }, [sections, openSection])
 
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -524,13 +530,13 @@ export default function ScheduledActions() {
       ) : sections.length === 0 ? (
         <div className="list-page-status">No dispatch tasks configured</div>
       ) : sections.map(sec => (
-        <div key={sec.phase} style={{ marginBottom: 12 }}>
+        <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
           <CollapsiblePanel
-            label={<>{sec.phase} ({sec.rows.length})</>}
-            expanded={resolvedOpenPhase === sec.phase}
+            label={<>{sec.groupName} ({sec.rows.length})</>}
+            expanded={resolvedOpenSection === sec.sectionKey}
             onExpandedChange={next => {
-              if (next) setOpenPhase(sec.phase)
-              else setOpenPhase(null)
+              if (next) setOpenSection(sec.sectionKey)
+              else setOpenSection(null)
             }}
           >
             <ScheduledPhaseTable

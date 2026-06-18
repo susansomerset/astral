@@ -220,3 +220,11 @@ No conflicts requiring plan revision.
 | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` | Mock tasks use four grouping fields; section button labels use `task_group_name`; no `Seq` column assertion; PUT body includes grouping fields when edited. |
 | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` | `taskKeysConfig` uses grouping fields; section headers like `/D\. Job Analysis \(1\)/` become group names from mocks; default sort uses `task_seq`. |
 | `tests/component/ui/api/test_api_admin.py` | `test_ast549_task_keys_config_derivation_authoritative` asserts `consult_do` grouping matches `grade_do` **DB** fields (monkeypatch `get_agent_task`), not `TASK_CONFIG` phase/seq. |
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` @ `736c306` (`d9dbdb6` task_keys API, `487e0a2` Manage Tasks UI, `736c306` Scheduled Actions UI).
+
+**Out of build scope (Betty / qa-child):** component/API test updates per plan QA hints; config `phase`/`seq` removal (AST-740).

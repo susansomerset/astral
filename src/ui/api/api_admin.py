@@ -268,6 +268,29 @@ def delete_agent(agent_id):
 # Tasks
 # ---------------------------------------------------------------------------
 
+def _grouping_from_agent_task_row(task: dict | None, task_key: str) -> dict:
+    """DB grouping metadata + backward-compat phase/seq keys for Manage Tasks UI."""
+    if not task:
+        return {
+            "task_group_order": "",
+            "task_group_name": "",
+            "task_seq": 999.0,
+            "task_name": task_key,
+            "phase": None,
+            "seq": None,
+        }
+    gn = (task.get("task_group_name") or "").strip()
+    gs = float(task.get("task_seq") if task.get("task_seq") is not None else 999.0)
+    return {
+        "task_group_order": task.get("task_group_order") or "",
+        "task_group_name": gn,
+        "task_seq": gs,
+        "task_name": (task.get("task_name") or "").strip() or task_key,
+        "phase": gn if gn and gn != "(unassigned)" else None,
+        "seq": gs if gs != 999.0 else None,
+    }
+
+
 def _enrich_tasks(candidate_id: str) -> list:
     """Assemble enriched task rows for the task manager screen.
     Resolves token counts against candidate_data, computes cache threshold status,
@@ -358,8 +381,6 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "task_key_uuid":        task_key_uuid,
                 "agent_id":             agent_id,
                 "run_next":             t.get("run_next") or "",
-                "phase":                cfg.get("phase"),
-                "seq":                  cfg.get("seq"),
                 "brain_setting":        brain_setting_eff,
                 "resolved_model_key":   resolved_model_key,
                 "model_code":           resolved_model_key,
@@ -373,6 +394,7 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "avg_output_tokens":    avg_output,
                 "task_ready":           task_ready,
                 "updated_at":           t.get("updated_at"),
+                **_grouping_from_agent_task_row(t, task_key),
             })
         return rows
     finally:
@@ -435,8 +457,7 @@ def get_task(task_key):
     if not task:
         return jsonify({"error": f"Task not found: {task_key}"}), 404
     cfg = TASK_CONFIG.get(task_key, {})
-    task["phase"] = cfg.get("phase")
-    task["seq"] = cfg.get("seq")
+    task.update(_grouping_from_agent_task_row(task, task_key))
     task["entity_type"] = cfg.get("entity_type")
     return jsonify(task)
 
@@ -450,6 +471,16 @@ def update_task(task_key):
     body = request.get_json(silent=True) or {}
     rn = body["run_next"] if "run_next" in body else None
     sp = body["system_prompt"] if "system_prompt" in body else None
+    tg_order = body["task_group_order"] if "task_group_order" in body else None
+    tg_name = body["task_group_name"] if "task_group_name" in body else None
+    tg_seq_raw = body["task_seq"] if "task_seq" in body else None
+    tg_name_label = body["task_name"] if "task_name" in body else None
+    tg_seq = None
+    if tg_seq_raw is not None:
+        try:
+            tg_seq = float(tg_seq_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "task_seq must be a number"}), 400
     try:
         database.save_agent_task(
             task_key,
@@ -462,10 +493,18 @@ def update_task(task_key):
             nocache_prompt=body.get("nocache_prompt"),
             run_next=rn,
             system_prompt=sp,
+            task_group_order=tg_order,
+            task_group_name=tg_name,
+            task_seq=tg_seq,
+            task_name=tg_name_label,
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    return jsonify(database.get_agent_task(task_key))
+    saved = database.get_agent_task(task_key)
+    saved.update(_grouping_from_agent_task_row(saved, task_key))
+    cfg = TASK_CONFIG.get(task_key, {})
+    saved["entity_type"] = cfg.get("entity_type")
+    return jsonify(saved)
 
 
 # ---------------------------------------------------------------------------
@@ -712,6 +751,18 @@ def list_dtasks():
     return jsonify(rows)
 
 
+def _catalog_task_grouping_meta(catalog_key: str) -> dict:
+    """Grouping fields from current agent_task row; empty defaults when missing."""
+    row = database.get_agent_task(catalog_key) or {}
+    seq = row.get("task_seq")
+    return {
+        "task_group_order": (row.get("task_group_order") or ""),
+        "task_group_name": (row.get("task_group_name") or ""),
+        "task_seq": float(seq) if seq is not None else None,
+        "task_name": (row.get("task_name") or ""),
+    }
+
+
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions defaults: TASK_CONFIG first; schedulable keys merge config derivation."""
     catalog_key = resolve_dispatch_task_config_key(task_key)
@@ -726,9 +777,8 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
-        "phase": cfg.get("phase"),
-        "seq": cfg.get("seq"),
         "is_scored": dispatch_task_key_is_scored(task_key),
+        **_catalog_task_grouping_meta(catalog_key),
     }
 
 
@@ -753,8 +803,10 @@ def dispatch_task_keys():
             seen[k] = {
                 "entity_type": (r.get("entity_type") or "") or "",
                 "trigger_state": (r.get("trigger_state") or "") or "",
-                "phase": None,
-                "seq": None,
+                "task_group_order": "",
+                "task_group_name": "",
+                "task_seq": None,
+                "task_name": "",
                 "is_scored": dispatch_claim_uses_score_floor(r.get("trigger_state")),
             }
     hidden = admin_hidden_dispatch_task_keys()
