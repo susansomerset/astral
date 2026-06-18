@@ -212,9 +212,37 @@ No unresolved rule conflicts.
 
 ## Review (Radia)
 
-**Diff:** `origin/dev...origin/sub/AST-378/AST-724-runtime-vector-feedback-capture` (pending)  
-**Built:** 2026-06-18
+**Diff:** `origin/dev...origin/sub/AST-378/AST-724-runtime-vector-feedback-capture` (code tip `a609a04`)  
+**Reviewed:** 2026-06-18  
+**Note:** Three-dot diff includes sibling **AST-722/723** commits not yet on `origin/dev`; review scoped to AST-724 Stages 1–3.
 
-**Commits:** `9b22328` (config + parse helpers), `b37343e` (data layer inserts + FEEDBACK store), `a4c98e7` (do_task capture hook + prompt suffix)
+### What's solid
 
-**Publish ref:** `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture`
+| Area | Notes |
+|------|-------|
+| Plan fidelity | `prompt_suffix` + `is_rubric_backed_task`; pure `rubric_feedback.py` parse module; `store_feedback_block` + `insert_vector_feedback_rows` + `list_rubric_vector_uuid_by_code`; `do_task` suffix injection, pre-unwrap `envelope_snapshot`, SUCCESS-only capture hook. |
+| Lenient contract | Parse failures store FEEDBACK block only; task grading unaffected; no schema validation on `vector_reviews`; non-`success` agent_performance skips capture. |
+| §3.3 layers | `rubric_feedback.py` → utils/config only; data persists; core orchestrates; no external provider changes. |
+| Hook placement | `envelope_snapshot` deep-copied before `agent_payload` unwrap and `_normalize_rubric_task_response` / `_decode_payload`. |
+| AST-722 follow-up | `_ensure_vector_feedback_table` invoked on first insert path. |
+| Tests / bible | Betty manifest covers parse helpers, capture clean/unparseable/skip paths, config gate (`test_rubric_feedback.py`, `TestAst724VectorFeedbackCapture`). |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| discuss | `_capture_rubric_vector_feedback` + `prefilter_company` | `expected_codes` from `rubric_criteria_for_task` includes embedded **RC**; `list_rubric_vector_uuid_by_code` is DB-only (per plan). RC has no UUID unless also in `rubric_vector` → prefilter reviews always unparseable → raw FEEDBACK only. Confirm: exclude embedded-only codes from expected set, or require RC row in table. |
+| discuss | `_capture_rubric_vector_feedback` debug path | Clean parse uses one `debug_index(1, total=N)` then multiple `debug_detail` lines — §1.5.1 prefers per-vector index headers when `N > 1`. Unparseable path emits `debug_detail` without a preceding index header. |
+| advisory | `_capture_rubric_vector_feedback` | `except Exception` on store/insert logs at `logger.debug` only — lenient by design; operators won't see capture DB failures unless debug/log level raised. |
+| advisory | `store_feedback_block` | No `_run_with_retry` wrapper (relies on `save_agent_data` internals) — minor vs plan prose. |
+| advisory | Diff baseline | Full AST-722/723 stack in `origin/dev...` until ftr → dev. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| resolve | Decide prefilter embedded-RC vs `expected_codes` / UUID map; adjust capture or document FEEDBACK-only expectation for prefilter. |
+| resolve | Optional: per-vector `debug_index` loop when `len(parsed_rows) > 1`; index header before unparseable detail. |
+| AST-725 | Admin UI reads `vector_feedback` rows + FEEDBACK fallback. |
+
+**Verdict:** Approve for `resolve-child`. No functional fix-now blockers; prefilter embedded-RC discuss should be resolved before UAT sign-off on prefilter feedback.
