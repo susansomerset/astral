@@ -11,7 +11,7 @@ Tables used (inventory):
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
 - candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
-- agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
+- agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_responses — Agent response audit (insert-only from add_agent_response_entry).
@@ -4725,6 +4725,10 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                 nocache_prompt TEXT,
                 system_prompt TEXT NOT NULL DEFAULT '',
                 run_next TEXT NOT NULL DEFAULT '',
+                task_group_order TEXT NOT NULL DEFAULT '',
+                task_group_name TEXT NOT NULL DEFAULT '',
+                task_seq REAL NOT NULL DEFAULT 999.0,
+                task_name TEXT NOT NULL DEFAULT '',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -4749,6 +4753,10 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                     nocache_prompt TEXT,
                     system_prompt TEXT NOT NULL DEFAULT '',
                     run_next TEXT NOT NULL DEFAULT '',
+                    task_group_order TEXT NOT NULL DEFAULT '',
+                    task_group_name TEXT NOT NULL DEFAULT '',
+                    task_seq REAL NOT NULL DEFAULT 999.0,
+                    task_name TEXT NOT NULL DEFAULT '',
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -4775,10 +4783,68 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE agent_task ADD COLUMN {_seg} TEXT NOT NULL DEFAULT ''")
                 conn.commit()
             cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_task)").fetchall()}
+    for _col, _typ in (
+            ("task_group_order", "TEXT NOT NULL DEFAULT ''"),
+            ("task_group_name", "TEXT NOT NULL DEFAULT ''"),
+            ("task_seq", "REAL NOT NULL DEFAULT 999.0"),
+            ("task_name", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_task)").fetchall()}
+            if _col not in cols:
+                conn.execute(f"ALTER TABLE agent_task ADD COLUMN {_col} {_typ}")
+                conn.commit()
     _apply_ast469_select_job_page_run_next_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
+    _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
+
+
+def _task_grouping_seed_helpers():
+    """Lazy import — scripts/migrations not on path at data-layer import time."""
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from scripts.migrations.backfill_task_grouping_metadata import (
+        backfill_task_grouping_metadata,
+        seed_values_for_task_key,
+    )
+
+    return backfill_task_grouping_metadata, seed_values_for_task_key
+
+
+def _apply_ast738_task_grouping_metadata_seed(conn: sqlite3.Connection) -> None:
+    backfill, _ = _task_grouping_seed_helpers()
+    backfill(conn, dry_run=False)
+
+
+def _resolved_grouping_fields(
+    task_key: str,
+    *,
+    task_group_order: Optional[str] = None,
+    task_group_name: Optional[str] = None,
+    task_seq: Optional[float] = None,
+    task_name: Optional[str] = None,
+    existing: Optional[tuple] = None,
+) -> tuple[str, str, float, str]:
+    """Merge kwargs, existing row tail, or catalog seed defaults."""
+    _, seed_fn = _task_grouping_seed_helpers()
+    seed = seed_fn(task_key)
+    if existing is not None and len(existing) > 13:
+        ex_go = existing[10] if existing[10] is not None else ""
+        ex_gn = existing[11] if existing[11] is not None else ""
+        ex_gs = float(existing[12]) if existing[12] is not None else 999.0
+        ex_tn = existing[13] if existing[13] is not None else task_key
+    else:
+        ex_go, ex_gn, ex_gs, ex_tn = seed["task_group_order"], seed["task_group_name"], seed["task_seq"], seed["task_name"]
+    go = task_group_order.strip() if task_group_order is not None else ex_go
+    gn = task_group_name.strip() if task_group_name is not None else ex_gn
+    gs = float(task_seq) if task_seq is not None else ex_gs
+    tn = task_name.strip() if task_name is not None else ex_tn
+    return go, gn, gs, tn
 
 
 def _save_agent_task_on_connection(
@@ -4795,6 +4861,10 @@ def _save_agent_task_on_connection(
     nocache_prompt: Optional[str] = None,
     run_next: Optional[str] = None,
     system_prompt: Optional[str] = None,
+    task_group_order: Optional[str] = None,
+    task_group_name: Optional[str] = None,
+    task_seq: Optional[float] = None,
+    task_name: Optional[str] = None,
     import_explicit: bool = False,
 ) -> None:
     """Upsert logic for Manage Tasks semantics on caller-owned ``conn`` (no commit / close).
@@ -4814,7 +4884,8 @@ def _save_agent_task_on_connection(
 
     sel = """SELECT task_key_uuid, agent_id, user_prompt, cache_prompt,
                     cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                    nocache_prompt, run_next, system_prompt
+                    nocache_prompt, run_next, system_prompt,
+                    task_group_order, task_group_name, task_seq, task_name
              FROM agent_task WHERE task_key = ? AND current = 1"""
     existing = conn.execute(sel, (task_key,)).fetchone()
     if existing is None:
@@ -4832,12 +4903,21 @@ def _save_agent_task_on_connection(
             pcp = cache_prompt or ""
             pnp = nocache_prompt or ""
         _validate_run_next(conn, task_key, ins_rn if ins_rn else None)
+        ins_go, ins_gn, ins_gs, ins_tn = _resolved_grouping_fields(
+            task_key,
+            task_group_order=task_group_order,
+            task_group_name=task_group_name,
+            task_seq=task_seq,
+            task_name=task_name,
+        )
         conn.execute(
             """INSERT INTO agent_task (
                 task_key_uuid, task_key, current, agent_id,
                 user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                nocache_prompt, system_prompt, run_next, updated_at)
-               VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                nocache_prompt, system_prompt, run_next,
+                task_group_order, task_group_name, task_seq, task_name,
+                updated_at)
+               VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 str(uuid.uuid4()),
                 task_key,
@@ -4862,6 +4942,10 @@ def _save_agent_task_on_connection(
                 pnp,
                 ins_sp,
                 ins_rn,
+                ins_go,
+                ins_gn,
+                ins_gs,
+                ins_tn,
                 now,
             ),
         )
@@ -4910,12 +4994,22 @@ def _save_agent_task_on_connection(
             if (new_rn or "").strip():
                 _validate_run_next(conn, task_key, new_rn)
             conn.execute("UPDATE agent_task SET current = 0 WHERE task_key_uuid = ?", (existing[0],))
+            ver_go, ver_gn, ver_gs, ver_tn = _resolved_grouping_fields(
+                task_key,
+                task_group_order=task_group_order,
+                task_group_name=task_group_name,
+                task_seq=task_seq,
+                task_name=task_name,
+                existing=existing,
+            )
             conn.execute(
                 """INSERT INTO agent_task (
                     task_key_uuid, task_key, current, agent_id,
                     user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                    nocache_prompt, system_prompt, run_next, updated_at)
-                   VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    nocache_prompt, system_prompt, run_next,
+                    task_group_order, task_group_name, task_seq, task_name,
+                    updated_at)
+                   VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     str(uuid.uuid4()),
                     task_key,
@@ -4928,6 +5022,10 @@ def _save_agent_task_on_connection(
                     new_np,
                     new_sp,
                     new_rn,
+                    ver_go,
+                    ver_gn,
+                    ver_gs,
+                    ver_tn,
                     now,
                 ),
             )
@@ -4951,6 +5049,18 @@ def _save_agent_task_on_connection(
                     _validate_run_next(conn, task_key, run_next)
                     sets.append("run_next = ?")
                     params.append(run_next.strip())
+            if task_group_order is not None:
+                sets.append("task_group_order = ?")
+                params.append(task_group_order.strip())
+            if task_group_name is not None:
+                sets.append("task_group_name = ?")
+                params.append(task_group_name.strip())
+            if task_seq is not None:
+                sets.append("task_seq = ?")
+                params.append(float(task_seq))
+            if task_name is not None:
+                sets.append("task_name = ?")
+                params.append(task_name.strip())
             params.append(existing[0])
             conn.execute(f"UPDATE agent_task SET {', '.join(sets)} WHERE task_key_uuid = ?", params)
 
@@ -4967,6 +5077,10 @@ def save_agent_task(
     nocache_prompt: Optional[str] = None,
     run_next: Optional[str] = None,
     system_prompt: Optional[str] = None,
+    task_group_order: Optional[str] = None,
+    task_group_name: Optional[str] = None,
+    task_seq: Optional[float] = None,
+    task_name: Optional[str] = None,
 ) -> None:
     """Upsert agent_task with versioning. Any change among the seven prompt segments versions the row.
 
@@ -4991,6 +5105,10 @@ def save_agent_task(
                 nocache_prompt=nocache_prompt,
                 run_next=run_next,
                 system_prompt=system_prompt,
+                task_group_order=task_group_order,
+                task_group_name=task_group_name,
+                task_seq=task_seq,
+                task_name=task_name,
             )
             conn.commit()
         finally:
@@ -5030,6 +5148,10 @@ def list_candidate_tasks() -> List[Dict[str, Any]]:
                        LENGTH(nocache_prompt) AS nocache_prompt_len,
                        LENGTH(system_prompt) AS system_prompt_len,
                        run_next,
+                       task_group_order,
+                       task_group_name,
+                       task_seq,
+                       task_name,
                        updated_at
                 FROM agent_task WHERE current = 1 ORDER BY task_key
             """).fetchall()
@@ -5047,16 +5169,31 @@ def sync_agent_tasks(task_keys: list) -> None:
             _ensure_agent_task_schema(conn)
             existing = {row[0] for row in conn.execute("SELECT task_key FROM agent_task WHERE current = 1").fetchall()}
             now = _utc_now()
+            _, seed_fn = _task_grouping_seed_helpers()
             for key in task_keys:
                 if key not in existing:
+                    seed = seed_fn(key)
                     conn.execute(
                         """INSERT INTO agent_task (
                             task_key_uuid, task_key, current, agent_id,
                             user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                            nocache_prompt, system_prompt, run_next, updated_at)
-                           VALUES (?, ?, 1, '', '', '', '', '', '', '', '', '', ?)""",
-                        (str(uuid.uuid4()), key, now),
+                            nocache_prompt, system_prompt, run_next,
+                            task_group_order, task_group_name, task_seq, task_name,
+                            updated_at)
+                           VALUES (?, ?, 1, '', '', '', '', '', '', '', '', '',
+                                   ?, ?, ?, ?,
+                                   ?)""",
+                        (
+                            str(uuid.uuid4()),
+                            key,
+                            seed["task_group_order"],
+                            seed["task_group_name"],
+                            seed["task_seq"],
+                            seed["task_name"],
+                            now,
+                        ),
                     )
+            _apply_ast738_task_grouping_metadata_seed(conn)
             conn.commit()
         finally:
             conn.close()
