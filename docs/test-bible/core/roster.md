@@ -194,6 +194,18 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-719 · AST-716
+
+**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for additive scrape. Does not write **`job_site`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Additive merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+
+Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-719**).
+
+---
+
 ### AST-718 · AST-716
 
 **Prefilter routing on decomposed PJL path** — after **HOMEPAGE_READY** / inflow prefilter, route to **`NO_PREFILTER_JOBLISTS`**, **`PREFILTER_FAILED`**, or **`PREFILTER_PASSED`**; hydrate **`possible_joblist_links`** via **`normalize_link()`** + **`parse_enumerate_array`**. Legacy manual path still **TO_WATCH** / **IGNORE**. Config: **`NO_PREFILTER_JOBLISTS`**, **`no_pjl_state`**, **`pjl_url_data_key`**.
