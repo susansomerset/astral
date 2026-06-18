@@ -330,7 +330,38 @@ No unresolved rule conflicts.
 
 ## Review (Radia)
 
-**Branch:** `origin/sub/AST-378/AST-722-rubric-storage-schema-backfill`  
-**Built tip:** `47a6d4f` — config + `rubric_vector`/`vector_feedback` schema + `backfill_rubric_vectors.py` (backfill + gated `--purge-artifacts`).
+**Diff:** `origin/dev...origin/sub/AST-378/AST-722-rubric-storage-schema-backfill` (tip `98edfad`)  
+**Reviewed:** 2026-06-18
 
-*Awaiting Radia review after Tests Passed.*
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 match plan: schema + config + fingerprint helper, backfill script with dry-run/idempotency/`--candidates`, gated `--purge-artifacts` + `--confirm-purge`. |
+| Scope boundaries | No runtime read/write cutover, consult/roster/core/ui changes — correctly deferred to AST-723/724/725. |
+| §1.1 inventory | `rubric_vector` + `vector_feedback` documented in `database.py` header. |
+| §2.1 config | `FEEDBACK` in `BLOCK_TYPES`; `RUBRIC_FEEDBACK_CONFIG` literals in `config.py`. |
+| §3.3 layers | data→utils; migration script→data+utils; no core/ui imports. |
+| SQL hygiene | `INSERT INTO rubric_vector` — 12 columns / 12 bind params; lazy `_ensure_rubric_vector_table` on insert/list/count. |
+| Migration safety | Artifact→task_key map covers all `RUBRIC_CRITERIA_ARTIFACT_KEYS`; idempotent skip per `(candidate_id, task_key)`; dual-flag purge with AST-723 banner. |
+| Tests / bible | Betty manifest aligns with diff (`test_rubric_vectors.py`, `test_backfill_rubric_vectors.py`, `TestAst722RubricFeedbackConfig`). |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| discuss | `database.py` `_rubric_vector_backfill_swept` | Guard declared + reset in test conftest but never read/set — dead state mirroring `company_search_terms` sweep that was not implemented. Remove in resolve or wire when a startup sweep is needed. |
+| discuss | `database.py` `_ensure_vector_feedback_table` | Table DDL exists but no public AST-722 path calls ensure (only direct test invocation). Acceptable deferral to AST-724 writers, but confirm first feedback insert will call ensure (or add a shared schema-bootstrap hook now). |
+| discuss | `backfill_rubric_vectors.py` idempotency | Skip when `count > 0` is all-or-nothing per task_key — a partial failed run could leave incomplete vectors with no auto-repair on re-run. Mitigated by dry-run + AC#9 verify; optional transaction wrap if Susan wants belt-and-suspenders. |
+| advisory | `purge_legacy_rubric_artifact_keys` | Direct SQL UPDATE instead of `save_candidate(merge=True)` as plan prose suggested — **justified**: `_deep_merge` cannot delete nested artifact keys. Implementation is correct. |
+| advisory | `database.py` ~L3266 | Extra blank lines after `sync_company_search_terms` section — cosmetic only. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| resolve | Drop unused `_rubric_vector_backfill_swept` or add a one-line comment tying it to a future sweep ticket. |
+| AST-724 | Ensure `_ensure_vector_feedback_table` on first feedback write path. |
+| ops | Run `--dry-run` backfill in staging; AC#9 vector-count verify before any `--purge-artifacts --confirm-purge`. |
+
+**Verdict:** Approve for `resolve-child`. No fix-now blockers.
