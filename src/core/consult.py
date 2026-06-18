@@ -842,8 +842,7 @@ def _apply_render_verdict_decoded_job(
         save_data[f"{prefix}_score"] = normalized_score
     elif score is not None:
         save_data[f"{prefix}_score"] = score
-    if notes_tail:
-        save_data[f"{prefix}_notes"] = notes_tail
+    save_data[f"{prefix}_notes"] = notes_tail
     tracker.save_job_data(astral_job_id, save_data)
     _transition_job_state_for_task(agent_task, [astral_job_id], to_state, score)
     return to_state, score, grades
@@ -1282,9 +1281,16 @@ async def qualify_job_listings(
 
         score = _score_from_grades()
 
+        def _save_joblist_result() -> None:
+            save_data: Dict[str, Any] = {"joblist_grades": grades}
+            normalized_score = _latest_score_value(score)
+            if _task_config_scored(task_key) and normalized_score is not None:
+                save_data["joblist_score"] = normalized_score
+            tracker.save_job_data(aid, save_data)
+
         if to_state == cfg["fail_state"]:
             # Failing jobs carry no metadata — just save grades and transition
-            tracker.save_job_data(aid, {"joblist_grades": grades})
+            _save_joblist_result()
             _transition_job_state_for_task(task_key, [aid], to_state, score)
             failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
             if not debug:
@@ -1309,7 +1315,7 @@ async def qualify_job_listings(
             logger.warning(f"  {aid} skipped — relative job_link: {job_link}")
             raise ValueError(f"relative job_link: {job_link}")
         tracker.initialize_job(aid, input_job["company"], response_job)
-        tracker.save_job_data(aid, {"joblist_grades": grades})
+        _save_joblist_result()
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         if not debug:
             logger.info(f"  {input_job.get('job_title') or aid} -> {to_state}")

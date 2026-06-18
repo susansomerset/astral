@@ -4390,3 +4390,86 @@ class TestAst692JobsiteScrapeIssue:
         )
         assert out["state"] == "NO_JOBLIST"
         assert out["response_type"] == "OTHER"
+
+
+class TestAst726LatestOnlyRosterStory:
+    """AST-726: modal story dedup + latest-only company prefilter outcomes."""
+
+    def test_dedupe_agent_responses_latest_wins_per_task_key(self) -> None:
+        entries = [
+            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
+            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "do"},
+            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
+        ]
+        deduped = roster_mod.dedupe_agent_responses_latest(entries)
+        assert len(deduped) == 2
+        assert deduped[0]["task_key"] == "consult_get"
+        assert deduped[0]["batch_id"] == "new"
+        assert deduped[1]["task_key"] == "consult_do"
+
+    def test_company_prefilter_vector_grades_from_company_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "get_agent_data_for_ids",
+            MagicMock(return_value={"block-726": {"block_data": "{}"}}),
+        )
+        entity = {
+            "short_name": "acme",
+            "agent_responses": [
+                {
+                    "task_key": "prefilter_company",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
+                }
+            ],
+            "company_data": {"prefilter_grades": [{"grade": "A", "vector": "fit"}]},
+        }
+        story = roster_mod.get_entity_agent_story(entity)
+        assert story[0]["vector_grades"] == [{"grade": "A", "vector": "fit"}]
+
+    def test_prefilter_fail_clears_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "_company_on_decomposed_pjl_path", lambda *a, **k: False)
+        flat = {
+            "grades": _prefilter_grades({"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"}),
+            "possible_job_links": [],
+        }
+        cfg = {**ROSTER_CONFIG["prefilter"]}
+        roster_mod._apply_prefilter_decoded_company_outcome(
+            "acme", flat, cfg, _prefilter_rubric_ctx()
+        )
+        saved = save.call_args[0][1]
+        assert saved["prefilter_score"] is None
+
+
+
+class TestAst727NormalizeAgentResponsesForBackfill:
+    """AST-727: shared backfill normalizer matches runtime dedupe rules."""
+
+    def test_drops_empty_task_key_and_dedupes(self) -> None:
+        entries = [
+            {"task_key": "", "batch_id": "orphan"},
+            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
+            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
+            "bad",
+        ]
+        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
+        assert stats == {"dropped_empty_key": 1, "deduped_removed": 1}
+        assert len(normalized) == 1
+        assert normalized[0]["batch_id"] == "new"
+
+    def test_coerces_non_list_to_empty(self) -> None:
+        normalized, stats = roster_mod.normalize_agent_responses_for_backfill({})
+        assert normalized == []
+        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
+
+    def test_idempotent_on_already_normalized(self) -> None:
+        entries = [
+            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "b1"},
+        ]
+        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
+        assert normalized == entries
+        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}

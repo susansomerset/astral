@@ -631,7 +631,7 @@ def get_company(short_name: str) -> Optional[Dict[str, Any]]:
 
 
 def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any]) -> None:
-    """Thin delegate to database.append_agent_response."""
+    """Thin delegate — upserts by task_key; latest ref wins; full history stays in agent_data."""
     database.append_agent_response(entity_type, entity_id, entry)
 
 

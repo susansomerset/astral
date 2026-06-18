@@ -266,6 +266,7 @@ TASK_CONFIG = {
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
         "scored": True,
+        "grades_key": "prefilter_grades",
         "rubric_artifact": "company_prefilter",
         "pass_threshold": 0.0,
         "pass_state": "PREFILTER_PASSED",

@@ -363,3 +363,36 @@ Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases
 ```
 
 **Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
+
+### AST-726 (parent AST-717)
+
+**Scope:** Read-path `agent_responses` dedupe by `task_key`; company prefilter `vector_grades` from `company_data`; latest-only prefilter score/notes clears on rerun.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `dedupe_agent_responses_latest` | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory::testdedupe_agent_responses_latest_wins_per_task_key` |
+| Company `vector_grades` via `grades_key` | `src/core/roster.py` (`get_entity_agent_story`) | `TestAst726LatestOnlyRosterStory::test_company_prefilter_vector_grades_from_company_data` |
+| Fail clears `prefilter_score` (explicit None) | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | `TestAst726LatestOnlyRosterStory::test_prefilter_fail_clears_score` |
+
+Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md`**, **`docs/test-bible/core/consult.md`** (**AST-726**). Config `grades_key`: **`docs/test-bible/utils/config.md`** (**AST-726**).
+
+**AST-726** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory \
+  tests/component/utils/test_config.py::TestAst726PrefilterGradesKey \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-727 (parent AST-717)
+
+**Scope:** Public `dedupe_agent_responses_latest` + `normalize_agent_responses_for_backfill` for one-time migration script; runtime `get_entity_agent_story` shares dedupe helper (**AST-726**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Backfill normalizer (drop empty key, dedupe stats) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill` |
+
+Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md`** (**AST-727**).
