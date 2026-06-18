@@ -366,9 +366,22 @@ class TestTaskRoutes:
         assert admin_client.get("/api/admin/tasks/t1/preview?candidate_id=c1", headers=auth_headers).get_json()["ok"] is True
         monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
         assert admin_client.get("/api/admin/tasks/missing", headers=auth_headers).status_code == 404
-        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key": task_key})
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_key": task_key,
+                "task_group_name": "A. Candidate Context",
+                "task_group_order": "A. Candidate Context",
+                "task_seq": 1.0,
+                "task_name": task_key,
+            },
+        )
         got = admin_client.get("/api/admin/tasks/craft_resume_base", headers=auth_headers)
-        assert got.get_json()["phase"] is not None
+        body = got.get_json()
+        assert body["phase"] == "A. Candidate Context"
+        assert body["seq"] == 1.0
+        assert body["task_group_name"] == "A. Candidate Context"
         monkeypatch.setattr(admin_mod.database, "save_agent_task", MagicMock(side_effect=ValueError("bad save")))
         assert admin_client.put("/api/admin/tasks/t1", json={"run_next": "x"}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod.database, "save_agent_task", MagicMock())
@@ -404,6 +417,121 @@ class TestTaskRoutes:
             headers=auth_headers,
         )
         assert captured.get("astral_job_id") == "job-513"
+
+
+# AST-738: Manage Tasks grouping metadata from DB (not TASK_CONFIG phase/seq).
+class TestAst738TaskGroupingApi:
+    def test_grouping_from_agent_task_row_backward_compat(self) -> None:
+        out = admin_mod._grouping_from_agent_task_row(
+            {
+                "task_group_order": "B. Phase",
+                "task_group_name": "B. Phase",
+                "task_seq": 2.0,
+                "task_name": "Label",
+            },
+            "some_key",
+        )
+        assert out["phase"] == "B. Phase"
+        assert out["seq"] == 2.0
+        assert out["task_name"] == "Label"
+        unassigned = admin_mod._grouping_from_agent_task_row(
+            {"task_group_name": "(unassigned)", "task_seq": 999.0},
+            "orphan",
+        )
+        assert unassigned["phase"] is None
+        assert unassigned["seq"] is None
+
+    def test_get_task_surfaces_db_grouping(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_key": task_key,
+                "task_group_order": "Z",
+                "task_group_name": "Z",
+                "task_seq": 5.0,
+                "task_name": "Display",
+            },
+        )
+        body = admin_client.get("/api/admin/tasks/t1", headers=auth_headers).get_json()
+        assert body["task_group_name"] == "Z"
+        assert body["phase"] == "Z"
+        assert body["seq"] == 5.0
+
+    def test_update_task_persists_grouping_fields(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: dict = {}
+
+        def _save(task_key: str, **kwargs: Any) -> None:
+            saved.update(kwargs)
+
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key": task_key})
+        monkeypatch.setattr(admin_mod.database, "save_agent_task", _save)
+        resp = admin_client.put(
+            "/api/admin/tasks/t1",
+            json={
+                "task_group_order": "G1",
+                "task_group_name": "Group One",
+                "task_seq": 7.5,
+                "task_name": "Friendly",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert saved["task_group_order"] == "G1"
+        assert saved["task_group_name"] == "Group One"
+        assert saved["task_seq"] == 7.5
+        assert saved["task_name"] == "Friendly"
+
+    def test_update_task_invalid_task_seq_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key": task_key})
+        resp = admin_client.put("/api/admin/tasks/t1", json={"task_seq": "not-a-number"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "task_seq" in resp.get_json()["error"]
+
+
+# AST-739: dispatch task_keys returns DB grouping metadata (not config phase/seq).
+class TestAst739DispatchTaskKeysGrouping:
+    def test_dispatch_task_keys_grouping_from_agent_task_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_group_order": "Z-order",
+                "task_group_name": "Z-name",
+                "task_seq": 4.5,
+                "task_name": "Pretty",
+            }
+            if task_key == "grade_do"
+            else None,
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["consult_do"]["task_group_name"] == "Z-name"
+        assert keys["consult_do"]["task_group_order"] == "Z-order"
+        assert keys["consult_do"]["task_seq"] == 4.5
+        assert keys["consult_do"]["task_name"] == "Pretty"
+        assert "phase" not in keys["consult_do"]
+        assert "seq" not in keys["consult_do"]
+
+    def test_dispatch_task_keys_orphan_empty_grouping(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [{"task_key": "orphan_only", "entity_type": "job", "trigger_state": "NEW"}],
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["orphan_only"]["task_group_order"] == ""
+        assert keys["orphan_only"]["task_group_name"] == ""
+        assert keys["orphan_only"]["task_seq"] is None
+        assert keys["orphan_only"]["task_name"] == ""
 
 
 # Branches: timesheet list/export with optional req_dict filters.
@@ -1098,8 +1226,10 @@ class TestApiAdminBranchGaps:
         assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
         assert keys["parse_job_list"]["entity_type"] == "company"
         assert keys["parse_job_list"]["trigger_state"] == "JOBLIST_IDENTIFIED"
-        assert keys["consult_do"]["phase"] == cfg.TASK_CONFIG["grade_do"]["phase"]
-        assert keys["consult_do"]["seq"] == cfg.TASK_CONFIG["grade_do"]["seq"]
+        # AST-739: consult_do resolves grade_do catalog row for grouping — not TASK_CONFIG phase/seq.
+        assert "phase" not in keys["consult_do"]
+        assert "seq" not in keys["consult_do"]
+        assert "task_group_name" in keys["consult_do"]
 
     def test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task_by_key", lambda tk: None)
