@@ -23,6 +23,7 @@ from src.core.agent import do_task
 from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
+    JOB_ARTIFACT_ENTRY_TASK_KEYS,
     JOB_STATES,
     ASTRAL_CONFIG,
     CONFIDENCE_MULTIPLIERS,
@@ -1600,11 +1601,7 @@ async def _run_cover_letter_for_job(
     await run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug)
 
 
-_JOB_ARTIFACT_ENTRY_KEYS = frozenset(
-    k for k, v in TASK_CONFIG.items()
-    if str(v.get("phase") or "").startswith("E. Job Artifacts")
-    and k != "draft_cover_letter"  # cover-letter chain, not resume entry batch (AST-534 review)
-)
+_JOB_ARTIFACT_ENTRY_KEYS = JOB_ARTIFACT_ENTRY_TASK_KEYS
 
 
 def _resume_artifact_dispatch_row_ok(entry_task_key: str, input_state: str) -> bool:

@@ -269,15 +269,13 @@ def delete_agent(agent_id):
 # ---------------------------------------------------------------------------
 
 def _grouping_from_agent_task_row(task: dict | None, task_key: str) -> dict:
-    """DB grouping metadata + backward-compat phase/seq keys for Manage Tasks UI."""
+    """DB grouping metadata for Manage Tasks UI."""
     if not task:
         return {
             "task_group_order": "",
             "task_group_name": "",
             "task_seq": 999.0,
             "task_name": task_key,
-            "phase": None,
-            "seq": None,
         }
     gn = (task.get("task_group_name") or "").strip()
     gs = float(task.get("task_seq") if task.get("task_seq") is not None else 999.0)
@@ -286,8 +284,6 @@ def _grouping_from_agent_task_row(task: dict | None, task_key: str) -> dict:
         "task_group_name": gn,
         "task_seq": gs,
         "task_name": (task.get("task_name") or "").strip() or task_key,
-        "phase": gn if gn and gn != "(unassigned)" else None,
-        "seq": gs if gs != 999.0 else None,
     }
 
 
