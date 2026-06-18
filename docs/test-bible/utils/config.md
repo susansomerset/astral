@@ -377,3 +377,21 @@ Database schema + backfill script: **`docs/test-bible/data/database/rubric_vecto
 | `prefilter_company` `grades_key` | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst726PrefilterGradesKey::test_prefilter_company_grades_key` |
 
 Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test-bible/core/consult.md`** (**AST-726**).
+
+### AST-723 · AST-378
+
+**`RUBRIC_VECTORS`** token registry; legacy per-artifact rubric tokens removed from **`TOKEN_SOURCES`**; **`rubric_owner_task_key`** + **`JOB_TOKEN_CONFIG["analysis_phases"].rubric_owner_task_key`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token registry + owner mapping | `src/utils/config.py` | `TestAst723RubricVectorsToken` |
+| `resolve_tokens` rubric source | `src/utils/config.py` | `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` (updated for **`{$RUBRIC_VECTORS}`**) |
+
+**AST-723** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors   tests/component/data/database/test_rubric_vectors.py::TestAst723RubricTokenMigration   tests/component/core/test_candidate.py::TestAst723RubricVectorsCutover   tests/component/core/test_consult.py::TestRubricHelpers   tests/component/utils/test_config.py::TestAst723RubricVectorsToken   tests/component/utils/test_config.py::TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens   tests/component/ui/api/test_api_candidate.py::TestAst723RubricVectorsApi   -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+

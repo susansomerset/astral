@@ -110,3 +110,13 @@ Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-o
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration
 ```
+
+### AST-723 · AST-378
+
+Rubric authority cutover: **`apply_rubric_vectors_save`**, **`hydrate_rubric_artifacts_for_response`**, **`rubric_criteria_for_task`** (table-backed; embedded RC merge for **`prefilter_company`**); preview injects **`_astral_candidate_id`** for **`{$RUBRIC_VECTORS}`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Save sync + GET overlay helpers | `src/core/candidate.py` | `TestAst723RubricVectorsCutover` |
+| API PUT/GET wiring | `src/ui/api/api_candidate.py` | `TestAst723RubricVectorsApi` (`test_api_candidate.py`) |
+

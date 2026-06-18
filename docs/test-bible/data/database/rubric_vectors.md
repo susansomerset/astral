@@ -35,3 +35,19 @@ Normalized **`rubric_vector`** + **`vector_feedback`** SQLite tables, **`FEEDBAC
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-723 · AST-378
+
+**`sync_rubric_vectors_from_criteria`** fingerprint-gated retire/insert; AST-723 **`agent_task`** token migration (`{$RUBRIC_VECTORS}`). Builds on **AST-722** table.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Sync importance-only / fingerprint retire / code removal | `src/data/database.py` | `TestAst723SyncRubricVectors` |
+| Legacy rubric token migration on `agent_task` | `src/data/database.py` | `TestAst723RubricTokenMigration` |
+
+**AST-723** narrowed run (database cluster):
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors   tests/component/data/database/test_rubric_vectors.py::TestAst723RubricTokenMigration   -q
+```
+

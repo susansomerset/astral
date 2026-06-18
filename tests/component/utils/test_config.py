@@ -252,19 +252,23 @@ class TestResolveTokens:
         text = cfg.resolve_tokens("{$UNKNOWN_TOKEN}", {}, "craft_resume_base")
         assert text == "{$UNKNOWN_TOKEN}"
 
-    def test_resolves_candidate_config_output_and_chain_tokens(self) -> None:
+    def test_resolves_candidate_config_output_and_chain_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
         candidate = {
             "profile": {"first": "Ada"},
             "context": {"strengths": "systems"},
-            "artifacts": {"get_rubric": [{"label": "R", "content": "rule"}]},
+            "_astral_candidate_id": "c1",
         }
         chain = {
             "SELECTED_AGENT": "agent body",
             "CALLER_RESPONSE": "prior",
         }
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_token",
+            lambda cid, owner: [{"label": "R", "code": "R", "content": "rule"}],
+        )
         text = (
             "Hi {$FIRST_NAME}, agent={$SELECTED_AGENT}, prior={$CALLER_RESPONSE}, "
-            "schema={$RESPONSE_SCHEMA}, output={$OUTPUT_INSTRUCTIONS}, rubric={$GET_RUBRIC}"
+            "schema={$RESPONSE_SCHEMA}, output={$OUTPUT_INSTRUCTIONS}, rubric={$RUBRIC_VECTORS}"
         )
         resolved = cfg.resolve_tokens(
             text,
@@ -1292,6 +1296,36 @@ class TestAst722RubricFeedbackConfig:
         assert fc["feedback_types"]["relevance"]["value_codes"] == ("A", "O", "S", "R", "N")
         assert fc["feedback_types"]["verdict"]["value_codes"] == ("K", "E", "D")
         assert fc["value_labels"]["E"] == "Edit"
+
+
+class TestAst723RubricVectorsToken:
+    """AST-723: RUBRIC_VECTORS token registry and owner task_key mapping."""
+
+    _LEGACY_RUBRIC_TOKENS = (
+        "COMPANY_PREFILTER",
+        "JOBLIST_RUBRIC",
+        "JOBDESC_RUBRIC",
+        "GET_RUBRIC",
+        "DO_RUBRIC",
+        "LIKE_RUBRIC",
+    )
+
+    def test_rubric_vectors_token_registered(self) -> None:
+        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {"source": "rubric"}
+
+    def test_legacy_per_artifact_rubric_tokens_removed(self) -> None:
+        for name in self._LEGACY_RUBRIC_TOKENS:
+            assert name not in cfg.TOKEN_SOURCES
+
+    def test_rubric_owner_task_key_consumer_and_craft(self) -> None:
+        assert cfg.rubric_owner_task_key("qualify_job_listings") == "qualify_job_listings"
+        assert cfg.rubric_owner_task_key("craft_joblist_rubric") == "qualify_job_listings"
+        assert cfg.rubric_owner_task_key("craft_resume_base") is None
+
+    def test_analysis_phases_include_rubric_owner_task_key(self) -> None:
+        phases = cfg.JOB_TOKEN_CONFIG["analysis_phases"]
+        assert phases["ANALYSIS_JD"]["rubric_owner_task_key"] == "evaluate_jd"
+        assert phases["ANALYSIS_GET"]["rubric_owner_task_key"] == "grade_get"
 
 
 

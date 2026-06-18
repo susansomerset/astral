@@ -64,50 +64,66 @@ class TestRubricHelpers:
     def test_strips_code_suffix(self) -> None:
         assert consult_mod._strip_code("Fit (CR)") == "Fit"
 
-    def test_reads_rubric_criteria_from_candidate_data(self) -> None:
-        cd = {"artifacts": {"joblist_rubric": [{"label": "fit", "code": "CR"}]}}
-        assert consult_mod._rubric_criteria_from_cd(cd, "joblist_rubric")[0]["code"] == "CR"
-        assert consult_mod._rubric_criteria_from_cd(cd, None) == []
-        assert consult_mod._rubric_criteria_from_cd(cd, "missing") == []
+    def test_reads_rubric_criteria_from_table(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("qualify_job_listings", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "qualify_job_listings",
+            [{"code": "CR", "label": "fit", "content": "Grade A line", "importance": 5}],
+        )
+        from src.core.candidate import rubric_criteria_for_task
 
-    def test_merges_embedded_rc_for_company_prefilter(self) -> None:
-        cd = {
-            "artifacts": {
-                "company_prefilter": [
-                    {
-                        "code": "MP",
-                        "label": "Mission & Product",
-                        "importance": 5,
-                        "grade_descriptions": [{"grade": "B", "description": "ok mp"}],
-                    },
-                    {
-                        "code": "RC",
-                        "label": "Duplicate RC",
-                        "importance": 1,
-                        "grade_descriptions": [{"grade": "A", "description": "dup"}],
-                    },
-                ]
-            }
-        }
-        rubric = consult_mod._rubric_criteria_from_cd(cd, "company_prefilter")
+        assert rubric_criteria_for_task("cand-1", "qualify_job_listings")[0]["code"] == "CR"
+        assert consult_mod._rubric_criteria_for_cfg("", {"rubric_artifact": "joblist_rubric"}) == []
+        assert consult_mod._rubric_criteria_for_cfg("cand-1", {}) == []
+
+    def test_merges_embedded_rc_for_company_prefilter(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("prefilter_company", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "prefilter_company",
+            [
+                {
+                    "code": "MP",
+                    "label": "Mission & Product",
+                    "content": "Mission body",
+                    "importance": 5,
+                },
+                {
+                    "code": "RC",
+                    "label": "Duplicate RC",
+                    "content": "dup body",
+                    "importance": 1,
+                },
+            ],
+        )
+        from src.core.candidate import rubric_criteria_for_task
+
+        rubric = rubric_criteria_for_task("cand-1", "prefilter_company")
         assert rubric[0]["code"] == "RC"
         assert rubric[0]["label"] == "Reality Check"
         assert len(rubric) == 2
 
-    def test_hydrates_rc_by_code_without_artifact_row(self) -> None:
-        cd = {
-            "artifacts": {
-                "company_prefilter": [
-                    {
-                        "code": "MP",
-                        "label": "Mission & Product",
-                        "importance": 5,
-                        "grade_descriptions": [{"grade": "B", "description": "ok mp"}],
-                    },
-                ]
-            }
-        }
-        rubric = consult_mod._rubric_criteria_from_cd(cd, "company_prefilter")
+    def test_hydrates_rc_by_code_without_table_rc_row(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("prefilter_company", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "prefilter_company",
+            [
+                {
+                    "code": "MP",
+                    "label": "Mission & Product",
+                    "content": "Mission body\nA = great\nB = ok mp",
+                    "importance": 5,
+                },
+            ],
+        )
+        from src.core.candidate import rubric_criteria_for_task
+
+        rubric = rubric_criteria_for_task("cand-1", "prefilter_company")
         grades = [
             {"vector": "RC", "grade": "D", "confidence": 3},
             {"vector": "MP", "grade": "B", "confidence": 3},

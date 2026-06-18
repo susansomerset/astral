@@ -263,3 +263,13 @@ Entity ref upsert + modal story: **`docs/test-bible/data/database/agent_response
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-723 · AST-378
+
+Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria_for_task`** replace **`_rubric_criteria_from_cd`** artifact reads. **`TestRubricHelpers`** revised for table-backed criteria.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Table-backed rubric helpers + grade hydration | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRubricHelpers` |
+| Roster prefilter reads | `src/core/roster.py` | existing **AST-507** / **AST-603** roster regression rows (no new file) |
+
