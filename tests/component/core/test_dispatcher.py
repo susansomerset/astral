@@ -361,7 +361,7 @@ class TestRunUnified:
         task = {
             "entity_type": "company",
             "trigger_state": "PREFILTER_PASSED",
-            "task_key": "find_job_page",
+            "task_key": "fetch_job_pages",
             "batch_call_mode": 0,
             "score_floor": 7.0,
         }

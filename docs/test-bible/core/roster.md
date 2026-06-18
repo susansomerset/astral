@@ -196,7 +196,7 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ### AST-720 · AST-716
 
-**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`** (legacy **`TO_WATCH`** rows unchanged until AST-721).
+**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -217,6 +217,37 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-721 · AST-716
+
+**`parse_job_list`** decomposed dispatch from **`JOBLIST_IDENTIFIED`** / **`JOBLIST_IDENTIFIED_RETRY`** — DOM reload via **`_scrape_list_page_dom_for_parse`**, **`selected_pjl_url`** + **`job_titles`** from company_data; first fail → **`JOBLIST_IDENTIFIED_RETRY`**, second → **`COULD_NOT_PARSE_JOBLIST`**; success → **`WATCH`** + first **`job_site`** write via **`_save_company`**. **`find_job_page()`** monolith removed; **`locate_job_page.dispatch_input_states`** is **`JOBS_FOUND`** only. Admin schedulable keys: **`select_job_page`** @ **`PJL_READY`**, **`parse_job_list`** @ **`JOBLIST_IDENTIFIED`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse states + roster config + schedulable keys | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst721ParseJobListConfig` |
+| URL/title helpers + failure ladder | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers` |
+| Parse dispatch outcomes + `run_company_task` routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst721ParseJobListDispatch`, `TestAst721ParseDispatchRouting` |
+| Admin task_keys + adhoc preview | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template`, `TestAdhocHelpers::test_build_adhoc_live_content_company_paths` |
+| PREFILTER_PASSED claim score_floor (fetch_job_pages) | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast508_prefilter_passed_dispatch_passes_score_floor` |
+
+**Broken / obsolete (Betty revision):** **`TestFindJobPage*`** classes skipped (monolith removed); **`TestAst535ToWatchDispatchTaskKeyRouting`** replaced by **`TestAst721ParseDispatchRouting`**; **`test_ast485_roster_dispatch_trio_matches_config_defaults`** — **`find_job_page`** not schedulable, **`parse_job_list` → `JOBLIST_IDENTIFIED`**; **`TestRunCompanyTask`** TO_WATCH / PREFILTER_PASSED no longer route to **`find_job_page`**.
+
+**AST-721** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchRouting \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_ast485_roster_dispatch_trio_matches_config_defaults \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast508_prefilter_passed_dispatch_passes_score_floor \
+  -q
+```
 
 ---
 

@@ -288,6 +288,18 @@ Roster decomposed select: **`docs/test-bible/core/roster.md`** (**AST-720**).
 
 ---
 
+### AST-721 · AST-716
+
+**`JOBLIST_IDENTIFIED_RETRY`**, **`COULD_NOT_PARSE_JOBLIST`**; **`ROSTER_CONFIG["parse_job_list"]`**; **`_dispatch_trigger_state_for_task_key("parse_job_list")` → `JOBLIST_IDENTIFIED`**; **`find_job_page`** removed from **`DISPATCH_SCHEDULABLE_TASK_KEYS`**; **`locate_job_page.dispatch_input_states`** → **`JOBS_FOUND`** only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse states + dispatch config | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst721ParseJobListConfig` |
+
+Roster decomposed parse: **`docs/test-bible/core/roster.md`** (**AST-721**).
+
+---
+
 ### AST-719 · AST-716
 
 **`PJL_READY`** state + **`PREFILTER_PASSED → PJL_READY|JOBSITE_SCRAPE_ISSUE`** transitions; **`GAZER_CONFIG["fetch_job_pages"]`**; **`pjl_scrape_pages`**, **`pjl_assembled_content`**, **`pjl_nav_links`** company_data keys; schedulable **`fetch_job_pages`** @ **`PREFILTER_PASSED`**.
