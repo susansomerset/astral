@@ -309,3 +309,13 @@ No unresolved conflicts.
 | fix-now | None — ready for `resolve-child` / merge. |
 | discuss | Optional: normalize keys on `try_links` ledger append; add `PREFILTER_PASSED_RETRY → NO_JOBLIST` if retry+monolith path needs it. |
 | advisory | Align `_finalize_joblist_identified` debug with `debug_detail` when touching file next. |
+
+---
+
+## Resolution (2026-06-18)
+
+**Radia fix-now:** none — clean sign-off @ `d4ef7f5`.
+
+**Discuss (deferred):** mixed raw/normalized keys in `possible_joblist_links` ledger append, missing `PREFILTER_PASSED_RETRY → NO_JOBLIST` transition, and dispatch-error `error_state` transition — no decomposed-path regression today; revisit if monolith/retry combo needs them.
+
+**Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor`
