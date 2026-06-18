@@ -4334,9 +4334,9 @@ def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
 
 
 def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any]) -> None:
-    """Append an agent_response entry to the entity's agent_responses JSON array.
+    """Upsert an agent_response ref on the entity's agent_responses JSON array by task_key.
     Works for company, job, and candidate tables. entry is a lightweight dict
-    (batch_id, task_key, created_at, entity_cost, prompt_blocks)."""
+    (batch_id, task_key, created_at, entity_cost, prompt_blocks). Latest ref wins per task_key."""
     _TABLE_MAP = {
         "company":   ("company",   "short_name"),
         "job":       ("job",       "astral_job_id"),
@@ -4344,6 +4344,9 @@ def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any
     }
     if entity_type not in _TABLE_MAP:
         raise ValueError(f"Unknown entity_type '{entity_type}'. Must be one of: {list(_TABLE_MAP.keys())}")
+    new_key = (entry.get("task_key") or "").strip()
+    if not new_key:
+        raise ValueError("append_agent_response: entry missing task_key")
     table, pk_col = _TABLE_MAP[entity_type]
 
     def _with_conn() -> None:
@@ -4368,10 +4371,14 @@ def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any
                     existing = parsed if isinstance(parsed, list) else []
                 except (TypeError, ValueError):
                     existing = []
-            existing.append(entry)
+            updated = [
+                e for e in existing
+                if not (isinstance(e, dict) and (e.get("task_key") or "").strip() == new_key)
+            ]
+            updated.append(entry)
             conn.execute(
                 f"UPDATE {table} SET agent_responses = ? WHERE {pk_col} = ?",
-                (json.dumps(existing), entity_id),
+                (json.dumps(updated), entity_id),
             )
             conn.commit()
         finally:
