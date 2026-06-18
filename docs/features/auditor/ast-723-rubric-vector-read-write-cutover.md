@@ -282,3 +282,9 @@ Craft generate task keys (`craft_prefilter_rubric`, …) resolve **`{$RUBRIC_VEC
 | §3.5 naming | **`snake_case`** helpers; owner **`task_key`** matches existing **`TASK_CONFIG`** keys. |
 
 No conflicts requiring plan revision.
+
+## Review stub
+
+- **Branch:** `origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover`
+- **Tip:** `4fe60db` (build-child, session astral-AST-378)
+- **Stages landed:** config token registry; `sync_rubric_vectors_from_criteria` + AST-723 `agent_task` migration; candidate save/GET overlay; consult/roster read cutover; agent `_astral_candidate_id` injection for `{$RUBRIC_VECTORS}`.
