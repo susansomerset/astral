@@ -474,6 +474,30 @@ class TestAst450ArtifactPipelineTaskKeys:
             assert legacy not in cfg.TASK_CONFIG
 
 
+class TestAst740RemoveConfigGrouping:
+    """AST-740: UI grouping keys removed from TASK_CONFIG; explicit artifact hop set."""
+
+    def test_task_config_entries_lack_phase_and_seq(self) -> None:
+        for task_key, entry in cfg.TASK_CONFIG.items():
+            assert "phase" not in entry, task_key
+            assert "seq" not in entry, task_key
+
+    def test_job_artifact_entry_task_keys_membership(self) -> None:
+        expected = {
+            "anticipate_scan",
+            "contemplate_job",
+            "advise_job_resume",
+            "draft_job_resume",
+            "check_job_resume",
+            "finalize_job_resume",
+            "check_cover_letter",
+            "finalize_cover_letter",
+            "propose_application_responses",
+        }
+        assert cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS == frozenset(expected)
+        assert "draft_cover_letter" not in cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS
+
+
 class TestAst594DraftJobResumeSchema:
     """AST-594: structure-keyed draft_job_resume hop — no graded-consult contract."""
 
@@ -488,17 +512,14 @@ class TestAst594DraftJobResumeSchema:
 
 
 class TestAst520AnticipateScanTaskKey:
-    """AST-520: tenth Phase E key; non-dispatch hop; seq renumber only."""
+    """AST-520: tenth Phase E key; non-dispatch hop (AST-740: no config phase/seq)."""
 
-    def test_anticipate_scan_stub_and_phase_e_seq(self) -> None:
+    def test_anticipate_scan_stub_without_config_grouping_keys(self) -> None:
         entry = cfg.TASK_CONFIG["anticipate_scan"]
-        assert entry["phase"] == "E. Job Artifacts"
-        assert entry["seq"] == 1
+        assert "phase" not in entry
+        assert "seq" not in entry
         assert entry["print_label"] == "Anticipate Scan"
         assert entry["trigger_state"] is None
-        assert cfg.TASK_CONFIG["contemplate_job"]["seq"] == 2
-        assert cfg.TASK_CONFIG["advise_job_resume"]["seq"] == 3
-        assert cfg.TASK_CONFIG["propose_application_responses"]["seq"] == 10
 
     def test_build_artifacts_entry_unchanged(self) -> None:
         assert cfg.BUILD_CONFIG["resume_artifact_chain"]["first_task_key"] == "contemplate_job"
@@ -1083,8 +1104,8 @@ class TestAst504CompanySearchTermsConfig:
 
     def test_craft_company_search_terms_in_task_config(self) -> None:
         entry = cfg.TASK_CONFIG["craft_company_search_terms"]
-        assert entry["phase"] == "B. Candidate Artifacts"
-        assert entry["seq"] == 8
+        assert "phase" not in entry
+        assert "seq" not in entry
         assert entry["response_schema"]["search_terms"]["type"] == "str"
         assert entry["requires_candidate_key"] is True
         assert entry["entity_type"] is None
@@ -1117,7 +1138,8 @@ class TestAst505InflowDiscoveryConfig:
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]
-        assert entry["phase"] == "C. Company Roster"
+        assert "phase" not in entry
+        assert "seq" not in entry
         assert entry["entity_type"] == "candidate"
         assert entry["requires_candidate_key"] is True
         items = entry["response_schema"]["results"]["items_schema"]

@@ -379,9 +379,9 @@ class TestTaskRoutes:
         )
         got = admin_client.get("/api/admin/tasks/craft_resume_base", headers=auth_headers)
         body = got.get_json()
-        assert body["phase"] == "A. Candidate Context"
-        assert body["seq"] == 1.0
         assert body["task_group_name"] == "A. Candidate Context"
+        assert "phase" not in body
+        assert "seq" not in body
         monkeypatch.setattr(admin_mod.database, "save_agent_task", MagicMock(side_effect=ValueError("bad save")))
         assert admin_client.put("/api/admin/tasks/t1", json={"run_next": "x"}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod.database, "save_agent_task", MagicMock())
@@ -421,7 +421,7 @@ class TestTaskRoutes:
 
 # AST-738: Manage Tasks grouping metadata from DB (not TASK_CONFIG phase/seq).
 class TestAst738TaskGroupingApi:
-    def test_grouping_from_agent_task_row_backward_compat(self) -> None:
+    def test_grouping_from_agent_task_row_db_fields_only(self) -> None:
         out = admin_mod._grouping_from_agent_task_row(
             {
                 "task_group_order": "B. Phase",
@@ -431,15 +431,11 @@ class TestAst738TaskGroupingApi:
             },
             "some_key",
         )
-        assert out["phase"] == "B. Phase"
-        assert out["seq"] == 2.0
+        assert out["task_group_name"] == "B. Phase"
+        assert out["task_seq"] == 2.0
         assert out["task_name"] == "Label"
-        unassigned = admin_mod._grouping_from_agent_task_row(
-            {"task_group_name": "(unassigned)", "task_seq": 999.0},
-            "orphan",
-        )
-        assert unassigned["phase"] is None
-        assert unassigned["seq"] is None
+        assert "phase" not in out
+        assert "seq" not in out
 
     def test_get_task_surfaces_db_grouping(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -455,8 +451,9 @@ class TestAst738TaskGroupingApi:
         )
         body = admin_client.get("/api/admin/tasks/t1", headers=auth_headers).get_json()
         assert body["task_group_name"] == "Z"
-        assert body["phase"] == "Z"
-        assert body["seq"] == 5.0
+        assert body["task_seq"] == 5.0
+        assert "phase" not in body
+        assert "seq" not in body
 
     def test_update_task_persists_grouping_fields(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -491,6 +488,27 @@ class TestAst738TaskGroupingApi:
         resp = admin_client.put("/api/admin/tasks/t1", json={"task_seq": "not-a-number"}, headers=auth_headers)
         assert resp.status_code == 400
         assert "task_seq" in resp.get_json()["error"]
+
+
+# AST-740: backward-compat phase/seq keys removed from Manage Tasks API payloads.
+class TestAst740NoConfigPhaseSeqInApi:
+    def test_get_task_payload_has_grouping_without_phase_seq(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_key": task_key,
+                "task_group_order": "G",
+                "task_group_name": "G",
+                "task_seq": 1.0,
+                "task_name": "Label",
+            },
+        )
+        body = admin_client.get("/api/admin/tasks/t1", headers=auth_headers).get_json()
+        assert set(body.keys()) & {"phase", "seq"} == set()
+        assert body["task_group_name"] == "G"
 
 
 # AST-739: dispatch task_keys returns DB grouping metadata (not config phase/seq).

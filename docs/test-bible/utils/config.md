@@ -426,3 +426,31 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 | --- | --- | --- |
 | Consumer + craft run keys | `src/utils/config.py` | `TestAst725RubricOwnerRunKeys::test_task_keys_for_rubric_owner_includes_consumer_and_craft` |
 | Sorted owner choices | `src/utils/config.py` | `TestAst725RubricOwnerRunKeys::test_rubric_owner_task_key_choices_sorted_owner_keys` |
+
+### AST-740 · AST-734
+
+Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry; adds explicit `JOB_ARTIFACT_ENTRY_TASK_KEYS` for consult job-artifact dispatch hops (replaces phase-string probe). UI grouping is DB-only (**AST-738** / **AST-739**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No `phase`/`seq` in `TASK_CONFIG` | `src/utils/config.py` | `TestAst740RemoveConfigGrouping::test_task_config_entries_lack_phase_and_seq` |
+| Artifact hop frozenset | `src/utils/config.py`, `src/core/consult.py` | `TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_membership` |
+| Revised AST-520/504/505 config assertions | `tests/component/utils/test_config.py` | `TestAst520AnticipateScanTaskKey`, `TestAst504CompanySearchTermsConfig`, `TestAst505InflowDiscoveryConfig` |
+| Seed defaults without config phase | `scripts/migrations/backfill_task_grouping_metadata.py` | `TestAst738TaskGroupingMetadata` (revised unassigned defaults) |
+| API drops backward-compat `phase`/`seq` | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi` |
+
+**AST-740** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst740RemoveConfigGrouping \
+  tests/component/utils/test_config.py::TestAst520AnticipateScanTaskKey \
+  tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/data/database/test_agent_tasks.py::TestAst738TaskGroupingMetadata \
+  tests/component/ui/api/test_api_admin.py::TestAst740NoConfigPhaseSeqInApi \
+  tests/component/ui/api/test_api_admin.py::TestAst738TaskGroupingApi \
+  tests/component/ui/api/test_api_admin.py::TestTaskRoutes::test_preview_task_and_get_update \
+  -q
+```
+
