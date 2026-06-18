@@ -608,11 +608,10 @@ class TestAdhocHelpers:
             },
         )
         assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter", "acme")
-        # Legacy locate alias + roster trio preview (nav_links enumeration; AST-485).
+        # locate + select share nav_links preview; parse uses job_page_dom (AST-721).
         locate_s = admin_mod._build_adhoc_live_content("locate_job_page", "acme")
-        find_s = admin_mod._build_adhoc_live_content("find_job_page", "acme")
         sel_s = admin_mod._build_adhoc_live_content("select_job_page", "acme")
-        assert locate_s == find_s == sel_s
+        assert locate_s == sel_s
         assert admin_mod._build_adhoc_live_content("parse_job_list", "acme") == "dom"
         monkeypatch.setattr(
             admin_mod.database,
@@ -1023,7 +1022,7 @@ class TestApiAdminBranchGaps:
             lambda short_name: {"company_data": {"homepage_text": "home", "nav_links": ["a"]}},
         )
         assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter", "acme")
-        assert admin_mod._build_adhoc_live_content("find_job_page", "acme") != ""
+        assert admin_mod._build_adhoc_live_content("select_job_page", "acme") != ""
         monkeypatch.setattr(
             admin_mod.database,
             "get_company",
@@ -1053,10 +1052,12 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
         assert "locate_job_page" not in keys
-        for k in ("find_job_page", "select_job_page", "parse_job_list"):
+        assert "find_job_page" not in keys
+        for k in ("select_job_page", "parse_job_list"):
             assert k in keys
             assert keys[k]["entity_type"] == "company"
-            assert keys[k]["trigger_state"] == "TO_WATCH"
+        assert keys["select_job_page"]["trigger_state"] == "PJL_READY"
+        assert keys["parse_job_list"]["trigger_state"] == "JOBLIST_IDENTIFIED"
 
     def test_ast535_create_dispatch_task_triple_unique_409(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -1071,15 +1072,15 @@ class TestApiAdminBranchGaps:
             "/api/admin/dispatch_tasks",
             json={
                 "candidate_id": "c535",
-                "task_key": "find_job_page",
-                "trigger_state": "TO_WATCH",
+                "task_key": "parse_job_list",
+                "trigger_state": "JOBLIST_IDENTIFIED",
                 "min_count": 1,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 409
         err = resp.get_json()["error"]
-        assert "c535" in err and "find_job_page" in err and "TO_WATCH" in err
+        assert "c535" in err and "parse_job_list" in err and "JOBLIST_IDENTIFIED" in err
 
     def test_dispatch_task_keys_includes_task_config_registry(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         """Scheduled Actions select lists every TASK_CONFIG key, not dispatch seed only (AST-516)."""
@@ -1095,8 +1096,8 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
         assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
-        assert keys["find_job_page"]["entity_type"] == "company"
-        assert keys["find_job_page"]["trigger_state"] == "TO_WATCH"
+        assert keys["parse_job_list"]["entity_type"] == "company"
+        assert keys["parse_job_list"]["trigger_state"] == "JOBLIST_IDENTIFIED"
         assert keys["consult_do"]["phase"] == cfg.TASK_CONFIG["grade_do"]["phase"]
         assert keys["consult_do"]["seq"] == cfg.TASK_CONFIG["grade_do"]["seq"]
 

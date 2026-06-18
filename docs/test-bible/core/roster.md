@@ -194,6 +194,104 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-720 · AST-716
+
+**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PJL map + try_links ledger helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlMapsAndLedger` |
+| PJL_READY select outcomes + `run_company_task` routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch` |
+| Selection states + dispatch trigger | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst720SelectJobPageConfig` |
+
+**Broken / obsolete (Betty revision):** **`TestAst549DispatchAdminDefaults::test_ast485_roster_dispatch_trio_matches_config_defaults`** — **`select_job_page`** default trigger is **`PJL_READY`**, not **`TO_WATCH`**.
+
+**AST-720** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst720SelectJobPageConfig \
+  tests/component/core/test_roster.py::TestAst720PjlMapsAndLedger \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-721 · AST-716
+
+**`parse_job_list`** decomposed dispatch from **`JOBLIST_IDENTIFIED`** / **`JOBLIST_IDENTIFIED_RETRY`** — DOM reload via **`_scrape_list_page_dom_for_parse`**, **`selected_pjl_url`** + **`job_titles`** from company_data; first fail → **`JOBLIST_IDENTIFIED_RETRY`**, second → **`COULD_NOT_PARSE_JOBLIST`**; success → **`WATCH`** + first **`job_site`** write via **`_save_company`**. **`find_job_page()`** monolith removed; **`locate_job_page.dispatch_input_states`** is **`JOBS_FOUND`** only. Admin schedulable keys: **`select_job_page`** @ **`PJL_READY`**, **`parse_job_list`** @ **`JOBLIST_IDENTIFIED`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse states + roster config + schedulable keys | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst721ParseJobListConfig` |
+| URL/title helpers + failure ladder | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers` |
+| Parse dispatch outcomes + `run_company_task` routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst721ParseJobListDispatch`, `TestAst721ParseDispatchRouting` |
+| Admin task_keys + adhoc preview | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template`, `TestAdhocHelpers::test_build_adhoc_live_content_company_paths` |
+| PREFILTER_PASSED claim score_floor (fetch_job_pages) | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast508_prefilter_passed_dispatch_passes_score_floor` |
+
+**Broken / obsolete (Betty revision):** **`TestFindJobPage*`** classes skipped (monolith removed); **`TestAst535ToWatchDispatchTaskKeyRouting`** replaced by **`TestAst721ParseDispatchRouting`**; **`test_ast485_roster_dispatch_trio_matches_config_defaults`** — **`find_job_page`** not schedulable, **`parse_job_list` → `JOBLIST_IDENTIFIED`**; **`TestRunCompanyTask`** TO_WATCH / PREFILTER_PASSED no longer route to **`find_job_page`**.
+
+**AST-721** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchRouting \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_ast485_roster_dispatch_trio_matches_config_defaults \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast508_prefilter_passed_dispatch_passes_score_floor \
+  -q
+```
+
+---
+
+### AST-719 · AST-716
+
+**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for additive scrape. Does not write **`job_site`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Additive merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+
+Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-719**).
+
+---
+
+### AST-718 · AST-716
+
+**Prefilter routing on decomposed PJL path** — after **HOMEPAGE_READY** / inflow prefilter, route to **`NO_PREFILTER_JOBLISTS`**, **`PREFILTER_FAILED`**, or **`PREFILTER_PASSED`**; hydrate **`possible_joblist_links`** via **`normalize_link()`** + **`parse_enumerate_array`**. Legacy manual path still **TO_WATCH** / **IGNORE**. Config: **`NO_PREFILTER_JOBLISTS`**, **`no_pjl_state`**, **`pjl_url_data_key`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decomposed routing + PJL hydration | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst718PrefilterPjlRouting` |
+| Coat-check **`possible_joblist_links`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestRosterCoverageGaps::test_prefilter_notes_returns_saved_notes_with_nav_links` |
+| **`NO_PREFILTER_JOBLISTS`** config | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` |
+| **`normalize_link()`** | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py::TestNormalizeLink` |
+
+**Broken / obsolete (Betty revision):** inflow/batch pass cases that assumed **`PREFILTER_PASSED`** without PJL indices + resolvable nav — updated in **`TestAst507EncodedPrefilter`**, **`TestAst603ConsultParityHydration`**, **`TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts`**.
+
+**AST-718** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestNormalizeLink \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions \
+  tests/component/core/test_roster.py::TestAst718PrefilterPjlRouting \
+  tests/component/core/test_roster.py::TestAst507EncodedPrefilter::test_legacy_empty_history_maps_pass_to_to_watch \
+  tests/component/core/test_roster.py::TestRosterCoverageGaps::test_prefilter_notes_returns_saved_notes_with_nav_links \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-715 · AST-710
 
 **UAT fix:** **`collapse_consecutive_blank_lines`** in **`scrape_company_homepage_content`** immediately after **`get_visible_text`**, before empty-text error gate — single normalize site for homepage scrape (**AST-701** DRY). Redundant gazer **`fetch_website_batch`** collapse removed (**AST-713** regression).

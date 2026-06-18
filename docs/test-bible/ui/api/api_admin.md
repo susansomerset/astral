@@ -10,15 +10,15 @@
 
 ---
 
-### AST-485 · AST-461 · AST-549
+### AST-485 · AST-461 · AST-549 · AST-721
 
-Roster trio **`find_job_page`**, **`select_job_page`**, **`parse_job_list`** (company **TO_WATCH**); **`locate_job_page`** is not schedulable (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — schedulable defaults now come from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); schedulable keys merge config derivation.
+Decomposed PJL roster hops **`select_job_page`** (**`PJL_READY`**) and **`parse_job_list`** (**`JOBLIST_IDENTIFIED`**); **`find_job_page`** monolith removed from schedulable keys (**AST-721**). **`locate_job_page`** is not schedulable (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — schedulable defaults now come from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); schedulable keys merge config derivation.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Schedulable roster trio defaults | `src/utils/config.py` | **`TestAst471DispatchConfigHelpers::test_ast485_roster_dispatch_trio_matches_config_defaults`** (`tests/component/utils/test_config.py`) |
-| **`task_keys`** roster trio + **`adhoc_entities`** config fallback | `src/ui/api/api_admin.py`, `src/data/database.py` | **`test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template`**, **`test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults`** (`tests/component/ui/api/test_api_admin.py` **`TestApiAdminBranchGaps`**) |
-| Nav-links preview (**`find`** / **`select`** / legacy **`locate`**) | `src/ui/api/api_admin.py` | **`TestAdhocHelpers::test_build_adhoc_live_content_company_paths`** (`test_api_admin.py`) |
+| Schedulable roster defaults | `src/utils/config.py` | **`TestAst471DispatchConfigHelpers::test_ast485_roster_dispatch_trio_matches_config_defaults`** (`tests/component/utils/test_config.py`) |
+| **`task_keys`** decomposed roster + **`adhoc_entities`** config fallback | `src/ui/api/api_admin.py`, `src/data/database.py` | **`test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template`**, **`test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults`** (`tests/component/ui/api/test_api_admin.py` **`TestApiAdminBranchGaps`**) |
+| Nav-links preview (**`select`** / legacy **`locate`**) + parse DOM | `src/ui/api/api_admin.py` | **`TestAdhocHelpers::test_build_adhoc_live_content_company_paths`** (`test_api_admin.py`) |
 
 Narrow (**`test-astral`** **AST-485** / **AST-549** regression tip):
 
