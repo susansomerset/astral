@@ -109,6 +109,16 @@ See primary data manifest: `docs/test-bible/data/database/agent_tasks.md` (**AST
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 
+### AST-750 · AST-743
+
+**`GET /api/admin/dispatch_tasks/score_floor_options`** returns `{"values": ["0.00", …, "10.00"]}` from **`dispatch_score_floor_option_labels()`** — mirrors **`state_options`** metadata pattern for the Scheduled Actions edit modal.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Score floor catalog endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (floors GET) |
+
+Routed page + zero-save UX: **`docs/test-bible/frontend/pages.md`** (**AST-750**).
+
 ### AST-740 · AST-734
 
 `_grouping_from_agent_task_row` returns DB grouping fields only — drops backward-compat `phase`/`seq` keys from Manage Tasks GET/PUT payloads.
@@ -116,4 +126,15 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 | Area | Source | Component tests |
 | --- | --- | --- |
 | No `phase`/`seq` on task routes | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi`, `TestTaskRoutes::test_preview_task_and_get_update` |
+
+### AST-747 · AST-736
+
+Retired **`consult_*`** on **`POST /api/admin/dispatch_tasks`**; schedulable **`grade_*`**; **`task_keys`** grouping on **`grade_do`** catalog rows (no alias).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired-key guard | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key` |
+| **`task_keys`** derivation | same | `TestAst739DispatchTaskKeysGrouping`, `test_ast549_task_keys_config_derivation_authoritative`, `TestAdhocHelpers::test_trigger_state_helpers` |
+
+Config helpers: **`docs/test-bible/utils/config.md`** (**AST-747**). **AST-748** owns **`test_consult.py`**.
 

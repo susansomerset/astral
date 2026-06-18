@@ -26,4 +26,4 @@
   tests/component/ui/test_server.py
 ```
 
-**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** are dispatch-row keys (e.g. **`consult_do`**, **`prefilter`**) resolved via **`resolve_dispatch_task_config_key()`** into **`TASK_CONFIG`** agent keys — raw membership in **`TASK_CONFIG`** fails server import until **`bootstrap.py`** aligns validation with that helper.
+**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** use **`grade_*`** dispatch-row keys (e.g. **`grade_do`**, **`prefilter`**) — same strings as **`TASK_CONFIG`** after **AST-747**; **`resolve_dispatch_task_config_key()`** trims only.
