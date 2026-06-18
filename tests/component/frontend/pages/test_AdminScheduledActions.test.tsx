@@ -236,6 +236,33 @@ describe("AdminScheduledActions", () => {
     expect(cells[3]).not.toHaveClass("list-table-cell-frozen")
   }, 20000)
 
+  it("AST-746: phase table mounts on expand; measured sticky left avoids 120px fallback gap", async () => {
+    mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await selectAllCandidatesFilter()
+    expect(screen.queryByRole("table")).not.toBeInTheDocument()
+
+    await expandFirstPhaseSection()
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+    const table = screen.getByRole("table")
+    const headers = within(table).getAllByRole("columnheader")
+    // jsdom offsetWidth is 0 on first paint — must not apply erroneous 120px sticky fallback on Task.
+    expect(headers[1].style.left).not.toBe("120px")
+    expect(headers[3]).not.toHaveClass("list-table-cell-frozen")
+    expect(headers[3].style.left).toBe("")
+
+    const headerCells = table.querySelector("thead tr")!.querySelectorAll("th")
+    Object.defineProperty(headerCells[0], "offsetWidth", { configurable: true, value: 88 })
+    Object.defineProperty(headerCells[1], "offsetWidth", { configurable: true, value: 72 })
+    Object.defineProperty(headerCells[2], "offsetWidth", { configurable: true, value: 56 })
+    await userEvent.click(headers[0])
+    await waitFor(() => expect(headers[1].style.left).toBe("88px"))
+    expect(parseFloat(headers[1].style.left)).toBeLessThan(120)
+    expect(headers[2].style.left).toBe("160px")
+    expect(headers[3].style.left).toBe("")
+  }, 20000)
+
   it("sorts columns, filters task key, and shows row edge cases", async () => {
     mockApi(false, {
       tasks: [dispatchTask, sparseRow],
