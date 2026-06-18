@@ -273,4 +273,4 @@ No unresolved conflicts.
 ## Review stub (Hedy / build)
 
 **Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor`  
-**Product commits:** `7b58fc12` (Stage 1 — config), `74ae5627` (Stages 2–4 — PJL helpers, decomposed routing, `run_company_task` PJL_READY entry)
+**Product commits:** `7b58fc12` (Stage 1 — config), `74ae5627` (Stages 2–4 — PJL helpers, decomposed routing, `run_company_task` PJL_READY entry), `c0e88d99` (AST-538 debug_index)
