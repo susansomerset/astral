@@ -288,3 +288,10 @@
 | §3.5 naming | snake_case keys; task_key **`fetch_job_pages`** matches dispatch convention |
 
 No unresolved conflicts.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape`  
+**Product commits:** `04e39cf4` (Stage 1 — config), `6d0a31cf` (Stage 2 — PJL scrape helpers), `437bfe70` (Stage 3 — `fetch_job_pages_batch`), `e9df44c2` (Stage 4 — consult routing)
