@@ -207,3 +207,14 @@ Allowed value letters come from **`RUBRIC_FEEDBACK_CONFIG`** (`A|O|S|R|N` for re
 | §3.5 Naming | snake_case; FEEDBACK block matches `BLOCK_TYPES` |
 
 No unresolved rule conflicts.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-724-runtime-vector-feedback-capture` (pending)  
+**Built:** 2026-06-18
+
+**Commits:** `9b22328` (config + parse helpers), `b37343e` (data layer inserts + FEEDBACK store), `a4c98e7` (do_task capture hook + prompt suffix)
+
+**Publish ref:** `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture`
