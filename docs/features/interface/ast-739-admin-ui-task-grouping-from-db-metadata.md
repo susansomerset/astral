@@ -228,3 +228,43 @@ No conflicts requiring plan revision.
 **Built:** `origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` @ `736c306` (`d9dbdb6` task_keys API, `487e0a2` Manage Tasks UI, `736c306` Scheduled Actions UI).
 
 **Out of build scope (Betty / qa-child):** component/API test updates per plan QA hints; config `phase`/`seq` removal (AST-740).
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` @ `3932d03`  
+**Tip includes:** AST-739 UI/API commits + prerequisite AST-738 merge from `origin/ftr/AST-734-organizing-tasks` + Betty `merge-tests(AST-739)`.
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity (Stages 1–3) | `_catalog_task_grouping_meta` / `_dispatch_task_key_form_meta` / orphan fallback match plan; Manage Tasks + Scheduled Actions section-key bucketing, sort, modal fields, and PUT body align with spec. |
+| AST-568 alias | `consult_do` grouping resolves via catalog key (`grade_do`) — covered by `TestAst739DispatchTaskKeysGrouping`. |
+| Layer compliance (§3.2) | UI pages consume API payloads only; `api_admin.py` uses existing `database.get_agent_task` pattern. No new `src/data` imports in frontend. |
+| Prerequisite AST-738 | Data columns, seed, `_enrich_tasks` / GET·PUT grouping on Manage Tasks API present on publish tip — required gate satisfied. |
+| Tests / bible | Manifest updates and AST-739/738 component tests match plan QA hints; green per Tests Passed. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| Advisory | Stale docstring still says "TASK_CONFIG first" on `_dispatch_task_key_form_meta` — grouping is now DB-backed. | `src/ui/api/api_admin.py` |
+| Advisory | Stray `# placeholder removed = "qualify_job_listings"` in test module header (Betty cleanup). | `tests/component/data/database/test_agent_tasks.py` |
+| Advisory | Duplicate section-key `useMemo` in two pages — acceptable per plan Self-Review; shared helper only if Susan asks. | `AdminTaskPrompts.tsx`, `AdminScheduledActions.tsx` |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Review ref:** Radia comment @ `c002406` — clean, no fix-now / discuss.
+
+No product changes required. §9a dry-run: `origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` merges cleanly into `origin/dev` and `origin/ftr/AST-734-organizing-tasks`.
+
+Advisory items (stale `_dispatch_task_key_form_meta` docstring, Betty test header cleanup, shared section helper) deferred — non-blocking per Radia.
