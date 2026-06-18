@@ -76,7 +76,7 @@ def ingest_jobs(
             title_mismatch_count += 1
             continue
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        database.save_job(
+        inserted = database.save_job(
             str(uuid.uuid4()),
             job_title=parse_text(raw_job_listing),
             company=company,
@@ -85,6 +85,9 @@ def ingest_jobs(
             state_history=[{"to_state": initial_state, "timestamp": now, "batch_id": batch_id}],
             state_changed_at=now,
         )
+        if not inserted:
+            dup_count += 1
+            continue
         new_count += 1
 
     return {
@@ -143,7 +146,7 @@ def ingest_board_listings(
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         link_m = _BOARD_LISTING_LINK_RE.search(sr)
         job_title = parse_text(sr) or "(board listing)"
-        database.save_job(
+        inserted = database.save_job(
             str(uuid.uuid4()),
             job_title=job_title,
             company=company_short,
@@ -159,6 +162,9 @@ def ingest_board_listings(
             # Board-sourced NEW jobs must carry board_search_id for qualify/evaluate (AST-419, §7.13v bible).
             board_search_id=board_search_id,
         )
+        if not inserted:
+            dup_count += 1
+            continue
         new_count += 1
 
     counts = {"new": new_count, "duplicates": dup_count, "invalid_title": invalid_title_count}
@@ -614,9 +620,9 @@ def count_jobs(
     return database.count_jobs(states=states, candidate_id=candidate_id)
 
 
-def save_job(astral_job_id: str, **kwargs: Any) -> None:
-    """Direct job row upsert for admin/API callers (distinct from save_job_data merge helper)."""
-    database.save_job(astral_job_id, **kwargs)
+def save_job(astral_job_id: str, **kwargs: Any) -> bool:
+    """Direct job row upsert for admin/API callers. Returns False on identity duplicate insert bounce."""
+    return database.save_job(astral_job_id, **kwargs)
 
 
 def score_floor_by_trigger_for_candidate(candidate_id: str) -> Dict[str, float]:
