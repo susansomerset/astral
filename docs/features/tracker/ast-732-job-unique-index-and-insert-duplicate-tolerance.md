@@ -146,3 +146,16 @@ Add a durable unique identity constraint on the `job` table and make **insert-ti
 | --- | --- | --- |
 | advisory | diff vs `origin/dev` | Diff includes AST-729 test-bible + component tests (sibling not on dev yet) via `merge-tests` — expected epic stacking; not AST-732 product scope. |
 | advisory | operator runbook | Environments with duplicate complete triples must run AST-729 cleanup before index migration — already documented in plan prerequisite. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Resolved by:** Hedy (resolve-child)
+
+Radia posted **no fix-now** items. Advisory notes (sibling AST-729 tests stacked via `merge-tests`; AST-729 cleanup prerequisite before index migration) accepted as documented.
+
+**§9a dry-run:** `origin/sub/AST-728/AST-732-job-unique-index-and-insert-duplicate-tolerance` @ `5559ade` merges cleanly into **`origin/dev`** and **`origin/ftr/duplicate-jobs-ingested`**.
+
+**Product changes in resolve:** none — review clean. Manifest re-run: 11 passed.
