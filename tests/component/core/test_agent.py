@@ -4627,3 +4627,108 @@ class TestAst515AdhocWorkbenchLedger:
             )
         assert any(u[1].get("total_errors") == 1 for u in ledger_trackers["updates"])
         assert agent_mod.log_batch_id.get() is None
+
+
+class TestAst724VectorFeedbackCapture:
+    """AST-724: lenient vector_reviews capture on SUCCESS — parse failures store FEEDBACK only."""
+
+    def test_agent_performance_status_normalizes_dict_and_string(self) -> None:
+        assert agent_mod._agent_performance_status({"status": "SUCCESS"}) == "success"
+        assert agent_mod._agent_performance_status("Failure") == "failure"
+        assert agent_mod._agent_performance_status(None) is None
+
+    def test_rubric_feedback_owner_and_candidate_resolves_from_cd_and_ctx(self) -> None:
+        owner, cid = agent_mod._rubric_feedback_owner_and_candidate(
+            "grade_get",
+            {"_astral_candidate_id": "cand-1"},
+            None,
+        )
+        assert owner == "grade_get"
+        assert cid == "cand-1"
+        owner2, cid2 = agent_mod._rubric_feedback_owner_and_candidate(
+            "evaluate_jd",
+            {},
+            {"astral_candidate_id": "cand-2"},
+        )
+        assert owner2 == "evaluate_jd"
+        assert cid2 == "cand-2"
+
+    def test_clean_parse_inserts_vector_feedback_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-724-clean",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+        )
+        conn = db._get_connection()
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM vector_feedback WHERE batch_id = ?",
+                ("batch-724-clean",),
+            ).fetchone()[0]
+            assert n == 3
+        finally:
+            conn.close()
+        assert prompt_blocks == []
+
+    def test_unparseable_stores_feedback_block_not_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-724-raw",
+            entity_type="candidate",
+            index="0",
+            perf={"status": "success", "vector_reviews": ["not-valid"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+        )
+        assert len(prompt_blocks) == 1
+        assert prompt_blocks[0]["type"] == "FEEDBACK"
+        rows = db.get_agent_data_by_batch("batch-724-raw", block_type="FEEDBACK")
+        assert len(rows) == 1
+
+    def test_non_success_skips_capture(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-724-fail",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "failure", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+        )
+        assert prompt_blocks == []
+        rows = db.get_agent_data_by_batch("batch-724-fail", block_type="FEEDBACK")
+        assert rows == []

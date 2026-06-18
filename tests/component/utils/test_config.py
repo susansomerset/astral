@@ -1328,6 +1328,20 @@ class TestAst723RubricVectorsToken:
         assert phases["ANALYSIS_GET"]["rubric_owner_task_key"] == "grade_get"
 
 
+class TestAst724RubricBackedTask:
+    """AST-724: rubric-backed task gate and prompt suffix for vector_reviews envelope."""
+
+    def test_is_rubric_backed_consumer_and_craft(self) -> None:
+        assert cfg.is_rubric_backed_task("grade_get") is True
+        assert cfg.is_rubric_backed_task("craft_joblist_rubric") is True
+        assert cfg.is_rubric_backed_task("craft_resume_base") is False
+
+    def test_prompt_suffix_present_in_rubric_feedback_config(self) -> None:
+        suffix = cfg.RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or ""
+        assert "vector_reviews" in suffix
+        assert "agent_performance" in suffix
+
+
 
 class TestAst726PrefilterGradesKey:
     """AST-726: prefilter_company grades_key for entity story vector_grades."""

@@ -51,3 +51,23 @@ Normalized **`rubric_vector`** + **`vector_feedback`** SQLite tables, **`FEEDBAC
 ./scripts/testing/run_component_tests.sh   tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors   tests/component/data/database/test_rubric_vectors.py::TestAst723RubricTokenMigration   -q
 ```
 
+
+### AST-724 · AST-378
+
+Runtime **`vector_feedback`** row inserts, **`store_feedback_block`** FEEDBACK persistence, and **`list_rubric_vector_uuid_by_code`** map for lenient envelope capture. Builds on **AST-722** / **AST-723** tables.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Code → rubric_vector_uuid map | `src/data/database.py` | `TestAst724VectorFeedbackRows::test_list_rubric_vector_uuid_by_code` |
+| Parsed vector → 3 feedback rows | `src/data/database.py` | `TestAst724VectorFeedbackRows::test_insert_vector_feedback_rows_writes_three_types_per_vector` |
+| Raw FEEDBACK agent_data block | `src/data/database.py` | `TestAst724VectorFeedbackRows::test_store_feedback_block_persists_feedback_agent_data` |
+
+Parse helpers + agent capture: **`docs/test-bible/utils/rubric_feedback.md`**, **`docs/test-bible/core/agent.md`**.
+
+**AST-724** narrowed run (database cluster):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_rubric_vectors.py::TestAst724VectorFeedbackRows \
+  -q
+```

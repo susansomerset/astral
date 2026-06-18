@@ -279,3 +279,57 @@ class TestAst723RubricTokenMigration:
         row = db.get_agent_task("grade_get")
         assert "{$RUBRIC_VECTORS}" in row["user_prompt"]
         assert "AST-723_RUBRIC_VECTORS_TOKEN" in row["user_prompt"]
+
+
+class TestAst724VectorFeedbackRows:
+    def test_list_rubric_vector_uuid_by_code(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        mapping = db.list_rubric_vector_uuid_by_code("cand-1", "grade_get")
+        assert "G1" in mapping
+        rows = db.list_rubric_vectors("cand-1", "grade_get")
+        assert mapping["G1"] == rows[0]["rubric_vector_uuid"]
+
+    def test_insert_vector_feedback_rows_writes_three_types_per_vector(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        db.insert_vector_feedback_rows(
+            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            candidate_id="cand-1",
+            batch_id="batch-724",
+            task_key="grade_get",
+        )
+        conn = db._get_connection()
+        try:
+            rows = conn.execute(
+                """SELECT feedback_type, value FROM vector_feedback
+                   WHERE batch_id = ? ORDER BY feedback_type""",
+                ("batch-724",),
+            ).fetchall()
+            assert [(r[0], r[1]) for r in rows] == [("clarity", "O"), ("relevance", "A"), ("verdict", "K")]
+        finally:
+            conn.close()
+
+    def test_store_feedback_block_persists_feedback_agent_data(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        fb_id = db.store_feedback_block(
+            "candidate",
+            "grade_get",
+            "batch-fb",
+            '{"vector_reviews": ["bad"]}',
+            index="0",
+        )
+        rows = db.get_agent_data_by_batch("batch-fb", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert rows[0]["agent_data_id"] == fb_id
