@@ -4401,7 +4401,7 @@ class TestAst726LatestOnlyRosterStory:
             {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "do"},
             {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
         ]
-        deduped = roster_mod._dedupe_agent_responses_latest(entries)
+        deduped = roster_mod.dedupe_agent_responses_latest(entries)
         assert len(deduped) == 2
         assert deduped[0]["task_key"] == "consult_get"
         assert deduped[0]["batch_id"] == "new"
@@ -4444,3 +4444,32 @@ class TestAst726LatestOnlyRosterStory:
         saved = save.call_args[0][1]
         assert saved["prefilter_score"] is None
 
+
+
+class TestAst727NormalizeAgentResponsesForBackfill:
+    """AST-727: shared backfill normalizer matches runtime dedupe rules."""
+
+    def test_drops_empty_task_key_and_dedupes(self) -> None:
+        entries = [
+            {"task_key": "", "batch_id": "orphan"},
+            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
+            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
+            "bad",
+        ]
+        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
+        assert stats == {"dropped_empty_key": 1, "deduped_removed": 1}
+        assert len(normalized) == 1
+        assert normalized[0]["batch_id"] == "new"
+
+    def test_coerces_non_list_to_empty(self) -> None:
+        normalized, stats = roster_mod.normalize_agent_responses_for_backfill({})
+        assert normalized == []
+        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
+
+    def test_idempotent_on_already_normalized(self) -> None:
+        entries = [
+            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "b1"},
+        ]
+        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
+        assert normalized == entries
+        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
