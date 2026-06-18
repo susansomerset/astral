@@ -284,4 +284,4 @@ No conflicts requiring plan revision.
 
 **Built:** `sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` — expanded client-side filters, per-group AUTO summary headers, table column reorder (Candidate/Avail/Last Run rightmost), Available zero → —, All-candidate default sort by available count desc within task.
 
-**Tip:** _(filled after publish)_
+**Tip:** `bfc26258` (`origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary`)
