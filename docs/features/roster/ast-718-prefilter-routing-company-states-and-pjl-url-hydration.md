@@ -253,3 +253,10 @@
 | §3.5 naming | `possible_joblist_links` (URLs) vs `possible_job_links` (indices) per parent glossary |
 
 No unresolved conflicts.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`  
+**Product commits:** `17d796f1` (Stage 1 — config), `08783707` (Stage 2 — `normalize_link`), `597fb106` (Stage 3 — routing + hydration), `40efc65a` (Stage 4 — AST-538 debug)
