@@ -33,6 +33,8 @@ Tables used (inventory):
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
   candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id, created_at).
   One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
+  list_vector_feedback — filtered join to rubric_vector for Admin exploration (AST-725).
+  aggregate_vector_feedback_by_vector — per-current-vector counts and value distributions (AST-725).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
   status ACTIVE|BUILT, transcript JSON, prompt_snapshot JSON, last_ready_to_build INTEGER, built_at TIMESTAMP,
   created_at, updated_at). Resume-after-close (AST-558).
@@ -87,6 +89,8 @@ from src.utils.config import (
     trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
+    RUBRIC_FEEDBACK_CONFIG,
+    task_keys_for_rubric_owner,
 )
 from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
 from src.utils.logging import get_logger
@@ -3453,6 +3457,154 @@ def insert_vector_feedback_rows(
 
     _run_with_retry(_with_conn)
 
+
+def _format_vector_feedback_dist(feedback_type: str, counts: Dict[str, int]) -> str:
+    codes = (RUBRIC_FEEDBACK_CONFIG.get("feedback_types") or {}).get(feedback_type, {}).get("value_codes") or ()
+    parts = [f"{c}:{counts.get(c, 0)}" for c in codes if counts.get(c, 0)]
+    return " ".join(parts)
+
+
+def list_vector_feedback(
+    candidate_id: Optional[str] = None,
+    owner_task_key: Optional[str] = None,
+    task_key: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    vector_code: Optional[str] = None,
+    feedback_type: Optional[str] = None,
+    value: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Query vector_feedback rows joined to rubric_vector; newest first (AST-725)."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_vector_feedback_table(conn)
+            _ensure_rubric_vector_table(conn)
+            clauses: List[str] = []
+            params: List[Any] = []
+            if candidate_id:
+                clauses.append("vf.candidate_id = ?")
+                params.append(candidate_id)
+            if owner_task_key:
+                run_keys = list(task_keys_for_rubric_owner(owner_task_key))
+                if run_keys:
+                    placeholders = ",".join("?" for _ in run_keys)
+                    clauses.append(f"vf.task_key IN ({placeholders})")
+                    params.extend(run_keys)
+            elif task_key:
+                clauses.append("vf.task_key = ?")
+                params.append(task_key)
+            if batch_id:
+                clauses.append("vf.batch_id = ?")
+                params.append(batch_id)
+            if vector_code:
+                clauses.append("UPPER(rv.code) = ?")
+                params.append(str(vector_code).strip().upper())
+            if feedback_type:
+                clauses.append("vf.feedback_type = ?")
+                params.append(feedback_type)
+            if value:
+                clauses.append("vf.value = ?")
+                params.append(value.upper())
+            if date_from:
+                clauses.append("vf.created_at >= ?")
+                params.append(date_from)
+            if date_to:
+                clauses.append("vf.created_at <= ?")
+                params.append(f"{date_to}T23:59:59")
+            where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+            rows = conn.execute(
+                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.task_key,
+                           vf.feedback_type, vf.value, vf.agent_data_id, vf.created_at,
+                           vf.rubric_vector_uuid, rv.code AS vector_code,
+                           rv.label AS vector_label, rv.current AS rubric_current
+                    FROM vector_feedback vf
+                    LEFT JOIN rubric_vector rv ON vf.rubric_vector_uuid = rv.rubric_vector_uuid
+                    {where}
+                    ORDER BY vf.created_at DESC""",
+                params,
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def aggregate_vector_feedback_by_vector(
+    candidate_id: str,
+    owner_task_key: str,
+) -> List[Dict[str, Any]]:
+    """Per-current-rubric-vector feedback counts and value distributions (AST-725)."""
+    if not candidate_id or not str(candidate_id).strip() or not owner_task_key:
+        return []
+
+    run_keys = list(task_keys_for_rubric_owner(owner_task_key))
+    if not run_keys:
+        return []
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_rubric_vector_table(conn)
+            _ensure_vector_feedback_table(conn)
+            rv_rows = conn.execute(
+                """SELECT rubric_vector_uuid, code, label, importance
+                   FROM rubric_vector
+                   WHERE candidate_id = ? AND task_key = ? AND current = 1
+                   ORDER BY importance DESC, code""",
+                (candidate_id, owner_task_key),
+            ).fetchall()
+            if not rv_rows:
+                return []
+
+            placeholders = ",".join("?" for _ in run_keys)
+            agg_params: List[Any] = [candidate_id, *run_keys]
+            agg_rows = conn.execute(
+                f"""SELECT vf.rubric_vector_uuid, vf.feedback_type, vf.value, COUNT(*) AS cnt
+                    FROM vector_feedback vf
+                    WHERE vf.candidate_id = ? AND vf.task_key IN ({placeholders})
+                    GROUP BY vf.rubric_vector_uuid, vf.feedback_type, vf.value""",
+                agg_params,
+            ).fetchall()
+            batch_rows = conn.execute(
+                f"""SELECT rubric_vector_uuid, COUNT(DISTINCT batch_id) AS batch_cnt
+                    FROM vector_feedback
+                    WHERE candidate_id = ? AND task_key IN ({placeholders})
+                    GROUP BY rubric_vector_uuid""",
+                agg_params,
+            ).fetchall()
+            batch_map = {r[0]: int(r[1]) for r in batch_rows}
+
+            counts_by_uuid: Dict[str, Dict[str, Dict[str, int]]] = {}
+            row_counts: Dict[str, int] = {}
+            for rubric_uuid, ft, val, cnt in agg_rows:
+                if not ft or not val:
+                    continue
+                counts_by_uuid.setdefault(rubric_uuid, {}).setdefault(ft, {})[val] = int(cnt)
+                row_counts[rubric_uuid] = row_counts.get(rubric_uuid, 0) + int(cnt)
+
+            out: List[Dict[str, Any]] = []
+            for rubric_uuid, code, label, importance in rv_rows:
+                cdict = counts_by_uuid.get(rubric_uuid, {})
+                out.append({
+                    "rubric_vector_uuid": rubric_uuid,
+                    "code": code,
+                    "label": label,
+                    "importance": importance,
+                    "feedback_row_count": row_counts.get(rubric_uuid, 0),
+                    "batch_count": batch_map.get(rubric_uuid, 0),
+                    "relevance_dist": _format_vector_feedback_dist("relevance", cdict.get("relevance", {})),
+                    "clarity_dist": _format_vector_feedback_dist("clarity", cdict.get("clarity", {})),
+                    "verdict_dist": _format_vector_feedback_dist("verdict", cdict.get("verdict", {})),
+                })
+            return out
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
 
 
 def _insert_rubric_vector_row_on_connection(

@@ -1100,6 +1100,22 @@ def rubric_owner_task_key(task_key: str) -> Optional[str]:
     return None
 
 
+def task_keys_for_rubric_owner(owner_task_key: str) -> frozenset[str]:
+    """Run task_keys that write vector_feedback for this rubric owner (consumer + craft)."""
+    if not owner_task_key:
+        return frozenset()
+    keys = {owner_task_key}
+    for craft, artifact in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
+        if RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact) == owner_task_key:
+            keys.add(craft)
+    return frozenset(keys)
+
+
+def rubric_owner_task_key_choices() -> tuple[str, ...]:
+    """Sorted owner task_keys for Admin Vector Feedback task filter."""
+    return tuple(sorted(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values()))
+
+
 # AST-707: embedded company_prefilter vectors — merged before candidate artifact criteria (embedded wins on code).
 EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     {
@@ -2531,6 +2547,7 @@ NAV_CONFIG = [
             {"label": "Scheduled Actions", "path": "/admin/scheduled_actions"},
             {"label": "Execution History", "path": "/admin/performance_monitor"},
             {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+            {"label": "Vector Feedback", "path": "/admin/vector_feedback"},
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
             {"label": "Manage Agents", "path": "/admin/agent_prompts"},
