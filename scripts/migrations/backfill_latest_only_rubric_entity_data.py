@@ -121,7 +121,8 @@ def backfill_companies(dry_run: bool, company: Optional[str]) -> Dict[str, int]:
         outcome, stats = _backfill_one_entity(
             "company", short_name, row.get("agent_responses"), dry_run
         )
-        counts[f"{outcome}"] += 1
+        count_key = "errors" if outcome == "error" else outcome
+        counts[count_key] += 1
         counts["dropped_empty_key_total"] += stats["dropped_empty_key"]
         counts["deduped_refs_removed_total"] += stats["deduped_removed"]
 
@@ -143,7 +144,8 @@ def backfill_jobs(dry_run: bool, job_id: Optional[str]) -> Dict[str, int]:
         outcome, stats = _backfill_one_entity(
             "job", astral_job_id, row.get("agent_responses"), dry_run
         )
-        counts[f"{outcome}"] += 1
+        count_key = "errors" if outcome == "error" else outcome
+        counts[count_key] += 1
         counts["dropped_empty_key_total"] += stats["dropped_empty_key"]
         counts["deduped_refs_removed_total"] += stats["deduped_removed"]
 
