@@ -817,6 +817,9 @@ COMPANY_STATES = {
     "WEBSITE_REVIEW": {},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "PREFILTER_PASSED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
     "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -895,6 +898,15 @@ ROSTER_CONFIG = {
         "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
         "max_depth": 2,
     },
+    "select_job_page": {
+        "dispatch_trigger_state": "PJL_READY",
+        "pass_states": ["JOBLIST_IDENTIFIED", "PREFILTER_PASSED_RETRY"],
+        "retry_state": "PREFILTER_PASSED_RETRY",
+        "identified_state": "JOBLIST_IDENTIFIED",
+        "exhausted_state": "NO_PJL_SELECTED",
+        "pjl_url_data_key": "possible_joblist_links",
+        "selected_pjl_url_key": "selected_pjl_url",
+    },
     "scrape_readiness": {
         "max_wait_ms": 20000,
         "poll_interval_ms": 500,
@@ -933,6 +945,7 @@ ROSTER_CONFIG = {
         "pjl_scrape_pages": "pjl_scrape_pages",
         "pjl_assembled_content": "pjl_assembled_content",
         "pjl_nav_links": "pjl_nav_links",
+        "selected_pjl_url": "selected_pjl_url",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -1024,6 +1037,7 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PJL_READY",
         "fail_state": "JOBSITE_SCRAPE_ISSUE",
+        "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", "PREFILTER_PASSED_RETRY"],
     },
     # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
     "gaze": {
@@ -1314,7 +1328,9 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "prefilter":
         return ROSTER_CONFIG["prefilter"]["input_state"]
-    if task_key in ("find_job_page", "select_job_page", "parse_job_list"):
+    if task_key == "select_job_page":
+        return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key in ("find_job_page", "parse_job_list"):
         return ROSTER_CONFIG["locate_job_page"]["dispatch_input_states"][0]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
@@ -1333,7 +1349,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "scrape_jd":
         return "PASSED_JOBLIST"
     if task_key == "fetch_job_pages":
-        return "PREFILTER_PASSED"
+        states = GAZER_CONFIG["fetch_job_pages"].get("fetch_job_pages_trigger_states") or ["PREFILTER_PASSED"]
+        return states[0]
     if task_key == "fetch_website":
         return "WEBSITE_FOUND"
     if task_key == "evaluate_jd":
@@ -1877,6 +1894,14 @@ ASTRAL_CONFIG = {
         ("TO_WATCH", "JOBSITE_SCRAPE_ISSUE"),
         ("JOBS_FOUND", "JOBSITE_SCRAPE_ISSUE"),
         ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE"),
+        ("PJL_READY", "JOBLIST_IDENTIFIED"),
+        ("PJL_READY", "PREFILTER_PASSED_RETRY"),
+        ("PJL_READY", "NO_PJL_SELECTED"),
+        ("PJL_READY", "NO_OPENINGS"),
+        ("PJL_READY", "JOBSITE_SCRAPE_ISSUE"),
+        ("PJL_READY", "NO_JOBLIST"),
+        ("PREFILTER_PASSED_RETRY", "PJL_READY"),
+        ("PREFILTER_PASSED_RETRY", "JOBSITE_SCRAPE_ISSUE"),
     ],
 
     # --- Candidate state machine (candidate) ---
