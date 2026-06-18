@@ -777,7 +777,10 @@ def get_task_keys() -> list:
 # BLOCK_TYPES: content block type enum for agent_data table.
 # Maps to the prompt assembly structure in src/core/agent.py.
 # ---------------------------------------------------------------------------
-BLOCK_TYPES = ["SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE", "TASK", "RESPONSE"]
+BLOCK_TYPES = [
+    "SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE",
+    "TASK", "RESPONSE", "FEEDBACK",
+]
 
 # ---------------------------------------------------------------------------
 # ENTITY_TYPES: valid entity type strings used across agent_data, dispatch_ledger,
@@ -2064,6 +2067,34 @@ ASTRAL_CONFIG = {
             9: 1.82,
             10: 2.00,
         },
+    },
+}
+
+# Rubric vector feedback type/value codes (AST-722 / AST-378). AST-724 validates envelope against this.
+RUBRIC_FEEDBACK_CONFIG = {
+    "feedback_types": {
+        "relevance": {
+            "label": "Relevance",
+            "value_codes": ("A", "O", "S", "R", "N"),
+        },
+        "clarity": {
+            "label": "Clarity",
+            "value_codes": ("A", "O", "S", "R", "N"),
+        },
+        "verdict": {
+            "label": "Verdict",
+            "value_codes": ("K", "E", "D"),
+        },
+    },
+    "value_labels": {
+        "A": "Always",
+        "O": "Often",
+        "S": "Sometimes",
+        "R": "Rarely",
+        "N": "Never",
+        "K": "Keep",
+        "E": "Edit",
+        "D": "Drop",
     },
 }
 
