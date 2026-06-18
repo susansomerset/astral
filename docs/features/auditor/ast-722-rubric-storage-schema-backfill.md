@@ -325,3 +325,12 @@ Introduce normalized **`rubric_vector`** and **`vector_feedback`** SQLite tables
 | §3.6 Local output | Migration script stdout only; no committed spike artifacts |
 
 No unresolved rule conflicts.
+
+---
+
+## Review (Radia)
+
+**Branch:** `origin/sub/AST-378/AST-722-rubric-storage-schema-backfill`  
+**Built tip:** `47a6d4f` — config + `rubric_vector`/`vector_feedback` schema + `backfill_rubric_vectors.py` (backfill + gated `--purge-artifacts`).
+
+*Awaiting Radia review after Tests Passed.*
