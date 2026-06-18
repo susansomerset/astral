@@ -149,6 +149,17 @@ No unresolved conflicts.
 ## Review
 
 **Branch:** `origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data`  
-**Build tip:** `41cbc6d`
+**Diff baseline:** `origin/dev`  
+**Review tip:** `2446a63`
 
-**Built:** Stages 1–2 — public `dedupe_agent_responses_latest` + `normalize_agent_responses_for_backfill` in roster; CLI migration script with `--dry-run` / `--company` / `--job` filters; column-scoped `agent_responses` writes only (job + company; candidates excluded).
+**Built:** Stages 1–4 — public `dedupe_agent_responses_latest` + `normalize_agent_responses_for_backfill` in roster; CLI migration script with `--dry-run` / `--company` / `--job` filters; column-scoped `agent_responses` writes only (job + company; candidates excluded); operator runbook in module docstring.
+
+### Radia review (AST-727)
+
+| | |
+|---|---|
+| **What's solid** | Plan stages 1–4 match AST-727 commits: shared roster normalizer (drop empty `task_key`, dedupe latest `created_at`, stats dict); migration script mirrors `backfill_collapse_blank_lines` layout (filters, dry-run summary, idempotent unchanged path, error → `errors` count); company writes via `update_company`; job writes via script-local full-array SET (no `append_agent_response` side effects); `agent_data` untouched; candidates excluded. Betty manifest covers normalizer, company/job backfill paths, and filter routing. Compile gate passes on touched modules. |
+| **Issues** | None **fix-now**. |
+| **Discuss** | Branch diff vs `origin/dev` also carries **AST-726** runtime sibling changes (upsert, consult/roster saves, story dedupe) — expected epic stacking on one publish ref; AST-727-specific scope is script + normalizer export only. |
+| **Advisory** | Job write path imports private `database._get_connection` / `_ensure_job_schema` / `_run_with_retry` — plan authorized copying the append pattern without a new public API; same precedent as `bootstrap_candidate.py`. Non-dict `agent_responses` elements are dropped by the normalizer without a dedicated stat counter (test covers `"bad"` skip). |
+| **Recommended actions** | Hedy → **resolve-child** — no code changes required. Susan: run `--dry-run` full scan, spot-check noisy entities, then live run after backup per script docstring. |
