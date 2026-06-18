@@ -63,6 +63,7 @@ from src.utils.config import (
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
     enumerate_array,
+    normalize_link,
     parse_enumerate_array,
     find_job_containers,
 )
@@ -1006,6 +1007,41 @@ def _company_used_inflow_prefilter(short_name: str) -> bool:
     return False
 
 
+def _company_on_decomposed_pjl_path(short_name: str, *, input_state: str = "") -> bool:
+    if _company_used_inflow_prefilter(short_name):
+        return True
+    if input_state == "HOMEPAGE_READY":
+        return True
+    company = get_company(short_name)
+    return (company or {}).get("state") == "HOMEPAGE_READY"
+
+
+def _hydrate_prefilter_pjl_urls(link_indices: List[int], nav_links_enumerated: str) -> List[str]:
+    if not link_indices or not (nav_links_enumerated or "").strip():
+        return []
+    url_map = parse_enumerate_array(nav_links_enumerated)
+    out: List[str] = []
+    for idx in link_indices:
+        raw = url_map.get(int(idx)) if isinstance(idx, int) or str(idx).isdigit() else None
+        if not raw and str(idx).startswith("http"):
+            raw = str(idx)
+        if not raw:
+            continue
+        norm = normalize_link(raw)
+        if norm and norm not in out:
+            out.append(norm)
+    return out
+
+
+def _has_dealbreaker_f(grades: List[Dict[str, Any]]) -> bool:
+    return any(
+        g.get("grade") == "F"
+        and isinstance(g.get("confidence"), int)
+        and g["confidence"] >= 2
+        for g in (grades or [])
+    )
+
+
 async def scrape_company_homepage_content(
     short_name: str,
     company_website: str,
@@ -1053,6 +1089,9 @@ def _apply_prefilter_decoded_company_outcome(
     ctx: Optional[Dict[str, Any]],
     *,
     nav_links_from_data: str = "",
+    debug: bool = False,
+    debug_index: int = 1,
+    debug_total: int = 1,
 ) -> str:
     """Shared post-decode prefilter outcome: hydrate, verdict, persist, transition."""
     from src.core.consult import (
@@ -1067,8 +1106,23 @@ def _apply_prefilter_decoded_company_outcome(
     if grades and rubric_list:
         _hydrate_grade_reasons_from_rubric(grades, rubric_list)
     verdict_state = _render_pass_fail("prefilter_company", grades)
-    if _company_used_inflow_prefilter(short_name):
-        new_state = verdict_state
+    link_indices = flat.get("possible_job_links") or []
+    on_decomposed = _company_on_decomposed_pjl_path(
+        short_name, input_state=cfg.get("input_state") or ""
+    )
+    pjl_urls: List[str] = []
+
+    if on_decomposed:
+        if _has_dealbreaker_f(grades) or verdict_state == cfg["fail_state"]:
+            new_state = cfg["fail_state"]
+        elif not link_indices:
+            new_state = cfg["no_pjl_state"]
+        else:
+            pjl_urls = _hydrate_prefilter_pjl_urls(link_indices, nav_links_from_data)
+            if not pjl_urls:
+                new_state = cfg["no_pjl_state"]
+            else:
+                new_state = cfg["pass_state"]
     elif verdict_state == cfg["pass_state"]:
         new_state = cfg["legacy_pass_state"]
     else:
@@ -1088,11 +1142,27 @@ def _apply_prefilter_decoded_company_outcome(
         data_to_save["prefilter_score"] = float(score)
     if nav_links_from_data:
         data_to_save["nav_links"] = nav_links_from_data
-    data_to_save["possible_job_links"] = flat.get("possible_job_links") or []
-    if decision == "TO_WATCH" or new_state == "PREFILTER_PASSED":
+    data_to_save["possible_job_links"] = link_indices
+    if new_state == cfg["pass_state"] and pjl_urls:
+        data_to_save[cfg["pjl_url_data_key"]] = pjl_urls
+    if new_state == cfg["no_pjl_state"]:
+        data_to_save["possible_joblist_links"] = []
+        data_to_save["possible_job_links"] = []
+    if decision == "TO_WATCH" or new_state == cfg["pass_state"]:
         data_to_save["culture_links_to_explore"] = flat.get("culture_links_to_explore") or []
     save_company_data(short_name, data_to_save)
     transition_company_state(short_name, new_state)
+    if debug:
+        logger.debug_index(
+            func="roster._apply_prefilter_decoded_company_outcome",
+            index=debug_index,
+            total=debug_total,
+            identifier=short_name,
+            outcome=f"prefilter routing short_name={short_name} -> {new_state}",
+        )
+        logger.debug_detail(
+            f"link_indices={link_indices!r} hydrated_count={len(pjl_urls)} decomposed={on_decomposed}"
+        )
     return new_state
 
 
@@ -1174,6 +1244,7 @@ async def prefilter_company(
                 cfg,
                 ctx,
                 nav_links_from_data=enumerated_nav_links,
+                debug=debug,
             )
         except ValueError as outcome_err:
             return _prefilter_fail(short_name, cfg, result, str(outcome_err))
@@ -1354,6 +1425,9 @@ async def _run_batch_company_prefilter(
                 cfg,
                 ctx,
                 nav_links_from_data=nav_links,
+                debug=debug,
+                debug_index=job_idx,
+                debug_total=len(response_jobs),
             )
         except Exception as e:
             bad_grades.add(aid)
@@ -1368,21 +1442,6 @@ async def _run_batch_company_prefilter(
                 logger.debug_detail(f"short_name={aid} error={e!r} grades={response_job.get('grades')!r}")
             logger.warning("[%s] prefilter batch process failed: %s | grades: %s", aid, e, response_job.get("grades"))
             continue
-        if debug:
-            grades = response_job.get("grades") or []
-            links_count = len(response_job.get("possible_job_links") or []) + len(
-                response_job.get("culture_links_to_explore") or []
-            )
-            logger.debug_index(
-                func="roster.prefilter_company_batch",
-                index=job_idx,
-                total=len(response_jobs),
-                identifier=aid,
-                outcome=str(new_state),
-            )
-            logger.debug_detail(
-                f"short_name={aid} grades={len(grades)} links={links_count} state={new_state!r}"
-            )
         if new_state in pass_states:
             passed += 1
         else:
@@ -2254,6 +2313,11 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
         if enumerated_nav_links:
             data_to_save["nav_links"] = enumerated_nav_links
         data_to_save["possible_job_links"] = flat.get("possible_job_links") or []
+        hydrated = _hydrate_prefilter_pjl_urls(
+            flat.get("possible_job_links") or [], enumerated_nav_links
+        )
+        if hydrated:
+            data_to_save["possible_joblist_links"] = hydrated
         culture_links = flat.get("culture_links_to_explore") or []
         if culture_links:
             data_to_save["culture_links_to_explore"] = culture_links
