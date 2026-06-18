@@ -116,3 +116,13 @@ Add a durable unique identity constraint on the `job` table and make **insert-ti
 - **§3.5 Naming:** `idx_job_identity_unique`, snake_case bool return documented.
 - **Data layer no log:** Duplicate bounce returns bool only — no logging added.
 - **No conflicts** requiring plan revision.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-728/AST-732-job-unique-index-and-insert-duplicate-tolerance`  
+**Diff baseline:** `origin/dev`  
+**Review tip:** `de01c479`
+
+**Built:** Stages 1–4 — partial unique index `idx_job_identity_unique` in `_ensure_job_schema`; `save_job` returns bool with INSERT-only identity duplicate bounce; `ingest_jobs` / `ingest_board_listings` count bounces in `duplicates`; tracker `save_job` facade passthrough; compile passes.
