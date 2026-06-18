@@ -149,3 +149,26 @@ Follow **build-child** stage commits on epic worktree; publish each `code(AST-74
 **Product:** Removed all `phase`/`seq` from `TASK_CONFIG`; added `JOB_ARTIFACT_ENTRY_TASK_KEYS`; consult routes artifact hops via explicit frozenset; dropped backward-compat `phase`/`seq` from `_grouping_from_agent_task_row`.
 
 **Tests:** Betty — update `test_config.py` / `test_api_admin.py` phase/seq assertions per Stage 4 table.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` @ `b12ed93` (publish tip includes sibling AST-738/739 + Betty manifests; AST-740 product delta = `1fb8582`).
+
+### What's solid
+
+| Lens | Result |
+|------|--------|
+| Plan fidelity | Stages 1–3 complete: `JOB_ARTIFACT_ENTRY_TASK_KEYS` frozenset (9 keys, excludes `draft_cover_letter`); all `phase`/`seq` removed from `TASK_CONFIG`; `consult.py` imports constant at module top; `_grouping_from_agent_task_row` drops backward-compat `phase`/`seq` per Stage 3. |
+| §2.1 config | UI grouping excised from config; execution hop set is explicit literal in `config.py`. |
+| §3.3 layers | `consult.py` → `utils.config` only for the new constant. |
+| Stage 3 greps | Zero `cfg.get("phase")` / `cfg.get("seq")` reads under `src/`; no `phase`/`seq` inside `TASK_CONFIG` entries. |
+| Tests | `TestAst740RemoveConfigGrouping` + `TestAst740NoConfigPhaseSeqInApi` green on publish tip. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Advisory
+
+- `scripts/migrations/backfill_task_grouping_metadata.py` still reads `TASK_CONFIG` `phase`/`seq` for one-time seed — after AST-740, fresh catalog inserts default to `(unassigned)` / `999.0` (Betty revised `TestAst738TaskGroupingMetadata` accordingly). Expected post-epic; new catalog keys added after deploy need admin grouping edits.
+- `JOB_ARTIFACT_ENTRY_TASK_KEYS` lives after the `TASK_CONFIG` dict (not inline before `anticipate_scan` as plan sketch showed) — functionally correct and cleaner.
