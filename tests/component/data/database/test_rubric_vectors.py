@@ -207,3 +207,75 @@ class TestBackfillRubricVectorsIntegration:
         arts = db.get_candidate("cand-1")["candidate_data"]["artifacts"]
         assert "do_rubric" not in arts
         assert arts["base_resume"] == "keep"
+
+
+class TestAst723SyncRubricVectors:
+    def test_importance_only_update_keeps_uuid(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("qualify_job_listings", agent_id="a1", user_prompt="p")
+        criteria = [{"code": "CR", "label": "fit", "content": "Grade A", "importance": 5}]
+        db.sync_rubric_vectors_from_criteria("cand-1", "qualify_job_listings", criteria)
+        rows1 = db.list_rubric_vectors("cand-1", "qualify_job_listings")
+        uuid1 = rows1[0]["rubric_vector_uuid"]
+        criteria[0]["importance"] = 8
+        db.sync_rubric_vectors_from_criteria("cand-1", "qualify_job_listings", criteria)
+        rows2 = db.list_rubric_vectors("cand-1", "qualify_job_listings")
+        assert len(rows2) == 1
+        assert rows2[0]["rubric_vector_uuid"] == uuid1
+        assert rows2[0]["importance"] == 8
+
+    def test_fingerprint_change_retires_and_inserts_new_row(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "Get", "content": "v1", "importance": 5}],
+        )
+        uuid1 = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "Get", "content": "v2", "importance": 5}],
+        )
+        current = db.list_rubric_vectors("cand-1", "grade_get")
+        assert len(current) == 1
+        assert current[0]["rubric_vector_uuid"] != uuid1
+        assert current[0]["content"] == "v2"
+        assert db.count_rubric_vectors_for_candidate_task("cand-1", "grade_get", current_only=False) == 2
+
+    def test_removed_code_retires_row(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_do", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_do",
+            [
+                {"code": "A", "label": "A", "content": "a", "importance": 5},
+                {"code": "B", "label": "B", "content": "b", "importance": 5},
+            ],
+        )
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_do",
+            [{"code": "A", "label": "A", "content": "a", "importance": 5}],
+        )
+        current = db.list_rubric_vectors("cand-1", "grade_do")
+        assert [r["code"] for r in current] == ["A"]
+        assert db.count_rubric_vectors_for_candidate_task("cand-1", "grade_do", current_only=False) == 2
+
+
+class TestAst723RubricTokenMigration:
+    def test_replaces_legacy_rubric_tokens_on_agent_task(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="Rubric: {$GET_RUBRIC}")
+        assert "{$GET_RUBRIC}" in db.get_agent_task("grade_get")["user_prompt"]
+        db._ast723_rubric_token_migration_applied = False
+        conn = db._get_connection()
+        try:
+            db._apply_ast723_rubric_vectors_token_migration(conn)
+        finally:
+            conn.close()
+        row = db.get_agent_task("grade_get")
+        assert "{$RUBRIC_VECTORS}" in row["user_prompt"]
+        assert "AST-723_RUBRIC_VECTORS_TOKEN" in row["user_prompt"]

@@ -429,3 +429,53 @@ class TestAst519ResumeStructureApi:
         )
         assert resp.status_code == 400
         assert resp.get_json()["error"] == "invalid resume_structure"
+
+
+class TestAst723RubricVectorsApi:
+    def test_put_syncs_rubric_vectors_before_save(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_data = MagicMock()
+        synced: list[tuple[str, list]] = []
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "apply_rubric_vectors_save",
+            lambda cid, arts: synced.append((cid, dict(arts))),
+        )
+        criteria = [{"code": "CR", "label": "fit", "content": "line", "importance": 5}]
+        resp = candidate_client.put(
+            "/api/candidates/c723/data",
+            json={"artifacts": {"joblist_rubric": criteria}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert synced and synced[0][0] == "c723"
+        save_data.assert_called_once()
+
+    def test_get_hydrates_rubric_artifacts_for_display(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "candidate_data": {"artifacts": {}},
+            },
+        )
+        monkeypatch.setattr(candidate_mod, "company_search_terms_joined_text", lambda cid: "")
+        monkeypatch.setattr(
+            candidate_mod,
+            "hydrate_rubric_artifacts_for_response",
+            lambda cid, cd: cd.setdefault("artifacts", {}).update(
+                {"joblist_rubric": [{"code": "CR", "content": "x", "importance": 5}]}
+            ),
+        )
+        resp = candidate_client.get("/api/candidates/c723", headers=auth_headers)
+        assert resp.status_code == 200
+        arts = resp.get_json()["candidate_data"]["artifacts"]
+        assert arts["joblist_rubric"][0]["code"] == "CR"
