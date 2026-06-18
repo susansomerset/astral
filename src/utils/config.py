@@ -818,6 +818,8 @@ COMPANY_STATES = {
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "JOBLIST_IDENTIFIED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "COULD_NOT_PARSE_JOBLIST": {},
     "PREFILTER_PASSED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
@@ -891,8 +893,8 @@ ROSTER_CONFIG = {
     },
     "locate_job_page": {
         "input_state": "TO_WATCH",
-        # Dispatch trigger_state rows that invoke find_job_page (TO_WATCH + JOBS_FOUND + PREFILTER_PASSED; NO_OPENINGS uses recheck_no_openings batch).
-        "dispatch_input_states": ["TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED"],
+        # JOBS_FOUND only — decomposed PJL pipeline uses fetch_job_pages → select_job_page → parse_job_list.
+        "dispatch_input_states": ["JOBS_FOUND"],
         "pass_states": ["WATCH"],
         "error_state": "ERROR_LOCATE_JOB_PAGE",
         "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
@@ -905,6 +907,14 @@ ROSTER_CONFIG = {
         "identified_state": "JOBLIST_IDENTIFIED",
         "exhausted_state": "NO_PJL_SELECTED",
         "pjl_url_data_key": "possible_joblist_links",
+        "selected_pjl_url_key": "selected_pjl_url",
+    },
+    "parse_job_list": {
+        "dispatch_trigger_state": "JOBLIST_IDENTIFIED",
+        "retry_trigger_state": "JOBLIST_IDENTIFIED_RETRY",
+        "pass_state": "WATCH",
+        "retry_state": "JOBLIST_IDENTIFIED_RETRY",
+        "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
         "selected_pjl_url_key": "selected_pjl_url",
     },
     "scrape_readiness": {
@@ -998,11 +1008,6 @@ INFLOW_CONFIG = {
         "task_key": "inflow_resolve_website",
         "ai_task_key": "find_company_website",
         "dispatch_trigger_state": "NEW",
-    },
-    # AST-508: PREFILTER_PASSED locate dispatch; score_floor lives on dispatch_task row only.
-    "locate": {
-        "dispatch_trigger_state": "PREFILTER_PASSED",
-        "score_json_path": "prefilter_score",
     },
 }
 
@@ -1294,7 +1299,7 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
 
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "find_job_page", "select_job_page", "parse_job_list",
+    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "gaze_board",
     "inflow_discovery", "inflow_resolve_website",
     "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
@@ -1308,7 +1313,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "find_job_page", "select_job_page", "parse_job_list",
+    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website",
 })
 
@@ -1328,10 +1333,10 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "prefilter":
         return ROSTER_CONFIG["prefilter"]["input_state"]
+    if task_key == "parse_job_list":
+        return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
     if task_key == "select_job_page":
         return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
-    if task_key in ("find_job_page", "parse_job_list"):
-        return ROSTER_CONFIG["locate_job_page"]["dispatch_input_states"][0]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
     if task_key == "gaze":
@@ -1902,6 +1907,11 @@ ASTRAL_CONFIG = {
         ("PJL_READY", "NO_JOBLIST"),
         ("PREFILTER_PASSED_RETRY", "PJL_READY"),
         ("PREFILTER_PASSED_RETRY", "JOBSITE_SCRAPE_ISSUE"),
+        ("JOBLIST_IDENTIFIED", "WATCH"),
+        ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY"),
+        ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST"),
+        ("JOBLIST_IDENTIFIED_RETRY", "WATCH"),
+        ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST"),
     ],
 
     # --- Candidate state machine (candidate) ---

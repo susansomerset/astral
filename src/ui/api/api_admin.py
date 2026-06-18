@@ -794,7 +794,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
                 parts.append(f"=== NAV LINKS ===\n{enumerate_array('', nav_links)}")
             return "\n\n".join(parts)
         # select_job_page: same nav_links enumeration as find; live PJL assembly differs — preview-only parity (AST-485).
-        if task_key in ("locate_job_page", "find_job_page", "select_job_page"):
+        if task_key in ("locate_job_page", "select_job_page"):
             nav_links = cdata.get("nav_links") or []
             return enumerate_array("", nav_links) if nav_links else ""
         if task_key == "parse_job_list":
