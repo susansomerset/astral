@@ -815,9 +815,14 @@ async def run_select_job_page_dispatch(
         return {"short_name": short_name, "state": "NO_PJL_SELECTED", "job_site": "", "response_type": "NO_PJL_ASSEMBLED"}
     nav_links = _nav_links_for_try_links(cdata)
     if debug:
-        logger.test(
-            f"index 1/1 | {short_name} | select_job_page | "
-            f"pages={len(page_url_map)} assembled_chars={len(assembled_content)}"
+        log = logger
+        log.set_debug_flag(True)
+        log.debug_index(
+            func="roster.run_select_job_page_dispatch",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"pages={len(page_url_map)} assembled_chars={len(assembled_content)}",
         )
     ctx_no_chain = {k: v for k, v in (ctx or {}).items() if k != "resolve_run_next_live"}
     result = await _find_job_page_from_assembled(
@@ -835,9 +840,10 @@ async def run_select_job_page_dispatch(
         decomposed=True,
     )
     if debug:
-        logger.test(
-            f"index 1/1 | {short_name} | select_job_page outcome | "
-            f"state={result.get('state')!r} response_type={result.get('response_type')!r}"
+        log = logger
+        log.set_debug_flag(True)
+        log.debug_detail(
+            f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}"
         )
     return result
 
