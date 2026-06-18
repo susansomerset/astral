@@ -1789,6 +1789,90 @@ async def find_job_page(
             ctx=ctx,
         )
 
+def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
+    return {
+        normalize_link(row["url"])
+        for row in (pjl_scrape_pages or [])
+        if row.get("url")
+    }
+
+
+async def _scrape_pjl_page(
+    url: str, browser_context, *, debug: bool = False
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"url": url, "visible_text": "", "page_links": []}
+    try:
+        pg = await get_page(browser_context, url)
+        try:
+            readiness_cfg = roster_scrape_readiness_config()
+            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
+            if debug:
+                log = logger
+                log.set_debug_flag(True)
+                log.debug_index(
+                    func="roster._scrape_pjl_page.scrape_readiness",
+                    index=1,
+                    total=1,
+                    identifier=url,
+                    outcome=ready_meta.get("outcome")
+                    or ("ready" if ready_meta.get("ready") else "timeout"),
+                )
+                log.debug_detail(
+                    f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
+                    f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
+                    f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
+                )
+            vt_result = await extract_visible_text(pg)
+            visible_text = vt_result.get("text", "") or ""
+            page_links = await extract_site_page_list(page=pg, max_depth=1, verify=False)
+            out["visible_text"] = visible_text.strip()
+            out["page_links"] = page_links or []
+            out["readiness"] = ready_meta
+        finally:
+            await close_page(pg)
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
+def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
+    if normalize_link(new_record.get("url") or "") in _pjl_scrape_ledger_keys(existing_pages):
+        return existing_pages
+    text = (new_record.get("visible_text") or "").strip()
+    if not text:
+        return existing_pages
+    return list(existing_pages or []) + [
+        {"url": new_record["url"], "visible_text": text}
+    ]
+
+
+def _merge_pjl_nav_links(existing_enum: str, new_urls: List[str]) -> str:
+    existing_map = parse_enumerate_array(existing_enum or "")
+    merged: List[str] = []
+    seen: Set[str] = set()
+    for key in sorted(existing_map.keys()):
+        u = existing_map[key]
+        nk = normalize_link(u)
+        if nk and nk not in seen:
+            seen.add(nk)
+            merged.append(u)
+    for u in new_urls:
+        nk = normalize_link(u)
+        if nk and nk not in seen:
+            seen.add(nk)
+            merged.append(u)
+    return enumerate_array("", merged) if merged else ""
+
+
+def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
+    sections: List[str] = []
+    for n, row in enumerate(pjl_scrape_pages or [], 1):
+        url = row.get("url") or ""
+        text = row.get("visible_text") or ""
+        sections.append(f"=== PAGE {n}: {url} ===\n{text}")
+    return "\n\n".join(sections)
+
+
 async def _fetch_job_links_content(
     possible_job_links: List[int],
     nav_links: str,

@@ -632,6 +632,49 @@ class TestProcessRecheckNoOpenings:
         uc.assert_called_once_with("acme", job_site="https://final.example/path")
 
 
+class TestAst719PjlRosterHelpers:
+    """AST-719: additive PJL scrape ledger helpers."""
+
+    def test_merge_pjl_scrape_record_skips_duplicate_and_empty(self) -> None:
+        existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        assert roster_mod._merge_pjl_scrape_record(
+            existing,
+            {"url": "https://acme.com/careers", "visible_text": "dup"},
+        ) == existing
+        assert roster_mod._merge_pjl_scrape_record(
+            existing,
+            {"url": "https://acme.com/jobs", "visible_text": "  "},
+        ) == existing
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing,
+            {"url": "https://acme.com/jobs", "visible_text": "new page"},
+        )
+        assert len(merged) == 2
+        assert merged[1]["visible_text"] == "new page"
+
+    def test_assemble_pjl_content_sections(self) -> None:
+        pages = [
+            {"url": "https://acme.com/careers", "visible_text": "roles"},
+            {"url": "https://acme.com/jobs", "visible_text": "list"},
+        ]
+        out = roster_mod._assemble_pjl_content(pages)
+        assert out == (
+            "=== PAGE 1: https://acme.com/careers ===\nroles\n\n"
+            "=== PAGE 2: https://acme.com/jobs ===\nlist"
+        )
+
+    def test_merge_pjl_nav_links_appends_deduped(self) -> None:
+        existing = "1: https://acme.com/about\n2: https://acme.com/careers"
+        merged = roster_mod._merge_pjl_nav_links(
+            existing,
+            ["https://acme.com/careers/", "https://acme.com/team"],
+        )
+        assert "acme.com/about" in merged
+        assert "acme.com/careers" in merged
+        assert "acme.com/team" in merged
+        assert merged.count("acme.com/careers") == 1
+
+
 class TestAst701ScrapeCompanyHomepageContent:
     @pytest.mark.asyncio
     async def test_scrape_exception_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -919,6 +919,35 @@ class TestAst707EmbeddedPrefilterConfig:
         assert grades == {"A", "B", "C", "D", "E", "F"}
 
 
+class TestAst719FetchJobPagesConfig:
+    """AST-719: PJL_READY state, fetch_job_pages gazer batch + dispatch registry."""
+
+    def test_pjl_ready_state_and_transitions(self) -> None:
+        assert "PJL_READY" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("PREFILTER_PASSED", "PJL_READY") in transitions
+        assert ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE") in transitions
+
+    def test_gazer_fetch_job_pages_config(self) -> None:
+        entry = cfg.GAZER_CONFIG["fetch_job_pages"]
+        assert entry["pass_state"] == "PJL_READY"
+        assert entry["fail_state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert entry["fallback_batch_size"] == 10
+
+    def test_dispatch_registry_and_pjl_data_keys(self) -> None:
+        from src.utils.config import _dispatch_trigger_state_for_task_key
+
+        assert "fetch_job_pages" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert _dispatch_trigger_state_for_task_key("fetch_job_pages") == "PREFILTER_PASSED"
+        keys = cfg.ROSTER_CONFIG["company_data_keys"]
+        assert keys["pjl_scrape_pages"] == "pjl_scrape_pages"
+        assert keys["pjl_assembled_content"] == "pjl_assembled_content"
+        assert keys["pjl_nav_links"] == "pjl_nav_links"
+        defaults = cfg.dispatch_task_admin_defaults("fetch_job_pages")
+        assert defaults["trigger_state"] == "PREFILTER_PASSED"
+        assert defaults["entity_type"] == "company"
+
+
 class TestAst701FetchWebsiteConfig:
     """AST-701: HOMEPAGE_READY state, fetch_website gazer batch + dispatch registry."""
 

@@ -1741,6 +1741,19 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
+        if task_key == "fetch_job_pages":
+            from src.core.gazer import fetch_job_pages_batch
+            r = await fetch_job_pages_batch(batch_id, entities, debug=debug)
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            errors = max(0, total - passed - failed)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
         if task_key == "prefilter":
             r = await roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug)
             total = r.get("total", len(entities))

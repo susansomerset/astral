@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, process_gaze_board_batch, scrape_jd_batch, fetch_website_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
+In-scope: scrape_one, process_gazer_batch, process_gaze_board_batch, scrape_jd_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
 from roster for callers that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record); batch lifecycle (claim, release) is owned by CLI.
 """
@@ -18,6 +18,11 @@ from src.core.roster import (
     save_company_data,
     scrape_company_homepage_content,
     transition_company_state,
+    _assemble_pjl_content,
+    _merge_pjl_nav_links,
+    _merge_pjl_scrape_record,
+    _pjl_scrape_ledger_keys,
+    _scrape_pjl_page,
 )
 from src.utils.config import BOARD_SEARCH_STATES, GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
@@ -30,7 +35,7 @@ from src.data.database import (
     update_company_last_scan_at,
 )
 from src.external.playwright import create_browser_context, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
-from src.utils.formatting import collapse_consecutive_blank_lines
+from src.utils.formatting import collapse_consecutive_blank_lines, normalize_link
 from src.utils.logging import get_logger
 
 _log = get_logger(__name__)
@@ -355,6 +360,138 @@ async def fetch_website_batch(
                     f"company_website={original_website!r} canonical={canonical!r} "
                     f"homepage_chars={len(visible_text)} nav_links={nav_count}"
                 )
+
+        sem = asyncio.Semaphore(3)
+
+        async def _limited(company: Dict[str, Any], company_index: int) -> None:
+            async with sem:
+                await _fetch_one(company, company_index)
+
+        await asyncio.gather(
+            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            return_exceptions=False,
+        )
+
+    if debug:
+        _log.debug_detail(
+            f"summary passed={passed} failed={failed} total={company_total} "
+            f"pass_state={pass_state!r} fail_state={fail_state!r}"
+        )
+    return {"passed": passed, "failed": failed, "total": len(companies)}
+
+
+async def fetch_job_pages_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Scrape possible_joblist_links additively for PREFILTER_PASSED companies (AST-719).
+    Transitions each company to PJL_READY (pass) or JOBSITE_SCRAPE_ISSUE (fail).
+    Returns {"passed": N, "failed": N, "total": N}."""
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_job_pages_batch: no internet connectivity, aborting batch {batch_id} "
+            f"({len(companies)} companies)"
+        )
+    if debug:
+        _log.set_debug_flag(True)
+    cfg = GAZER_CONFIG["fetch_job_pages"]
+    pass_state = cfg["pass_state"]
+    fail_state = cfg["fail_state"]
+    notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
+    company_total = len(companies)
+    passed = failed = 0
+
+    if debug and company_total > 0:
+        _log.debug_index(
+            func="gazer.fetch_job_pages_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {company_total} company/companies",
+        )
+
+    async with create_browser_context() as browser_context:
+
+        async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
+            nonlocal passed, failed
+            short_name = company.get("short_name") or ""
+            cd = company.get("company_data") or {}
+            candidate_urls = cd.get("possible_joblist_links") or []
+            if not candidate_urls:
+                _log.warning("[%s] fetch_job_pages: no possible_joblist_links", short_name)
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_job_pages_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome=f"failed — no candidate URLs -> {fail_state}",
+                    )
+                transition_company_state(short_name, fail_state)
+                failed += 1
+                return
+
+            pjl_pages = list(cd.get("pjl_scrape_pages") or [])
+            ledger = _pjl_scrape_ledger_keys(pjl_pages)
+            pending = [u for u in candidate_urls if normalize_link(u) not in ledger]
+            new_nav_urls: List[str] = []
+
+            for url_idx, url in enumerate(pending, start=1):
+                record = await _scrape_pjl_page(url, browser_context, debug=debug)
+                if debug:
+                    err = record.get("error")
+                    chars = len(record.get("visible_text") or "")
+                    outcome = f"error={err!r}" if err else f"scraped {chars} chars"
+                    _log.debug_index(
+                        func="gazer.fetch_job_pages_batch",
+                        index=url_idx,
+                        total=len(pending) or 1,
+                        identifier=short_name,
+                        outcome=f"pjl url {url!r} {outcome}",
+                    )
+                pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
+                new_nav_urls.extend(record.get("page_links") or [])
+
+            assembled = _assemble_pjl_content(pjl_pages)
+            merged_nav = _merge_pjl_nav_links(cd.get("pjl_nav_links") or "", new_nav_urls)
+            data_to_save: Dict[str, Any] = {
+                "pjl_scrape_pages": pjl_pages,
+                "pjl_assembled_content": assembled,
+            }
+            if merged_nav:
+                data_to_save["pjl_nav_links"] = merged_nav
+            save_company_data(short_name, data_to_save)
+
+            if pjl_pages:
+                transition_company_state(short_name, pass_state)
+                passed += 1
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_job_pages_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome=(
+                            f"passed -> {pass_state} ({len(pjl_pages)} pages "
+                            f"pending_scraped={len(pending)})"
+                        ),
+                    )
+            else:
+                transition_company_state(short_name, fail_state)
+                save_company_data(
+                    short_name,
+                    {notes_key: "fetch_job_pages: all PJL scrapes failed"},
+                )
+                failed += 1
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_job_pages_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome=f"failed — no storable PJL content -> {fail_state}",
+                    )
 
         sem = asyncio.Semaphore(3)
 

@@ -276,6 +276,18 @@ Roster routing + hydration: **`docs/test-bible/core/roster.md`** (**AST-718**).
 
 ---
 
+### AST-719 · AST-716
+
+**`PJL_READY`** state + **`PREFILTER_PASSED → PJL_READY|JOBSITE_SCRAPE_ISSUE`** transitions; **`GAZER_CONFIG["fetch_job_pages"]`**; **`pjl_scrape_pages`**, **`pjl_assembled_content`**, **`pjl_nav_links`** company_data keys; schedulable **`fetch_job_pages`** @ **`PREFILTER_PASSED`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| State + gazer orch + dispatch registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig` |
+
+Gazer batch + roster helpers: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/roster.md`** (**AST-719**).
+
+---
+
 ### AST-702 · AST-700
 
 **AST-702:** **`ROSTER_CONFIG["prefilter"]["input_state"]` → `HOMEPAGE_READY`**; **`HOMEPAGE_READY.retry_state` → `WEBSITE_FOUND_RETRY`**; evaluate-outcome transitions; **`prefilter`** in **`_DISPATCH_BATCH_CALL_MODE_ONE`**.
