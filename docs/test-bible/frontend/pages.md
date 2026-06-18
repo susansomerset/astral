@@ -562,6 +562,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned.
 
+**Pass criterion:** Vitest green on narrowed run (items above) + Susan manual multi-phase UAT.
+
 **Builds on:** **AST-647**, **AST-652**, **AST-657** list-table layout manifests in **`docs/test-bible/frontend/components.md`**.
 
 ### AST-751 · AST-735
