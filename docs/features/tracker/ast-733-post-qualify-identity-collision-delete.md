@@ -126,6 +126,40 @@ When `qualify_job_listings` delivers structured metadata (`company_job_id`, `job
 
 **Branch:** `origin/sub/AST-728/AST-733-post-qualify-identity-collision-delete`  
 **Diff baseline:** `origin/dev`  
-**Review tip:** `00f6d163`
+**Review tip:** `275f347`
 
-**Built:** Stages 1–4 — `get_job_id_by_identity` + `delete_job` in database; `initialize_job` collision delete with bool return and IntegrityError fallback; `qualify_job_listings` skips save/transition on collision (returns fail_state); stacked AST-732; compile passes.
+**Built:** Stages 1–4 — `get_job_id_by_identity` + `delete_job` in database; `initialize_job` proactive collision delete + IntegrityError fallback with bool return; `qualify_job_listings` skips save/transition on collision (returns `fail_state`); stacked AST-732; Betty manifest + component tests on `origin/tests` merge.
+
+### What's solid
+
+- Plan fidelity: identity lookup with self-exclusion; single-row `delete_job` without cascade; `_identity_triple_complete` guard skips incomplete triples; proactive SELECT before save; IntegrityError fallback on race; consult returns `fail_state` without raising so batch continues.
+- State machine: collision path deletes current row and skips transition — no invalid state write on deleted `astral_job_id`.
+- Layer rules: data helpers return values only (no logging); consult → tracker → database unchanged; production INFO on collision when `debug=False` is appropriate (not debug-contract noise).
+- Tests: database lookup/delete helpers, initialize collision/save/skip-lookup paths, qualify batch wiring (failed count, no save/transition) — aligned with test-bible manifest.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| — | — | No fix-now items. |
+
+### Recommended actions
+
+| Severity | Location | Action |
+| --- | --- | --- |
+| advisory | diff vs `origin/dev` | Diff stacks AST-732 + AST-729 test artifacts (siblings not on dev) — expected epic branch stacking; AST-733 product scope is consult/tracker/database collision path only. |
+| advisory | `src/core/tracker.py` | `_is_job_identity_unique_violation` duplicates `database.py` helper — plan-specified; optional future extract to shared util if a third caller appears. |
+| advisory | tests | No component test for IntegrityError fallback path in `initialize_job` — proactive collision path covered; fallback is defense-in-depth. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Resolved by:** Hedy (resolve-child)
+
+Radia posted **no fix-now** items. Advisory notes (stacked sibling diffs; duplicated `_is_job_identity_unique_violation`; no IntegrityError fallback test) accepted as documented.
+
+**§9a dry-run:** `origin/sub/AST-728/AST-733-post-qualify-identity-collision-delete` (post ftr merge + resolve) merges cleanly into **`origin/dev`** and **`origin/ftr/duplicate-jobs-ingested`**.
+
+**Product changes in resolve:** none — review clean. Manifest re-run: 10 passed.
