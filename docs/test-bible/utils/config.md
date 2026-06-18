@@ -353,4 +353,17 @@ Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** Â
   tests/component/ui/api/test_api_admin.py::TestAst492ResolveAdhocApiAdmin::test_resolve_adhoc_deepseek_sets_tier_meta_and_vendor_as_model_code
 ```
 
-```
+---
+
+### AST-722 Â· AST-378
+
+**`FEEDBACK`** added to **`BLOCK_TYPES`** for future **`vector_feedback`** agent_data rows (**AST-724** writes). **`RUBRIC_FEEDBACK_CONFIG`** defines relevance/clarity/verdict type codes and single-letter value codes for envelope validation.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `FEEDBACK` block type | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst722RubricFeedbackConfig::test_feedback_in_block_types` |
+| Feedback type/value registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst722RubricFeedbackConfig::test_rubric_feedback_config_shapes` |
+| `save_agent_data` accepts `FEEDBACK` | `src/data/database.py` | `tests/component/data/database/test_rubric_vectors.py::TestFeedbackBlockType` |
+
+Database schema + backfill script: **`docs/test-bible/data/database/rubric_vectors.md`**, **`docs/test-bible/dev/backfill_rubric_vectors.md`**.
+

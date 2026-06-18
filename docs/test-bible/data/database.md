@@ -10,6 +10,8 @@
 
 **AST-524:** `company_search_terms` table cluster — `tests/component/data/database/test_company_search_terms.py` (sync, migration, `last_scan_at` preservation; no branch lock on `database.py`).
 
+**AST-722:** `rubric_vector` + `vector_feedback` table cluster — `tests/component/data/database/test_rubric_vectors.py`; backfill script — `tests/component/scripts/test_backfill_rubric_vectors.py` (see `data/database/rubric_vectors.md`).
+
 **AST-558:** `candidate_intake_session` table — exercised via `tests/component/core/test_intake.py` (real SQLite `seeded_db`; no separate database cluster).
 
 Per-cluster manifest blocks: `data/database/<cluster>.md`.
