@@ -238,6 +238,125 @@ class TestFetchWebsiteBatch:
         )
 
 
+class TestFetchJobPagesBatch:
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_job_pages_batch("batch-1", [])
+
+    @pytest.mark.asyncio
+    async def test_missing_possible_joblist_links_fails(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        companies = [{"short_name": "co-empty", "company_data": {}}]
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with("co-empty", "JOBSITE_SCRAPE_ISSUE")
+
+    @pytest.mark.asyncio
+    async def test_success_transitions_pjl_ready_and_persists(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod,
+            "_scrape_pjl_page",
+            AsyncMock(
+                return_value={
+                    "url": "https://acme.com/careers",
+                    "visible_text": "open roles",
+                    "page_links": ["https://acme.com/about"],
+                }
+            ),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "company_data": {"possible_joblist_links": ["acme.com/careers"]},
+            }
+        ]
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=True)
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+        saved = save.call_args[0][1]
+        assert saved["pjl_scrape_pages"] == [
+            {"url": "https://acme.com/careers", "visible_text": "open roles"}
+        ]
+        assert "=== PAGE 1: https://acme.com/careers ===" in saved["pjl_assembled_content"]
+        assert "open roles" in saved["pjl_assembled_content"]
+
+    @pytest.mark.asyncio
+    async def test_additive_skips_already_scraped_url(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        scrape = AsyncMock(
+            return_value={
+                "url": "https://acme.com/jobs",
+                "visible_text": "more roles",
+                "page_links": [],
+            }
+        )
+        monkeypatch.setattr(gazer_mod, "_scrape_pjl_page", scrape)
+        companies = [
+            {
+                "short_name": "acme",
+                "company_data": {
+                    "possible_joblist_links": ["acme.com/careers", "acme.com/jobs"],
+                    "pjl_scrape_pages": [
+                        {"url": "https://acme.com/careers", "visible_text": "existing"}
+                    ],
+                },
+            }
+        ]
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        scrape.assert_awaited_once()
+        assert scrape.await_args.args[0] == "acme.com/jobs"
+
+    @pytest.mark.asyncio
+    async def test_all_scrapes_empty_fails_with_notes(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_browser_context(monkeypatch)
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod,
+            "_scrape_pjl_page",
+            AsyncMock(return_value={"url": "https://acme.com/careers", "visible_text": "", "page_links": []}),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "company_data": {"possible_joblist_links": ["acme.com/careers"]},
+            }
+        ]
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with("acme", "JOBSITE_SCRAPE_ISSUE")
+        assert save.call_args_list[-1][0][1]["prefilter_company_notes"] == (
+            "fetch_job_pages: all PJL scrapes failed"
+        )
+
+
 class TestScrapeJdBatch:
     @pytest.mark.asyncio
     async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:

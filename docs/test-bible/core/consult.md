@@ -138,6 +138,18 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope; av
 
 ---
 
+### AST-719 · AST-716
+
+**AST-719:** Company **`entity_type`** dispatch with **`dispatch_task_key=fetch_job_pages`** routes to **`fetch_job_pages_batch`** (not **`run_company_task`**). Returns normalized summary counts like **`fetch_website`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`fetch_job_pages`** routing | `src/core/consult.py` (`run_consult_task`) | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_job_pages_batch` |
+
+Gazer batch manifest: **`docs/test-bible/core/gazer.md`** (**AST-719**).
+
+---
+
 ### AST-701 · AST-700
 
 **AST-701:** Company **`entity_type`** dispatch with **`dispatch_task_key=fetch_website`** routes to **`fetch_website_batch`** (not **`run_company_task`** / **`prefilter_company`**). Returns normalized **`total_processed` / `total_passed` / `total_failed` / `total_errors`**.
