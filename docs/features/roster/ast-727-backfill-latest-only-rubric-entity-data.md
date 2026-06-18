@@ -143,3 +143,12 @@ Binding per **plan-child**: stages **1 → 2 → 3 → 4** in order; **one commi
 | §3.6 spikes | Any investigation under `debug/spikes/AST-727/` only. |
 
 No unresolved conflicts.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data`  
+**Build tip:** `41cbc6d`
+
+**Built:** Stages 1–2 — public `dedupe_agent_responses_latest` + `normalize_agent_responses_for_backfill` in roster; CLI migration script with `--dry-run` / `--company` / `--job` filters; column-scoped `agent_responses` writes only (job + company; candidates excluded).
