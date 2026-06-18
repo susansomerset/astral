@@ -264,6 +264,42 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 ---
 
+### AST-718 · AST-716
+
+**`NO_PREFILTER_JOBLISTS`** terminal state + **`HOMEPAGE_READY` / `WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY`** transitions; **`ROSTER_CONFIG["prefilter"]["no_pjl_state"]`**, **`pjl_url_data_key`**, **`company_data_keys.possible_joblist_links`**. Not in **`pass_states`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| State + routing keys | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` |
+
+Roster routing + hydration: **`docs/test-bible/core/roster.md`** (**AST-718**).
+
+---
+
+### AST-720 · AST-716
+
+**`JOBLIST_IDENTIFIED`**, **`PREFILTER_PASSED_RETRY`**, **`NO_PJL_SELECTED`**; **`ROSTER_CONFIG["select_job_page"]`**; **`_dispatch_trigger_state_for_task_key("select_job_page")` → `PJL_READY`**; **`fetch_job_pages_trigger_states`** includes retry loop input.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Selection states + select dispatch config | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst720SelectJobPageConfig` |
+
+Roster decomposed select: **`docs/test-bible/core/roster.md`** (**AST-720**).
+
+---
+
+### AST-719 · AST-716
+
+**`PJL_READY`** state + **`PREFILTER_PASSED → PJL_READY|JOBSITE_SCRAPE_ISSUE`** transitions; **`GAZER_CONFIG["fetch_job_pages"]`**; **`pjl_scrape_pages`**, **`pjl_assembled_content`**, **`pjl_nav_links`** company_data keys; schedulable **`fetch_job_pages`** @ **`PREFILTER_PASSED`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| State + gazer orch + dispatch registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig` |
+
+Gazer batch + roster helpers: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/roster.md`** (**AST-719**).
+
+---
+
 ### AST-702 · AST-700
 
 **AST-702:** **`ROSTER_CONFIG["prefilter"]["input_state"]` → `HOMEPAGE_READY`**; **`HOMEPAGE_READY.retry_state` → `WEBSITE_FOUND_RETRY`**; evaluate-outcome transitions; **`prefilter`** in **`_DISPATCH_BATCH_CALL_MODE_ONE`**.

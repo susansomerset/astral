@@ -45,6 +45,34 @@ Equivalent harness:
 
 ---
 
+### AST-719 · AST-716
+
+**`fetch_job_pages_batch`** — additive Playwright scrape of **`possible_joblist_links`** (AST-718 ledger); persist **`pjl_scrape_pages`**, **`pjl_assembled_content`**, optional **`pjl_nav_links`**; pass **`PJL_READY`**, fail **`JOBSITE_SCRAPE_ISSUE`**. Consult routes **`dispatch_task_key=fetch_job_pages`** before **`run_company_task`**. Config: **`PJL_READY`**, **`GAZER_CONFIG["fetch_job_pages"]`**, dispatch registry.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`fetch_job_pages_batch`** connectivity / missing ledger / pass / additive skip / empty fail | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchJobPagesBatch` |
+| **`run_consult_task`** company routing | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_job_pages_batch` |
+| PJL ledger helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+| Config state + dispatch registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig` |
+
+Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils/config.md`** (**AST-719**).
+
+**AST-719** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchJobPagesBatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_job_pages_batch \
+  tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-701 · AST-700
 
 **AST-701:** **`fetch_website_batch`** mirrors **`scrape_jd_batch`** — scrape homepage visible text + **`nav_links`** for **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`** companies; pass **`HOMEPAGE_READY`**, fail **`CANNOT_READ_WEBSITE`** with **`prefilter_company_notes`**. Shared **`scrape_company_homepage_content`** helper in roster (**`prefilter_company`** refactor unchanged observable outcomes). Consult routes **`dispatch_task_key=fetch_website`** before **`run_company_task`**. Config: **`HOMEPAGE_READY`**, **`GAZER_CONFIG["fetch_website"]`**, **`homepage_text`** company_data key, dispatch registry. Database: **`_RETRY_TASK_SEED`** companion **`WEBSITE_FOUND_RETRY`** row.
