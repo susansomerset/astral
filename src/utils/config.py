@@ -816,7 +816,12 @@ COMPANY_STATES = {
     "NO_WEBSITE": {},
     "WEBSITE_REVIEW": {},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "PREFILTER_PASSED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
+    "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
@@ -881,6 +886,8 @@ ROSTER_CONFIG = {
         "legacy_pass_states": ["TO_WATCH"],
         "retry_state": "WEBSITE_FOUND_RETRY",
         "error_state": "ERROR_PREFILTER",
+        "no_pjl_state": "NO_PREFILTER_JOBLISTS",
+        "pjl_url_data_key": "possible_joblist_links",
     },
     "locate_job_page": {
         "input_state": "TO_WATCH",
@@ -890,6 +897,15 @@ ROSTER_CONFIG = {
         "error_state": "ERROR_LOCATE_JOB_PAGE",
         "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
         "max_depth": 2,
+    },
+    "select_job_page": {
+        "dispatch_trigger_state": "PJL_READY",
+        "pass_states": ["JOBLIST_IDENTIFIED", "PREFILTER_PASSED_RETRY"],
+        "retry_state": "PREFILTER_PASSED_RETRY",
+        "identified_state": "JOBLIST_IDENTIFIED",
+        "exhausted_state": "NO_PJL_SELECTED",
+        "pjl_url_data_key": "possible_joblist_links",
+        "selected_pjl_url_key": "selected_pjl_url",
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -925,6 +941,11 @@ ROSTER_CONFIG = {
         "job_list_visible": "job_list_visible",
         "jobsite_scrape_issue_summary": "jobsite_scrape_issue_summary",
         "jobsite_scrape_issue_evidence": "jobsite_scrape_issue_evidence",
+        "possible_joblist_links": "possible_joblist_links",
+        "pjl_scrape_pages": "pjl_scrape_pages",
+        "pjl_assembled_content": "pjl_assembled_content",
+        "pjl_nav_links": "pjl_nav_links",
+        "selected_pjl_url": "selected_pjl_url",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -1011,6 +1032,12 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
         "fail_state": "CANNOT_READ_WEBSITE",
+    },
+    "fetch_job_pages": {
+        "fallback_batch_size": 10,
+        "pass_state": "PJL_READY",
+        "fail_state": "JOBSITE_SCRAPE_ISSUE",
+        "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", "PREFILTER_PASSED_RETRY"],
     },
     # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
     "gaze": {
@@ -1267,7 +1294,7 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
 
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "find_job_page", "select_job_page", "parse_job_list",
+    "prefilter", "fetch_website", "fetch_job_pages", "find_job_page", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "gaze_board",
     "inflow_discovery", "inflow_resolve_website",
     "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
@@ -1281,7 +1308,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "find_job_page", "select_job_page", "parse_job_list",
+    "prefilter", "fetch_website", "fetch_job_pages", "find_job_page", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website",
 })
 
@@ -1301,7 +1328,9 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "prefilter":
         return ROSTER_CONFIG["prefilter"]["input_state"]
-    if task_key in ("find_job_page", "select_job_page", "parse_job_list"):
+    if task_key == "select_job_page":
+        return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key in ("find_job_page", "parse_job_list"):
         return ROSTER_CONFIG["locate_job_page"]["dispatch_input_states"][0]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
@@ -1319,6 +1348,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "VALID_TITLE"
     if task_key == "scrape_jd":
         return "PASSED_JOBLIST"
+    if task_key == "fetch_job_pages":
+        states = GAZER_CONFIG["fetch_job_pages"].get("fetch_job_pages_trigger_states") or ["PREFILTER_PASSED"]
+        return states[0]
     if task_key == "fetch_website":
         return "WEBSITE_FOUND"
     if task_key == "evaluate_jd":
@@ -1814,6 +1846,7 @@ ASTRAL_CONFIG = {
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
         ("WEBSITE_FOUND", "PREFILTER_FAILED"),
+        ("WEBSITE_FOUND", "NO_PREFILTER_JOBLISTS"),
         ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"),
         ("WEBSITE_FOUND", "ERROR_PREFILTER"),
         ("WEBSITE_FOUND", "HOMEPAGE_READY"),
@@ -1824,10 +1857,12 @@ ASTRAL_CONFIG = {
         ("WEBSITE_FOUND_RETRY", "IGNORE"),
         ("WEBSITE_FOUND_RETRY", "PREFILTER_PASSED"),
         ("WEBSITE_FOUND_RETRY", "PREFILTER_FAILED"),
+        ("WEBSITE_FOUND_RETRY", "NO_PREFILTER_JOBLISTS"),
         ("WEBSITE_FOUND_RETRY", "WEBSITE_FOUND_RETRY"),
         ("WEBSITE_FOUND_RETRY", "ERROR_PREFILTER"),
         ("HOMEPAGE_READY", "PREFILTER_PASSED"),
         ("HOMEPAGE_READY", "PREFILTER_FAILED"),
+        ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS"),
         ("HOMEPAGE_READY", "TO_WATCH"),
         ("HOMEPAGE_READY", "IGNORE"),
         ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"),
@@ -1855,9 +1890,18 @@ ASTRAL_CONFIG = {
         ("PREFILTER_PASSED", "NO_OPENINGS"),
         ("PREFILTER_PASSED", "NO_JOBLIST"),
         ("PREFILTER_PASSED", "BOT_BLOCK"),
+        ("PREFILTER_PASSED", "PJL_READY"),
         ("TO_WATCH", "JOBSITE_SCRAPE_ISSUE"),
         ("JOBS_FOUND", "JOBSITE_SCRAPE_ISSUE"),
         ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE"),
+        ("PJL_READY", "JOBLIST_IDENTIFIED"),
+        ("PJL_READY", "PREFILTER_PASSED_RETRY"),
+        ("PJL_READY", "NO_PJL_SELECTED"),
+        ("PJL_READY", "NO_OPENINGS"),
+        ("PJL_READY", "JOBSITE_SCRAPE_ISSUE"),
+        ("PJL_READY", "NO_JOBLIST"),
+        ("PREFILTER_PASSED_RETRY", "PJL_READY"),
+        ("PREFILTER_PASSED_RETRY", "JOBSITE_SCRAPE_ISSUE"),
     ],
 
     # --- Candidate state machine (candidate) ---
