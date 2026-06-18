@@ -2,7 +2,7 @@
 
 **Linear:** [AST-729](https://linear.app/astralcareermatch/issue/AST-729/duplicate-and-board-gaze-job-cleanup-migration-duplicate-jobs-ingested)  
 **Parent:** [AST-728](https://linear.app/astralcareermatch/issue/AST-728/duplicate-jobs-ingested) (context only — unique index is **AST-732**; post-qualify collision delete is **AST-733**)  
-**Publish ref:** `sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration`
+**Publish ref:** `sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration`
 
 **Summary:** Ship a one-time operator-run CLI migration that removes legacy bad job rows before the unique identity index lands: (1) for each duplicate group sharing the same `(company, job_title, company_job_id)` triple among real (non-board) companies, keep the row with the earliest `created_at` and delete the rest; (2) delete every job row whose `company` is a board-gaze placeholder (`__board__*`). Related records (`agent_data`, `agent_responses`, timesheets, `dispatch_ledger`) for deleted jobs are **left as-is** — no re-pointing, no cascade deletes.
 
@@ -185,7 +185,7 @@ No unresolved conflicts.
 
 ## Review
 
-**Branch:** `origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration`  
+**Branch:** `origin/sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration`  
 **Diff baseline:** `origin/dev`  
 **Review tip:** `c6fa284`
 
@@ -220,6 +220,7 @@ No unresolved conflicts.
 
 Radia posted **no fix-now** items. Advisory notes (hardcoded `"__board__"` in tests; optional related-table count assertion) accepted as documented — Betty owns test-tree; operator runbook covers manual `agent_data` verify.
 
-**§9a dry-run:** `origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration` @ `28ae93a` merges cleanly into **`origin/dev`** and **`origin/ftr/duplicate-jobs-ingested`**.
+**Publish ref:** `origin/sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration` @ `41a75860`  
+**§9a dry-run:** merges cleanly into **`origin/dev`** and **`origin/ftr/AST-728-duplicate-jobs-ingested`**.
 
 **Product changes in resolve:** none — review clean. Manifest re-run: 12 passed.
