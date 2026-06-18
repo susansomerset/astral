@@ -333,3 +333,70 @@ class TestAst724VectorFeedbackRows:
         rows = db.get_agent_data_by_batch("batch-fb", block_type="FEEDBACK")
         assert len(rows) == 1
         assert rows[0]["agent_data_id"] == fb_id
+
+
+class TestAst725ListVectorFeedback:
+    def _seed_vector_and_feedback(self, db, *, task_key: str, batch_id: str) -> str:
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        db.insert_vector_feedback_rows(
+            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            candidate_id="cand-1",
+            batch_id=batch_id,
+            task_key=task_key,
+        )
+        return uuid
+
+    def test_owner_task_key_expands_to_consumer_and_craft_run_keys(self, seeded_db) -> None:
+        db = seeded_db
+        self._seed_vector_and_feedback(db, task_key="grade_get", batch_id="batch-725a")
+        self._seed_vector_and_feedback(db, task_key="craft_get_rubric", batch_id="batch-725b")
+        rows = db.list_vector_feedback(candidate_id="cand-1", owner_task_key="grade_get")
+        batch_ids = {r["batch_id"] for r in rows}
+        assert batch_ids == {"batch-725a", "batch-725b"}
+
+    def test_filters_batch_id_and_vector_code(self, seeded_db) -> None:
+        db = seeded_db
+        self._seed_vector_and_feedback(db, task_key="grade_get", batch_id="batch-725-filter")
+        rows = db.list_vector_feedback(
+            candidate_id="cand-1",
+            batch_id="batch-725-filter",
+            vector_code="g1",
+        )
+        assert len(rows) == 3
+        assert all(r["vector_code"] == "G1" for r in rows)
+
+
+class TestAst725AggregateVectorFeedback:
+    def test_per_vector_distributions_and_zero_feedback_vectors(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [
+                {"code": "G1", "label": "G1", "content": "a\nA = one", "importance": 8},
+                {"code": "G2", "label": "G2", "content": "b\nA = one", "importance": 5},
+            ],
+        )
+        uuid1 = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        db.insert_vector_feedback_rows(
+            [{"rubric_vector_uuid": uuid1, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            candidate_id="cand-1",
+            batch_id="batch-725-sum",
+            task_key="grade_get",
+        )
+        summary = db.aggregate_vector_feedback_by_vector("cand-1", "grade_get")
+        assert len(summary) == 2
+        g1 = next(r for r in summary if r["code"] == "G1")
+        g2 = next(r for r in summary if r["code"] == "G2")
+        assert g1["feedback_row_count"] == 3
+        assert g1["batch_count"] == 1
+        assert "A:" in g1["relevance_dist"]
+        assert g2["feedback_row_count"] == 0
+        assert g2["batch_count"] == 0

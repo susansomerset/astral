@@ -417,3 +417,12 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-725 · AST-378
+
+**`task_keys_for_rubric_owner`** and **`rubric_owner_task_key_choices`** for Admin Vector Feedback task filter and data-layer owner expansion.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Consumer + craft run keys | `src/utils/config.py` | `TestAst725RubricOwnerRunKeys::test_task_keys_for_rubric_owner_includes_consumer_and_craft` |
+| Sorted owner choices | `src/utils/config.py` | `TestAst725RubricOwnerRunKeys::test_rubric_owner_task_key_choices_sorted_owner_keys` |

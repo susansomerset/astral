@@ -71,3 +71,15 @@ Parse helpers + agent capture: **`docs/test-bible/utils/rubric_feedback.md`**, *
   tests/component/data/database/test_rubric_vectors.py::TestAst724VectorFeedbackRows \
   -q
 ```
+
+### AST-725 · AST-378
+
+**`list_vector_feedback`** filters (owner expansion, batch, vector code) and **`aggregate_vector_feedback_by_vector`** per-current-rubric summaries. Builds on **AST-722**–**AST-724** tables.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Owner task_key → run keys filter | `src/data/database.py` | `TestAst725ListVectorFeedback::test_owner_task_key_expands_to_consumer_and_craft_run_keys` |
+| Batch + vector_code filters | `src/data/database.py` | `TestAst725ListVectorFeedback::test_filters_batch_id_and_vector_code` |
+| Per-vector distributions | `src/data/database.py` | `TestAst725AggregateVectorFeedback::test_per_vector_distributions_and_zero_feedback_vectors` |
+
+Admin API + page: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**.

@@ -1353,3 +1353,49 @@ class TestApiAdminBranchGaps:
         ok = admin_client.post(url, json={"table": "job", "json_payload": "[]"}, headers=auth_headers)
         assert ok.status_code == 200 and ok.get_json().get("ok") is True
         assert seq.call_count == 3
+
+
+class TestAst725VectorFeedback:
+    def test_list_vector_feedback_and_req_dict(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "vector_feedback_id": "vf-1",
+            "candidate_id": "c1",
+            "batch_id": "b1",
+            "task_key": "grade_get",
+            "feedback_type": "relevance",
+            "value": "A",
+            "vector_code": "G1",
+        }
+        monkeypatch.setattr(admin_mod, "list_vector_feedback", lambda **kwargs: [row])
+        plain = admin_client.get("/api/admin/vector_feedback?candidate_id=c1", headers=auth_headers)
+        enriched = plain.get_json()[0]
+        assert enriched["value_label"] == cfg.RUBRIC_FEEDBACK_CONFIG["value_labels"]["A"]
+        shaped = admin_client.get("/api/admin/vector_feedback?req_dict=1", headers=auth_headers)
+        body = shaped.get_json()
+        assert body["rows"][0]["vector_feedback_id"] == "vf-1"
+        assert any(c["key"] == "value_label" for c in body["columns"])
+
+    def test_summary_requires_candidate_and_owner_task_key(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        missing = admin_client.get("/api/admin/vector_feedback/summary", headers=auth_headers)
+        assert missing.status_code == 400
+
+    def test_summary_and_task_keys(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        summary_row = {
+            "code": "G1",
+            "label": "G1",
+            "importance": 5,
+            "batch_count": 1,
+            "feedback_row_count": 3,
+            "relevance_dist": "A:1",
+            "clarity_dist": "O:1",
+            "verdict_dist": "K:1",
+        }
+        monkeypatch.setattr(admin_mod, "aggregate_vector_feedback_by_vector", lambda cid, owner: [summary_row])
+        resp = admin_client.get(
+            "/api/admin/vector_feedback/summary?candidate_id=c1&owner_task_key=grade_get&req_dict=1",
+            headers=auth_headers,
+        )
+        body = resp.get_json()
+        assert body["rows"][0]["code"] == "G1"
+        keys = admin_client.get("/api/admin/vector_feedback/task_keys", headers=auth_headers).get_json()
+        assert "grade_get" in keys
