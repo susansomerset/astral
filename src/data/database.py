@@ -1285,6 +1285,52 @@ def get_company_job_ids(company: str) -> List[str]:
 
 
 
+
+def get_job_id_by_identity(
+    company: str,
+    job_title: str,
+    company_job_id: str,
+    *,
+    exclude_astral_job_id: Optional[str] = None,
+) -> Optional[str]:
+    """Return astral_job_id of first row matching complete identity triple, or None."""
+    def _with_conn() -> Optional[str]:
+        conn = _get_connection()
+        try:
+            _ensure_job_schema(conn)
+            sql = (
+                "SELECT astral_job_id FROM job"
+                " WHERE company = ? AND job_title = ? AND company_job_id = ?"
+            )
+            params: List[Any] = [company, job_title, company_job_id]
+            if exclude_astral_job_id is not None:
+                sql += " AND astral_job_id != ?"
+                params.append(exclude_astral_job_id)
+            sql += " LIMIT 1"
+            row = conn.execute(sql, tuple(params)).fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def delete_job(astral_job_id: str) -> bool:
+    """Delete single job row by astral_job_id. Does not cascade related records."""
+    if not astral_job_id:
+        return False
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_job_schema(conn)
+            cursor = conn.execute("DELETE FROM job WHERE astral_job_id = ?", (astral_job_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
 def _is_job_identity_unique_violation(exc: sqlite3.IntegrityError) -> bool:
     msg = str(exc).lower()
     return _JOB_IDENTITY_UNIQUE_INDEX.lower() in msg or (
