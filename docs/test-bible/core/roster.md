@@ -194,6 +194,35 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-718 · AST-716
+
+**Prefilter routing on decomposed PJL path** — after **HOMEPAGE_READY** / inflow prefilter, route to **`NO_PREFILTER_JOBLISTS`**, **`PREFILTER_FAILED`**, or **`PREFILTER_PASSED`**; hydrate **`possible_joblist_links`** via **`normalize_link()`** + **`parse_enumerate_array`**. Legacy manual path still **TO_WATCH** / **IGNORE**. Config: **`NO_PREFILTER_JOBLISTS`**, **`no_pjl_state`**, **`pjl_url_data_key`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decomposed routing + PJL hydration | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst718PrefilterPjlRouting` |
+| Coat-check **`possible_joblist_links`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestRosterCoverageGaps::test_prefilter_notes_returns_saved_notes_with_nav_links` |
+| **`NO_PREFILTER_JOBLISTS`** config | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` |
+| **`normalize_link()`** | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py::TestNormalizeLink` |
+
+**Broken / obsolete (Betty revision):** inflow/batch pass cases that assumed **`PREFILTER_PASSED`** without PJL indices + resolvable nav — updated in **`TestAst507EncodedPrefilter`**, **`TestAst603ConsultParityHydration`**, **`TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts`**.
+
+**AST-718** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestNormalizeLink \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions \
+  tests/component/core/test_roster.py::TestAst718PrefilterPjlRouting \
+  tests/component/core/test_roster.py::TestAst507EncodedPrefilter::test_legacy_empty_history_maps_pass_to_to_watch \
+  tests/component/core/test_roster.py::TestRosterCoverageGaps::test_prefilter_notes_returns_saved_notes_with_nav_links \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-715 · AST-710
 
 **UAT fix:** **`collapse_consecutive_blank_lines`** in **`scrape_company_homepage_content`** immediately after **`get_visible_text`**, before empty-text error gate — single normalize site for homepage scrape (**AST-701** DRY). Redundant gazer **`fetch_website_batch`** collapse removed (**AST-713** regression).
