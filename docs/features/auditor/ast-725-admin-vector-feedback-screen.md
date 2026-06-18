@@ -283,3 +283,14 @@ Changes: Added BatchAgentDataModal FEEDBACK tab order; batch_id → modal on det
 | follow-up | Optional: show `feedback_type_label` in detail column; expose feedback enums via ui_config. |
 
 **Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Publish ref:** `origin/sub/AST-378/AST-725-admin-vector-feedback-screen` @ `4391126`
+
+Radia review had **no fix-now or discuss** items — only advisory notes (hardcoded frontend enums, optional `feedback_type_label` column, URL date default). No product commits on resolve pass.
+
+**§9a dry-run:** `origin/sub/AST-378/AST-725-admin-vector-feedback-screen` merges cleanly into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
+
+**UAT focus:** `/admin/vector_feedback` — candidate + rubric task summary; detail filters; batch link → `BatchAgentDataModal` FEEDBACK tab.
