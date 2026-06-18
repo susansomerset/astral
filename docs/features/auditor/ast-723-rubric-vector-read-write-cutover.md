@@ -283,8 +283,40 @@ Craft generate task keys (`craft_prefilter_rubric`, …) resolve **`{$RUBRIC_VEC
 
 No conflicts requiring plan revision.
 
-## Review stub
+## Review (Radia)
 
-- **Branch:** `origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover`
-- **Tip:** `4fe60db` (build-child, session astral-AST-378)
-- **Stages landed:** config token registry; `sync_rubric_vectors_from_criteria` + AST-723 `agent_task` migration; candidate save/GET overlay; consult/roster read cutover; agent `_astral_candidate_id` injection for `{$RUBRIC_VECTORS}`.
+**Diff:** `origin/dev...origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` (tip `9ed0c99`)  
+**Reviewed:** 2026-06-18  
+**Note:** Three-dot diff includes sibling **AST-722** commits not yet on `origin/dev`; AST-723 cutover review below is scoped to Stages 1–6 of this plan.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Owner maps + `{$RUBRIC_VECTORS}` registry; `sync_rubric_vectors_from_criteria` fingerprint retire/insert; API save strips rubric keys + GET hydrates; consult/roster read cutover; AST-723 `agent_task` token migration wired in `_ensure_agent_task_schema`. |
+| Cutover grep | `_rubric_criteria_from_cd` removed from `src/`; legacy per-rubric `TOKEN_SOURCES` keys gone; no `{$COMPANY_PREFILTER}` / `{$GET_RUBRIC}` etc. in `src/`. |
+| §2.1 config | `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY`, `rubric_owner_task_key`, `JOB_TOKEN_CONFIG` phase `rubric_owner_task_key` fields — no inline artifact-key sets in core. |
+| §3.3 layers | Lazy `core.candidate` import in `resolve_tokens` mirrors existing resume-token pattern; UI API uses core helpers like `apply_company_search_terms_save`. |
+| Sync semantics | Single-transaction upsert; retire on fingerprint change; importance-only update in place; removed codes retired. |
+| Agent overlay | `do_task`, `_job_context_for_call`, and `build_job_token_context` inject `_astral_candidate_id` for rubric + analysis tokens. |
+| Tests / bible | Betty manifest covers save/hydrate, embedded prefilter merge, consult table reads, API overlay, token config. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| **fix-now** | `src/core/candidate.py` `preview_task_prompt` ~L297 | `build_job_token_context(..., candidate_id=cid or "")` runs **before** `cid = candidate.get("astral_candidate_id") or candidate_id` (~L298). Any preview with `astral_job_id` raises `UnboundLocalError`. Move `cid` assignment above the job block. |
+| discuss | `src/core/candidate.py` `_rubric_rows_to_criteria` | `except ValueError: pass` around `ensure_criterion_grade_table` on DB load — silent swallow. Add comment if legacy-backfill tolerance is intentional. |
+| discuss | `src/data/database.py` `sync_rubric_vectors_from_criteria` | `importance = int(item.get("importance") or 5)` uses magic `5` vs config default; safe post-normalize, but §1.4 literal if path called without normalize. |
+| advisory | Diff baseline | `origin/dev...` includes full **AST-722** stack until ftr lands on dev. |
+| advisory | `_fetch_prefilter_notes` | Table-backed read fixes prior wrong-level artifact access — good incidental fix. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | Fix `preview_task_prompt` `cid` ordering; add preview-with-`astral_job_id` test if manifest gap. |
+| ops | Ensure AST-722 backfill ran before cutover UAT; defer artifact purge until read-switch verified. |
+| AST-724 | `_ensure_vector_feedback_table` on first feedback write (carried from AST-722 discuss). |
+
+**Verdict:** One fix-now — resolve then UAT. Cutover architecture is sound.
