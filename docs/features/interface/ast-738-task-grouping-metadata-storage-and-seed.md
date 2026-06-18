@@ -130,3 +130,51 @@ No conflicts requiring `conf-!!-NONE`.
 **Built:** `origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ `1e6ab76` (`5b62160` data layer + seed, `1e6ab76` admin API).
 
 **Out of build scope (Betty / qa-child):** component/API tests per build-child test-tree ban; React modal/list (AST-739).
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ `e07e751`
+
+### What's solid
+
+| Area | Notes |
+|------|--------|
+| Plan fidelity | Stages 1–3 match plan: four columns, idempotent seed, `save`/`list`/`sync` paths, admin GET/PUT/`_enrich_tasks` from DB with backward-compat `phase`/`seq`. |
+| Versioning (§2.6 / plan Risk) | `content_changed` excludes grouping-only edits; segment versioning copies grouping via `_resolved_grouping_fields`; tests lock both behaviors. |
+| Boundaries (§5d) | No frontend, no `TASK_CONFIG` removal, no `_dispatch_task_key_form_meta` — sibling tickets untouched. |
+| Layer / imports (§3.3) | Lazy `_task_grouping_seed_helpers()` documented in plan; `api_admin` uses `database` only. |
+| Seed guard | Global `task_group_name != ''` skip matches plan; `sync_agent_tasks` pre-seeds inserts so fresh DBs need no second pass. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| advisory | `docs/features/interface/ast-740-remove-phase-and-seq-from-task-config.md` on this branch | Sibling AST-740 plan doc shipped with AST-738 commits — harmless doc-only; no code boundary leak. |
+| advisory | `tests/component/data/database/test_agent_tasks.py` | Stray `# placeholder removed = "qualify_job_listings"` comment — cosmetic cleanup optional in resolve. |
+| discuss | `backfill_task_grouping_metadata` guard | If an operator cleared **every** `current=1` row’s `task_group_name` to `''`, the next schema ensure would re-seed from config. AC allows invalid saves; confirm Susan is OK with that reset edge case or tighten guard later. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Proceed to `resolve-child` — no fix-now blockers | Hedy |
+| Optional: drop placeholder comment in test file | Hedy (resolve) |
+| AST-739: wire React modal to four DB fields | Katherine |
+
+---
+
+## Resolution (2026-06-18)
+
+**Review:** Radia @ `273e906` — no fix-now items; proceed per handoff.
+
+**Product changes:** None. AST-738 scope (data layer seed/save, Manage Tasks GET/PUT/`_enrich_tasks`) shipped as reviewed.
+
+**Discuss (logged, no code change this pass):**
+- **Seed guard reset:** If every `current=1` row has empty `task_group_name`, deploy re-seeds from `TASK_CONFIG`. Matches plan guard; AC allows invalid operator data — left as-is pending Susan follow-up if she wants a tighter guard.
+- **Branch contamination:** AST-739 commits also appear on this publish ref (Radia correction @ `273e906`). AST-738 product scope unaffected; rollup via `merge-child` / sibling `sub/AST-734/AST-739-*` is Chuckles/Susan orchestration.
+
+**§9a dry-run:** `origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` merges cleanly into `origin/dev` and `origin/ftr/AST-734-organizing-tasks`.
+
+**Publish tip:** `origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ resolve commit.
