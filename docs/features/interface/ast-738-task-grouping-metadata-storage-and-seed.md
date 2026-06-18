@@ -4,147 +4,121 @@
 **Parent:** [AST-734](https://linear.app/astralcareermatch/issue/AST-734/organizing-tasks)  
 **Publish ref:** `sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed`
 
-Persist four global-per-`task_key` grouping columns on `agent_task`, seed them once from today's `TASK_CONFIG` `phase` / `seq`, and expose read/write on Manage Tasks admin API paths from the database only. UI layout and Scheduled Actions grouping API remain sibling tickets (AST-739 / AST-740).
+Susan wants task grouping and ordering editable in admin without redeploying config. This ticket adds four global-per-`task_key` fields on `agent_task` rows (`task_group_order`, `task_group_name`, `task_seq`, `task_name`), seeds them once from today's `TASK_CONFIG` `phase` / `seq`, and wires Manage Tasks API save/load paths to read and write DB values only. React list layout and Scheduled Actions grouping are **AST-739**; removing `phase` / `seq` from config is **AST-740**.
 
 ## Files Changed (planned)
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/data/database.py` | Add four columns to `agent_task`; extend save/get/list/sync; idempotent AST-738 seed hook in schema ensure; update header inventory | data |
-| `scripts/migrations/backfill_task_grouping_metadata.py` | One-time seed logic (callable + CLI); reads `TASK_CONFIG` `phase`/`seq` | scripts |
-| `src/ui/api/api_admin.py` | `_enrich_tasks`, `get_task`, `update_task` — four DB fields only; remove config `phase`/`seq` overlay on Manage Tasks paths | ui |
+| `src/data/database.py` | Add four columns; extend save/get/list/sync/copy-upsert; idempotent seed hook | data |
+| `scripts/migrations/backfill_task_grouping_metadata.py` | Seed logic (callable + CLI); reads `TASK_CONFIG` `phase`/`seq` | scripts |
+| `src/ui/api/api_admin.py` | PUT/GET `/tasks/<task_key>` and `_enrich_tasks` surface DB grouping fields; backward-compat `phase`/`seq` from DB | ui |
 
-**Out of scope (explicit):** `src/ui/frontend/**`, `src/utils/config.py` (phase/seq removal), `_dispatch_task_key_form_meta` / `/dispatch_tasks/task_keys` (AST-739), `tests/**` (Betty qa-child).
+**Out of scope (this ticket):** `src/ui/frontend/**` (AST-739), `src/utils/config.py` phase/seq removal (AST-740), `_dispatch_task_key_form_meta` / `/dispatch_tasks/task_keys` (AST-739), `tests/**` (Betty after Code Complete).
 
 ## Stage 1: Schema columns and seed migration
 
-**Done when:** Fresh DB bootstrap creates `agent_task` with the four grouping columns; existing DBs get columns via ALTER; every `current=1` row for each `get_task_keys()` entry has seeded `task_group_order`, `task_group_name`, `task_seq`, and `task_name` after first schema ensure; re-running seed is a no-op.
+**Done when:** Fresh and migrated databases have four new columns on `agent_task`; every `current=1` catalog row is seeded after first bootstrap; re-running seed does not overwrite operator edits.
 
 1. In `scripts/migrations/backfill_task_grouping_metadata.py`, create a module with:
    - Docstring listing CLI usage: `python scripts/migrations/backfill_task_grouping_metadata.py [--dry-run]`
-   - `def build_phase_order_map() -> dict[str, str]`: collect unique non-empty `phase` strings from `TASK_CONFIG` via `get_task_keys()`; sort with `sorted(...)` (lexicographic — matches today's Manage Tasks section order, e.g. `"A. Candidate Context"` before `"A. Candidate Intake"` before `"B. …"`); return `{phase: f"{i:02d}" for i, phase in enumerate(sorted_phases, start=1)}`.
-   - `def seed_row_values(task_key: str, phase_order: dict[str, str]) -> dict`: read `cfg = TASK_CONFIG.get(task_key, {})`; `phase = cfg.get("phase") or ""`; return:
-     - `task_group_name`: `phase`
-     - `task_group_order`: `phase_order.get(phase, "")` when `phase` else `""`
-     - `task_seq`: `float(cfg["seq"])` when `cfg.get("seq") is not None` else `None`
-     - `task_name`: `task_key` (always — no separate display name in config today)
-   - `def backfill_task_grouping_metadata(conn, *, dry_run: bool = False) -> dict[str, int]`: assume caller already ran `_ensure_agent_task_schema(conn)`. Loop `get_task_keys()`; for each key SELECT `current=1` row; if none, count `skipped_no_row` and continue. Compute seed values via `seed_row_values`; UPDATE only when **all** of `task_group_name`, `task_group_order`, `task_name` are empty **and** `task_seq IS NULL` (idempotent — never overwrite admin-edited values). Count `updated` / `skipped`. If `dry_run`, do not commit.
+   - `def seed_values_for_task_key(task_key: str) -> dict`: read `cfg = TASK_CONFIG.get(task_key, {})`; `phase = (cfg.get("phase") or "").strip()`; `seq_raw = cfg.get("seq")`; return:
+     - `task_group_name`: `phase if phase else "(unassigned)"`
+     - `task_group_order`: `phase if phase else "ZZZ"`
+     - `task_seq`: `float(seq_raw) if seq_raw is not None else 999.0`
+     - `task_name`: `task_key`
+   - `def backfill_task_grouping_metadata(conn, *, dry_run: bool = False) -> dict[str, int]`: assume caller ran `_ensure_agent_task_schema(conn)`. **Global guard:** `SELECT COUNT(*) FROM agent_task WHERE current = 1 AND task_group_name != ''` — if count > 0, return immediately (already seeded or operator-edited). Loop `get_task_keys()`; for each key SELECT `current=1` row; if none, count `skipped_no_row`. UPDATE with `seed_values_for_task_key` values. For orphan `current=1` rows whose `task_key` ∉ `get_task_keys()`, set unassigned defaults. Count `updated` / `skipped`. If `dry_run`, do not commit.
    - `if __name__ == "__main__"`: argparse `--dry-run`; connect with `ASTRAL_CONFIG["db_dir"] / "astral.db"`; print counts.
 
-2. In `src/data/database.py` header inventory (top-of-file table list), extend the `agent_task` bullet to document: `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` — global per `task_key`, carried on versioned rows, not candidate-specific.
+2. In `src/data/database.py` header inventory, extend the `agent_task` bullet: `task_group_order TEXT NOT NULL DEFAULT ''`, `task_group_name TEXT NOT NULL DEFAULT ''`, `task_seq REAL NOT NULL DEFAULT 999.0`, `task_name TEXT NOT NULL DEFAULT ''`.
 
-3. In `_ensure_agent_task_schema(conn)`, after existing column-migration block (after `cache_prompt_d` adds, before `_apply_ast469…` calls), add idempotent ALTERs:
-   ```python
-   for col, ddl in (
-       ("task_group_order", "TEXT NOT NULL DEFAULT ''"),
-       ("task_group_name", "TEXT NOT NULL DEFAULT ''"),
-       ("task_seq", "REAL"),
-       ("task_name", "TEXT NOT NULL DEFAULT ''"),
-   ):
-       if col not in cols:
-           conn.execute(f"ALTER TABLE agent_task ADD COLUMN {col} {ddl}")
-           conn.commit()
-           cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_task)").fetchall()}
-   ```
-   Also add the four columns to the **CREATE TABLE** DDL in both the empty-table branch and the v1-migration CREATE so new installs have columns without ALTER.
+3. In `_ensure_agent_task_schema(conn)`, after existing column migrations and **before** `_apply_ast469_select_job_page_run_next_migration(conn)`, add idempotent ALTERs for the four columns if missing (refresh `cols` after each add). Add columns to both CREATE TABLE DDL branches (empty table + v1 migration).
 
-4. In `sync_agent_tasks`, extend the INSERT for missing keys to include `task_group_order='', task_group_name='', task_seq=NULL, task_name=<task_key>` (column list + placeholders must match new schema).
+4. Add `def _apply_ast738_task_grouping_metadata_seed(conn)` that lazy-imports and calls `backfill_task_grouping_metadata(conn, dry_run=False)`. Call from `_ensure_agent_task_schema` after column adds and existing `_apply_ast*` migrations.
 
-5. At the **end** of `sync_agent_tasks` (after the insert loop, before `conn.commit()`), lazy-import and call `backfill_task_grouping_metadata(conn, dry_run=False)`. Bootstrap always calls `sync_agent_tasks(get_task_keys())` first — this guarantees catalog rows exist before seed runs on fresh DBs. No one-shot global flag; per-row empty check makes every call safe.
+5. In `sync_agent_tasks`, extend INSERT for missing keys to include four columns from `seed_values_for_task_key(key)`.
 
-6. Add `def _apply_ast738_task_grouping_metadata_seed(conn)` that only calls `backfill_task_grouping_metadata(conn)` — invoke it from `_ensure_agent_task_schema` **after** column ADDs (so existing deployments seed on first API touch even before next bootstrap sync). Duplicate call from sync + schema ensure is harmless (idempotent).
+6. At **end** of `sync_agent_tasks` (after insert loop, before `conn.commit()`), call `_apply_ast738_task_grouping_metadata_seed(conn)` so fresh DBs seed after catalog rows exist.
 
-⚠️ **Decision:** Seed logic lives in `scripts/migrations/backfill_task_grouping_metadata.py` (CLI + tests); runtime entry points are end-of-`sync_agent_tasks` and `_ensure_agent_task_schema` hook. Idempotency: only fill rows still at factory-empty grouping values so re-deploy never clobber admin edits.
+⚠️ **Decision:** Initial `task_group_order` equals config `phase` string (labels already sort lexicographically). Susan can rename/reorder groups in admin later.
 
-⚠️ **Decision:** `task_group_order` is a two-digit string (`"01"`, `"02"`, …) from sorted unique `phase` labels, not the raw `"A."` prefix alone — operators may later change order strings in Manage Tasks without touching config.
+⚠️ **Decision:** `task_seq` default `999.0` matches today's UI `(seq ?? 999)` fallback for unseeded rows.
+
+⚠️ **Decision:** Global seed guard (any non-empty `task_group_name`) prevents deploy re-runs from clobbering operator edits.
 
 ## Stage 2: Data layer read/write
 
-**Done when:** `get_agent_task`, `list_candidate_tasks`, and `save_agent_task` round-trip all four fields; changing grouping metadata alone does not version prompt rows; changing prompt segments copies grouping metadata forward to the new `current=1` row.
+**Done when:** `save_agent_task`, `get_agent_task`, `list_candidate_tasks`, and `sync_agent_tasks` round-trip all four fields; metadata-only saves do not retire prompt versions; prompt-version inserts copy metadata forward.
 
-1. Extend `_save_agent_task_on_connection` signature with optional kwargs (default `None` = leave untouched, same as `run_next`):
-   - `task_group_order: Optional[str] = None`
-   - `task_group_name: Optional[str] = None`
-   - `task_seq: Optional[float] = None` — accept `int` from callers by coercing with `float(v)` when not None
-   - `task_name: Optional[str] = None`
+1. Extend `_save_agent_task_on_connection` with optional kwargs: `task_group_order`, `task_group_name`, `task_seq`, `task_name` (`None` = leave existing).
 
-2. Extend the existing-row SELECT to include the four columns (append to SELECT list and index mapping).
+2. Extend existing-row SELECT to include the four grouping columns.
 
-3. **Insert path** (no existing row): include seed defaults — `task_name=task_key` when kwarg None; other grouping kwargs default to `''` / `NULL` as appropriate.
+3. **Insert path** (no existing row): use kwargs when provided, else `seed_values_for_task_key(task_key)` (import from migration module or re-export thin wrapper in `database.py`).
 
-4. **Content-changed versioning path** (new row INSERT): copy forward current grouping values unless kwargs explicitly override (same merge rules as `run_next` / `agent_id`).
+4. **Content-changed versioning path**: copy forward grouping fields from retired row unless kwargs override.
 
-5. **In-place update path** (no prompt segment change): if any grouping kwarg is not None, append `task_group_order = ?`, etc. to `sets` / `params` alongside `agent_id` / `run_next` — do **not** set `content_changed`.
+5. **In-place update path** (no prompt segment change): apply grouping updates alongside `agent_id` / `run_next`; coerce `task_seq` with `float(...)` when provided; strip strings; allow empty strings; do **not** set `content_changed`.
 
 6. Extend public `save_agent_task(...)` to accept and forward the four kwargs.
 
-7. In `list_candidate_tasks`, add to SELECT: `task_group_order`, `task_group_name`, `task_seq`, `task_name` ( `get_agent_task` already uses `SELECT *` — no change needed once columns exist).
+7. In `list_candidate_tasks`, add the four columns to SELECT.
 
-8. Add a small helper in `database.py` (or reuse seed module):
+8. `apply_agent_task_copy_upsert`: new columns flow automatically via `table_columns(conn, "agent_task")` once schema exists.
+
+## Stage 3: Admin API — Manage Tasks save/load paths
+
+**Done when:** `GET/PUT /api/admin/tasks/<task_key>` and `GET /api/admin/tasks` expose grouping metadata from DB; backward-compat `phase`/`seq` keys come from DB (not config) until AST-739 switches the frontend.
+
+1. In `src/ui/api/api_admin.py`, add helper `_grouping_from_agent_task_row(task: dict | None, task_key: str) -> dict`:
    ```python
-   def get_task_grouping_metadata(task_key: str) -> Optional[dict]:
+   {
+       "task_group_order": ...,
+       "task_group_name": ...,
+       "task_seq": ...,  # float
+       "task_name": ...,
+       "phase": task_group_name if task_group_name and task_group_name != "(unassigned)" else None,
+       "seq": task_seq if task_seq != 999.0 else None,
+   }
    ```
-   Return `{task_group_order, task_group_name, task_seq, task_name}` from current row or None — used by api_admin dispatch helper in AST-739; optional in this ticket but **skip** unless needed (YAGNI — AST-739 can add).
+   When `task` is None: empty strings, `task_seq=999.0`, `task_name=task_key`, `phase=None`, `seq=None`.
 
-## Stage 3: Manage Tasks admin API
+2. **`get_task`:** Remove `cfg.get("phase")` / `cfg.get("seq")` overlay. Merge `_grouping_from_agent_task_row(task, task_key)`. Keep `entity_type` from `TASK_CONFIG`.
 
-**Done when:** `GET /api/admin/tasks` returns the four fields per row from DB; `GET /api/admin/tasks/<task_key>` returns them from DB; `PUT /api/admin/tasks/<task_key>` persists them; responses no longer include config-sourced `phase` or `seq` on these paths; `entity_type` on single-task GET still comes from `TASK_CONFIG` (execution metadata, not grouping).
+3. **`update_task`:** Read optional body keys `task_group_order`, `task_group_name`, `task_seq`, `task_name` using `if "field" in body` pattern. Pass to `save_agent_task`. Coerce `task_seq` with `float(...)` when present (400 only on non-numeric). No business-rule validation.
 
-1. In `_enrich_tasks`, remove:
-   ```python
-   "phase": cfg.get("phase"),
-   "seq": cfg.get("seq"),
-   ```
-   Add from list row `t` (DB):
-   ```python
-   "task_group_order": t.get("task_group_order") or "",
-   "task_group_name": t.get("task_group_name") or "",
-   "task_seq": t.get("task_seq"),
-   "task_name": t.get("task_name") or task_key,
-   ```
-   Keep `cfg = TASK_CONFIG.get(task_key, {})` only where still needed for non-grouping enrichment (if `cfg` becomes unused, remove the line).
+4. Return merged `get_agent_task` + `_grouping_from_agent_task_row` after PUT.
 
-2. In `get_task(task_key)`, remove:
-   ```python
-   task["phase"] = cfg.get("phase")
-   task["seq"] = cfg.get("seq")
-   ```
-   Keep `task["entity_type"] = cfg.get("entity_type")`. Grouping fields already present via `get_agent_task` dict once Stage 2 lands.
+5. **`_enrich_tasks`:** Remove `cfg.get("phase")` and `cfg.get("seq")`. Spread `_grouping_from_agent_task_row(t, task_key)` into each row (columns from `list_candidate_tasks` after Stage 2).
 
-3. In `update_task(task_key)`, read optional body keys and pass through to `save_agent_task`:
-   ```python
-   task_group_order=body.get("task_group_order") if "task_group_order" in body else None,
-   task_group_name=body.get("task_group_name") if "task_group_name" in body else None,
-   task_seq=body.get("task_seq") if "task_seq" in body else None,
-   task_name=body.get("task_name") if "task_name" in body else None,
-   ```
-   Coerce `task_seq`: if body value is `""`, treat as `None`; if int/float/str numeric, `float(...)`. Do **not** reject empty strings, duplicate orders, or missing group names (AC #4 — no business validation).
+6. Do **not** change `_dispatch_task_key_form_meta` or `/dispatch_tasks/task_keys` (AST-739).
 
-4. Do **not** change `_dispatch_task_key_form_meta`, `/dispatch_tasks/task_keys`, or `/dispatch_tasks` list payloads in this ticket (AST-739 switches Scheduled Actions UI/API to DB metadata).
+⚠️ **Decision:** AC #3 (edit modal exposes four fields) is API-ready here; React inputs land in **AST-739**. Verify with PUT then GET before closing.
 
 ## Stage 4: Manual verification (build-child)
 
-**Done when:** Local admin API returns seeded grouping metadata for a known task key and accepts edits.
+**Done when:** Local admin API returns seeded grouping metadata and accepts edits.
 
-1. Start app against a DB that has run bootstrap (or touch any DB path that triggers `_ensure_agent_task_schema`).
-2. `GET /api/admin/tasks?candidate_id=<any>` — confirm `craft_resume_base` (or any known key) has non-empty `task_group_name` matching former config phase and numeric `task_seq`.
-3. `PUT /api/admin/tasks/<key>` with altered `task_group_name` and `task_seq`; `GET` same key — values persist.
-4. `grep` `api_admin.py` `_enrich_tasks` / `get_task` — no `cfg.get("phase")` or `cfg.get("seq")` on Manage Tasks paths.
+1. Bootstrap or touch DB to trigger schema ensure + seed.
+2. `GET /api/admin/tasks?candidate_id=<any>` — known key has `task_group_name` matching former config phase.
+3. `PUT /api/admin/tasks/<key>` with altered grouping fields; `GET` confirms persistence.
+4. Confirm `_enrich_tasks` / `get_task` no longer read `phase`/`seq` from `TASK_CONFIG`.
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — touches `agent_task` storage, one migration script, and Manage Tasks admin API handlers only; no frontend or TASK_CONFIG edits.
+**Scope:** `Single-Component` — `database.py`, one migration script, and `api_admin.py` Manage Tasks paths only.
 
-**Conf:** `high` — follows existing `agent_task` column migration, metadata save (run_next pattern), and admin API enrichment patterns; seed mapping from config is fully specified.
+**Conf:** `high` — Follows established `agent_task` column migration, metadata-only update, and admin enrichment patterns.
 
-**Risk:** `Medium` — wrong seed idempotency could overwrite admin edits or leave blank grouping after deploy; prompt versioning must copy grouping fields or edits would appear to “reset” on prompt save.
+**Risk:** `Medium` — Wrong versioning (retire on metadata-only save or drop metadata on prompt edit) would lose operator grouping work; blast radius is admin task management only.
 
-## Rules self-review
+## Self-Review (ASTRAL_CODE_RULES)
 
-- **§1.3 DRY:** Seed logic centralized in migration module; schema ALTER follows existing column-add loop.
-- **§2.1 config:** Reads `TASK_CONFIG` only in one-time seed — runtime Manage Tasks API stops reading `phase`/`seq` from config.
-- **§3.3 imports:** Migration script imports `database` and `config`; lazy import in `_apply_ast738` avoids load-time cycle.
-- **§3.5 naming:** Field names match parent epic (`task_group_order`, `task_group_name`, `task_seq`, `task_name`).
-- **Table inventory:** Header updated when columns added (§ law line 12).
+| Rule | Assessment |
+|------|------------|
+| §1.3 DRY | `seed_values_for_task_key` shared by CLI seed, `sync_agent_tasks`, and new-row insert. |
+| §2.1 config | Seed reads `TASK_CONFIG` once; runtime API reads DB for grouping. Config untouched (AST-740). |
+| §3.3 imports | Lazy import in `_apply_ast738` avoids load-time cycle. |
+| §3.5 naming | Snake_case fields match ticket spec. |
 
-No conflicts flagged.
+No conflicts requiring `conf-!!-NONE`.
