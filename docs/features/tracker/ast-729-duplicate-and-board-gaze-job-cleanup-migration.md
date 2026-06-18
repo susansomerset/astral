@@ -210,3 +210,16 @@ No unresolved conflicts.
 | --- | --- | --- |
 | advisory | `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py` | Optional: import board prefix from `BOARDS_CONFIG` instead of hardcoding `"__board__"` so tests track config drift. |
 | advisory | same | Optional: assert `agent_data` (or related-table) row counts unchanged after live delete — operator runbook step 6 already covers manual verify. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Resolved by:** Hedy (resolve-child)
+
+Radia posted **no fix-now** items. Advisory notes (hardcoded `"__board__"` in tests; optional related-table count assertion) accepted as documented — Betty owns test-tree; operator runbook covers manual `agent_data` verify.
+
+**§9a dry-run:** `origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration` @ `28ae93a` merges cleanly into **`origin/dev`** and **`origin/ftr/duplicate-jobs-ingested`**.
+
+**Product changes in resolve:** none — review clean. Manifest re-run: 12 passed.
