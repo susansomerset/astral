@@ -86,3 +86,34 @@ Read-only **`GET /api/admin/vector_feedback`**, **`/vector_feedback/summary`**, 
 ```
 
 Routed page: **`docs/test-bible/frontend/pages.md`** (**AST-725**).
+
+### AST-738 · AST-734
+
+Manage Tasks grouping metadata reads/writes DB columns only — backward-compat `phase`/`seq` keys derived from `task_group_name` / `task_seq` until **AST-740**. `_enrich_tasks` spreads `_grouping_from_agent_task_row`; `/dispatch_tasks/task_keys` unchanged (still config-derived).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_grouping_from_agent_task_row` + GET/PUT `/tasks/<task_key>` | `src/ui/api/api_admin.py` | `TestAst738TaskGroupingApi` |
+| Obsolete assumption fix | `tests/component/ui/api/test_api_admin.py` | `TestTaskRoutes::test_preview_task_and_get_update` (mock must include DB grouping fields) |
+
+See primary data manifest: `docs/test-bible/data/database/agent_tasks.md` (**AST-738**).
+
+### AST-739 · AST-734
+
+`GET /api/admin/dispatch_tasks/task_keys` returns `task_group_*` fields via `_catalog_task_grouping_meta` / `_dispatch_task_key_form_meta`; drops `phase`/`seq`. Orphan dispatch-only keys get empty grouping defaults.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog resolution + orphan fallback | `src/ui/api/api_admin.py` | `TestAst739DispatchTaskKeysGrouping` |
+| AST-549 schedulable derivation regression | same | `test_ast549_task_keys_config_derivation_authoritative` (no config `phase`/`seq`) |
+
+Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
+
+### AST-740 · AST-734
+
+`_grouping_from_agent_task_row` returns DB grouping fields only — drops backward-compat `phase`/`seq` keys from Manage Tasks GET/PUT payloads.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No `phase`/`seq` on task routes | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi`, `TestTaskRoutes::test_preview_task_and_get_update` |
+

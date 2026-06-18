@@ -520,3 +520,28 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 API manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-725**).
+
+### AST-739 · AST-734
+
+Manage Tasks + Scheduled Actions React screens consume DB grouping metadata (`task_group_order`, `task_group_name`, `task_seq`, `task_name`) from `_enrich_tasks` / `GET /api/admin/dispatch_tasks/task_keys` — no `TASK_CONFIG` `phase`/`seq` on these surfaces. Manage Tasks edit modal exposes four grouping inputs; list drops visible seq column; row Task cell shows `task_name` fallback `task_key`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Manage Tasks routed page (**§6c**) | `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` (**`AST-739`** describe + revised fixtures) |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` (**`AST-739`** + revised `task_keys` mocks) |
+| `dispatch_task_keys` API | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping`; revised **`test_ast549_task_keys_config_derivation_authoritative`** |
+
+**AST-739** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast549_task_keys_config_derivation_authoritative \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Prerequisite:** **AST-738** data/API grouping on publish tip (sibling `merge-tests`).
+
