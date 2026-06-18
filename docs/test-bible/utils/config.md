@@ -367,3 +367,13 @@ Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** Â
 
 Database schema + backfill script: **`docs/test-bible/data/database/rubric_vectors.md`**, **`docs/test-bible/dev/backfill_rubric_vectors.md`**.
 
+
+### AST-726 (parent AST-717)
+
+**Scope:** `TASK_CONFIG["prefilter_company"]` adds `grades_key: "prefilter_grades"` for scored entity-story hydration.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `prefilter_company` `grades_key` | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst726PrefilterGradesKey::test_prefilter_company_grades_key` |
+
+Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test-bible/core/consult.md`** (**AST-726**).

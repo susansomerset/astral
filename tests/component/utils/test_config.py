@@ -1293,3 +1293,10 @@ class TestAst722RubricFeedbackConfig:
         assert fc["feedback_types"]["verdict"]["value_codes"] == ("K", "E", "D")
         assert fc["value_labels"]["E"] == "Edit"
 
+
+
+class TestAst726PrefilterGradesKey:
+    """AST-726: prefilter_company grades_key for entity story vector_grades."""
+
+    def test_prefilter_company_grades_key(self) -> None:
+        assert cfg.TASK_CONFIG["prefilter_company"]["grades_key"] == "prefilter_grades"
