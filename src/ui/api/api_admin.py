@@ -50,6 +50,7 @@ from src.utils.config import (
     DISPATCH_SCHEDULABLE_TASK_KEYS,
     dispatch_task_admin_defaults,
     dispatch_task_key_is_scored,
+    dispatch_task_key_retired_message,
     get_task_keys,
     resolve_dispatch_task_config_key,
     dispatch_claim_uses_score_floor,
@@ -828,6 +829,9 @@ def create_dtask():
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
+    retired = dispatch_task_key_retired_message(data.get("task_key", ""))
+    if retired:
+        return jsonify({"error": retired}), 400
     is_scored = dispatch_claim_uses_score_floor(data.get("trigger_state"))
     raw_score_floor = data.get("score_floor", None)
     score_floor = float(raw_score_floor) if (is_scored and raw_score_floor is not None) else (1.0 if is_scored else None)
@@ -970,7 +974,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if not job:
             return ""
         job_data = job.get("job_data") or {}
-        # evaluate_jd, consult_do/get/like — job description + optional company context
+        # evaluate_jd, grade_do/get/like — job description + optional company context
         jd = job_data.get("job_description") or job_data.get("raw_job_listing") or ""
         content = f"[astral_job_id={entity_id}]\n{jd}" if jd else ""
         # Append company website_content for LIKE (requires_company)
