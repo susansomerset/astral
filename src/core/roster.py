@@ -1800,9 +1800,12 @@ def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
 async def _scrape_pjl_page(
     url: str, browser_context, *, debug: bool = False
 ) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"url": url, "visible_text": "", "page_links": []}
+    fetch_url = (url or "").strip()
+    if fetch_url and "://" not in fetch_url:
+        fetch_url = f"https://{fetch_url.lstrip('/')}"
+    out: Dict[str, Any] = {"url": fetch_url, "visible_text": "", "page_links": []}
     try:
-        pg = await get_page(browser_context, url)
+        pg = await get_page(browser_context, fetch_url)
         try:
             readiness_cfg = roster_scrape_readiness_config()
             ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)

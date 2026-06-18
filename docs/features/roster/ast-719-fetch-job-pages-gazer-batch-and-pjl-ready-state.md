@@ -332,3 +332,15 @@ No unresolved conflicts.
 | discuss | Confirm `JOBSITE_SCRAPE_ISSUE` vs `NO_JOBLIST` fail terminal; align plan doc if intentional. |
 | discuss | Optional resolve: roster public additive helper + thin gazer; share scrape path with `_fetch_job_links_content`. |
 | advisory | Debug identifier on per-URL lines when touching batch debug again. |
+
+---
+
+## Resolution (2026-06-18)
+
+**Radia fix-now:** `_scrape_pjl_page` prepends `https://` when the ledger key lacks a scheme before `get_page` — scheme-less `possible_joblist_links` from AST-718 navigate correctly in real Playwright.
+
+**Discuss (no code change this pass):**
+- `fail_state` is **`JOBSITE_SCRAPE_ISSUE`** (shipped + bible + Betty manifest); plan draft `NO_JOBLIST` superseded at build.
+- Gazer-orchestrated batch + `pjl_nav_links` persistence accepted; AST-720 consumes `pjl_assembled_content` / scrape ledger.
+
+**Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape`
