@@ -26,6 +26,13 @@ Tables used (inventory):
 - board_search_run — Per-gaze ingest metrics (batch_id, board_search_id, new/duplicates/invalid_title counts).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
+- rubric_vector — Per-candidate rubric vector identity (rubric_vector_uuid TEXT PK, candidate_id,
+  task_key TEXT, task_key_uuid TEXT, code, label, content, importance INTEGER, content_fingerprint TEXT,
+  current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
+  Versioning follows agent_task current=1 pattern (AST-722).
+- vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
+  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id, created_at).
+  One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
   status ACTIVE|BUILT, transcript JSON, prompt_snapshot JSON, last_ready_to_build INTEGER, built_at TIMESTAMP,
   created_at, updated_at). Resume-after-close (AST-558).
@@ -77,6 +84,7 @@ from src.utils.config import (
     dispatch_claim_states,
     trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
+    RUBRIC_CRITERIA_ARTIFACT_KEYS,
 )
 from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
 from src.utils.logging import get_logger
@@ -153,6 +161,9 @@ _board_search_schema_ensured = False
 _board_search_run_schema_ensured = False
 _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
+_rubric_vector_schema_ensured = False
+_vector_feedback_schema_ensured = False
+_rubric_vector_backfill_swept = False
 _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
@@ -3254,6 +3265,292 @@ def sync_company_search_terms(candidate_id: str, terms: List[str]) -> None:
 
     _run_with_retry(_with_conn)
 
+
+
+
+# ---- rubric_vector / vector_feedback (AST-722) ----
+
+def _resolve_current_agent_task_uuid(conn: sqlite3.Connection, task_key: str) -> Optional[str]:
+    """Return task_key_uuid for current agent_task row, or None if missing."""
+    _ensure_agent_task_schema(conn)
+    row = conn.execute(
+        "SELECT task_key_uuid FROM agent_task WHERE task_key = ? AND current = 1 LIMIT 1",
+        (task_key,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _ensure_rubric_vector_table(conn: sqlite3.Connection) -> None:
+    global _rubric_vector_schema_ensured
+    if _rubric_vector_schema_ensured:
+        return
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='rubric_vector'"
+    )
+    if cursor.fetchone()[0] == 0:
+        conn.execute("""
+            CREATE TABLE rubric_vector (
+                rubric_vector_uuid TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                task_key TEXT NOT NULL,
+                task_key_uuid TEXT NOT NULL,
+                code TEXT NOT NULL,
+                label TEXT NOT NULL,
+                content TEXT NOT NULL,
+                importance INTEGER NOT NULL,
+                content_fingerprint TEXT NOT NULL,
+                current INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX idx_rubric_vector_candidate_task_current "
+            "ON rubric_vector (candidate_id, task_key, current)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_rubric_vector_task_key_uuid ON rubric_vector (task_key_uuid)"
+        )
+        conn.commit()
+    _rubric_vector_schema_ensured = True
+
+
+def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
+    global _vector_feedback_schema_ensured
+    if _vector_feedback_schema_ensured:
+        return
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vector_feedback'"
+    )
+    if cursor.fetchone()[0] == 0:
+        conn.execute("""
+            CREATE TABLE vector_feedback (
+                vector_feedback_id TEXT PRIMARY KEY,
+                rubric_vector_uuid TEXT NOT NULL,
+                candidate_id TEXT NOT NULL,
+                batch_id TEXT NOT NULL,
+                task_key TEXT NOT NULL,
+                feedback_type TEXT NOT NULL,
+                value TEXT NOT NULL,
+                agent_data_id TEXT,
+                created_at TIMESTAMP NOT NULL
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX idx_vector_feedback_rubric ON vector_feedback (rubric_vector_uuid)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_vector_feedback_batch ON vector_feedback (batch_id)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_vector_feedback_candidate_task "
+            "ON vector_feedback (candidate_id, task_key)"
+        )
+        conn.commit()
+    _vector_feedback_schema_ensured = True
+
+
+def _insert_rubric_vector_row_on_connection(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    task_key: str,
+    task_key_uuid: str,
+    code: str,
+    label: str,
+    content: str,
+    importance: int,
+    content_fingerprint: str,
+    current: int = 1,
+) -> str:
+    _ensure_rubric_vector_table(conn)
+    now = _utc_now()
+    rubric_vector_uuid = str(uuid.uuid4())
+    conn.execute(
+        """INSERT INTO rubric_vector (
+               rubric_vector_uuid, candidate_id, task_key, task_key_uuid,
+               code, label, content, importance, content_fingerprint,
+               current, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            rubric_vector_uuid,
+            candidate_id,
+            task_key,
+            task_key_uuid,
+            code,
+            label,
+            content,
+            importance,
+            content_fingerprint,
+            current,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return rubric_vector_uuid
+
+
+def insert_rubric_vector_row(
+    *,
+    candidate_id: str,
+    task_key: str,
+    task_key_uuid: str,
+    code: str,
+    label: str,
+    content: str,
+    importance: int,
+    content_fingerprint: str,
+    current: int = 1,
+) -> str:
+    def _with_conn() -> str:
+        conn = _get_connection()
+        try:
+            return _insert_rubric_vector_row_on_connection(
+                conn,
+                candidate_id=candidate_id,
+                task_key=task_key,
+                task_key_uuid=task_key_uuid,
+                code=code,
+                label=label,
+                content=content,
+                importance=importance,
+                content_fingerprint=content_fingerprint,
+                current=current,
+            )
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_current_agent_task_uuid(task_key: str) -> Optional[str]:
+    """Public helper: current agent_task UUID for task_key (AST-722 backfill)."""
+
+    def _with_conn() -> Optional[str]:
+        conn = _get_connection()
+        try:
+            return _resolve_current_agent_task_uuid(conn, task_key)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_rubric_vectors(
+    candidate_id: str,
+    task_key: str,
+    *,
+    current_only: bool = True,
+) -> List[Dict[str, Any]]:
+    if not candidate_id or not str(candidate_id).strip() or not task_key:
+        return []
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_rubric_vector_table(conn)
+            sql = """SELECT rubric_vector_uuid, candidate_id, task_key, task_key_uuid,
+                            code, label, content, importance, content_fingerprint,
+                            current, created_at, updated_at
+                     FROM rubric_vector
+                     WHERE candidate_id = ? AND task_key = ?"""
+            params: List[Any] = [candidate_id, task_key]
+            if current_only:
+                sql += " AND current = 1"
+            sql += " ORDER BY code ASC"
+            rows = conn.execute(sql, tuple(params)).fetchall()
+            return [
+                {
+                    "rubric_vector_uuid": r[0],
+                    "candidate_id": r[1],
+                    "task_key": r[2],
+                    "task_key_uuid": r[3],
+                    "code": r[4],
+                    "label": r[5],
+                    "content": r[6],
+                    "importance": r[7],
+                    "content_fingerprint": r[8],
+                    "current": r[9],
+                    "created_at": r[10],
+                    "updated_at": r[11],
+                }
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def count_rubric_vectors_for_candidate_task(
+    candidate_id: str,
+    task_key: str,
+    *,
+    current_only: bool = True,
+) -> int:
+    if not candidate_id or not str(candidate_id).strip() or not task_key:
+        return 0
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_rubric_vector_table(conn)
+            sql = "SELECT COUNT(*) FROM rubric_vector WHERE candidate_id = ? AND task_key = ?"
+            params: List[Any] = [candidate_id, task_key]
+            if current_only:
+                sql += " AND current = 1"
+            row = conn.execute(sql, tuple(params)).fetchone()
+            return int(row[0]) if row else 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def purge_legacy_rubric_artifact_keys(candidate_id: str) -> List[str]:
+    """Remove legacy rubric criteria keys from candidate_data.artifacts (AST-722)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return []
+
+    def _with_conn() -> List[str]:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            row = conn.execute(
+                "SELECT candidate_data FROM candidate WHERE astral_candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if not row or not row[0]:
+                return []
+            try:
+                cd = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except (json.JSONDecodeError, TypeError):
+                return []
+            if not isinstance(cd, dict):
+                return []
+            arts = cd.get("artifacts")
+            if not isinstance(arts, dict):
+                return []
+            removed: List[str] = []
+            for key in RUBRIC_CRITERIA_ARTIFACT_KEYS:
+                if key in arts:
+                    arts.pop(key)
+                    removed.append(key)
+            if not removed:
+                return []
+            cd["artifacts"] = arts
+            now = _utc_now()
+            conn.execute(
+                "UPDATE candidate SET candidate_data = ?, updated_at = ? WHERE astral_candidate_id = ?",
+                (json.dumps(cd), now, candidate_id),
+            )
+            conn.commit()
+            return removed
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
 
 # ---- candidate_intake_session (AST-558) ----
 
