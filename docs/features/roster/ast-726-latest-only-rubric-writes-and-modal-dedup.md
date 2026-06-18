@@ -159,3 +159,12 @@ Binding per **plan-child**: execute stages **1 → 2 → 3 → 4** in order; **o
 | §3.5 naming | Keep `append_agent_response` name (behavior change documented) — avoids churn across core call sites. |
 
 No unresolved conflicts.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-717/AST-726-latest-only-rubric-writes-and-modal-dedup`  
+**Build tip:** _(pending final publish)_
+
+**Built:** Stages 1–4 — `append_agent_response` upsert by `task_key`; latest-only rubric outcome fields on job/company blobs; `get_entity_agent_story` dedupe + company `vector_grades`; `prefilter_company` `grades_key`; §2.4.1 rules update.

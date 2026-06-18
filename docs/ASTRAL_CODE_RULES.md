@@ -151,7 +151,7 @@ Do not select by state and process without batch_id. Use claim / get / clear and
 
 ### 2.4.1 Entity Agent Responses
 
-Every entity table (company, job, candidate) has an `agent_responses` JSON array column. After each successful `do_task` call, `agent.py` appends a lightweight reference entry:
+Every entity table (company, job, candidate) has an `agent_responses` JSON array column. After each successful `do_task` call, `agent.py` upserts a lightweight reference entry by `task_key` (latest wins):
 
 ```json
 {
@@ -165,6 +165,8 @@ Every entity table (company, job, candidate) has an `agent_responses` JSON array
   ]
 }
 ```
+
+Historical blocks remain in `agent_data`; only the entity-row ref array is latest-only per phase.
 
 The `prompt_blocks` array contains foreign keys into the `agent_data` table. The entity row stays lightweight; full content is retrieved via `GET /api/agent_data/<batch_id>` using the block IDs.
 
