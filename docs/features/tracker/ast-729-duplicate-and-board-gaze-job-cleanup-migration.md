@@ -187,6 +187,26 @@ No unresolved conflicts.
 
 **Branch:** `origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration`  
 **Diff baseline:** `origin/dev`  
-**Review tip:** `ed23b5d`
+**Review tip:** `c6fa284`
 
-**Built:** Stages 1–3 — `cleanup_duplicate_and_board_gaze_jobs.py` with board-gaze bulk delete (`__board__*` prefix from config), identity dedupe (earliest `created_at` survivor, `astral_job_id` tie-break), `--dry-run` / phase skip / `--company` filters, operator runbook in module docstring; `py_compile` passes.
+**Built:** Stages 1–3 — `cleanup_duplicate_and_board_gaze_jobs.py` with board-gaze bulk delete (`__board__*` prefix from config), identity dedupe (earliest `created_at` survivor, `astral_job_id` tie-break), `--dry-run` / phase skip / `--company` filters, operator runbook in module docstring; Betty manifest + component tests on `origin/tests` merge.
+
+### What's solid
+
+- Plan fidelity: board prefix from `BOARDS_CONFIG`, parameterized SQL, survivor ordering (`created_at ASC NULLS LAST`, `astral_job_id ASC`), board phase before dedupe, all CLI flags, operator runbook in module docstring.
+- Scope clean: single migration script under `scripts/migrations/`; no `src/` product changes; no AST-732/733 scope smuggled.
+- Resilience: `_run_with_retry` on DB paths; per-group try/except prints `[dedupe] error …`, increments `counts["errors"]`, live run exits non-zero when errors > 0.
+- Tests: component suite matches test-bible manifest — discovery/exclusions, delete helper, board dry-run/live/empty, dedupe dry-run/live/error path, phase order and skip flags.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| — | — | No fix-now items. |
+
+### Recommended actions
+
+| Severity | Location | Action |
+| --- | --- | --- |
+| advisory | `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py` | Optional: import board prefix from `BOARDS_CONFIG` instead of hardcoding `"__board__"` so tests track config drift. |
+| advisory | same | Optional: assert `agent_data` (or related-table) row counts unchanged after live delete — operator runbook step 6 already covers manual verify. |
