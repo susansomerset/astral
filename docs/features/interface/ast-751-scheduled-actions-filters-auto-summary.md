@@ -277,3 +277,11 @@ Refresh the Scheduled Actions admin screen: per-group AUTO-on summaries in colla
 | §3.5 naming | Follow existing `admin-filters`, `CollapsiblePanel`, `sortRowsWithinSection` naming. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review (build-child)
+
+**Built:** `sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` — expanded client-side filters, per-group AUTO summary headers, table column reorder (Candidate/Avail/Last Run rightmost), Available zero → —, All-candidate default sort by available count desc within task.
+
+**Tip:** _(filled after publish)_
