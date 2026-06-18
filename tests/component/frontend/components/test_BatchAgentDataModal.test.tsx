@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import BatchAgentDataModal from "../../../../src/ui/frontend/src/components/BatchAgentDataModal"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -143,5 +144,35 @@ describe("BatchAgentDataModal", () => {
     renderWithProviders(<BatchAgentDataModal batchId="batch-bad-type" onClose={() => {}} />)
     await waitFor(() => expect(screen.getByText(/Tokens & Cost/)).toBeInTheDocument())
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""))
+  })
+
+  it("shows FEEDBACK tab when block type present (AST-725)", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/agent_data/")) {
+        return {
+          json: async () => [
+            {
+              agent_data_id: "fb-1",
+              block_type: "FEEDBACK",
+              block_data: '{"vector_reviews":["bad"]}',
+              token_size: 1,
+              task_key: "grade_get",
+              created_at: "now",
+            },
+          ],
+        } as Response
+      }
+      if (url.includes("/api/admin/timesheets")) {
+        return { json: async () => [] } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<BatchAgentDataModal batchId="batch-fb" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText("FEEDBACK")).toBeInTheDocument())
+    await waitFor(() => {
+      const ta = document.querySelector(".batch-agent-data-textarea") as HTMLTextAreaElement
+      expect(ta?.value).toContain("vector_reviews")
+      expect(ta?.value).toContain("bad")
+    })
   })
 })

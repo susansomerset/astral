@@ -64,3 +64,25 @@ Manifest (**`AST-492`** + **`AST-495`** on **`dev-betty`** after merging both pu
 `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`
 
 (or rely on the full **`./scripts/testing/run_component_tests.sh`** with no args — that runs all Vitest component tests too).
+
+### AST-725 · AST-378
+
+Read-only **`GET /api/admin/vector_feedback`**, **`/vector_feedback/summary`**, **`/vector_feedback/task_keys`** for Admin Vector Feedback screen.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Detail list + `req_dict` enrichment | `src/ui/api/api_admin.py` | `TestAst725VectorFeedback::test_list_vector_feedback_and_req_dict` |
+| Summary 400 + shaped response | `src/ui/api/api_admin.py` | `TestAst725VectorFeedback::test_summary_requires_candidate_and_owner_task_key`, `test_summary_and_task_keys` |
+
+**AST-725** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst725VectorFeedback \
+  tests/component/utils/test_config.py::TestAst725RubricOwnerRunKeys \
+  tests/component/data/database/test_rubric_vectors.py::TestAst725ListVectorFeedback \
+  tests/component/data/database/test_rubric_vectors.py::TestAst725AggregateVectorFeedback \
+  -q
+```
+
+Routed page: **`docs/test-bible/frontend/pages.md`** (**AST-725**).

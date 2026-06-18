@@ -499,3 +499,24 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
   ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
 ```
+
+---
+
+### AST-725 · AST-378
+
+Admin **Vector Feedback** page — per-vector summary (active rubric) + detail row list; batch link opens **`BatchAgentDataModal`** with **FEEDBACK** tab support.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page summary + detail + filters | `src/ui/frontend/src/pages/AdminVectorFeedback.tsx` | `tests/component/frontend/pages/test_AdminVectorFeedback.test.tsx` |
+| FEEDBACK block tab in batch modal | `src/ui/frontend/src/components/BatchAgentDataModal.tsx` | `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx` (FEEDBACK tab case) |
+
+**AST-725** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminVectorFeedback.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```
+
+API manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-725**).

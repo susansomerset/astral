@@ -1342,8 +1342,21 @@ class TestAst724RubricBackedTask:
         assert "agent_performance" in suffix
 
 
+class TestAst725RubricOwnerRunKeys:
+    """AST-725: owner task_key → run task_keys for vector_feedback filters."""
 
-class TestAst726PrefilterGradesKey:
+    def test_task_keys_for_rubric_owner_includes_consumer_and_craft(self) -> None:
+        keys = cfg.task_keys_for_rubric_owner("grade_get")
+        assert "grade_get" in keys
+        assert "craft_get_rubric" in keys
+
+    def test_rubric_owner_task_key_choices_sorted_owner_keys(self) -> None:
+        choices = cfg.rubric_owner_task_key_choices()
+        assert "grade_get" in choices
+        assert "evaluate_jd" in choices
+        assert choices == tuple(sorted(choices))
+
+
     """AST-726: prefilter_company grades_key for entity story vector_grades."""
 
     def test_prefilter_company_grades_key(self) -> None:
