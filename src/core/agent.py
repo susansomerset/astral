@@ -10,6 +10,7 @@ Layer: core → data, external, utils  (never ← ui)
 
 import hashlib
 import json
+import copy
 from logging import DEBUG as _LOG_DEBUG
 import re
 import uuid
@@ -28,6 +29,9 @@ from src.data.database import (
     get_agent_data as _get_agent_data_row,
     get_agent_data_for_ids,
     sum_cost_by_batch,
+    store_feedback_block,
+    insert_vector_feedback_rows,
+    list_rubric_vector_uuid_by_code,
 )
 from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
@@ -44,7 +48,11 @@ from src.utils.config import (
     resume_artifact_hop_task_keys,
     resume_artifact_next_compound_state,
     _TOKEN_RE,
+    RUBRIC_FEEDBACK_CONFIG,
+    is_rubric_backed_task,
+    rubric_owner_task_key,
 )
+from src.utils.rubric_feedback import parse_vector_reviews, format_vector_reviews_raw
 from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 
@@ -911,6 +919,99 @@ def _failure_response_block_data(index: Optional[str], body: str) -> str:
     return body
 
 
+def _agent_performance_status(perf: Any) -> Optional[str]:
+    """Normalize agent_performance.status from dict or legacy string envelope."""
+    if isinstance(perf, dict):
+        status = perf.get("status")
+        return str(status).strip().lower() if status is not None else None
+    if isinstance(perf, str):
+        return perf.strip().lower()
+    return None
+
+
+def _rubric_feedback_owner_and_candidate(
+    task_key: str,
+    cd: Dict[str, Any],
+    ctx: Optional[Dict[str, Any]],
+) -> Tuple[Optional[str], Optional[str]]:
+    owner = rubric_owner_task_key(task_key)
+    cid = (cd or {}).get("_astral_candidate_id")
+    if not cid and ctx:
+        cid = ctx.get("astral_candidate_id")
+    return owner, (str(cid).strip() if cid else None) or None
+
+
+def _capture_rubric_vector_feedback(
+    *,
+    task_key: str,
+    owner_task_key: str,
+    candidate_id: str,
+    batch_id: str,
+    entity_type: str,
+    index: Optional[str],
+    perf: Any,
+    debug: bool,
+    prompt_blocks: List[Dict[str, str]],
+) -> None:
+    """Lenient vector_reviews capture on SUCCESS — parse failures never fail the run (AST-724)."""
+    if _agent_performance_status(perf) != "success":
+        return
+    from src.core.candidate import rubric_criteria_for_task
+
+    criteria = rubric_criteria_for_task(candidate_id, owner_task_key)
+    expected_codes = frozenset(
+        str(c.get("code") or "").strip().upper()
+        for c in criteria
+        if isinstance(c, dict) and c.get("code")
+    )
+    if not expected_codes:
+        return
+    perf_dict = perf if isinstance(perf, dict) else {}
+    code_to_uuid = list_rubric_vector_uuid_by_code(candidate_id, owner_task_key)
+    parsed_rows = parse_vector_reviews(perf_dict.get("vector_reviews"), expected_codes, code_to_uuid)
+    if parsed_rows is None:
+        try:
+            fb_id = store_feedback_block(
+                entity_type,
+                task_key,
+                batch_id,
+                format_vector_reviews_raw(perf_dict),
+                index=index,
+            )
+            prompt_blocks.append({"type": "FEEDBACK", "id": fb_id})
+        except Exception:
+            logger.debug("store_feedback_block failed", exc_info=True)
+        if debug:
+            _do_task_debug_logger(debug).debug_detail(
+                "vector feedback unparseable — stored raw FEEDBACK block"
+            )
+        return
+    try:
+        insert_vector_feedback_rows(
+            parsed_rows,
+            candidate_id=candidate_id,
+            batch_id=batch_id,
+            task_key=task_key,
+        )
+    except Exception:
+        logger.debug("insert_vector_feedback_rows failed", exc_info=True)
+        return
+    if debug:
+        dbg = _do_task_debug_logger(debug)
+        dbg.debug_index(
+            func="_capture_rubric_vector_feedback",
+            index=1,
+            total=max(len(parsed_rows), 1),
+            identifier=task_key,
+            outcome="vector feedback recorded",
+        )
+        for row in parsed_rows:
+            dbg.debug_detail(
+                f"{row.get('code')} R/{row.get('relevance')} "
+                f"C/{row.get('clarity')} V/{row.get('verdict')} recorded"
+            )
+
+
 def _store_response_block(
     entity_type: str,
     task_key: str,
@@ -1412,6 +1513,14 @@ async def do_task(
     caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
     nocache_content = resolve_tokens(agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw) or None
 
+    if is_rubric_backed_task(task_key):
+        _fb_suffix = (RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or "").strip()
+        if _fb_suffix:
+            if (user_content or "").strip():
+                user_content = (user_content.rstrip() + "\n\n" + _fb_suffix).strip()
+            elif (nocache_content or "").strip():
+                nocache_content = (nocache_content.rstrip() + "\n\n" + _fb_suffix).strip()
+
     snap = (ctx or {}).get("intake_prompt_snapshot")
     if isinstance(snap, dict) and snap and task_key.startswith("intake_"):
         if "system" in snap:
@@ -1695,6 +1804,10 @@ async def do_task(
     if strict_batch and not envelope_err:
         envelope_err = _strict_encoded_batch_consult_envelope_err(task_key, parsed)
 
+    envelope_snapshot = None
+    if is_rubric_backed_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
+        envelope_snapshot = copy.deepcopy(parsed)
+
     if envelope_err:
         logger.error(
             "do_task strict envelope failed. task_key=%r batch_id=%r error=%s",
@@ -1962,6 +2075,23 @@ async def do_task(
                         "parsed_response": None, "error": conf_err, "timesheet": result.get("timesheet", {})}
 
     # SUCCESS: store decoded/validated response block, then build agent_ref
+    if envelope_snapshot is not None:
+        _perf = envelope_snapshot.get("agent_performance")
+        if _perf is not None:
+            _owner, _cid = _rubric_feedback_owner_and_candidate(task_key, cd, ctx)
+            if _owner and _cid:
+                _capture_rubric_vector_feedback(
+                    task_key=task_key,
+                    owner_task_key=_owner,
+                    candidate_id=_cid,
+                    batch_id=batch_id,
+                    entity_type=entity_type,
+                    index=index,
+                    perf=_perf,
+                    debug=debug,
+                    prompt_blocks=prompt_blocks,
+                )
+
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
