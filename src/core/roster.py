@@ -1250,29 +1250,35 @@ async def scrape_company_homepage_content(
         "error": None,
     }
     try:
-        visible_text, final_url = await get_visible_text(
-            company_website, context=browser_context, return_final_url=True
-        )
+        if browser_context is not None:
+            pg = await get_page(browser_context, company_website)
+            try:
+                contract = await scrape_loaded_page_contract(pg, debug=False)
+            finally:
+                await close_page(pg)
+        else:
+            async with create_browser_context() as ctx:
+                pg = await get_page(ctx, company_website)
+                try:
+                    contract = await scrape_loaded_page_contract(pg, debug=False)
+                finally:
+                    await close_page(pg)
     except Exception as scrape_err:
         out["error"] = str(scrape_err)
         return out
+    final_url = contract.get("final_url") or company_website
     if final_url and final_url != company_website:
         update_company(short_name, company_website=final_url)
         company_website = final_url
         out["company_website"] = company_website
-    visible_text = collapse_consecutive_blank_lines(visible_text or "")
+    visible_text = contract.get("visible_text") or ""
     out["visible_text"] = visible_text
     if not out["visible_text"].strip():
         out["error"] = "No visible text extracted"
         return out
-    try:
-        url_list = await extract_site_page_list(
-            company_website, max_depth=1, verify=False, context=browser_context
-        )
-        if url_list:
-            out["enumerated_nav_links"] = enumerate_array("", url_list)
-    except Exception as nav_err:
-        logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): {nav_err}")
+    enumerated = contract.get("enumerated_nav_links") or ""
+    if enumerated:
+        out["enumerated_nav_links"] = enumerated
     return out
 
 
@@ -1967,11 +1973,12 @@ async def _scrape_pjl_page(
                     f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
                     f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
                 )
-            vt_result = await extract_visible_text(pg)
-            visible_text = vt_result.get("text", "") or ""
-            page_links = await extract_site_page_list(page=pg, max_depth=1, verify=False)
-            out["visible_text"] = visible_text.strip()
-            out["page_links"] = page_links or []
+            contract = await scrape_loaded_page_contract(pg, debug=debug)
+            out["visible_text"] = (contract.get("visible_text") or "").strip()
+            out["page_links"] = contract.get("nav_urls") or []
+            enum_nav = contract.get("enumerated_nav_links") or ""
+            if enum_nav:
+                out["enumerated_nav_links"] = enum_nav
             out["readiness"] = ready_meta
         finally:
             await close_page(pg)
@@ -1986,9 +1993,11 @@ def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
     text = (new_record.get("visible_text") or "").strip()
     if not text:
         return existing_pages
-    return list(existing_pages or []) + [
-        {"url": new_record["url"], "visible_text": text}
-    ]
+    row: Dict[str, Any] = {"url": new_record["url"], "visible_text": text}
+    enum_nav = (new_record.get("enumerated_nav_links") or "").strip()
+    if enum_nav:
+        row["enumerated_nav_links"] = enum_nav
+    return list(existing_pages or []) + [row]
 
 
 def _merge_pjl_nav_links(existing_enum: str, new_urls: List[str]) -> str:
@@ -2014,7 +2023,11 @@ def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
     for n, row in enumerate(pjl_scrape_pages or [], 1):
         url = row.get("url") or ""
         text = row.get("visible_text") or ""
-        sections.append(f"=== PAGE {n}: {url} ===\n{text}")
+        parts = [f"=== PAGE {n}: {url} ===", text]
+        enum_nav = (row.get("enumerated_nav_links") or "").strip()
+        if enum_nav:
+            parts.extend(["--- NAV LINKS ---", enum_nav])
+        sections.append("\n".join(parts))
     return "\n\n".join(sections)
 
 
