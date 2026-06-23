@@ -184,3 +184,13 @@ Three-dot diff vs `origin/dev` includes **AST-765** / **AST-766** product + test
 ### Recommended actions
 
 Ada → **resolve-child** — no changes required.
+
+---
+
+## Resolution (2026-06-23)
+
+**Review:** Radia clean — no fix-now, discuss, or doc/product changes.
+
+**§9a:** `origin/sub/AST-757/AST-767-sunset-boards-documentation` merges cleanly into `origin/dev` and `origin/ftr/AST-757-sunset-astral-boards`.
+
+**Shipped @ resolve:** docs-only @ `05ac119`; Betty `merge-tests` @ `654d553`; test pass = Stage 5 acceptance grep (no pytest manifest).
