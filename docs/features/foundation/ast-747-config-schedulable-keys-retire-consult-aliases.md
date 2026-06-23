@@ -233,5 +233,26 @@ No conflicts requiring `!!-NONE`.
 | Action | Owner |
 |--------|-------|
 | **resolve-child:** tighten `bootstrap.py` schedulable validation per plan Stage 2; update `ASTRAL_TEST_BIBLE.md` dispatch vocabulary (~L370, ~L1839) per plan Stage 3. | Ada |
-| Optional: inline `catalog_key` trim in `_dispatch_task_key_form_meta` when touching `api_admin.py`. | Ada |
-| **AST-748** remains prerequisite for runtime `consult_*` → `grade_*` end-to-end (consult/dispatcher paths). | Hedy |
+
+## Resolution
+
+| Field | Value |
+|-------|-------|
+| Date | 2026-06-23 |
+| Publish ref | `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` |
+
+### fix-now — bootstrap (closed)
+
+**`src/core/bootstrap.py`:** `_validate_runtime_coupling()` schedulable loop now uses `if key in TASK_CONFIG: continue` only; dropped `resolve_dispatch_task_config_key` import (Radia review §Issues fix-now #1).
+
+### fix-now — discuss (closed)
+
+**`src/ui/api/api_admin.py`:** `_dispatch_task_key_form_meta` sets `catalog_key = (task_key or "").strip()`; removed unused `resolve_dispatch_task_config_key` import (Radia discuss item).
+
+### fix-now — `ASTRAL_TEST_BIBLE.md` (closed @ `e64fda3`)
+
+Betty **`merge-tests(AST-747)`** — §7.13y **`grade_like`** schedulable hop; §7.13zz AST-654 test-child note uses **`grade_do`** / identity-only **`resolve_dispatch_task_config_key()`** (Radia fix-now #2).
+
+### Outcome
+
+All **fix-now** and **discuss** items closed. Ready for **User Testing**.
