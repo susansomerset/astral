@@ -145,3 +145,12 @@ No conflicts requiring `!!-NONE`.
 |--------|-------|
 | **resolve-child** — no code changes required from review. | Katherine |
 | Susan UAT: Add Task picker shows `grade_*` not `consult_*`; Scheduled Actions `grade_do` rows bucket under DB grouping after **AST-748** migration. | Susan |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-23  
+**Review ref:** Radia — no fix-now or discuss (`5bda6f0`).
+
+No product changes required. §9a dry-run: `origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` → `origin/dev`: clean · → `origin/ftr/ast-736-task-keys-vs-dispatch-task-keys`: clean.
