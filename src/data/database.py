@@ -5931,6 +5931,32 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
     )
     conn.commit()
+    # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
+    _CONSULT_TO_GRADE_DISPATCH_KEYS = (
+        ("consult_do", "grade_do"),
+        ("consult_get", "grade_get"),
+        ("consult_like", "grade_like"),
+    )
+    for retired_key, grade_key in _CONSULT_TO_GRADE_DISPATCH_KEYS:
+        # Drop legacy row when canonical grade_* row already exists for same triple.
+        conn.execute(
+            """
+            DELETE FROM dispatch_task AS d
+            WHERE d.task_key = ?
+              AND EXISTS (
+                SELECT 1 FROM dispatch_task AS g
+                WHERE g.candidate_id = d.candidate_id
+                  AND g.task_key = ?
+                  AND g.trigger_state = d.trigger_state
+              )
+            """,
+            (retired_key, grade_key),
+        )
+        conn.execute(
+            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
+            (grade_key, retired_key),
+        )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 

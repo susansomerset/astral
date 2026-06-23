@@ -20,6 +20,7 @@ from flask import Flask, send_from_directory
 from src.core.auth_bootstrap import wire_stytch_token_authenticator
 
 _DIST = Path(__file__).parent / "frontend" / "dist"
+_FRONTEND_SRC = Path(__file__).parent / "frontend" / "src"
 
 app = Flask(__name__, static_folder=None)
 
@@ -59,6 +60,34 @@ bootstrap_runtime()
 # --- Serve React app ---
 
 
+def _warn_stale_frontend_dist() -> None:
+    """Local dev: Flask :5001 serves dist/; git pull does not rebuild it."""
+    dist_index = _DIST / "index.html"
+    if not _FRONTEND_SRC.is_dir():
+        return
+    src_files = [
+        p for p in _FRONTEND_SRC.rglob("*")
+        if p.suffix in (".ts", ".tsx") and p.is_file()
+    ]
+    if not src_files:
+        return
+    if not dist_index.is_file():
+        print(
+            "WARNING: frontend/dist missing — UI on :5001 will 404 or be stale; "
+            "run: cd src/ui/frontend && npm run build (or use http://localhost:5173)",
+            file=sys.stderr,
+        )
+        return
+    dist_mtime = dist_index.stat().st_mtime
+    newest_src = max(p.stat().st_mtime for p in src_files)
+    if newest_src > dist_mtime:
+        print(
+            "WARNING: frontend/dist older than src/ — :5001 serves stale UI; "
+            "rebuild (npm run build) or use http://localhost:5173 (vite)",
+            file=sys.stderr,
+        )
+
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
@@ -69,4 +98,5 @@ def serve_react(path):
 
 
 if __name__ == "__main__":  # pragma: no cover
+    _warn_stale_frontend_dist()
     app.run(debug=True, port=5001)

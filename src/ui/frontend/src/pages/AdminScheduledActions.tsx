@@ -95,18 +95,13 @@ function ScheduledPhaseTable({
   )
 
   function scheduledFrozenStyle(colIndex: number, base: CSSProperties = {}): CSSProperties {
-    const key = DATA_COL_KEYS_ARR[colIndex]
-    const w = mergedWidths[key]
-    const widthStyle: CSSProperties =
-      w && w > 0 ? { width: w, minWidth: w, boxSizing: "border-box" } : {}
     const left = stickyLeftPx(colIndex, mergedWidths, DATA_COL_KEYS_ARR, false, frozenN)
-    if (left == null) return { ...base, ...widthStyle }
-    // Only apply sticky offset when all prior frozen columns have measured width (avoid 120px fallback gap).
+    if (left == null) return base
     const predecessorsReady = DATA_COL_KEYS_ARR.slice(0, colIndex).every(
       (k) => (mergedWidths[k] ?? 0) > 0,
     )
-    if (!predecessorsReady) return { ...base, ...widthStyle }
-    return { ...base, ...widthStyle, left }
+    if (!predecessorsReady) return base
+    return { ...base, left }
   }
 
   return (
@@ -266,6 +261,7 @@ export default function ScheduledActions() {
   }, [loadThreadStatus])
 
   const [taskKeyFilter, setTaskKeyFilter] = useState("")
+  const [sectionGroupFilter, setSectionGroupFilter] = useState("")
   const [floorMin, setFloorMin] = useState("")
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
@@ -274,16 +270,18 @@ export default function ScheduledActions() {
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
   const [maxRunsFilter, setMaxRunsFilter] = useState("")
-  const [scoreFloorOptions, setScoreFloorOptions] = useState<string[]>([])
+  const scoreFloorOptions = useMemo(
+    () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
+    [],
+  )
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [tasksRes, keysRes, statesRes, floorsRes] = await Promise.all([
+      const [tasksRes, keysRes, statesRes] = await Promise.all([
         api("/api/admin/dispatch_tasks"),
         api("/api/admin/dispatch_tasks/task_keys"),
         api("/api/admin/dispatch_tasks/state_options"),
-        api("/api/admin/dispatch_tasks/score_floor_options"),
       ])
       if (tasksRes.ok) setData(await tasksRes.json())
       if (keysRes.ok) {
@@ -296,10 +294,6 @@ export default function ScheduledActions() {
           job: Array.isArray(states?.job) ? states.job : [],
           company: Array.isArray(states?.company) ? states.company : [],
         })
-      }
-      if (floorsRes.ok) {
-        const floors = await floorsRes.json()
-        setScoreFloorOptions(Array.isArray(floors?.values) ? floors.values : [])
       }
     } finally {
       setLoading(false)
@@ -318,6 +312,18 @@ export default function ScheduledActions() {
   }, [threadStatus, data, loadData])
 
   const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
+
+  const sectionGroupOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const meta of Object.values(allTaskKeys)) {
+      const name = meta.task_group_name || "(unassigned)"
+      const key = `${meta.task_group_order || ""}\u0000${name}`
+      if (!seen.has(key)) seen.set(key, name)
+    }
+    return [...seen.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, name]) => ({ key, name }))
+  }, [allTaskKeys])
 
   const filterOptionValues = useMemo(() => ({
     freq: [...new Set(data.map(r => r.freq_hrs ?? 0))].sort((a, b) => a - b),
@@ -354,6 +360,14 @@ export default function ScheduledActions() {
   const filteredRows = useMemo(() => {
     let filtered = data
     if (candidateFilter) filtered = filtered.filter(r => r.candidate_id === candidateFilter)
+    if (sectionGroupFilter) {
+      filtered = filtered.filter(r => {
+        const meta = allTaskKeys[r.task_key]
+        const name = meta?.task_group_name || "(unassigned)"
+        const key = `${meta?.task_group_order || ""}\u0000${name}`
+        return key === sectionGroupFilter
+      })
+    }
     if (taskKeyFilter) filtered = filtered.filter(r => r.task_key === taskKeyFilter)
     if (autoFilter === "on") filtered = filtered.filter(r => !!r.auto_mode)
     if (autoFilter === "off") filtered = filtered.filter(r => !r.auto_mode)
@@ -374,7 +388,7 @@ export default function ScheduledActions() {
       })
     }
     return filtered
-  }, [data, candidateFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
+  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, DispatchTask[]> = {}
@@ -504,12 +518,7 @@ export default function ScheduledActions() {
             trigger_state: form.trigger_state,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored
-              ? (() => {
-                  const n = parseFloat(form.score_floor)
-                  return Number.isFinite(n) ? n : 1
-                })()
-              : null,
+            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
             auto_mode: form.auto_mode,
             debug: form.debug,
           }),
@@ -531,12 +540,7 @@ export default function ScheduledActions() {
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored
-              ? (() => {
-                  const n = parseFloat(form.score_floor)
-                  return Number.isFinite(n) ? n : 1
-                })()
-              : null,
+            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
             auto_mode: form.auto_mode,
           }),
         })
@@ -581,6 +585,15 @@ export default function ScheduledActions() {
           onChange={setCandidateFilter}
           candidates={candidates}
         />
+        <label>
+          Section/Group
+          <select value={sectionGroupFilter} onChange={e => setSectionGroupFilter(e.target.value)}>
+            <option value="">All</option>
+            {sectionGroupOptions.map(opt => (
+              <option key={opt.key} value={opt.key}>{opt.name}</option>
+            ))}
+          </select>
+        </label>
         <label>
           Task
           <select value={taskKeyFilter} onChange={e => setTaskKeyFilter(e.target.value)}>

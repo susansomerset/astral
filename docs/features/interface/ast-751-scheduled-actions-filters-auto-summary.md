@@ -288,4 +288,36 @@ Stage 1: expanded client-side filters (Floor min/max, AUTO, Debug, Freq, Min cou
 
 ## Review (Radia)
 
-<!-- Radia fills after review-child -->
+**Diff:** `origin/dev...origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `56e4f9b`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | All four stages land in `AdminScheduledActions.tsx`: expanded AND filters, section `{autoOn} / {total} AUTO` on filtered rows, Candidate/Avail/Last Run rightmost with frozen Task/Entity/State, All-candidate default sort by `available_count` desc within `task_key`. |
+| Layer / rules | Single frontend page; no new cross-layer imports; filter logic centralized in `filteredRows`; `formatAvailableCount` helper avoids duplicate display rules. |
+| Tests | Betty manifest (`AST-751 filters…` describe, 7 cases) covers filters, header counts, column order, em dash, All-candidate sort, floor range excluding non-scored rows; existing run/stop/modal tests updated for new header shape. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| **Advisory** | Floor min/max options remain hardcoded `1.00…10.00` (19 steps) per plan; tests already mock `/api/admin/dispatch_tasks/score_floor_options` for sibling **AST-750** — no action on this ticket. | `AdminScheduledActions.tsx` ~277–280; test mocks |
+| **Advisory** | `filterOptionValues` derives dropdown sets from full `data` (not filtered rows) as planned — if the dataset grows very large, option lists could get long; acceptable for admin triage today. | `filteredRows` / `filterOptionValues` memos |
+
+**Verdict:** Clean — `resolve-child` may proceed.
+
+---
+
+## Resolution
+
+**Date:** 2026-06-23  
+**Review ref:** `origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ Radia `docs(AST-751): Radia review — clean`
+
+No **fix-now** items. Product unchanged from build @ `9408943` + Betty `merge-tests(AST-751)`. Advisory notes (hardcoded floor min/max options; `filterOptionValues` from full `data`) accepted per plan — **AST-750** owns score-floor-zero API when that sibling ships.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-735-scheduled-actions-screen-edits`.

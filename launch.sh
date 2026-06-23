@@ -36,13 +36,26 @@ _ensure_frontend_deps() {
   fi
 }
 
+_ensure_frontend_build() {
+  _ensure_frontend_deps
+  cd "${FRONTEND_DIR}"
+  local dist_index="dist/index.html"
+  if [[ ! -f "$dist_index" ]] \
+    || find src -type f \( -name '*.tsx' -o -name '*.ts' \) -newer "$dist_index" -print -quit | grep -q .; then
+    print -u2 "frontend dist stale or missing — running npm run build..."
+    npm run build
+  fi
+}
+
 typeset USE_TABS=1
 [[ "${1:-}" == "--windows" ]] && { USE_TABS=0; shift; }
 
 run_flask() {
   _ensure_python_deps
+  _ensure_frontend_build
   cd "${WORKDIR}/src/ui"
   print -u2 "flask-api http://localhost:5001 (Ctrl-C to stop)"
+  print -u2 "tip: vite live-reload at http://localhost:5173 — launch.sh --vite"
   exec python server.py
 }
 

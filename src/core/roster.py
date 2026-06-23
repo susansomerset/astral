@@ -1281,6 +1281,9 @@ async def scrape_company_homepage_content(
     enumerated = contract.get("enumerated_nav_links") or ""
     if enumerated:
         out["enumerated_nav_links"] = enumerated
+    nav_error = contract.get("nav_error")
+    if nav_error:
+        logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): {nav_error}")
     return out
 
 

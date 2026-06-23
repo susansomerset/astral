@@ -659,6 +659,25 @@ class TestDispatchTasks:
         assert "retired" in err
         assert "grade_do" in err
 
+    def test_create_dispatch_task_rejects_retired_consult_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "consult_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "grade_do" in err
+
     def test_create_dispatch_task_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         assert admin_client.post("/api/admin/dispatch_tasks", json={"task_key": "t"}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")

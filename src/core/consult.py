@@ -3,15 +3,14 @@ Core business logic for job consulting/analysis.
 
 render_verdict(task_type, astral_job_id): single orchestrator for per-job consult tasks.
   Fetches job/company internally, preps live content, calls agent, audits, derives verdict.
-  Per-job orchestration (pass/fail/error, thresholds, rubric refs) merges TASK_CONFIG[task_type] with
-  agent_task when task_type wraps a grade_* row (consult_do → grade_do via _consult_orchestration).
+  Per-job orchestration (pass/fail/error, thresholds, rubric refs) from TASK_CONFIG[task_type] — dispatch and catalog share one string (AST-736).
 _render_pass_fail: binary grading (PASS/F) for qualify_job_listings and evaluate_jd_batch.
-_render_score: scored grading (AST-358 importance × universal grade values × confidence) for batch qualify/evaluate_jd and consult_get/do/like.
+_render_score: scored grading (AST-358 importance × universal grade values × confidence) for batch qualify/evaluate_jd and grade_get/do/like.
 When TASK_CONFIG[task_key].scored, transitions persist latest_score only when a numeric score exists.
 _run_batch_consult: shared scaffolding for batch AI tasks (ID reconciliation, audit, error handling).
 qualify_job_listings: batch job list screen (Pattern A) — thin wrapper over _run_batch_consult.
 evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over _run_batch_consult.
-consult_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(agent_task=*grade_*).
+grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
 
 import json
@@ -33,7 +32,6 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     grade_value,
     importance_multiplier,
-    resolve_dispatch_task_config_key,
     resume_artifact_compound_state,
     resume_artifact_hop_task_keys,
 )
@@ -48,7 +46,7 @@ def _consult_job_identifier(job: Dict[str, Any]) -> str:
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
 
 
-# input_state → TASK_CONFIG orchestration lookup key (`consult_*` → grade_* prompts via _consult_orchestration).
+# input_state → TASK_CONFIG orchestration lookup key (grade_* for scored consult hops).
 # Legacy map — not used for dispatch routing (AST-534). Tests pass dispatch_task_key explicitly.
 _INPUT_STATE_TO_TASK = {
     "NEW":                "validate_title",
@@ -57,9 +55,9 @@ _INPUT_STATE_TO_TASK = {
     "PASSED_JOBLIST":     "scrape_jd",
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
-    "PASSED_JD":          "consult_do",
-    "PASSED_DO":          "consult_get",
-    "PASSED_GET":         "consult_like",
+    "PASSED_JD":          "grade_do",
+    "PASSED_DO":          "grade_get",
+    "PASSED_GET":         "grade_like",
     "PASSED_LIKE":        "analysis_upshot",
     "PASSED_LIKE_RETRY":  "analysis_upshot",
     "BUILD_ARTIFACTS":    "contemplate_job",
@@ -68,10 +66,9 @@ _INPUT_STATE_TO_TASK = {
 
 
 def _consult_orchestration(task_key: str) -> Dict[str, Any]:
-    """Return pass/fail/error/rubric/pass_threshold/agent_task orch for qualify/evaluate or consult wrappers."""
-    orch_key = resolve_dispatch_task_config_key(task_key)
-    base = TASK_CONFIG[orch_key]
-    return base if orch_key == task_key else {**base, "agent_task": orch_key}
+    """Return TASK_CONFIG orchestration for dispatch/catalog task_key (same string after AST-736)."""
+    tk = (task_key or "").strip()
+    return TASK_CONFIG[tk]
 
 
 def _render_pass_fail(task_key: str, grades: list) -> str:
@@ -561,10 +558,10 @@ def _task_config_scored(task_key: str) -> bool:
     return bool((TASK_CONFIG.get(task_key) or {}).get("scored"))
 
 
-_DISPATCH_CONSULT_TO_HEADER = {
-    "consult_do": "DO",
-    "consult_get": "GET",
-    "consult_like": "LIKE",
+_GRADE_DISPATCH_TO_HEADER = {
+    "grade_do": "DO",
+    "grade_get": "GET",
+    "grade_like": "LIKE",
 }
 
 
@@ -807,7 +804,7 @@ def _apply_render_verdict_decoded_job(
     """Decode path: hydrate reasons, graded verdict, persist {prefix}_* + transition (single row or batch)."""
     if debug:
         logger.set_debug_flag(True)
-    agent_task = cfg.get("agent_task") or resolve_dispatch_task_config_key(dispatch_task_key)
+    agent_task = cfg.get("agent_task") or (dispatch_task_key or "").strip()
     grades = response_job.get("grades")
     if not isinstance(grades, list):
         raise ValueError("agent response missing grades")
@@ -830,7 +827,7 @@ def _apply_render_verdict_decoded_job(
     elif mode == "scored":
         rubric_key = cfg.get("rubric_artifact")
         if not rubric_key:
-            orch_key = resolve_dispatch_task_config_key(dispatch_task_key)
+            orch_key = (dispatch_task_key or "").strip()
             raise ValueError(f"TASK_CONFIG[{orch_key}] missing rubric_artifact")
         if not rubric_criteria:
             raise ValueError(f"Candidate missing rubric artifact: {rubric_key}")
@@ -860,7 +857,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
     Returns result dict for CLI logging."""
     cfg = _consult_orchestration(task_type)
-    agent_task = cfg["agent_task"]
+    agent_task = cfg.get("agent_task") or task_type
     error_state = cfg.get("error_state")
 
     if debug:
@@ -1458,9 +1455,9 @@ async def _consult_scored_dispatch_batch_encoded(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
-    hdr = _DISPATCH_CONSULT_TO_HEADER[dispatch_task_key]
+    hdr = _GRADE_DISPATCH_TO_HEADER[dispatch_task_key]
     cfg_dispatch = _consult_orchestration(dispatch_task_key)
-    agent_tk = cfg_dispatch["agent_task"]
+    agent_tk = cfg_dispatch.get("agent_task") or dispatch_task_key
     error_state = cfg_dispatch.get("error_state")
     skipped = 0
 
@@ -1547,7 +1544,7 @@ async def _consult_scored_dispatch_batch_encoded(
     return result
 
 
-async def consult_do_batch(
+async def grade_do_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]] = None,
@@ -1555,11 +1552,11 @@ async def consult_do_batch(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
-        "consult_do", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        "grade_do", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
-async def consult_get_batch(
+async def grade_get_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]] = None,
@@ -1567,11 +1564,11 @@ async def consult_get_batch(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
-        "consult_get", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        "grade_get", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
-async def consult_like_batch(
+async def grade_like_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]] = None,
@@ -1579,7 +1576,7 @@ async def consult_like_batch(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
-        "consult_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        "grade_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
@@ -1811,7 +1808,7 @@ async def run_consult_task(
         r = await evaluate_jd_batch(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
-    elif task_key in ("consult_do", "consult_get", "consult_like"):
+    elif task_key in ("grade_do", "grade_get", "grade_like"):
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
             orch = _consult_orchestration(task_key)
@@ -1820,9 +1817,11 @@ async def run_consult_task(
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        _batch = {"consult_do": consult_do_batch, "consult_get": consult_get_batch, "consult_like": consult_like_batch}[
-            task_key
-        ]
+        _batch = {
+            "grade_do": grade_do_batch,
+            "grade_get": grade_get_batch,
+            "grade_like": grade_like_batch,
+        }[task_key]
         r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
     elif task_key == "analysis_upshot":
         return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug)

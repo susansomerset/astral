@@ -190,4 +190,48 @@ No unresolved conflicts.
 ## Review stub (Hedy / build)
 
 **Publish ref:** `origin/sub/AST-753/AST-759-shared-page-scrape-fetch-job-pages-nav-links`  
-**Product commits:** `c7a9be5` (Stage 1 — shared contract helpers), `7ec374e` (Stage 2 — fetch_website + fetch_job_pages wiring), `7513459` (Stage 3 — select_job_page live content parity)
+**Product commits:** `c7a9be5` (Stage 1 — shared contract helpers), `7ec374e` (Stage 2 — fetch_job_pages wiring), `7513459` (Stage 3 — select_job_page live content parity)
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-753/AST-759-shared-page-scrape-fetch-job-pages-nav-links` @ `3061c92` (AST-759 product: `c7a9be5`, `7ec374e`, `7513459`)
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | All three stages land: `extract_page_scrape_contract` (external raw I/O), `finalize_page_scrape_contract` / `scrape_loaded_page_contract` (core collapse + enumerate), homepage + `_scrape_pjl_page` single-load routing, `_merge_pjl_scrape_record` / `_assemble_pjl_content` nav persistence, `_build_select_job_page_live_content` + `run_select_job_page_dispatch` live content parity, gazer per-URL debug outcomes. |
+| Layer / §2.5 | Product contract (collapse, enumerate) in core; external returns raw payload only; import graph unchanged. |
+| §2.6 / batch | No new transitions; `fetch_job_pages_batch` ledger skip + `_merge_pjl_nav_links` additive semantics preserved. |
+| Tests | Betty manifest green (`TestAst759SharedPageScrapeContract`, extended AST-719/720/701 + gazer batch tests). |
+
+### Issues
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| **fix-now** | Plan Stage 2 §1 requires preserving **non-fatal nav warning** on homepage scrape. Pre-refactor `scrape_company_homepage_content` logged `logger.warning` when `extract_site_page_list` raised; new path routes through `extract_page_scrape_contract`, which swallows `Exception` → `nav_urls=[]` with no signal, and core no longer warns. Operators lose visibility into nav extraction failures on fetch_website. | `src/external/playwright.py` `extract_page_scrape_contract`; `src/core/roster.py` `scrape_company_homepage_content` |
+| **discuss** | Ledger-skip debug block emits `index=1, total=1` for **each** already-scraped URL — misleading batch headers when multiple skips (§1.5.1 universal `index N/M`). | `src/core/gazer.py` `fetch_job_pages_batch` ~440–449 |
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **fix-now** | Surface nav extraction failure to core (e.g. optional `nav_error` on raw contract) and restore `logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): …")` in `scrape_company_homepage_content` when nav I/O fails but visible text succeeded — match pre-AST-759 behavior per plan. |
+| **discuss** | If ledger skips can be >1 per company, use a single skip summary header or proper `index/total` over skipped URLs. |
+| **Advisory** | Full three-dot diff vs `origin/dev` includes sibling epic merges on the AST-753 ftr line (AST-747/750/751 docs + interface/config deltas); AST-759 product commits stay within planned three-module footprint. |
+
+**Verdict:** One **fix-now** (homepage nav warning regression) — `resolve-child` after restore.
+
+---
+
+## Resolution (Hedy)
+
+**Date:** 2026-06-23  
+**Review ref:** Radia @ `5776702`
+
+| Item | Action |
+| --- | --- |
+| **fix-now** (homepage nav warning) | `extract_page_scrape_contract` now sets optional `nav_error` when `extract_site_page_list` raises; `scrape_company_homepage_content` restores `logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): …")` when `nav_error` is present and visible text succeeded. |
+| **discuss** (ledger-skip debug headers) | `fetch_job_pages_batch` skip loop uses `index=skip_idx`, `total=len(skipped)` over the skipped URL list instead of fixed `1/1` per URL. |
+
+**Verdict:** Radia fix-now addressed; ready for **User Testing**.

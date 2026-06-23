@@ -192,10 +192,67 @@ No conflicts requiring `!!-NONE`.
 - **Betty** updates component tests referencing `consult_do` in `task_keys` metadata — do not edit tests in this ticket.
 - **`resolve_dispatch_task_config_key`** remains imported by `consult.py` until **AST-748** removes those call sites.
 
-## Review
+## Review (build)
 
 | Field | Value |
 |-------|-------|
 | Build date | 2026-06-18 |
-| Publish ref | `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` @ `6eb729e` |
-| Commits | `e0c9e27` config · `627a5f9` admin API · `6eb729e` rules doc |
+| Publish ref | `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` @ `5467924` |
+| Commits | `e0c9e27` config · `627a5f9` admin API · `6eb729e` rules doc · `5467924` test (Betty) |
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` · tip **`5467924`**
+
+**AST-747 product commits:** `e0c9e27`, `627a5f9`, `6eb729e`, `5467924`. Publish ref also rolls up sibling qa merges (**AST-745**, **AST-746**, **AST-751**) — not attributed to this ticket (§5d boundary clean on Ada commits).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stage 1 | `DISPATCH_RETIRED_TASK_KEYS`, `dispatch_task_key_retired_message` (exact operator text), `grade_*` in schedulable + batch frozensets, alias map removed, identity `resolve_dispatch_task_config_key`, trigger/entity helpers and `dispatch_task_key_is_scored` updated. |
+| Plan Stage 2 (partial) | `create_dtask` rejects retired `consult_*` before save; adhoc comment uses `grade_*`. |
+| Plan Stage 3 (partial) | `docs/ASTRAL_CODE_RULES.md` §2.6–2.7 + pipeline table use `grade_*`; §2.6.2 example corrected (`grade_do` on `PASSED_JD` → `PASSED_DO`). |
+| §2.1 config | Retired keys fail loudly via `KeyError` / HTTP 400; schedulable vocabulary single-sourced in frozensets. |
+| §3.3 layer | Utils + one config helper import in `api_admin`; no cross-layer violations in AST-747 commits. |
+| Tests | Betty manifest: retired-key guard, `grade_do` schedulable defaults, `task_keys` grouping on catalog `grade_do`, bible blocks in `utils/config`, `ui/api`, `ui/server`. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| **fix-now** | **Plan Stage 2 incomplete** — `_validate_runtime_coupling()` still uses alias-era `resolved = resolve_dispatch_task_config_key(key)` branch. Plan requires direct `if key in TASK_CONFIG: continue` loop and dropping unused import. Harmless while resolver is identity, but stale and contradicts cutover contract. | `src/core/bootstrap.py` L33–36 |
+| **fix-now** | **Plan Stage 3 incomplete** — `docs/ASTRAL_TEST_BIBLE.md` still documents dispatch vocabulary as `consult_do` / alias resolution (~L1839) and **`consult_like`** as schedulable hop name (~L370). Plan Stage 3 items 4–5 not landed in engineer commits. | `docs/ASTRAL_TEST_BIBLE.md` |
+| **discuss** | `_dispatch_task_key_form_meta` still calls `resolve_dispatch_task_config_key` for `catalog_key`; plan Stage 2 item 4 asked for `(task_key or "").strip()`. Behavior identical today — defer cleanup to **resolve-child** or **AST-748** when call sites drop? | `src/ui/api/api_admin.py` L765 |
+| **advisory** | Publish-ref three-dot diff includes **AST-745** (`database.py`), **AST-746/751** (`AdminScheduledActions.tsx`) from sibling qa merges — expected epic rollup, not AST-747 smuggling. | branch composition |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| **resolve-child:** tighten `bootstrap.py` schedulable validation per plan Stage 2; update `ASTRAL_TEST_BIBLE.md` dispatch vocabulary (~L370, ~L1839) per plan Stage 3. | Ada |
+
+## Resolution
+
+| Field | Value |
+|-------|-------|
+| Date | 2026-06-23 |
+| Publish ref | `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` |
+
+### fix-now — bootstrap (closed)
+
+**`src/core/bootstrap.py`:** `_validate_runtime_coupling()` schedulable loop now uses `if key in TASK_CONFIG: continue` only; dropped `resolve_dispatch_task_config_key` import (Radia review §Issues fix-now #1).
+
+### fix-now — discuss (closed)
+
+**`src/ui/api/api_admin.py`:** `_dispatch_task_key_form_meta` sets `catalog_key = (task_key or "").strip()`; removed unused `resolve_dispatch_task_config_key` import (Radia discuss item).
+
+### fix-now — `ASTRAL_TEST_BIBLE.md` (closed @ `e64fda3`)
+
+Betty **`merge-tests(AST-747)`** — §7.13y **`grade_like`** schedulable hop; §7.13zz AST-654 test-child note uses **`grade_do`** / identity-only **`resolve_dispatch_task_config_key()`** (Radia fix-now #2).
+
+### Outcome
+
+All **fix-now** and **discuss** items closed. Ready for **User Testing**.
