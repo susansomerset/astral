@@ -93,3 +93,33 @@ No conflicts requiring `conf-!!-NONE`.
 **Built:** Stage 1 — removed `width`/`minWidth` lock from `scheduledFrozenStyle`; left-only sticky aligned with ListPage; mount-on-expand and `predecessorsReady` unchanged.
 
 **Out of build scope:** Betty test assertions for no inline minWidth on Entity header; Susan manual UAT for header visibility.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-744/AST-760-uat-entity-header-overlays-state-in-scheduled-actions` · tip **`716da64`**
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1 exact: `scheduledFrozenStyle` reverted to **left-only** sticky; width/`minWidth`/`boxSizing` lock removed; mount-on-expand + `predecessorsReady` + measure deps unchanged. |
+| §1.3 DRY | Matches ListPage `frozenCellStyle` (left-only) while keeping AST-746 `predecessorsReady` gate — reasonable delta vs ListPage. |
+| §3.3 layer | UI-only; no new imports. |
+| Product scope | `AdminScheduledActions.tsx` product diff vs `origin/dev` is **11 lines** (this ticket only). |
+| Tests | `AST-760` case asserts Entity header has no inline `width`/`minWidth`, State unfrozen with no `left`; remeasure path confirms `left` without width lock. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| — | **No fix-now.** | — |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| **resolve-child** — no code changes required from review. | Katherine |
+| **advisory:** Full three-dot diff vs `origin/dev` also carries **AST-751** test-bible + test manifest from `merge-tests` on the ftr/735 lineage — product hunk for AST-760 is isolated; expected rollup noise, not scope smuggling in product code. | — |
+| Susan manual UAT: expand phase — Candidate/Task/Entity/State headers visible and clickable; Entity must not cover State; no Candidate/Task gap; horizontal scroll frozen alignment. | Susan |
