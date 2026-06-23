@@ -224,6 +224,34 @@ describe("AdminScheduledActions", () => {
     expect(screen.queryByText(/phase/i)).not.toBeInTheDocument()
   }, 20000)
 
+  it("AST-749: grade_do row groups under task_keys metadata not (unassigned)", async () => {
+    const gradeDoTask = {
+      ...dispatchTask,
+      id: 3,
+      task_key: "grade_do",
+      trigger_state: "PASSED_JD",
+      candidate_id: "c1",
+      auto_mode: 0,
+    }
+    const gradeKeys = {
+      grade_do: {
+        entity_type: "job",
+        trigger_state: "PASSED_JD",
+        task_group_order: "D. Job Analysis",
+        task_group_name: "D. Job Analysis",
+        task_seq: 2,
+        task_name: "grade_do",
+        is_scored: true,
+      },
+    }
+    mockApi(false, { tasks: [gradeDoTask], taskKeysPayload: gradeKeys, threads: {} })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await selectAllCandidatesFilter()
+    expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
+    expect(screen.queryByText("(unassigned)")).not.toBeInTheDocument()
+  }, 20000)
+
   it("AST-647: phase table freezes first three data columns", async () => {
     mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
     renderWithProviders(<ScheduledActions />)

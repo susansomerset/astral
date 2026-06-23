@@ -552,6 +552,29 @@ class TestAst739DispatchTaskKeysGrouping:
         assert keys["orphan_only"]["task_name"] == ""
 
 
+# AST-749: retired consult_* absent from task_keys even when list_dispatch_tasks returns legacy rows.
+class TestAst749DispatchTaskKeysRetiredFilter:
+    def test_dispatch_task_keys_excludes_retired_consult_keys(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {"task_key": "consult_do", "entity_type": "job", "trigger_state": "PASSED_JD"},
+                {"task_key": "consult_get", "entity_type": "job", "trigger_state": "PASSED_DO"},
+                {"task_key": "grade_do", "entity_type": "", "trigger_state": ""},
+            ],
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "consult_do" not in keys
+        assert "consult_get" not in keys
+        assert "consult_like" not in keys
+        assert "grade_do" in keys
+        assert keys["grade_do"]["entity_type"] == "job"
+        assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
+
+
 # Branches: timesheet list/export with optional req_dict filters.
 class TestTimesheets:
     def test_list_and_export_timesheets(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:

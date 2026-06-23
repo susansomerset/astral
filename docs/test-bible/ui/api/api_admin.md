@@ -138,3 +138,23 @@ Retired **`consult_*`** on **`POST /api/admin/dispatch_tasks`**; schedulable **`
 
 Config helpers: **`docs/test-bible/utils/config.md`** (**AST-747**). **AST-748** owns **`test_consult.py`**.
 
+### AST-749 · AST-736
+
+`GET /api/admin/dispatch_tasks/task_keys` filters **`DISPATCH_RETIRED_TASK_KEYS`** on the `list_dispatch_tasks` loop and final pop — legacy `consult_*` rows never appear in the Add Task picker; `grade_*` keys retain schedulable defaults from **`dispatch_task_admin_defaults`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retirement filter on read path | `src/ui/api/api_admin.py` | `TestAst749DispatchTaskKeysRetiredFilter::test_dispatch_task_keys_excludes_retired_consult_keys` |
+| POST guard (verify only) | same | `TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key` (**AST-747**) |
+
+Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
+
+**AST-749** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst749DispatchTaskKeysRetiredFilter \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key \
+  -q
+```
+

@@ -545,6 +545,24 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Prerequisite:** **AST-738** data/API grouping on publish tip (sibling `merge-tests`).
 
+### AST-749 · AST-736
+
+Scheduled Actions: `grade_do` dispatch row buckets under **`task_keys.grade_do.task_group_name`** (e.g. **D. Job Analysis**) — not **`(unassigned)`** when grouping metadata is present on the direct dispatch key (no consult alias).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-749: grade_do row groups under task_keys metadata not (unassigned)`** |
+
+**AST-749** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-749"
+```
+
+API retirement filter: **`docs/test-bible/ui/api/api_admin.md`** (**AST-749**).
+
 ### AST-746 · AST-744
 
 Susan UAT: visible gap between **Candidate** / **Task** and **Entity** overlapping **State** on Scheduled Actions phase tables. Root cause: `useListTableColumnMeasure` ran while `CollapsiblePanel` body was `hidden` (`offsetWidth === 0` → 120px `stickyLeftPx` fallback). Fix mounts `ScheduledPhaseTable` only when section expanded; locks frozen column widths; defers sticky `left` until predecessor columns measure.
