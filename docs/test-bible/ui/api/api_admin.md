@@ -149,6 +149,25 @@ Config helpers: **`docs/test-bible/utils/config.md`** (**AST-747**). **AST-748**
 
 Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
 
+### AST-773 · AST-763
+
+`PUT /api/admin/dispatch_tasks/<id>` whitelists `task_key` on update; `_dispatch_task_key_trigger_error` validates schedulable keys against `JOB_STATES` / `COMPANY_STATES` and resume-hop compound states; derives catalog columns via `dispatch_task_admin_defaults`; blocks edits on AUTO rows except `auto_mode` toggle; 409 UNIQUE cites attempted `(candidate_id, task_key, trigger_state)`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT `task_key` + validation helper | `src/ui/api/api_admin.py` | `TestAst773UpdateDispatchTaskTaskKey` |
+| Update column whitelist | `src/data/database.py` (`_DISPATCH_TASK_UPDATE_COLS`) | same (integration via PUT) |
+
+Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
+
+**AST-773** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey \
+  -q
+```
+
 **AST-749** narrowed pytest:
 
 ```bash

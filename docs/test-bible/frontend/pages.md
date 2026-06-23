@@ -641,3 +641,25 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-751** (filter bar + AUTO summary), **AST-739** (DB grouping sections), **AST-634** (Candidate filter).
 
+### AST-773 · AST-763
+
+Scheduled Actions **Edit Task** exposes the **Task** `<select>` (same catalog as Add Task); **PUT** `/api/admin/dispatch_tasks/<id>` accepts `task_key` with entity-registry validation, derived `entity_type` / `sort_by` / `batch_call_mode`, AUTO guard (non-`auto_mode` fields blocked while AUTO on), and 409 UNIQUE message reflecting attempted triple. UI preserves **Input State** and **Score Floor** on task change (`taskKeyChangePatch`); AUTO rows cannot open edit (toast).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT `task_key` validation + AUTO guard | `src/ui/api/api_admin.py`, `src/data/database.py` | `tests/component/ui/api/test_api_admin.py` — **`TestAst773UpdateDispatchTaskTaskKey`** (5 cases) |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-773 edit modal task_key`** describe (5 cases) |
+
+**AST-773** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-773"
+```
+
+**Builds on:** **AST-768** (Section/Group filter), **AST-751** (filter bar), **AST-739** (grouping sections), **AST-750** (score floor options on edit save).
+
