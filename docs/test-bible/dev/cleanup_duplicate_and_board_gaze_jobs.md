@@ -20,7 +20,6 @@ One-time cleanup: bulk DELETE board-gaze placeholder companies (`__board__*`), t
 | --- | --- | --- |
 | Duplicate group discovery / ordering | `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` | `TestFindDuplicateIdentityGroups` |
 | Job DELETE helper | same | `TestDeleteJobsByAstralJobIds` |
-| Board-gaze phase dry-run / live / empty | same | `TestBoardGazeCleanup` |
 | Identity dedupe dry-run / live survivor | same | `TestIdentityDedupe` |
 | Phase order, skip flags, summary | same | `TestRunCleanup` |
 
