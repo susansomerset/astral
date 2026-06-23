@@ -4028,7 +4028,10 @@ class TestFinalize469BranchCoverage:
 
 
 class TestAst505InflowDiscovery:
-    """AST-505: CSE discovery batch, vet ingest, URL dedupe, NEW/WEBSITE_FOUND states."""
+    """AST-505: CSE discovery batch, ingest helpers, URL dedupe, NEW/WEBSITE_FOUND states.
+
+    Batch record-only path (no inline vet) — AST-775; vet dispatch is AST-776.
+    """
 
     def test_normalize_company_url_strips_www(self) -> None:
         assert roster_mod._normalize_company_url_for_dedupe("https://www.Acme.com/jobs/") == "https://acme.com/jobs"
@@ -4108,33 +4111,17 @@ class TestAst505InflowDiscovery:
         db.sync_company_search_terms("c1", ["fintech"])
         hits = [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "results": [
-                            {
-                                "hit_index": 0,
-                                "action": "slug",
-                                "short_name": "co_ex",
-                                "website": "https://co.example",
-                            },
-                            {"hit_index": 0, "action": "ignore"},
-                        ],
-                    },
-                }
-            ),
-        )
-        ingested = MagicMock(return_value=True)
-        monkeypatch.setattr(roster_mod, "ingest_new_companies", ingested)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         out = await roster_mod.run_inflow_discovery_batch(cand, "batch-505", cand, False)
         assert out["total_passed"] == 1
-        assert out["total_failed"] == 1
-        ingested.assert_called_once()
+        assert out["total_failed"] == 0
+        row = db.get_company("co_example")
+        assert row is not None
+        assert row["state"] == "NEW"
+        assert row["candidate_id"] == "c1"
+        cdata = row.get("company_data") or {}
+        assert cdata.get("inflow_discovery_notes") == "https://co.example"
+        assert "https://co.example" in (cdata.get("inflow_discovery_blurb") or "")
         row = next(r for r in db.list_company_search_terms("c1") if r["search_term"] == "fintech")
         assert row["last_scan_at"] is not None
 
@@ -4150,11 +4137,6 @@ class TestAst505InflowDiscovery:
             return [{"title": "Ok", "url": "https://ok.example", "snippet": ""}]
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(return_value={"success": True, "parsed_response": {"results": []}}),
-        )
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
         assert out["total_errors"] == 1
@@ -4175,11 +4157,6 @@ class TestAst505InflowDiscovery:
             return []
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(return_value={"success": True, "parsed_response": {"results": []}}),
-        )
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
         assert searched == ["stale"]
@@ -4199,6 +4176,104 @@ class TestAst505InflowDiscovery:
         out = await consult_mod.run_consult_task("candidate", "LIVE_PROMPTS", [cand], "batch-505", cand, False)
         assert out["total_passed"] == 1
         proc.assert_awaited_once_with(cand, "batch-505", cand, False)
+
+
+class TestAst775InflowDiscoveryRecordNew:
+    """AST-775: discovery batch records NEW rows only — no inline vet_inflow_discovery."""
+
+    def test_slug_from_discovery_url_hostname(self) -> None:
+        assert roster_mod._slug_from_discovery_url("https://www.Acme.Corp/jobs") == "acme_corp"
+
+    def test_slug_from_discovery_url_hash_fallback(self) -> None:
+        slug = roster_mod._slug_from_discovery_url("")
+        assert slug.startswith("inflow_")
+        assert len(slug) == len("inflow_") + 12
+
+    def test_discovery_blurb_line_truncates_snippet(self) -> None:
+        long_snip = "x" * 600
+        line = roster_mod._discovery_blurb_line(
+            {"title": "T", "url": "https://u.example", "snippet": long_snip},
+            index=3,
+        )
+        assert line.startswith("003|T|https://u.example|")
+        assert len(line.split("|", 3)[-1]) == 500
+
+    def test_record_hit_creates_new_with_blurb_and_notes(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        hit = {"title": "Hit Co", "url": "https://hit.example", "snippet": "about"}
+        ok, outcome = roster_mod.record_inflow_discovery_hit("c775", hit, index=0)
+        assert ok is True
+        assert "recorded NEW slug=hit_example" in outcome
+        row = db.get_company("hit_example")
+        assert row is not None
+        assert row["state"] == "NEW"
+        cdata = row.get("company_data") or {}
+        assert cdata.get("inflow_discovery_notes") == "https://hit.example"
+        assert cdata.get("inflow_discovery_blurb") == "000|Hit Co|https://hit.example|about"
+
+    def test_record_hit_skips_duplicate_url_via_notes(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_company(
+            "existing",
+            state="NEW",
+            candidate_id="c775",
+            company_name="existing",
+            company_data={"inflow_discovery_notes": "https://dup.example"},
+        )
+        ok, outcome = roster_mod.record_inflow_discovery_hit(
+            "c775",
+            {"title": "X", "url": "https://www.dup.example", "snippet": ""},
+        )
+        assert ok is False
+        assert "skipped duplicate url" in outcome
+
+    def test_record_hit_skips_duplicate_url_via_blurb(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_company(
+            "from_blurb",
+            state="NEW",
+            candidate_id="c775",
+            company_name="from_blurb",
+            company_data={
+                "inflow_discovery_blurb": "000|T|https://blurb.example|snip",
+            },
+        )
+        ok, _ = roster_mod.record_inflow_discovery_hit(
+            "c775",
+            {"title": "Y", "url": "https://blurb.example", "snippet": ""},
+        )
+        assert ok is False
+
+    def test_record_hit_slug_collision_suffix_other_candidate(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("other", state="LIVE_PROMPTS", candidate_data={})
+        db.save_company(
+            "shared_example",
+            state="NEW",
+            candidate_id="other",
+            company_name="shared_example",
+        )
+        ok, outcome = roster_mod.record_inflow_discovery_hit(
+            "c775",
+            {"title": "Z", "url": "https://shared.example", "snippet": ""},
+        )
+        assert ok is True
+        assert "shared_example_2" in outcome
+        assert db.get_company("shared_example_2") is not None
+
+    @pytest.mark.asyncio
+    async def test_run_batch_no_deduped_hits_is_success(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = seeded_db
+        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c1", ["empty"])
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=[]))
+        cand = {"astral_candidate_id": "c1", "candidate_data": {}}
+        out = await roster_mod.run_inflow_discovery_batch(cand, "batch-775", cand, False)
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
 
 
 class TestAst506InflowResolve:
