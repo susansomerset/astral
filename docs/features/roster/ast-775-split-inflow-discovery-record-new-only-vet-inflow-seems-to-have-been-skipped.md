@@ -177,3 +177,16 @@ No **`conf-!!-NONE`** conflicts identified.
 | **Advisory** | Empty/unparseable URL after normalize reports **`skipped duplicate url`** (same branch as true duplicates) — edge case only; optional clearer outcome string if operators ask. |
 
 **Verdict:** Clean — no **fix-now**; **`resolve-child`** may advance per §9a when thread is quiet.
+
+---
+
+## Resolution (Hedy / resolve)
+
+**Date:** 2026-06-23  
+**Review ref:** Radia @ `bbca4da` on `origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only`
+
+No **fix-now** or **discuss** items — product unchanged from **`8e78c56`** / **`23fb0b2`**. Advisory notes (per-hit **`_candidate_company_urls`** rebuild; duplicate-url outcome string) accepted as-is.
+
+**§9a dry-run:** publish ref merges cleanly into **`origin/dev`** and **`origin/ftr/AST-754-vet-inflow-discovery-split`**.
+
+**Outcome:** Ticket advanced to **User Testing**; **AST-776** owns separate vet company dispatch.
