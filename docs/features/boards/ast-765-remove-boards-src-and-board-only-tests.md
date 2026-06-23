@@ -180,3 +180,11 @@ Betty deletes board-only tests and trims shared tests/fixtures after **Code Comp
 | §3.5 Naming | No new public API surface |
 
 **Conflict note:** `src/data/database.py` retains board DDL/DML until **AST-766** — acceptable transient orphan per sibling split; engineer must not edit `database.py` in this ticket.
+
+## Review
+
+**Branch:** `origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests`  
+**Review tip:** `c20fd52`  
+**First removal SHA (AST-767 sunset note):** `f64c3c0`
+
+**Built:** Stages 1–3 — deleted `boards.py`, `api_boards.py`, `url_merge.py`; unregistered `/api/boards`; purged `BOARD_*` config and `gaze_board` dispatch/admin catalog; excised board wiring from dispatcher, consult, gazer, tracker, playwright (kept `extract_raw_job_listings` for roster). Product grep clean under `src/` except `database.py` (AST-766). Betty qa manifest covers board-only test deletion.
