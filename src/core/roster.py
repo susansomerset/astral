@@ -634,6 +634,14 @@ async def run_company_task(
 
     try:
         if input_state == "NEW":
+            tk = (dispatch_task_key or "").strip()
+            if tk == "vet_inflow_discovery":
+                logger.warning(
+                    "run_company_task: vet_inflow_discovery must route via consult.run_consult_task "
+                    "(dispatch_task_key=%r, short_name=%s)",
+                    tk, short_name,
+                )
+                return {**zero, "total_errors": 1}
             r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
             if r.get("error"):
                 return {**zero, "total_errors": 1}
