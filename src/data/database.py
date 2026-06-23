@@ -4152,6 +4152,76 @@ def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> No
     _ast723_rubric_token_migration_applied = True
 
 
+
+_AST776_VET_INFLOW_MECHANICAL_MARKER = "MECHANICAL LINK-TYPE VET ONLY (AST-776)"
+
+_AST776_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
+
+You vet a single discovery hit for roster inflow. Live content is one pipe line:
+
+`index|title|url|snippet`
+
+## Mechanical scope only
+
+Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
+news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
+
+## Response
+
+Use the standard two-key JSON envelope. In `agent_payload`, return:
+
+```json
+{"results": [{"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"}]}
+```
+
+- `action: "ignore"` — wrong page type; omit website or leave empty.
+- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
+"""
+
+
+def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-776: seed mechanical-only vet_inflow_discovery prompt for company dispatch on NEW."""
+    marker = _AST776_VET_INFLOW_MECHANICAL_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST776_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
     """AST-561: version analysis_upshot user_prompt with take_jd; seed when row exists but prose empty."""
     try:
@@ -4306,6 +4376,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast469_select_job_page_run_next_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
+    _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5661,7 +5732,9 @@ def get_due_tasks() -> List[Dict[str, Any]]:
 
 
 def count_company_new_without_website(candidate_id: str) -> int:
-    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website)."""
+    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website).
+
+    Excludes discovery-path rows that carry inflow_discovery_blurb (AST-776 vet dispatch)."""
     if not candidate_id or not str(candidate_id).strip():
         return 0
 
@@ -5673,7 +5746,36 @@ def count_company_new_without_website(candidate_id: str) -> int:
                 """SELECT COUNT(*) FROM company
                    WHERE state = 'NEW' AND candidate_id = ?
                      AND (batch_id IS NULL OR batch_id = '')
-                     AND (company_website IS NULL OR TRIM(company_website) = '')""",
+                     AND (company_website IS NULL OR TRIM(company_website) = '')
+                     AND (
+                       json_extract(company_data, '$.inflow_discovery_blurb') IS NULL
+                       OR TRIM(json_extract(company_data, '$.inflow_discovery_blurb')) = ''
+                     )""",
+                (candidate_id,),
+            ).fetchone()
+            return int(row[0])
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
+    """Unclaimed NEW companies with discovery blurb pending vet_inflow_discovery (AST-776)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return 0
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_company_schema(conn)
+            row = conn.execute(
+                """SELECT COUNT(*) FROM company
+                   WHERE state = 'NEW' AND candidate_id = ?
+                     AND (batch_id IS NULL OR batch_id = '')
+                     AND (company_website IS NULL OR TRIM(company_website) = '')
+                     AND json_extract(company_data, '$.inflow_discovery_blurb') IS NOT NULL
+                     AND TRIM(json_extract(company_data, '$.inflow_discovery_blurb')) != ''""",
                 (candidate_id,),
             ).fetchone()
             return int(row[0])
@@ -5734,6 +5836,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if entity_type == "candidate":
         return count_candidate_inflow_discovery_eligible(candidate_id, 0, None)
     if entity_type == "company":
+        if task_key == INFLOW_CONFIG["vet"]["task_key"]:
+            return count_company_new_pending_inflow_vet(candidate_id)
         if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
             return count_company_new_without_website(candidate_id)
         floor_raw = task.get("score_floor")
