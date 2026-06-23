@@ -111,7 +111,37 @@ No conflicts requiring `!!-NONE`.
 | Field | Value |
 |-------|-------|
 | Build date | 2026-06-23 |
-| Publish ref | `origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` @ `b303a07` |
-| Stages | Stage 1 — `DISPATCH_RETIRED_TASK_KEYS` filter on `dispatch_task_keys`; `_dispatch_task_key_form_meta` docstring |
+| Publish ref | `origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` @ `276ab22` |
+| Commits | `b303a07` task_keys retirement filter · `18f5cfe` test (Betty) |
 
 **Out of build scope (Betty / qa-child):** component tests and test-bible rows per QA hints above.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` · tip **`276ab22`**
+
+**AST-749 product commits:** `b303a07`, `18f5cfe`. Publish ref rolls up **AST-747** / **AST-748** / sibling qa on `api_admin.py` — Katherine commit is +7 lines only (§5d boundary clean).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stage 1 | `DISPATCH_RETIRED_TASK_KEYS` import; loop `continue` + terminal `seen.pop` mirror `admin_hidden_dispatch_task_keys`; docstring updated; `catalog_key = (task_key or "").strip()` (no alias resolver). |
+| §1.3 DRY | Reuses config frozenset; dual filter matches hidden-key pop pattern. |
+| §3.3 layer | UI API imports one config constant; grouping still via `database.get_agent_task`. |
+| Tests | `TestAst749DispatchTaskKeysRetiredFilter` — legacy `consult_*` rows absent, `grade_do` schedulable defaults; Vitest `grade_do` section under `task_group_name`, not `(unassigned)`. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| — | **No fix-now or discuss.** | — |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| **resolve-child** — no code changes required from review. | Katherine |
+| Susan UAT: Add Task picker shows `grade_*` not `consult_*`; Scheduled Actions `grade_do` rows bucket under DB grouping after **AST-748** migration. | Susan |
