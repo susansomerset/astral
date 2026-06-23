@@ -90,18 +90,13 @@ function ScheduledPhaseTable({
   )
 
   function scheduledFrozenStyle(colIndex: number, base: CSSProperties = {}): CSSProperties {
-    const key = DATA_COL_KEYS_ARR[colIndex]
-    const w = mergedWidths[key]
-    const widthStyle: CSSProperties =
-      w && w > 0 ? { width: w, minWidth: w, boxSizing: "border-box" } : {}
     const left = stickyLeftPx(colIndex, mergedWidths, DATA_COL_KEYS_ARR, false, frozenN)
-    if (left == null) return { ...base, ...widthStyle }
-    // Only apply sticky offset when all prior frozen columns have measured width (avoid 120px fallback gap).
+    if (left == null) return base
     const predecessorsReady = DATA_COL_KEYS_ARR.slice(0, colIndex).every(
       (k) => (mergedWidths[k] ?? 0) > 0,
     )
-    if (!predecessorsReady) return { ...base, ...widthStyle }
-    return { ...base, ...widthStyle, left }
+    if (!predecessorsReady) return base
+    return { ...base, left }
   }
 
   return (
