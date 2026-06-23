@@ -1,3 +1,140 @@
+<!-- linear-archive: AST-535 archived 2026-06-15 -->
+
+## Linear archive (AST-535)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-535/dispatch-task-triple-unique-and-roster-to-watch-task-key-routing-bug  
+**Status at archive:** Done  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** Urgent / —  
+**Parent:** AST-533 — BUG: Scheduled Actions ignore dispatch task_key — consult hardcodes state→task routing  
+**Blocked by / blocks / related:** parent: AST-533
+
+### Description
+
+## What this implements
+
+Susan approved `UNIQUE(candidate_id, task_key, trigger_state)` on `dispatch_task` so multiple rows can share semantics like retry states (`consult_do` @ `PASSED_JD` vs `PASSED_JD_RETRY`) and eventually distinct task keys at the same entity state. This ticket migrates the schema and fixes **company roster dispatch** so rows that share `trigger_state=TO_WATCH` (`find_job_page`, `select_job_page`, `parse_job_list`) each run **their** `task_key` — not a single hardcoded `find_job_page` default.
+
+## Acceptance criteria
+
+3. **TO_WATCH trio:** Dispatch rows for `find_job_page`, `select_job_page`, and `parse_job_list` (same `trigger_state=TO_WATCH`) each run their respective task on Run.
+4. **Bible / rules:** Update `ASTRAL_TEST_BIBLE` (and `ASTRAL_CODE_RULES` §2.1 if needed) so dispatch routing docs describe `dispatch_task.task_key` **as execution entry**, not `_INPUT_STATE_TO_TASK`.
+
+Plus schema acceptance:
+
+* Fresh and migrated DBs enforce `UNIQUE(candidate_id, task_key, trigger_state)` (replacing `UNIQUE(candidate_id, trigger_state)`).
+* Existing per-candidate rows migrate without data loss; duplicate `(candidate_id, trigger_state)` rows with different `task_key` become valid where product requires (document migration behavior in plan).
+* Admin create/update dispatch task respects new unique constraint (clear error on conflict).
+
+## Boundaries
+
+* Does **not** reimplement job consult routing (sibling **AST-534** — consume its `run_consult_task` / company path `task_key` parameter).
+* Does **not** change ad-hoc / craft / workbench paths.
+* Does **not** redesign Scheduled Actions UI beyond what new unique constraint requires.
+
+## Notes for planning
+
+* AST-485 documented `TO_WATCH` UNIQUE footgun — this ticket resolves it with triple unique.
+* `_RETRY_TASK_SEED` rows should remain valid under new constraint.
+* Component tests: TO_WATCH routing + schema/migration tests in `tests/component/data/`.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-533-dispatch-task-key-honesty`, child \*\*`sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing**`.
+
+### Comments
+
+#### radia — 2026-05-30T01:58:10.295Z
+**Review** — `git diff origin/dev...origin/sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing` (tip `0dd0636a`)
+
+### What's solid
+- **Schema (AC):** Fresh + migrated `UNIQUE(candidate_id, task_key, trigger_state)`; migration copies rows with triple dedupe; `apply_config_table_upsert` upserts on triple; TO_WATCH trio coexistence + duplicate triple rejection tested.
+- **Roster (AC):** `run_company_task(dispatch_task_key=…)` routes `find_job_page` / `select_job_page` / `parse_job_list`; `chain_parse=False` on select-only dispatch; parse dispatch reuses validation path; empty key defaults `find_job_page` for backward compat.
+- **Admin API:** Create 409 names all three fields; update wrapped for UNIQUE collisions.
+- **§2.1:** Rules + bible updated for triple unique and row `task_key` as roster entry.
+- **Boundary:** Job consult routing left to AST-534 on merge — appropriate for sibling split.
+
+### fix-now
+1. **`NameError` in dispatcher** — `src/core/dispatcher.py` `_run_unified`: passes `dispatch_task_key=dispatch_task_key` to `consult.run_consult_task` (~264, ~280, ~288) but **never assigns** `dispatch_task_key = task.get("task_key", "")` (present on AST-534 sub at ~164, missing here). Any company/job dispatch Run that reaches consult will crash. **Fix:** add the same assignment AST-534 uses (or merge AST-534 dispatcher hunk).
+
+### discuss
+1. **Bible manifest vs branch** — §7.13zp lists `test_ast534_forwards_dispatch_task_key_to_consult` on AST-535 narrow run, but that test is **not** on this sub branch (`test_dispatcher.py` has 0 `dispatch_task_key` references). Betty/engineer: add test on this branch after dispatcher fix, or drop from AST-535 manifest until parent ftr merge.
+2. **`update_dtask` 409 copy** — On update that changes `task_key`, 409 message uses `(row.task_key, updates.trigger_state)`; if collision is from a new `task_key` in `updates`, message may not match the conflicting triple.
+
+### advisory
+- Duplicate `from src.core import roster` in `run_consult_task` (lines ~1159 and ~1162) — harmless, one can go.
+- `run_select_job_page_dispatch` reuses `_find_job_page_from_assembled` rather than a separate `_apply_select_job_page_outcome` helper; acceptable DRY tradeoff per plan “if needed.”
+
+#### hedy — 2026-05-30T01:54:40.511Z
+[check-linear]
+
+**Session scope:** Parent **AST-533** / **Astral Dispatcher** — assigned **AST-535** only.
+
+**§0a (`astral-hedy` / `dev-hedy`):** `git fetch origin`, `checkout dev-hedy`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`). No publish-ref merges (check-linear only).
+
+**§0b:** `@hedy` issue search (Team Astral + **Astral Dispatcher** project); full threads on **AST-533**, **AST-534**, **AST-535**. **0** actionable comments — nothing `@hedy` or directed at Hedy needing reply or small fix.
+
+**§1:** Assignee **AST-535** @ **Tests Passed** — latest thread activity is Betty **Tests Ready** manifest (`1b019f32`) and Hedy **Tests Passed** (`72857c62`, publish `origin/sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing` @ `0dd0636a`). No new nags since prior `[check-linear]`.
+
+**Pipeline:** Inbox quiet; no `resolve-astral` / `test-astral` / `build-astral` from this pass. Next gate for **AST-535** is Radia **`review-astral`** (not invoked here).
+
+#### hedy — 2026-05-30T01:52:34.701Z
+**Tests Passed** — Betty manifest green (pytest); one product fix published.
+
+**Publish:** `origin/sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing` @ `0dd0636a`
+
+**Fix:** Removed company-only guard on `dispatch_task_key` in `dispatcher._run_unified` (AST-534 regression after AST-535 merge).
+
+**Manifest (`.venv/bin/python -m pytest`):** 9/9 passed — items 1–4.
+
+**Note:** `run_component_tests.sh` exits 1 after pytest because unrelated frontend `AdminManageCandidates` middle-name tests fail (AST-511); narrowed pytest nodes all pass.
+
+#### betty — 2026-05-30T01:49:15.246Z
+**Tests Ready** — manifest for `test-astral`.
+
+**Publish:** `origin/sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing` @ `1995836c`
+**Bible shasum (publish ref):** `4fe0c57643c4469982e1f8f3c4296ae56bd2f3fc`
+
+1. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst535DispatchTaskTripleUnique`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst535ToWatchDispatchTaskKeyRouting`
+3. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast535_create_dispatch_task_triple_unique_409`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult`
+
+**Note:** Item **4** is an **AST-534 regression guard** (blocker **AST-534**). On the current publish tip it **fails**: `src/core/dispatcher.py` `_run_unified` clears `dispatch_task_key` for non-`company` entities (~lines 164–166), so job consult never receives the row’s `task_key`. Items **1–3** cover **AST-535** acceptance (triple unique, TO_WATCH roster routing, admin 409). Fix product on publish ref until all four pass.
+
+— Betty
+
+#### hedy — 2026-05-30T01:35:44.426Z
+[check-linear]
+
+**Session scope:** Parent **AST-533** / **Astral Dispatcher** — assigned **AST-535** only.
+
+**§0a (`astral-hedy` / `dev-hedy`):** `git fetch origin`, `checkout dev-hedy`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`). No publish-ref merges (check-linear only).
+
+**§0b:** `@hedy` issue search (Team Astral + **Astral Dispatcher** project); **14d** project fallback on **AST-533** / **AST-534** / **AST-535**. Full threads on all three. **0** actionable comments — nothing `@hedy` or directed at Hedy needing reply or small fix.
+
+**§1:** Assignee **AST-535** — latest activity is plan post (`0e5765fa` on publish ref); **Plan Approved**; **blockedBy AST-534** (Ada **Plan Approved**, not yet built). No thread nags.
+
+**Pipeline:** Inbox quiet; no `build-astral` / `test-astral` / `resolve-astral` from this pass.
+
+#### hedy — 2026-05-30T01:34:11.281Z
+Plan: `docs/features/dispatcher/ast-535-dispatch-task-triple-unique-and-roster-to-watch-task-key-routing-bug.md`
+
+**GitHub:** https://github.com/susansomerset/astral/blob/sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing/docs/features/dispatcher/ast-535-dispatch-task-triple-unique-and-roster-to-watch-task-key-routing-bug.md (`0e5765fa`)
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — schema migration to `UNIQUE(candidate_id, task_key, trigger_state)`, roster `dispatch_task_key` routing for TO_WATCH trio, admin 409 messages, rules/bible bullets.
+- **Conf:** Medium — AST-534 must pass `dispatch_task_key` into `run_company_task` first; select/parse-only entry paths extracted from existing `find_job_page` chain.
+- **Risk:** HIGH — wrong migration or routing regresses AST-485 (all TO_WATCH rows run `find_job_page`).
+
+**Build gate:** blockedBy AST-534 — plan now; start **build-astral** after AST-534 is **Plan Approved** (or merged on integration line).
+
+**Publish note:** No Joan session on parent AST-533; plan commit `81798f31` cherry-picked to `origin/sub/AST-533/AST-535-dispatch-task-triple-unique-and-roster-routing` @ `0e5765fa` (same worktree flow as `joan publish`).
+
+---
+
 # AST-535 — dispatch_task triple unique and roster TO_WATCH task_key routing
 
 - **Linear (this ticket):** [AST-535](https://linear.app/astralcareermatch/issue/AST-535/dispatch-task-triple-unique-and-roster-to-watch-task-key-routing-bug)

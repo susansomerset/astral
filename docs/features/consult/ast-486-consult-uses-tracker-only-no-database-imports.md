@@ -1,3 +1,153 @@
+<!-- linear-archive: AST-486 archived 2026-06-15 -->
+
+## Linear archive (AST-486)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-486/consult-uses-tracker-only-no-database-imports-consult-fetch-job-by-id  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-372 — consult: fetch job by ID through tracker, not database  
+**Blocked by / blocks / related:** parent: AST-372
+
+### Description
+
+## What this implements
+
+Remove direct `src.data.database` usage from `src/core/consult.py`. All job/company/timesheet reads go through `src/core/tracker.py` (existing thin wrappers or new ones). Susan (2026-05-25): with batch-scoped job state, consult should not call the database layer for any reason.
+
+## Acceptance criteria
+
+1. `consult.py` has **no** `from src.data.database import …` (or other direct database imports).
+2. Job-by-id paths use `tracker.get_job` (or pass batch `job` dict where already in hand — optional dedupe of redundant fetches).
+3. Other consult DB touches (`get_company`, timesheets, `append_agent_response`, etc.) use tracker delegates.
+4. Quick grep: no other `src/core/*` modules importing `get_job` from database for trivial fixes in same pass.
+
+## Boundaries
+
+* Does **not** implement `analysis_upshot` or AST-478 feature work (already on `origin/dev` from sibling epic).
+* Does **not** change `builder.py` (already uses `tracker.get_job`).
+* Does **not** redesign batch router contracts beyond import/layer hygiene.
+
+## Notes for planning
+
+* `tracker.get_job` already exists (delegates to `database.get_job`).
+* Prior thread: `render_verdict` may still need a job load for id-only callers; batch paths may thread `job` to avoid double fetch.
+* Merge `origin/dev` before build — AST-478 recently landed consult state work.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-372-consult-fetch-job-by-id-through-tracker-not-database`, child `sub/AST-372/<child-segment>` at dispatch.
+
+### Comments
+
+#### radia — 2026-05-25T04:44:44.642Z
+**Radia — `review-astral`** (`origin/dev…origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports`; product tip **`d904911`**)
+
+**Plan fidelity / rules**
+- Matches AST-486 + combined plan: **`consult`** has no **`database`** import; **`tracker`** thin wrappers for **`get_company`**, **`append_agent_response`**, **`list_timesheets`**; **`agent`** artifact chains resolve job/company via **`tracker`** in the lazy-import blocks only (other **`database`** imports untouched per documented scope).
+
+**Rubric (happy path)**  
+- **B1/B2:** No new nested lazy imports without justification — **`consult`** imports **`tracker`** at top; **`agent`** retains explicit cycle-break (`consult` imported inside functions) and swaps to **`tracker`** for the **`get_job`/`get_company`** pair only.  
+- **H\* / batch:** **`_run_batch_consult`** still **`try`/`finally`** clears via existing pattern; **`append_agent_response`** indirection does not widen swallow (pre-existing **`except Exception`** + debug log unchanged in diff).
+
+**Advisory**
+- Combined plan typo **`**,which`** near intro; header “Feature ref **`ftr/AST-486`**” vs actual **`sub/AST-372/…`** naming — optional doc polish.
+
+**Doc commit:** [plan + §Review (`49330cbf`)](https://github.com/susansomerset/astral/blob/49330cbf/docs/features/consult/ast-486-consult-uses-tracker-only-no-database-imports.md)
+
+#### betty — 2026-05-25T04:41:06.034Z
+[check-linear]
+
+**Tests updated for `[qa-handoff]`** (`qa-astral` §B return)
+
+- Verified `origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports` tip **`d904911d`** — commit **`test(AST-486): retarget consult component mocks to tracker facades`** aligns `tests/component/core/test_consult.py` mocks with **`tracker.get_job`** / **`tracker.get_company`** / **`tracker.list_timesheets`** / **`tracker.append_agent_response`** (see thread from Hedy at **`86e3ce9b`** onward).
+- **`dev-betty`** merged **`origin/sub/…`** and re-ran the ticket manifest (green):
+  ```bash
+  pytest tests/component/core/test_consult.py \
+    tests/component/core/test_tracker.py::TestTrackerFacades::test_ast486_consult_layer_facades_delegate_to_database \
+    -q --tb=short
+  ```
+  → **121 passed** on the integration branch after merge.
+- **Publish ref:** **`origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports` @ `d904911d`** — nothing further to push from this pass; redundant local publish attempt aborted (remote already contained the façade retarget tip).
+- Reassigned to **@Hedy** for **`test-astral` §6** re-run. Status unchanged: **Tests Ready**.
+
+#### betty — 2026-05-25T04:40:42.103Z
+[check-linear]
+
+- Cleared `[qa-handoff]` for AST-486: updated `tests/component/core/test_consult.py` so monkeypatches target `consult_mod.tracker` (`get_job`, `get_company`, `list_timesheets` replacing `_db_list_timesheets`, `append_agent_response`) instead of removed `consult` module bindings.
+- **Publish:** `origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports` @ **`d904911d`** (`test(AST-486): retarget consult component mocks to tracker facades`).
+- **Manifest re-run (on publish tip + merged `origin/dev` line):**  
+  `pytest tests/component/core/test_consult.py tests/component/core/test_tracker.py::TestTrackerFacades::test_ast486_consult_layer_facades_delegate_to_database -q --tb=short` → **94 passed** on the shorter publish `test_consult` module count (fixtures unchanged vs prior tip aside from patch targets).
+- Reassigned **Hedy** for **`test-astral`**; status remains **Tests Ready**.
+
+#### hedy — 2026-05-25T04:37:10.184Z
+[qa-handoff]
+
+@Betty White — **`test-astral` §6 re-run** on `dev-hedy` after `git fetch origin`, **`git merge origin/dev`**, **`git merge origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports`** (remote tip **`86e3ce9b`**). Same manifest command:
+
+```bash
+pytest tests/component/core/test_consult.py \
+  tests/component/core/test_tracker.py::TestTrackerFacades::test_ast486_consult_layer_facades_delegate_to_database -q --tb=short
+```
+
+**Result:** **25 failed, 69 passed** — still **`AttributeError`** from monkeypatch targets that no longer exist on **`consult_mod`** (`get_job`, `_db_list_timesheets`, `append_agent_response`). Matches the earlier handoff; product path is **`tracker.*`** delegates per §7.13d.
+
+**Ask:** Patch **`test_consult.py`** patches to **`src.core.tracker`** (same ask as prior thread); republish to **`origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports`**, cite new tip + manifest, reassign **`Hedy`** for **`Tests Passed`**. I am not editing **`tests/`** (`test-tree ban`).
+
+#### hedy — 2026-05-25T04:36:06.019Z
+[qa-handoff]
+
+Betty (`@Betty White`) — manifest run is red for **test harness mismatch**, not a product regression on the merged line.
+
+**Command:**
+```bash
+pytest tests/component/core/test_consult.py \
+  tests/component/core/test_tracker.py::TestTrackerFacades::test_ast486_consult_layer_facades_delegate_to_database -q --tb=short
+```
+
+**Result:** 25 failed, 69 passed.
+
+**Cause:** AST-486 product routes job/company/timesheets/agent-response through **`src.core.tracker`** (`tracker.get_job`, `tracker.get_company`, `tracker.list_timesheets`, `tracker.append_agent_response`). `src/core/consult.py` no longer exposes module-level **`get_job`**, **`_db_list_timesheets`**, or **`append_agent_response`**.
+
+**`test_consult.py` still monkeypatches** `consult_mod.get_job`, `consult_mod._db_list_timesheets`, and `consult_mod.append_agent_response` → `AttributeError` on every affected case (e.g. `TestTransitionHelpers.test_list_timesheets_delegates`, all `TestRenderVerdict::*`, cover-letter batch tests, `TestRunBatchConsultBranches.test_handles_missing_fabricated_and_bad_grades`).
+
+**Ask:** Update those tests (and bible §7.13d wording if needed) so patches target **`tracker`** (import `src.core.tracker as tracker_mod` / patch `tracker.get_job`, etc.), aligned with §7.13d façade map. **`test_tracker.py::test_ast486_consult_layer_facades_delegate_to_database`** path is green.
+
+**Refs:** Integration `dev-hedy` merged `origin/dev` + `origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports`; remote tip **`86e3ce9b`** matches your publish note after merge onto HEAD.
+
+#### betty — 2026-05-25T04:35:04.409Z
+1. **`docs/ASTRAL_TEST_BIBLE.md`** §7.13d — AST-486 note maps **`consult.py`** layering to **`TestTrackerFacades.test_ast486_consult_layer_facades_delegate_to_database`** (`tracker` → `database` for **`get_company`**, **`append_agent_response`**, **`list_timesheets`**).
+2. **`tests/component/core/test_tracker.py`** — run **`TestTrackerFacades::test_ast486_consult_layer_facades_delegate_to_database`** (new).
+3. **`tests/component/core/test_consult.py`** — full module (consult / batch / tracker wiring; aligns with **`src/core/consult.py`** map in bible §7.13d).
+
+**Commands (ticket scope):**
+```bash
+pytest tests/component/core/test_consult.py \
+  tests/component/core/test_tracker.py::TestTrackerFacades::test_ast486_consult_layer_facades_delegate_to_database -q --tb=short
+```
+
+**Publish tip:** `origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports` @ **`86e3ce9b`** (includes **`test(AST-486): bible + tracker facade test for consult layering`**).
+
+#### hedy — 2026-05-25T04:24:00.376Z
+Plan doc (`docs/features/consult/ast-486-consult-uses-tracker-only-no-database-imports.md`):  
+https://github.com/susansomerset/astral/blob/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports/docs/features/consult/ast-486-consult-uses-tracker-only-no-database-imports.md  
+
+*(Publish ref matches dispatch: `origin/sub/AST-372/AST-486-consult-uses-tracker-only-no-database-imports`; board convention also cites `ftr/AST-486` for naming.)*
+
+**Self-assessment**
+
+- **Scope — Single-Component:** Tracker adds three façades mirroring existing `list_jobs` style; consult and two `agent.py` artifact chain helpers reroute reads/writes—no dispatcher or UI churn beyond unchanged `consult.list_timesheets` indirection—because delegations are mechanical pass-through with no new business rules.
+
+- **Conf — high:** Matches established `tracker.get_job` / UI-facade pattern and maps 1:1 to current `database` signatures callers already relied on (`get_company`, `append_agent_response`, `list_timesheets` kwargs).
+
+- **Risk — Medium:** Mis-wiring **`get_job`/`get_company`** or **`append_agent_response`** affects **`render_verdict`**, batch consult **`agent_responses`**, resume/cover-letter chains; failures would surface as missing jobs/companies or missing response refs—not silent data corruption—but the blast radius across consult is real.
+
+Published with commit `docs(AST-486): plan — …` on the sub branch (`91a81d08`). — Hedy
+
+---
+
 # AST-486 — Consult uses tracker only, no database imports
 
 **Parent:** [AST-372 — Consult fetch job by ID through tracker, not database](https://linear.app/astralcareermatch/issue/AST-372/consult-fetch-job-by-id-through-tracker-not-database)  

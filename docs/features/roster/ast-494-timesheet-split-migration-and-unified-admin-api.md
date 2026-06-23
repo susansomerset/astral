@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-494 archived 2026-06-15 -->
+
+## Linear archive (AST-494)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-494/timesheet-split-migration-and-unified-admin-api-support-other-ai  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-491 — Support other ai models: DeepSeek  
+**Blocked by / blocks / related:** parent: AST-491
+
+### Description
+
+## What this implements
+
+Split Anthropic call history into provider-appropriate storage: rename/migrate existing `timesheets` to Anthropic-dedicated storage, add generalized `agent_timesheets` with `agent_req_id` (and preserved column semantics), append all Anthropic rows into `agent_timesheets`, and rewire admin timesheet APIs to query `agent_timesheets` with `agent_req_id` instead of `anthropic_req_id`. Per-call cost and token breakdown remain accurate for both providers.
+
+## Acceptance criteria
+
+5. After Anthropic calls, cost rows appear in Anthropic-dedicated timesheet storage with historical rows preserved across deploy/migration.
+6. After DeepSeek calls, cost rows appear in generalized agent-timesheet storage with `agent_req_id`, token breakdown fields populated, and non-null computed total cost.
+7. For DeepSeek calls that return cache read usage, stored rows include cache read token counts and a cost component for cache reads; cache write cost may be zero when the vendor does not charge for creation.
+8. Administrator timesheet listing/export includes entries from the unified store for a date range spanning Anthropic-only and DeepSeek-only activity.
+
+## Boundaries
+
+Does not change TASK_CONFIG or grading. Does not redesign cost-reconciliation CSV import logic beyond field renames needed for `agent_req_id`. Sibling ticket owns DeepSeek HTTP routing.
+
+## Notes for planning
+
+* Susan: append anthropic_timesheets → agent_timesheets, then point APIs at agent_timesheets; preserve column names except req id generalization.
+* DeepSeek: no separate cache-write pricing; still track cache reads.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-491-support-other-ai-models-deepseek`, child `sub/AST-491/<child-segment>`. Created at dispatch-linear.
+
+### Comments
+
+#### ada — 2026-05-27T03:06:45.406Z
+[check-linear]
+
+- **Session scope:** Susan directed **assigned issue ids: (none)** — no `test-astral` / publish-ref merges for this inbox pass beyond **§0a** integration line.
+- **Skill §6:** **`test-astral`** is not invoked unless she names that stage in the same message after **check-linear**; this run was **check-linear** only with an empty allowlist.
+- **Acknowledged** your **`@Ada Lovelace`** handoff: manifest on **`origin/sub/AST-491/AST-494-timesheet-split-migration-and-unified-admin-api`** @ **`e389376d8f5fa7e01322a73d629100bbf025d434`**, §**7.13ze** narrow command, Radia review posted after your note.
+- **§0a (this workspace):** `git fetch origin`, **`dev-ada`**, **`git merge origin/dev`** — completed; working tree reflects merged **`origin/dev`** tip.
+
+Ready when Susan assigns AST-491 work to me or names **`test-astral`** for this ticket.
+
+#### radia — 2026-05-26T22:45:20.242Z
+**Diff:** three-dot `origin/dev` vs **AST-491 dispatch** [`sub/AST-491/AST-494-timesheet-split-migration-and-unified-admin-api`](https://github.com/susansomerset/astral/tree/sub/AST-491/AST-494-timesheet-split-migration-and-unified-admin-api). **Publish tip:** `e389376d8f5fa7e01322a73d629100bbf025d434`.
+
+- **Schema migration** — `timesheets` → `anthropic_timesheets` guarded; `agent_timesheets` with `agent_req_id`; historical backfill; header inventory reflects both ledgers without orphan `timesheets` name post-migrate path.
+- **Write path** — `provider` validated vs `ALLOWED_TIMESHEET_PROVIDERS`; dual insert for Anthropic, single unified insert for DeepSeek.
+- **Read/export** — Admin query + frontend id field pivot to unified store and `agent_req_id`.
+
+**advisory** — First production migrate: quick row-count parity on historical Anthropic rows vs backfill expectation (SQLite UNIQUE + `INSERT OR IGNORE` semantics should already cover duplicates; ops sanity only).
+
+Review appendix (cherry-pick target): [`ast-494-timesheet-split-migration-and-unified-admin-api.md`](https://github.com/susansomerset/astral/blob/5811b03728422716906b9c913a04912c9df013ee/docs/features/roster/ast-494-timesheet-split-migration-and-unified-admin-api.md) @ `5811b037`.
+
+#### betty — 2026-05-26T22:36:47.792Z
+[check-linear]
+
+- QA: **`test(AST-494)`** — **`tests/component/data/database/test_timesheets.py`** and **`tests/component/core/test_timesheets.py`** expect **`agent_req_id`** (unified **`list_timesheets`** / **`record_timesheet_entry`** kwargs). Bible §**7.13ze** documents the narrow command.
+- Published: **`origin/sub/AST-491/AST-494-timesheet-split-migration-and-unified-admin-api`** @ **`e389376d8f5fa7e01322a73d629100bbf025d434`**.
+
+**Manifest (§7.13ze):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/data/database/test_timesheets.py \
+  tests/component/core/test_timesheets.py
+```
+
+**Betty:** Set status **Tests Ready** if it still reads **Code Complete** (tooling gap on **`save_issue`** here).
+
+@Ada Lovelace — **`test-astral`**.
+
+#### ada — 2026-05-26T22:09:18.914Z
+Plan doc:
+
+https://github.com/susansomerset/astral/blob/sub/AST-491/AST-494-timesheet-split-migration-and-unified-admin-api/docs/features/roster/ast-494-timesheet-split-migration-and-unified-admin-api.md
+
+**Self-assessment (with reasons)**  
+**Scope · MAJOR-CHANGE** — Dual-table ledger (`anthropic_timesheets` + unified `agent_timesheets`), rewires `_add_timesheet_entry`, list/export APIs, React admin sheet, migration script fallout; aligns with Susan’s dual-store + unified admin reads.  
+**Conf · conf-Medium** — SQLite rename/backfill/order is fiddly (`UNIQUE(agent_req_id)` must survive migrations) but pattern matches existing `_ensure_timesheets_schema` evolution.  
+**risk-HIGH** — Migration regressions silently duplicate or lose rows destroying cost truth; asserts on `COUNT(*)` parity plus dual-write mocks are the guardrails.
+
+Ada
+
+---
+
 # AST-494 — Timesheet split, migration, and unified admin API
 
 **Parent:** [AST-491 — Support other ai models: DeepSeek](https://linear.app/astralcareermatch/issue/AST-491/support-other-ai-models-deepseek)  

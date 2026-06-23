@@ -1,3 +1,95 @@
+<!-- linear-archive: AST-502 archived 2026-06-15 -->
+
+## Linear archive (AST-502)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-502/dispatcher-multi-chunk-cache-warm-exhaustion-high-volume-encoded-batch  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-500 — High-volume encoded batch consult: migrate all stages, cache-first exhaustion runs  
+**Blocked by / blocks / related:** parent: AST-500; blocks: AST-503
+
+### Description
+
+## What this implements
+
+When a consult step has more work than one **dispatch_task** batch allows, split into chunks of size **batch_size** (up to 500). Run **chunk 1** alone (cache warm), then run **chunks 2…K in parallel** (up to 500 concurrent assessments per wave). In one scheduler tick, **drain the full queue** for that step—no artificial cap on total jobs beyond chunking and concurrency limits.
+
+## Acceptance criteria
+
+3. A backlog of **2000** jobs with batch size **500** runs as **four** chunks: first chunk sequential, remaining three concurrent; all **2000** reach terminal or retry states in that run (not left in trigger state).
+4. **Cache-first** behavior preserved: chunk 1 warms cache; later chunks benefit from warm cache.
+5. **One scheduler tick** can exhaust the full queue for a step (no partial drain by design).
+6. **Partial chunk failure:** per-job **RETRY** states when the envelope is valid but lines are missing; whole-chunk error only when the envelope/call fails.
+
+## Boundaries
+
+* Does not fix qualify/evaluate single-call batch path (blocked by AST-501).
+* Does not migrate DO/GET/LIKE (sibling AST-503).
+* Batch sizes come from **dispatch_task** only.
+
+## Git branch (authoritative)
+
+`sub/AST-500/AST-502-…` under parent `ftr/AST-500-…`.
+
+### Comments
+
+#### radia — 2026-05-27T03:47:46.643Z
+**Diff:** `origin/dev...origin/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion` @ `c18bbd1d`.
+
+- **Plan / code — OK:** `claim_cap` + `claim_job_batch(..., claim_cap=)` implements “claim up to eligible count, chunk API by `batch_size`” without heuristic caps; raises if `dispatch_tasks.batch_size` missing for exhaustion keys; dispatcher runs chunk 0, `asyncio.sleep(cache_warm_delay_seconds)`, then `gather` on later chunks; `batch_chunk_index` suffix on `do_task` `index` avoids RESPONSE dedupe collisions; `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` narrowed to qualify/evaluate pending AST-503 aligns with stated boundary.
+- **Discuss (resilience):** `asyncio.gather` on chunks fails the whole `_run_unified` path on first chunk exception, whereas `_warm_then_gather` absorbs per-entity exceptions into error-shaped dicts — confirm whether hard-fail-one-chunk is the intended failure mode for dispatcher ticks (vs `return_exceptions`/per-chunk summaries).
+
+**Radia doc cherry-pick:** `4737e22f7545cb067dd0937004e3b962d24b5a44` — `git cherry-pick 4737e22f7545cb067dd0937004e3b962d24b5a44`. **`## Review`** appended on publish ref `docs/features/consult/ast-502-dispatcher-multi-chunk-cache-warm-exhaustion.md`.
+
+#### chuckles — 2026-05-27T03:34:47.764Z
+QA test manifest (**docs/ASTRAL_TEST_BIBLE.md** §7.13zf):
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestRunUnified::test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities tests/component/core/test_dispatcher.py::TestRunUnified::test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails tests/component/core/test_dispatcher.py::TestRunUnified::test_ast502_two_chunks_skips_sleep_when_delay_zero tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object`
+
+Publish tip: `origin/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion` @ `c18bbd1d`. Parent bible line: merge `origin/ftr/AST-500-high-volume-encoded-batch-consult-migrate-all-stages-cache-first-exhaustion-runs` before `sub` per integration line (§ Test Bible).
+
+— Betty
+
+#### betty — 2026-05-27T03:28:41.355Z
+**Tests Ready — Betty [qa-handoff]** (AST-502 dispatcher chunk exhaustion)
+
+Manifest (narrow):
+
+1. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails` — chunk 0 completes → one `cache_warm_delay_seconds` sleep → tails only after sleep; `K=4` × 500-job slices; `claim_cap` from mocked eligible count.
+
+2. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast502_two_chunks_skips_sleep_when_delay_zero` — `qualify_job_listings` path, two chunks; `asyncio.sleep` not awaited when delay is `0`; `batch_chunk_index` 0/1.
+
+3. Regression with AST-501 row: `::test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities` (dispatcher single-call baseline).
+
+4. `tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_*` (envelope regressions unchanged).
+
+**Publish / integration**
+
+| ref | SHA |
+| --- | --- |
+| `origin/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion` | `c18bbd1d` |
+| `origin/ftr/AST-500-high-volume-encoded-batch-consult-migrate-all-stages-cache-first-exhaustion-runs` | `9f7c9973` |
+
+`docs/ASTRAL_TEST_BIBLE.md` §7.13zf — SHA256 **`097d7d72e1d9d311be93458803532b94d164468f01c1c31721e0b60e1f81771d`** (identical blob on **sub** and **ftr** tips above).
+
+`dev-betty`: merge **`705ea89a`** (integrate AST-502 product) then **`659d309d`** (tests + bible). Engineer handoff stays **Tests Ready** / assignee **Hedy** for **`test-astral`**.
+
+— Betty
+
+#### hedy — 2026-05-27T03:03:47.188Z
+**Published plan:** [docs/features/consult/ast-502-dispatcher-multi-chunk-cache-warm-exhaustion.md](https://github.com/susansomerset/astral/blob/sub/AST-500/AST-502-dispatcher-multi-chunk-cache-warm-exhaustion/docs/features/consult/ast-502-dispatcher-multi-chunk-cache-warm-exhaustion.md)
+
+**Self-assessment (with justifications)**
+
+- **Scope — scope-MAJOR-CHANGE:** Alters dispatcher claiming, sequencing vs parallel gathers, chunk boundaries, and `do_task`/batch indexing coupling—foundation path for exhaustion.
+- **Conf — conf-Medium:** Mirrors `_warm_then_gather` intent but introduces parallel gathers over multiple chunk calls; depends on aligning claim SQL predicates with dispatched counts (Stage 1 calls out STOP if mismatch).
+- **Risk — risk-HIGH:** Bugs here duplicate work, stall the queue, or corrupt dedupe/clear-batch—dispatcher is prod-critical surface.
+
+---
+
 # AST-502 — Dispatcher multi-chunk cache-warm exhaustion
 
 **Linear:** [AST-502](https://linear.app/astralcareermatch/issue/AST-502/dispatcher-multi-chunk-cache-warm-exhaustion-high-volume-encoded-batch)  

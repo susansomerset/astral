@@ -1,3 +1,128 @@
+<!-- linear-archive: AST-565 archived 2026-06-15 -->
+
+## Linear archive (AST-565)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-565/recommended-job-report-modal-tabs-header-list-entry-recommended-job  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-499 — Recommended Job Modal  
+**Blocked by / blocks / related:** parent: AST-499; related: AST-481; related: AST-522
+
+### Description
+
+## What this implements
+
+Full **Recommended Job Report** modal: left vertical tab rail (In Review pattern), row click opens report on Recommended list, remove **Jr** row action, sticky header (company + candidate contacts), Job Summary and JD/DO/GET/LIKE phase tabs with Estelle thoughts above vectors, grade dots on tab labels in vector-importance order, full JD tab, dynamic artifact tabs when `job_data` has content, **Apply** via `job_link`, state-aware chrome from config/API manifests. Wires **Generate Artifacts** / **Cancel** / **Apply** from sibling API ticket.
+
+## Acceptance criteria
+
+1. **Row click** on Recommended opens the new tabbed report; **Jr** action is removed from Recommended rows.
+2. Report shows left tabs with summary/JD and JD/DO/GET/LIKE when upshot JSON exists; Estelle's per-phase thought appears **above** vectors on each phase tab.
+3. Phase tab labels show **grade dots in vector-importance order** when grades exist.
+4. Header shows company website and copyable candidate contacts when data exists; graceful empty states otherwise.
+5. When artifact blobs exist, resume/cover/application tabs appear with edit/save to `job_data`.
+6. In ready state, **Apply** opens `job_link` in a new tab; Generate Artifacts is not the primary action.
+7. **Skip** works from the list after artifacts exist; [AST-312](https://linear.app/astralcareermatch/issue/AST-312) terminal actions still work.
+8. Jobs without `analysis_upshot` show clear empty states — no crash.
+
+(AC #5 satisfied via integration with Hedy child; AC #10 via Ada `take_jd` data.)
+
+## Boundaries
+
+* Does **not** reimplement the Recommended list ([AST-522](https://linear.app/astralcareermatch/issue/AST-522) — Done).
+* Does **not** own `take_jd` schema/prompt persist (Ada) or server transition API alone (Hedy).
+* Does **not** server-render report HTML or change consult scoring/dispatch.
+
+## Notes for planning
+
+* Blocked until Ada (`take_jd`) and Hedy (Generate/Cancel API) reach **Review Posted**.
+* Reuse artifact editor patterns where possible; [AST-481](https://linear.app/astralcareermatch/issue/AST-481) stub is replaced.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** branch law: parent `ftr/AST-499-recommended-job-modal`, child `sub/AST-499/<ticket-id>-recommended-job-report-modal-tabs-header-list-entry`. Created at dispatch-linear.
+
+### Comments
+
+#### radia — 2026-06-03T05:40:23.742Z
+**Review** (`origin/dev...origin/sub/AST-499/AST-565-recommended-job-report-modal-tabs-header-list-entry`)
+
+Plan doc: `docs/features/interface/ast-565-recommended-job-report-modal-tabs-header-list-entry-recommended-job-modal.md` @ `5a0de816`
+
+### What's solid
+
+- Tabbed **`JobAnalysisReportModal`**: manifest-driven fixed / phase / artifact tabs; **`take_jd`** + Estelle thoughts above **`AgentAnalysisHeader`**; grade dots in importance order on rail labels; full JD tab; sticky header with company site + copyable profile links.
+- **`JobsRecommended`**: row click opens report; **Jr** removed; **Sk** unchanged.
+- Primary chrome (**Generate Artifacts**, **Cancel**, **Apply**) from **`primary_actions_by_state`** — no parallel TS action map.
+- **§1.4 / §3.3:** Report tab metadata + Apply in **`config.py`** / manifest; new PUT routes call **`tracker`** only; frontend uses **`api()`**.
+- Sibling boundaries respected: uses **AST-562** manifest POST actions (not **`approve_artifacts`**); **`take_jd`** parser on same publish tip as **AST-561**.
+- Betty tests cover modal tabs, list entry, PUT routes, manifest keys.
+
+### discuss
+
+- **`JobAnalysisReportModal.tsx`** — `inProgressSubtext`: hardcoded `BUILD_ARTIFACTS` → `"In Progress"` duplicates manifest **`sections`** label via **`stateSectionLabel`**. **§3.2 G1** — drop override, use manifest only.
+- **`JobAnalysisReportModal.tsx`** — `tabs` useMemo: if **`manifest`** is null, modal shows **"No report tabs available"** even when job loaded. List page gates manifest; consider clearer copy if modal stays reusable.
+
+### advisory
+
+- **`RecommendedJobReportHeader.tsx`**: fallback `jobState.replace(/_/g, " ")` when **`stateLabel`** absent.
+- Plan names **`recommendedJobReport.ts`**; shipped **`.tsx`** for **`ReactNode`** helpers.
+
+**No fix-now.** Proceed **`resolve-astral`** (optional discuss nits above).
+
+#### betty — 2026-06-03T05:36:06.663Z
+**Tests Ready** — manifest for `test-astral`.
+
+**Publish:** `origin/sub/AST-499/AST-565-recommended-job-report-modal-tabs-header-list-entry` @ `a38126c1`
+
+**Bible shasum** (`docs/ASTRAL_TEST_BIBLE.md` on publish ref): `251c34bc30b4c7ec0da86c9cc5084ba51c20421b`
+
+## QA test manifest
+
+1. ```bash
+python3 -m pytest \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_cover_letter_persists_via_tracker \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_application_responses_persists_via_save_job_data \
+  -q
+```
+
+2. ```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/lib/test_analysisUpshot.test.ts \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+**Regression (optional, same epic):** §7.13zv AST-562 narrowed run; §7.13zw AST-561 config pytest; §7.13zm AST-522 Recommended list line.
+
+**Coverage notes:** Tabbed `JobAnalysisReportModal` (summary/JD/phase tabs, grade dots, header, Generate/Apply, artifacts, empty upshot); `JobsRecommended` row → report (no Jr); `take_jd` parser; report tab helpers; manifest tabs + artifact PUT routes.
+
+— Betty
+
+#### katherine — 2026-06-03T05:31:13.941Z
+[check-linear] blocked: Joan `store-code-commit` cherry-pick to `origin/sub/AST-499/AST-565-recommended-job-report-modal-tabs-header-list-entry` fails — publish ref still at plan-only tip `f2004398` while build commits sit on merged `dev-kath` (`2f113edd` config, `49f40afc` product). Need publish ref advanced to `origin/ftr/AST-499-recommended-job-modal` + `sub/561` + `sub/562` (or equivalent) before cherry-pick, then re-run:
+
+`git.sh store-code-commit AST-565 2f113edd kath --session b7244e50-c3ba-4354-aa25-b29db2e7ebc8`
+`git.sh store-code-commit AST-565 49f40afc kath --session b7244e50-c3ba-4354-aa25-b29db2e7ebc8`
+
+Product complete on `dev-kath` @ `49f40afc`; `npx tsc -b --noEmit` green.
+
+#### katherine — 2026-06-03T05:28:09.637Z
+Plan: [`docs/features/interface/ast-565-recommended-job-report-modal-tabs-header-list-entry-recommended-job-modal.md`](https://github.com/susansomerset/astral/blob/sub/AST-499/AST-565-recommended-job-report-modal-tabs-header-list-entry/docs/features/interface/ast-565-recommended-job-report-modal-tabs-header-list-entry-recommended-job-modal.md) on **`origin/sub/AST-499/AST-565-recommended-job-report-modal-tabs-header-list-entry`** @ `f2004398`.
+
+**Scope — MAJOR-CHANGE:** Replaces **`JobAnalysisReportModal`** with a manifest-driven tabbed report (header, summary/JD/phase/artifact panes), list row entry, config manifest slices, and two artifact PUT routes — seven build stages across config, API, and frontend.
+
+**Conf — Medium:** **`SideTabPanel`**, **`AgentAnalysisHeader`**, **AST-562** primary actions, and **AST-553** job persistence patterns exist, but grade-dot rail labels, **`take_jd`** wiring, and generalized artifact tabs need careful merge with **AST-561/562** tips first.
+
+**Risk — Medium:** Recommended triage UX regresses if row-click entry, Generate/Cancel/Apply chrome, or empty **`analysis_upshot`** handling breaks; build must merge sibling **`sub/*`** branches before implementation.
+
+---
+
 # Recommended job report modal — tabs, header, list entry (Recommended Job Modal)
 
 **Linear:** [AST-565](https://linear.app/astralcareermatch/issue/AST-565/recommended-job-report-modal-tabs-header-list-entry-recommended-job)  

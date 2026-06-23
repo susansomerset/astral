@@ -1,3 +1,155 @@
+<!-- linear-archive: AST-522 archived 2026-06-15 -->
+
+## Linear archive (AST-522)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-522/state-grouped-recommended-list-with-phase-scores-recommended-jobs-list  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-498 — Recommended Jobs List  
+**Blocked by / blocks / related:** parent: AST-498
+
+### Description
+
+## What this implements
+
+Rebuild the **Recommended** jobs list so candidates can triage vetted jobs at a glance: jobs grouped into three candidate-facing sections by state (**Recommended**, **In Progress**, **Ready**), each row showing numeric **JD / DO / GET / LIKE** scores from persisted consult results, with per-section sorting and unchanged skip/unskip behavior. Row or row action continues to open the existing job report entry point (full report UX is sibling **AST-499**).
+
+## Acceptance criteria
+
+1. With a candidate who has jobs in `RECOMMENDED`, `BUILD_ARTIFACTS`, and `CANDIDATE_REVIEW`, the Recommended page shows three labeled sections and each job appears in the correct section.
+2. Each row displays numeric JD, DO, GET, and LIKE scores sourced from `job_data` when present; absent scores show a clear empty state.
+3. LIKE rubric grade-dot columns are not the primary consult summary on this page — the four phase score columns are.
+4. Skip from a Recommended-section row moves the job to Skipped; unskip from Skipped restores it to the Recommended list flow.
+5. Sorting works within each section on title, company, phase scores, and updated date without breaking section grouping.
+6. Opening the report from a row still works via the existing entry point (stub acceptable until AST-499).
+
+## Boundaries
+
+* Does **not** implement the Recommended Job Report modal (**AST-499**).
+* Does **not** change consult scoring, `analysis_upshot`, or Estelle schema/prompt work.
+* Does **not** implement Prepare, artifact build, artifact editing, or Apply workflows.
+* Does **not** change In Review or Skipped list behavior except shared components reused incidentally.
+* Plain numeric score display only — no heat-map or gradient styling.
+* Recommended-state membership and section order follow config (not hardcoded state lists in the frontend).
+
+## Notes for planning
+
+* Parent **AST-498** definition is authoritative.
+* State → section mapping: `RECOMMENDED` → Recommended; `BUILD_ARTIFACTS` → In Progress; `CANDIDATE_REVIEW` → Ready.
+* Phase scores: `jd_score`, `do_score`, `get_score`, `like_score` from `job_data` (consult `render_score` output); recommended list API may already flatten these — verify before duplicating API logic.
+* **ASTRAL_CODE_RULES**: frontend dumb; state filtering stays API-side; config-driven state lists.
+
+## Git branch (authoritative)
+
+Per **orientation-astral § Branch law**: parent `ftr/AST-498-recommended-jobs-list`, child `sub/AST-498/<child-segment>`. Engineers cherry-pick to `origin/<publish-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### hedy — 2026-05-29T00:29:01.066Z
+[qa-handoff]
+
+@Betty White — Radia **fix-now** on publish ref `origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` @ `d963855f`: **`docs/ASTRAL_TEST_BIBLE.md`** in `d78b57ce` includes ~200 lines for unrelated tickets (**§7.13m AST-520** expansions, **§7.13zg–§7.13zi** for AST-504–521 / AST-517–519 / AST-513 / AST-510–511). **Keep only** **§7.13zm** + the superseded note on the prior Recommended table row; strip all other hunks from that commit on this branch. Re-run the narrowed manifest from **§7.13zm** after trim. Reassign **Katherine Johnson** when republished.
+
+**Hedy §4:** `dev-hedy` merged `origin/dev` + publish ref (plan doc @ `d963855f`); no product changes needed.
+
+#### ada — 2026-05-29T00:28:45.783Z
+[qa-handoff]
+
+**Radia fix-now (Review @ `d963855f`):** `docs/ASTRAL_TEST_BIBLE.md` on publish ref commit `d78b57ce` includes ~200 lines for unrelated tickets (**§7.13m AST-520**, **§7.13zg–§7.13zi** for AST-504–521, AST-517–519, AST-513, AST-510–511). Only **§7.13zm** + the superseded note on the prior Recommended row belong on **`origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores`**.
+
+**Ask:** Trim bible on publish ref to AST-522 scope only; re-run narrowed manifest from **§7.13zm**; push updated tip. Radia doc commit `d963855f` is already on publish ref — no product changes needed.
+
+**Reassign @Katherine Johnson** when republished so **`resolve-astral`** can run §9a + **User Testing**.
+
+@Betty White
+
+#### radia — 2026-05-29T00:27:38.796Z
+**Review** — `origin/dev...origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` @ `d963855f`
+
+### Solid
+- Three manifest-driven sections (**Recommended** / **In Progress** / **Ready**), JD/DO/GET/LIKE numeric cells, per-section sort, empty sections hidden, **Updated** column; rubric grade-dots and **`latest_score`** removed.
+- **§1.4 / §2.1 / G1:** `JOBS_RECOMMENDED_UI_SECTIONS` + phase columns in `config.py` with `RECOMMENDED_JOB_STATES` assert; page uses `useStateUi` — no hardcoded section lists in render path. `StateUiContext.EMPTY` mirrors server defaults (established pattern).
+- **§3.3:** UI + utils only; no API duplication; **AST-499** boundary respected.
+- Vitest + manifest test cover section grouping, phase headers, em-dash empty scores, per-section Company sort, Skip / View Job Analysis, row → detail.
+
+### fix-now
+- **`docs/ASTRAL_TEST_BIBLE.md`** (commit `d78b57ce`): ~200 lines document **unrelated** tickets (**§7.13m AST-520**, **§7.13zg–§7.13zi** for AST-504–521, AST-517–519, AST-513, AST-510–511). Only **§7.13zm** + the superseded note on the prior Recommended row belong on this branch — strip the rest before parent UAT (**§5d** / plan **Single-Component** scope).
+
+### advisory
+- Removed Vitest for `state_ui_manifest` fetch failure; EMPTY fallback still works but is untested — optional restore.
+
+### Doc
+Plan review table: `docs/features/interface/ast-522-state-grouped-recommended-list-with-phase-scores-recommended-jobs-list.md` @ `d963855f` — cherry-pick onto `dev-kath` after resolve.
+
+#### katherine — 2026-05-29T00:25:20.895Z
+[check-linear]
+
+**Session scope:** Parent **AST-498** / **Astral Interface** — assigned **AST-522**. Publish ref `origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` @ `d78b57ce`.
+
+**§0a (`astral-kath` / `dev-kath`):** `git fetch origin`, `checkout dev-kath`, `merge origin/dev`, `merge origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD` @ `d5eaae89`).
+
+**§0b:** `@katherine` issue search (Team Astral + **Astral Interface** project); team-wide `@Katherine` query paginated. Full threads on **AST-522**, parent **AST-498**. **0** actionable @-mention comments.
+
+**§1:** Assignee-me in **Astral Interface**: **AST-522** only (active). Status **Tests Passed**. Latest thread after Katherine’s prior `[check-linear]` @ `2026-05-29T00:09`: Betty **Tests Ready** @ `d78b57ce` (manifest + pytest/Vitest commands) — pipeline handoff for **`test-astral`**, not an inbox fix; no `@katherine`.
+
+**Pipeline:** Inbox quiet; no `plan-astral` / `build-astral` / `test-astral` / `resolve-astral` from this pass (happy path).
+
+#### betty — 2026-05-29T00:17:15.255Z
+**Tests Ready** — `origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` @ `d78b57ce`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `227d0b825867b71bb0668ac36143e4d09ea1817c620d9ea744620365f822fbf8` (§7.13zm)
+
+**Manifest** (`test-astral`):
+
+1. `python3 -m pytest tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast522_recommended_manifest_sections_and_phase_columns tests/component/ui/api/test_api_jobs.py::test_list_recommended_and_default -q`
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx`
+
+**Coverage:** Routed page Vitest — three manifest sections (Recommended / In Progress / Ready), JD/DO/GET/LIKE phase columns (not rubric TE/Score), `8.5` + em dash empty state, per-section Company sort, row detail modal, Skip + View Job Analysis for `RECOMMENDED` and `CANDIDATE_REVIEW`. Config manifest test for `jobs.recommended` sections + phase fields. API regression: recommended view still uses `RECOMMENDED_JOB_STATES`.
+
+— Betty
+
+#### ada — 2026-05-29T00:12:39.901Z
+[check-linear]
+
+**Session scope:** Parent **AST-498** / Astral Interface — assigned issue ids **(none)**; publish ref `origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` @ `abe5bddb`.
+
+**§0a (`astral-ada` / `dev-ada`):** `git fetch origin`, `checkout dev-ada`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`). Merged publish ref tip for session alignment (`621b2f19` — plan doc only).
+
+**§0b:** `@ada` issue search (Team Astral + **Astral Interface** project); **14d** fallback (`updatedAt -P14D`, team 250). Full threads on **AST-522**, parent **AST-498**, and recent @ada / assignee hits (**AST-520**, **AST-521**, **AST-517**, **AST-513**, **AST-514**). **0** actionable comments — nothing `@ada` or directed at Ada needing reply or small fix after Katherine’s `[check-linear]` @ `2026-05-29T00:09`.
+
+**§1:** Orchestrator assigned ids **(none)**; `assignee = me` MCP query errored this pass. **AST-522** assignee **Katherine** — **Plan Approved**; latest thread is Katherine plan doc + inbox clear post.
+
+**Pipeline:** Inbox quiet; no `plan-astral` / `build-astral` / `test-astral` / `resolve-astral` from this pass (happy path).
+
+#### katherine — 2026-05-29T00:09:01.235Z
+[check-linear]
+
+**Session scope:** Parent **AST-498** / Astral Interface — assigned **AST-522**.
+
+**§0a (`astral-kath` / `dev-kath`):** `git fetch origin`, `checkout dev-kath`, `merge origin/dev`, `merge origin/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD` @ `daf362e7`). Publish ref tip: `abe5bddb`.
+
+**§0b:** `@katherine` issue search (Team Astral + **Astral Interface** project); **14d** fallback (`updatedAt -P14D`, team 250). Full threads on **AST-522**, parent **AST-498**, and recent @katherine / mention hits (**AST-514**, **AST-516**, **AST-521**, **AST-513**). **0** actionable comments — nothing `@katherine` or directed at Katherine needing reply or small fix.
+
+**§1:** Assignee-me in **Astral Interface**: **AST-522** only (active). **Plan Approved**; latest thread activity is Katherine plan doc @ `2026-05-29T00:07` — no external replies yet.
+
+**Pipeline:** Inbox quiet; no `plan-astral` / `build-astral` / `test-astral` / `resolve-astral` from this pass (happy path).
+
+#### katherine — 2026-05-29T00:07:45.903Z
+Plan: [`docs/features/interface/ast-522-state-grouped-recommended-list-with-phase-scores-recommended-jobs-list.md`](https://github.com/susansomerset/astral/blob/sub/AST-498/AST-522-state-grouped-recommended-list-with-phase-scores/docs/features/interface/ast-522-state-grouped-recommended-list-with-phase-scores-recommended-jobs-list.md)
+
+**Scope — `Single-Component`:** One page rewrite plus config manifest wiring, context types, and focused tests — no new API routes or consult pipeline changes.
+
+**Conf — `high`:** `_flatten_grades` already exposes phase scores; In Review provides a proven section + per-section sort pattern; state membership stays in `RECOMMENDED_JOB_STATES` / manifest.
+
+**Risk — `Medium`:** Wrong section grouping or sort comparator bugs would mis-triage jobs on the primary landing page, but scope is isolated to Recommended UI and manifest defaults.
+
+Five stages: (1) `JOBS_RECOMMENDED_UI_SECTIONS` + manifest `jobs.recommended`, (2) `StateUiContext` types, (3) `JobsRecommended.tsx` grouped sections with JD/DO/GET/LIKE numeric columns, (4) component tests, (5) verify. API unchanged — verified `_flatten_grades` already lifts phase scores.
+
+---
+
 # State-grouped Recommended list with phase scores (Recommended Jobs List)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-522/state-grouped-recommended-list-with-phase-scores-recommended-jobs-list  
