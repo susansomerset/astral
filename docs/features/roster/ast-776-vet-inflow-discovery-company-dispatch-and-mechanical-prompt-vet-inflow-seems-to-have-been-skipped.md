@@ -201,3 +201,16 @@ Make **`vet_inflow_discovery`** a schedulable **company** dispatch on **`trigger
 | §3.5 naming | **`vet_inflow_discovery_company`**, **`count_company_new_pending_inflow_vet`** |
 
 No **`conf-!!-NONE`** conflicts identified.
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt`  
+**Product tip:** `4dc3a36` — `fe61510` (config) + `4152de9` (eligibility + prompt migration) + `4dc3a36` (roster vet path)
+
+**Built:** `vet_inflow_discovery` registered as company dispatch on **NEW**; eligibility split via `inflow_discovery_blurb` (vet vs resolve); mechanical prompt seed migration; `vet_inflow_discovery_company` + `run_company_task` NEW routing by `dispatch_task_key`. Discovery batch unchanged (no inline vet).
+
+**QA note:** `tests/component/utils/test_config.py` `test_vet_inflow_discovery_task` expects `entity_type == "candidate"` — Betty manifest update expected at Code Complete.
+
+**Smoke (Admin UAT):** discovery → NEW + blurb → vet dispatch → separate `batch_id`, `WEBSITE_FOUND` or `VET_FAILED`; `fetch_website` only after `WEBSITE_FOUND`.
+
+---
