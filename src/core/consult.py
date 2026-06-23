@@ -119,6 +119,28 @@ def _rubric_criteria_for_cfg(candidate_id: str, cfg: dict) -> list:
     return rubric_criteria_for_task(candidate_id, owner)
 
 
+def _rubric_criteria_from_ctx(ctx: Optional[Dict[str, Any]], cfg: dict) -> list:
+    """Inline rubric from ctx candidate_data.artifacts when table lookup is unavailable."""
+    rk = (cfg or {}).get("rubric_artifact")
+    if not rk or not ctx:
+        return []
+    raw = (ctx.get("candidate_data") or {}).get("artifacts", {}).get(rk)
+    if isinstance(raw, list) and raw:
+        return raw
+    if isinstance(raw, dict):
+        crit = raw.get("criteria")
+        if isinstance(crit, list) and crit:
+            return crit
+    return []
+
+
+def _resolve_rubric_criteria(
+    candidate_id: str, cfg: dict, ctx: Optional[Dict[str, Any]] = None
+) -> list:
+    rows = _rubric_criteria_for_cfg(candidate_id, cfg)
+    return rows if rows else _rubric_criteria_from_ctx(ctx, cfg)
+
+
 def _vector_labels_map(rubric_criteria: list) -> Dict[str, str]:
     return {item["code"]: item["label"] for item in rubric_criteria if item.get("code") and item.get("label")}
 
@@ -619,12 +641,21 @@ def _format_analysis_phase_text(phase_token: str, job_data: dict, candidate_data
         return ""
     owner = phase_cfg.get("rubric_owner_task_key")
     cid = str((candidate_data or {}).get("_astral_candidate_id") or "")
+    rubric_criteria: list = []
     if owner and cid:
         from src.core.candidate import rubric_criteria_for_task
 
         rubric_criteria = rubric_criteria_for_task(cid, owner)
-    else:
-        rubric_criteria = []
+    if not rubric_criteria:
+        rk = phase_cfg.get("rubric_artifact")
+        if rk:
+            raw = (candidate_data or {}).get("artifacts", {}).get(rk)
+            if isinstance(raw, list) and raw:
+                rubric_criteria = raw
+            elif isinstance(raw, dict):
+                crit = raw.get("criteria")
+                if isinstance(crit, list) and crit:
+                    rubric_criteria = crit
     if not rubric_criteria:
         return ""
     blocks: List[str] = []
@@ -809,7 +840,7 @@ def _apply_render_verdict_decoded_job(
     if not isinstance(grades, list):
         raise ValueError("agent response missing grades")
     rk = cfg.get("rubric_artifact")
-    rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
+    rubric_criteria = _resolve_rubric_criteria(_candidate_id_from_ctx(ctx), cfg, ctx)
     _hydrate_grade_reasons_from_rubric(grades, rubric_criteria)
 
     agent_cfg = TASK_CONFIG[agent_task]
@@ -900,7 +931,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
 
     # Encoded consult tasks need batch_entities + vector_labels for decode (same as _run_batch_consult).
     cd = (ctx or {}).get("candidate_data", {})
-    rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
+    rubric_criteria = _resolve_rubric_criteria(_candidate_id_from_ctx(ctx), cfg, ctx)
     vector_labels = _vector_labels_map(rubric_criteria)
     job_row = dict(job)
     task_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [job_row], "vector_labels": vector_labels, "batch_size": 1}
@@ -1026,7 +1057,7 @@ async def _run_batch_consult(
 
     live_content = assemble_fn(jobs)
     # Build code→label map from candidate's rubric so _decode_payload can hydrate vector names
-    rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
+    rubric_criteria = _resolve_rubric_criteria(_candidate_id_from_ctx(ctx), cfg, ctx)
     vector_labels = _vector_labels_map(rubric_criteria)
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
     task_ctx = {**ctx, "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels} if ctx else \
@@ -1230,7 +1261,7 @@ async def qualify_job_listings(
     cfg = _consult_orchestration(task_key)
 
     # AST-350: same as evaluate_jd_batch — numeric score for latest_score / dispatch sort (informational).
-    rubric_list = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
+    rubric_list = _resolve_rubric_criteria(_candidate_id_from_ctx(ctx), cfg, ctx)
     if debug:
         logger.set_debug_flag(True)
         logger.debug_detail(f"qualify_job_listings batch_id={batch_id} job_count={len(jobs)}")
@@ -1400,7 +1431,7 @@ async def evaluate_jd_batch(
 
     # AST-350: pre-compute vector_weights from candidate rubric so process() can derive a numeric score.
     # Score is informational only — does not affect pass/fail verdict.
-    rubric_list = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
+    rubric_list = _resolve_rubric_criteria(_candidate_id_from_ctx(ctx), cfg, ctx)
     def assemble(jobs):
         jd_key = "job_description"
         jd_texts = [j.get("job_data", {}).get(jd_key, "") or "" for j in jobs]
