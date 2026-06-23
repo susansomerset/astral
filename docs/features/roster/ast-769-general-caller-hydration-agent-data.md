@@ -305,5 +305,5 @@ No unresolved conflicts.
 | **discuss** — unused `entry_task_key` | Included in hydration error strings for traceability. |
 | **advisory** — `get_task_keys()` scan | No change — acceptable per review. |
 
-**Publish tip after resolve:** pending commit
+**Publish tip after resolve:** `2263d8a`
 
