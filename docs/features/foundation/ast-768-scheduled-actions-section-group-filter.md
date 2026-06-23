@@ -127,3 +127,33 @@ No conflicts requiring plan revision.
 **Built:** `origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter` @ `4ac09c1`
 
 Stage 1: Section/Group filter control sourced from `allTaskKeys` catalog metadata; `filteredRows` AND intersection after Candidate, before Task; filter bar placement after Candidate filter. Component tests deferred to Betty per build-child test-tree ban.
+
+---
+
+## Review (Radia)
+
+**Ref:** `origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter` @ `ce024eb` (product @ `4ac09c1`) · baseline `origin/dev`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 matches plan: `sectionGroupFilter` state, `sectionGroupOptions` from `allTaskKeys`, `filteredRows` AND after Candidate / before Task, control after Candidate filter. |
+| Product scope | `4ac09c1` touches only `AdminScheduledActions.tsx` — client-side filter; no API/backend in engineer commit. |
+| Group key | Reuses `${task_group_order}\u0000${task_group_name}` composite key aligned with `sections` memo — consistent with plan decision. |
+| Layer / rules | §3.3 — frontend-only; no new cross-layer imports. §2.1 — group list from existing `task_keys` payload. |
+| Tests | Betty manifest: 6 cases in `AST-768 section/group filter`; narrowed Vitest run green on publish tip. |
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **discuss** | Publish tip vs `origin/dev` (not in `4ac09c1`) | **Sibling bleed — AST-750:** `src/utils/config.py` (`DISPATCH_SCORE_FLOOR_VALUES`), `src/ui/api/api_admin.py` (`/dispatch_tasks/score_floor_options`), and `docs/features/interface/ast-750-*.md` appear on the three-dot diff via `merge-tests`; AST-768 plan explicitly out-of-scopes API/config. UI still hardcodes `scoreFloorOptions` 1.00–10.00 — endpoint is unused on this ref. Confirm at **merge-child** whether to strip from sub or defer to AST-750 rollup. |
+| advisory | `AdminScheduledActions.tsx` | Composite section key formula appears in three memos (`sectionGroupOptions`, `filteredRows`, `sections`); plan chose duplication over a helper — acceptable; optional micro-DRY later if Susan wants. |
+
+### Recommended actions
+
+| Owner | Action |
+| --- | --- |
+| Katherine (`resolve-child`) | No product changes required for AST-768 — implementation is plan-complete. |
+| Chuckles / merge-child | Resolve AST-750 backend/doc bleed on publish tip before or during ftr rollup (see **discuss** above). |
