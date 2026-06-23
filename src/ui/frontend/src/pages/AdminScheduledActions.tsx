@@ -9,6 +9,41 @@ import ListTableTruncatedCell from "../components/ListTableTruncatedCell"
 import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
 import { useListTableColumnMeasure } from "../lib/useListTableColumnMeasure"
+import Toast, { type ToastMessage } from "../components/Toast"
+
+type TaskKeyMeta = {
+  entity_type: string
+  trigger_state: string
+  task_group_order: string
+  task_group_name: string
+  task_seq: number | null
+  task_name: string
+  is_scored?: boolean
+}
+
+type DispatchFormState = {
+  candidate_id: string
+  task_key: string
+  trigger_state: string
+  freq_hrs: string
+  min_count: string
+  batch_size: string
+  max_runs: string
+  score_floor: string
+  auto_mode: boolean
+  debug: boolean
+  entity_type: string
+  is_scored: boolean
+}
+
+function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMeta | undefined): DispatchFormState {
+  return {
+    ...form,
+    task_key: key,
+    entity_type: cfg?.entity_type || "",
+    is_scored: !!cfg?.is_scored,
+  }
+}
 
 interface DispatchTask {
   id: number
@@ -61,7 +96,7 @@ interface ScheduledPhaseTableProps {
   frozenN: number
   truncateChars: number
   threadStatus: Record<number, ThreadEntry>
-  allTaskKeys: Record<string, { entity_type: string; trigger_state: string; task_group_order: string; task_group_name: string; task_seq: number | null; task_name: string; is_scored?: boolean }>
+  allTaskKeys: Record<string, TaskKeyMeta>
   toggleSort: (col: string) => void
   sortIcon: (col: string) => string
   openEdit: (row: DispatchTask) => void
@@ -131,7 +166,11 @@ function ScheduledPhaseTable({
             const isRunning = thread?.running ?? false
             const isDraining = thread?.draining ?? false
             return (
-              <tr key={row.id} onClick={() => openEdit(row)} style={{ cursor: "pointer" }}>
+              <tr
+                key={row.id}
+                onClick={row.auto_mode ? undefined : () => openEdit(row)}
+                style={{ cursor: row.auto_mode ? "default" : "pointer" }}
+              >
                 <td className={0 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(0)}>
                   <ListTableTruncatedCell text={row.task_key} maxChars={truncateChars} />
                 </td>
@@ -224,9 +263,11 @@ export default function ScheduledActions() {
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
-  const [allTaskKeys, setAllTaskKeys] = useState<Record<string, { entity_type: string; trigger_state: string; task_group_order: string; task_group_name: string; task_seq: number | null; task_name: string; is_scored?: boolean }>>({})
+  const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[] }>({ job: [], company: [] })
   const [openSection, setOpenSection] = useState<string | null>(null)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
 
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
@@ -486,6 +527,10 @@ export default function ScheduledActions() {
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
+    if (row.auto_mode) {
+      setToast({ text: "Turn AUTO mode off before editing this row", variant: "error" })
+      return
+    }
     setEditRow(row)
     const cfg = allTaskKeys[row.task_key]
     setForm({
@@ -516,6 +561,7 @@ export default function ScheduledActions() {
             freq_hrs: parseFloat(form.freq_hrs) || 0,
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
+            task_key: form.task_key,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
@@ -736,31 +782,33 @@ export default function ScheduledActions() {
             </div>
             <div className="modal-body">
               {!editRow && (
-                <>
-                  <div className="modal-detail-row">
-                    <span className="modal-detail-label">Candidate</span>
-                    <input type="text" value={form.candidate_id || "(none selected)"} readOnly style={{ opacity: 0.7 }} />
-                  </div>
-                  <div className="modal-detail-row">
-                    <span className="modal-detail-label">Task</span>
-                    <select value={form.task_key} onChange={e => {
-                      const key = e.target.value
-                      const cfg = allTaskKeys[key]
-                      setForm({
-                        ...form,
-                        task_key: key,
-                        entity_type: cfg?.entity_type || "",
-                        trigger_state: cfg?.trigger_state || "",
-                        is_scored: !!cfg?.is_scored,
-                        score_floor: "1.00",
-                      })
-                    }}>
-                      <option value="">Select…</option>
-                      {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
-                    </select>
-                  </div>
-                </>
+                <div className="modal-detail-row">
+                  <span className="modal-detail-label">Candidate</span>
+                  <input type="text" value={form.candidate_id || "(none selected)"} readOnly style={{ opacity: 0.7 }} />
+                </div>
               )}
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Task</span>
+                <select value={form.task_key} onChange={e => {
+                  const key = e.target.value
+                  const cfg = allTaskKeys[key]
+                  if (editRow) {
+                    setForm(f => taskKeyChangePatch(f, key, cfg))
+                  } else {
+                    setForm({
+                      ...form,
+                      task_key: key,
+                      entity_type: cfg?.entity_type || "",
+                      trigger_state: cfg?.trigger_state || "",
+                      is_scored: !!cfg?.is_scored,
+                      score_floor: "1.00",
+                    })
+                  }
+                }}>
+                  <option value="">Select…</option>
+                  {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Entity Type</span>
                 <input type="text" value={form.entity_type} readOnly style={{ opacity: 0.7 }} />
@@ -817,6 +865,8 @@ export default function ScheduledActions() {
           </div>
         </div>
       )}
+
+      <Toast message={toast} onDone={clearToast} />
     </div>
   )
 }

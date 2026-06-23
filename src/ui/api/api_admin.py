@@ -54,6 +54,8 @@ from src.utils.config import (
     dispatch_task_key_retired_message,
     get_task_keys,
     dispatch_claim_uses_score_floor,
+    resume_artifact_compound_state,
+    resume_artifact_hop_task_keys,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -867,17 +869,64 @@ def create_dtask():
     return jsonify({"id": task_id}), 201
 
 
+def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -> str | None:
+    tk = (task_key or "").strip()
+    if not tk:
+        return "task_key is required"
+    retired = dispatch_task_key_retired_message(tk)
+    if retired:
+        return retired
+    try:
+        defaults = dispatch_task_admin_defaults(tk)
+    except KeyError:
+        return f"Unknown or non-schedulable task_key: {tk!r}"
+    ts = (trigger_state or "").strip()
+    if not ts:
+        return "trigger_state is required"
+    et = defaults["entity_type"]
+    if et == "job":
+        if ts not in JOB_STATES:
+            return f"task_key {tk!r} (job) is not valid for trigger_state {ts!r}"
+    elif et == "company":
+        if ts not in COMPANY_STATES:
+            return f"task_key {tk!r} (company) is not valid for trigger_state {ts!r}"
+    else:
+        return f"task_key {tk!r} has unsupported entity_type {et!r}"
+    if tk in resume_artifact_hop_task_keys():
+        expected = resume_artifact_compound_state(tk)
+        if ts != expected:
+            return f"task_key {tk!r} requires trigger_state {expected!r} (got {ts!r})"
+    return None
+
+
 @admin_bp.route("/dispatch_tasks/<int:task_id>", methods=["PUT"])
 @require_admin
 def update_dtask(task_id):
     data = request.get_json(force=True)
-    allowed = {"min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor", "trigger_state"}
     row = database.get_dispatch_task(task_id)
-    trigger_state = data.get("trigger_state", (row or {}).get("trigger_state"))
+    if not row:
+        return jsonify({"error": f"Dispatch task not found: {task_id}"}), 404
+    if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
+        return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
+    allowed = {
+        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs",
+        "max_runs", "score_floor", "trigger_state", "task_key",
+    }
+    updates: Dict[str, Any] = {}
+    if "task_key" in data:
+        effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
+        tk_err = _dispatch_task_key_trigger_error(data["task_key"], effective_trigger_state)
+        if tk_err:
+            return jsonify({"error": tk_err}), 400
+        defaults = dispatch_task_admin_defaults((data["task_key"] or "").strip())
+        updates["task_key"] = (data["task_key"] or "").strip()
+        updates["entity_type"] = defaults["entity_type"]
+        updates["sort_by"] = defaults["sort_by"]
+        updates["batch_call_mode"] = defaults["batch_call_mode"]
+    trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
-    updates = {}
     for k in allowed:
-        if k in data:
+        if k in data and k != "task_key":
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
             elif k in ("auto_mode", "debug", "skip_cache"):
@@ -891,7 +940,7 @@ def update_dtask(task_id):
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
     if updates.get("auto_mode") == 1:
-        cid = (row or {}).get("candidate_id")
+        cid = row.get("candidate_id")
         err = _candidate_dispatch_api_key_error(cid)
         if err:
             return jsonify({"error": err}), 400
@@ -899,9 +948,9 @@ def update_dtask(task_id):
         update_dispatch_task(task_id, **updates)
     except Exception as e:
         if "UNIQUE" in str(e):
-            cid = (row or {}).get("candidate_id", "")
-            tk = (row or {}).get("task_key", "")
-            ts = updates.get("trigger_state", (row or {}).get("trigger_state", ""))
+            cid = row.get("candidate_id", "")
+            tk = updates.get("task_key", row.get("task_key", ""))
+            ts = updates.get("trigger_state", row.get("trigger_state", ""))
             return jsonify({
                 "error": (
                     f"Dispatch row already exists for candidate '{cid}', "
