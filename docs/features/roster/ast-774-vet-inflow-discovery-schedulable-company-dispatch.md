@@ -232,4 +232,10 @@ No **`conf-!!-NONE`** conflicts identified.
 
 ### Test tree (Betty — `[qa-handoff]`)
 
-- **AST-775 test bleed:** `merge-tests` brought `TestAst775InflowDiscoveryRecordNew` and rewrote `TestAst505InflowDiscovery::test_run_batch_happy_path` for `record_inflow_discovery_hit` / blurb — product tip still inline-vets in `run_inflow_discovery_batch`. Betty to strip AST-775 delta from publish ref and restore AST-505 happy-path expectations to match product.
+- **AST-775 test bleed stripped** @ `6964818`: removed `TestAst775InflowDiscoveryRecordNew` and `test_vet_failed_state_and_transition`; restored `TestAst505InflowDiscovery::test_run_batch_happy_path` to inline-vet `do_task` mocks; bible AST-774 manifest only.
+
+### Resolve (Hedy — 2026-06-23)
+
+- **Manifest:** Betty narrowed run — **6 passed** on epic worktree @ `6964818`.
+- **§9a:** `origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch` merges cleanly into `origin/dev` and `origin/ftr/ast-762-vet-inflow-discovery-schedulable`.
+- **Linear:** → **User Testing** (assignee Hedy).
