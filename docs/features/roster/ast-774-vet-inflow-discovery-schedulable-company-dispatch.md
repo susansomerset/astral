@@ -184,3 +184,38 @@ No **`conf-!!-NONE`** conflicts identified.
 
 **Publish ref:** `origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch`  
 **Product commits:** `43ccdf2` (Stage 1 — schedulable config defaults), `ab4f64d` (Stage 2 — consult routing), `dc4a99f` (Stage 3 — run_company_task guard)
+
+## Radia review (2026-06-23)
+
+**Diff:** `origin/dev...origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch` @ `ffa0c93`  
+**Product commits reviewed:** `43ccdf2`, `ab4f64d`, `dc4a99f` (`config.py`, `consult.py`, `roster.py` guard)
+
+### What’s solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stage 1 | `vet_inflow_discovery` in `DISPATCH_SCHEDULABLE_TASK_KEYS` + `_DISPATCH_COMPANY_ENTITY_TASK_KEYS`; `TASK_CONFIG` `entity_type` → `company`; `INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"]` → `NEW`; `_dispatch_trigger_state_for_task_key` branch. |
+| Plan Stage 2 | `run_consult_task` company branch routes `vet_inflow_discovery` → `run_inflow_discovery_batch` with `candidate_id` from ctx / entity fallback and `get_candidate` hydration. |
+| Plan Stage 3 | `run_company_task` `NEW` guard returns `total_errors=1` without calling `resolve_company_website` when `dispatch_task_key=vet_inflow_discovery`. |
+| §2.4 / §2.6 | Dispatcher claim/clear unchanged; no new transitions; mis-route is warning + error summary only. |
+| §3.3 layer | `consult → roster` + lazy `candidate.get_candidate` (matches `agent.py` precedent). |
+| AST-774 tests | `TestAst774VetInflowDiscoveryDispatch` + `test_vet_inflow_discovery_dispatch_admin_defaults` align with plan matrix. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `src/utils/config.py`, `src/ui/api/api_admin.py` | **AST-750 sibling product** on publish ref vs `origin/dev`: `DISPATCH_SCORE_FLOOR_VALUES`, `dispatch_score_floor_option_labels()`, `GET /api/admin/dispatch_tasks/score_floor_options`. Plan **Out of scope** for AST-774. Revert from this sub ref; land via **AST-750** (same pattern as AST-769 review). |
+| **fix-now** | Publish ref — `tests/component/` vs `src/core/roster.py` | **AST-775 test bleed** without matching product: `merge-tests` brought `test(AST-775)` (`TestAst775InflowDiscoveryRecordNew`, modified `TestAst505InflowDiscovery::test_run_batch_happy_path`) but product tip has **no** `record_inflow_discovery_hit` and `run_inflow_discovery_batch` still inline-vets (dev behavior). Manifest cannot pass against product on the same ref. Betty must strip AST-775 test delta from this publish ref (or re-sync merge-tests to AST-774-only manifest). |
+| **discuss** | Plan Self-Assessment **Scope** | Stated `Single-Component` but net diff vs dev also carries AST-750 `src/` + AST-775 test tree — confirm intentional rollup vs accidental merge-tests bleed before parent UAT. |
+| **advisory** | `consult.py` ~1775 | Lazy `from src.core.candidate import get_candidate` without B1 comment — acceptable via `agent.py` grandfather; add one-line lazy-load comment if touching again. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Revert AST-750 `src/` delta (`config.py` score_floor helpers + `api_admin.py` route) from publish ref | Engineer (`resolve-child`) |
+| Remove or re-sync AST-775 test manifest off AST-774 publish ref; restore `TestAst505` expectations to match product tip | Betty (`[qa-handoff]`) or engineer after Betty posts AST-774-only manifest |
+| Optional: one-line lazy-import comment on `get_candidate` in `consult.py` | Engineer |
+
+**Outcome:** fix-now items block clean merge — core AST-774 routing is sound once bleed is stripped.
