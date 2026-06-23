@@ -355,6 +355,98 @@ def ingest_new_companies(
     return True
 
 
+async def vet_inflow_discovery_company(
+    short_name: str,
+    entity: Dict[str, Any],
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Company dispatch: vet stored discovery blurb → WEBSITE_FOUND | VET_FAILED (AST-776)."""
+    del batch_id  # company batch_id is on entity row; do_task uses log_batch_id from dispatcher
+    cfg = INFLOW_CONFIG["vet"]
+    log = logger
+    log.set_debug_flag(debug)
+    blurb = ((entity.get("company_data") or {}).get(cfg["blurb_data_key"]) or "").strip()
+    if not blurb:
+        logger.warning("[%s] vet_inflow_discovery_company: missing inflow_discovery_blurb", short_name)
+        return {"success": False, "state": None, "error": "missing inflow_discovery_blurb"}
+    live_content = f"Discovery hit (index|title|url|snippet)\n{blurb}"
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome="vet vet_inflow_discovery 1 blurb",
+        )
+        log.debug_detail_block(live_content)
+    api_result = await do_task(
+        task_key=cfg["task_key"],
+        live_content=live_content,
+        index=short_name,
+        ctx=ctx,
+        debug=debug,
+    )
+    if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="vet task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
+        return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
+    parsed = api_result.get("parsed_response") or {}
+    rows = parsed.get("results")
+    row: Optional[dict] = None
+    if isinstance(rows, list):
+        for r in rows:
+            if isinstance(r, dict):
+                row = r
+                break
+    if not row:
+        if debug:
+            log.debug_detail("vet parsed_response missing results list")
+        return {"success": False, "state": None, "error": "missing results"}
+    action = (row.get("action") or "").strip().lower()
+    if action in ("ignore", "reject"):
+        transition_company_state(short_name, cfg["fail_state"])
+        outcome = f"recorded {cfg['fail_state']}"
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome=outcome,
+            )
+            log.debug_detail(f"action={action!r}")
+        return {"success": True, "state": cfg["fail_state"], "error": None}
+    if action not in ("slug", "accept"):
+        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
+        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"action={action!r} missing website")
+        return {"success": False, "state": None, "error": "missing website on pass action"}
+    update_company(short_name, company_website=website)
+    transition_company_state(short_name, cfg["pass_state"])
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+        )
+        log.debug_detail(f"action={action!r} website={website!r}")
+    return {"success": True, "state": cfg["pass_state"], "error": None}
+
+
 async def resolve_company_website(
     short_name: str,
     entity: Dict[str, Any],
@@ -628,10 +720,30 @@ async def run_company_task(
 
     try:
         if input_state == "NEW":
-            r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
+            tk = (dispatch_task_key or "").strip()
+            if tk == INFLOW_CONFIG["vet"]["task_key"]:
+                r = await vet_inflow_discovery_company(
+                    short_name, entity, batch_id, ctx=ctx, debug=debug,
+                )
+            elif tk == INFLOW_CONFIG["resolve"]["task_key"]:
+                r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
+            else:
+                logger.warning(
+                    "run_company_task: NEW requires dispatch_task_key %r or %r for %s",
+                    INFLOW_CONFIG["vet"]["task_key"],
+                    INFLOW_CONFIG["resolve"]["task_key"],
+                    short_name,
+                )
+                return {**zero, "total_errors": 1}
             if r.get("error"):
                 return {**zero, "total_errors": 1}
-            if r.get("state") in ("WEBSITE_FOUND", "NO_WEBSITE"):
+            terminal_ok = (
+                INFLOW_CONFIG["vet"]["pass_state"],
+                INFLOW_CONFIG["vet"]["fail_state"],
+                "WEBSITE_FOUND",
+                "NO_WEBSITE",
+            )
+            if r.get("state") in terminal_ok:
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
