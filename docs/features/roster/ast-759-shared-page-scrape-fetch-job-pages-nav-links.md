@@ -184,3 +184,10 @@
 | §3.5 naming | snake_case; helper names describe contract not ticket id |
 
 No unresolved conflicts.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-753/AST-759-shared-page-scrape-fetch-job-pages-nav-links`  
+**Product commits:** `c7a9be5` (Stage 1 — shared contract helpers), `7ec374e` (Stage 2 — fetch_website + fetch_job_pages wiring), `7513459` (Stage 3 — select_job_page live content parity)
