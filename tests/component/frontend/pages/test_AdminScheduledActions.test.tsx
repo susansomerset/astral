@@ -269,6 +269,29 @@ describe("AdminScheduledActions", () => {
     expect(headers[3].style.left).toBe("")
   }, 20000)
 
+  it("AST-760: frozen headers use left-only sticky; Entity does not width-lock over State", async () => {
+    mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+    renderWithProviders(<ScheduledActions />)
+    await expandFirstPhaseSection()
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+    const table = screen.getByRole("table")
+    const headers = within(table).getAllByRole("columnheader")
+    expect(headers[2].style.width).toBe("")
+    expect(headers[2].style.minWidth).toBe("")
+    expect(headers[3]).not.toHaveClass("list-table-cell-frozen")
+    expect(headers[3].style.left).toBe("")
+
+    const headerCells = table.querySelector("thead tr")!.querySelectorAll("th")
+    Object.defineProperty(headerCells[0], "offsetWidth", { configurable: true, value: 88 })
+    Object.defineProperty(headerCells[1], "offsetWidth", { configurable: true, value: 72 })
+    Object.defineProperty(headerCells[2], "offsetWidth", { configurable: true, value: 56 })
+    await userEvent.click(headers[0])
+    await waitFor(() => expect(headers[2].style.left).toBe("160px"))
+    expect(headers[2].style.width).toBe("")
+    expect(headers[2].style.minWidth).toBe("")
+    expect(headers[3].style.left).toBe("")
+  }, 20000)
+
   it("sorts columns, filters task key, and shows row edge cases", async () => {
     mockApi(false, {
       tasks: [dispatchTask, sparseRow],

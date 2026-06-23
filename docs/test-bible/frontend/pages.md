@@ -567,6 +567,26 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-647**, **AST-652**, **AST-657** list-table layout manifests in **`docs/test-bible/frontend/components.md`**.
 
+### AST-760 · AST-744
+
+Susan UAT (post AST-758): **Entity** frozen `th` overlaying **State** header. AST-746 width/`minWidth` lock on frozen cells forced Entity sticky box over State (`z-index` 3 vs 2). Fix drops width lock — **left-only** sticky aligned with ListPage; keeps mount-on-expand + `predecessorsReady`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-760: frozen headers use left-only sticky; Entity does not width-lock over State`**; re-run **`AST-746`** + **`AST-647`** |
+
+**AST-760** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-760|AST-746|AST-647"
+```
+
+**Manual UAT (Susan):** local `dev`, `zsh launch.sh --flask` → Scheduled Actions → expand phase — Candidate, Task, Entity, State headers all visible/clickable; Entity must not cover State; no Candidate/Task gap; horizontal scroll frozen alignment holds.
+
+**Builds on:** **AST-746** (mount-on-expand + measured `left`), **AST-758** (stale-dist delivery — unchanged).
+
 ### AST-751 · AST-735
 
 Scheduled Actions: expanded client-side filter bar (Floor min/max, AUTO, Debug, Freq, Min count, Batch size, Run counts — AND intersection with Candidate/Task); section headers show `{groupName} ({autoOnCount} / {rows.length} AUTO)` on filtered rows; Candidate / Avail / Last Run rightmost; `formatAvailableCount` renders **—** for `0` or `null`; All-candidate default sort within section orders same `task_key` by `available_count` descending. No API change.
