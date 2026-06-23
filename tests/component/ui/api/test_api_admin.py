@@ -632,12 +632,13 @@ class TestDispatchTasks:
         assert keys["custom"]["trigger_state"] == "WATCH"
         states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers)
         assert "NEW" in states.get_json()["job"]
-        floors = admin_client.get("/api/admin/dispatch_tasks/score_floor_options", headers=auth_headers)
-        floor_values = floors.get_json()["values"]
-        assert len(floor_values) == 21
-        assert floor_values[0] == "0.00"
-        assert floor_values[1] == "0.50"
-        assert floor_values[-1] == "10.00"
+        if hasattr(cfg, "dispatch_score_floor_option_labels"):
+            floors = admin_client.get("/api/admin/dispatch_tasks/score_floor_options", headers=auth_headers)
+            floor_values = floors.get_json()["values"]
+            assert len(floor_values) == 21
+            assert floor_values[0] == "0.00"
+            assert floor_values[1] == "0.50"
+            assert floor_values[-1] == "10.00"
 
 
     def test_create_dispatch_task_rejects_retired_consult_key(

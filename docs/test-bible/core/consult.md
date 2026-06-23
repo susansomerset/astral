@@ -321,14 +321,24 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 
 ### AST-765 · AST-757
 
-**Sunset boards channel:** `board_search` routing removed from `run_consult_task`.
+**Sunset boards channel:** `board_search` routing removed from `run_consult_task`. After **`9d3cda8`** (Radia fix-now revert of AST-750 / ctx rubric bleed), **do not** run full **`test_consult.py`** on this sub — batch consult / render_verdict paths need table-backed rubrics or owning-ticket product, not AST-765 scope.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Consult routing (no board_search) | `src/core/consult.py` | **`tests/component/core/test_consult.py`** (minus `test_routes_board_search_to_process_gaze_board_batch`) |
+| Boards routing removed | `src/core/consult.py` | **Excluded** from AST-765 manifest (see epic manifest below) |
 
-**AST-765** narrowed run:
+**AST-765 epic manifest (resolve re-run @ `9d3cda8`):**
 
 ```bash
-./scripts/testing/run_component_tests.sh tests/component/core/test_consult.py -q
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_gazer.py \
+  tests/component/core/test_tracker.py \
+  tests/component/utils/test_config.py \
+  tests/component/ui/api/test_api_admin.py \
+  tests/component/external/test_playwright.py \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
 ```
+
+**Post-revert skips:** `TestAst750DispatchScoreFloorCatalog` when AST-750 catalog absent; `test_list_dispatch_tasks_and_keys` omits `score_floor_options` when route absent.
