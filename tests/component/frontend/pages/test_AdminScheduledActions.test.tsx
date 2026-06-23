@@ -663,4 +663,99 @@ describe("AdminScheduledActions", () => {
       expect(screen.getByText(/D\. Job Analysis/)).toBeInTheDocument()
     }, 20000)
   })
+
+  function sectionGroupKey(order: string, name: string): string {
+    return `${order}\u0000${name}`
+  }
+
+  describe("AST-768 section/group filter", () => {
+    const multiRows = [scanJobsC1Auto, scanJobsC2Off, watchCosZeroAvail]
+    const jobGroupKey = sectionGroupKey("D. Job Analysis", "D. Job Analysis")
+    const rosterGroupKey = sectionGroupKey("C. Company Roster", "C. Company Roster")
+
+    it("renders Section/Group with All plus catalog groups from task_keys", async () => {
+      const extendedKeys = {
+        ...taskKeysConfig,
+        stale_group: {
+          entity_type: "job",
+          trigger_state: "NEW",
+          task_group_order: "Z. Future",
+          task_group_name: "Z. Future",
+          task_seq: 99,
+          task_name: "stale_group",
+          is_scored: false,
+        },
+      }
+      mockApi(false, { tasks: multiRows, taskKeysPayload: extendedKeys, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      const select = within(adminFiltersRoot()).getByLabelText("Section/Group")
+      const labels = Array.from(select.querySelectorAll("option")).map(o => o.textContent)
+      expect(labels).toContain("All")
+      expect(labels).toContain("D. Job Analysis")
+      expect(labels).toContain("C. Company Roster")
+      expect(labels).toContain("Z. Future")
+    }, 20000)
+
+    it("selecting a group shows only rows in that task_group_name", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Section/Group", rosterGroupKey)
+      expect(screen.queryByText(/D\. Job Analysis \(.*AUTO\)/)).not.toBeInTheDocument()
+      expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+      const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
+      expect(within(rosterPanel).queryByText("scan_jobs")).not.toBeInTheDocument()
+    }, 20000)
+
+    it("Section/Group and Task filters intersect to empty when Task outside group", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Section/Group", jobGroupKey)
+      await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
+      await waitFor(() => expect(screen.getByText("No dispatch tasks configured")).toBeInTheDocument())
+    }, 20000)
+
+    it("Section/Group and AUTO filters intersect", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Section/Group", jobGroupKey)
+      await selectFilterByLabel("AUTO", "on")
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+      expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
+      const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
+      expect(within(jobPanel).queryByText("c2")).not.toBeInTheDocument()
+    }, 20000)
+
+    it("with Candidate All, group filter narrows sections and default sort by avail desc", async () => {
+      mockApi(false, { tasks: [scanJobsC2Off, scanJobsC1Auto], taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Section/Group", jobGroupKey)
+      expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
+      const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      const tbody = within(jobPanel).getByRole("table").querySelector("tbody") as HTMLElement
+      const candidateCells = within(tbody).getAllByRole("row").map(r => within(r).getAllByRole("cell")[11].textContent)
+      expect(candidateCells[0]).toContain("c1")
+      expect(candidateCells[1]).toContain("c2")
+    }, 20000)
+
+    it("section header AUTO counts reflect post-filter rows in selected group", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+      await selectFilterByLabel("Section/Group", jobGroupKey)
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+      await selectFilterByLabel("AUTO", "on")
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+  })
 })
