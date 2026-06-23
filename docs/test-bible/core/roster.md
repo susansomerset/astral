@@ -430,27 +430,15 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 ---
 
-### AST-775 · AST-754
+### AST-774 · AST-762
 
-**AST-775 (child):** Split **`run_inflow_discovery_batch`** — CSE + URL dedupe records each hit as **`NEW`** via **`record_inflow_discovery_hit`** (mechanical hostname slug, **`inflow_discovery_blurb`** + **`inflow_discovery_notes`**); **no** inline **`do_task(vet_inflow_discovery)`**. Zero deduped hits is success (nothing to record). Registers **`VET_FAILED`** terminal state + **`(NEW, VET_FAILED)`** transition for sibling **AST-776** vet dispatch.
+**AST-774 (child):** Schedulable **`vet_inflow_discovery`** dispatch — company entity, **`NEW`** trigger; consult routes to **`run_inflow_discovery_batch`** (same vet pipeline as candidate **`inflow_discovery`**); **`run_company_task`** guard prevents **`resolve_company_website`** on mis-route. Config/admin defaults: **`docs/test-bible/utils/config.md`** (**AST-774**).
 
 | AC | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| 1 | **`VET_FAILED`** state + transition from **`NEW`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition` |
-| 2 | Mechanical slug + blurb/notes persist on **`NEW`** row | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_slug_from_discovery_url_hostname`; `::test_record_hit_creates_new_with_blurb_and_notes`; `::test_discovery_blurb_line_truncates_snippet` |
-| 3 | Expanded URL dedupe (**notes**, **blurb** pipe URL) + slug suffix collision | `src/core/roster.py` | `::TestAst775InflowDiscoveryRecordNew::test_record_hit_skips_duplicate_url_via_notes`; `::test_record_hit_skips_duplicate_url_via_blurb`; `::test_record_hit_slug_collision_suffix_other_candidate` |
-| 4 | Batch records hits; zero deduped hits not an error | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_run_batch_happy_path`; `::TestAst775InflowDiscoveryRecordNew::test_run_batch_no_deduped_hits_is_success`; `::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`; `::test_run_batch_searches_only_stale_terms`; `::test_run_batch_no_stale_terms_returns_zero_errors`; `::test_consult_routes_candidate_entity` |
+| 1 | Company vet dispatch → inflow batch | `src/core/consult.py`, `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch::test_consult_routes_company_vet_to_inflow_batch` |
+| 2 | **`NEW`** + vet key guard (no website resolve) | `src/core/roster.py` | `::TestAst774VetInflowDiscoveryDispatch::test_run_company_task_vet_key_guard_skips_resolve` |
 
-**Broken / obsolete (Betty revision):** **`TestAst505InflowDiscovery::test_run_batch_happy_path`** — removed **`do_task`** / vet ingest mocks; asserts mechanical **`co_example`** **`NEW`** record (**AST-775**).
+**Regression (inline-vet product on this ref):** **`TestAst505InflowDiscovery::test_run_batch_happy_path`**, **`TestAst506InflowResolve`** — **`inflow_discovery`** / **`inflow_resolve_website`** unchanged; **no AST-775** record-only tests on this publish ref.
 
-**AST-775** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_roster.py::TestAst505InflowDiscovery \
-  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew \
-  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+**AST-774** narrowed run: see **`docs/test-bible/utils/config.md`** (**AST-774**).
