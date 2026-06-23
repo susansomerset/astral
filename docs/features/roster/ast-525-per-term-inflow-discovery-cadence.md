@@ -1,3 +1,143 @@
+<!-- linear-archive: AST-525 archived 2026-06-15 -->
+
+## Linear archive (AST-525)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-525/per-term-inflow-discovery-cadence-company-search-terms-table-with-per  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-523 — Company search terms table with per-term last_scan_at (Roster inflow)  
+**Blocked by / blocks / related:** parent: AST-523
+
+### Description
+
+## What this implements
+
+Wire roster inflow Phase 1 to the **company_search_terms** table: per-term staleness for dispatch eligibility, CSE only for stale terms, **last_scan_at** bump on successful search, and **COMPANY_SEARCH_TERMS** token resolution from the table.
+
+## Acceptance criteria
+
+4. **COMPANY_SEARCH_TERMS** in prompts matches the table content (newline-joined), not a stale artifact field.
+5. **inflow_discovery** runs CSE only for terms whose **last_scan_at** is null or past the configured scan interval; terms searched recently are skipped.
+6. After a successful CSE for a term, that term's **last_scan_at** is set; dispatch-task **last_run_at** is not used to decide term staleness.
+7. Dispatch shows **inflow_discovery** as available when at least one term is stale (and candidate preconditions pass), even if the dispatch row was run recently for other reasons.
+
+## Boundaries
+
+* No change to vet/ingest beyond term source and timestamps.
+* No Artifacts UI changes — **AST-526**.
+* No table schema work beyond calling **AST-524** helpers.
+* Scan interval from product config (**INFLOW_CONFIG**), not **dispatch_task.freq_hrs** / **last_run_at**.
+
+## Notes for planning
+
+* [**roster.py**](<http://roster.py>) **run_inflow_discovery_batch**, [**database.py**](<http://database.py>) **count_candidate_inflow_discovery_eligible**.
+* Remove candidate-level **last_run_at** gating for discovery cadence.
+
+## Git branch (authoritative)
+
+**sub/AST-523/AST-525-per-term-inflow-discovery-cadence**
+
+### Comments
+
+#### chuckles — 2026-06-02T19:34:50.394Z
+[check-linear]
+
+Confirmed merged to **`origin/dev`** via **AST-523** / **AST-490** composite merges (**`0cc15621`**, **`803aaa1f`**). Per-term **`last_scan_at`** discovery cadence + **`COMPANY_SEARCH_TERMS`** token overlay on dev. Publish sub branch deleted post-rollup.
+
+**Done** — engineer assignee unchanged (Hedy).
+
+— Chuckles
+
+#### susan — 2026-06-02T17:39:55.693Z
+@chuckles Please confirm this ticket is actually done and merged to dev origin, and then set it to Done?
+
+#### chuckles — 2026-05-29T03:40:13.910Z
+## prep-uat blocker — fix-now (Hedy)
+
+**prep-uat AST-523** failed at §6 collection on `origin/ftr/AST-523-company-search-terms-table-with-per-term-last-scan-at-roster-inflow`:
+
+```
+ImportError: partially initialized module 'src.core.consult' (consult ↔ roster cycle)
+```
+
+On ftr, **`roster.py`** still top-level-imports **`consult`** helpers and **`consult.py`** top-level-imports **`roster`**. Same fix as AST-490 UAT hotfix:
+
+- **`roster.py`:** lazy-import consult helpers inside the functions that need them.
+- **`consult.py`:** drop top-level `roster`; single lazy `from src.core import roster` at start of `run_consult_task` / `_prep_live_content`.
+
+**Owner:** Hedy — fix on **`dev-hedy`**, publish to **`origin/sub/AST-523/AST-525-per-term-inflow-discovery-cadence`**, then **`resolve-astral AST-525`** → User Testing. Chuckles will re-rollup 525 → ftr after.
+
+**AST-524** stays User Testing — no action on 524.
+
+— Chuckles
+
+#### radia — 2026-05-29T03:11:42.833Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-523/AST-525-per-term-inflow-discovery-cadence` (includes AST-524 stack)
+
+### What's solid
+- **§2.1:** `INFLOW_CONFIG["discovery"]["scan_interval_hours"]` = 168; eligibility uses `count_stale_company_search_terms`, not `last_run_at` / `freq_hrs`.
+- **Discovery batch:** `list_stale_company_search_terms` → CSE per term → `update_company_search_term_last_scan_at` after successful `search_google_cse` (before hit aggregation) — matches parent AC #6.
+- **Tokens:** `do_task` + `preview_task_prompt` overlay table-joined `artifacts.company_search_terms`.
+- **`company_search_terms_lines(candidate_id)`** retargeted to table (artifact path removed).
+
+### fix-now
+- **`src/core/agent.py` (~873):** Function-scoped `from src.core.candidate import company_search_terms_joined_text` with **no** in-code comment. **§1.2 / B1** — add a one-line cycle/lazy-load rationale (same bar as `consult` / `tracker` imports in `do_task`).
+
+### discuss
+- **Stack size:** Branch carries full Phase 1 inflow module (`run_inflow_discovery_batch`, `INFLOW_CONFIG`, ingest helpers) if not yet on `origin/dev`. Confirm this is expected carry-forward from **AST-505** rather than accidental sibling scope on the publish ref.
+
+### advisory
+(none)
+
+— Radia
+
+#### betty — 2026-05-29T02:41:59.901Z
+## QA test manifest (AST-525)
+
+Publish tip: `origin/sub/AST-523/AST-525-per-term-inflow-discovery-cadence` @ `d9aab2ae`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `b78c25f7b59b8a00c4f3a64421d16e2f32e23237`
+
+Cumulative publish: merged blocker **AST-524** bible/tests (`38b99081`) before **AST-525** test commit — engineer branch had dropped **AST-524** test tree.
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst525InflowDiscoveryConfig`
+2. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_company_search_terms.py::TestAst524CompanySearchTermsTable::test_list_stale_company_search_terms_ordered`
+3. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors`
+5. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_happy_path`
+6. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`
+7. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_searches_only_stale_terms`
+8. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestCompanySearchTermsLines`
+9. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst525CompanySearchTermsTokenOverlay`
+
+**Blocker smoke (AST-524):** items 2 plus full **AST-524** manifest in bible §7.13zi if any table helper regressions appear during `test-astral`.
+
+**Revised from AST-505:** `TestAst505InflowDiscoveryEligible` removed — eligibility is per-term `last_scan_at` (items 3). Roster batch tests updated for stale-only CSE and `last_scan_at` bump (items 4–7).
+
+— Betty
+
+#### chuckles — 2026-05-29T02:14:23.033Z
+## Plan validation — APPROVED
+
+**Verdict:** APPROVED → **Plan Approved**
+
+Per-term staleness, removal of dispatch **last_run_at** gating, and CSE bump only on success match AST-523.
+
+— Chuckles
+
+#### hedy — 2026-05-29T02:12:34.160Z
+Plan: [`docs/features/roster/ast-525-per-term-inflow-discovery-cadence.md`](https://github.com/susansomerset/astral/blob/sub/AST-523/AST-525-per-term-inflow-discovery-cadence/docs/features/roster/ast-525-per-term-inflow-discovery-cadence.md)
+
+**Self-Assessment**
+- **Scope:** Single-Component — `config`, `database`, `roster`, `candidate`, and `agent` only; retargets inflow discovery eligibility and CSE loop to per-term staleness.
+- **Conf:** Medium — staleness SQL copied from `claim_board_search_batch`; token overlay is a small `do_task` hook; build gate on AST-524 table helpers.
+- **Risk:** Medium — wrong eligibility could starve or flood discovery; contained to `inflow_discovery` dispatch path.
+
+---
+
 # AST-525 — Per-term inflow discovery cadence
 
 - **Linear:** [AST-525](https://linear.app/astralcareermatch/issue/AST-525/per-term-inflow-discovery-cadence-company-search-terms-table-with-per)

@@ -1,3 +1,104 @@
+<!-- linear-archive: AST-550 archived 2026-06-15 -->
+
+## Linear archive (AST-550)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-550/remove-parallel-stateui-manifest-fallback-in-frontend-strengthen-the  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-484 — Strengthen the relationships between lookup lists in the UI and live values in config  
+**Blocked by / blocks / related:** parent: AST-484
+
+### Description
+
+## What this implements
+
+Remove the parallel `StateUiContext.tsx` `EMPTY` constant that duplicates the full shape of `build_state_ui_manifest()`. The frontend must consume `/api/state_ui_manifest` only, with a minimal loading state while the manifest loads. Preserve a legacy/unmapped affordance for stored row values that are no longer present in the current config manifest.
+
+## Acceptance criteria
+
+1. `StateUiContext.tsx` no longer defines a full duplicate manifest (`EMPTY` or equivalent hardcoded manifest shape).
+2. Jobs/companies UI consumes the API manifest as the sole source of state vocabulary (G1 pattern preserved).
+3. Loading state is minimal (no fake manifest used as fallback).
+4. Stored rows with legacy state values not in the current manifest display a clear legacy/unmapped affordance rather than breaking or silently hiding data.
+5. Adding a new key to in-scope config state tuples surfaces in the UI without editing a separate frontend seed list.
+6. Component tests updated so mocks reflect API-driven manifest (Betty manifest pass as usual).
+
+## Boundaries
+
+* Does **not** retire backend dispatch seeds — sibling **AST-549** (Ada).
+* Does **not** refactor `config.py` into a package (\[AST-346\]).
+* Does **not** change business rules for jobs/companies state transitions — only manifest consumption in the UI layer.
+* Does **not** touch board search UI (Boards iceboxed).
+
+## Notes for planning
+
+* Primary files: `StateUiContext.tsx` and consumers of state UI manifest in React.
+* Precedent: `GET /api/state_ui_manifest` + `build_state_ui_manifest()` already correct on backend — this ticket is frontend-only.
+* **Blocked by AST-549** only if shared admin/dispatch work must land first; primary dependency is none for manifest API (already exists). Blocking set for epic sequencing per dispatch.
+* Secondary domain: Katherine owns React; coordinate with Ada if admin surfaces share types.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** Branch law: parent `ftr/ast-484-strengthen-lookup-config-ui`, child `sub/AST-484/AST-550-remove-stateui-manifest-fallback`. Created at **dispatch-linear**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-03T00:18:07.725Z
+**Review** — `origin/dev...origin/sub/AST-484/AST-550-remove-stateui-manifest-fallback` @ `a67db974` (product); review doc @ `480aeded` on publish ref.
+
+**Plan fidelity (AST-550):** All acceptance criteria met on the product diff — `EMPTY` deleted, API-only `StateUiContext` with `loadState`, per-page guards, legacy sections via `stateUiSections.ts`, test fixture + updated component tests. Scope stays frontend-only; no AST-549 / config.py smuggle.
+
+**ASTRAL_CODE_RULES**
+- **§2.1 / G1 (§3.2):** Sole runtime vocabulary from `GET /api/state_ui_manifest`; no parallel TS state machine. **Solid.**
+- **§1.3 DRY:** Shared `unmappedJobStates` / `legacyStateSectionLabel` across three job list pages. **Solid.**
+- **Epic AST-484 fail-loud:** Fetch error → `loadState: "error"`, `manifest: null`, user-facing “State UI manifest unavailable.” — no `EMPTY` restore. **Solid.**
+
+**advisory**
+- `ArtifactEditor.tsx`, `ArtifactsCompanySearchTerms.tsx` — `manifest?.candidate.artifact_generate_states ?? []` before render guard disables Generate during manifest load; acceptable unless Katherine wants stricter gating.
+
+**fix-now:** none — happy path to **`resolve-astral`** on `dev-kath`.
+
+**discuss:** none.
+
+**Doc:** `docs/features/foundation/ast-550-remove-parallel-stateui-manifest-fallback-in-frontend.md` (Radia section) on `origin/sub/AST-484/AST-550-remove-stateui-manifest-fallback` @ `480aeded`.
+
+#### betty — 2026-06-03T00:11:20.091Z
+**QA manifest (AST-550)** — `origin/sub/AST-484/AST-550-remove-stateui-manifest-fallback` @ `a67db974`
+
+Coverage: **§7.13zq** (parent **AST-484**). Katherine’s component tests on the publish tip; bible maps manifest below.
+
+1. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx`
+   — API load → `loadState: ready`; failed fetch → `loadState: error`, `manifest: null` (no `EMPTY` fallback).
+
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx`
+   — §6c routed page; legacy section for `RETIRED_EXAMPLE_STATE` not in manifest fixture.
+
+3. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx`
+   — §6c routed Recommended page regression (manifest via `installBaseApiMocks` / `STATE_UI_MANIFEST_FIXTURE`).
+
+4. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/test_App.test.tsx`
+   — index redirect smoke with `StateUiProvider` (manifest reject path on shell only).
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `3a3dc43bf5abf1fb2c77a751154fe174ef74cc47`
+
+#### katherine — 2026-06-02T22:34:15.870Z
+Plan: `docs/features/foundation/ast-550-remove-parallel-stateui-manifest-fallback-in-frontend.md`
+
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-484/AST-550-remove-stateui-manifest-fallback/docs/features/foundation/ast-550-remove-parallel-stateui-manifest-fallback-in-frontend.md (`origin/sub/AST-484/AST-550-remove-stateui-manifest-fallback` @ `3bc1048e`)
+
+**Scope:** `Single-Component` — Removes the duplicated `EMPTY` manifest in `StateUiContext`, loads only from `/api/state_ui_manifest`, and adds shared legacy-section helpers on the three job list pages.
+
+**Conf:** `high` — G1 backend manifest is already correct; this is deleting drift-prone TS and wiring loading guards on existing consumers.
+
+**Risk:** `Medium` — In Review / Skipped / Recommended depend on manifest load timing; mistakes could briefly blank those pages until fetch completes.
+
+Four stages: (1) context + `stateUiSections.ts`, (2) job pages + legacy sections, (3) company/artifact/modal guards, (4) test fixture + `page-mocks` + context/page tests. No `config.py` changes.
+
+---
+
 # Remove parallel StateUi manifest fallback in frontend
 
 **Linear (this ticket):** [AST-550](https://linear.app/astralcareermatch/issue/AST-550/remove-parallel-stateui-manifest-fallback-in-frontend-strengthen-the)  

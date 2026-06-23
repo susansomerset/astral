@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-508 archived 2026-06-15 -->
+
+## Linear archive (AST-508)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-508/inflow-locate-and-parse-dispatch-from-prefilter-passed-roster-inflow  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-490 — Roster inflow  
+**Blocked by / blocks / related:** parent: AST-490
+
+### Description
+
+## What this implements
+
+Phases 4–5 of roster inflow: wire **PREFILTER_PASSED** companies into existing **find_job_page** / **select_job_page** / **parse_job_list** via dispatch_tasks with **score_floor** (job-task pattern). Below-floor companies stay **PREFILTER_PASSED** until claimed. Parse reaches **WATCH** on success.
+
+## Acceptance criteria
+
+ 9. Phase 4 locate_job_page dispatch claims **PREFILTER_PASSED** companies using **score_floor** on the dispatch_task row (job-task pattern); below-floor companies remain **PREFILTER_PASSED** until claimed.
+10. Phase 5 parse succeeds through existing locate/parse flows to the same terminal watching states as today's manual path.
+11. Manual-import companies continue to enter at **IMPORTED**; this ticket does not change that path.
+12. Each inflow phase is invokable as schedulable dispatch work — not ad-hoc scripts only.
+
+## Boundaries
+
+* Does not reimplement locate/parse — uses AST-461/469 flows.
+* Phase 0–3 — sibling tickets.
+
+## Notes for planning
+
+* dispatch_task seed keys + trigger_state for PREFILTER_PASSED.
+* No extra application-level score gate beyond score_floor on dispatch row.
+
+## Git branch (authoritative)
+
+`sub/AST-490/AST-508-inflow-locate-and-parse-from-prefilter-passed`
+
+### Comments
+
+#### chuckles — 2026-05-28T00:25:23.220Z
+`[rollup-child] blocked:` merge `origin/sub/AST-490/AST-508-inflow-locate-and-parse-from-prefilter-passed` → `origin/ftr/AST-490-roster-inflow` conflicts in:
+- `docs/ASTRAL_TEST_BIBLE.md`
+- `src/core/roster.py`
+- `tests/component/utils/test_config.py`
+
+Same ftr integration line as AST-504 rollup — **prep-uat** waits until ftr is reconciled.
+
+— Chuckles
+
+#### radia — 2026-05-28T00:23:08.193Z
+**Radia review** — `origin/dev...origin/sub/AST-490/AST-508-inflow-locate-and-parse-from-prefilter-passed` (tip `886adf7`)
+
+### Plan fidelity (AST-508 scope)
+
+- **AC 9 / Phase 4:** `score_floor` on the dispatch row flows `dispatcher._run_unified` → `get_new_company_batch` → `claim_company_batch` / `set_company_batch`; claim SQL requires `company_data.prefilter_score IS NOT NULL` and `>= floor`. Below-floor and no-score rows stay unclaimed. `count_companies_in_state_with_score_floor` mirrors claim for admin eligible counts.
+- **AC 10 / Phase 5:** `ROSTER_CONFIG["locate_job_page"]["dispatch_input_states"]` includes `PREFILTER_PASSED`; `run_company_task` routes through existing `find_job_page` (AST-469 `run_next` chain unchanged). `ASTRAL_CONFIG` adds the same locate/parse terminal transitions as `TO_WATCH` / `JOBS_FOUND`.
+- **AC 11:** No `IMPORTED` path changes in the AST-508 slice; manual prefilter still uses legacy pass/fail states via `_company_used_inflow_prefilter`.
+- **AC 12:** No new `task_key` seeds (per plan Stage 3 decision); admin creates a `find_job_page` row with `trigger_state=PREFILTER_PASSED` + optional `score_floor`.
+- **Score field name:** Plan doc still says `prefilter_rubric_score`; implementation correctly uses AST-507's `prefilter_score` via `ROSTER_CONFIG["company_data_keys"]` — build notes already call this out.
+
+### ASTRAL_CODE_RULES
+
+| Section | Verdict |
+|---------|---------|
+| **§2.4 batch** | Claim/count SQL symmetric; `batch_id`-first unchanged. |
+| **§2.6 state machine** | Transitions added for inflow locate terminals; transitions go through `transition_company_state`. |
+| **§2.1 / §1.4 config** | Floor on dispatch row only; score JSON path in config, not hardcoded in core. |
+| **§3.3 layers** | No ui/external violations in AST-508 slice. |
+
+### Tests (Betty manifest §7.13zh)
+
+Manifest cases present and aligned: config literals, DB claim/count floor, dispatcher passthrough, `run_company_task` routing.
+
+### Advisory
+
+- **`INFLOW_CONFIG["locate"]["score_json_path"]` vs `ROSTER_CONFIG["company_data_keys"]["prefilter_score"]`:** SQL reads `company_data_keys` only; keep both in sync if either key ever changes (tests currently assert `prefilter_score` on both).
+- **`count_eligible_for_dispatch_task`:** Any company row with non-null `score_floor` uses the floor count path (not only `PREFILTER_PASSED`). Matches plan Stage 2 §5 reuse intent; admin should not set `score_floor` on non-scored company tasks.
+
+**No fix-now.** Happy path — proceed to `resolve-astral` if no objections.
+
+#### betty — 2026-05-28T00:17:57.950Z
+**QA manifest** — `origin/sub/AST-490/AST-508-inflow-locate-and-parse-from-prefilter-passed` @ `886adf76`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `4acfd5b9bfbbeaca2dc9efa713363df43abbe41f`
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst508InflowLocateConfig`
+2. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst508PrefilterPassedEligible`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestRunUnified::test_ast508_prefilter_passed_dispatch_passes_score_floor`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestRunCompanyTask::test_prefilter_passed_routes_to_find_job_page`
+
+**Product note (blocker integration):** publish-ref `src/utils/config.py` is missing **AST-507** entries this ticket assumes — `COMPANY_STATES` **`PREFILTER_PASSED`** / **`PREFILTER_FAILED`**, **`company_state_transitions`** **`WEBSITE_FOUND → PREFILTER_*`**, **`ROSTER_CONFIG.prefilter`** pass/fail states, **`TASK_CONFIG.prefilter_company`** **`output_type: grades_encoded`**. Items 2 and blocker-smoke **AST-507** tests will fail until those are restored from **`origin/sub/AST-490/AST-507-encoded-prefilter-and-prefilter-states`**. Items 1, 3, 4 pass against current tip.
+
+#### hedy — 2026-05-27T23:43:52.050Z
+Plan: `docs/features/roster/ast-508-inflow-locate-and-parse-from-prefilter-passed-roster-inflow.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-490/AST-508-inflow-locate-and-parse-from-prefilter-passed/docs/features/roster/ast-508-inflow-locate-and-parse-from-prefilter-passed-roster-inflow.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — `PREFILTER_PASSED` in locate dispatch input states, company `score_floor` on claim/count, dispatcher passthrough; reuses AST-469 find→select→parse chain.
+- **Conf:** `Medium` — depends on AST-507 score field (`prefilter_rubric_score`) and audit of hardcoded `TO_WATCH` gates in roster locate/parse.
+- **Risk:** `HIGH` — incorrect floor SQL or state gates could starve inflow locate or send wrong companies to job discovery.
+
+Build blocked until **AST-507** adds states + rubric score persistence. Publish ref cherry-pick: `b45f20cc`.
+
+---
+
 # AST-508 — Inflow locate and parse dispatch from PREFILTER_PASSED (Roster inflow)
 
 - **Linear:** [AST-508](https://linear.app/astralcareermatch/issue/AST-508/inflow-locate-and-parse-dispatch-from-prefilter-passed-roster-inflow)

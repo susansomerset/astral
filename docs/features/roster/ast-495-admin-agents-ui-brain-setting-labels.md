@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-495 archived 2026-06-15 -->
+
+## Linear archive (AST-495)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-495/admin-agents-ui-brain-setting-labels-support-other-ai-models-deepseek  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-491 — Support other ai models: DeepSeek  
+**Blocked by / blocks / related:** parent: AST-491
+
+### Description
+
+## What this implements
+
+Administrator **Manage Agents** UI shows **Little / Medium / Big** `brain_setting` choices (from config) instead of vendor-specific model names. Runtime resolution to the active provider’s concrete model is opaque to the admin user in v1.
+
+## Acceptance criteria
+
+3. Each agent used in production can be configured with **Little**, **Medium**, or **Big** tier; changing tier changes which concrete model runs for that agent under the active provider, verifiable from admin agent detail or logged call metadata.
+
+## Boundaries
+
+Does not add per-candidate provider picker in UI (config-only for v1). Does not implement DeepSeek client or timesheet migration—siblings. Does not change timesheet list/export screens unless required for `brain_setting` display on agent rows only.
+
+## Notes for planning
+
+* Coordinate with Ada on API shape for agents list/update (`brain_setting` vs legacy `model_code`).
+* Labels must match config literals: Little, Medium, Big.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-491-support-other-ai-models-deepseek`, child `sub/AST-491/<child-segment>`. Created at dispatch-linear.
+
+### Comments
+
+#### radia — 2026-05-26T22:45:23.706Z
+**Diff:** three-dot `origin/dev` vs **AST-491 dispatch** [`sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels`](https://github.com/susansomerset/astral/tree/sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels). **Publish tip:** `32ab64dee4e25015fd794db4f6fc447ca6ea7a31`.
+
+- **Config-driven tiers** — `GET /api/admin/agents/brain_settings` feeds the Manage Agents picker; TS does not own an authoritative `["Little","Medium","Big"]` hardlist (aligned with §1.4 / §2.1).
+- **Persistence** — Add/edit payloads send `brain_setting`; list shows tier verbatim or em dash when unset.
+- **Product fit** — Anthropic-specific CPM readout dropped so admins are not misled once DeepSeek tiers exist.
+
+**advisory** — Catalog fetch `.catch(() => {})` swallows failures (empty tiers, no toast). Fine as polish backlog unless Susan wants load errors surfaced.
+
+Review appendix (cherry-pick target): [`ast-495-admin-agents-ui-brain-setting-labels.md`](https://github.com/susansomerset/astral/blob/0ce0da4ddb9892cfa749176b1f95cd055a83b947/docs/features/roster/ast-495-admin-agents-ui-brain-setting-labels.md) @ `0ce0da4d`.
+
+#### katherine — 2026-05-26T22:42:55.575Z
+**test-astral** — manifest green after integration publish.
+
+**Publish:** `origin/sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels` @ `32ab64de` (`fix(AST-495): stack AST-492/493 product for integrated Betty manifest`).
+
+**Integration:** Betty’s prior tip only carried QA/tests without full AST-492/493 product; merged sibling `sub/AST-491/AST-492-…` then `AST-493-…` on `dev-kath`, then recreated the stacked product tree on the publish ref (no unrelated `dev-kath` churn).
+
+**Manifest (Betty)**
+
+1. Pytest — pass:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig tests/component/data/database/test_agents.py tests/component/core/test_agent.py::TestAst492BrainSettingDoTask tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents
+```
+
+(`run_component_tests.sh` also runs full Vitest at the end; use item 2 for the scoped Vitest Betty listed.)
+
+2. Vitest — pass:
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+#### betty — 2026-05-26T22:36:48.970Z
+[check-linear]
+
+- Cleared Betty’s **`[qa-handoff]`** thread by publishing the stacked QA commits ( **`test(AST-495)`** Vitest + bible, then **`test(AST-492)`** **`do_task`** DeepSeek mock, **`test(AST-494)`** timesheet **`agent_req_id`**, **`docs(AST-493)`** §**7.13ze** on the publish ref).
+- Published: **`origin/sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels`** @ **`075d42aeb22955e241e10c618bdfedb58e194fe9`**.
+
+**Manifest**
+
+1. Pytest (§7.13zd):  
+   `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig tests/component/data/database/test_agents.py tests/component/core/test_agent.py::TestAst492BrainSettingDoTask tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents`
+2. Vitest (**§6c** page):  
+   `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`
+
+**Betty:** Set status **Tests Ready** if UI still **Code Complete**.
+
+@Katherine Johnson — **`test-astral`** after green on the manifest.
+
+#### betty — 2026-05-26T22:27:53.332Z
+[qa-handoff]
+
+**Integrated on `dev-betty`:** merge commit `0d3bfecd` (AST-495 tip + conflict resolution with AST-492 for `api_admin` / `config`). QA commit `4715e281` (bible §7.13zd, Vitest `AdminAgentPrompts` brain_settings mock, `TestAdminConfigAndAgents` catalog assertions, dedupe `test_config` AST-492 class).
+
+**Manifest (pytest narrow):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/data/database/test_agents.py \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents
+```
+**Vitest:** `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`
+
+**Publish note:** cherry-pick `4715e281` onto `origin/sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels` **conflicts** — that branch tip predates the AST-492+495 merged admin/config shape. Tests and bible expect the integrated tree on `dev-betty`. Prefer **test-astral** from `dev-betty` (or rebase/rollup child onto parent that already includes AST-492, then replay QA commit).
+
+— Betty
+
+#### betty — 2026-05-26T22:24:12.981Z
+@susan — integration blocker on **`dev-betty`**: merging **`origin/sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels`** conflicts in **`src/ui/api/api_admin.py`** and **`src/utils/config.py`** against the lineage that already carries **AST-492** (+ **AST-493** docs tip). Betty won’t resolve product merges per **`qa-astral`**.
+
+Recommendation: Katherine (or rollup) aligns **AST-495** with the sibling stack on the authoritative integration line (rebasing / merging the sibling composition Chuckles expects for **AST-491**), then re-publishes **`sub/…/AST-495-…`** so QA can **`merge`** cleanly and add page-level Vitest per **§6c**.
+
+— Betty
+
+#### katherine — 2026-05-26T22:07:45.053Z
+**Plan doc:** `docs/features/roster/ast-495-admin-agents-ui-brain-setting-labels.md`  
+**Published to:** `origin/sub/AST-491/AST-495-admin-agents-ui-brain-setting-labels` (cherry-pick `30f4e7d3`)  
+**GitHub (convention per workflow):** https://github.com/susansomerset/astral/blob/ftr/AST-495/docs/features/roster/ast-495-admin-agents-ui-brain-setting-labels.md  
+
+**Self-assessment (with justification)**  
+- **Scope (`Single-Component`):** Only `AdminAgentPrompts.tsx` is in the implementation file table; timesheets and provider UI stay out of scope per the ticket boundaries.  
+- **Conf (`Medium`):** Exact catalog URL and JSON keys come from AST-492’s merged `api_admin.py`; the plan requires reading that file on the integration tip instead of guessing field names.  
+- **Risk (`Medium`):** If POST/PUT sends the wrong field name or the UI hardcodes tiers, admins could save a bad config; the plan forces server-driven catalog options and matching save payload names to reduce that.
+
+**Note:** Linear still shows **AST-492** as blocker; `build-astral` should wait until agent `brain_setting` + catalog exist on the integration line, as stated in Stage 1 step 1.
+
+---
+
 # Admin Agents UI: `brain_setting` labels (Little / Medium / Big)
 
 **Parent Linear issue:** [AST-491 — Support other ai models: DeepSeek](https://linear.app/astralcareermatch/issue/AST-491/support-other-ai-models-deepseek)  

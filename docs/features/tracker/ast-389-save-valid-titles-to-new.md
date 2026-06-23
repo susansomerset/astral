@@ -1,3 +1,163 @@
+<!-- linear-archive: AST-389 archived 2026-06-15 -->
+
+## Linear archive (AST-389)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-389/save-valid-titles-to-new  
+**Status at archive:** Done  
+**Project:** Astral Tracker  
+**Assignee:** susan  
+**Priority / estimate:** None / —  
+**Parent:** —  
+**Blocked by / blocks / related:** —
+
+### Description
+
+before we upsert new job descriptions, run the pattern match for the candidate's valid titles against the string, and if it passes, count it as a "title_mismatch" as a sibling statistic to "duplicate".  We're wasting disk space on jobs no one will ever want to look at.  If the candidate does not have title regex strings in its candidate data (that is, nothing to filter on), then pass it through and title_mismatch = 0.
+
+### Comments
+
+#### chuckles — 2026-05-18T19:46:16.907Z
+## Landed on origin/dev — Chuckles
+
+- Merged prep-uat rollup (`65862be6`) → pushed **`origin/dev`** @ `65862be6`
+- Adds test fix + review/resolution docs on top of existing product (`ca5e7953`)
+- Deleted `origin/ftr/AST-389-save-valid-titles-to-new`
+
+— Chuckles
+
+#### chuckles — 2026-05-18T19:36:53.675Z
+## UAT Ready — Chuckles
+
+**AST-389** is standalone (no children). **Product** (`title_mismatch` at ingest) is already on **`origin/dev`** (PR merge `ca5e7953`).
+
+**Local `dev`:** Merged `origin/ftr/AST-389-save-valid-titles-to-new` for remaining ftr-only commits (test fix + review docs):
+
+- Merge: prep-uat rollup on `dev`
+- Includes `f0c45e07` — compiled regex in title_mismatch ingest test
+
+**Feature branch kept on origin** for finish-up after UAT.
+
+Restart the app if running; exercise ingest with/without candidate title patterns and confirm `title_mismatch` counts.
+
+If testing fails on `dev`:
+```
+git reset --hard origin/dev
+```
+
+— Chuckles
+
+#### katherine — 2026-05-17T17:49:59.393Z
+[check-linear]
+
+**resolve-astral:** Review Posted → **User Testing** (assignee Susan).
+- Radia: 0 fix-now · 0 discuss · 1 advisory (acknowledged).
+- Published: `origin/ftr/AST-389` (resolve doc on feature branch; product on `origin/dev`).
+
+— Katherine
+
+#### radia — 2026-05-16T23:44:47.991Z
+## review-astral (Radia)
+
+**Diff:** `origin/dev...origin/ftr/AST-389` — **test-only** on feature tip (`f0c45e07`); full **AST-389** product already on `origin/dev` (`ingest_jobs` + `title_mismatch`).
+
+**Summary:** Correct test fix. **0 fix-now** · **0 discuss** · **1 advisory**
+
+- **Solid:** `re.compile(r"Engineer")` in `title_matchers` — required (`.search()` on matchers; plain strings would break).
+- **Advisory:** Feature branch publish is test-only; product landed on `dev` earlier per plan `ca5e7953`.
+
+**Doc commit:** `2b6be298` on `origin/ftr/AST-389`
+
+— Radia
+
+#### katherine — 2026-05-16T23:40:02.372Z
+Tests passed by Katherine (test-astral).
+
+**Integration:** `origin/dev` (product) + `origin/ftr/AST-389` @ `f0c45e07` (Betty test fix), merged onto `dev-kath`.
+
+**Command (Betty manifest):**
+`python -m pytest tests/component/core/test_tracker.py::TestIngestJobs::test_counts_title_mismatch_when_regex_filters_listing -q` → **1 passed**
+
+**Product fixes:** none required.
+
+**Published:** no new commits (feature tip unchanged @ `f0c45e07`).
+
+— Katherine
+
+#### betty — 2026-05-16T23:38:28.866Z
+QA manifest by Betty (return pass — `[qa-handoff]`).
+
+**Fix:** Manifest test now passes compiled matchers (`re.compile(r"Engineer")`), matching plan + `gazer._compiled_title_patterns` contract (`.search` on pattern objects, not raw strings).
+
+**Branch:** `origin/ftr/AST-389` @ `f0c45e07` (test fix; product on `origin/dev` via `ca5e7953`)
+
+**Manifest (Katherine — test-astral):**
+1. `tests/component/core/test_tracker.py::TestIngestJobs::test_counts_title_mismatch_when_regex_filters_listing`
+
+**Verified locally:** 1 passed.
+
+— Betty
+
+#### katherine — 2026-05-16T20:25:35.778Z
+[qa-handoff]
+
+**Ticket:** AST-389 — manifest item 1 fails on `dev-kath` @ `origin/dev` (post dev-betty merge).
+
+**Command:** `/Users/susan/chuckles/astral/.venv/bin/python -m pytest tests/component/core/test_tracker.py::TestIngestJobs::test_counts_title_mismatch_when_regex_filters_listing`
+
+**Failure:** `AttributeError: 'str' object has no attribute 'search'` at `tracker.py:61` — test passes `title_matchers=[r"Engineer"]` (raw strings).
+
+**Why test/manifest, not product:** Plan (`docs/features/tracker/ast-389-save-valid-titles-to-new.md`) specifies `title_matchers` are **compiled** regex objects (`.search`); `gazer.py` passes `_compiled_title_patterns`. Test should use `re.compile(r"Engineer")` (or compile in fixture), not bare strings.
+
+**Ask:** Update manifest test (or note compile step) and re-handoff; status stays **Tests Ready**.
+
+#### betty — 2026-05-16T16:02:51.102Z
+QA manifest by Betty.
+
+**Integration:** `origin/dev` + test commits on `origin/dev-betty`.
+
+**Manifest:**
+1. `tests/component/core/test_tracker.py::TestIngestJobs::test_counts_title_mismatch_when_regex_filters_listing`
+
+**Commits (dev-betty):** `3afe4c30` — title_mismatch ingest count
+
+— Betty
+
+#### chuckles — 2026-05-16T15:44:43.619Z
+## [retroactive-pipeline] — Chuckles
+
+Implementation is **already on `origin/dev`** from the emergency integration merge. **Do not re-implement.**
+
+Next step: **`astral-qa-plan`** (Betty) from **Code Complete** — manifest + test bible only, then hand off to the implementing engineer for **`astral-test`**.
+
+Susan board cleanup 2026-05-16.
+
+— Chuckles
+
+#### katherine — 2026-05-14T02:55:25.628Z
+Built by Katherine.
+
+Branch: `katherine/ast-389-save-valid-titles-to-new`
+Commit: `ca5e7953` — title prefilter at ingest, `title_mismatch` on scan history.
+
+#### katherine — 2026-05-14T02:54:43.152Z
+Label review: agree on all three (conf-high, risk-Medium, scope-Single-Component).
+
+#### susan — 2026-05-09T00:49:39.264Z
+Decision: I'm saying that if there is a list to filter by (a list of regex defined for the candidate). But if the candidate doesn't have a list, we don't want all the jobs to be skipped. Does that make sense?
+
+#### katherine — 2026-05-08T21:48:52.864Z
+**Plan (execution doc):** `docs/features/tracker/ast-389-save-valid-titles-to-new.md` on branch `katherine/ast-389-save-valid-titles-to-new` (GitHub attachment below).
+
+**Self-assessment (binding for build/review):**
+- **Scope:** Single-Component — tracker ingest + Gazer/Roster handoff + `company_job_scan` + Watch History shape.
+- **Conf:** conf-high — reuses `_compiled_title_patterns` / same string and flags as `validate_title_batch`.
+- **Risk:** Medium — wrong filtering drops real jobs; schema mistakes break scan inserts.
+
+**Note:** Plan flags a wording vs intent decision on “if it passes” vs disk savings; implementation follows non-match → skip insert + `title_mismatch`.
+
+---
+
 # Save Valid Titles to NEW
 
 **Linear:** [AST-389 — Save Valid Titles to NEW](https://linear.app/astralcareermatch/issue/AST-389/save-valid-titles-to-new)

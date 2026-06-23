@@ -27,3 +27,22 @@
 ```
 
 **test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** use **`grade_*`** dispatch-row keys (e.g. **`grade_do`**, **`prefilter`**) — same strings as **`TASK_CONFIG`** after **AST-747**; **`resolve_dispatch_task_config_key()`** trims only.
+
+### AST-758 · AST-744
+
+Local dev: Flask `:5001` serves gitignored **`frontend/dist/`**; **`git pull`** does not rebuild. Debug **`python server.py`** warns when dist missing or older than **`frontend/src/**/*.{ts,tsx}`** (import-time silent for gunicorn/Railway).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stale-dist stderr warning | `src/ui/server.py` (`_warn_stale_frontend_dist`) | `tests/component/ui/test_server.py::TestWarnStaleFrontendDist` |
+
+**AST-758** narrowed run (pair with **`docs/test-bible/dev/launch_frontend_deps.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_server.py::TestWarnStaleFrontendDist \
+  tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendBuild \
+  -q
+```
+
+**Manual UAT:** Susan Stage 4 in plan — `:5001` after pull without manual rebuild shows AST-746 Scheduled Actions layout.

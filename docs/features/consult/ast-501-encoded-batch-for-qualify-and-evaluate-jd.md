@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-501 archived 2026-06-15 -->
+
+## Linear archive (AST-501)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-501/encoded-batch-for-qualify-and-evaluate-jd-high-volume-encoded-batch  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-500 — High-volume encoded batch consult: migrate all stages, cache-first exhaustion runs  
+**Blocked by / blocks / related:** parent: AST-500; blocks: AST-502
+
+### Description
+
+## What this implements
+
+Restore the intended **single-call batch** behavior for **job-listing qualification** and **JD evaluation**: many items in one assessment, one response with a multi-line encoded payload inside the standard agent performance envelope. Fix the runtime path that today often issues **one assessment per job** despite encoded wire format and seed `batch_call_mode` for these steps. Tighten provider-facing instructions so models return the **outer envelope** plus compact lines (not bare pipe text or expanded JSON job arrays).
+
+## Acceptance criteria
+
+1. With batch size **N > 1** and **N** eligible jobs for JD evaluation, a single dispatch pass produces **one** assessment call for that chunk and a payload with **N** encoded lines (or explicit agent failure in the envelope); each job lands in pass, fail, retry, or error state per today’s rules—not left stuck in the trigger state.
+2. The same single-call / multi-line behavior holds for **job-listing qualification** on a multi-listing batch.
+3. Model responses respect the **outer envelope**; compact lines live inside `agent_payload`, not as a substitute for the envelope or as unrelated expanded JSON, for all providers in production use.
+
+## Boundaries
+
+* Does not implement multi-chunk parallel exhaustion (sibling ticket).
+* Does not migrate DO / GET / LIKE (sibling ticket).
+* Does not change rubric vectors, pass/fail rules, or grade letters.
+
+## Notes for planning
+
+* `dispatch_task` **batch_size** and **batch_call_mode** are authoritative (no hard-coded default batch sizes in code).
+* Partial line omissions in an otherwise valid envelope → **per-job retry states**, not whole-batch error.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-500-high-volume-encoded-batch-consult-migrate-all-stages-cache-first-exhaustion-runs`, child `sub/AST-500/…` per orientation-astral § Branch law.
+
+### Comments
+
+#### radia — 2026-05-27T03:47:44.946Z
+**Diff:** `origin/dev...origin/sub/AST-500/AST-501-encoded-batch-for-qualify-and-evaluate-jd` @ `ed193fa1`.
+
+- **Plan / code — OK:** `_strict_encoded_batch_consult_envelope_err` limited to `qualify_job_listings` + `evaluate_jd` matches ticket + `ASTRAL_CODE_RULES` batch consult intent; `grades_encoded*` / `grades_encoded_notes` `output_types` mandate the outer envelope and drop the contradictory “lines only / RESPOND ONLY…” tail; dispatcher component test locks a single `run_consult_task` await with full claimed entity list for `batch_call_mode=1`; agent tests cover bare pipe text and structured `agent_payload` object cases.
+- **Advisory (D2):** Strict-envelope branch wraps `_store_response_block` in bare `except`; same broad pattern exists elsewhere in `do_task` — fine if intentional parity; tie to rubric tradeoff in a one-line comment only if you want clearer audit rationale.
+
+**Radia doc cherry-pick:** `04445e0e1ad00ac3a635ff3d50bc1b7095dd842c` — `git cherry-pick 04445e0e1ad00ac3a635ff3d50bc1b7095dd842c` onto engineer branch, then re-publish if needed. Findings also in `docs/features/consult/ast-501-encoded-batch-for-qualify-and-evaluate-jd.md` **`## Review`** on the publish ref tip.
+
+#### betty — 2026-05-27T03:24:39.990Z
+1. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities` — `batch_call_mode=1` invokes `consult.run_consult_task` once with the full claimed job list (`len==2`).
+2. `tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope` — bare multi-line encoded text without `{ agent_performance, agent_payload }` fails `do_task`.
+3. `tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object` — structured JSON object inner `agent_payload` rejected for `evaluate_jd`.
+
+Existing coverage retained: `tests/component/core/test_consult.py`, `evaluate_jd` / `qualify_job_listings` `_run_batch_consult` paths; `./scripts/testing/run_component_tests.sh` wholesale per harness when widening.
+
+**Publish:** `origin/sub/AST-500/AST-501-encoded-batch-for-qualify-and-evaluate-jd` @ **`ed193fa1`** — `origin/ftr/AST-500-high-volume-encoded-batch-consult-migrate-all-stages-cache-first-exhaustion-runs` advanced with the same tip (fast-forward); bible blob `sha1 a9de57321a8c8ba275791dcbb90ca30c3240325c` matches on both refs.
+
+§ `docs/ASTRAL_TEST_BIBLE.md` **§7.13zf** (AST-502/503 rows TBD).
+
+— Betty
+
+#### hedy — 2026-05-27T03:03:44.164Z
+**Published plan:** [docs/features/consult/ast-501-encoded-batch-for-qualify-and-evaluate-jd.md](https://github.com/susansomerset/astral/blob/sub/AST-500/AST-501-encoded-batch-for-qualify-and-evaluate-jd/docs/features/consult/ast-501-encoded-batch-for-qualify-and-evaluate-jd.md)
+
+**Self-assessment (with justifications)**
+
+- **Scope — scope-Single-Component:** Dispatcher, consult routing, tight `agent` envelope path, `output_types`/seed prompts, targeted tests—all scoped to qualify + `evaluate_jd`; explicitly defers chunk fan-out (AST-502) and DO/GET/LIKE (AST-503).
+- **Conf — conf-high:** Failure mode traced against `_warm_then_gather` vs `batch_call_mode`, `_run_batch_consult`, and contradictory `grades_encoded_notes` tails; residual unknown is only if Susan’s reproduction implies different `dispatch_tasks` shaping than repo code.
+- **Risk — risk-HIGH:** Incorrect tightening could strand jobs, double-handle retries, or mis-parse valid provider output—shows up immediately in JOB_STATES / dispatcher ledger.
+
+---
+
 # AST-501 — Encoded batch for qualify_job_listings and evaluate_jd
 
 **Linear:** [AST-501](https://linear.app/astralcareermatch/issue/AST-501/encoded-batch-for-qualify-and-evaluate-jd-high-volume-encoded-batch)  
