@@ -324,7 +324,7 @@ class TestAst641UnionClaimCount:
 
 
 class TestAst745StopAutomaticDispatchRowSeeding:
-    """AST-745: schema ensure no longer re-inserts deleted *_RETRY or gaze_board dispatch rows."""
+    """AST-745: schema ensure no longer re-inserts deleted *_RETRY dispatch rows."""
 
     def test_schema_ensure_does_not_reinsert_deleted_retry_rows(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -342,23 +342,6 @@ class TestAst745StopAutomaticDispatchRowSeeding:
             n = conn.execute(
                 "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND trigger_state LIKE '%_RETRY'",
                 ("c745",),
-            ).fetchone()[0]
-            assert n == 0
-        finally:
-            conn.close()
-
-    def test_schema_ensure_does_not_reinsert_gaze_board_rows(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        cid = "c745gb"
-        db.save_dispatch_task(cid, "gaze", min_count=1, trigger_state="ACTIVE")
-        db.save_board_search_row("bs745", cid, "tst", "lbl", "{}", state="ACTIVE")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            n = conn.execute(
-                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'gaze_board'",
-                (cid,),
             ).fetchone()[0]
             assert n == 0
         finally:
@@ -525,3 +508,86 @@ class TestAst748ConsultToGradeDispatchMigration:
             assert legacy == 0
         finally:
             conn.close()
+
+class TestAst766BoardSchemaSunset:
+    """AST-766: board_search tables/column removed from database.py."""
+
+    def test_fresh_db_has_no_board_tables_or_job_column(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            tables = {
+                r[0]
+                for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            }
+            assert "board_search" not in tables
+            assert "board_search_run" not in tables
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(job)").fetchall()}
+            assert "board_search_id" not in cols
+        finally:
+            conn.close()
+
+    def test_legacy_db_drops_board_tables_and_column(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "CREATE TABLE board_search (board_search_id TEXT PRIMARY KEY, candidate_id TEXT)"
+            )
+            conn.execute("CREATE TABLE board_search_run (batch_id TEXT, board_search_id TEXT)")
+            conn.execute(
+                """CREATE TABLE job (
+                    astral_job_id TEXT PRIMARY KEY, company TEXT NOT NULL, company_job_id TEXT,
+                    job_title TEXT, job_link TEXT, job_data TEXT, state TEXT NOT NULL,
+                    state_history TEXT, batch_id TEXT, batch_created_at TEXT,
+                    created_at TEXT, updated_at TEXT, state_changed_at TEXT,
+                    board_search_id TEXT
+                )"""
+            )
+            conn.execute(
+                "INSERT INTO job (astral_job_id, company, state, board_search_id) "
+                "VALUES ('j766', 'co', 'NEW', 'bs1')"
+            )
+            conn.commit()
+            db._job_schema_ensured = False
+            db._board_schema_sunset_applied = False
+            db._ensure_job_schema(conn)
+            tables = {
+                r[0]
+                for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            }
+            assert "board_search" not in tables
+            assert "board_search_run" not in tables
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(job)").fetchall()}
+            assert "board_search_id" not in cols
+            assert conn.execute(
+                "SELECT astral_job_id FROM job WHERE astral_job_id='j766'"
+            ).fetchone() is not None
+        finally:
+            conn.close()
+
+    def test_board_search_ddl_helpers_removed(self) -> None:
+        from src.data import database as db_mod
+
+        for name in (
+            "save_board_search_row",
+            "claim_board_search_batch",
+            "board_listing_is_duplicate",
+        ):
+            assert not hasattr(db_mod, name)
+
+    def test_count_eligible_board_search_entity_raises(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c766", state="NEW")
+        with pytest.raises(ValueError, match="Unknown entity_type"):
+            db.count_eligible_for_dispatch_task(
+                {
+                    "entity_type": "board_search",
+                    "trigger_state": "ACTIVE",
+                    "candidate_id": "c766",
+                    "task_key": "gaze_board",
+                }
+            )
+
