@@ -83,3 +83,13 @@ Susan UAT (2026-06-23, after AST-758 local-dev delivery): **Scheduled Actions** 
 | §3.5 Naming | Keeps existing `scheduledFrozenStyle` name. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-744/AST-760-uat-entity-header-overlays-state-in-scheduled-actions`  
+**Tip:** `a705c2a`  
+**Built:** Stage 1 — removed `width`/`minWidth` lock from `scheduledFrozenStyle`; left-only sticky aligned with ListPage; mount-on-expand and `predecessorsReady` unchanged.
+
+**Out of build scope:** Betty test assertions for no inline minWidth on Entity header; Susan manual UAT for header visibility.
