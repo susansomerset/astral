@@ -10,6 +10,10 @@ FTR="ftr/${PARENT}"
 
 git -C "$MAIN" fetch origin
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHILD="$(echo "$SUB_REF" | cut -d/ -f3 | grep -oE '^AST-[0-9]+' || true)"
+"${SCRIPT_DIR}/validate-sub-log.sh" "$SUB_REF" "$CHILD" "$FTR" || exit 1
+
 # Idempotent: sub already on ftr
 if git -C "$MAIN" merge-base --is-ancestor "origin/${SUB_REF}" "origin/${FTR}" 2>/dev/null; then
   echo "RESULT: merge-child status=skip reason=already-on-ftr ref=origin/${FTR}"

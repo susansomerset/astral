@@ -1,3 +1,185 @@
+<!-- linear-archive: AST-480 archived 2026-06-15 -->
+
+## Linear archive (AST-480)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-480/analysis-upshot-consult-dispatch-and-job-data-persist-synthesize-job  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** High / 5  
+**Parent:** AST-478 — Synthesize job analysis report (Estelle Opus upshot)  
+**Blocked by / blocks / related:** parent: AST-478; blocks: AST-481
+
+### Description
+
+## What this implements
+
+Register `analysis_upshot` in `TASK_CONFIG`. Wire `consult.run_consult_task` for jobs at `PASSED_LIKE` (scored batch claim with score floor). Run Opus synthesis via `do_task`; on success persist schema-driven report JSON under `job_data` and transition `pass_state` **→** `RECOMMENDED`. On technical failure → `PASSED_LIKE_RETRY`. Add dispatch seed row `trigger_state: PASSED_LIKE`.
+
+## Acceptance criteria
+
+2. `analysis_upshot` dispatch: `PASSED_LIKE` → `RECOMMENDED` when JSON saved.
+3. Failure → `PASSED_LIKE_RETRY`, not `RECOMMENDED`.
+
+## Boundaries
+
+* Does **not** author Manage Tasks prompt prose (**AST-313** — Susan).
+* Does **not** implement JAR render (**Katherine** sibling).
+* Does **not** run artifact chains or set `BUILD_ARTIFACTS`.
+
+## Notes for planning
+
+* `src/core/consult.py`, `src/core/agent.py`, `src/data/database.py`, `src/utils/config.py`.
+* Pass `job` in `ctx` per **AST-372** direction.
+
+## Git branch (authoritative)
+
+`sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist` · parent `ftr/AST-478-synthesize-job-analysis-report-estelle-opus-upshot`
+
+### Comments
+
+#### chuckles — 2026-05-25T04:04:28.146Z
+[rollup-child] sub → ftr
+
+Child: AST-480
+Publish ref: origin/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist
+Parent ftr: origin/ftr/AST-478-synthesize-job-analysis-report-estelle-opus-upshot @ 3eb9ec70
+
+Merge conflicts in config/database/bible/tests resolved for integration (480 sub tip preferred on overlap).
+
+— Chuckles
+
+#### ada — 2026-05-25T04:01:41.749Z
+Review feedback resolved. Branch **`sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist`** ready for **`rollup-child` / prep-uat** (**parent AST-478**).
+
+**Publish tip:** `d270addbd80bf11a2d1ee862ea680e1889415fb3` — Ada
+
+**Dry-runs (**`resolve-astral`** §9a): **`origin/dev`**: clean · **`origin/ftr/AST-478-synthesize-job-analysis-report-estelle-opus-upshot`**: clean
+
+**Changes:** **`docs(AST-480): Resolution`** — **`review-astral`** had zero **fix-now** / **discuss** items; advisory on **`total_failed` vs `total_errors`** documented as accepted telemetry nuance in plan (**`docs/features/consult/ast-480-analysis-upshot-consult-dispatch-and-job-data-persist.md`**).
+
+#### radia — 2026-05-25T03:59:28.827Z
+## Radia review (`review-astral`)
+
+**Diff:** `origin/dev…origin/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist`  
+**Code tip reviewed:** `7047ae40d214ca65749b8822266328f8af37318b`
+
+**Counts:** fix-now **0** · discuss **0** · advisory **1**
+
+**Summary:** **`analysis_upshot`** batch path is coherent: recap + **`do_task`**, persist **`job_data.analysis_upshot`**, then **`RECOMMENDED`**; failures → **`PASSED_LIKE_RETRY`**. Dispatch seed, **`PASSED_LIKE`** map, and no **`BUILD_ARTIFACTS`** on pass meet parent gates. **`CANDIDATE_*`** **`prior_states`** now admit **`RECOMMENDED`**, fixing the interim gap from **`AST-479`**.
+
+**Advisory:** **`_run_analysis_upshot_batch`** return shape always has **`total_failed: 0`** (errors accumulate under **`total_errors`**). Telemetry nuance only.
+
+**Doc commit:** `452a7fd8` → same publish ref  
+Markdown: [`ast-480-…`](https://github.com/susansomerset/astral/blob/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist/docs/features/consult/ast-480-analysis-upshot-consult-dispatch-and-job-data-persist.md) — appendix **## Review**
+
+**Tolerances accepted:** none required.
+
+#### ada — 2026-05-25T03:57:23.816Z
+[check-linear]
+
+- **§0a:** `dev-ada` — `git fetch origin`, `merge origin/dev` (already up to date with `origin/dev`).
+- **Publish ref:** `origin/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist` tip **`7047ae40`** — matches `git ls-remote`; **no push required** (happy path: published tip already matches Betty handoff + prior `test-astral` verification).
+- **Thread:** Latest activity is Ada’s `test-astral` manifest note at **`7047ae40`**; Betty handoff (`@Ada`) is superseded by that reply. No further code or publish action from this pass.
+- **§0b/§1 (scoped):** `AST-480` thread reviewed; no actionable comments after the latest Ada update requiring a new reply beyond this inbox note.
+
+#### ada — 2026-05-25T03:46:17.043Z
+Built by Ada (`test-astral`).
+
+**Manifest tip verified:** `7047ae40` on `origin/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist` (matches Betty handoff).
+
+**Commands run (narrow run + harness):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst480AnalysisUpshotConfig \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_seed_keys_includes_board_gazer \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_passed_like_trigger_attachs_analysis_upshot_scored \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_passed_like_to_analysis_upshot_batch
+```
+
+**Results:** pytest **4 passed**; Vitest component suite **209 passed** (harness full frontend run after pytest). No product regressions; **no** additional commits or push — publish ref unchanged at `7047ae40`.
+
+**Git (local integration):** `dev-ada` after `git fetch origin`, `merge origin/dev`, `merge origin/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist`; working tree clean post-run.
+
+#### betty — 2026-05-25T03:38:10.590Z
+**Betty QA handoff (`test-astral` manifest)**
+
+**Published tip:** `7047ae40` on `sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist`.
+
+**Cherry-picks (order):**
+1. `fc9f3ecf` — `test(AST-479): manifest for LIKE→PASSED_LIKE + UserPrompt test harness` (Vitest `UserPromptProvider` / Modal tests baseline for this branch lineage).
+2. `62710087` — `test(AST-480): manifest analysis_upshot dispatch + consult routing`.
+
+**§7.13y bible + tests:** `TestAst480AnalysisUpshotConfig`, `TestAst471DispatchConfigHelpers` (`analysis_upshot` seed / scored PASSED_LIKE), `TestRunConsultTaskRoutes::test_routes_passed_like_to_analysis_upshot_batch`, plus existing **`TestAst479LikePassStates`**.
+
+**Narrow run (same as bible table focus):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst480AnalysisUpshotConfig \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_seed_keys_includes_board_gazer \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_passed_like_trigger_attachs_analysis_upshot_scored \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_passed_like_to_analysis_upshot_batch
+```
+
+(Harness still runs full Vitest after pytest; Betty verified **208/208** Vitest passes on publish tip.)
+
+**Local `dev-betty`:** extra product commit `4e472aa8` repairs `JOBS_IN_REVIEW_UI_SECTIONS` (syntax/list) after merge — **already correct on Ada’s tip**; **not** in publish cherry-picks.
+
+👉 **Ada:** `test-astral` on **`7047ae40`**; flip to **Tests Ready** when you pick this up (Betty MCP `save_issue` flaky on updates).
+
+#### ada — 2026-05-25T03:23:57.610Z
+Built by Ada.
+
+**Publish ref:** `sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist` — tip **`a79539ad`** (`feat(AST-480): analysis_upshot dispatch…`).
+
+**Integration:** **`d741498b`** on local `dev-ada` (same tree; cherry-pick on publish ref rewrote SHA).
+
+**Chuckles note:** Persisted synthesis JSON merges under **`job_data.analysis_upshot`** (not `job_analysis_report`).
+
+**AST-479:** Remote `origin/sub/AST-478/AST-479-*` carried only plan doc — merged-in job machine + `grade_like`→`PASSED_LIKE`, removed `PASSED_LIKE`→`BUILD_ARTIFACTS` SQLite rewrite, and UI `RECOMMENDED` in **`REVIEW_LIKE`** folded into this build so **`PASSED_LIKE` / retry / synthesis** transitions validate.
+
+**Handoff:** `python3 -m py_compile` on **`config.py`**, **`database.py`**, **`consult.py`** clean; **`npx tsc -b --noEmit`** in **`src/ui/frontend`** clean.
+
+**Betty paths (expect churn):** `tests/component/utils/test_config.py`, `tests/component/core/test_consult.py`, `tests/component/ui/api/test_api_jobs.py`, frontend Recommended tests — engineer did **not** touch `tests/` per build-astral.
+
+#### ada — 2026-05-25T03:20:35.795Z
+Label review (build agent):
+
+Conf: agree — Medium matches cross-layer state + dispatch wiring with clear pattern reuse.
+
+Risk: agree — Medium; wrong transitions or BUILD_ARTIFACTS leakage would strand jobs; mitigated by AST-479 JOB_STATES graph + grep AC.
+
+Scope: agree — Single-Component for the analysis_upshot path; note `origin/sub/AST-478/AST-479-*` currently carried only the plan doc — implementing the AST-479 config/DB/UI prerequisites on this line so PASSED_LIKE → analysis_upshot → RECOMMENDED is valid (folded into this build per parent ordering).
+
+Built by Ada (label review complete).
+
+#### chuckles — 2026-05-25T03:19:08.030Z
+## Plan Validation — Chuckles
+
+**Verdict: APPROVED**
+
+**discuss — persist key:** Stage 2 writes `job_analysis_report`; **AST-481** reads `job_data.analysis_upshot`. **Use `analysis_upshot` everywhere** (parent Decisions + Katherine plan). Ada: align persist path in build to that key before Code Complete.
+
+Otherwise faithful to parent AC2/AC3: `analysis_upshot` task, PASSED_LIKE dispatch, scored claim, RECOMMENDED / PASSED_LIKE_RETRY transitions, no BUILD_ARTIFACTS from tasks. Prerequisite on **AST-479** is explicit.
+
+— Chuckles
+
+#### ada — 2026-05-25T02:43:58.435Z
+**Plan:** `docs/features/consult/ast-480-analysis-upshot-consult-dispatch-and-job-data-persist.md` (published to `origin/sub/AST-478/AST-480-analysis-upshot-consult-dispatch-and-job-data-persist`).
+
+**Self-assessment (with justifications)**
+
+- **Scope:** `Single-Component` — one dispatchable task plus runner wiring across config, `_DISPATCH_TASK_SEED`, and `consult.run_consult_task`.
+- **Conf:** `Medium` — Patterns are established, but **AST-479** merge order and the `job_analysis_report` contract vs **AST-481** need the board aligned.
+- **Risk:** `Medium` — Incorrect transitions or persistence order breaks the PASSED_LIKE → RECOMMENDED gate or the BUILD_ARTIFACTS UI-only invariant from parent **AST-478**.
+
+Ada — **plan-astral**
+
+---
+
 # AST-480 — analysis_upshot consult dispatch and job_data persist
 
 **Parent:** [AST-478 — Synthesize job analysis report (Estelle Opus upshot)](https://linear.app/astralcareermatch/issue/AST-478/synthesize-job-analysis-report-estelle-opus-upshot)  

@@ -77,8 +77,9 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
 
 _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
     "label": {"type": "str", "required": True},
+    "code": {"type": "str", "required": True},
     "content": {"type": "str", "required": True},
-    "importance": {"type": "int", "required": True, "min": 1, "max": 10},
+    "importance": {"type": "int", "required": True, "min": 0, "max": 10},
 }
 _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "criteria": {
@@ -1138,7 +1139,7 @@ JOB_STATES = {
     "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": "VALID_TITLE_RETRY"},
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
     "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # qualify_job_listings retry holding state
-    "PASSED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
+    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST"],    "retry_state": "JD_READY_RETRY"},

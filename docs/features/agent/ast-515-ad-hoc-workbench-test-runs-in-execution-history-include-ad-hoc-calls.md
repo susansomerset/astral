@@ -1,3 +1,108 @@
+<!-- linear-archive: AST-515 archived 2026-06-15 -->
+
+## Linear archive (AST-515)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-515/ad-hoc-workbench-test-runs-in-execution-history-include-ad-hoc-calls  
+**Status at archive:** Done  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-514 — Include Ad Hoc calls (from UI) in Execution History  
+**Blocked by / blocks / related:** parent: AST-514
+
+### Description
+
+## What this implements
+
+Each **Test** from the admin **Anthropic Ad Hoc** workbench creates an Execution History row with a stable batch id, attached logs, stored prompt/response blocks (same inspection as dispatch batches), completion status and cost, and **Task** column value `adhoc-<task_key>`. Preview-only (no provider call) does not create a row. Anthropic and DeepSeek workbench paths follow the same rules.
+
+## Acceptance criteria
+
+1. After a successful **Test** from Anthropic Ad Hoc, a new row appears in Execution History for the selected candidate (within the active date filter) with **Task** = `adhoc-<task_key>` (workbench task_key), a terminal success status, non-zero cost when the provider returns billing data, and count fields consistent with a single run.
+2. After a failed **Test** (provider or validation failure surfaced to the workbench), a row appears with **Task** = `adhoc-<task_key>` and a terminal failure status so the attempt is auditable, not silently omitted.
+3. Expanding that row loads log lines tied to the run’s batch identifier (not an empty panel when logging occurred during the call).
+4. Opening prompt inspection for that row shows the assembled prompt segments and the model response stored for that run, comparable to inspecting a dispatch batch today.
+5. **Preview** alone does not add or update any Execution History row.
+6. Existing dispatch-only rows still show plain task names (no `adhoc-` prefix), and still load, filter, expand logs, and open prompt inspection without regression.
+
+## Boundaries
+
+* Does not change scheduler dispatch batch semantics or multi-entity count rules.
+* No retroactive backfill of past ad hoc runs.
+* Does not replace the Anthropic Ad Hoc workbench UI as the runner.
+* No new Execution History analytics beyond listing/filtering ad hoc rows.
+
+## Notes for planning
+
+* Primary touch: `run_adhoc` / `adhoc/test` path today records timesheets but not `dispatch_ledger`, `log_batch_id`, or `agent_data` — mirror patterns from `candidate.py` craft ledger + dispatcher `log_batch_id` usage.
+* Store ledger `task_key` as `adhoc-<task_key>` (workbench selection).
+* `AdminPerformanceMonitor` likely needs no change if the API returns the prefixed task_key; verify during plan.
+* Betty manifest: `api_admin` adhoc routes, agent storage, ledger list/detail if new helpers.
+
+## Git branch (authoritative)
+
+Per `orientation-astral` **§ Branch law**: parent `ftr/AST-514-include-ad-hoc-calls-from-ui-in-execution-history`, child `sub/AST-514/<child-segment>`. Created at dispatch.
+
+### Comments
+
+#### radia — 2026-05-28T22:16:03.384Z
+**Diff:** `origin/dev...origin/sub/AST-514/AST-515-ad-hoc-workbench-test-runs-in-execution-history` (6 files, +494 / −13)
+
+## Plan fidelity
+
+Implementation matches the combined plan (Stages 1–3): `run_adhoc_workbench_test` in core wraps `run_adhoc` with `adhoc-<task_key>` ledger row, `log_batch_id` for the provider call, `_store_prompt_blocks` / `_store_response_block` for inspection, and terminal ledger updates on success / soft-failure / exception. `adhoc_test` swaps to the wrapper; `adhoc/preview` unchanged. Tests cover success, `success: False`, exception re-raise, and preview not invoking the wrapper or `save_dispatch_ledger`.
+
+Self-Assessment (`scope-Single-Component`, `conf-Medium`, `risk-Medium`) still matches the diff footprint.
+
+## ASTRAL_CODE_RULES
+
+| Area | Verdict |
+|------|---------|
+| **§2.4 batch** | `batch_id` prefix, `log_batch_id` during `run_adhoc`, ledger save/update with `batch_size=1` — aligned with `run_candidate_artifact_generation` / `do_task` audit pattern |
+| **§3.3 layers** | Ledger + `agent_data` writes in **core** only; `api_admin` imports core wrapper — no new UI→data business logic |
+| **§1.5 / D2 storage** | `_store_*` failures logged at `debug` with `exc_info` — same bounded swallow as `do_task` (~L1007); acceptable with existing precedent |
+| **§2.1 config** | `entity_type` from `TASK_CONFIG`; ledger task label is ticket-specified prefix, not a new magic string list |
+
+## Advisory (non-blocking)
+
+- **`from src.data import database`** added alongside existing `from src.data.database import (...)` named imports in `agent.py`. Works and matches `candidate.py`; optional follow-up to fold `save_dispatch_ledger` / `update_dispatch_ledger` into the existing import block for one style.
+- **Parent UAT (Stage 4):** dispatch-only Execution History regression still manual on parent **AST-514** (`AdminPerformanceMonitor` per bible §7.13k) — no UI diff in this child, as planned.
+
+## fix-now
+
+None.
+
+## discuss
+
+None.
+
+#### betty — 2026-05-28T22:05:19.143Z
+**QA test manifest** (`origin/sub/AST-514/AST-515-ad-hoc-workbench-test-runs-in-execution-history` @ `87b80fac`)
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `455f85d9f0f61e4f46b7b5d5d22f43eb1bbe83cf95b4ddfa5e280ab39f0ff03b`
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+2. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestAdhocRoutes`
+3. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_decodes_encoded_payload`
+4. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_hydrates_encoded_payload_with_entities`
+5. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_skips_decode_without_response_text`
+
+**Coverage added this pass:** `TestAst515AdhocWorkbenchLedger` (ledger COMPLETED/FAILED/exception paths, agent_data blocks, `log_batch_id` cleared); adhoc route tests retargeted to `run_adhoc_workbench_test`; `test_adhoc_preview_does_not_create_dispatch_ledger`.
+
+**Regression (parent UAT, not required for child green):** `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` per bible §7.13k — dispatch rows unchanged.
+
+#### ada — 2026-05-28T21:59:33.862Z
+Plan: [ast-515-ad-hoc-workbench-test-runs-in-execution-history-include-ad-hoc-calls.md](https://github.com/susansomerset/astral/blob/sub/AST-514/AST-515-ad-hoc-workbench-test-runs-in-execution-history/docs/features/agent/ast-515-ad-hoc-workbench-test-runs-in-execution-history-include-ad-hoc-calls.md)
+
+**Scope:** `scope-Single-Component` — `run_adhoc_workbench_test` in `agent.py`, wire `adhoc_test`, component tests only; Execution History UI unchanged.
+
+**Conf:** `conf-Medium` — Reuses craft/dispatch ledger + `agent_data` patterns, but adhoc passes pre-resolved prompt strings and both Anthropic/DeepSeek paths.
+
+**Risk:** `risk-Medium` — Wrong ledger rows could clutter Execution History; dispatch rows and preview-only path stay isolated.
+
+---
+
 # AST-515 — Ad hoc workbench Test runs in Execution History
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-515/ad-hoc-workbench-test-runs-in-execution-history-include-ad-hoc-calls  

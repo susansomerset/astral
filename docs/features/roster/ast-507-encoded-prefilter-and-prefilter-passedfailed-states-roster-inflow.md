@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-507 archived 2026-06-15 -->
+
+## Linear archive (AST-507)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-507/encoded-prefilter-and-prefilter-passedfailed-states-roster-inflow  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-490 — Roster inflow  
+**Blocked by / blocks / related:** parent: AST-490; blocks: AST-508
+
+### Description
+
+## What this implements
+
+Phase 3 of roster inflow: update **prefilter_company** to **encoded rubric** output (token-efficient); **dealbreaker F → PREFILTER_FAILED**; all else → **PREFILTER_PASSED** with persisted rubric score. Add **PREFILTER_PASSED** / **PREFILTER_FAILED** company states and config transitions.
+
+## Acceptance criteria
+
+8. Phase 3 prefilter uses encoded rubric output; dealbreaker F → **PREFILTER_FAILED**; otherwise → **PREFILTER_PASSED** with rubric score stored — regardless of non-dealbreaker grades.
+
+## Boundaries
+
+* Phase 4 locate dispatch integration — sibling Hedy ticket.
+* Does not change **IMPORTED** / legacy **WEBSITE_FOUND → TO_WATCH** path for manual imports unless definition requires shared prefilter task only.
+* Requires **craft_company_prefilter** artifact on candidate.
+
+## Notes for planning
+
+* Follow existing `grades_encoded` output_type pattern (qualify_job_listings class).
+* [roster.py](<http://roster.py>) prefilter pass logic: dealbreaker-only F failure.
+* Flag Susan if plan needs new columns.
+
+## Git branch (authoritative)
+
+`sub/AST-490/AST-507-encoded-prefilter-and-prefilter-states`
+
+### Comments
+
+#### radia — 2026-05-28T00:03:49.004Z
+**Review** — `origin/dev`…`origin/sub/AST-490/AST-507-encoded-prefilter-and-prefilter-states` · code `19f97fe6` · doc `06531e7b`
+
+Plan doc: `docs/features/roster/ast-507-encoded-prefilter-and-prefilter-passedfailed-states-roster-inflow.md` (## Review)
+
+**Solid (§2.1 / §2.6 / AC #8)**
+- `grades_encoded` + `_flatten_prefilter_parsed`; dealbreaker F2+ via `_render_pass_fail`; `prefilter_score` on pass via `_render_score`.
+- **PREFILTER_PASSED** / **PREFILTER_FAILED** states + transitions; legacy **TO_WATCH** / **IGNORE** via `state_history` (**NEW → WEBSITE_FOUND**).
+- `decision` treats **PREFILTER_PASSED** like **TO_WATCH** for culture-link save; shape/score errors → **PREFILTER_UNKNOWN**.
+
+**Advisory only (no fix-now)**
+- Publish ref includes sibling bible §7.13zf–7.13zg and `TestAst504CompanySearchTermsConfig` — narrow future child publishes when possible.
+- `_fetch_prefilter_notes` uses empty `vector_labels` (no ctx); fine with current mocks; revisit if live decode requires rubric labels on coat-check.
+
+Ada: no code changes requested — proceed toward UAT on parent branch when siblings allow.
+
+#### betty — 2026-05-27T23:55:39.859Z
+**Publish ref:** `origin/sub/AST-490/AST-507-encoded-prefilter-and-prefilter-states` @ `a76cde78`
+
+**`docs/ASTRAL_TEST_BIBLE.md` SHA256 (on publish ref):** `8ee520f59faeb11b3722b180be2780c58209c46bf1c6f29656091c28159b28a6`
+
+**QA test manifest**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig tests/component/core/test_roster.py::TestPrefilterCompany::test_pass_and_fail_grades_persist_data tests/component/core/test_roster.py::TestAst507EncodedPrefilter tests/component/core/test_roster.py::TestRunCompanyTask::test_prefilter_pass_and_fail`
+
+**Coverage notes (§7.13zh):** Encoded `jobs[0].grades` shape; dealbreaker **F** with confidence ≥ 2 → **PREFILTER_FAILED** on inflow (`NEW → WEBSITE_FOUND` history); legacy empty history → **TO_WATCH** / **IGNORE**; **F1** on one vector with another vector confidence > 1 → pass (not dealbreaker); **`prefilter_score`** on legacy pass path; **`run_company_task`** counts **PREFILTER_PASSED** in `pass_states`.
+
+**Prerequisite:** **`craft_company_prefilter`** on candidate before dispatch (per plan).
+
+#### ada — 2026-05-27T23:42:24.509Z
+Plan doc: [ast-507-encoded-prefilter-and-prefilter-passedfailed-states-roster-inflow.md](https://github.com/susansomerset/astral/blob/sub/AST-490/AST-507-encoded-prefilter-and-prefilter-states/docs/features/roster/ast-507-encoded-prefilter-and-prefilter-passedfailed-states-roster-inflow.md) (`dec0d7ac` on `origin/sub/AST-490/AST-507-encoded-prefilter-and-prefilter-states`).
+
+**Scope:** `scope-Single-Component` — config state registry + `prefilter_company` / `run_company_task` in `roster.py` and targeted tests only.
+
+**Conf:** `conf-Medium` — `grades_encoded` decode returns `jobs[0]`; roster adapter + `state_history` inflow vs legacy split must match parent AC without absorbing **AST-508** locate work.
+
+**Risk:** `risk-Medium` — shared prefilter on **WEBSITE_FOUND**; wrong branch sends manual roster to **PREFILTER_*** or inflow to **TO_WATCH**; dealbreaker regression affects downstream spend.
+
+**Susan flag (no new column this ticket):** Rubric score → `company_data.prefilter_score`. SQL `score_floor` on company batch claim (**AST-508**) may need `company.latest_score` — approve separately if required.
+
+---
+
 # Encoded prefilter and PREFILTER PASSED/FAILED states (Roster inflow)
 
 **Linear:** [AST-507](https://linear.app/astralcareermatch/issue/AST-507/encoded-prefilter-and-prefilter-passedfailed-states-roster-inflow)  

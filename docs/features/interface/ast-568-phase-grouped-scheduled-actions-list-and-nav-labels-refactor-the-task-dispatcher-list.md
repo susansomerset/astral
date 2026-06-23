@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-568 archived 2026-06-15 -->
+
+## Linear archive (AST-568)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-568/phase-grouped-scheduled-actions-list-and-nav-labels-refactor-the-task  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-567 — Refactor the Task Dispatcher List  
+**Blocked by / blocks / related:** parent: AST-567
+
+### Description
+
+## What this implements
+
+Phase-grouped Scheduled Actions list (CollapsiblePanel like Manage Tasks), seq order within phase, phase/seq metadata for task_key, nav and page title **Scheduled Actions**.
+
+## Acceptance criteria
+
+1. Sidebar **Scheduled Actions** → `/admin/scheduled_actions`.
+2. Page heading **Scheduled Actions**.
+3. Multiple phases → collapsible sections with full table behavior.
+4. Rows ordered by catalog **seq** within phase.
+5. Zero sections expanded allowed.
+6. Filters still work; empty sections handled.
+7. Stop All, Add, run/stop, AUTO, Dbg, modals unchanged.
+
+## Boundaries
+
+No dispatcher/scheduler/schema changes beyond phase/seq metadata for UI. No route rename.
+
+## Notes for planning
+
+`AdminScheduledActions.tsx`, `NAV_CONFIG`, `api_admin.py` task_keys if needed. Reuse `CollapsiblePanel` from `AdminTaskPrompts.tsx`.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-567`; child `sub/AST-567/<child-id>-scheduled-actions-phase-sections`.
+
+### Comments
+
+#### radia — 2026-06-03T14:46:53.396Z
+**Doc publish (Joan follow-up):** Review section landed on `origin/sub/AST-567/AST-568-scheduled-actions-phase-sections` @ `c1716843` (cherry-pick of dev-radia `a0067704`; Joan `store-review-commit` reported empty pick because content already matched tip).
+
+#### radia — 2026-06-03T14:45:59.022Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-567/AST-568-scheduled-actions-phase-sections` @ `a2298032`
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:** Optional later `test_api_admin` assertion that `GET /api/admin/dispatch_tasks/task_keys` returns `phase`/`seq` for a known `TASK_CONFIG` key (Vitest page mocks + bible §7.13zy already cover AST-568).
+
+**Plan / rules:** Stages 1–4 match combined plan — `task_keys` `phase`/`seq`, `NAV_CONFIG` **Scheduled Actions**, `CollapsiblePanel` sections aligned with `AdminTaskPrompts.tsx` (alphabetic phase order, `seq` default sort within section, zero expanded OK). Filters, Stop All, Add, run/stop, AUTO, Dbg, modals, polling unchanged. No §1.5 / §3.2 violations in diff.
+
+**Doc:** `docs/features/interface/ast-568-phase-grouped-scheduled-actions-list-and-nav-labels-refactor-the-task-dispatcher-list.md` — Joan `store-review-commit` @ `a0067704` on publish ref.
+
+**Note:** `AGENTS.md` not present in `astral-radia` worktree; review followed `review-astral` skill + `ASTRAL_CODE_RULES.md`.
+
+#### betty — 2026-06-03T14:41:33.416Z
+## QA test manifest (AST-568)
+
+**Publish ref:** `origin/sub/AST-567/AST-568-scheduled-actions-phase-sections` @ `a2298032`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `24d6819ebd6c9efd27f21c6aa9a89d61eebc32ff`
+
+### Run (required)
+
+1. **`tests/component/frontend/pages/test_AdminScheduledActions.test.tsx`** — full file (13 tests): page title **Scheduled Actions**, phase **`CollapsiblePanel`** sections (zero expanded, expand/collapse, filter within section), row edit/run/stop/AUTO/modals, thread polling reload, empty state.
+
+### Regression (same pass if time permits)
+
+2. **§7.13h** — `tests/component/frontend/components/test_CollapsiblePanel.test.tsx` (primitive unchanged; Scheduled Actions reuses pattern).
+3. **§7.13k** — Scheduled Actions routed page minimum (covered by item 1).
+
+### Narrowed command
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+### Notes
+
+- Plan Stage 4 test updates landed via **`test(AST-568):`** @ `126b97a1` and bible **§7.13zy** @ `a2298032`.
+- **`task_keys`** mocks use **`phase`** / **`seq`** (no **`group`**). Expand a phase section before table row assertions (collapsed panels hide tbody from a11y tree).
+
+#### katherine — 2026-06-03T14:31:17.568Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-567/AST-568-scheduled-actions-phase-sections/docs/features/interface/ast-568-phase-grouped-scheduled-actions-list-and-nav-labels-refactor-the-task-dispatcher-list.md
+
+**Self-assessment**
+- **Scope:** Single-Component — one admin page, NAV_CONFIG label, small `task_keys` API metadata, existing Vitest file.
+- **Conf:** high — mirrors `AdminTaskPrompts.tsx` phase/`CollapsiblePanel` pattern; adds `phase`/`seq` to `_dispatch_task_key_form_meta` from `TASK_CONFIG` (replaces unused client-side `group` sort).
+- **Risk:** Medium — operational run/stop screen; sectioned layout must preserve filters, modals, and thread polling.
+
+Four stages: (1) API `phase`/`seq` on task_keys, (2) nav label, (3) phased `CollapsiblePanel` UI + title, (4) test updates including collapse/expand case.
+
+---
+
 # Phase-grouped Scheduled Actions list and nav labels (Refactor the Task Dispatcher List)
 
 **Linear:** [AST-568](https://linear.app/astralcareermatch/issue/AST-568/phase-grouped-scheduled-actions-list-and-nav-labels-refactor-the-task)  

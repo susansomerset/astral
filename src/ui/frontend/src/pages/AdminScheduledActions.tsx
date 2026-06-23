@@ -91,13 +91,22 @@ function ScheduledPhaseTable({
     DATA_COL_KEYS_ARR,
     false,
     NO_PERSISTED_WIDTHS,
-    [rows.length, frozenN],
+    [rows.length, frozenN, sortIcon("candidate_id"), sortIcon("task_key"), sortIcon("entity_type")],
   )
 
   function scheduledFrozenStyle(colIndex: number, base: CSSProperties = {}): CSSProperties {
+    const key = DATA_COL_KEYS_ARR[colIndex]
+    const w = mergedWidths[key]
+    const widthStyle: CSSProperties =
+      w && w > 0 ? { width: w, minWidth: w, boxSizing: "border-box" } : {}
     const left = stickyLeftPx(colIndex, mergedWidths, DATA_COL_KEYS_ARR, false, frozenN)
-    if (left == null) return base
-    return { ...base, left }
+    if (left == null) return { ...base, ...widthStyle }
+    // Only apply sticky offset when all prior frozen columns have measured width (avoid 120px fallback gap).
+    const predecessorsReady = DATA_COL_KEYS_ARR.slice(0, colIndex).every(
+      (k) => (mergedWidths[k] ?? 0) > 0,
+    )
+    if (!predecessorsReady) return { ...base, ...widthStyle }
+    return { ...base, ...widthStyle, left }
   }
 
   return (
@@ -643,20 +652,22 @@ export default function ScheduledActions() {
               else setOpenSection(null)
             }}
           >
-            <ScheduledPhaseTable
-              rows={sec.rows}
-              frozenN={frozenN}
-              truncateChars={truncateChars}
-              threadStatus={threadStatus}
-              allTaskKeys={allTaskKeys}
-              toggleSort={toggleSort}
-              sortIcon={sortIcon}
-              openEdit={openEdit}
-              toggleAutoMode={toggleAutoMode}
-              toggleDebug={toggleDebug}
-              handleRun={handleRun}
-              handleStop={handleStop}
-            />
+            {resolvedOpenSection === sec.sectionKey ? (
+              <ScheduledPhaseTable
+                rows={sec.rows}
+                frozenN={frozenN}
+                truncateChars={truncateChars}
+                threadStatus={threadStatus}
+                allTaskKeys={allTaskKeys}
+                toggleSort={toggleSort}
+                sortIcon={sortIcon}
+                openEdit={openEdit}
+                toggleAutoMode={toggleAutoMode}
+                toggleDebug={toggleDebug}
+                handleRun={handleRun}
+                handleStop={handleStop}
+              />
+            ) : null}
           </CollapsiblePanel>
         </div>
       ))}

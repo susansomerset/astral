@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-557 archived 2026-06-15 -->
+
+## Linear archive (AST-557)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-557/inflow-discovery-representative-debug-instrumentation-improve-quality  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-538 — Improve Quality of Debug Logging  
+**Blocked by / blocks / related:** parent: AST-538
+
+### Description
+
+## What this implements
+
+Dispatcher + roster inflow_discovery / vet_inflow_discovery per-index debug (found + recorded).
+
+## Acceptance criteria
+
+2,4 from parent.
+
+## Boundaries
+
+Uses shared helper from contract child; not full component backfill.
+
+## Git branch (authoritative)
+
+Per orientation-astral: parent `ftr/ast-538-improve-quality-of-debug-logging`, child `sub/AST-538/<child-id>-<slug>`.
+
+### Comments
+
+#### betty — 2026-06-03T03:27:13.422Z
+**Betty — bible rollup reconcile (AST-557)**
+
+Replaced **`docs/ASTRAL_TEST_BIBLE.md`** on **`origin/sub/AST-538/AST-557-inflow-discovery-representative-debug`** with **`origin/ftr/ast-538-improve-quality-of-debug-logging` @ `50716857`** + **§7.13zu** only (after **§7.13zt**). Removed stray **§7.13zr** / **§7.13zv** / **§7.13zw** tails that were not on parent ftr. Product/tests on sub unchanged.
+
+- **Publish tip:** `2e89defe`
+- **Bible shasum:** `a8cf19b4f2b062a46c7b7c322bff3780e7e58c8158714872ef9cdfbec3577b82`
+- **Status:** User Testing unchanged (rollup fix only)
+
+— Betty
+
+#### betty — 2026-06-03T03:25:29.800Z
+**Rollup bible reconcile (Betty)** — `origin/sub/AST-538/AST-557-inflow-discovery-representative-debug` @ `140eb825`
+
+- Merged **`origin/ftr/ast-538-improve-quality-of-debug-logging`** into **`dev-betty`**; published bible-only **`docs(AST-557): reconcile bible §7.13zu for ftr rollup`**.
+- **§7.13zs** (**AST-554** + **AST-556** row) and **§7.13zt** (**AST-555**) match **`ftr/ast-538`**; **§7.13zu** holds **AST-557** manifest (no **AST-557** row under **§7.13zs**).
+- **`docs/ASTRAL_TEST_BIBLE.md` shasum:** `11a4d31cb4e38bfe3e0b01d601b3834afd13535e4da97e32a131b03bca4e8027`
+
+Status unchanged (**User Testing**). Joan **`rollup-child`** for **AST-557** can retry.
+
+#### radia — 2026-06-03T03:19:36.488Z
+**Review** — `origin/dev...origin/sub/AST-538/AST-557-inflow-discovery-representative-debug` (product @ `4be2af40`; Radia doc @ `fc291360` on publish ref).
+
+**fix-now:** none.
+
+**discuss**
+- `src/core/roster.py` — `run_inflow_discovery_batch`: after the term loop, `if not all_hits` returns with no contract header when CSE ran but dedupe left zero hits (plan Stage 1.4 allows skipping vet). Optional: one `debug_index` with outcome `no deduped hits after CSE` when `debug=True` — not blocking.
+
+**advisory**
+- `src/core/agent.py` (unchanged in this diff): `vet_inflow_discovery` still uses legacy `do_task` debug paths, not §1.5.1 contract headers — matches plan out-of-scope / later backfill.
+- Plan doc: `docs/features/foundation/ast-557-inflow-discovery-representative-debug-instrumentation-improve-quality-of-debug-logging.md` § Review (Radia) on publish ref.
+
+**§1.5.1 / plan (solid)**
+- `roster.run_inflow_discovery_batch`: `set_debug_flag(debug)`; per-term `debug_index` + hit `debug_detail` (20-hit cap); vet block `debug_detail_block`; per-row ingest outcomes; batch summary detail; `do_task(..., debug=debug)`.
+- `dispatcher._run_unified` / `_run_task`: contract lines only when `task_key == inflow_discovery` and `debug=True`; other tasks keep grandfather `[DEBUG]`.
+- No contract emission paths when `debug=False` on touched branches.
+
+**resolve-astral:** no code changes required from this review.
+
+#### betty — 2026-06-03T03:13:21.270Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-538/AST-557-inflow-discovery-representative-debug` @ `4be2af40`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `26576b04d50fe0588312a5bc8fd6fe4fd9a4ee60` (**§7.13zs** — **AST-557** row)
+
+**Classification:** Existing coverage (bible-backed). Parent **AST-538** AC 7 + plan Stage 3 forbid Betty log-string tests for this child; **AST-554** owns helper gating/truncation tests.
+
+1. `.venv/bin/python -m pytest tests/component/core/test_roster.py::TestAst505InflowDiscovery -q`
+2. `.venv/bin/python -m pytest tests/component/core/test_dispatcher.py -k "inflow or ast505" -q`
+3. `.venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q` (blocker **AST-554** regression)
+
+**Susan UAT (plan Stage 3 — not automated):** `debug=True` with ≥2 stale terms → term/vet/row contract trace; `debug=False` → no `index N/M` contract headers on dispatcher + roster paths (parent AC 2/4).
+
+#### hedy — 2026-06-03T00:39:49.825Z
+Plan: `docs/features/foundation/ast-557-inflow-discovery-representative-debug-instrumentation-improve-quality-of-debug-logging.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-538/AST-557-inflow-discovery-representative-debug/docs/features/foundation/ast-557-inflow-discovery-representative-debug-instrumentation-improve-quality-of-debug-logging.md
+
+Published @ `5272a5b6` on `origin/sub/AST-538/AST-557-inflow-discovery-representative-debug`.
+
+**Scope:** `Single-Component` — `run_inflow_discovery_batch` plus dispatcher `_run_task` / `_run_unified` branches gated on `inflow_discovery` and `debug=True` only.
+
+**Conf:** `high` — AST-554 contract helpers are on the line; term loop, vet `do_task(debug=)`, and row ingest mapping are explicit in the plan.
+
+**Risk:** `Medium` — Dispatcher is shared, but changes are task-key- and debug-gated; AC 4 spot-check is Stage 3 in the plan.
+
+---
+
 # AST-557 — inflow_discovery representative debug instrumentation (Improve Quality of Debug Logging)
 
 - **Linear (this ticket):** [AST-557](https://linear.app/astralcareermatch/issue/AST-557/inflow-discovery-representative-debug-instrumentation-improve-quality-of)

@@ -1450,7 +1450,7 @@ class TestApiAdminBranchGaps:
         decode = MagicMock(return_value={"jobs": [{"astral_job_id": "j1"}]})
         monkeypatch.setattr(admin_mod, "_decode_payload", decode)
         # Isolate hydrate/decode path from real DB: full suite may set _board_search_schema_ensured
-        # without board_search on the shared ASTRAL_DB_DIR file (_ensure_gaze_board_dispatch_tasks).
+        # without board_search on the shared ASTRAL_DB_DIR file (schema ensure side effects).
         monkeypatch.setattr(admin_mod, "_build_adhoc_live_content", lambda *args, **kwargs: "")
         resp = admin_client.post(
             "/api/admin/adhoc/test",
