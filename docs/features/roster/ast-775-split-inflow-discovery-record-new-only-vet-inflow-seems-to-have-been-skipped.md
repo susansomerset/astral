@@ -145,3 +145,35 @@ No **`conf-!!-NONE`** conflicts identified.
 **Built:** Removed inline `do_task(vet_inflow_discovery)` from `run_inflow_discovery_batch`; added `record_inflow_discovery_hit`, mechanical hostname slug, expanded URL dedupe (`inflow_discovery_notes` / `inflow_discovery_blurb`).
 
 **QA note:** `tests/component/core/test_roster.py` inflow discovery tests mock `do_task` — Betty manifest update expected at Code Complete.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only` @ `8e78c56`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 match: **`VET_FAILED`** + **`(NEW, VET_FAILED)`** in config; **`record_inflow_discovery_hit`**, mechanical hostname slug, expanded URL dedupe (**notes** / **blurb** pipe URL), slug suffix collision **`_2`…`_9`**; **`run_inflow_discovery_batch`** record-only — no **`do_task`** / **`vet_task_key`** / vet ingest loop; zero deduped hits returns success with updated debug wording. |
+| §2.6 state machine | Discovery creates **`NEW`** rows only; never **`WEBSITE_FOUND`** from this path; no daisy-chain vet under discovery **`batch_id`**. |
+| §1.5.1 debug | Per-hit **`debug_index`** + **`debug_detail`** when **`debug=True`**; batch-end summary via **`debug_detail`**; contract gated by **`log.set_debug_flag(debug)`**. |
+| Layer / imports | **`hashlib`** stdlib at module top; core→data via existing **`save_company`** / **`list_companies`** pattern; no new cross-layer violations. |
+| Cross-ticket boundary | No **`consult.py`**, **`dispatcher.py`**, dispatch seed, or **`vet_inflow_discovery`** wiring — correctly deferred to **AST-776**. |
+| Tests / bible | Betty manifest (**`TestAst775InflowDiscoveryRecordNew`**, revised **`TestAst505InflowDiscovery`**, config transition test) aligns with AC table; test-bible rows updated. |
+
+### Issues
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| — | None | — |
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **Advisory** | **`record_inflow_discovery_hit`** rebuilds **`_candidate_company_urls`** per hit — acceptable for typical hit counts; revisit only if discovery batches grow large. |
+| **Advisory** | Empty/unparseable URL after normalize reports **`skipped duplicate url`** (same branch as true duplicates) — edge case only; optional clearer outcome string if operators ask. |
+
+**Verdict:** Clean — no **fix-now**; **`resolve-child`** may advance per §9a when thread is quiet.
