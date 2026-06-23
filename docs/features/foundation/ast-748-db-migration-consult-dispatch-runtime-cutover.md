@@ -250,3 +250,19 @@ No conflicts requiring `!!-NONE`.
 |--------|-------|
 | **resolve-child** — no code changes required from review. | Hedy |
 | Susan UAT: confirm legacy `consult_*` dispatch rows renamed on staging DB; Run/AUTO graded consult hops show `grade_*` in Execution History. | Susan |
+
+## Resolution
+
+| Field | Value |
+|-------|-------|
+| Date | 2026-06-23 |
+| Publish ref | `origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` @ `d6949be` |
+
+### Outcome
+
+Radia review: **no fix-now** or **discuss** items. No product or plan edits required from review feedback.
+
+### §9a dry-run
+
+- `origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` → `origin/dev`: clean
+- `origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` → `origin/ftr/ast-736-task-keys-vs-dispatch-task-keys`: clean
