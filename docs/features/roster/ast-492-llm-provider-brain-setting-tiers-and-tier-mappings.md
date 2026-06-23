@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-492 archived 2026-06-15 -->
+
+## Linear archive (AST-492)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-492/llm-provider-brain-setting-tiers-and-tier-mappings-support-other-ai  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-491 — Support other ai models: DeepSeek  
+**Blocked by / blocks / related:** parent: AST-491; blocks: AST-495; blocks: AST-493
+
+### Description
+
+## What this implements
+
+Product configuration for the active LLM provider (config-driven for v1, not per-candidate UI), the **Little / Medium / Big** `brain_setting` tier catalog on agents, and canonical tier→vendor-model mappings for Anthropic and DeepSeek—including thinking vs non-thinking for DeepSeek per Susan’s decisions (Big: v4-pro + thinking; Medium: v4-flash + thinking; Little: v4-flash without thinking). Pricing metadata for cost calculation must live in config as the single source of truth.
+
+## Acceptance criteria
+
+3. Each agent used in production can be configured with **Little**, **Medium**, or **Big** tier; changing tier changes which concrete model runs for that agent under the active provider, verifiable from admin agent detail or logged call metadata.
+4. Tier **Big** on Anthropic and tier **Big** on DeepSeek for the same agent definition invoke different vendor models per the configured mapping table.
+5. Missing required provider API key for the selected provider causes startup or call failure consistent with existing secret handling (fail loud, no silent fallback to the other vendor).
+
+## Boundaries
+
+Does not implement DeepSeek HTTP client, `do_task` routing, timesheet tables, or admin UI labels—sibling tickets. Does not add providers beyond Anthropic + DeepSeek. Does not change TASK_CONFIG prompts or grading.
+
+## Notes for planning
+
+* Replace agent `model_code` storage semantics with `brain_setting` (Little/Medium/Big) where applicable; map at runtime using active provider from config.
+* `DEEPSEEK_API_KEY` env only; provider switch is a config literal for now.
+* Read **AST-324** merged behavior on `origin/dev` for `AGENT_CONFIG` patterns.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-491-support-other-ai-models-deepseek`, child `sub/AST-491/<child-segment>`. Created at dispatch-linear.
+
+### Comments
+
+#### radia — 2026-05-26T22:45:01.998Z
+**Diff:** three-dot `origin/dev` vs **AST-491 dispatch** [`sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings`](https://github.com/susansomerset/astral/tree/sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings). **Publish tip:** `abc5fbe68cff6b219fb62c9012cc7db45e15a574`.
+
+- **Tier + pricing source of truth** — `LLM_PROVIDER_CONFIG` / `BRAIN_*` literals, Anthropic tier map, DeepSeek SKU + thinking flags and `DEEPSEEK_MODEL_PRICING` with dated vendor citation in `src/utils/config.py` match plan and AST-491 Q&A.
+- **Secrets / startup** — `validate_llm_provider_environment()` with bracket reads; wired in `src/ui/server.py` before DB sync (`# noqa`), consistent with §2.1.
+- **Persistence** — `brain_setting` column + deterministic backfill; `save_agent` requires tier on INSERT; `_UPDATE_AGENT_ALLOWED` drops `model_code` writes.
+
+**discuss** — `database._expose_agent_public` sets JSON `model_code` / `resolved_model_key` from the **currently configured** provider. Intended for UI compat per integration notes; double-check callers if anything assumed `model_code` always equals a stable Anthropic AGENT_CONFIG key across provider switches.
+
+Review appendix (cherry-pick target): [`docs/features/roster/ast-492-llm-provider-brain-setting-tiers-and-tier-mappings.md`](https://github.com/susansomerset/astral/blob/07dd50afc311dcfdc6f8668c36bf3b72f9016077/docs/features/roster/ast-492-llm-provider-brain-setting-tiers-and-tier-mappings.md) (`07dd50af`).
+
+#### betty — 2026-05-26T22:36:44.376Z
+[check-linear]
+
+- Cleared Ada’s latest `[qa-handoff]`: **`TestAst492BrainSettingDoTask`** now uses **`test_send_to_deepseek_receives_vendor_model_and_tier_meta`** (mocks **`send_to_deepseek`**, asserts **`vendor_model`** + **`tier_meta`** from **`resolve_brain_setting_to_deepseek_tier_meta`**) instead of expecting a pre-AST-493 **`ValueError`**.
+- **`docs/ASTRAL_TEST_BIBLE.md`** §**7.13zd** updated so the catalog matches integrated DeepSeek dispatch.
+- Published: **`origin/sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings`** @ **`abc5fbe68cff6b219fb62c9012cc7db45e15a574`**.
+- **Manifest (pytest** — same narrow set as the handoff command):  
+  `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst492BrainSettingConfig tests/component/data/database/test_agents.py tests/component/core/test_agent.py::TestAst492BrainSettingDoTask tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents`  
+  (On current **`dev-betty`**, config class is **`TestAst492LlmBrainTierConfig`** — see bible §7.13zd if Ada’s note still says the old name.)
+
+Assignee stays **Ada** for **`test-astral`** (already **Tests Ready**).
+
+#### ada — 2026-05-26T22:25:28.598Z
+[qa-handoff]
+
+`TestAst492BrainSettingDoTask::test_deepseek_active_provider_raises_before_send` still expects `ValueError` matching `AST-493` when `get_active_llm_provider` returns `"deepseek"` (no `send_to_*` call). On `dev-ada` after merging `origin/sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings`, product resolves `brain_setting` → DeepSeek `vendor_model` and proceeds toward `send_to_deepseek`; the run fails later on task validation (`Missing required field 'jobs'`), not on the old stub.
+
+**Command:**  
+`./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst492BrainSettingConfig tests/component/data/database/test_agents.py tests/component/core/test_agent.py::TestAst492BrainSettingDoTask tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents`
+
+**Ask:** Please update this case (or drop it) so the manifest matches the integrated contract: DeepSeek `do_task` is live on dev-ada with `send_to_deepseek` + tier meta—e.g. assert `send_to_deepseek` is invoked with the expected `vendor_model` / `tier_meta`, or gate the test on a flag if you need to keep dual behavior.
+
+@Betty White
+
+#### betty — 2026-05-26T22:23:23.997Z
+QA test manifest (Betty)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst492BrainSettingConfig tests/component/data/database/test_agents.py tests/component/core/test_agent.py::TestAst492BrainSettingDoTask tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents`
+2. Canonical map: **`docs/ASTRAL_TEST_BIBLE.md` §7.13zd** (`LLM_PROVIDER_CONFIG` / `brain_setting` / admin agents / `do_task` resolution).
+
+**Publish tip:** `origin/sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings` @ `80256920` (includes `test(AST-492): …` on the sub ref).
+
+— Betty
+
+#### betty — 2026-05-26T22:23:05.048Z
+**QA manifest (Betty)**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig tests/component/data/database/test_agents.py tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents tests/component/core/test_agent.py::TestAst492BrainSettingDoTask`
+2. Regression check (empty `brain_setting` on mocked agent row): `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks`
+3. Test updates: `docs/ASTRAL_TEST_BIBLE.md` §7.13zd — class name **`TestAst492LlmBrainTierConfig`**, narrow command matches (1).
+4. Publish tip: `origin/sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings` @ `80256920` (`test(AST-492): brain_setting QA — config, DB agent rows, do_task SKU, admin API`).
+
+— Betty
+
+#### ada — 2026-05-26T22:09:06.555Z
+Plan doc (**Roster**, `brain_setting` = Little/Medium/Big aligned with Susan’s AST-491 Q6):
+
+https://github.com/susansomerset/astral/blob/sub/AST-491/AST-492-llm-provider-brain-setting-tiers-and-tier-mappings/docs/features/roster/ast-492-llm-provider-brain-setting-tiers-and-tier-mappings.md
+
+**Self-assessment (with reasons)**  
+**Scope · MAJOR-CHANGE** — Hits `src/utils/config.py` (provider + tier map + DeepSeek pricing), `database.py` agent column migration/backfill, `agent.py` do_task anthropic resolution, and `api_admin.py` CRUD/task enrichment/adhoc prelude so stored semantics match runtime; unavoidable for replacing `model_code` end-to-end for Anthropic.  
+**Conf · conf-high** — Tier resolution mirrors existing `AGENT_CONFIG` / `get_model`; migrations continue the guarded `_ensure_*_schema` style; DeepSeek SKU strings only enter config literals per code rules while HTTP stays AST-493.  
+**risk-HIGH** — A bad tier→model map or sloppy backfill silently changes which Anthropic SKU runs production traffic; duplicate startup env checks parallel Anthropic (`DEEPSEEK_API_KEY` when `active_provider=="deepseek"`) reduce “half-configured DeepSeek” incidents.
+
+Ada
+
+---
+
 # AST-492 — LLM provider, brain_setting tiers, and tier mappings
 
 **Parent:** [AST-491 — Support other ai models: DeepSeek](https://linear.app/astralcareermatch/issue/AST-491/support-other-ai-models-deepseek)  

@@ -144,7 +144,53 @@ class TestBackfillJobs:
         assert "Job 'missing' not found." in capsys.readouterr().out
 
 
-# Branches: --company only; --job only; batch both; dry-run banner/summary.
+# Branches: dry-run vs save; filter; not found; unchanged; save error.
+class TestBackfillAgentData:
+    def test_dry_run_and_live_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {
+                "agent_data_id": "batch-system-abc",
+                "batch_id": "batch-1",
+                "block_type": "SYSTEM",
+                "block_data": "a\n\n\nb",
+            }
+        ]
+        monkeypatch.setattr(_mod, "_list_agent_data_rows", lambda **kw: rows)
+        update = MagicMock()
+        monkeypatch.setattr(_mod, "_update_agent_data_block", update)
+
+        dry = _mod.backfill_agent_data(dry_run=True, batch_id="batch-1")
+        assert dry["updated"] == 1
+        update.assert_not_called()
+
+        saved: list[tuple[str, str]] = []
+
+        def _update(agent_data_id: str, block_data: str) -> None:
+            saved.append((agent_data_id, block_data))
+
+        monkeypatch.setattr(_mod, "_update_agent_data_block", _update)
+        live = _mod.backfill_agent_data(dry_run=False, agent_data_id="batch-system-abc")
+        assert live["updated"] == 1
+        assert saved == [("batch-system-abc", "a\n\nb")]
+
+    def test_not_found_and_unchanged(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        monkeypatch.setattr(
+            _mod,
+            "_list_agent_data_rows",
+            lambda **kw: [{"agent_data_id": "row-1", "block_type": "TASK", "block_data": "clean"}],
+        )
+        monkeypatch.setattr(_mod, "_update_agent_data_block", MagicMock())
+
+        assert _mod.backfill_agent_data(dry_run=False, batch_id="batch-1")["unchanged"] == 1
+
+        monkeypatch.setattr(_mod, "_list_agent_data_rows", lambda **kw: [])
+        missing = _mod.backfill_agent_data(dry_run=False, agent_data_id="missing")
+        assert missing["scanned"] == 0
+        out = capsys.readouterr().out
+        assert "Agent data 'missing' not found." in out
+
+
+# Branches: --company only; --job only; batch all; dry-run banner/summary.
 class TestRunBackfill:
     def test_company_only_skips_jobs(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
         monkeypatch.setattr(_mod, "backfill_companies", lambda dry_run, company: {"scanned": 1, "updated": 0, "unchanged": 1, "errors": 0})
@@ -170,14 +216,36 @@ class TestRunBackfill:
         assert "Jobs     :" in out
         assert "Companies:" not in out
 
-    def test_batch_runs_both_sections(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_batch_runs_all_sections(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
         monkeypatch.setattr(_mod, "backfill_companies", lambda dry_run, company: {"scanned": 2, "updated": 0, "unchanged": 2, "errors": 0})
         monkeypatch.setattr(_mod, "backfill_jobs", lambda dry_run, job_id: {"scanned": 3, "updated": 0, "unchanged": 3, "errors": 0})
+        monkeypatch.setattr(_mod, "backfill_agent_data", lambda dry_run, batch_id, agent_data_id: {"scanned": 4, "updated": 0, "unchanged": 4, "errors": 0})
 
-        _mod.run_backfill(dry_run=True, company=None, job_id=None)
+        _mod.run_backfill(dry_run=True, company=None, job_id=None, batch_id=None, agent_data_id=None)
 
         out = capsys.readouterr().out
         assert "=== DRY RUN — no DB writes ===" in out
         assert "=== DRY RUN SUMMARY ===" in out
         assert "Companies:" in out
         assert "Jobs     :" in out
+        assert "Agent data:" in out
+
+    def test_batch_only_skips_companies_and_jobs(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        companies = MagicMock()
+        jobs = MagicMock()
+        monkeypatch.setattr(_mod, "backfill_companies", companies)
+        monkeypatch.setattr(_mod, "backfill_jobs", jobs)
+        monkeypatch.setattr(
+            _mod,
+            "backfill_agent_data",
+            lambda dry_run, batch_id, agent_data_id: {"scanned": 1, "updated": 0, "unchanged": 1, "errors": 0},
+        )
+
+        _mod.run_backfill(dry_run=False, company=None, job_id=None, batch_id="batch-1", agent_data_id=None)
+
+        companies.assert_not_called()
+        jobs.assert_not_called()
+        out = capsys.readouterr().out
+        assert "Agent data:" in out
+        assert "Companies:" not in out
+        assert "Jobs     :" not in out

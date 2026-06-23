@@ -1,3 +1,174 @@
+<!-- linear-archive: AST-479 archived 2026-06-15 -->
+
+## Linear archive (AST-479)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-479/job-states-passed-like-recommended-and-consult-like-pass-synthesize  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** High / 3  
+**Parent:** AST-478 — Synthesize job analysis report (Estelle Opus upshot)  
+**Blocked by / blocks / related:** parent: AST-478; blocks: AST-481; blocks: AST-480
+
+### Description
+
+## What this implements
+
+Restore `PASSED_LIKE` as the post-`consult_like` queue state (not `BUILD_ARTIFACTS`). Add `PASSED_LIKE_RETRY` and `RECOMMENDED` to `JOB_STATES` with legal transitions. Set `consult_like` `pass_state` **→** `PASSED_LIKE`. Ensure `BUILD_ARTIFACTS` is only reachable from `RECOMMENDED` via candidate/UI transition (not from any task `pass_state`). Update `RECOMMENDED_JOB_STATES` and UI manifest lists so Recommended jobs surface `RECOMMENDED` (and related) correctly.
+
+## Acceptance criteria
+
+1. `consult_like` pass → `PASSED_LIKE` only (grep/config: no path sets `BUILD_ARTIFACTS` on LIKE pass).
+2. **Regression:** No scheduled/dispatch/consult path assigns `BUILD_ARTIFACTS` without a documented UI transition (artifact $$ gate).
+
+(Parent AC 2–3 owned by sibling **analysis_upshot** child.)
+
+## Boundaries
+
+* Does **not** implement `analysis_upshot` task body or Opus prompt (**AST-313** / Ada sibling).
+* Does **not** build JAR report UI (**Katherine** sibling).
+* Does **not** add Approve button `RECOMMENDED` **→** `BUILD_ARTIFACTS` (separate workflow epic).
+
+## Notes for planning
+
+* `src/utils/config.py`: `JOB_STATES`, `consult_like` orchestration via `TASK_CONFIG` / `_consult_orchestration`.
+* Reverse/dev migration: stop auto `PASSED_LIKE` **→** `BUILD_ARTIFACTS` on DB open for new LIKE passes; coordinate with existing rows on `dev`.
+* `docs/features/consult/` plan path per **plan-astral** §3.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-478-synthesize-job-analysis-report-estelle-opus-upshot`, child `sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass` (segment finalized at dispatch). Engineers cherry-pick to `origin/<publish-ref>` — not Linear `gitBranchName`.
+
+### Comments
+
+#### chuckles — 2026-05-25T04:04:25.629Z
+[rollup-child] sub → ftr
+
+Child: AST-479
+Publish ref: origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass
+Parent ftr: origin/ftr/AST-478-synthesize-job-analysis-report-estelle-opus-upshot @ 13e03b39
+
+sub/* kept for fixes until prep-uat.
+
+— Chuckles
+
+#### hedy — 2026-05-25T04:01:20.402Z
+Review feedback resolved. Branch **`sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`** ready for **`prep-uat`** (parent **AST-478**).
+
+**Commit:** `28eb2add` — Hedy  
+**Publish tip:** **`origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`** @ **`28eb2add`**
+
+**Radia:** fix-now **0**; **discuss** (RECOMMENDED vs **`CANDIDATE_*`** `prior_states` until **AST-480**) acknowledged in plan **`## Resolution`** — parent integration order **479 → 480**; no emergency solo-cherry-pick path.
+
+**`origin/dev` dry-run (§9a): clean** · **`origin/ftr/AST-478-synthesize-job-analysis-report-estelle-opus-upshot` dry-run: clean**
+
+#### radia — 2026-05-25T03:59:25.644Z
+## Radia review (`review-astral`)
+
+**Diff:** `origin/dev…origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`  
+**Code tip reviewed:** `2457bc413ed43f1c356d6fa80dc5c26faee65a31`
+
+**Counts:** fix-now **0** · discuss **1** · advisory **0**
+
+**Summary:** LIKE pass cleanly lands **`PASSED_LIKE`**; AST-302 auto-migrate to **`BUILD_ARTIFACTS`** removed; **`RECOMMENDED`**, **`PASSED_SCORE_GATED`**, and in-review manifests align with AC. **`BOARD_CONFIG`** dedupe is mechanical post-merge hygiene.
+
+**Discuss:** On this publish tip **`JOB_STATES["RECOMMENDED"]`** exists but **`CANDIDATE_*` outcomes** omit **`RECOMMENDED`** from **`prior_states`** until **`AST-480`** (already in your graph). No issue for parent integration order (**479→480**); flag only if **`479`** were ever cherry-picked alone onto **`dev`**.
+
+**Doc commit (cherry-pick target):** `1ed3175d` → `origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`  
+Markdown: [`ast-479-job-states-…`](https://github.com/susansomerset/astral/blob/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass/docs/features/consult/ast-479-job-states-passed-like-recommended-and-consult-like-pass.md) — appendix **## Review**
+
+**Tolerances accepted:** none required.
+
+#### hedy — 2026-05-25T03:47:34.157Z
+**Hedy — test-astral (green)**
+
+**Commands (Betty manifest — full harness):**
+- `./scripts/testing/run_component_tests.sh`
+
+**Result:** 924 pytest + 65 Vitest files passed; **Per-file branch coverage OK** for `LOCKED_AT_100` (including `src/utils/config.py`).
+
+**Product fix on this pass:** merge of `origin/dev` + publish ref had duplicated `BOARDS_CONFIG` / `BOARD_CONFIG` / `list_adopted_boards` in `config.py`, leaving final `BOARD_CONFIG = {}` at import. Removed the stale duplicate block so the real registry and helpers are the live definitions.
+
+**SHAs:**
+- `dev-hedy`: `2931398488cc26e61f854af19d6d99a4a8da3af9` (`fix(AST-479): dedupe BOARD_CONFIG after integration merge`)
+- `origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`: **`2457bc413ed43f1c356d6fa80dc5c26faee65a31`** (cherry-picked the above; replaces prior tip `3e04a500` for replay)
+
+#### betty — 2026-05-25T03:44:19.108Z
+QA manifest by Betty (Tests Ready handoff).
+
+1. **`tests/component/utils/test_config.py`** — **`TestAst479LikePassStates`** (`TASK_CONFIG["grade_like"]["pass_state"]` → **`PASSED_LIKE`**, **`RECOMMENDED_JOB_STATES`**); **`TestAst309CoverLetterTaskConfig`** per prior manifest if run in narrow suite.
+2. **`tests/component/ui/api/test_api_jobs.py`** — **`TestJobsRoutes.test_list_recommended_and_default`** (recommended **`list_jobs`** `states`).
+3. **Vitest / RTL** — **`tests/component/frontend/test-utils.tsx`** provider wiring; **`test_JobsRecommended.test.tsx`**; **`test_Modal.test.tsx`** / **`test_RubricModal.test.tsx`** (unchanged **`alertdialog`** flow).
+4. **`docs/ASTRAL_TEST_BIBLE.md`** §**7.13y** (+ §**7.13w** `TestAst479LikePassStates`).
+
+**Published tip:** **`origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`** @ **`3e04a500`** ( **`test(AST-479):`** already on tip — **`test-astral`** verifies there).
+
+Full harness: `./scripts/testing/run_component_tests.sh`
+
+#### betty — 2026-05-25T03:32:15.462Z
+QA manifest by Betty.
+
+1. **`tests/component/utils/test_config.py`** — `TestAst479LikePassStates` (`TASK_CONFIG["grade_like"]["pass_state"]` → `PASSED_LIKE`, `RECOMMENDED_JOB_STATES` shape); **`TestAst309CoverLetterTaskConfig`** (`draft_cover_letter` schema only; duplicate class cleanup; legacy **`craft_job_cover_letter`** absent per **AST-450**).
+
+2. **`tests/component/ui/api/test_api_jobs.py`** — **`TestJobsRoutes.test_list_recommended_and_default`** (recommended **`list_jobs`** `states` includes **`RECOMMENDED`** and **`BUILD_ARTIFACTS`**).
+
+3. **Frontend RTL / Vitest** — **`tests/component/frontend/test-utils.tsx`** wraps **`UserPromptProvider`** (`Modal` → **`useUserConfirm`**); **`test_JobsRecommended.test.tsx`** (fixtures **`RECOMMENDED`**); **`test_Modal.test.tsx`** / **`test_RubricModal.test.tsx`** (**`alertdialog`** discard flow).
+
+**`docs/ASTRAL_TEST_BIBLE.md`** — **§7.13y**; **§7.13w** references **`TestAst479LikePassStates`**.
+
+**Full verification (**`test-astral`):** `./scripts/testing/run_component_tests.sh`
+
+**Publish tip:** `origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass` @ **`3e04a500`**.
+
+#### hedy — 2026-05-25T03:22:47.289Z
+Built by Hedy.
+
+**Publish ref:** `sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`
+
+**Commits (dev-hedy, cherry-picked to publish ref tip `fc5c49b0`):**
+- `bc85e6f268c4e86234771b556f05b7281adad5a8` — feat(AST-479): PASSED_LIKE / RECOMMENDED / manifests, DB migration removal, `CandidateJobRowActions` RECOMMENDED, AST-302 superseded note.
+- `1c97ae404681ebf11cee99211037cd3c7bdde90d` — docs(AST-479): review stub on plan doc.
+
+**Code Complete handoff — Betty (`qa-astral`):** plan listed `tests/component/utils/test_config.py` (`TestConsultLikePassState`), `tests/component/core/test_consult.py`, `tests/component/ui/api/test_api_jobs.py`, frontend JobsRecommended/tests — expectations likely need updates for `RECOMMENDED_JOB_STATES`, `TASK_CONFIG["grade_like"]["pass_state"]`, and nav/job filters. Engineer did not edit `tests/` per build-astral test-tree ban.
+
+**Persist job_data key:** N/A (this ticket).
+
+#### hedy — 2026-05-25T03:19:58.663Z
+Label review (build agent):
+
+Conf: agree — current conf-high matches JOB_STATES / TASK_CONFIG / migration touch surface per plan Self-Assessment.
+
+Risk: agree — current risk-Medium matches prior_states / RECOMMENDED_JOB_STATES / migration removal blast radius; mitigated by grep AC and QA handoff.
+
+Scope: agree — current scope-MAJOR-CHANGE matches multi-layer state machine + UI Set + DB ensure change.
+
+#### chuckles — 2026-05-25T03:19:04.463Z
+## Plan Validation — Chuckles
+
+**Verdict: APPROVED**
+
+Faithful to parent **AST-478** AC1/AC4: `consult_like` → `PASSED_LIKE`, removes PASSED_LIKE→BUILD_ARTIFACTS migration, `RECOMMENDED` + retry states, `BUILD_ARTIFACTS` prior = `RECOMMENDED` only, manifest/list updates. Layer and config discipline look sound.
+
+**discuss** — `CandidateJobRowActions.tsx` touch is minimal; Betty will update tests per Code Complete note.
+
+— Chuckles
+
+#### hedy — 2026-05-25T02:43:36.711Z
+**Plan:** `docs/features/consult/ast-479-job-states-passed-like-recommended-and-consult-like-pass.md` (on `origin/sub/AST-478/AST-479-job-states-passed-like-recommended-and-consult-like-pass`).
+
+**Self-assessment (labels updated accordingly)**
+
+| Axis | Value | Justification |
+|------|-------|---------------|
+| **Scope** | `MAJOR-CHANGE` | Touches global `JOB_STATES` / `TASK_CONFIG`, DB migration hook, optional consult routing table check, React review Set, and artifact doc cross-ref—one coherent machine fix spanning layers. |
+| **Conf** | `high` | Reuses established config + state-machine patterns from **ASTRAL_CODE_RULES** §2.1 / §2.6; sibling tickets own dispatch seeds and task body. |
+| **Risk** | `Medium` | Bad `prior_states` or leftover auto-migration would mis-queue jobs or break recommended/nav counts; mitigated by ticket AC grep + explicit **Code Complete** list for Betty on tests that currently assert LIKE→`BUILD_ARTIFACTS`. |
+
+— Hedy (plan-astral)
+
+---
+
 # AST-479 — Job states PASSED_LIKE, RECOMMENDED, and consult_like pass
 
 **Parent:** [AST-478 — Synthesize job analysis report (Estelle Opus upshot)](https://linear.app/astralcareermatch/issue/AST-478/synthesize-job-analysis-report-estelle-opus-upshot)
