@@ -437,12 +437,27 @@ async def fetch_job_pages_batch(
             pending = [u for u in candidate_urls if normalize_link(u) not in ledger]
             new_nav_urls: List[str] = []
 
+            if debug:
+                for url in candidate_urls:
+                    if normalize_link(url) in ledger:
+                        _log.debug_index(
+                            func="gazer.fetch_job_pages_batch",
+                            index=1,
+                            total=1,
+                            identifier=short_name,
+                            outcome=f"pjl url {url!r} skipped-already-scraped",
+                        )
+
             for url_idx, url in enumerate(pending, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
                 if debug:
                     err = record.get("error")
                     chars = len(record.get("visible_text") or "")
-                    outcome = f"error={err!r}" if err else f"scraped {chars} chars"
+                    nav_count = len(record.get("page_links") or [])
+                    if err:
+                        outcome = f"error={err!r}"
+                    else:
+                        outcome = f"scraped visible_chars={chars} nav_links={nav_count}"
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",
                         index=url_idx,
@@ -450,6 +465,11 @@ async def fetch_job_pages_batch(
                         identifier=short_name,
                         outcome=f"pjl url {url!r} {outcome}",
                     )
+                    enum_nav = record.get("enumerated_nav_links") or ""
+                    if enum_nav:
+                        _log.debug_detail(
+                            f"enumerated_nav_chars={len(enum_nav)} collapsed_visible_chars={chars}"
+                        )
                 pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
                 new_nav_urls.extend(record.get("page_links") or [])
 
