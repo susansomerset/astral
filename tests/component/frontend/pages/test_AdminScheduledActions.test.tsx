@@ -52,6 +52,8 @@ const taskKeysConfig = {
   watch_cos: { entity_type: "company", trigger_state: "WATCH", task_group_order: "C. Company Roster", task_group_name: "C. Company Roster", task_seq: 1, task_name: "watch_cos", is_scored: false },
 }
 
+const defaultScoreFloorOptions = Array.from({ length: 21 }, (_, i) => (i * 0.5).toFixed(2))
+
 const sparseRow = {
   ...dispatchTask,
   id: 2,
@@ -119,6 +121,9 @@ describe("AdminScheduledActions", () => {
         const def = { job: ["NEW", "READY"], company: ["WATCH"] }
         return { ok: true, json: async () => (extra?.stateOptionsPayload !== undefined ? extra.stateOptionsPayload : def) } as Response
       }
+      if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+        return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+      }
       if (url.endsWith("/run")) {
         if (extra?.runOk === false) return { ok: false, json: async () => ({ error: "run bad" }) } as Response
         return { ok: true, json: async () => ({}) } as Response
@@ -169,6 +174,7 @@ describe("AdminScheduledActions", () => {
       if (url === "/api/admin/dispatch_tasks") return { ok: true, json: async () => [] } as Response
       if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: [], company: [] }) } as Response
+      if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
     })
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("No dispatch tasks configured")).toBeInTheDocument())
@@ -193,14 +199,14 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
-    expect(screen.getByText(/D\. Job Analysis \(1\)/)).toBeInTheDocument()
-    expect(screen.getByText(/C\. Company Roster \(1\)/)).toBeInTheDocument()
+    expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
+    expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
-    const jobPanel = screen.getByText(/D\. Job Analysis \(1\)/).closest(".collapsible-panel") as HTMLElement
+    const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
     await waitFor(() => expect(within(jobPanel).getByText("scan_jobs")).toBeVisible())
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Collapse section" }))
-    expect(within(jobPanel).getByText("scan_jobs")).not.toBeVisible()
+    await waitFor(() => expect(within(jobPanel).queryByText("scan_jobs")).not.toBeInTheDocument())
   }, 20000)
 
 
@@ -213,8 +219,8 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
-    expect(screen.getByText(/D\. Job Analysis \(1\)/)).toBeInTheDocument()
-    expect(screen.getByText(/C\. Company Roster \(1\)/)).toBeInTheDocument()
+    expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
+    expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.queryByText(/phase/i)).not.toBeInTheDocument()
   }, 20000)
 
@@ -263,6 +269,29 @@ describe("AdminScheduledActions", () => {
     expect(headers[3].style.left).toBe("")
   }, 20000)
 
+  it("AST-760: frozen headers use left-only sticky; Entity does not width-lock over State", async () => {
+    mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+    renderWithProviders(<ScheduledActions />)
+    await expandFirstPhaseSection()
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+    const table = screen.getByRole("table")
+    const headers = within(table).getAllByRole("columnheader")
+    expect(headers[2].style.width).toBe("")
+    expect(headers[2].style.minWidth).toBe("")
+    expect(headers[3]).not.toHaveClass("list-table-cell-frozen")
+    expect(headers[3].style.left).toBe("")
+
+    const headerCells = table.querySelector("thead tr")!.querySelectorAll("th")
+    Object.defineProperty(headerCells[0], "offsetWidth", { configurable: true, value: 88 })
+    Object.defineProperty(headerCells[1], "offsetWidth", { configurable: true, value: 72 })
+    Object.defineProperty(headerCells[2], "offsetWidth", { configurable: true, value: 56 })
+    await userEvent.click(headers[0])
+    await waitFor(() => expect(headers[2].style.left).toBe("160px"))
+    expect(headers[2].style.width).toBe("")
+    expect(headers[2].style.minWidth).toBe("")
+    expect(headers[3].style.left).toBe("")
+  }, 20000)
+
   it("sorts columns, filters task key, and shows row edge cases", async () => {
     mockApi(false, {
       tasks: [dispatchTask, sparseRow],
@@ -272,9 +301,10 @@ describe("AdminScheduledActions", () => {
       },
     })
     renderWithProviders(<ScheduledActions />)
-    await waitFor(() => expect(screen.getAllByText("∞").length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
     await expandFirstPhaseSection()
+    await waitFor(() => expect(screen.getAllByText("∞").length).toBeGreaterThan(0))
     expect(screen.getAllByText("—").length).toBeGreaterThan(0)
 
     await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "scan_jobs")
@@ -348,6 +378,7 @@ describe("AdminScheduledActions", () => {
       if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [] } as Response
       if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
       if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
+      if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
       if (url === "/api/admin/dispatch_tasks" && init?.method === "POST") return { ok: false, json: async () => ({ error: "nope" }) } as Response
     })
     renderWithProviders(<ScheduledActions />)
@@ -413,6 +444,9 @@ describe("AdminScheduledActions", () => {
       if (url === "/api/admin/dispatch_tasks/state_options") {
         return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
       }
+      if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+        return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+      }
     })
     renderWithProviders(<ScheduledActions />)
     await expandFirstPhaseSection()
@@ -477,5 +511,128 @@ describe("AdminScheduledActions", () => {
       await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
       await waitFor(() => expect(candidateSelect.value).toBe("c2"))
     }, 15000)
+  })
+
+  const scanJobsC1Auto = {
+    ...dispatchTask,
+    id: 10,
+    candidate_id: "c1",
+    task_key: "scan_jobs",
+    auto_mode: 1,
+    debug: 0,
+    available_count: 12,
+    score_floor: 1.5,
+    freq_hrs: 1,
+    min_count: 1,
+    batch_size: 5,
+    max_runs: 0,
+  }
+  const scanJobsC2Off = {
+    ...dispatchTask,
+    id: 11,
+    candidate_id: "c2",
+    task_key: "scan_jobs",
+    auto_mode: 0,
+    debug: 1,
+    available_count: 5,
+    score_floor: 2.0,
+    freq_hrs: 2,
+    min_count: 2,
+    batch_size: 3,
+    max_runs: 1,
+  }
+  const watchCosZeroAvail = {
+    ...sparseRow,
+    id: 12,
+    available_count: 0,
+    auto_mode: 1,
+    debug: 0,
+  }
+
+  function adminFiltersRoot(): HTMLElement {
+    const el = document.querySelector(".admin-filters")
+    if (!el) throw new Error("admin-filters missing")
+    return el as HTMLElement
+  }
+
+  async function selectFilterByLabel(label: string, value: string) {
+    const select = within(adminFiltersRoot()).getByLabelText(label)
+    await userEvent.selectOptions(select, value)
+  }
+
+  describe("AST-751 filters, AUTO summary, and All-candidate layout", () => {
+    const multiRows = [scanJobsC1Auto, scanJobsC2Off, watchCosZeroAvail]
+
+    it("section header shows AUTO-on count over filtered rows", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+      expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+
+    it("AUTO filter narrows visible rows when Candidate is All", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("AUTO", "on")
+      const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
+      expect(within(jobPanel).queryByText("c2")).not.toBeInTheDocument()
+    }, 20000)
+
+    it("combined AUTO and Task filters intersect", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("AUTO", "on")
+      await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
+      await waitFor(() => expect(screen.queryByText(/D\. Job Analysis/)).not.toBeInTheDocument())
+      expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+
+    it("places Candidate, Avail, and Last Run as rightmost columns", async () => {
+      mockApi(false, { tasks: [scanJobsC1Auto], taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      const headers = within(screen.getByRole("table")).getAllByRole("columnheader")
+      expect(headers[headers.length - 3]).toHaveTextContent(/Candidate/)
+      expect(headers[headers.length - 2]).toHaveTextContent(/Avail/)
+      expect(headers[headers.length - 1]).toHaveTextContent(/Last Run/)
+    }, 20000)
+
+    it("renders em dash for zero or null available count", async () => {
+      mockApi(false, { tasks: [watchCosZeroAvail], taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      const rosterPanel = screen.getByText(/C\. Company Roster/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+      const row = within(rosterPanel).getByRole("table").querySelectorAll("tbody tr")[0]
+      const cells = within(row as HTMLElement).getAllByRole("cell")
+      expect(cells[cells.length - 2]).toHaveTextContent("—")
+    }, 20000)
+
+    it("All-candidate default sort orders same task by available count descending", async () => {
+      mockApi(false, { tasks: [scanJobsC2Off, scanJobsC1Auto], taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      const jobPanel = screen.getByText(/D\. Job Analysis/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      const tbody = within(jobPanel).getByRole("table").querySelector("tbody") as HTMLElement
+      const candidateCells = within(tbody).getAllByRole("row").map(r => within(r).getAllByRole("cell")[11].textContent)
+      expect(candidateCells[0]).toContain("c1")
+      expect(candidateCells[1]).toContain("c2")
+    }, 20000)
+
+    it("floor range filter excludes non-scored rows", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Floor min", "1.50")
+      await waitFor(() => expect(screen.queryByText(/C\. Company Roster/)).not.toBeInTheDocument())
+      expect(screen.getByText(/D\. Job Analysis/)).toBeInTheDocument()
+    }, 20000)
   })
 })
