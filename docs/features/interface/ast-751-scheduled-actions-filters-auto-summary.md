@@ -277,3 +277,36 @@ Refresh the Scheduled Actions admin screen: per-group AUTO-on summaries in colla
 | §3.5 naming | Follow existing `admin-filters`, `CollapsiblePanel`, `sortRowsWithinSection` naming. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `9408943`
+
+Stage 1: expanded client-side filters (Floor min/max, AUTO, Debug, Freq, Min count, Batch size, Run counts) with AND intersection. Stage 2: section headers `{autoOn} / {total} AUTO`. Stage 3: column reorder — Candidate/Avail/Last run rightmost; Available zero/null → em dash; frozen cols Task/Entity/State. Stage 4: All-candidate default sort by `available_count` desc within task. Component tests deferred to Betty per build-child test-tree ban.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `56e4f9b`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | All four stages land in `AdminScheduledActions.tsx`: expanded AND filters, section `{autoOn} / {total} AUTO` on filtered rows, Candidate/Avail/Last Run rightmost with frozen Task/Entity/State, All-candidate default sort by `available_count` desc within `task_key`. |
+| Layer / rules | Single frontend page; no new cross-layer imports; filter logic centralized in `filteredRows`; `formatAvailableCount` helper avoids duplicate display rules. |
+| Tests | Betty manifest (`AST-751 filters…` describe, 7 cases) covers filters, header counts, column order, em dash, All-candidate sort, floor range excluding non-scored rows; existing run/stop/modal tests updated for new header shape. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| **Advisory** | Floor min/max options remain hardcoded `1.00…10.00` (19 steps) per plan; tests already mock `/api/admin/dispatch_tasks/score_floor_options` for sibling **AST-750** — no action on this ticket. | `AdminScheduledActions.tsx` ~277–280; test mocks |
+| **Advisory** | `filterOptionValues` derives dropdown sets from full `data` (not filtered rows) as planned — if the dataset grows very large, option lists could get long; acceptable for admin triage today. | `filteredRows` / `filterOptionValues` memos |
+
+**Verdict:** Clean — `resolve-child` may proceed.
