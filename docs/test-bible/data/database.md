@@ -133,3 +133,7 @@ Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backf
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
 ```
+
+### AST-766 · AST-757
+
+**Sunset `board_search` schema** — see `docs/test-bible/data/database/dispatch_tasks.md` § AST-766.
