@@ -145,3 +145,19 @@ No conflicts requiring plan revision.
 **advisory — task retarget UX edge**
 
 `taskKeyChangePatch` updates `is_scored` from catalog while preserving `trigger_state`. Retargeting to a scored catalog key with a non-scored trigger_state can briefly show Score Floor until save; server coerces via `dispatch_claim_uses_score_floor(trigger_state)` — acceptable given plan’s “preserve Input State” decision.
+
+---
+
+## Resolution (Katherine — 2026-06-23)
+
+**Review Posted @ `9219d8c`:** Radia **A/A** plan fidelity and code rules; no **fix-now** items.
+
+| Finding | Resolution |
+|---------|------------|
+| **discuss — AST-750 config bleed** | **Defer strip to `merge-child` on `ftr/AST-763`.** `DISPATCH_SCORE_FLOOR_VALUES` / `dispatch_score_floor_option_labels()` arrived via merge ancestry, not AST-773 product commits. This ref has no `/dispatch_tasks/score_floor_options` route; UI still hardcodes `scoreFloorOptions`. Orphan constants are harmless until AST-750 lands on `ftr` or Chuckles strips at rollup. |
+| **advisory — trigger_state-only PUT** | No change — pre-PUT behavior; plan scoped validation to `task_key` changes. |
+| **advisory — task retarget UX edge** | No change — server coercion on save matches plan preserve-Input-State decision. |
+
+**§9a dry-run:** `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` merges cleanly into `origin/dev` and `origin/ftr/AST-763-edit-modal-task-key`.
+
+**Shipped product:** `code(AST-773)` @ `03b8535` + `7b024e5`; tests @ `d811040`; Radia review doc @ `9219d8c`.
