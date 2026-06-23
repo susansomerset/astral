@@ -33,3 +33,19 @@ One-time cleanup: bulk DELETE board-gaze placeholder companies (`__board__*`), t
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-765 · AST-757
+
+Board-gaze phase tests retired; identity dedupe tests retained for migration script.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Identity dedupe | `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` | **`TestFindDuplicateIdentityGroups`**, **`TestIdentityDedupe`**, **`TestRunCleanup::test_dedupe_phase_with_skip_board`** |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py -q
+```

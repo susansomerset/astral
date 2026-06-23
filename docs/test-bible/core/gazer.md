@@ -161,3 +161,19 @@ Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`d
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-765 · AST-757
+
+**Sunset boards channel:** `process_gaze_board_batch` removed from `src/core/gazer.py`. Company roster paths unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Company gaze + JD batches | `src/core/gazer.py` | **`tests/component/core/test_gazer.py`** (minus retired board batch classes) |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py -q
+```

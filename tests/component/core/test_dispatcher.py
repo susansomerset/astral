@@ -240,64 +240,7 @@ class TestRunUnified:
         assert out["total_processed"] == 1
         clear.assert_called_once_with(batch_id)
 
-    @pytest.mark.asyncio
-    async def test_claims_board_search_batch_and_clears(
-        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
-    ) -> None:
-        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        entities = [{"board_search_id": "bs1"}]
-        claim = MagicMock(return_value=entities)
-        clear = MagicMock()
-        monkeypatch.setattr("src.data.database.claim_board_search_batch", claim)
-        monkeypatch.setattr("src.data.database.clear_board_search_batch", clear)
-        consult_out = {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        run = AsyncMock(return_value=consult_out)
-        monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        ctx = {"astral_candidate_id": "c99"}
-        task = {
-            "entity_type": "board_search",
-            "trigger_state": "ACTIVE",
-            "task_key": "gaze_board",
-            "batch_size": 7,
-            "batch_call_mode": 1,
-        }
-        out = await dispatcher_mod._run_unified(task, ctx, False)
-        assert out == consult_out
-        claim.assert_called_once_with(
-            batch_id, 7, candidate_id="c99", scan_interval_hours=24.0, sort_by=None
-        )
-        clear.assert_called_once_with(batch_id)
-        run.assert_awaited_once_with(
-            "board_search", "ACTIVE", entities, batch_id, ctx, False, dispatch_task_key="gaze_board",
-        )
 
-    @pytest.mark.asyncio
-    async def test_board_search_claim_passes_freq_and_sort_kw(
-        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
-    ) -> None:
-        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        entities = [{"board_search_id": "bs9"}]
-        claim = MagicMock(return_value=entities)
-        monkeypatch.setattr("src.data.database.claim_board_search_batch", claim)
-        monkeypatch.setattr("src.data.database.clear_board_search_batch", MagicMock())
-        run = AsyncMock(
-            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        )
-        monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        ctx = {"astral_candidate_id": "c99"}
-        task = {
-            "entity_type": "board_search",
-            "trigger_state": "ACTIVE",
-            "task_key": "gaze_board",
-            "batch_size": 3,
-            "batch_call_mode": 1,
-            "freq_hrs": 48,
-            "sort_by": "last_scan_at",
-        }
-        await dispatcher_mod._run_unified(task, ctx, False)
-        claim.assert_called_once_with(
-            batch_id, 3, candidate_id="c99", scan_interval_hours=48.0, sort_by="last_scan_at"
-        )
 
     @pytest.mark.asyncio
     async def test_ast505_candidate_entity_routes_ctx_without_company_clear(

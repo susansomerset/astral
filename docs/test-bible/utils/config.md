@@ -476,3 +476,19 @@ cd src/ui/frontend && npm run test:component -- \
   -t "AST-750"
 ```
 
+
+---
+
+### AST-765 · AST-757
+
+**Sunset boards channel:** `BOARD_CONFIG`, `gaze_board` schedulable key removed from `src/utils/config.py`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch schedulable + defaults | `src/utils/config.py` | **`tests/component/utils/test_config.py`** (minus board registry classes; `gaze_board` not schedulable) |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
+```

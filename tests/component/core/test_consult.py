@@ -305,33 +305,6 @@ class TestRunConsultTask:
         out = await consult_mod.run_consult_task("company", "WATCH", [{"short_name": "co"}], "batch-1", {})
         assert out["total_passed"] == 1
 
-    @pytest.mark.asyncio
-    async def test_routes_board_search_to_process_gaze_board_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.core import gazer as gazer_mod
-
-        proc = AsyncMock(
-            return_value=[
-                {"board_search_id": "a", "status": "success"},
-                {"board_search_id": "b", "status": "failure"},
-            ]
-        )
-        # Stub symbol on gazer module: consult lazily imports it; monkeypatch dotted path rejects missing attrs (raising=True).
-        monkeypatch.setattr(gazer_mod, "process_gaze_board_batch", proc, raising=False)
-        out = await consult_mod.run_consult_task(
-            "board_search",
-            "ACTIVE",
-            [{"board_search_id": "a"}, {"board_search_id": "b"}],
-            "batch-bs",
-            {"x": 1},
-            debug=True,
-        )
-        assert out == {"total_processed": 2, "total_passed": 1, "total_failed": 1, "total_errors": 0}
-        proc.assert_awaited_once_with(
-            "batch-bs",
-            [{"board_search_id": "a"}, {"board_search_id": "b"}],
-            debug=True,
-            ctx={"x": 1},
-        )
 
     @pytest.mark.asyncio
     async def test_routes_validate_title_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
