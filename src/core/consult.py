@@ -1772,6 +1772,7 @@ async def run_consult_task(
                     "run_consult_task: vet_inflow_discovery missing candidate_id in ctx and entity"
                 )
                 return zero
+            # Lazy import — avoids consult ↔ candidate cycle at module load (cf. agent.py).
             from src.core.candidate import get_candidate
             candidate = get_candidate(cand_id) or {}
             if not candidate.get("astral_candidate_id"):

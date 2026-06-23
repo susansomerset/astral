@@ -219,3 +219,17 @@ No **`conf-!!-NONE`** conflicts identified.
 | Optional: one-line lazy-import comment on `get_candidate` in `consult.py` | Engineer |
 
 **Outcome:** fix-now items block clean merge — core AST-774 routing is sound once bleed is stripped.
+
+## Resolution
+
+**Date:** 2026-06-23  
+**Radia review:** @ `6916bcb` (doc § Radia review)
+
+### Product (Hedy)
+
+- **AST-750 sibling bleed stripped:** Removed `DISPATCH_SCORE_FLOOR_VALUES`, `dispatch_score_floor_option_labels()`, and `GET /api/admin/dispatch_tasks/score_floor_options` from this publish ref — land via **AST-750** (same pattern as AST-769).
+- **Advisory:** One-line lazy-import comment on `get_candidate` in `consult.run_consult_task` vet branch.
+
+### Test tree (Betty — `[qa-handoff]`)
+
+- **AST-775 test bleed:** `merge-tests` brought `TestAst775InflowDiscoveryRecordNew` and rewrote `TestAst505InflowDiscovery::test_run_batch_happy_path` for `record_inflow_discovery_hit` / blurb — product tip still inline-vets in `run_inflow_discovery_batch`. Betty to strip AST-775 delta from publish ref and restore AST-505 happy-path expectations to match product.
