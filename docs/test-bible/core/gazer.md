@@ -45,6 +45,26 @@ Equivalent harness:
 
 ---
 
+### AST-759 · AST-753
+
+**`fetch_job_pages_batch`** debug outcomes report **`visible_chars`** + **`nav_links`** count per URL; skipped ledger URLs log **`skipped-already-scraped`** when **`debug=True`**. Persist path unchanged — enriched **`_scrape_pjl_page`** records carry **`enumerated_nav_links`** into **`pjl_scrape_pages`** / **`pjl_assembled_content`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PJL batch persist with per-page nav section | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists` |
+
+Roster contract + select live content: **`docs/test-bible/core/roster.md`** (**AST-759**).
+
+**AST-759** narrowed run (gazer line):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists \
+  -q
+```
+
+---
+
 ### AST-719 · AST-716
 
 **`fetch_job_pages_batch`** — additive Playwright scrape of **`possible_joblist_links`** (AST-718 ledger); persist **`pjl_scrape_pages`**, **`pjl_assembled_content`**, optional **`pjl_nav_links`**; pass **`PJL_READY`**, fail **`JOBSITE_SCRAPE_ISSUE`**. Consult routes **`dispatch_task_key=fetch_job_pages`** before **`run_company_task`**. Config: **`PJL_READY`**, **`GAZER_CONFIG["fetch_job_pages"]`**, dispatch registry.

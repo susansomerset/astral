@@ -277,6 +277,7 @@ class TestFetchJobPagesBatch:
                     "url": "https://acme.com/careers",
                     "visible_text": "open roles",
                     "page_links": ["https://acme.com/about"],
+                    "enumerated_nav_links": "1: https://acme.com/about",
                 }
             ),
         )
@@ -291,9 +292,14 @@ class TestFetchJobPagesBatch:
         transition.assert_called_once_with("acme", "PJL_READY")
         saved = save.call_args[0][1]
         assert saved["pjl_scrape_pages"] == [
-            {"url": "https://acme.com/careers", "visible_text": "open roles"}
+            {
+                "url": "https://acme.com/careers",
+                "visible_text": "open roles",
+                "enumerated_nav_links": "1: https://acme.com/about",
+            }
         ]
         assert "=== PAGE 1: https://acme.com/careers ===" in saved["pjl_assembled_content"]
+        assert "--- NAV LINKS ---" in saved["pjl_assembled_content"]
         assert "open roles" in saved["pjl_assembled_content"]
 
     @pytest.mark.asyncio
