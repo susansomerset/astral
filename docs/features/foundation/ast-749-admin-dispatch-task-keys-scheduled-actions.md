@@ -105,3 +105,13 @@ No conflicts requiring `!!-NONE`.
 | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` | Add case: `grade_do` dispatch row + `taskKeysConfig.grade_do` grouping → section header matches `task_group_name` (e.g. `/D\. Job Analysis/`), not `(unassigned)`. |
 | `docs/test-bible/ui/api/api_admin.md` | Row for AST-749 retirement filter on `task_keys`. |
 | `docs/test-bible/frontend/pages.md` | Row for `grade_do` Scheduled Actions grouping test. |
+
+## Review (build)
+
+| Field | Value |
+|-------|-------|
+| Build date | 2026-06-23 |
+| Publish ref | `origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` @ `b303a07` |
+| Stages | Stage 1 — `DISPATCH_RETIRED_TASK_KEYS` filter on `dispatch_task_keys`; `_dispatch_task_key_form_meta` docstring |
+
+**Out of build scope (Betty / qa-child):** component tests and test-bible rows per QA hints above.
