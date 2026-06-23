@@ -1768,19 +1768,6 @@ async def run_consult_task(
             dispatch_task_key=dispatch_task_key,
         )
 
-    if entity_type == "board_search":
-        # Lazy import: breaks circular consult/gazer imports at module load (cycle-break, ASTRAL_CODE_RULES B1).
-        from src.core.gazer import process_gaze_board_batch
-        outcomes = await process_gaze_board_batch(batch_id, entities, debug=debug, ctx=ctx)
-        passed = sum(1 for o in outcomes if o.get("status") == "success")
-        failed = len(outcomes) - passed
-        return {
-            "total_processed": len(outcomes),
-            "total_passed": passed,
-            "total_failed": failed,
-            "total_errors": 0,
-        }
-
     if entity_type == "candidate":
         return await roster.run_inflow_discovery_batch(
             entities[0], batch_id, ctx, debug,

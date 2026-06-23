@@ -9,8 +9,6 @@ get_job_data: coat-check pattern — return value if present, self-heal if missi
 
 from __future__ import annotations
 
-import hashlib
-import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -19,7 +17,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.core import candidate as candidate_mod
 from src.data import database
 from src.utils.config import (
-    BOARDS_CONFIG,
     BUILD_CONFIG,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_STATES,
@@ -37,7 +34,6 @@ logger = get_logger(__name__)
 _JOB_STATE_LIST = list(JOB_STATES.keys())
 _JOB_COLUMN_FIELDS = {"company_job_id", "job_title", "job_link"}  # initialize_job: parsed_job keys -> job table columns
 _JOB_REQUIRED_COLUMN_FIELDS = {"job_title", "job_link"}           # subset that must be present
-_BOARD_LISTING_LINK_RE = re.compile(r'''href\s*=\s*["']([^"']+)["']''', re.I)
 
 
 def _identity_triple_complete(company_job_id: Optional[str], job_title: Optional[str]) -> bool:
@@ -114,81 +110,6 @@ def ingest_jobs(
         "duplicates": dup_count,
         "invalid_title": title_mismatch_count,
     }
-
-
-def ingest_board_listings(
-    candidate_id: str,
-    board_key: str,
-    board_search_id: str,
-    batch_id: str,
-    raw_job_listings: Any,
-    title_matchers: Optional[List[Any]],
-    parse_instructions: Dict[str, Any],
-) -> Dict[str, int]:
-    """Board gaze ingest fork: normalize placeholder company, dedupe via board listing_key, persist jobs."""
-    if not candidate_id or not board_key or not board_search_id or not batch_id:
-        raise ValueError("candidate_id, board_key, board_search_id, and batch_id required")
-    if not isinstance(raw_job_listings, list):
-        raise ValueError("raw_job_listings must be a list")
-
-    company_short = f"__board__{board_key}"
-    existed_before = database.get_company(company_short) is not None
-    if not existed_before:
-        database.save_company(
-            company_short,
-            state="TO_WATCH",
-            company_name=f"Board {board_key}",
-            company_data={"board_placeholder": True, "board_key": board_key},
-            candidate_id=candidate_id,
-        )
-
-    initial_state = TRACKER_CONFIG["ingest"]["initial_state"]
-    validate_value(_JOB_STATE_LIST, initial_state)
-    new_count = 0
-    dup_count = 0
-    invalid_title_count = 0
-    filter_titles = bool(title_matchers)
-
-    for raw in raw_job_listings:
-        sr = str(raw)
-        listing_key = hashlib.sha256(sr.encode("utf-8", errors="surrogateescape")).hexdigest()
-        if database.board_listing_is_duplicate(candidate_id, board_key, listing_key):
-            dup_count += 1
-            database.update_company(
-                company_short,
-                last_scan_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            )
-            continue
-        if filter_titles and not any(m.search(sr) for m in title_matchers):
-            invalid_title_count += 1
-            continue
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        link_m = _BOARD_LISTING_LINK_RE.search(sr)
-        job_title = parse_text(sr) or "(board listing)"
-        inserted = database.save_job(
-            str(uuid.uuid4()),
-            job_title=job_title,
-            company=company_short,
-            state=initial_state,
-            job_data={
-                "raw_job_listing": sr,
-                "board_key": board_key,
-                "board_listing_key": listing_key,
-                "parse_instructions": parse_instructions or {},
-            },
-            state_history=[{"to_state": initial_state, "timestamp": now, "batch_id": batch_id}],
-            state_changed_at=now,
-            # Board-sourced NEW jobs must carry board_search_id for qualify/evaluate (AST-419, §7.13v bible).
-            board_search_id=board_search_id,
-        )
-        if not inserted:
-            dup_count += 1
-            continue
-        new_count += 1
-
-    counts = {"new": new_count, "duplicates": dup_count, "invalid_title": invalid_title_count}
-    database.record_board_search_run(batch_id, board_search_id, candidate_id, board_key, counts)
-    return counts
 
 
 # ---- Job data ----
