@@ -157,3 +157,14 @@ Stage 1: Section/Group filter control sourced from `allTaskKeys` catalog metadat
 | --- | --- |
 | Katherine (`resolve-child`) | No product changes required for AST-768 — implementation is plan-complete. |
 | Chuckles / merge-child | Resolve AST-750 backend/doc bleed on publish tip before or during ftr rollup (see **discuss** above). |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-23  
+**Review ref:** `origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter` @ `94ebec0` (Radia doc) · product @ `4ac09c1`
+
+No **fix-now** items. Product unchanged from build @ `4ac09c1` + Betty `merge-tests(AST-768)` @ `ce024eb`. **discuss** AST-750 sibling bleed on publish tip deferred to Chuckles at **merge-child** (endpoint unused; UI still hardcodes floor options per plan). Advisory composite-key duplication accepted per plan.
+
+**§9a dry-run:** `origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter` → `origin/dev`: clean · → `origin/ftr/AST-572-organization-tasks-dispatch-keys`: clean
