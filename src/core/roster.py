@@ -780,6 +780,7 @@ async def run_select_job_page_dispatch(
                       raw_response={"response_type": "NO_PJL_ASSEMBLED"})
         return {"short_name": short_name, "state": "NO_PJL_SELECTED", "job_site": "", "response_type": "NO_PJL_ASSEMBLED"}
     nav_links = _nav_links_for_try_links(cdata)
+    live_content = _build_select_job_page_live_content(assembled_content, nav_links)
     if debug:
         log = logger
         log.set_debug_flag(True)
@@ -794,7 +795,7 @@ async def run_select_job_page_dispatch(
     result = await _find_job_page_from_assembled(
         short_name=short_name,
         company_website=company_website,
-        assembled_content=assembled_content,
+        assembled_content=live_content,
         page_url_map=page_url_map,
         page_dom_map={},
         visible_map=visible_map,
@@ -809,6 +810,7 @@ async def run_select_job_page_dispatch(
         log = logger
         log.set_debug_flag(True)
         log.debug_detail(
+            f"nav_links_chars={len(nav_links)} live_chars={len(live_content)} "
             f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}"
         )
     return result
@@ -2029,6 +2031,19 @@ def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
             parts.extend(["--- NAV LINKS ---", enum_nav])
         sections.append("\n".join(parts))
     return "\n\n".join(sections)
+
+
+def _build_select_job_page_live_content(assembled_content: str, pjl_nav_links: str) -> str:
+    """Append global PJL nav enumeration for select_job_page agent live content (AST-759)."""
+    nav = (pjl_nav_links or "").strip()
+    assembled = assembled_content or ""
+    if not nav:
+        return assembled
+    if nav in assembled:
+        return assembled
+    if assembled.strip():
+        return f"{assembled.rstrip()}\n\n=== NAV LINKS ===\n{nav}"
+    return f"=== NAV LINKS ===\n{nav}"
 
 
 def _pjl_maps_from_company_data(
