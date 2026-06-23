@@ -479,18 +479,6 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
-### AST-765 · AST-757
+### AST-765 · AST-757 (SUNSET — documentation)
 
-**Sunset boards channel:** `BOARD_CONFIG`, `gaze_board` schedulable key removed from `src/utils/config.py`.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Dispatch schedulable + defaults | `src/utils/config.py` | **`tests/component/utils/test_config.py`** (minus board registry classes; `gaze_board` not schedulable) |
-
-**AST-765** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
-```
-
-**Post-revert (`9d3cda8`):** `TestAst750DispatchScoreFloorCatalog` skipped when `dispatch_score_floor_option_labels` absent (AST-750 reverted from sub).
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

@@ -12,7 +12,7 @@
 
 ### AST-622 · AST-544
 
-**AST-544 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/gazer.py`** — company gaze (`process_gazer_batch`), job-list dedupe trace (`raw_job_listing_is_duplicate` read-only), JD scrape / title-validation batches (`scrape_jd_batch`, `validate_title_batch`), and board gaze (`process_gaze_board_batch`); retire hand-rolled **`[DEBUG]`** / noise **`_log.debug`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **`debug=False`** must stay unchanged — existing gazer behavior tests + branch lock are the gate.
+**AST-544 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/gazer.py`** — company gaze (`process_gazer_batch`), job-list dedupe trace (`raw_job_listing_is_duplicate` read-only), JD scrape / title-validation batches (`scrape_jd_batch`, `validate_title_batch`); retire hand-rolled **`[DEBUG]`** / noise **`_log.debug`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **`debug=False`** must stay unchanged — existing gazer behavior tests + branch lock are the gate.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -37,7 +37,6 @@ Equivalent harness:
 | `scrape_jd_batch` outcome paths (missing link, scrape error, empty/short JD, classify fail, pass) | **`TestScrapeJdBatch`**, **`TestScrapeJdBatchDebugPaths`**, **`TestScrapeJdBatchDebugBranchCoverage`** |
 | `validate_title_batch` pass/fail + batch summary | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
 | `process_gazer_batch` scrape/parse/ingest + dedupe trace | **`TestProcessGazerBatch`**, **`TestProcessGazerBatchDebugPaths`**, **`TestProcessGazerBatchDebugBranchCoverage`**, **`TestLogListingDedupeTrace`** |
-| `process_gaze_board_batch` success/failure rows | **`TestProcessGazeBoardBatch`**, **`TestProcessGazeBoardBatchDebugPaths`** |
 | Identifier helpers | **`TestGazerIdentifierHelpers`** |
 | `debug=False` unchanged | All **`debug=False`** rows above; full-file branch lock |
 
@@ -164,16 +163,6 @@ Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`d
 
 ---
 
-### AST-765 · AST-757
+### AST-765 · AST-757 (SUNSET — documentation)
 
-**Sunset boards channel:** `process_gaze_board_batch` removed from `src/core/gazer.py`. Company roster paths unchanged.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Company gaze + JD batches | `src/core/gazer.py` | **`tests/component/core/test_gazer.py`** (minus retired board batch classes) |
-
-**AST-765** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py -q
-```
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

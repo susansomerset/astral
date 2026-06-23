@@ -42,6 +42,8 @@ Idempotent **`consult_*` → `grade_*`** row rename in **`_ensure_dispatch_task_
 | Collision → delete legacy | same | **`TestAst748ConsultToGradeDispatchMigration::test_schema_deletes_consult_row_when_grade_triple_exists`** |
 
 
+Prior board integration retired (**AST-765** product, **AST-766** schema); active test is schema sunset only. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
 ### AST-766 · AST-757
 
 **Board schema sunset:** `_apply_board_schema_sunset` drops `board_search` / `board_search_run` and rebuilds `job` without `board_search_id`; board DDL helpers removed; `count_eligible_for_dispatch_task` has no `board_search` branch.
