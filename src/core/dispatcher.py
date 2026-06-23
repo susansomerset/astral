@@ -138,9 +138,9 @@ _SUMMARY_ZERO: Dict[str, int] = {
 _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "qualify_job_listings",
     "evaluate_jd",
-    "consult_do",
-    "consult_get",
-    "consult_like",
+    "grade_do",
+    "grade_get",
+    "grade_like",
 })
 
 
