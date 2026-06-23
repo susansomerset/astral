@@ -15,7 +15,6 @@ from src.utils.config import (
     TASK_CONFIG,
     dispatch_task_admin_defaults,
     get_task_keys,
-    resolve_dispatch_task_config_key,
     validate_llm_provider_environment,
 )
 
@@ -31,8 +30,7 @@ def _validate_runtime_coupling() -> None:
         if key not in TASK_CONFIG:
             raise RuntimeError(f"bootstrap: task key {key!r} missing from TASK_CONFIG")
     for key in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        resolved = resolve_dispatch_task_config_key(key)
-        if key in TASK_CONFIG or resolved in TASK_CONFIG:
+        if key in TASK_CONFIG:
             continue
         try:
             dispatch_task_admin_defaults(key)

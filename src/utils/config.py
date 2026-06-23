@@ -77,8 +77,9 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
 
 _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
     "label": {"type": "str", "required": True},
+    "code": {"type": "str", "required": True},
     "content": {"type": "str", "required": True},
-    "importance": {"type": "int", "required": True, "min": 1, "max": 10},
+    "importance": {"type": "int", "required": True, "min": 0, "max": 10},
 }
 _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "criteria": {
@@ -1138,7 +1139,7 @@ JOB_STATES = {
     "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": "VALID_TITLE_RETRY"},
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
     "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # qualify_job_listings retry holding state
-    "PASSED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
+    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST"],    "retry_state": "JD_READY_RETRY"},
@@ -1295,19 +1296,23 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
     return [ts]
 
 
+DISPATCH_RETIRED_TASK_KEYS = frozenset({
+    "consult_do", "consult_get", "consult_like",
+})
+
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "gaze_board",
     "inflow_discovery", "inflow_resolve_website",
     "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
-    "consult_do", "consult_get", "consult_like", "analysis_upshot",
+    "grade_do", "grade_get", "grade_like", "analysis_upshot",
     "contemplate_job", "draft_cover_letter",
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "evaluate_jd", "consult_do", "consult_get",
-    "consult_like", "gaze_board",
+    "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
+    "grade_like", "gaze_board",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -1315,17 +1320,9 @@ _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "recheck_no_openings", "gaze", "inflow_resolve_website",
 })
 
-_CONSULT_TASK_TO_AGENT_TASK: Dict[str, str] = {
-    "consult_do": "grade_do",
-    "consult_get": "grade_get",
-    "consult_like": "grade_like",
-}
-
-
 def resolve_dispatch_task_config_key(task_key: str) -> str:
-    """Map dispatch `task_key` to the TASK_CONFIG entry (consult batch prompts → grading keys)."""
-    tk = (task_key or "").strip()
-    return _CONSULT_TASK_TO_AGENT_TASK.get(tk, tk)
+    """Return task_key unchanged — dispatch and TASK_CONFIG share one string (AST-736)."""
+    return (task_key or "").strip()
 
 
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
@@ -1358,11 +1355,11 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WEBSITE_FOUND"
     if task_key == "evaluate_jd":
         return "JD_READY"
-    if task_key == "consult_do":
+    if task_key == "grade_do":
         return "PASSED_JD"
-    if task_key == "consult_get":
+    if task_key == "grade_get":
         return "PASSED_DO"
-    if task_key == "consult_like":
+    if task_key == "grade_like":
         return "PASSED_GET"
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
@@ -1395,7 +1392,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
         return et.strip()
     if task_key in (
         "validate_title", "scrape_jd", "qualify_job_listings", "evaluate_jd",
-        "consult_do", "consult_get", "consult_like", "analysis_upshot",
+        "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
         return "job"
@@ -1430,9 +1427,27 @@ def _dispatch_batch_call_mode_for(task_key: str) -> int:
     return 1 if task_key in _DISPATCH_BATCH_CALL_MODE_ONE else 0
 
 
+_RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS = {
+    "consult_do": "grade_do",
+    "consult_get": "grade_get",
+    "consult_like": "grade_like",
+}
+
+
+def dispatch_task_key_retired_message(task_key: str) -> Optional[str]:
+    """Return operator-facing error text when task_key is retired, else None."""
+    tk = (task_key or "").strip()
+    if tk not in DISPATCH_RETIRED_TASK_KEYS:
+        return None
+    return f"task_key {tk!r} is retired; use {_RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS[tk]!r}"
+
+
 def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
     """Admin + DB insert defaults for dispatch_task columns. Raises KeyError if task_key is not schedulable."""
     tk = (task_key or "").strip()
+    retired = dispatch_task_key_retired_message(tk)
+    if retired:
+        raise KeyError(retired)
     if tk not in DISPATCH_SCHEDULABLE_TASK_KEYS:
         raise KeyError(f"dispatch_task_admin_defaults: task_key {tk!r} not schedulable")
     entity_type = _dispatch_entity_type_for_task_key(tk)
@@ -1446,8 +1461,8 @@ def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
 
 
 def dispatch_task_key_is_scored(task_key: str) -> bool:
-    rk = resolve_dispatch_task_config_key(task_key)
-    return bool((TASK_CONFIG.get(rk) or {}).get("scored"))
+    tk = (task_key or "").strip()
+    return bool((TASK_CONFIG.get(tk) or {}).get("scored"))
 
 
 def _task_config_transition_strings(tc: Dict[str, Any]) -> FrozenSet[str]:
