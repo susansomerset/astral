@@ -169,3 +169,13 @@ Susan UAT (2026-06-23): after pulling local `dev`, the **Scheduled Actions** col
 | §3.5 Naming | `_ensure_frontend_build`, `_warn_stale_frontend_dist` match existing `_ensure_*` pattern in launch.sh. |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-744/AST-758-uat-local-dev-not-showing-scheduled-actions-ui-fix`  
+**Tip:** `674012e`  
+**Built:** Stage 1 confirmed AST-746 on `origin/dev` (empty diff). Stage 2 — `_ensure_frontend_build` in `launch.sh --flask`. Stage 3 — `_warn_stale_frontend_dist` in `server.py` debug startup.
+
+**Out of build scope:** Stage 4 Susan manual UAT on `:5001` after pull without manual rebuild.
