@@ -148,3 +148,15 @@ No conflicts requiring `conf-!!-NONE`.
 |--------|-------|
 | **resolve-child** — no code changes required from review. | Katherine |
 | Susan manual UAT: expand **each** phase section on Scheduled Actions; confirm gap/overlap fix and horizontal scroll alignment (test bible pass criterion). | Susan |
+
+---
+
+## Resolution (2026-06-23)
+
+**Engineer:** Katherine · **Review ref:** `origin/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap` @ `2477e62` (Radia doc) · product @ `f869adf`
+
+**Changes vs Radia review:** None required — **fix-now** and **discuss** were empty. Merged publish ref on epic worktree (including Radia **Review (Radia)** section); no additional product edits.
+
+**§9a dry-run:** `origin/sub/…` merges cleanly into `origin/dev` and `origin/ftr/AST-744-remove-column-gap-in-scheduled-actions`.
+
+**Advisory:** Susan manual UAT — expand each phase section on Scheduled Actions; confirm Candidate/Task gap, Entity/State overlap, and horizontal scroll frozen alignment (test-bible pass criterion).
