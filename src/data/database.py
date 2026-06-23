@@ -21,7 +21,7 @@ Tables used (inventory):
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
 - board_search — Saved board searches per candidate (board_search_id, candidate_id, board_key, label, criteria JSON NOT NULL,
-  state TEXT ACTIVE|INACTIVE|ERROR matching BOARD_SEARCH_STATES, search_mode, deeplink_url, batch_id — claim lock only §2.4;
+  state TEXT ACTIVE|INACTIVE|ERROR matching _BOARD_SEARCH_STATES, search_mode, deeplink_url, batch_id — claim lock only §2.4;
   nullable last_scan_at gaze cadence, not edited on user PATCH — AST-482).
 - board_search_run — Per-gaze ingest metrics (batch_id, board_search_id, new/duplicates/invalid_title counts).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
@@ -71,8 +71,6 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BLOCK_TYPES,
     CHARS_PER_TOKEN,
-    BOARD_SEARCH_STATES,
-    BOARDS_CONFIG,
     CANDIDATE_STATES,
     COMPANY_STATES,
     INFLOW_CONFIG,
@@ -97,6 +95,10 @@ from src.utils.logging import get_logger
 
 DB_PATH = ASTRAL_CONFIG["db_dir"] / "astral.db"
 _log = get_logger(__name__)
+
+# Board-search DDL (AST-766 removes); inlined after AST-765 config purge — not product config.
+_BOARD_SEARCH_STATES = ("ACTIVE", "INACTIVE", "ERROR")
+_GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS = 24
 
 
 def _coerce_agent_brain_setting(row: Dict[str, Any]) -> str:
@@ -2653,7 +2655,7 @@ def list_candidates() -> List[Dict[str, Any]]:
 
 def _finalize_board_search_state_schema(conn: sqlite3.Connection) -> None:
     """Drop legacy enabled + batch-status columns → single workflow `state` (AST-471)."""
-    act, inactive, err = BOARD_SEARCH_STATES
+    act, inactive, err = _BOARD_SEARCH_STATES
     cols = {row[1] for row in conn.execute("PRAGMA table_info(board_search)").fetchall()}
     if "enabled" not in cols and "status" not in cols:
         if "state" not in cols:
@@ -2771,8 +2773,8 @@ def _parse_board_search_row(row: Dict[str, Any]) -> Dict[str, Any]:
                 exc,
             )
             raise ValueError(f"board_search {bid}: stored criteria is not valid JSON") from exc
-    st = str(row.get("state") or BOARD_SEARCH_STATES[0]).strip().upper()
-    row["state"] = st if st in BOARD_SEARCH_STATES else BOARD_SEARCH_STATES[0]
+    st = str(row.get("state") or _BOARD_SEARCH_STATES[0]).strip().upper()
+    row["state"] = st if st in _BOARD_SEARCH_STATES else _BOARD_SEARCH_STATES[0]
     if not row.get("search_mode"):
         row["search_mode"] = "criteria"
     du = row.get("deeplink_url")
@@ -2792,11 +2794,11 @@ def save_board_search_row(
     deeplink_url: Optional[str] = None,
 ) -> None:
     st = (
-        BOARD_SEARCH_STATES[0]
+        _BOARD_SEARCH_STATES[0]
         if state is None or str(state).strip() == ""
         else str(state).strip().upper()
     )
-    if st not in BOARD_SEARCH_STATES:
+    if st not in _BOARD_SEARCH_STATES:
         raise ValueError(f"invalid board_search state: {state!r}")
 
     now = _utc_now()
@@ -2956,7 +2958,7 @@ def claim_board_search_batch(
 
     Mirrors set_company_batch scan gate: optional scan_interval_hours filters to NULL or stale
     last_scan_at. sort_by whitelist → BOARD_SEARCH_BATCH_SORT_COLUMNS."""
-    act = BOARD_SEARCH_STATES[0]
+    act = _BOARD_SEARCH_STATES[0]
     now = _utc_now()
 
     def _with_conn() -> List[Dict[str, Any]]:
@@ -3025,7 +3027,7 @@ def clear_board_search_batch(batch_id: str) -> int:
 
 def set_board_search_state(board_search_id: str, state: str) -> None:
     st = str(state).strip().upper()
-    if st not in BOARD_SEARCH_STATES:
+    if st not in _BOARD_SEARCH_STATES:
         raise ValueError(f"invalid board_search state: {state!r}")
     now = _utc_now()
 
@@ -6217,7 +6219,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
 
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
-    For board_search gaze_board: freq_hrs when > 0, else BOARDS_CONFIG["gaze_board"]["scan_interval_hours"] — same staleness predicate as claim_board_search_batch.
+    For board_search gaze_board: freq_hrs when > 0, else _GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS — same staleness predicate as claim_board_search_batch.
     Other company states and all job states use count_entities_in_state (no per-task freq filter)."""
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
@@ -6266,13 +6268,10 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
 
             return _run_with_retry(_with_conn)
     if entity_type == "board_search":
-        act = BOARD_SEARCH_STATES[0]
+        act = _BOARD_SEARCH_STATES[0]
         freq = float(task.get("freq_hrs") or 0)
-        gaze_bc = BOARDS_CONFIG.get("gaze_board") or {}
-        cfg_scan_raw = gaze_bc.get("scan_interval_hours")
-        scan_from_cfg = float(cfg_scan_raw) if cfg_scan_raw is not None else None
-        scan_h = freq if freq > 0 else scan_from_cfg
-        effective = scan_h if scan_h is not None and float(scan_h) > 0 else 24.0
+        scan_h = freq if freq > 0 else _GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS
+        effective = float(scan_h) if float(scan_h) > 0 else _GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS
         hours = str(float(effective))
 
         def _with_conn_bs() -> int:

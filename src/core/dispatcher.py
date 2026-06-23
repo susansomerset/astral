@@ -48,8 +48,6 @@ def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
         return str(row.get("astral_job_id") or row.get("company") or "?")
     if entity_type == "company":
         return str(row.get("short_name") or row.get("company") or "?")
-    if entity_type == "board_search":
-        return str(row.get("board_search_id") or row.get("board_key") or "?")
     if entity_type == "candidate":
         return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
     return str(row.get("id") or "?")
@@ -219,25 +217,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
 
     claim_cap = None
     claim_states: Optional[List[str]] = None
-    if entity_type == "board_search":
-        from src.data.database import claim_board_search_batch, clear_board_search_batch
-        from src.utils.config import BOARDS_CONFIG
-
-        gaze_cfg = BOARDS_CONFIG.get("gaze_board") or {}
-        batch_limit = limit if limit is not None else int(gaze_cfg.get("batch_size", 5))
-        freq = float(task.get("freq_hrs") or 0)
-        cfg_iv = gaze_cfg.get("scan_interval_hours")
-        default_scan_iv = float(cfg_iv) if cfg_iv is not None else 24.0
-        eff_scan = freq if freq > 0 else default_scan_iv
-        sort_bs = (task.get("sort_by") or "").strip() or None
-        entities = claim_board_search_batch(
-            bid,
-            batch_limit,
-            candidate_id=candidate_id,
-            scan_interval_hours=eff_scan,
-            sort_by=sort_bs,
-        )
-    elif entity_type == "candidate":
+    if entity_type == "candidate":
         entities = [ctx] if ctx else []
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
@@ -395,9 +375,6 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     finally:
         if entity_type == "job":
             clear_job_batch(bid)
-        elif entity_type == "board_search":
-            from src.data.database import clear_board_search_batch
-            clear_board_search_batch(bid)
         elif entity_type == "candidate":
             pass
         else:
