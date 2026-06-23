@@ -641,13 +641,29 @@ class TestAst471DispatchConfigHelpers:
         gb = cfg.BOARDS_CONFIG.get("gaze_board") or {}
         assert gb.get("scan_interval_hours") == 24
 
-    def test_resolve_maps_consult_to_grade_trimmed(self) -> None:
-        assert cfg.resolve_dispatch_task_config_key("consult_do") == "grade_do"
-        assert cfg.resolve_dispatch_task_config_key("  consult_like  ") == "grade_like"
+    def test_resolve_dispatch_task_config_key_identity_trimmed(self) -> None:
+        assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
+        assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
         assert cfg.resolve_dispatch_task_config_key("gaze_board") == "gaze_board"
 
+    def test_retired_consult_dispatch_keys_rejected(self) -> None:
+        assert cfg.dispatch_task_key_retired_message("consult_do") == (
+            "task_key 'consult_do' is retired; use 'grade_do'"
+        )
+        with pytest.raises(KeyError, match="retired"):
+            cfg.dispatch_task_admin_defaults("consult_do")
+
+    def test_grade_dispatch_schedulable_defaults(self) -> None:
+        assert "grade_do" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "consult_do" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        d = cfg.dispatch_task_admin_defaults("grade_do")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_JD"
+        assert d["batch_call_mode"] == 1
+
     def test_scored_grade_dispatch_not_board_gaze(self) -> None:
-        assert cfg.dispatch_task_key_is_scored("consult_get") is True
+        assert cfg.dispatch_task_key_is_scored("grade_get") is True
+        assert cfg.dispatch_task_key_is_scored("consult_get") is False
         assert cfg.dispatch_task_key_is_scored("gaze_board") is False
 
     def test_dispatch_schedulable_keys_includes_board_gazer(self) -> None:
@@ -786,6 +802,20 @@ class TestAst586DispatchClaimScoreFloor:
     def test_legacy_helper_may_still_classify_valid_title_graded(self) -> None:
         # Claim helper diverges from grading metadata (AST-586); legacy helper unchanged.
         assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is True
+
+
+# AST-750 — admin score_floor dropdown catalog (parent AST-743).
+class TestAst750DispatchScoreFloorCatalog:
+    def test_dispatch_score_floor_values_and_labels(self) -> None:
+        vals = cfg.DISPATCH_SCORE_FLOOR_VALUES
+        assert len(vals) == 21
+        assert vals[0] == 0.0
+        assert vals[-1] == 10.0
+        assert vals[1] - vals[0] == 0.5
+        labels = cfg.dispatch_score_floor_option_labels()
+        assert labels[0] == "0.00"
+        assert labels[-1] == "10.00"
+        assert len(labels) == 21
 
 
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).

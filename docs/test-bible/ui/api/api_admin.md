@@ -117,3 +117,14 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 | --- | --- | --- |
 | No `phase`/`seq` on task routes | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi`, `TestTaskRoutes::test_preview_task_and_get_update` |
 
+### AST-747 · AST-736
+
+Retired **`consult_*`** on **`POST /api/admin/dispatch_tasks`**; schedulable **`grade_*`**; **`task_keys`** grouping on **`grade_do`** catalog rows (no alias).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired-key guard | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key` |
+| **`task_keys`** derivation | same | `TestAst739DispatchTaskKeysGrouping`, `test_ast549_task_keys_config_derivation_authoritative`, `TestAdhocHelpers::test_trigger_state_helpers` |
+
+Config helpers: **`docs/test-bible/utils/config.md`** (**AST-747**). **AST-748** owns **`test_consult.py`**.
+

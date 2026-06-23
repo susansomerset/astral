@@ -530,12 +530,12 @@ class TestAst739DispatchTaskKeysGrouping:
             else None,
         )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        assert keys["consult_do"]["task_group_name"] == "Z-name"
-        assert keys["consult_do"]["task_group_order"] == "Z-order"
-        assert keys["consult_do"]["task_seq"] == 4.5
-        assert keys["consult_do"]["task_name"] == "Pretty"
-        assert "phase" not in keys["consult_do"]
-        assert "seq" not in keys["consult_do"]
+        assert keys["grade_do"]["task_group_name"] == "Z-name"
+        assert keys["grade_do"]["task_group_order"] == "Z-order"
+        assert keys["grade_do"]["task_seq"] == 4.5
+        assert keys["grade_do"]["task_name"] == "Pretty"
+        assert "phase" not in keys["grade_do"]
+        assert "seq" not in keys["grade_do"]
 
     def test_dispatch_task_keys_orphan_empty_grouping(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -640,6 +640,25 @@ class TestDispatchTasks:
         assert "2" not in threads
         assert threads["1"]["task_key"] == "scan_jobs"
 
+    def test_create_dispatch_task_rejects_retired_consult_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "consult_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "grade_do" in err
+
     def test_create_dispatch_task_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         assert admin_client.post("/api/admin/dispatch_tasks", json={"task_key": "t"}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")
@@ -733,7 +752,7 @@ class TestAdhocHelpers:
         assert cfg.trigger_state_used_by_scored_dispatch_task(None) is False
         assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE_RETRY") is False
         assert cfg.trigger_state_used_by_scored_dispatch_task("PASSED_JOBLIST") is True
-        assert cfg.dispatch_task_key_is_scored("consult_do") is True
+        assert cfg.dispatch_task_key_is_scored("grade_do") is True
         # AST-586: claim gating diverges from legacy graded-trigger helper.
         assert cfg.dispatch_claim_uses_score_floor("VALID_TITLE") is False
         assert cfg.dispatch_claim_uses_score_floor("PASSED_JD") is True
@@ -1244,10 +1263,10 @@ class TestApiAdminBranchGaps:
         assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
         assert keys["parse_job_list"]["entity_type"] == "company"
         assert keys["parse_job_list"]["trigger_state"] == "JOBLIST_IDENTIFIED"
-        # AST-739: consult_do resolves grade_do catalog row for grouping — not TASK_CONFIG phase/seq.
-        assert "phase" not in keys["consult_do"]
-        assert "seq" not in keys["consult_do"]
-        assert "task_group_name" in keys["consult_do"]
+        # AST-739 / AST-747: grade_do catalog row for grouping — not TASK_CONFIG phase/seq.
+        assert "phase" not in keys["grade_do"]
+        assert "seq" not in keys["grade_do"]
+        assert "task_group_name" in keys["grade_do"]
 
     def test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task_by_key", lambda tk: None)
@@ -1450,7 +1469,7 @@ class TestApiAdminBranchGaps:
         decode = MagicMock(return_value={"jobs": [{"astral_job_id": "j1"}]})
         monkeypatch.setattr(admin_mod, "_decode_payload", decode)
         # Isolate hydrate/decode path from real DB: full suite may set _board_search_schema_ensured
-        # without board_search on the shared ASTRAL_DB_DIR file (_ensure_gaze_board_dispatch_tasks).
+        # without board_search on the shared ASTRAL_DB_DIR file (schema ensure side effects).
         monkeypatch.setattr(admin_mod, "_build_adhoc_live_content", lambda *args, **kwargs: "")
         resp = admin_client.post(
             "/api/admin/adhoc/test",
