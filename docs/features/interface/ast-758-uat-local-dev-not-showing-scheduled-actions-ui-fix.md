@@ -179,3 +179,33 @@ No conflicts requiring `conf-!!-NONE`.
 **Built:** Stage 1 confirmed AST-746 on `origin/dev` (empty diff). Stage 2 — `_ensure_frontend_build` in `launch.sh --flask`. Stage 3 — `_warn_stale_frontend_dist` in `server.py` debug startup.
 
 **Out of build scope:** Stage 4 Susan manual UAT on `:5001` after pull without manual rebuild.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-744/AST-758-uat-local-dev-not-showing-scheduled-actions-ui-fix` · tip **`d440264`**
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1 confirmed (empty diff vs AST-746 publish ref; markers on `origin/dev`). Stages 2–3 match plan verbatim: `_ensure_frontend_build` on `--flask` only, `_warn_stale_frontend_dist` gated to `__main__` (gunicorn silent). |
+| Scope boundary | No `AdminScheduledActions.tsx` / AST-746 product changes — delivery-path fix only. |
+| §3.3 layer | `server.py` adds pathlib/sys only; no cross-layer imports. |
+| §1.3 DRY | launch.sh auto-build + server warning complement each other (covers `python server.py` bypass). |
+| Tests | `TestLaunchFrontendBuild` exercises stale vs fresh dist; `TestWarnStaleFrontendDist` covers missing/stale/fresh stderr paths. Test-bible manifests aligned. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| — | **No fix-now.** | — |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| **resolve-child** — no code changes required from review. | Katherine |
+| **discuss (optional hygiene):** `TestWarnStaleFrontendDist` mutates `ui.server._FRONTEND_SRC` / `_DIST` module globals without restore — fine while this class is last in the module; consider `monkeypatch` teardown if more server tests land below it. | Katherine (optional) |
+| Susan Stage 4 manual UAT: `git pull` → `zsh launch.sh --flask` without manual rebuild → `:5001` Scheduled Actions shows AST-746 layout. | Susan |
