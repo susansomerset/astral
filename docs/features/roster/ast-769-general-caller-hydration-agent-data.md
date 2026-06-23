@@ -258,4 +258,4 @@ No unresolved conflicts.
 ## Review stub (build)
 
 **Publish ref:** `origin/sub/AST-752/AST-769-general-caller-hydration-agent-data`  
-**Product commit:** `<pending>` — general caller hydration helpers; `do_task` entry hydration; `run_next` storage-first caller dispatch; debug extension for all hydration hops
+**Product commit:** `174a747` — general caller hydration helpers; `do_task` entry hydration; `run_next` storage-first caller dispatch; debug extension for all hydration hops
