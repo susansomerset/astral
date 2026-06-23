@@ -261,6 +261,7 @@ export default function ScheduledActions() {
   }, [loadThreadStatus])
 
   const [taskKeyFilter, setTaskKeyFilter] = useState("")
+  const [sectionGroupFilter, setSectionGroupFilter] = useState("")
   const [floorMin, setFloorMin] = useState("")
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
@@ -312,6 +313,18 @@ export default function ScheduledActions() {
 
   const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
 
+  const sectionGroupOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const meta of Object.values(allTaskKeys)) {
+      const name = meta.task_group_name || "(unassigned)"
+      const key = `${meta.task_group_order || ""}\u0000${name}`
+      if (!seen.has(key)) seen.set(key, name)
+    }
+    return [...seen.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, name]) => ({ key, name }))
+  }, [allTaskKeys])
+
   const filterOptionValues = useMemo(() => ({
     freq: [...new Set(data.map(r => r.freq_hrs ?? 0))].sort((a, b) => a - b),
     minCount: [...new Set(data.map(r => r.min_count))].sort((a, b) => a - b),
@@ -347,6 +360,14 @@ export default function ScheduledActions() {
   const filteredRows = useMemo(() => {
     let filtered = data
     if (candidateFilter) filtered = filtered.filter(r => r.candidate_id === candidateFilter)
+    if (sectionGroupFilter) {
+      filtered = filtered.filter(r => {
+        const meta = allTaskKeys[r.task_key]
+        const name = meta?.task_group_name || "(unassigned)"
+        const key = `${meta?.task_group_order || ""}\u0000${name}`
+        return key === sectionGroupFilter
+      })
+    }
     if (taskKeyFilter) filtered = filtered.filter(r => r.task_key === taskKeyFilter)
     if (autoFilter === "on") filtered = filtered.filter(r => !!r.auto_mode)
     if (autoFilter === "off") filtered = filtered.filter(r => !r.auto_mode)
@@ -367,7 +388,7 @@ export default function ScheduledActions() {
       })
     }
     return filtered
-  }, [data, candidateFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
+  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, DispatchTask[]> = {}
@@ -564,6 +585,15 @@ export default function ScheduledActions() {
           onChange={setCandidateFilter}
           candidates={candidates}
         />
+        <label>
+          Section/Group
+          <select value={sectionGroupFilter} onChange={e => setSectionGroupFilter(e.target.value)}>
+            <option value="">All</option>
+            {sectionGroupOptions.map(opt => (
+              <option key={opt.key} value={opt.key}>{opt.name}</option>
+            ))}
+          </select>
+        </label>
         <label>
           Task
           <select value={taskKeyFilter} onChange={e => setTaskKeyFilter(e.target.value)}>
