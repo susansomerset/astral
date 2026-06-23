@@ -48,6 +48,7 @@ from src.utils.config import (
     admin_hidden_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_SCHEDULABLE_TASK_KEYS,
+    DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
@@ -760,7 +761,8 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
-    """Scheduled Actions defaults: TASK_CONFIG first; schedulable keys merge config derivation."""
+    """Scheduled Actions form defaults: schedulable keys use dispatch_task_admin_defaults;
+    grouping fields from agent_task row for the dispatch task_key (AST-736 — no alias map)."""
     catalog_key = (task_key or "").strip()
     cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
     entity_type = cfg.get("entity_type") or ""
@@ -795,6 +797,8 @@ def dispatch_task_keys():
         k = r.get("task_key", "")
         if not k:
             continue
+        if k in DISPATCH_RETIRED_TASK_KEYS:
+            continue
         if k not in seen:
             seen[k] = {
                 "entity_type": (r.get("entity_type") or "") or "",
@@ -807,6 +811,8 @@ def dispatch_task_keys():
             }
     hidden = admin_hidden_dispatch_task_keys()
     for tk in hidden:
+        seen.pop(tk, None)
+    for tk in DISPATCH_RETIRED_TASK_KEYS:
         seen.pop(tk, None)
     return jsonify(seen)
 
