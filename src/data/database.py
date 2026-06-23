@@ -17,7 +17,7 @@ Tables used (inventory):
 - agent_responses — Agent response audit (insert-only from add_agent_response_entry).
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks).
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
 - board_search — Saved board searches per candidate (board_search_id, candidate_id, board_key, label, criteria JSON NOT NULL,
@@ -5670,63 +5670,6 @@ def list_log_entries(
 # Dispatch Task (scheduling config)
 # ---------------------------------------------------------------------------
 
-# task_key to copy settings from → new trigger_state for each retry task
-_RETRY_TASK_SEED = [
-    ("qualify_job_listings", "VALID_TITLE_RETRY"),
-    ("evaluate_jd",          "JD_READY_RETRY"),
-    ("fetch_website",        "WEBSITE_FOUND_RETRY"),
-]
-
-
-def _ensure_gaze_board_dispatch_tasks(conn: sqlite3.Connection) -> None:
-    """INSERT OR IGNORE gaze_board rows — copy gaze settings per candidate / board_search fallback (AST-471)."""
-    try:
-        gb = dispatch_task_admin_defaults("gaze_board")
-    except KeyError:
-        return
-    _ensure_board_search_table(conn)
-    now = _utc_now()
-    def_bs = int((BOARDS_CONFIG.get("gaze_board") or {}).get("batch_size") or 5)
-    gaze_rows = conn.execute(
-        """SELECT candidate_id, min_count, freq_hrs, batch_size, auto_mode, debug, skip_cache, max_runs
-           FROM dispatch_task WHERE task_key = 'gaze'"""
-    ).fetchall()
-    have_gaze: set[Any] = set()
-    for r in gaze_rows:
-        cid = r[0]
-        have_gaze.add(cid)
-        mn, fq, bs, am, dbg, sk, mr = r[1:]
-        bsz = def_bs if bs is None else int(bs)
-        conn.execute(
-            """INSERT OR IGNORE INTO dispatch_task
-               (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
-                min_count, freq_hrs, batch_size, auto_mode, debug, skip_cache, max_runs, updated_at)
-               VALUES (?, 'gaze_board', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (cid, gb["entity_type"], gb["trigger_state"], gb["sort_by"], gb["batch_call_mode"],
-             mn, fq, bsz, am, dbg, sk, mr, now),
-        )
-    if gaze_rows:
-        conn.commit()
-
-    bs_cands = conn.execute(
-        """SELECT DISTINCT candidate_id FROM board_search
-           WHERE candidate_id IS NOT NULL AND TRIM(candidate_id) != ''"""
-    ).fetchall()
-    for (cid,) in bs_cands:
-        if cid in have_gaze:
-            continue
-        conn.execute(
-            """INSERT OR IGNORE INTO dispatch_task
-               (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
-                min_count, freq_hrs, batch_size, auto_mode, debug, skip_cache, max_runs, updated_at)
-               VALUES (?, 'gaze_board', ?, ?, ?, ?, 1, 0, ?, 0, 0, 0, 1, ?)""",
-            (cid, gb["entity_type"], gb["trigger_state"], gb["sort_by"], gb["batch_call_mode"],
-             def_bs, now),
-        )
-    if bs_cands:
-        conn.commit()
-
-
 def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
     """Create dispatch_task table if not present; run column migrations. Idempotent."""
     global _dispatch_task_schema_ensured
@@ -5902,29 +5845,6 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 conn.execute("UPDATE dispatch_task SET score_floor = 1.0 WHERE id = ?", (row[0],))
         if scored_rows:
             conn.commit()
-        # Add retry task rows for each candidate that has the corresponding base task
-        for base_key, retry_trigger in _RETRY_TASK_SEED:
-            try:
-                base_seed = dispatch_task_admin_defaults(base_key)
-            except KeyError:
-                continue
-            base_rows = conn.execute(
-                "SELECT candidate_id, min_count, freq_hrs, batch_size, auto_mode, debug, skip_cache, max_runs "
-                "FROM dispatch_task WHERE task_key = ?",
-                (base_key,),
-            ).fetchall()
-            for br in base_rows:
-                conn.execute(
-                    """INSERT OR IGNORE INTO dispatch_task
-                       (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
-                        min_count, freq_hrs, batch_size, auto_mode, debug, skip_cache, max_runs, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-                    (br[0], base_key, base_seed["entity_type"], retry_trigger,
-                     base_seed["sort_by"], base_seed["batch_call_mode"],
-                     br[1], br[2], br[3], br[4], br[5], br[6], br[7]),
-                )
-            if base_rows:
-                conn.commit()
     # Legacy gaze rows used updated_at for claim order; gazer should claim oldest last_scan_at first.
     conn.execute(
         "UPDATE dispatch_task SET sort_by = 'last_scan_at' WHERE task_key = 'gaze' AND sort_by = 'updated_at'"
@@ -6011,7 +5931,32 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
     )
     conn.commit()
-    _ensure_gaze_board_dispatch_tasks(conn)
+    # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
+    _CONSULT_TO_GRADE_DISPATCH_KEYS = (
+        ("consult_do", "grade_do"),
+        ("consult_get", "grade_get"),
+        ("consult_like", "grade_like"),
+    )
+    for retired_key, grade_key in _CONSULT_TO_GRADE_DISPATCH_KEYS:
+        # Drop legacy row when canonical grade_* row already exists for same triple.
+        conn.execute(
+            """
+            DELETE FROM dispatch_task AS d
+            WHERE d.task_key = ?
+              AND EXISTS (
+                SELECT 1 FROM dispatch_task AS g
+                WHERE g.candidate_id = d.candidate_id
+                  AND g.task_key = ?
+                  AND g.trigger_state = d.trigger_state
+              )
+            """,
+            (retired_key, grade_key),
+        )
+        conn.execute(
+            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
+            (grade_key, retired_key),
+        )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 
