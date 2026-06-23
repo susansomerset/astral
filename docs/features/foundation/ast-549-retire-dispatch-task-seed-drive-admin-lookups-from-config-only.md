@@ -1,3 +1,129 @@
+<!-- linear-archive: AST-549 archived 2026-06-15 -->
+
+## Linear archive (AST-549)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-549/retire-dispatch-task-seed-drive-admin-lookups-from-config-only  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-484 — Strengthen the relationships between lookup lists in the UI and live values in config  
+**Blocked by / blocks / related:** parent: AST-484; blocks: AST-550
+
+### Description
+
+## What this implements
+
+Retire `database._DISPATCH_TASK_SEED` and the `config._DISPATCH_TASK_TRIGGER_SEED` mirror. Derive dispatch admin defaults from `TASK_CONFIG` keys plus `JOB_STATES` / `COMPANY_STATES` tuples only. Fix `GET /api/admin/dispatch_tasks/task_keys` so config keys are authoritative (no seed merge that overrides config). Fix adhoc dispatch preview (`get_dispatch_row_or_seed_preview_meta`) to use config-built metadata instead of dispatch seed templates. Align with parent epic rule: no seeds, defaults, or fallbacks for allowed values — missing config is crash-worthy.
+
+## Acceptance criteria
+
+1. `database._DISPATCH_TASK_SEED` and `config._DISPATCH_TASK_TRIGGER_SEED` are removed; no parallel dispatch seed vocabulary remains in backend.
+2. `GET /api/admin/dispatch_tasks/task_keys` returns defaults derived from `TASK_CONFIG` + state tuples only (seed does not win over config).
+3. Admin adhoc dispatch preview uses config-derived metadata, not dispatch seed templates.
+4. Adding a new key to `TASK_CONFIG` or relevant state tuples surfaces in admin dispatch forms without editing a separate seed list.
+5. Existing saved dispatch rows with valid states continue to display and save; API validation remains authoritative on submit.
+
+## Boundaries
+
+* Does **not** change `StateUiContext.tsx` or frontend manifest fallbacks — sibling child ticket (Katherine).
+* Does **not** refactor `config.py` into a package (\[AST-346\]).
+* Does **not** change dispatch business rules — only how allowed values and form defaults are **surfaced** in admin.
+* Does **not** touch board search UI (Boards iceboxed).
+
+## Notes for planning
+
+* Primary files: `src/data/database.py`, `src/utils/config.py`, `src/ui/api/api_admin.py` (dispatch task endpoints).
+* Follow existing pattern: `GET /api/admin/dispatch_tasks/state_options` already reads `JOB_STATES` / `COMPANY_STATES` keys — extend same discipline to task keys and preview.
+* Parent inventory row: dispatch seed + task_keys + adhoc preview marked **Fix v1**.
+* Secondary domain: admin API only; no React in this ticket.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** Branch law: parent `ftr/ast-484-strengthen-lookup-config-ui`, child `sub/AST-484/AST-549-retire-dispatch-task-seed`. Created at **dispatch-linear**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-02T22:24:15.545Z
+**Review** — `origin/dev...origin/sub/AST-484/AST-549-retire-dispatch-task-seed` @ `5cfe5ed8` (product) + doc @ `1f86aa1e`
+
+Combined plan + Radia review: `docs/features/foundation/ast-549-retire-dispatch-task-seed-drive-admin-lookups-from-config-only.md`
+
+### fix-now
+
+- **`docs/ASTRAL_TEST_BIBLE.md`** — §7.13zq (AST-549) **removed** entire §7.13zn (AST-531/532 per-hop `dispatch_ledger` manifest) that still exists on `origin/dev`. Restore §7.13zn; keep §7.13zq additive.
+
+### discuss
+
+- **`src/utils/config.py` `_dispatch_batch_call_mode_for`** — legacy `_DISPATCH_TASK_SEED` had `validate_title` with `batch_call_mode: 1`; plan step 5 omits it from the mode-1 frozenset, so `dispatch_task_admin_defaults("validate_title")` returns `0`. Confirm intentional before resolve (new inserts/backfill only; existing DB rows unchanged).
+
+### advisory
+
+- Job `sort_by` via `PASSED_SCORE_GATED_STATES` / artifact triggers (not `JOB_STATES.batch_criteria`) — documented plan deviation; OK.
+- Tests + bible in diff despite plan “Betty only” note — acceptable for Tests Passed scope.
+
+### sign-off (no action)
+
+- Stages 1–3: seed dicts removed; `dispatch_task_admin_defaults` wired through `database.py` + `api_admin.py`; TASK_CONFIG-first `task_keys` (acceptance #2–4).
+- **§1.4/§2.1** config SSOT, **§3.3** layer imports, **§2.4** batch fields derived in config — clean.
+- `save_dispatch_task` → `ValueError` for non-schedulable keys; `COMPANY_STATES["NEW"].batch_criteria` supports inflow resolve sort_by.
+- Boundary respected: no frontend / AST-550 scope.
+
+#### ada — 2026-06-02T22:14:55.097Z
+**test-astral** — manifest pytest green; product fix published.
+
+**Commands (all 19 nodes pass):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast549_task_keys_config_derivation_authoritative \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_list_dispatch_tasks_and_keys
+```
+
+**Fixes (`88d7985c` → `origin/sub/AST-484/AST-549-retire-dispatch-task-seed` @ `5cfe5ed8`):**
+1. `dispatch_task_keys` now merges schedulable keys outside `TASK_CONFIG` (roster trio `find_job_page` / `select_job_page` / `parse_job_list`).
+2. `COMPANY_STATES["NEW"]` gets `batch_criteria.sort_by` so `inflow_resolve_website` and `trigger_state_used_by_scored_dispatch_task` no longer raise on company `NEW`.
+
+**Harness tail:** Vitest still reports 2 failures in `test_AdminManageCandidates.test.tsx` (AST-511 middle-name UI — cross-ticket, not AST-549 scope). Pytest portion of the manifest is fully green.
+
+#### betty — 2026-06-02T22:10:02.886Z
+**QA manifest** — `origin/sub/AST-484/AST-549-retire-dispatch-task-seed` @ `59768708`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `00b83a65f8a71981bbca798e74f8e5a96eea4285` — see §7.13zq.
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults`
+2. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers`
+3. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults`
+4. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults`
+5. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast549_task_keys_config_derivation_authoritative`
+6. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_dispatch_task_keys_roster_seeds_minus_locate_template`
+7. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults`
+8. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry`
+9. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_list_dispatch_tasks_and_keys`
+
+**Expected product gaps (manifest red until fixed):**
+- **`GET /api/admin/dispatch_tasks/task_keys`** omits roster trio **`find_job_page` / `select_job_page` / `parse_job_list`** — schedulable keys not in **`get_task_keys()`** need listing (plan Stage 3 AC / AST-485 regression).
+- **`dispatch_task_admin_defaults("inflow_resolve_website")`** and **`trigger_state_used_by_scored_dispatch_task`** raise **`KeyError`** on company **`NEW`** missing **`batch_criteria.sort_by`** — breaks **`list_dtasks`** and scored-trigger scan.
+
+#### ada — 2026-06-02T22:03:40.504Z
+Plan doc: [ast-549-retire-dispatch-task-seed-drive-admin-lookups-from-config-only.md](https://github.com/susansomerset/astral/blob/sub/AST-484/AST-549-retire-dispatch-task-seed/docs/features/foundation/ast-549-retire-dispatch-task-seed-drive-admin-lookups-from-config-only.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — `config.py`, `database.py`, and `api_admin.py` dispatch admin defaults only; no frontend (AST-550).
+- **Conf:** Medium — Explicit derivation table replaces seed, but schedulable-key boundary and scored-trigger parity need Betty’s test pass.
+- **Risk:** Medium — Admin create/preview and schema backfill depend on new `dispatch_task_admin_defaults`; saved DB rows unchanged.
+
+Three stages: (1) config helper + remove trigger seed mirror, (2) delete `_DISPATCH_TASK_SEED` and wire database paths, (3) config-authoritative `task_keys` / adhoc preview.
+
+---
+
 # AST-549 — Retire dispatch task seed; drive admin lookups from config only
 
 - **Linear (this ticket):** [AST-549](https://linear.app/astralcareermatch/issue/AST-549/retire-dispatch-task-seed-drive-admin-lookups-from-config-only)

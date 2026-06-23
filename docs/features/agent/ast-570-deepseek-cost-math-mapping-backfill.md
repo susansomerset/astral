@@ -1,3 +1,121 @@
+<!-- linear-archive: AST-570 archived 2026-06-15 -->
+
+## Linear archive (AST-570)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-570/deepseek-cost-math-mapping-and-backfill-timesheets-for-deepseek-are  
+**Status at archive:** Done  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-569 — Timesheets for deepseek are inaccurate  
+**Blocked by / blocks / related:** parent: AST-569; blocks: AST-571
+
+### Description
+
+## What this implements
+
+Correct DeepSeek timesheet cost fidelity end-to-end in the backend: vendor-aligned DEEPSEEK_MODEL_PRICING (cache hit, cache miss, output), map DeepSeek API usage into agent_timesheets token columns and calc_cost\_\* components, recompute all historical rows where provider is deepseek, and provide a repeatable UTC-day reconciliation check against DeepSeek usage export. Anthropic provider math and rows must not change.
+
+## Acceptance criteria
+
+1. For UTC 2026-06-03 and deepseek-v4-pro: summed cache-hit, cache-miss, and output token counts across all Astral agent_timesheets rows for that model and date equal the DeepSeek export line amounts exactly.
+2. For the same scope: sum of calc_cost_cache_write + calc_cost_cache_read + calc_cost_no_cache_input + calc_cost_output equals the DeepSeek export dollar total for that model and date exactly.
+3. For UTC 2026-06-03 and deepseek-v4-flash: same exact token and dollar reconciliation against the export.
+4. Every agent_req_id row in the parent Original brief CSV (and full UTC-day export scope): stored token columns match the vendor usage attributable to that request exactly; per-row cost components use maximum practical precision with only acceptable minor rounding on the four calc_cost fields.
+5. Backfill completes for all historical agent_timesheets rows where provider is deepseek; recomputed values persist in place.
+6. DEEPSEEK_MODEL_PRICING matches DeepSeek published pricing at ship (snapshot date noted in plan).
+7. Timesheet and cost-calculator tests pass; DeepSeek reconciliation tests added without weakening Anthropic cases.
+
+## Boundaries
+
+* Does not change Admin Agent Timesheets React page or CSV column wiring (sibling Katherine ticket).
+* Does not change brain-tier routing (AST-492/493).
+* Does not redesign agent_timesheets schema (AST-494).
+
+## Notes for planning
+
+Primary surfaces: src/utils/config.py, src/utils/cost_calculator.py, src/external/deepseek.py, src/core/timesheets.py, src/data/database.py backfill path. Document DeepSeek cache-hit/miss/output mapping in plan. Reconciliation script or documented procedure for Susan UAT.
+
+## Git branch (authoritative)
+
+Per orientation-astral Branch law: parent ftr/ast-569-timesheets-deepseek-cost, child sub/AST-569/<child-id>-deepseek-cost-math-mapping-backfill.
+
+### Comments
+
+#### radia — 2026-06-03T19:09:05.860Z
+**Diff:** `origin/dev...origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill` (tip `96aebe5e`). **Review doc:** `docs/features/agent/ast-570-deepseek-cost-math-mapping-backfill.md` (Radia § Review).
+
+**fix-now:** none — product matches approved plan Stages 1–3; Betty tests green on publish ref.
+
+**discuss**
+- **UAT ops:** Stage 4 `debug/spikes/ast-570-deepseek-export-reconcile/reconcile.py` not on publish ref (gitignored). Parent AC **1–3** still need Susan to run `backfill_deepseek_agent_timesheet_costs()` then UTC-day reconcile; post exact commands on this ticket when green.
+- **Tests vs plan:** `test_cost_calculator_deepseek.py` uses UTC-day aggregate export totals, not per-row `840f7662…` / `f778a6ce…` anchors from plan Stage 5 — math is sound, per-`agent_req_id` proof weaker.
+- **Backfill scope:** pass 1 updates `calc_cost_*` only from stored token ints. If reconcile FAILs on miss/output **integers**, need documented pass 2 within **AST-570** (plan Stage 4).
+
+**advisory**
+- `src/external/deepseek.py` — pre-existing `[DEBUG]` `logger.info` when `debug=True` (grandfather §1.5.1).
+- `docs/ASTRAL_TEST_BIBLE.md` — **§7.13zz** correct; extra §7.13* rollup lines are sibling Betty publish noise.
+
+**Recommended:** `resolve-astral` only if reconcile fails or Susan wants optional per-row golden tests; otherwise proceed to UAT after backfill + reconcile.
+
+#### betty — 2026-06-03T19:06:24.775Z
+[check-linear] Tests Ready — [qa-handoff] cleared: pinned `get_active_llm_provider` → anthropic + `send_to_deepseek` stub on `test_send_to_anthropic_receives_resolved_key_for_big_tier`; bible §7.13zz narrowed §7.13ze regression nodes. Manifest items 1+2 green on `dev-betty`. Publish `origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill` @ `96aebe5e`. Assignee Ada for `test-astral`.
+
+#### ada — 2026-06-03T19:03:05.846Z
+[qa-handoff]
+
+**Regression item 2** (§7.13ze narrowed scope per bible): manifest command
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/data/database/test_timesheets.py \
+  tests/component/core/test_timesheets.py
+```
+
+**Item 1 (AST-570 manifest):** 7/7 passed on `dev-ada` after merge `origin/dev` → `origin/ftr/ast-569-timesheets-deepseek-cost` → `origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill` (publish @ `34c9c54f`).
+
+**Item 2 failure (test/manifest, not product):**
+
+`tests/component/core/test_agent.py::TestAst492BrainSettingDoTask::test_send_to_anthropic_receives_resolved_key_for_big_tier`
+
+- Mocks `send_to_anthropic` only; does **not** pin `get_active_llm_provider` (sibling `test_send_to_deepseek_receives_vendor_model_and_tier_meta` **does** pin `deepseek`).
+- `LLM_PROVIDER_CONFIG["active_provider"]` is `"deepseek"` on publish ref → `do_task` calls real `send_to_deepseek`, which fails on Anthropic-shaped `_api_response()` mock: `API response content block missing text attribute`.
+- **Not** an AST-570 product regression; DeepSeek cost/backfill tests are green.
+
+**Ask @Betty White:** Either add `monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")` (and stub `send_to_deepseek`) to the anthropic-path test, or narrow regression manifest to exclude that case / run only `test_send_to_deepseek_*` + pricing tests. Reassign Ada when manifest is green.
+
+**Note:** Running full `tests/component/utils/test_config.py` (per comment shorthand “brain tiers”) also fails unrelated `TestAst510MiddleNameConfig` — not on integration line; bible narrowed class is `TestAst492LlmBrainTierConfig`.
+
+#### betty — 2026-06-03T19:00:20.211Z
+**QA test manifest (AST-570)**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_cost_calculator_deepseek.py tests/component/data/database/test_timesheets.py::TestBackfillDeepseekAgentTimesheetCosts tests/component/external/test_deepseek.py::TestSendToDeepseekTimesheetMapping`
+2. **Regression:** §7.13ze — `tests/component/utils/test_config.py` (brain tiers), `tests/component/core/test_agent.py::TestAst492BrainSettingDoTask`, `tests/component/data/database/test_timesheets.py`, `tests/component/core/test_timesheets.py`
+3. **Susan UAT (post test-astral green):** `python3 debug/spikes/ast-570-deepseek-export-reconcile/reconcile.py --export-csv <path> --utc-date 2026-06-03` (gitignored spike; not in manifest run)
+
+**Publish:** `origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill` @ `34c9c54f`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (origin/sub tip):** `be5c164f` — verify with `git show origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill:docs/ASTRAL_TEST_BIBLE.md | shasum -a 256`
+
+— Betty
+
+#### ada — 2026-06-03T18:52:11.376Z
+Plan: `docs/features/agent/ast-570-deepseek-cost-math-mapping-backfill.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill/docs/features/agent/ast-570-deepseek-cost-math-mapping-backfill.md
+
+Publish: `origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill` @ `6720c897`
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — config pricing, cost_calculator, deepseek recording, database backfill, reconciliation spike.
+- **Conf:** high — DeepSeek pricing page + parent export define CPMs and UTC 2026-06-03 reconciliation targets; spike only if `usage.input_tokens` ≠ cache-miss.
+- **Risk:** HIGH — Wrong pro rates or miss/hit mapping breaks spend trust; Anthropic path isolated by separate helpers and SQL filter on DeepSeek `model_code` only.
+
+---
+
 # AST-570 — DeepSeek cost math, mapping, and backfill
 
 **Parent:** [AST-569 — Timesheets for deepseek are inaccurate](https://linear.app/astralcareermatch/issue/AST-569/timesheets-for-deepseek-are-inaccurate)  
