@@ -210,3 +210,43 @@ No conflicts requiring `!!-NONE`.
 - **AST-747** must be on the integration line before **test-child** — config rejects new `consult_*` rows while runtime still accepted them until this ticket lands.
 - **Betty** updates tests monkeypatching `consult_do_batch` / `dispatch_task_key='consult_do'` — do not patch tests in this ticket.
 - **dispatch_ledger** historical rows may still show legacy strings — parent boundary excludes backfill.
+
+## Review (build)
+
+| Field | Value |
+|-------|-------|
+| Build date | 2026-06-23 |
+| Publish ref | `origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` @ `13352e9` |
+| Commits | `bf8eaa3` database migration · `61eaf25` consult + dispatcher runtime · `27d950d` test (Betty) |
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` · tip **`13352e9`**
+
+**AST-748 product commits:** `bf8eaa3`, `61eaf25`, `27d950d`. Publish ref rolls up resolved **AST-747**, **AST-751**, and other sibling qa merges — not attributed to Hedy commits (§5d boundary clean).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stage 1 | Idempotent migration block matches plan verbatim: collision DELETE then UPDATE per pair; local tuple (no config import widening); placement after AST-702, before schema-ensured flag. |
+| Plan Stage 2 | Zero `consult_do`/`consult_get`/`consult_like` in `consult.py` / `dispatcher.py`; `_consult_orchestration` reads `TASK_CONFIG` directly; batch entrypoints renamed; `run_consult_task` routes `grade_*`; `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` aligned. |
+| §2.7 render_verdict | `agent_task = cfg.get("agent_task") or task_type` — timesheet / Execution History attribution now `grade_*` (intended AST-736 AC). |
+| §2.4 batch | Chunk-exhaust frozenset matches config `_DISPATCH_BATCH_CALL_MODE_ONE` grade members. |
+| §3.3 layer | Data migration SQL-only; consult drops `resolve_dispatch_task_config_key` import. |
+| Tests | `TestAst748ConsultToGradeDispatchMigration` covers rename-with-preserved scheduling (Case A) and collision delete (Case B); consult/dispatcher tests use `grade_*` keys and `grade_do_batch`. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| — | **No fix-now or discuss.** | — |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| **resolve-child** — no code changes required from review. | Hedy |
+| Susan UAT: confirm legacy `consult_*` dispatch rows renamed on staging DB; Run/AUTO graded consult hops show `grade_*` in Execution History. | Susan |
