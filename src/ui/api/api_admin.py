@@ -54,7 +54,6 @@ from src.utils.config import (
     dispatch_task_key_retired_message,
     get_task_keys,
     dispatch_claim_uses_score_floor,
-    dispatch_score_floor_option_labels,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -825,12 +824,6 @@ def dispatch_task_state_options():
         "job": list(JOB_STATES.keys()),
         "company": list(COMPANY_STATES.keys()),
     })
-
-
-@admin_bp.route("/dispatch_tasks/score_floor_options")
-@require_admin
-def dispatch_task_score_floor_options():
-    return jsonify({"values": dispatch_score_floor_option_labels()})
 
 
 @admin_bp.route("/dispatch_tasks", methods=["POST"])

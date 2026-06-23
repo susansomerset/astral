@@ -218,3 +218,15 @@ Betty deletes board-only tests and trims shared tests/fixtures after **Code Comp
 |-------|--------|
 | Hedy | **resolve-child** — revert non-AST-765 `src/` from sub tip (`config` score_floor helpers, `api_admin` route, consult rubric helpers); keep `database.py` inline constants or document AST-766 handoff. Re-run manifest after revert. |
 | Susan | Confirm whether epic rollup may bundle AST-750 backend on this sub (if revert blocks Betty manifest). |
+
+## Resolution (2026-06-23)
+
+**fix-now (Radia):** Reverted cross-ticket `src/` bleed from `c35bef0` / Betty `merge-tests` — restored `consult.py`, `config.py`, and `api_admin.py` to pre-bleed state (`508e245` product for those files). Removed AST-750 `DISPATCH_SCORE_FLOOR_*` / `dispatch_score_floor_option_labels`, `/dispatch_tasks/score_floor_options`, and consult `_resolve_rubric_criteria` / ctx artifact fallbacks / `_format_analysis_phase_text` artifact path.
+
+**Kept (AST-765 scope):** `database.py` inlined `_BOARD_SEARCH_STATES` / `_GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS` (import bridge until AST-766); migration script literal `__board__` prefix (no `BOARDS_CONFIG`).
+
+**Manifest after revert:** 567 passed, 27 failed — consult hydration paths and AST-750 catalog/api tests require Betty manifest trim on `[qa-handoff]` (product revert is correct per Radia; tests must not pull AST-750 / pre-723 consult ctx onto this sub).
+
+**discuss:** Accepted — `database.py` bridge documented above; dead `board_search` dispatch count branch remains until AST-766.
+
+**advisory:** Product-only boards excision in `f64c3c0..c20fd52` unchanged.
