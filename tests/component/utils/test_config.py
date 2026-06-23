@@ -1018,12 +1018,13 @@ class TestAst505InflowDiscoveryConfig:
         assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
+        assert d["vet_dispatch_trigger_state"] == "NEW"
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]
         assert "phase" not in entry
         assert "seq" not in entry
-        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
         items = entry["response_schema"]["results"]["items_schema"]
         assert items["action"]["type"] == "str"
@@ -1039,6 +1040,13 @@ class TestAst505InflowDiscoveryConfig:
         assert d["entity_type"] == "candidate"
         assert d["trigger_state"] == "LIVE_PROMPTS"
         assert "inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+
+    def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "NEW"
+        assert d["batch_call_mode"] == 0
+        assert "vet_inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
 
 class TestAst506InflowResolveConfig:

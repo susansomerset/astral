@@ -4201,6 +4201,61 @@ class TestAst505InflowDiscovery:
         proc.assert_awaited_once_with(cand, "batch-505", cand, False)
 
 
+class TestAst774VetInflowDiscoveryDispatch:
+    """AST-774: vet_inflow_discovery schedulable as company/NEW; consult routes to inflow batch."""
+
+    @pytest.mark.asyncio
+    async def test_consult_routes_company_vet_to_inflow_batch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        proc = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        )
+        monkeypatch.setattr(roster_mod, "run_inflow_discovery_batch", proc)
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c774", "candidate_data": {}}),
+        )
+        entity = {"short_name": "co_new", "candidate_id": "c774", "company_state": "NEW"}
+        ctx = {"astral_candidate_id": "c774"}
+        out = await consult_mod.run_consult_task(
+            "company",
+            "NEW",
+            [entity],
+            "batch-774",
+            ctx,
+            False,
+            dispatch_task_key="vet_inflow_discovery",
+        )
+        assert out["total_passed"] == 1
+        proc.assert_awaited_once_with(
+            {"astral_candidate_id": "c774", "candidate_data": {}},
+            "batch-774",
+            ctx,
+            False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_vet_key_guard_skips_resolve(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        resolve = AsyncMock()
+        monkeypatch.setattr(roster_mod, "resolve_company_website", resolve)
+        entity = _company(state="NEW", company_website="")
+        out = await roster_mod.run_company_task(
+            "NEW",
+            entity,
+            "batch-774",
+            {},
+            False,
+            dispatch_task_key="vet_inflow_discovery",
+        )
+        assert out["total_errors"] == 1
+        resolve.assert_not_awaited()
+
+
 class TestAst506InflowResolve:
     """AST-506: Phase 2 CSE resolution + find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
 

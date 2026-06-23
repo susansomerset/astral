@@ -427,3 +427,18 @@ Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md
 | Backfill normalizer (drop empty key, dedupe stats) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill` |
 
 Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md`** (**AST-727**).
+
+---
+
+### AST-774 · AST-762
+
+**AST-774 (child):** Schedulable **`vet_inflow_discovery`** dispatch — company entity, **`NEW`** trigger; consult routes to **`run_inflow_discovery_batch`** (same vet pipeline as candidate **`inflow_discovery`**); **`run_company_task`** guard prevents **`resolve_company_website`** on mis-route. Config/admin defaults: **`docs/test-bible/utils/config.md`** (**AST-774**).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Company vet dispatch → inflow batch | `src/core/consult.py`, `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch::test_consult_routes_company_vet_to_inflow_batch` |
+| 2 | **`NEW`** + vet key guard (no website resolve) | `src/core/roster.py` | `::TestAst774VetInflowDiscoveryDispatch::test_run_company_task_vet_key_guard_skips_resolve` |
+
+**Regression (inline-vet product on this ref):** **`TestAst505InflowDiscovery::test_run_batch_happy_path`**, **`TestAst506InflowResolve`** — **`inflow_discovery`** / **`inflow_resolve_website`** unchanged; **no AST-775** record-only tests on this publish ref.
+
+**AST-774** narrowed run: see **`docs/test-bible/utils/config.md`** (**AST-774**).

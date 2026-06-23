@@ -86,6 +86,35 @@ Narrow (**`test-astral`** **AST-483** tip):
 
 ---
 
+### AST-774 · AST-762
+
+**AST-774:** Register **`vet_inflow_discovery`** in schedulable dispatch vocabulary as **company** / **`NEW`** (admin save + Add Task preview); **`TASK_CONFIG["vet_inflow_discovery"]["entity_type"]`** → **`company`**. Consult company branch routes **`vet_inflow_discovery`** to **`run_inflow_discovery_batch`**; **`run_company_task`** **`NEW`** guard blocks mis-route to **`resolve_company_website`**. **`inflow_discovery`** (candidate) and **`inflow_resolve_website`** unchanged.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Schedulable key + admin defaults company/**`NEW`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults`; `::test_inflow_config_discovery_literals` (**`vet_dispatch_trigger_state`**) |
+| 2 | Company dispatch executes inflow vet batch | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch::test_consult_routes_company_vet_to_inflow_batch` |
+| 3 | Mis-routed **`NEW`** vet key does not resolve website | `src/core/roster.py` | `::TestAst774VetInflowDiscoveryDispatch::test_run_company_task_vet_key_guard_skips_resolve` |
+
+**Broken / obsolete (Betty revision):** **`TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task`** — **`entity_type`** assertion **`candidate` → `company`** (**AST-774**). **`merge-tests` AST-775 bleed reverted on publish ref** — **`TestAst505InflowDiscovery::test_run_batch_happy_path`** restored to inline-vet **`do_task`** mocks matching product on this ref (**AST-774 return pass**).
+
+**Regression (inline-vet product on this ref):** `tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_happy_path`; `::TestAst506InflowResolve` — not **AST-775** record-only tests.
+
+**AST-774** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals \
+  tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-504 · AST-505 · AST-506 · AST-490
 
 Phase 0: newline-delimited **`artifacts.company_search_terms`**, **`craft_company_search_terms`** (on-demand generate only — no **`dispatch_tasks`** row), Artifacts page + save normalization. Phase 1 (**AST-505**): weekly **`inflow_discovery`** candidate dispatch, Google CSE per term, **`vet_inflow_discovery`**, **`ingest_new_companies`** with candidate-scoped URL dedupe, **`NEW`** / **`WEBSITE_FOUND`** company states. Phase 2 (**AST-506**): **`inflow_resolve_website`** company dispatch for **`NEW`** rows with empty **`company_website`**; CSE resolution (20 results, no date restrict) + **`find_company_website`** → **`WEBSITE_FOUND`** or **`NO_WEBSITE`**.
