@@ -490,3 +490,5 @@ cd src/ui/frontend && npm run test:component -- \
 ```bash
 ./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
 ```
+
+**Post-revert (`9d3cda8`):** `TestAst750DispatchScoreFloorCatalog` skipped when `dispatch_score_floor_option_labels` absent (AST-750 reverted from sub).

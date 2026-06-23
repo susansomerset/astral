@@ -654,6 +654,10 @@ class TestAst586DispatchClaimScoreFloor:
 
 
 # AST-750 — admin score_floor dropdown catalog (parent AST-743).
+@pytest.mark.skipif(
+    not hasattr(cfg, "dispatch_score_floor_option_labels"),
+    reason="AST-750 score_floor catalog not on this branch",
+)
 class TestAst750DispatchScoreFloorCatalog:
     def test_dispatch_score_floor_values_and_labels(self) -> None:
         vals = cfg.DISPATCH_SCORE_FLOOR_VALUES

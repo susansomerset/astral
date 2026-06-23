@@ -118,3 +118,5 @@ Equivalent harness:
 ```
 
 **Retired (AST-765):** `test_claims_board_search_batch_and_clears`, `test_board_search_claim_passes_freq_and_sort_kw`; board integration spine — sibling **AST-767** archives historical bible rows.
+
+**Epic manifest (resolve @ `9d3cda8`):** see **`docs/test-bible/core/consult.md`** § AST-765 — **`test_consult.py` excluded** after cross-ticket revert; run dispatcher + gazer + tracker + config + admin + playwright + cleanup script only.
