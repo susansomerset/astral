@@ -103,3 +103,19 @@ See **`docs/test-bible/data/database/jobs.md`** for index + **`save_job`** bounc
   tests/component/core/test_tracker.py::TestInitializeJob \
   -q
 ```
+
+---
+
+### AST-765 · AST-757
+
+**Sunset boards channel:** `ingest_board_listings` removed from `src/core/tracker.py`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job ingest + initialize | `src/core/tracker.py` | **`tests/component/core/test_tracker.py`** (minus `TestIngestBoardListings`) |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_tracker.py -q
+```

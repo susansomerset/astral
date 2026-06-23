@@ -454,4 +454,41 @@ Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry; adds explicit `JO
   -q
 ```
 
+### AST-750 · AST-743
 
+**`DISPATCH_SCORE_FLOOR_VALUES`** (0.0–10.0 in 0.5 steps) and **`dispatch_score_floor_option_labels()`** are the single source of truth for the admin Edit Dispatch Task **Score Floor** `<select>`. **`GET /api/admin/dispatch_tasks/score_floor_options`** exposes the label list; **`AdminScheduledActions.tsx`** fetches options on load and persists **0.00** via `Number.isFinite` save coercion (not `parseFloat(...) || 1`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog tuple + label helper | `src/utils/config.py` | `TestAst750DispatchScoreFloorCatalog` (`test_config.py`) |
+| Admin metadata endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (score_floor_options assertion) |
+| Scheduled Actions modal (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-750: edit save sends score_floor 0 when 0.00 selected`** |
+
+**AST-750** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-750"
+```
+
+
+---
+
+### AST-765 · AST-757
+
+**Sunset boards channel:** `BOARD_CONFIG`, `gaze_board` schedulable key removed from `src/utils/config.py`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch schedulable + defaults | `src/utils/config.py` | **`tests/component/utils/test_config.py`** (minus board registry classes; `gaze_board` not schedulable) |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
+```

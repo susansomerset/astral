@@ -316,3 +316,19 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness until siblings integrated.
 
+
+---
+
+### AST-765 · AST-757
+
+**Sunset boards channel:** `board_search` routing removed from `run_consult_task`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Consult routing (no board_search) | `src/core/consult.py` | **`tests/component/core/test_consult.py`** (minus `test_routes_board_search_to_process_gaze_board_batch`) |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_consult.py -q
+```

@@ -100,3 +100,21 @@ Equivalent harness:
 | `_dispatch_one` scheduler handoff | **`TestDispatchOne`** |
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
+
+---
+
+### AST-765 · AST-757
+
+**Sunset boards channel (product):** `board_search` / `gaze_board` dispatch paths removed from `src/core/dispatcher.py`. Betty deleted board-only tests and trimmed shared dispatcher tests.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Company/job `_run_unified` unchanged | `src/core/dispatcher.py` | **`tests/component/core/test_dispatcher.py`** (full file minus retired board claim tests) |
+
+**AST-765** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py -q
+```
+
+**Retired (AST-765):** `test_claims_board_search_batch_and_clears`, `test_board_search_claim_passes_freq_and_sort_kw`; board integration spine — sibling **AST-767** archives historical bible rows.

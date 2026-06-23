@@ -556,58 +556,6 @@ class TestProcessGazerBatch:
         update_scan.assert_called_once_with("goodco")
 
 
-class TestProcessGazeBoardBatch:
-    @pytest.mark.asyncio
-    async def test_success_failure_and_skips_empty_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        gaze = AsyncMock(
-            side_effect=[
-                {"board_search_id": "bs-1", "new": 2, "duplicates": 0, "invalid_title": 0},
-                RuntimeError("scrape failed"),
-            ]
-        )
-        monkeypatch.setattr("src.core.boards.run_board_search_gaze", gaze)
-        set_state = MagicMock()
-        monkeypatch.setattr(gazer_mod, "set_board_search_state", set_state)
-        bump_scan = MagicMock()
-        monkeypatch.setattr(gazer_mod, "update_board_search_last_scan_at", bump_scan)
-
-        searches: List[Dict[str, Any]] = [
-            {"board_search_id": "bs-1", "board_key": "a16z"},
-            {"board_search_id": "bs-2", "board_key": "a16z"},
-            {"board_key": "a16z"},
-        ]
-        outcomes = await gazer_mod.process_gaze_board_batch(
-            "batch-board", searches, debug=False, ctx={}
-        )
-
-        assert len(outcomes) == 2
-        assert outcomes[0]["status"] == "success"
-        assert outcomes[0]["new"] == 2
-        assert outcomes[1]["status"] == "failure"
-        assert "scrape failed" in outcomes[1]["error"]
-        set_state.assert_any_call("bs-1", "ACTIVE")
-        set_state.assert_any_call("bs-2", "ERROR")
-        assert gaze.await_count == 2
-        bump_scan.assert_called_once_with("bs-1")
-
-    @pytest.mark.asyncio
-    async def test_logs_error_on_gaze_failure(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        gaze = AsyncMock(side_effect=RuntimeError("boom"))
-        monkeypatch.setattr("src.core.boards.run_board_search_gaze", gaze)
-        monkeypatch.setattr(gazer_mod, "set_board_search_state", MagicMock())
-        monkeypatch.setattr(gazer_mod, "update_board_search_last_scan_at", MagicMock())
-
-        searches: List[Dict[str, Any]] = [{"board_search_id": "bs-2", "board_key": "a16z"}]
-        caplog.clear()
-        with caplog.at_level(logging.ERROR, logger="src.core.gazer"):
-            await gazer_mod.process_gaze_board_batch("batch-board", searches, debug=False)
-        joined = "\n".join(r.getMessage() for r in caplog.records)
-        assert "bs-2" in joined
-        assert "a16z" in joined
-        assert "boom" in joined
-
 
 # Branches: identifier fallbacks; AST-622 debug instrumentation (no log-string asserts).
 class TestGazerIdentifierHelpers:
@@ -882,25 +830,3 @@ class TestScrapeJdBatchDebugBranchCoverage:
         assert out["failed"] == 1
 
 
-class TestProcessGazeBoardBatchDebugPaths:
-    @pytest.mark.asyncio
-    async def test_success_and_failure_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        gaze = AsyncMock(
-            side_effect=[
-                {"board_search_id": "bs-1", "new": 1, "duplicates": 0, "invalid_title": 0},
-                RuntimeError("scrape failed"),
-            ]
-        )
-        monkeypatch.setattr("src.core.boards.run_board_search_gaze", gaze)
-        monkeypatch.setattr(gazer_mod, "set_board_search_state", MagicMock())
-        monkeypatch.setattr(gazer_mod, "update_board_search_last_scan_at", MagicMock())
-
-        searches: List[Dict[str, Any]] = [
-            {"board_search_id": "bs-1", "board_key": "a16z"},
-            {"board_search_id": "bs-2", "board_key": "a16z"},
-        ]
-        outcomes = await gazer_mod.process_gaze_board_batch(
-            "batch-board", searches, debug=True, ctx={}
-        )
-        assert outcomes[0]["status"] == "success"
-        assert outcomes[1]["status"] == "failure"

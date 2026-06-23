@@ -85,8 +85,6 @@ _DB_SCHEMA_FLAGS = (
     "_dispatch_ledger_schema_ensured",
     "_app_log_schema_ensured",
     "_agent_data_schema_ensured",
-    "_board_search_schema_ensured",
-    "_board_search_run_schema_ensured",
     "_company_search_terms_schema_ensured",
     "_company_search_terms_migration_swept",
     "_intake_session_schema_ensured",
@@ -144,17 +142,6 @@ def companies_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[FlaskClient]:
     with app.test_client() as client:
         yield client
 
-
-@pytest.fixture
-def boards_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[FlaskClient]:
-    monkeypatch.setattr("ui.auth._ALLOWED_IPS", set())
-    app = Flask(__name__)
-    from ui.api.api_boards import boards_bp
-
-    app.register_blueprint(boards_bp)
-    app.config["TESTING"] = True
-    with app.test_client() as client:
-        yield client
 
 
 @pytest.fixture
