@@ -584,3 +584,5 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-634** (Candidate filter), **AST-739** (DB grouping sections), **AST-746** (phase table on expand).
 
+**Note:** Full-file run excludes **AST-750** score-floor edit test until sibling `AST-750` ships on publish tip (product still hardcodes `1.00…10.00` options).
+

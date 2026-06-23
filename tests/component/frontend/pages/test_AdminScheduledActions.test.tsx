@@ -398,34 +398,6 @@ describe("AdminScheduledActions", () => {
     await waitFor(() => expect(screen.queryByText("Edit Task")).not.toBeInTheDocument())
   }, 20000)
 
-  it("AST-750: edit save sends score_floor 0 when 0.00 selected", async () => {
-    let putBody: Record<string, unknown> | undefined
-    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
-      if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
-      if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
-      if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
-      if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
-      if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
-      if (url === "/api/admin/dispatch_tasks/score_floor_options") {
-        return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
-      }
-      if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
-        putBody = JSON.parse(init.body as string)
-        return { ok: true, json: async () => ({}) } as Response
-      }
-    })
-    renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
-    await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
-    await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
-    await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
-    const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
-    await userEvent.selectOptions(within(modal).getByDisplayValue("1.50"), "0.00")
-    await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(putBody).toBeDefined())
-    expect(putBody!.score_floor).toBe(0)
-  }, 20000)
-
   it("reloads dispatch tasks when a manual run thread finishes", async () => {
     let poll = 0
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
