@@ -221,3 +221,17 @@ No unresolved conflicts.
 | **Advisory** | Full three-dot diff vs `origin/dev` includes sibling epic merges on the AST-753 ftr line (AST-747/750/751 docs + interface/config deltas); AST-759 product commits stay within planned three-module footprint. |
 
 **Verdict:** One **fix-now** (homepage nav warning regression) — `resolve-child` after restore.
+
+---
+
+## Resolution (Hedy)
+
+**Date:** 2026-06-23  
+**Review ref:** Radia @ `5776702`
+
+| Item | Action |
+| --- | --- |
+| **fix-now** (homepage nav warning) | `extract_page_scrape_contract` now sets optional `nav_error` when `extract_site_page_list` raises; `scrape_company_homepage_content` restores `logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): …")` when `nav_error` is present and visible text succeeded. |
+| **discuss** (ledger-skip debug headers) | `fetch_job_pages_batch` skip loop uses `index=skip_idx`, `total=len(skipped)` over the skipped URL list instead of fixed `1/1` per URL. |
+
+**Verdict:** Radia fix-now addressed; ready for **User Testing**.

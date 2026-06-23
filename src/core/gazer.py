@@ -438,15 +438,15 @@ async def fetch_job_pages_batch(
             new_nav_urls: List[str] = []
 
             if debug:
-                for url in candidate_urls:
-                    if normalize_link(url) in ledger:
-                        _log.debug_index(
-                            func="gazer.fetch_job_pages_batch",
-                            index=1,
-                            total=1,
-                            identifier=short_name,
-                            outcome=f"pjl url {url!r} skipped-already-scraped",
-                        )
+                skipped = [u for u in candidate_urls if normalize_link(u) in ledger]
+                for skip_idx, url in enumerate(skipped, start=1):
+                    _log.debug_index(
+                        func="gazer.fetch_job_pages_batch",
+                        index=skip_idx,
+                        total=len(skipped) or 1,
+                        identifier=short_name,
+                        outcome=f"pjl url {url!r} skipped-already-scraped",
+                    )
 
             for url_idx, url in enumerate(pending, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
