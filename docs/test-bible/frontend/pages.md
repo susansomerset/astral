@@ -567,3 +567,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-647**, **AST-652**, **AST-657** list-table layout manifests in **`docs/test-bible/frontend/components.md`**.
 
+### AST-751 · AST-735
+
+Scheduled Actions: expanded client-side filter bar (Floor min/max, AUTO, Debug, Freq, Min count, Batch size, Run counts — AND intersection with Candidate/Task); section headers show `{groupName} ({autoOnCount} / {rows.length} AUTO)` on filtered rows; Candidate / Avail / Last Run rightmost; `formatAvailableCount` renders **—** for `0` or `null`; All-candidate default sort within section orders same `task_key` by `available_count` descending. No API change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-751 filters, AUTO summary, and All-candidate layout`** describe (7 cases); revised section-header expectations for **`groups rows…`**, **`AST-739`**, **`sorts columns…`** |
+
+**AST-751** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Builds on:** **AST-634** (Candidate filter), **AST-739** (DB grouping sections), **AST-746** (phase table on expand).
+
+**Note:** Full-file run excludes **AST-750** score-floor edit test until sibling `AST-750` ships on publish tip (product still hardcodes `1.00…10.00` options).
+

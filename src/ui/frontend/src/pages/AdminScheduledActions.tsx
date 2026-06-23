@@ -43,13 +43,18 @@ type SortDir = "asc" | "desc"
 const FROZEN_DATA_COLUMNS = 3
 
 const DATA_COL_KEYS = [
-  "candidate_id", "task_key", "entity_type", "trigger_state", "score_floor",
-  "auto_mode", "run", "debug", "available_count", "freq_hrs", "min_count",
-  "batch_size", "max_runs", "last_run_at",
+  "task_key", "entity_type", "trigger_state", "score_floor",
+  "auto_mode", "run", "debug", "freq_hrs", "min_count",
+  "batch_size", "max_runs", "candidate_id", "available_count", "last_run_at",
 ] as const
 
 const DATA_COL_KEYS_ARR = [...DATA_COL_KEYS]
 const NO_PERSISTED_WIDTHS: Record<string, number> = {}
+
+function formatAvailableCount(count: number | null): string {
+  if (count == null || count === 0) return "—"
+  return count.toLocaleString()
+}
 
 interface ScheduledPhaseTableProps {
   rows: DispatchTask[]
@@ -109,19 +114,19 @@ function ScheduledPhaseTable({
       <table ref={tableRef} className="list-page-table">
         <thead>
           <tr>
-            <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0)} onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
-            <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1)} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
-            <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2)} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
-            <th className="sortable" onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
+            <th className={`sortable${0 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(0)} onClick={() => toggleSort("task_key")}>Task{sortIcon("task_key")}</th>
+            <th className={`sortable${1 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(1)} onClick={() => toggleSort("entity_type")}>Entity{sortIcon("entity_type")}</th>
+            <th className={`sortable${2 < frozenN ? " list-table-cell-frozen" : ""}`.trim()} style={scheduledFrozenStyle(2)} onClick={() => toggleSort("trigger_state")}>State{sortIcon("trigger_state")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("score_floor")}>Floor{sortIcon("score_floor")}</th>
             <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("auto_mode")}>AUTO{sortIcon("auto_mode")}</th>
             <th style={{ textAlign: "center" }}>Run</th>
             <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
-            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
-            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
-            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
-            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
-            <th className="sortable" style={{ textAlign: "right" }}  onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
+            <th className="sortable" onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
             <th className="sortable" onClick={() => toggleSort("last_run_at")}>Last Run{sortIcon("last_run_at")}</th>
           </tr>
         </thead>
@@ -133,15 +138,12 @@ function ScheduledPhaseTable({
             return (
               <tr key={row.id} onClick={() => openEdit(row)} style={{ cursor: "pointer" }}>
                 <td className={0 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(0)}>
-                  <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
-                </td>
-                <td className={1 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(1)}>
                   <ListTableTruncatedCell text={row.task_key} maxChars={truncateChars} />
                 </td>
-                <td className={2 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(2)}>
+                <td className={1 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(1)}>
                   <ListTableTruncatedCell text={allTaskKeys[row.task_key]?.entity_type || row.entity_type || "—"} maxChars={truncateChars} />
                 </td>
-                <td>
+                <td className={2 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(2)}>
                   <ListTableTruncatedCell text={row.trigger_state || allTaskKeys[row.task_key]?.trigger_state || "—"} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
@@ -190,12 +192,6 @@ function ScheduledPhaseTable({
                   </button>
                 </td>
                 <td style={{ textAlign: "right" }}>
-                  <ListTableTruncatedCell
-                    text={row.available_count != null ? row.available_count.toLocaleString() : "—"}
-                    maxChars={truncateChars}
-                  />
-                </td>
-                <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={row.freq_hrs ? String(row.freq_hrs) : "—"} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
@@ -208,6 +204,12 @@ function ScheduledPhaseTable({
                   <span title={row.max_runs === 0 ? "Loop until drained" : undefined}>
                     {row.max_runs === 0 ? "∞" : (row.max_runs ?? 1)}
                   </span>
+                </td>
+                <td>
+                  <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell text={formatAvailableCount(row.available_count)} maxChars={truncateChars} />
                 </td>
                 <td><Time value={row.last_run_at} /></td>
               </tr>
@@ -264,6 +266,14 @@ export default function ScheduledActions() {
   }, [loadThreadStatus])
 
   const [taskKeyFilter, setTaskKeyFilter] = useState("")
+  const [floorMin, setFloorMin] = useState("")
+  const [floorMax, setFloorMax] = useState("")
+  const [autoFilter, setAutoFilter] = useState("")
+  const [debugFilter, setDebugFilter] = useState("")
+  const [freqFilter, setFreqFilter] = useState("")
+  const [minCountFilter, setMinCountFilter] = useState("")
+  const [batchSizeFilter, setBatchSizeFilter] = useState("")
+  const [maxRunsFilter, setMaxRunsFilter] = useState("")
   const scoreFloorOptions = useMemo(
     () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
     [],
@@ -307,6 +317,13 @@ export default function ScheduledActions() {
 
   const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
 
+  const filterOptionValues = useMemo(() => ({
+    freq: [...new Set(data.map(r => r.freq_hrs ?? 0))].sort((a, b) => a - b),
+    minCount: [...new Set(data.map(r => r.min_count))].sort((a, b) => a - b),
+    batchSize: [...new Set(data.map(r => r.batch_size).filter(v => v != null))].sort((a, b) => (a as number) - (b as number)),
+    maxRuns: [...new Set(data.map(r => r.max_runs ?? 1))].sort((a, b) => a - b),
+  }), [data])
+
   const sortRowsWithinSection = useCallback((rows: DispatchTask[]) => {
     return [...rows].sort((a, b) => {
       if (sortCol === "_default") {
@@ -315,6 +332,11 @@ export default function ScheduledActions() {
         if (as_ !== bs_) return sortDir === "asc" ? as_ - bs_ : bs_ - as_
         const tk = a.task_key.localeCompare(b.task_key)
         if (tk !== 0) return tk
+        if (!candidateFilter) {
+          const av = a.available_count ?? 0
+          const bv = b.available_count ?? 0
+          if (av !== bv) return bv - av
+        }
         return a.id - b.id
       }
       const av = a[sortCol as keyof DispatchTask]
@@ -325,14 +347,32 @@ export default function ScheduledActions() {
       const cmp = av < bv ? -1 : av > bv ? 1 : 0
       return sortDir === "asc" ? cmp : -cmp
     })
-  }, [sortCol, sortDir, allTaskKeys])
+  }, [sortCol, sortDir, allTaskKeys, candidateFilter])
 
   const filteredRows = useMemo(() => {
     let filtered = data
     if (candidateFilter) filtered = filtered.filter(r => r.candidate_id === candidateFilter)
     if (taskKeyFilter) filtered = filtered.filter(r => r.task_key === taskKeyFilter)
+    if (autoFilter === "on") filtered = filtered.filter(r => !!r.auto_mode)
+    if (autoFilter === "off") filtered = filtered.filter(r => !r.auto_mode)
+    if (debugFilter === "on") filtered = filtered.filter(r => !!r.debug)
+    if (debugFilter === "off") filtered = filtered.filter(r => !r.debug)
+    if (freqFilter !== "") filtered = filtered.filter(r => (r.freq_hrs ?? 0) === Number(freqFilter))
+    if (minCountFilter !== "") filtered = filtered.filter(r => r.min_count === Number(minCountFilter))
+    if (batchSizeFilter !== "") filtered = filtered.filter(r => r.batch_size === Number(batchSizeFilter))
+    if (maxRunsFilter !== "") filtered = filtered.filter(r => (r.max_runs ?? 1) === Number(maxRunsFilter))
+    if (floorMin !== "" || floorMax !== "") {
+      const lo = floorMin === "" ? -Infinity : parseFloat(floorMin)
+      const hi = floorMax === "" ? Infinity : parseFloat(floorMax)
+      filtered = filtered.filter(r => {
+        const scored = r.is_scored ?? !!allTaskKeys[r.task_key]?.is_scored
+        if (!scored) return false
+        const floor = r.score_floor ?? 1
+        return floor >= lo && floor <= hi
+      })
+    }
     return filtered
-  }, [data, candidateFilter, taskKeyFilter])
+  }, [data, candidateFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, DispatchTask[]> = {}
@@ -345,11 +385,15 @@ export default function ScheduledActions() {
     }
     return Object.entries(bySectionKey)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([sectionKey, rows]) => ({
-        sectionKey,
-        groupName: allTaskKeys[rows[0]?.task_key]?.task_group_name || "(unassigned)",
-        rows: sortRowsWithinSection(rows),
-      }))
+      .map(([sectionKey, rows]) => {
+        const autoOnCount = rows.filter(r => !!r.auto_mode).length
+        return {
+          sectionKey,
+          groupName: allTaskKeys[rows[0]?.task_key]?.task_group_name || "(unassigned)",
+          autoOnCount,
+          rows: sortRowsWithinSection(rows),
+        }
+      })
   }, [filteredRows, allTaskKeys, sortRowsWithinSection])
 
   const resolvedOpenSection = useMemo(() => {
@@ -532,6 +576,66 @@ export default function ScheduledActions() {
             {taskKeys.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
+        <label>
+          Floor min
+          <select value={floorMin} onChange={e => setFloorMin(e.target.value)}>
+            <option value="">All</option>
+            {scoreFloorOptions.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
+        <label>
+          Floor max
+          <select value={floorMax} onChange={e => setFloorMax(e.target.value)}>
+            <option value="">All</option>
+            {scoreFloorOptions.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
+        <label>
+          AUTO
+          <select value={autoFilter} onChange={e => setAutoFilter(e.target.value)}>
+            <option value="">All</option>
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
+          </select>
+        </label>
+        <label>
+          Debug
+          <select value={debugFilter} onChange={e => setDebugFilter(e.target.value)}>
+            <option value="">All</option>
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
+          </select>
+        </label>
+        <label>
+          Freq
+          <select value={freqFilter} onChange={e => setFreqFilter(e.target.value)}>
+            <option value="">All</option>
+            {filterOptionValues.freq.map(v => <option key={v} value={String(v)}>{v}</option>)}
+          </select>
+        </label>
+        <label>
+          Min count
+          <select value={minCountFilter} onChange={e => setMinCountFilter(e.target.value)}>
+            <option value="">All</option>
+            {filterOptionValues.minCount.map(v => <option key={v} value={String(v)}>{v}</option>)}
+          </select>
+        </label>
+        <label>
+          Batch size
+          <select value={batchSizeFilter} onChange={e => setBatchSizeFilter(e.target.value)}>
+            <option value="">All</option>
+            {filterOptionValues.batchSize.map(v => <option key={v} value={String(v)}>{v}</option>)}
+          </select>
+        </label>
+        <label>
+          Run counts
+          <select value={maxRunsFilter} onChange={e => setMaxRunsFilter(e.target.value)}>
+            <option value="">All</option>
+            {filterOptionValues.maxRuns.map(v => (
+              <option key={v} value={String(v)}>{v === 0 ? "∞ (0)" : String(v)}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {loading ? (
@@ -541,7 +645,7 @@ export default function ScheduledActions() {
       ) : sections.map(sec => (
         <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
           <CollapsiblePanel
-            label={<>{sec.groupName} ({sec.rows.length})</>}
+            label={<>{sec.groupName} ({sec.autoOnCount} / {sec.rows.length} AUTO)</>}
             expanded={resolvedOpenSection === sec.sectionKey}
             onExpandedChange={next => {
               if (next) setOpenSection(sec.sectionKey)
