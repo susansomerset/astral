@@ -136,3 +136,12 @@ Discovery today runs Google CSE per stale search term, dedupes hits, then calls 
 | §3.5 naming | **`record_inflow_discovery_hit`**, **`inflow_discovery_blurb`** align with existing inflow keys |
 
 No **`conf-!!-NONE`** conflicts identified.
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only`  
+**Product tip:** `23fb0b2` — `6037df1` (VET_FAILED config) + `23fb0b2` (discovery record-only batch)
+
+**Built:** Removed inline `do_task(vet_inflow_discovery)` from `run_inflow_discovery_batch`; added `record_inflow_discovery_hit`, mechanical hostname slug, expanded URL dedupe (`inflow_discovery_notes` / `inflow_discovery_blurb`).
+
+**QA note:** `tests/component/core/test_roster.py` inflow discovery tests mock `do_task` — Betty manifest update expected at Code Complete.
