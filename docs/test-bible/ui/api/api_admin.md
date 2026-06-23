@@ -109,6 +109,16 @@ See primary data manifest: `docs/test-bible/data/database/agent_tasks.md` (**AST
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 
+### AST-750 · AST-743
+
+**`GET /api/admin/dispatch_tasks/score_floor_options`** returns `{"values": ["0.00", …, "10.00"]}` from **`dispatch_score_floor_option_labels()`** — mirrors **`state_options`** metadata pattern for the Scheduled Actions edit modal.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Score floor catalog endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (floors GET) |
+
+Routed page + zero-save UX: **`docs/test-bible/frontend/pages.md`** (**AST-750**).
+
 ### AST-740 · AST-734
 
 `_grouping_from_agent_task_row` returns DB grouping fields only — drops backward-compat `phase`/`seq` keys from Manage Tasks GET/PUT payloads.
@@ -127,4 +137,24 @@ Retired **`consult_*`** on **`POST /api/admin/dispatch_tasks`**; schedulable **`
 | **`task_keys`** derivation | same | `TestAst739DispatchTaskKeysGrouping`, `test_ast549_task_keys_config_derivation_authoritative`, `TestAdhocHelpers::test_trigger_state_helpers` |
 
 Config helpers: **`docs/test-bible/utils/config.md`** (**AST-747**). **AST-748** owns **`test_consult.py`**.
+
+### AST-749 · AST-736
+
+`GET /api/admin/dispatch_tasks/task_keys` filters **`DISPATCH_RETIRED_TASK_KEYS`** on the `list_dispatch_tasks` loop and final pop — legacy `consult_*` rows never appear in the Add Task picker; `grade_*` keys retain schedulable defaults from **`dispatch_task_admin_defaults`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retirement filter on read path | `src/ui/api/api_admin.py` | `TestAst749DispatchTaskKeysRetiredFilter::test_dispatch_task_keys_excludes_retired_consult_keys` |
+| POST guard (verify only) | same | `TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key` (**AST-747**) |
+
+Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
+
+**AST-749** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst749DispatchTaskKeysRetiredFilter \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key \
+  -q
+```
 

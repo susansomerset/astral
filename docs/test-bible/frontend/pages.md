@@ -545,3 +545,82 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Prerequisite:** **AST-738** data/API grouping on publish tip (sibling `merge-tests`).
 
+### AST-749 · AST-736
+
+Scheduled Actions: `grade_do` dispatch row buckets under **`task_keys.grade_do.task_group_name`** (e.g. **D. Job Analysis**) — not **`(unassigned)`** when grouping metadata is present on the direct dispatch key (no consult alias).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-749: grade_do row groups under task_keys metadata not (unassigned)`** |
+
+**AST-749** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-749"
+```
+
+API retirement filter: **`docs/test-bible/ui/api/api_admin.md`** (**AST-749**).
+
+### AST-746 · AST-744
+
+Susan UAT: visible gap between **Candidate** / **Task** and **Entity** overlapping **State** on Scheduled Actions phase tables. Root cause: `useListTableColumnMeasure` ran while `CollapsiblePanel` body was `hidden` (`offsetWidth === 0` → 120px `stickyLeftPx` fallback). Fix mounts `ScheduledPhaseTable` only when section expanded; locks frozen column widths; defers sticky `left` until predecessor columns measure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-746: phase table mounts on expand; measured sticky left avoids 120px fallback gap`**; re-run **`AST-647: phase table freezes first three data columns`** |
+
+**AST-746** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-746|AST-647"
+```
+
+**Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned.
+
+**Pass criterion:** Vitest green on narrowed run (items above) + Susan manual multi-phase UAT.
+
+**Builds on:** **AST-647**, **AST-652**, **AST-657** list-table layout manifests in **`docs/test-bible/frontend/components.md`**.
+
+### AST-760 · AST-744
+
+Susan UAT (post AST-758): **Entity** frozen `th` overlaying **State** header. AST-746 width/`minWidth` lock on frozen cells forced Entity sticky box over State (`z-index` 3 vs 2). Fix drops width lock — **left-only** sticky aligned with ListPage; keeps mount-on-expand + `predecessorsReady`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-760: frozen headers use left-only sticky; Entity does not width-lock over State`**; re-run **`AST-746`** + **`AST-647`** |
+
+**AST-760** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-760|AST-746|AST-647"
+```
+
+**Manual UAT (Susan):** local `dev`, `zsh launch.sh --flask` → Scheduled Actions → expand phase — Candidate, Task, Entity, State headers all visible/clickable; Entity must not cover State; no Candidate/Task gap; horizontal scroll frozen alignment holds.
+
+**Builds on:** **AST-746** (mount-on-expand + measured `left`), **AST-758** (stale-dist delivery — unchanged).
+
+### AST-751 · AST-735
+
+Scheduled Actions: expanded client-side filter bar (Floor min/max, AUTO, Debug, Freq, Min count, Batch size, Run counts — AND intersection with Candidate/Task); section headers show `{groupName} ({autoOnCount} / {rows.length} AUTO)` on filtered rows; Candidate / Avail / Last Run rightmost; `formatAvailableCount` renders **—** for `0` or `null`; All-candidate default sort within section orders same `task_key` by `available_count` descending. No API change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-751 filters, AUTO summary, and All-candidate layout`** describe (7 cases); revised section-header expectations for **`groups rows…`**, **`AST-739`**, **`sorts columns…`** |
+
+**AST-751** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Builds on:** **AST-634** (Candidate filter), **AST-739** (DB grouping sections), **AST-746** (phase table on expand).
+
+**Note:** Full-file run excludes **AST-750** score-floor edit test until sibling `AST-750` ships on publish tip (product still hardcodes `1.00…10.00` options).
+
