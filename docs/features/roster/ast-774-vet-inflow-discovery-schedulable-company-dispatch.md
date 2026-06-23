@@ -179,3 +179,8 @@ No **`conf-!!-NONE`** conflicts identified.
 - **`inflow_resolve_website`**: company **`NEW`**, **`require_empty_website=True`** at claim, **`resolve_company_website`** via **`run_company_task`** — unchanged.
 - **`TestAst505InflowDiscovery`** ingest/dedupe tests — must stay green (**AC 4–5**).
 - Admin Add Task for **`vet_inflow_discovery`**: save succeeds; row stores **`entity_type=company`**, **`trigger_state=NEW`**.
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch`  
+**Product commits:** `43ccdf2` (Stage 1 — schedulable config defaults), `ab4f64d` (Stage 2 — consult routing), `dc4a99f` (Stage 3 — run_company_task guard)
