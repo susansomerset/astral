@@ -184,7 +184,37 @@ Betty deletes board-only tests and trims shared tests/fixtures after **Code Comp
 ## Review
 
 **Branch:** `origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests`  
-**Review tip:** `c20fd52`  
+**Review tip:** `68c832c`  
 **First removal SHA (AST-767 sunset note):** `f64c3c0`
 
 **Built:** Stages 1–3 — deleted `boards.py`, `api_boards.py`, `url_merge.py`; unregistered `/api/boards`; purged `BOARD_*` config and `gaze_board` dispatch/admin catalog; excised board wiring from dispatcher, consult, gazer, tracker, playwright (kept `extract_raw_job_listings` for roster). Product grep clean under `src/` except `database.py` (AST-766). Betty qa manifest covers board-only test deletion.
+
+### Radia review (2026-06-23)
+
+**Diff:** `origin/dev...origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests` @ `68c832c`  
+**In-scope product commits:** `f64c3c0`, `76ece51`, `c20fd52`
+
+#### What’s solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stages 1–3 | `boards.py`, `api_boards.py`, `url_merge.py` deleted; `boards_bp` unregistered; `BOARD_*` / `gaze_board` / `hidden_dispatch_task_keys` purged from config; dispatcher claim/clear/finally branches for `board_search` removed; consult `board_search` routing removed; `process_gaze_board_batch` and `ingest_board_listings` deleted; playwright `board_search_deeplink` removed; `extract_raw_job_listings` retained for company roster. |
+| Product grep | Zero matches for board-channel symbols in `src/` outside `database.py` (expected AST-766 deferral). |
+| Layer / batch (§2.4, §3.3) | No new cross-layer imports; company/job batch paths untouched; board claim path removed symmetrically (claim + `finally` clear). |
+| Tests | Betty `merge-tests(AST-765)` — board-only files deleted; shared tests trimmed per qa manifest; manifest green at tip. |
+| Self-assessment | Diff footprint matches `MAJOR-CHANGE` boards-channel excision; company gazer/roster paths preserved. |
+
+#### Issues
+
+| Severity | Item |
+|----------|------|
+| **fix-now** | **Cross-ticket `src/` bleed** — commit `c35bef0` (`test(AST-765)`) adds product code outside plan scope and not on `origin/dev`: AST-750 `DISPATCH_SCORE_FLOOR_VALUES` / `dispatch_score_floor_option_labels()` in `config.py`, `/dispatch_tasks/score_floor_options` in `api_admin.py`, and consult `_resolve_rubric_criteria` / ctx artifact fallbacks. Revert these from this publish ref; land via **AST-750** / owning ticket. |
+| **discuss** | **`database.py` bridge** — inlined `_BOARD_SEARCH_STATES` / `_GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS` after config purge (required import fix; plan listed `database.py` as AST-766). Acceptable transient until schema drop; prefer `code(AST-765)` + plan note rather than `test()` commit. `count_eligible_for_dispatch_task` `board_search` branch remains dead code until AST-766. |
+| **advisory** | `test(AST-765)` touched `src/` — hook/workflow discipline; product edits belong in `code()` commits. Pure boards removal in `f64c3c0..c20fd52` is clean; tip extras are the bleed above. |
+
+#### Recommended actions
+
+| Owner | Action |
+|-------|--------|
+| Hedy | **resolve-child** — revert non-AST-765 `src/` from sub tip (`config` score_floor helpers, `api_admin` route, consult rubric helpers); keep `database.py` inline constants or document AST-766 handoff. Re-run manifest after revert. |
+| Susan | Confirm whether epic rollup may bundle AST-750 backend on this sub (if revert blocks Betty manifest). |
