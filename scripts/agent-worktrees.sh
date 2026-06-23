@@ -26,7 +26,16 @@ epic_create() {
     return 0
   fi
   git -C "$MAIN" fetch origin
-  git -C "$MAIN" worktree add "$path" -b "worktree/${issue}" origin/dev
+  local ftr_ref=""
+  ftr_ref="$(git -C "$MAIN" ls-remote --heads origin "ftr/${issue}*" 2>/dev/null \
+    | awk '{print $2}' | head -1 | sed 's|refs/heads/||')"
+  if [[ -n "$ftr_ref" ]]; then
+    git -C "$MAIN" worktree add "$path" -B "$ftr_ref" "origin/${ftr_ref}"
+  else
+    echo "warn: no origin/ftr/${issue}* — epic worktree detached at origin/dev (dispatch §8a first)" >&2
+    git -C "$MAIN" worktree add "$path" --detach "origin/dev"
+  fi
+  git -C "$MAIN" branch -D "worktree/${issue}" 2>/dev/null || true
   link_one "$path"
   echo "created epic worktree $path"
 }

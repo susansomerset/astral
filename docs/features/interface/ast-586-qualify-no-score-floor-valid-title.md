@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-586 archived 2026-06-15 -->
+
+## Linear archive (AST-586)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-586/uat-qualify-job-listings-dispatch-must-not-apply-score-floor-on-valid  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-547 — The JD score isn't appearing in the Recommended job list.  
+**Blocked by / blocks / related:** parent: AST-547
+
+### Description
+
+## What failed
+
+Susan cannot retest AST-547 JD score persistence: dispatching **qualify_job_listings** on **VALID_TITLE** applies **score_floor** gating (dispatcher defaults scored tasks to floor **1.0** when unset). **VALID_TITLE** jobs have no **latest_score** yet, so nothing is claimed.
+
+## Expected
+
+**qualify_job_listings** dispatch on **VALID_TITLE** claims eligible jobs without **score_floor** filter (task does not use dispatch score_floor for input-state claim).
+
+## Repro
+
+1. Configure dispatch **qualify_job_listings** with trigger **VALID_TITLE**.
+2. Run dispatch — no jobs claimed / pipeline blocked.
+3. Susan cannot reach **evaluate_jd** to verify **jd_score** save.
+
+## Parent AC
+
+AST-547 UAT: run qualify → evaluate_jd → confirm JD score on Recommended list.
+
+## Boundaries
+
+* Does not change AST-560 **jd_score** persistence logic.
+* Does not remove **score_floor** for **PASSED_JD** / consult dispatch steps that legitimately gate on prior scores.
+* Fix likely in [**dispatcher.py**](<http://dispatcher.py>) claim path and/or admin **is_scored** defaults for **qualify_job_listings** input trigger.
+
+### Comments
+
+#### radia — 2026-06-05T23:24:37.248Z
+**Review** — `origin/dev...origin/sub/AST-547/AST-586-qualify-no-score-floor-valid-title` @ `355ad566` (product); review doc @ `01d71102`.
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### advisory
+- `score_floor_by_trigger_for_candidate` (`database.py` ~1554) still uses `trigger_state_used_by_scored_dispatch_task`; plan leaves it unchanged — loop is scoped to `PASSED_SCORE_GATED_STATES` only, so no claim-path regression.
+- `JD_READY` (evaluate_jd input) also returns `dispatch_claim_uses_score_floor` **False** — same class of fix as `VALID_TITLE`; not ticket scope but correct for pre-score input triggers.
+
+### What's solid
+- `dispatch_claim_uses_score_floor` in `config.py` splits claim gating from grading metadata; legacy `trigger_state_used_by_scored_dispatch_task` preserved with tests documenting `VALID_TITLE` divergence.
+- Call sites: `dispatcher._trigger_state_scored`, `count_eligible_for_dispatch_task`, schema backfill, `api_admin` list/create/update — all per plan.
+- Boundaries held: no `consult.py` / jd_score persistence / frontend changes.
+- Manifest §7.13zv tests cover config helper, dispatcher `score_floor=None` on VALID_TITLE claim, admin `is_scored`/`score_floor` shaping.
+
+**Doc:** `docs/features/interface/ast-586-qualify-no-score-floor-valid-title.md` — Radia review section (Joan `01d71102`).
+
+#### betty — 2026-06-05T23:21:43.046Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-547/AST-586-qualify-no-score-floor-valid-title` @ `355ad566`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `5e528f2e49dbaf1cbf139b3e5b322ace0c68950f`
+
+1. **`tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor`** — `dispatch_claim_uses_score_floor`: **VALID_TITLE** / **VALID_TITLE_RETRY** / **None** / **""** → **False**; **PASSED_JD** / **PASSED_JOBLIST** → **True**; legacy **`trigger_state_used_by_scored_dispatch_task("VALID_TITLE")`** still **True** (grading metadata unchanged).
+2. **`tests/component/core/test_dispatcher.py::TestRunUnified::test_qualify_valid_title_claim_without_score_floor`** — **`qualify_job_listings`** + **VALID_TITLE** passes **`score_floor=None`** into **`get_new_job_batch`**.
+3. **`tests/component/ui/api/test_api_admin.py::TestDispatchTasks`** — list row **VALID_TITLE** → **`is_scored=False`**, **`score_floor=None`**; create **VALID_TITLE** → **`score_floor=None`**; **PASSED_JOBLIST** still defaults **1.0**.
+4. **`tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers`** — **`dispatch_claim_uses_score_floor`** assertions.
+
+**Bible:** **§7.13zv** (parent **AST-547**).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_qualify_valid_title_claim_without_score_floor \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers
+```
+
+#### chuckles — 2026-06-05T23:18:47.496Z
+**validate-plan: APPROVED**
+
+Plan correctly separates `dispatch_claim_uses_score_floor` from task grading metadata; touches dispatcher/database/api_admin only; preserves PASSED_* consult floors. Boundaries match AST-586 ticket and parent UAT need.
+
+— Chuckles
+
+#### hedy — 2026-06-05T23:17:41.456Z
+Plan: [ast-586-qualify-no-score-floor-valid-title.md](https://github.com/susansomerset/astral/blob/sub/AST-547/AST-586-qualify-no-score-floor-valid-title/docs/features/interface/ast-586-qualify-no-score-floor-valid-title.md)
+
+**Scope:** `Single-Component` — new `dispatch_claim_uses_score_floor` in config plus claim/count/admin call-site swaps; no consult or frontend edits.
+
+**Conf:** `high` — AST-549 ties VALID_TITLE to scored qualify defaults; `PASSED_SCORE_GATED_STATES` already documents which states should gate claim.
+
+**Risk:** `Medium` — misclassified transition states could over/under-claim on PASSED_JOBLIST or consult paths; plan keeps membership to existing transition + PASSED_* sets only.
+
+---
+
 # UAT: qualify_job_listings dispatch must not apply score_floor on VALID_TITLE (AST-586)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-586/uat-qualify-job-listings-dispatch-must-not-apply-score-floor-on-valid  

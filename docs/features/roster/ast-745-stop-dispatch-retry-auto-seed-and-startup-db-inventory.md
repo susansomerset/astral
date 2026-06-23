@@ -156,4 +156,25 @@ No conflicts requiring **Conf: !!-NONE**.
 
 **Publish ref:** `origin/sub/AST-741/AST-745-stop-dispatch-retry-seed`
 
-**Review:** _(Radia — pending)_
+**Review:** Radia clean sign-off — no fix-now; no discuss (2026-06-23).
+
+---
+
+## Resolution (AST-745)
+
+**Date:** 2026-06-23  
+**Review:** Radia — **fix-now:** none · **discuss:** none · **advisory:** optional Betty bible trim for `docs/test-bible/core/gazer.md` `_RETRY_TASK_SEED` prose (parent closeout; out of scope here).
+
+**Outcome:** No product changes required. Plan fidelity confirmed against `origin/dev...origin/sub/AST-741/AST-745-stop-dispatch-retry-seed`. §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-741-stop-dispatch-retry-seed`.
+
+**Shipped commits (publish ref):**
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `117c611` | Plan doc |
+| code 1 | `88b48ed` | Remove automatic retry/gaze_board dispatch row seeding |
+| code 2 | `22466b4` | `debug/startup_db_inventory.md` + `.gitignore` exception |
+| test | `cdfc64c` | Betty manifest — schema-ensure guards, obsolete test removal |
+| merge-tests | `317f8d4` | Betty merge-tests on publish ref |
+
+**Publish ref:** `origin/sub/AST-741/AST-745-stop-dispatch-retry-seed`

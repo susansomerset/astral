@@ -119,3 +119,44 @@ No conflicts requiring `conf-!!-NONE`.
 **Built:** Stage 1 — mount `ScheduledPhaseTable` only when phase section expanded; remeasure deps include sort icons; `scheduledFrozenStyle` locks frozen widths and defers sticky `left` until predecessor columns measured.
 
 **Out of build scope (Betty / qa-child):** component test assertions per build-child test-tree ban; manual UAT on multiple phase sections.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap` · tip **`f869adf`**
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1 delivered verbatim: conditional `ScheduledPhaseTable` mount, sort-icon remeasure deps, `scheduledFrozenStyle` width lock + `predecessorsReady` gate before sticky `left`. Scope stays `AdminScheduledActions.tsx` only. |
+| Root cause | Correctly targets hidden-panel `offsetWidth === 0` → empty `mergedWidths` → `stickyLeftPx` 120px fallback (`listTableLayout.ts` L75). |
+| §1.3 DRY | Reuses `useListTableColumnMeasure` / `stickyLeftPx`; no duplicate measure hook. |
+| §3.3 layer | UI-only; no new cross-layer imports. |
+| Tests | `AST-746` case asserts no table before expand, no `120px` on Task header, State column unfrozen; remeasure after mocked widths + sort click matches plan manifest. |
+
+### Issues
+
+| Severity | Item | Location |
+|----------|------|----------|
+| — | **No fix-now or discuss.** | — |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| **resolve-child** — no code changes required from review. | Katherine |
+| Susan manual UAT: expand **each** phase section on Scheduled Actions; confirm gap/overlap fix and horizontal scroll alignment (test bible pass criterion). | Susan |
+
+---
+
+## Resolution (2026-06-23)
+
+**Engineer:** Katherine · **Review ref:** `origin/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap` @ `2477e62` (Radia doc) · product @ `f869adf`
+
+**Changes vs Radia review:** None required — **fix-now** and **discuss** were empty. Merged publish ref on epic worktree (including Radia **Review (Radia)** section); no additional product edits.
+
+**§9a dry-run:** `origin/sub/…` merges cleanly into `origin/dev` and `origin/ftr/AST-744-remove-column-gap-in-scheduled-actions`.
+
+**Advisory:** Susan manual UAT — expand each phase section on Scheduled Actions; confirm Candidate/Task gap, Entity/State overlap, and horizontal scroll frozen alignment (test-bible pass criterion).

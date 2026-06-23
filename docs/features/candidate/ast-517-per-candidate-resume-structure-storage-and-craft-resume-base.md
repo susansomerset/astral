@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-517 archived 2026-06-15 -->
+
+## Linear archive (AST-517)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-517/per-candidate-resume-structure-storage-and-craft-resume-base-candidate  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-477 — Candidate Resume Structure  
+**Blocked by / blocks / related:** parent: AST-477; blocks: AST-519; blocks: AST-518
+
+### Description
+
+## What this implements
+
+Persist a **candidate-owned section catalog** on the candidate record (extend `candidate_data.artifacts` per parent open Q1). Each section has stable id, display title, enabled flag, and order. Contact/header fields and accent color live on structure (not editable by job resume crafting agents; job_data stores snapshot contact for historical job resumes per parent Q4–Q5). Update `craft_resume_base` so the agent task response includes structure and content keys aligned to that catalog. New candidates get a sensible default structure; existing legacy `base_resume` keyed to global `base_resume_structure` is addressed by regeneration (no automated migration ticket — Susan Q3).
+
+## Acceptance criteria
+
+1. A test candidate can have a custom section list (e.g. three sections with custom titles) saved on their record.
+2. A second candidate with a different section catalog does not affect the first.
+
+## Boundaries
+
+* Does **not** implement Base Resume Content UI tabs — sibling Katherine ticket.
+* Does **not** change resume HTML builder merge logic — sibling Ada builder ticket.
+* Does **not** implement full AST-300 job pipeline.
+* Cover letter remains separate artifact shape (`Subject`, `Letter` per parent Q6) — only document contracts here if task schemas touch cover.
+
+## Notes for planning
+
+* Read `src/utils/config.py` `DATA_SHAPES`, `TASK_CONFIG["craft_resume_base"]`, `src/core/candidate.py` craft path.
+* Deprecate or shim global `base_resume_structure` as driver for **persistence**; UI/builder siblings consume resolved per-candidate view.
+* Align with AST-296 BUILD_CONFIG / AST-294 builder docs in `docs/features/artifacts/`.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-477-candidate-resume-structure`, child `sub/AST-477/<child-segment>`. Created at dispatch.
+
+### Comments
+
+#### radia — 2026-05-28T23:28:11.134Z
+**Diff:** `origin/dev...origin/sub/AST-477/AST-517-per-candidate-resume-structure-storage-and-craft-resume-base`
+
+### Plan fidelity
+- `RESUME_STRUCTURE_*` defaults, `craft_resume_base` schema `resume_structure` first, `normalize_resume_structure` / `resolve_resume_structure` / `split_craft_resume_base_payload`, and `parse_candidate_resume` dual-blob persist match the combined plan (Stages 1–4).
+- `CANDIDATE_DATA_MODEL.md` documents `artifacts.resume_structure` vs `base_resume` content keys.
+- Self-Assessment scope (`Single-Component`, config + core only) matches the diff footprint.
+
+### ASTRAL_CODE_RULES
+- **§2.1 / §1.4:** Section catalog and defaults live in `config.py`; core consumes constants — good.
+- **§3.3:** `candidate.py` imports data + utils only; no UI/external — good.
+- **§1.3 DRY:** Single default blob + shared normalize/resolve/split path — good.
+
+### discuss
+- **`resolve_resume_structure` (`candidate.py`):** `except ValueError: pass` on corrupt stored structure falls back to default (covered by `test_resolve_falls_back_to_default_when_invalid`). Intentional resilience, but no in-code note — add a one-line comment tying fallback to legacy/corrupt blob handling so D2 silent-failure rubric readers know it is bounded.
+- **`tests/component/core/test_candidate.py` + `tests/component/utils/test_config.py`:** Publish ref includes `TestNormalizeCompanySearchTermsOnSave`, `TestCompanySearchTermsLines`, and config classes for **AST-513/480/492/507/504/505/506/508/510** without matching product code on this ref (manifest correctly narrows to `TestAst517*` only). Full-file pytest on this branch will fail collection or assertions — strip or move to owning tickets before prep-uat merge so `ftr/AST-477-*` stays green on broad runs.
+
+### advisory
+- **`split_craft_resume_base_payload`:** Missing/empty agent `resume_structure` → config default (plan Stage 3) — acceptable; ensure prompt authors know structure is required going forward.
+
+#### betty — 2026-05-28T23:11:31.735Z
+## QA test manifest (AST-517)
+
+**Publish ref:** `origin/sub/AST-477/AST-517-per-candidate-resume-structure-storage-and-craft-resume-base` @ `4a18c97b`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `5a57fb23f766bd9d3e435bfb4f308b4f98dbbc36eab8e738d618de2f37545b6c`
+
+Run from repo root on **`dev-ada`**, replay **`git merge origin/dev`** then **`git merge origin/sub/AST-477/AST-517-per-candidate-resume-structure-storage-and-craft-resume-base`** before **`test-astral`**.
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst517ResumeStructureConfig`
+2. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestStringifyResponseSchema::test_builds_schema_example_envelope`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst517ResumeStructure`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestParseCandidateResume`
+5. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestParseCandidateResumeExtended`
+
+**Coverage notes:** Revised **`TestParseCandidateResume`** mocks — **`craft_resume_base`** payloads must use known section ids + **`resume_structure`** (obsolete **`headline`** key dropped). **§7.13zl** in bible.
+
+**Acceptance mapping:**
+- AC1 custom section catalog persisted → **`TestAst517ResumeStructure::test_parse_persists_custom_structure_per_candidate`**
+- AC2 candidate isolation → same test (independent **`resume_structure`** per row)
+
+— Betty
+
+#### ada — 2026-05-28T22:59:34.406Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-477/AST-517-per-candidate-resume-structure-storage-and-craft-resume-base/docs/features/candidate/ast-517-per-candidate-resume-structure-storage-and-craft-resume-base.md
+
+**Self-Assessment**
+- **Scope — Single-Component:** Config literals plus `candidate.py` parse/persist helpers and one model doc — no UI or builder.
+- **Conf — Medium:** Clear patterns, but agents must return `resume_structure`; deep validation lives in normalize helpers, not agent.py.
+- **Risk — Medium:** Wrong default section ids/orders would break downstream AST-518/519; isolated to candidate artifact JSON.
+
+---
+
 # AST-517 — Per-candidate resume structure storage and craft_resume_base
 
 **Linear:** [AST-517](https://linear.app/astralcareermatch/issue/AST-517/per-candidate-resume-structure-storage-and-craft-resume-base-candidate)  
