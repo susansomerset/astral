@@ -119,3 +119,11 @@ Binding per **plan-child**: **Stage 1** only; **one commit** on epic worktree du
 | §3.5 naming | Follow existing `admin-filters` / `*Filter` state naming from **AST-751**. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter` @ `4ac09c1`
+
+Stage 1: Section/Group filter control sourced from `allTaskKeys` catalog metadata; `filteredRows` AND intersection after Candidate, before Task; filter bar placement after Candidate filter. Component tests deferred to Betty per build-child test-tree ban.
