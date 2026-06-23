@@ -1,10 +1,12 @@
-# Astral Boards (production)
+# Astral Boards (historical archive — SUNSET AST-757)
 
-Committed markdown here is for **production** board-channel work only (e.g. parent **[AST-379](https://linear.app/astralcareermatch/issue/AST-379)**, children **AST-415+**): parent plans on **`ftr/<parent-segment>`**, child plans on **`sub/<parent-id>/<child-segment>`** (id + title slug), per **`orientation-astral` § Branch law**.
+This folder preserves **design history only**; the boards channel was removed from the product (**AST-765** product, **AST-766** schema). See **`docs/ASTRAL_CODE_RULES.md`** §3.7 for rationale and revival SHAs.
+
+Committed markdown here documents the retired boards epic (**[AST-379](https://linear.app/astralcareermatch/issue/AST-379)**, children **AST-415+**): parent plans on **`ftr/<parent-segment>`**, child plans on **`sub/<parent-id>/<child-segment>`** (id + title slug), per **`orientation-astral` § Branch law**.
 
 ## Spikes (R&D) — not in this folder
 
-Board **spike** tickets (Playwright investigation, profile drafts) are research. Their output does **not** get committed under `docs/features/boards/`.
+Board **spike** tickets (Playwright investigation, profile drafts) were research. Their output does **not** get committed under `docs/features/boards/`.
 
 | What | Where |
 |------|--------|

@@ -10,23 +10,9 @@
 
 ---
 
-### AST-458 · AST-471 · AST-379
+### AST-458 · AST-471 · AST-379 (historical — SUNSET AST-757)
 
-Workflow **`state`**: **`ACTIVE`** | **`INACTIVE`** | **`ERROR`** (literals **`BOARD_SEARCH_STATES`**); claim requires **`ACTIVE`** plus clear **`batch_id`** (§2.4 lock = **`batch_id`** only — **`clear_board_search_batch`** clears **`batch_id`** alone). **`enabled`** removed. **`search_mode`** (API **`mode`**: `criteria` \| `deeplink`), **`deeplink_url`**, **`entry_url`** / deeplink **`netloc`** parity, duplicates per **AST-458**. **`gaze_board`** seed uses **`trigger_state`** **`ACTIVE`**, **`entity_type`** **`board_search`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| `board_search` schema + **`claim_board_search_batch`** ACTIVE + clear batch + **`last_scan_at`** cadence (AST-482) | `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestClaimBoardSearchSqlShape`**, **`TestBoardSearchLastScanCadenceAst482`**) |
-| Deeplink normalization + duplicate fingerprints | `src/core/boards.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardDeeplinkNormalize`**) |
-| REST `/api/boards/searches` (reject legacy **`enabled`**) | `src/ui/api/api_boards.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**, **`test_list_adopted_boards_for_picker`**) |
-| **`ingest_board_listings`** (gaze → jobs) | `src/core/tracker.py` | `tests/component/core/test_tracker.py` (**`TestIngestBoardListings`**) |
-| **`process_gaze_board_batch`** + **`set_board_search_state`** | `src/core/gazer.py` | `tests/component/core/test_gazer.py` (**`TestProcessGazeBoardBatch`**) |
-| **`run_consult_task`** / **`_run_unified`** `entity_type=board_search` (**`ACTIVE`**) | `src/core/consult.py`, `src/core/dispatcher.py` | `tests/component/core/test_consult.py`, `tests/component/core/test_dispatcher.py` |
-| **`board_search_deeplink`** | `src/external/playwright.py` | `tests/component/external/test_playwright.py` (**`TestBoardSearchDeeplink`**) |
-| Scheduler **`_tick_loop`** wait → **`clear`** | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py` (**`TestScheduler::test_tick_loop_calls_clear_after_wait_then_stops`**) |
-| Locked-file branch gate (AST-455 chain preview ripple on **458** handoff) | `src/core/candidate.py`, `src/core/agent.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_candidate.py` (**chain_sim preview**), `tests/component/core/test_agent.py` (**`TestAst455SevenSegmentAssembly`**, **`TestChainContext`**, **`TestStoreBlocks`**), `tests/component/ui/api/test_api_admin.py` (**`test_preview_task_chain_sim_and_chain_tokens`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh` (includes this file).
+**RETIRED (AST-757):** Astral Boards product and schema removed (**AST-765**, **AST-766**). No active manifest. Revival SHAs and rationale: **`docs/ASTRAL_CODE_RULES.md` §3.7**. Historical plans: **`docs/features/boards/`**.
 
 ---
 
@@ -103,20 +89,6 @@ Equivalent harness:
 
 ---
 
-### AST-765 · AST-757
+### AST-765 · AST-757 (SUNSET — documentation)
 
-**Sunset boards channel (product):** `board_search` / `gaze_board` dispatch paths removed from `src/core/dispatcher.py`. Betty deleted board-only tests and trimmed shared dispatcher tests.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Company/job `_run_unified` unchanged | `src/core/dispatcher.py` | **`tests/component/core/test_dispatcher.py`** (full file minus retired board claim tests) |
-
-**AST-765** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py -q
-```
-
-**Retired (AST-765):** `test_claims_board_search_batch_and_clears`, `test_board_search_claim_passes_freq_and_sort_kw`; board integration spine — sibling **AST-767** archives historical bible rows.
-
-**Epic manifest (resolve @ `9d3cda8`):** see **`docs/test-bible/core/consult.md`** § AST-765 — **`test_consult.py` excluded** after cross-ticket revert; run dispatcher + gazer + tracker + config + admin + playwright + cleanup script only.
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7** and monolith **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset).

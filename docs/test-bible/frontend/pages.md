@@ -110,12 +110,12 @@ Replaces Phase 0 artifact blob as **source of truth**: one SQLite row per candid
 
 ### AST-515 · AST-521 · AST-514
 
-Parent **AST-514** labels non-dispatch UI provider calls in **`dispatch_ledger`**. **AST-515**: Ad Hoc workbench **Test** → **`adhoc-<workbench_task_key>`**. **AST-521**: Artifacts **Generate / Regenerate** and Board Searches craft **Generate** → **`user-<task_key>`** with prefixed **`batch_id`**; **`do_task`** still uses the real craft key for **`agent_data`**. **Preview** paths stay ledger-free. **Dispatch** / Scheduled Actions **Run** keep plain **`task_key`**. Execution History UI (**`AdminPerformanceMonitor`**) unchanged — list/expand/inspect use existing ledger + **`/api/agent_data/<batch_id>`** APIs.
+Parent **AST-514** labels non-dispatch UI provider calls in **`dispatch_ledger`**. **AST-515**: Ad Hoc workbench **Test** → **`adhoc-<workbench_task_key>`**. **AST-521**: Artifacts **Generate / Regenerate** → **`user-<task_key>`** with prefixed **`batch_id`**; **`do_task`** still uses the real craft key for **`agent_data`**. Board search craft generate removed with boards module (**AST-765**). **Preview** paths stay ledger-free. **Dispatch** / Scheduled Actions **Run** keep plain **`task_key`**. Execution History UI (**`AdminPerformanceMonitor`**) unchanged — list/expand/inspect use existing ledger + **`/api/agent_data/<batch_id>`** APIs.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-515** | Ledger + agent_data wrapper; **`adhoc_test`** route swap | `src/core/agent.py` (`run_adhoc_workbench_test`), `src/ui/api/api_admin.py` (`adhoc_test`) | `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`; `tests/component/ui/api/test_api_admin.py::{TestAdhocRoutes,TestApiAdminBranchGaps}` (adhoc preview/test paths) |
-| **AST-521** | **`user-`** ledger prefix on candidate artifact + board search craft generate | `src/core/candidate.py` (`run_candidate_artifact_generation`), `src/core/boards.py` (`run_board_search_generation`), `src/ui/api/api_candidate.py`, `src/ui/api/api_boards.py` (delegates only) | `tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration`; `tests/component/core/test_boards_generate_ast521.py::TestRunBoardSearchGenerationAst521`; optional API smoke: `tests/component/ui/api/test_api_boards.py::TestBoardSearchRoutes::test_generate_delegates_to_core` |
+| **AST-521** | **`user-`** ledger prefix on candidate artifact generate (historical: board search craft removed **AST-765**) | `src/core/candidate.py` (`run_candidate_artifact_generation`), `src/ui/api/api_candidate.py` | `tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration` |
 
 **AST-515** narrowed run:
 
@@ -133,8 +133,7 @@ Dispatch-only Execution History regression (no UI diff this child): **`tests/com
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
-  tests/component/core/test_boards_generate_ast521.py::TestRunBoardSearchGenerationAst521
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration
 ```
 
 Dispatch-only Execution History regression (no UI diff these children): **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** per **§7.13k** when parent UAT runs full epic.
@@ -203,7 +202,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| **AST-531** | Per-hop ledger rows; dispatch-level ledger skipped when chain planned | `src/core/agent.py`, `src/core/dispatcher.py`, `src/core/candidate.py`, `src/core/boards.py` | `tests/component/core/test_agent.py::TestAst531RunNextHopLedger`; `tests/component/core/test_dispatcher.py::TestDispatchOne::test_run_next_chain_skips_dispatch_level_ledger` |
+| **AST-531** | Per-hop ledger rows; dispatch-level ledger skipped when chain planned | `src/core/agent.py`, `src/core/dispatcher.py`, `src/core/candidate.py` | `tests/component/core/test_agent.py::TestAst531RunNextHopLedger`; `tests/component/core/test_dispatcher.py::TestDispatchOne::test_run_next_chain_skips_dispatch_level_ledger` |
 | **AST-532** | Execution History UI — one row per hop; batch_id-scoped logs + agent_data inspect; adhoc/user/dispatch regression | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` (no source diff expected — **AST-515** batch scoping) | `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — **`AST-532 per-hop execution history UI`** describe |
 
 **AST-531** narrowed run:

@@ -27,14 +27,13 @@ Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_tit
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`**, board registry layout | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestBoardRegistryAst457`**, **`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
-| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). **`TestProcessGazeBoardBatch`** is **`§7.13q`** / boards spine (**`process_gaze_board_batch`**) — if that symbol is absent on your tip, rerun gazer narrowly with **`pytest tests/component/core/test_gazer.py -k 'not ProcessGazeBoardBatch'`** alongside consult before asserting full-file green. |
+| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
+| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). |
 | Dispatch resolution helpers (**AST-468**) | `src/core/dispatcher.py`, `src/data/database.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_admin.py` |
-| Board-sourced pipeline still sees same states | `src/core/tracker.py`, consult + gazer | `tests/component/core/test_board_sourced_qualify_evaluate.py` |
 
 Sibling **AST-468** dispatch helpers documented in **§7.13x**.
 
-Manifest default ( **`test-astral`** on publish tip — consult/config scope; avoids unrelated **`origin/dev`** board integration gaps): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
+Manifest default ( **`test-astral`** on publish tip — consult/config scope): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
 
 **Harness:** `./scripts/testing/run_component_tests.sh` with trailing paths forwards them to **`pytest`** (narrow selection + same **`--cov=src`** / JSON report wiring). **`check_per_file_coverage.py`** (**`LOCKED_AT_100`**) runs **only** with zero args (full **`tests/component`** selection); narrowed manifest calls skip that gate because branch rows are incomplete for untouched locked modules.
 
@@ -273,6 +272,7 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 | Table-backed rubric helpers + grade hydration | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRubricHelpers` |
 | Roster prefilter reads | `src/core/roster.py` | existing **AST-507** / **AST-603** roster regression rows (no new file) |
 
+
 ### AST-733 · AST-728
 
 **`qualify_job_listings`** passing path: when **`tracker.initialize_job`** returns **`False`** (identity collision), skip **`save_job_data`** and state transition; batch returns **`fail_state`** for that job and continues without raising.
@@ -318,26 +318,6 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 
 ---
 
-### AST-765 · AST-757
+### AST-765 · AST-757 (SUNSET — documentation)
 
-**Sunset boards channel:** `board_search` routing removed from `run_consult_task`. After **`9d3cda8`** (Radia fix-now revert of AST-750 / ctx rubric bleed), **do not** run full **`test_consult.py`** on this sub — batch consult / render_verdict paths need table-backed rubrics or owning-ticket product, not AST-765 scope.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Boards routing removed | `src/core/consult.py` | **Excluded** from AST-765 manifest (see epic manifest below) |
-
-**AST-765 epic manifest (resolve re-run @ `9d3cda8`):**
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_dispatcher.py \
-  tests/component/core/test_gazer.py \
-  tests/component/core/test_tracker.py \
-  tests/component/utils/test_config.py \
-  tests/component/ui/api/test_api_admin.py \
-  tests/component/external/test_playwright.py \
-  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
-  -q
-```
-
-**Post-revert skips:** `TestAst750DispatchScoreFloorCatalog` when AST-750 catalog absent; `test_list_dispatch_tasks_and_keys` omits `score_floor_options` when route absent.
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

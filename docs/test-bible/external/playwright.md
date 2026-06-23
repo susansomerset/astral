@@ -10,16 +10,6 @@
 
 ---
 
-### AST-765 · AST-757
+### AST-765 · AST-757 (SUNSET — documentation)
 
-**Sunset boards channel:** `board_search_deeplink` removed; **`extract_raw_job_listings`** (roster) unchanged.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Roster job-list extraction | `src/external/playwright.py` | **`tests/component/external/test_playwright.py`** (minus `TestBoardSearchDeeplink`) |
-
-**AST-765** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh tests/component/external/test_playwright.py -q
-```
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

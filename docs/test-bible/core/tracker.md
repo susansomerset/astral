@@ -10,16 +10,9 @@
 
 ---
 
-### AST-419 · AST-379
+### AST-419 · AST-379 (historical — SUNSET AST-757)
 
-Board jobs ingested via **`ingest_board_listings`** (placeholder **`__board__{board_key}`** company, **`board_search_id`**, state **`NEW`**) must reach **`validate_title` → `qualify_job_listings` → `scrape_jd` → `evaluate_jd`** through normal **`claim_job_batch` / `get_new_job_batch`** dispatch — no state-machine bypass. Uses real SQLite (**`seeded_db`**); consult/scrape agent calls mocked.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Board ingest → **`NEW`** + placeholder company | `src/core/tracker.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`TestBoardSourcedQualifyEvaluateAst419::test_board_ingest_starts_in_new_with_board_search_id`**) |
-| Full qualify/evaluate dispatch chain for board jobs | `src/core/tracker.py`, `src/core/gazer.py`, `src/core/consult.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`test_board_job_reaches_qualify_and_evaluate_dispatch`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core/test_board_sourced_qualify_evaluate.py`.
+**RETIRED (AST-757):** Board-sourced qualify/evaluate pipeline removed with boards channel. No active manifest. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
 
 ---
 
@@ -106,16 +99,6 @@ See **`docs/test-bible/data/database/jobs.md`** for index + **`save_job`** bounc
 
 ---
 
-### AST-765 · AST-757
+### AST-765 · AST-757 (SUNSET — documentation)
 
-**Sunset boards channel:** `ingest_board_listings` removed from `src/core/tracker.py`.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Job ingest + initialize | `src/core/tracker.py` | **`tests/component/core/test_tracker.py`** (minus `TestIngestBoardListings`) |
-
-**AST-765** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh tests/component/core/test_tracker.py -q
-```
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
