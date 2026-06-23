@@ -617,7 +617,7 @@ describe("AdminScheduledActions", () => {
       await selectAllCandidatesFilter()
       await selectFilterByLabel("AUTO", "on")
       await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
-      await waitFor(() => expect(screen.queryByText(/D\. Job Analysis/)).not.toBeInTheDocument())
+      await waitFor(() => expect(screen.queryByText(/D\. Job Analysis \(.*AUTO\)/)).not.toBeInTheDocument())
       expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     }, 20000)
 
@@ -635,7 +635,7 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: [watchCosZeroAvail], taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
-      const rosterPanel = screen.getByText(/C\. Company Roster/).closest(".collapsible-panel") as HTMLElement
+      const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
       await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
       const row = within(rosterPanel).getByRole("table").querySelectorAll("tbody tr")[0]
       const cells = within(row as HTMLElement).getAllByRole("cell")
@@ -646,7 +646,7 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: [scanJobsC2Off, scanJobsC1Auto], taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
-      const jobPanel = screen.getByText(/D\. Job Analysis/).closest(".collapsible-panel") as HTMLElement
+      const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/).closest(".collapsible-panel") as HTMLElement
       await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
       const tbody = within(jobPanel).getByRole("table").querySelector("tbody") as HTMLElement
       const candidateCells = within(tbody).getAllByRole("row").map(r => within(r).getAllByRole("cell")[11].textContent)
@@ -659,8 +659,8 @@ describe("AdminScheduledActions", () => {
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
       await selectFilterByLabel("Floor min", "1.50")
-      await waitFor(() => expect(screen.queryByText(/C\. Company Roster/)).not.toBeInTheDocument())
-      expect(screen.getByText(/D\. Job Analysis/)).toBeInTheDocument()
+      await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
+      expect(screen.getByText(/D\. Job Analysis \(.*AUTO\)/)).toBeInTheDocument()
     }, 20000)
   })
 
