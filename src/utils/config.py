@@ -310,7 +310,7 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "context_format": "vet_inflow_discovery_{index}",
-        "entity_type": "candidate",
+        "entity_type": "company",
         "requires_candidate_key": True,
         "trigger_state": None,
     },
@@ -903,6 +903,7 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "LIVE_PROMPTS",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
+        "vet_dispatch_trigger_state": "NEW",
     },
     "resolve": {
         "max_results": 20,
@@ -1253,7 +1254,7 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze",
-    "inflow_discovery", "inflow_resolve_website",
+    "inflow_discovery", "inflow_resolve_website", "vet_inflow_discovery",
     "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
     "grade_do", "grade_get", "grade_like", "analysis_upshot",
     "contemplate_job", "draft_cover_letter",
@@ -1266,7 +1267,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
-    "recheck_no_openings", "gaze", "inflow_resolve_website",
+    "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -1289,6 +1290,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
+    if task_key == "vet_inflow_discovery":
+        return INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"]
     if task_key == "validate_title":
         return "NEW"
     if task_key == "qualify_job_listings":
