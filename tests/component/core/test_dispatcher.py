@@ -416,7 +416,7 @@ class TestRunUnified:
         task = {
             "entity_type": "job",
             "trigger_state": "PASSED_JD",
-            "task_key": "consult_do",
+            "task_key": "grade_do",
             "batch_call_mode": 1,
             "batch_size": 10,
         }

@@ -451,3 +451,77 @@ class TestAst703PrefilterMigrationUniqueCollision:
             assert tuple(row) == ("HOMEPAGE_READY", 1)
         finally:
             conn.close()
+
+
+class TestAst748ConsultToGradeDispatchMigration:
+    """AST-748: consult_* dispatch rows rename to grade_* under triple-unique constraint."""
+
+    def _insert_legacy_dispatch_row(
+        self, conn, candidate_id: str, task_key: str, trigger_state: str,
+        batch_size: int = 1, freq_hrs: float = 0, auto_mode: int = 0,
+    ) -> None:
+        # Pre-AST-747 legacy rows — save_dispatch_task rejects retired keys after config cutover.
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, trigger_state, min_count, auto_mode,
+                batch_size, freq_hrs, entity_type, sort_by, batch_call_mode
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, 'job', 'updated_at', 1)
+            """,
+            (candidate_id, task_key, trigger_state, auto_mode, batch_size, freq_hrs),
+        )
+        conn.commit()
+
+    def test_schema_renames_consult_do_row_to_grade_do(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_legacy_dispatch_row(
+                conn, "c748", "consult_do", "PASSED_JD", batch_size=8, freq_hrs=4.0, auto_mode=1,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            row = conn.execute(
+                "SELECT task_key, batch_size, freq_hrs, auto_mode FROM dispatch_task "
+                "WHERE candidate_id = ? AND trigger_state = 'PASSED_JD'",
+                ("c748",),
+            ).fetchone()
+            assert row[0] == "grade_do"
+            assert row[1] == 8
+            assert row[2] == 4.0
+            assert row[3] == 1
+            legacy = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE task_key IN ('consult_do','consult_get','consult_like')",
+            ).fetchone()[0]
+            assert legacy == 0
+        finally:
+            conn.close()
+
+    def test_schema_deletes_consult_row_when_grade_triple_exists(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c748b", "grade_do", min_count=1, trigger_state="PASSED_JD", batch_size=5)
+        conn = db._get_connection()
+        try:
+            self._insert_legacy_dispatch_row(
+                conn, "c748b", "consult_do", "PASSED_JD", batch_size=99,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'grade_do' AND trigger_state = 'PASSED_JD'",
+                ("c748b",),
+            ).fetchone()[0]
+            row = conn.execute(
+                "SELECT batch_size FROM dispatch_task WHERE candidate_id = ? AND task_key = 'grade_do' AND trigger_state = 'PASSED_JD'",
+                ("c748b",),
+            ).fetchone()
+            assert n == 1
+            assert row[0] == 5
+            legacy = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE task_key IN ('consult_do','consult_get','consult_like')",
+            ).fetchone()[0]
+            assert legacy == 0
+        finally:
+            conn.close()

@@ -32,3 +32,13 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 ```
 
 **Pass criterion:** pytest green on items 1–4; item 5 confirms `debug/startup_db_inventory.md` on publish ref lists dispatch_task + agent_task writers and **Removed AST-745** subsection — not zero-arg harness / branch-lock gate.
+
+### AST-748 · AST-736
+
+Idempotent **`consult_*` → `grade_*`** row rename in **`_ensure_dispatch_task_schema`** (delete legacy row when canonical triple exists).
+
+| Behavior | Sources | Manifest tests |
+| --- | --- | --- |
+| Rename + scheduling preserve | `src/data/database.py` | **`TestAst748ConsultToGradeDispatchMigration::test_schema_renames_consult_do_row_to_grade_do`** |
+| Collision → delete legacy | same | **`TestAst748ConsultToGradeDispatchMigration::test_schema_deletes_consult_row_when_grade_triple_exists`** |
+
