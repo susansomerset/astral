@@ -86,6 +86,16 @@ Narrow (**`test-astral`** **AST-483** tip):
 
 ---
 
+### AST-775 · AST-754
+
+**AST-775:** Register **`VET_FAILED`** in **`COMPANY_STATES`** and **`("NEW", "VET_FAILED")`** in **`company_state_transitions`** — vet dispatch wiring is **AST-776**. Discovery batch record-only path: **`docs/test-bible/core/roster.md`** (**AST-775**).
+
+| Area | Manifest tests |
+| --- | --- |
+| **`VET_FAILED`** state + transition | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition` |
+
+---
+
 ### AST-504 · AST-505 · AST-506 · AST-490
 
 Phase 0: newline-delimited **`artifacts.company_search_terms`**, **`craft_company_search_terms`** (on-demand generate only — no **`dispatch_tasks`** row), Artifacts page + save normalization. Phase 1 (**AST-505**): weekly **`inflow_discovery`** candidate dispatch, Google CSE per term, **`vet_inflow_discovery`**, **`ingest_new_companies`** with candidate-scoped URL dedupe, **`NEW`** / **`WEBSITE_FOUND`** company states. Phase 2 (**AST-506**): **`inflow_resolve_website`** company dispatch for **`NEW`** rows with empty **`company_website`**; CSE resolution (20 results, no date restrict) + **`find_company_website`** → **`WEBSITE_FOUND`** or **`NO_WEBSITE`**.
