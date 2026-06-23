@@ -746,7 +746,7 @@ def _hydrate_caller_chain_context(
         return (None, f"Unknown entity_type: {entity_type!r}")
     entity = _entity_row(entity_type, entity_id)
     if not entity:
-        return (None, f"{entity_type} not found: {entity_id}")
+        return (None, f"{entity_type} not found: {entity_id} (hop={entry_task_key!r})")
     anchor = _caller_anchor_batch_id(entity, chain_context)
     ref = _hop_agent_ref_for_parent(entity, parent_task_key, anchor)
     if ref is None and anchor:
@@ -754,11 +754,11 @@ def _hydrate_caller_chain_context(
     if ref is None:
         return (
             None,
-            f"No stored agent_data for upstream hop {parent_task_key!r} on {entity_type} {entity_id}",
+            f"No stored agent_data for upstream hop {parent_task_key!r} on {entity_type} {entity_id} (entry={entry_task_key!r})",
         )
     ctx = _caller_chain_context_from_hop_agent_ref(ref, parent_task_key)
     if not any((ctx.get(k) or "").strip() for k in CALLER_HOP_TOKEN_NAMES):
-        return (None, f"Stored hop {parent_task_key!r} has empty caller payload")
+        return (None, f"Stored hop {parent_task_key!r} has empty caller payload (entry={entry_task_key!r})")
     return (ctx, None)
 
 

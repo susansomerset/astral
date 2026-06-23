@@ -293,3 +293,17 @@ No unresolved conflicts.
 | Re-sync `origin/sub/AST-752/AST-769-general-caller-hydration-agent-data` with `origin/dev` + Betty `merge-tests`; restore deleted non–AST-769 tests | Engineer (`resolve-child`) |
 | Remove or relocate AST-750 product delta off this sub ref (or confirm rollup intent with Susan on AST-752) | Engineer / Chuckles |
 | Optional: remove or use `entry_task_key` in `_hydrate_caller_chain_context` | Engineer |
+
+## Resolution
+
+**Resolved:** 2026-06-23 (Ada)
+
+| Radia item | Action |
+| --- | --- |
+| **fix-now** — deleted component tests vs `origin/dev` | Restored `test_tracker.py`, `test_config.py`, `test_api_admin.py`, `test_playwright.py`, and conftest deltas from `origin/dev` on publish ref. |
+| **fix-now** — AST-750 sibling product on sub tip | Reverted `dispatch_score_floor_option_labels` / admin route from `origin/dev`; removed `ast-750` feature doc from this ref. |
+| **discuss** — unused `entry_task_key` | Included in hydration error strings for traceability. |
+| **advisory** — `get_task_keys()` scan | No change — acceptable per review. |
+
+**Publish tip after resolve:** pending commit
+

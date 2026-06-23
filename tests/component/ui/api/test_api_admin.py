@@ -639,6 +639,36 @@ class TestDispatchTasks:
         assert floor_values[1] == "0.50"
         assert floor_values[-1] == "10.00"
 
+    def test_ast649_hides_gaze_board_from_scheduled_actions(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "gaze_board" not in keys
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {"task_key": "scan_jobs", "trigger_state": "NEW", "entity_type": "job", "candidate_id": "c1", "score_floor": None},
+                {"task_key": "gaze_board", "trigger_state": "ACTIVE", "entity_type": "board_search", "candidate_id": "c1", "score_floor": None},
+            ],
+        )
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", lambda row: 0)
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        assert all(row.get("task_key") != "gaze_board" for row in rows)
+        assert any(row.get("task_key") == "scan_jobs" for row in rows)
+        monkeypatch.setattr(
+            admin_mod,
+            "task_status_all",
+            lambda: {
+                1: {"task_key": "scan_jobs", "candidate_id": "c1", "running": False, "draining": False, "is_auto": False},
+                2: {"task_key": "gaze_board", "candidate_id": "c1", "running": True, "draining": False, "is_auto": False},
+            },
+        )
+        threads = admin_client.get("/api/admin/scheduler/thread_status", headers=auth_headers).get_json()
+        assert "1" in threads
+        assert "2" not in threads
+        assert threads["1"]["task_key"] == "scan_jobs"
+
     def test_create_dispatch_task_rejects_retired_consult_key(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

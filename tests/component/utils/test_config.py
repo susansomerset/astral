@@ -17,6 +17,125 @@ class TestGetTaskKeys:
         assert keys == list(cfg.TASK_CONFIG.keys())
 
 
+def _board_entry(adopted: bool) -> dict:
+    """Minimal BOARD_CONFIG row for list_adopted_boards / get_board_entry (AST-457)."""
+    return {
+        "label": "L",
+        "entry_url": "https://boards.example/",
+        "scrape_mode": "deep_link",
+        "craft_task_key": "craft_board_search_criteria",
+        "adopted": adopted,
+    }
+
+
+class TestBoardRegistryAst457:
+    def test_list_adopted_boards_skips_non_adopted_sorts_keys(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            cfg,
+            "BOARD_CONFIG",
+            {
+                "z_skip": _board_entry(False),
+                "m_pick": _board_entry(True),
+            },
+            raising=False,
+        )
+        rows = cfg.list_adopted_boards()
+        assert rows == [
+            {
+                "board_key": "m_pick",
+                "label": "L",
+                "entry_url": "https://boards.example/",
+                "scrape_mode": "deep_link",
+                "craft_task_key": "craft_board_search_criteria",
+            },
+        ]
+
+    def test_get_board_entry_none_when_unknown_or_not_adopted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(cfg, "BOARD_CONFIG", {"x": _board_entry(False)}, raising=False)
+        assert cfg.get_board_entry("missing") is None
+        assert cfg.get_board_entry("x") is None
+
+    def test_get_board_entry_returns_copy_when_adopted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(cfg, "BOARD_CONFIG", {"b": _board_entry(True)}, raising=False)
+        out = cfg.get_board_entry("b")
+        assert out is not None
+        assert out["label"] == "L"
+        out["label"] = "mutated"
+        assert cfg.BOARD_CONFIG["b"]["label"] == "L"
+
+
+# BOARD_CONFIG adoption filter: explicit adopted:false/true and missing adopted key
+# (see list_adopted_boards / get_board_entry, src/utils/config.py ~686-708).
+class TestBoardRegistryAdoptedBranches:
+    def test_list_adopted_boards_explicit_false_missing_key_vs_true(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            cfg,
+            "BOARD_CONFIG",
+            {
+                "baa": {
+                    "label": "A",
+                    "entry_url": "https://a",
+                    "scrape_mode": "s",
+                    "craft_task_key": "k",
+                    "adopted": False,
+                },
+                # No `adopted` key → .get("adopted") is falsy → same skip path as explicit false.
+                "bbb": {"label": "B", "entry_url": "https://b", "scrape_mode": "s", "craft_task_key": "k"},
+                "zzz": {
+                    "label": "Z",
+                    "entry_url": "https://z",
+                    "scrape_mode": "s",
+                    "craft_task_key": "k",
+                    "adopted": True,
+                },
+            },
+            raising=False,
+        )
+        rows = cfg.list_adopted_boards()
+        assert [r["board_key"] for r in rows] == ["zzz"]
+
+    def test_get_board_entry_explicit_false_missing_key_unknown_vs_true(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            cfg,
+            "BOARD_CONFIG",
+            {
+                "bare": {"label": "L", "entry_url": "https://x", "scrape_mode": "s", "craft_task_key": "k"},
+                "nope": {
+                    "label": "L",
+                    "entry_url": "https://x",
+                    "scrape_mode": "s",
+                    "craft_task_key": "k",
+                    "adopted": False,
+                },
+                "yep": {
+                    "label": "L",
+                    "entry_url": "https://y",
+                    "scrape_mode": "s",
+                    "craft_task_key": "k",
+                    "adopted": True,
+                },
+            },
+            raising=False,
+        )
+        assert cfg.get_board_entry("missing_board") is None
+        assert cfg.get_board_entry("bare") is None
+        assert cfg.get_board_entry("nope") is None
+        got = cfg.get_board_entry("yep")
+        assert got is not None and got["adopted"] is True
+        got["entry_url"] = "mutated"
+        assert cfg.BOARD_CONFIG["yep"]["entry_url"] == "https://y"
+
+
 # Branches: type guard; range; configured multiplier.
 class TestImportanceMultiplier:
     def test_returns_configured_multiplier(self) -> None:
@@ -487,11 +606,45 @@ class TestImportanceMultiplierEdges:
             cfg.importance_multiplier(5)
 
 
+# Branches: AST-415 adopted board registry (list_adopted_boards / get_board_entry).
+class TestAdoptedBoardHelpers:
+    def test_list_skips_non_adopted_get_returns_copy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cfg, "BOARD_CONFIG", {
+            "skip_me": {"adopted": False},
+            "keep_me": {
+                "adopted": True,
+                "label": "L",
+                "entry_url": "https://e",
+                "scrape_mode": "sm",
+                "craft_task_key": "craft_x",
+                "extra": 1,
+            },
+        })
+        rows = cfg.list_adopted_boards()
+        assert rows == [{
+            "board_key": "keep_me",
+            "label": "L",
+            "entry_url": "https://e",
+            "scrape_mode": "sm",
+            "craft_task_key": "craft_x",
+        }]
+        got = cfg.get_board_entry("keep_me")
+        assert got is not None and got.pop("extra") == 1
+        assert cfg.get_board_entry("missing") is None
+        assert cfg.get_board_entry("skip_me") is None
+
+
 # Dispatch admin defaults ↔ scored-step helpers (AST-379 / AST-468; AST-549 config-only).
 class TestAst471DispatchConfigHelpers:
+    def test_gaze_board_boards_config_scan_interval_hours(self) -> None:
+        # Mirrors WATCH gaze cadence; dispatcher + count_eligible read this when freq_hrs is 0 (AST-482).
+        gb = cfg.BOARDS_CONFIG.get("gaze_board") or {}
+        assert gb.get("scan_interval_hours") == 24
+
     def test_resolve_dispatch_task_config_key_identity_trimmed(self) -> None:
         assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
         assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
+        assert cfg.resolve_dispatch_task_config_key("gaze_board") == "gaze_board"
 
     def test_retired_consult_dispatch_keys_rejected(self) -> None:
         assert cfg.dispatch_task_key_retired_message("consult_do") == (
@@ -508,12 +661,13 @@ class TestAst471DispatchConfigHelpers:
         assert d["trigger_state"] == "PASSED_JD"
         assert d["batch_call_mode"] == 1
 
-    def test_scored_grade_dispatch_keys(self) -> None:
+    def test_scored_grade_dispatch_not_board_gaze(self) -> None:
         assert cfg.dispatch_task_key_is_scored("grade_get") is True
         assert cfg.dispatch_task_key_is_scored("consult_get") is False
+        assert cfg.dispatch_task_key_is_scored("gaze_board") is False
 
-    def test_dispatch_schedulable_keys_excludes_retired_consult(self) -> None:
-        assert "gaze_board" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+    def test_dispatch_schedulable_keys_includes_board_gazer(self) -> None:
+        assert "gaze_board" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
         assert "analysis_upshot" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
     def test_ast485_roster_dispatch_trio_matches_config_defaults(self) -> None:
@@ -532,7 +686,7 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.trigger_state_used_by_scored_dispatch_task("PASSED_LIKE") is True
 
     def test_active_trigger_not_scored_dispatch_row(self) -> None:
-        # ACTIVE is board-search workflow state — not TASK_CONFIG graded multi-hop.
+        # ACTIVE is gaze_board hook — not TASK_CONFIG graded multi-hop.
         assert cfg.trigger_state_used_by_scored_dispatch_task("ACTIVE") is False
 
     def test_trigger_state_guard_none_blank_whitespace_retry(self) -> None:
