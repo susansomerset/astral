@@ -123,3 +123,15 @@ No conflicts requiring `conf-!!-NONE`.
 | **resolve-child** — no code changes required from review. | Katherine |
 | **advisory:** Full three-dot diff vs `origin/dev` also carries **AST-751** test-bible + test manifest from `merge-tests` on the ftr/735 lineage — product hunk for AST-760 is isolated; expected rollup noise, not scope smuggling in product code. | — |
 | Susan manual UAT: expand phase — Candidate/Task/Entity/State headers visible and clickable; Entity must not cover State; no Candidate/Task gap; horizontal scroll frozen alignment. | Susan |
+
+---
+
+## Resolution (2026-06-23)
+
+**Engineer:** Katherine · **Review ref:** `origin/sub/AST-744/AST-760-uat-entity-header-overlays-state-in-scheduled-actions` @ `25a000a` (Radia doc) · product @ `716da64`
+
+**Changes vs Radia review:** None required — **fix-now** and **discuss** were empty. Merged publish ref on epic worktree (including Radia **Review (Radia)** section); no additional product edits.
+
+**§9a dry-run:** `origin/sub/…` merges cleanly into `origin/dev` and `origin/ftr/AST-744-remove-column-gap-in-scheduled-actions`.
+
+**Advisory:** Susan manual UAT — expand phase on Scheduled Actions; confirm Entity does not cover State header, Candidate/Task gap absent, horizontal scroll frozen alignment (test-bible pass criterion).
