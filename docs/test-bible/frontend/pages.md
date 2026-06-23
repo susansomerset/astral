@@ -624,3 +624,21 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Note:** Full-file run excludes **AST-750** score-floor edit test until sibling `AST-750` ships on publish tip (product still hardcodes `1.00…10.00` options).
 
+### AST-768 · AST-572
+
+Scheduled Actions: **Section/Group** filter control sourced from **`allTaskKeys`** catalog metadata (composite `${task_group_order}\u0000${task_group_name}` key); **`filteredRows`** AND intersection after Candidate, before Task; section panels and `{autoOn} / {total} AUTO` headers consume filtered rows. Client-side only — no API change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-768 section/group filter`** describe (6 cases) |
+
+**AST-768** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-768"
+```
+
+**Builds on:** **AST-751** (filter bar + AUTO summary), **AST-739** (DB grouping sections), **AST-634** (Candidate filter).
+
