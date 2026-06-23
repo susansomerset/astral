@@ -367,7 +367,7 @@ Manifest default ( **`test-astral`** on publish tip — dispatch/admin resolutio
 
 ## 7.13y LIKE → `PASSED_LIKE`, Recommended queue, synthesis handoff (**AST-479** / **AST-480**, parent **AST-478**)
 
-**`consult_like`** success lands in **`PASSED_LIKE`** (not **`BUILD_ARTIFACTS`**). **`RECOMMENDED_JOB_STATES`** lists **`RECOMMENDED`**, **`BUILD_ARTIFACTS`**, **`CANDIDATE_REVIEW`** — pre-upshot **`PASSED_LIKE`** stays in **`IN_REVIEW`** / score-gated consult views. **`analysis_upshot`** dispatch (**AST-480**) runs at **`PASSED_LIKE`** / **`PASSED_LIKE_RETRY`** (scored claim), persists **`job_data["analysis_upshot"]`**, transitions **`PASSED_LIKE` → `RECOMMENDED`** (or **`PASSED_LIKE_RETRY`** on failure).
+**`grade_like`** success lands in **`PASSED_LIKE`** (not **`BUILD_ARTIFACTS`**). **`RECOMMENDED_JOB_STATES`** lists **`RECOMMENDED`**, **`BUILD_ARTIFACTS`**, **`CANDIDATE_REVIEW`** — pre-upshot **`PASSED_LIKE`** stays in **`IN_REVIEW`** / score-gated consult views. **`analysis_upshot`** dispatch (**AST-480**) runs at **`PASSED_LIKE`** / **`PASSED_LIKE_RETRY`** (scored claim), persists **`job_data["analysis_upshot"]`**, transitions **`PASSED_LIKE` → `RECOMMENDED`** (or **`PASSED_LIKE_RETRY`** on failure).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1836,7 +1836,7 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/ui/test_server.py
 ```
 
-**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** are dispatch-row keys (e.g. **`consult_do`**, **`prefilter`**) resolved via **`resolve_dispatch_task_config_key()`** into **`TASK_CONFIG`** agent keys — raw membership in **`TASK_CONFIG`** fails server import until **`bootstrap.py`** aligns validation with that helper.
+**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** use **`grade_*`** dispatch-row keys (e.g. **`grade_do`**, **`prefilter`**) — same strings as **`TASK_CONFIG`** after **AST-747** identity cutover; **`resolve_dispatch_task_config_key()`** trims only.
 
 ## 7.13zzx Themed confirm — admin native `window.confirm` migration (**AST-659**, parent **AST-639**)
 
