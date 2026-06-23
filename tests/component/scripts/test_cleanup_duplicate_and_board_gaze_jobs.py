@@ -37,6 +37,9 @@ def job_db() -> Iterator[tuple[sqlite3.Connection, str]]:
     conn = sqlite3.connect(db_uri, uri=True)
     db_mod._job_schema_ensured = False
     db_mod._ensure_job_schema(conn)
+    # AST-732 unique index blocks duplicate fixture rows required for dedupe migration tests.
+    conn.execute("DROP INDEX IF EXISTS idx_job_identity_unique")
+    conn.commit()
     yield conn, db_uri
     conn.close()
 
@@ -63,13 +66,16 @@ def _insert_job(
 
 
 def _patch_db(monkeypatch: pytest.MonkeyPatch, db_uri: str) -> None:
-    db_mod._job_schema_ensured = False
-
     def _get_connection() -> sqlite3.Connection:
         return sqlite3.connect(db_uri, uri=True)
 
+    def _ensure_job_schema_skip(conn: sqlite3.Connection) -> None:
+        # job_db fixture already ensured columns; unique index dropped so duplicates can exist.
+        pass
+
     monkeypatch.setattr(_mod, "_run_with_retry", lambda fn: fn())
     monkeypatch.setattr(_mod, "_get_connection", _get_connection)
+    monkeypatch.setattr(_mod, "_ensure_job_schema", _ensure_job_schema_skip)
 
 
 class TestFindDuplicateIdentityGroups:
