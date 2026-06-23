@@ -20,10 +20,6 @@ Tables used (inventory):
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
-- board_search — Saved board searches per candidate (board_search_id, candidate_id, board_key, label, criteria JSON NOT NULL,
-  state TEXT ACTIVE|INACTIVE|ERROR matching _BOARD_SEARCH_STATES, search_mode, deeplink_url, batch_id — claim lock only §2.4;
-  nullable last_scan_at gaze cadence, not edited on user PATCH — AST-482).
-- board_search_run — Per-gaze ingest metrics (batch_id, board_search_id, new/duplicates/invalid_title counts).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
 - rubric_vector — Per-candidate rubric vector identity (rubric_vector_uuid TEXT PK, candidate_id,
@@ -96,9 +92,6 @@ from src.utils.logging import get_logger
 DB_PATH = ASTRAL_CONFIG["db_dir"] / "astral.db"
 _log = get_logger(__name__)
 
-# Board-search DDL (AST-766 removes); inlined after AST-765 config purge — not product config.
-_BOARD_SEARCH_STATES = ("ACTIVE", "INACTIVE", "ERROR")
-_GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS = 24
 
 
 def _coerce_agent_brain_setting(row: Dict[str, Any]) -> str:
@@ -166,8 +159,7 @@ _agent_schema_ensured = False
 _agent_task_schema_ensured = False
 _timesheets_schema_ensured = False
 _dispatch_task_schema_ensured = False
-_board_search_schema_ensured = False
-_board_search_run_schema_ensured = False
+_board_schema_sunset_applied = False
 _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
@@ -1176,6 +1168,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     global _job_schema_ensured
     if _job_schema_ensured:
         return
+    _apply_board_schema_sunset(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS job (
             astral_job_id TEXT PRIMARY KEY,
@@ -1201,7 +1194,6 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         ("job_link", "TEXT"),
         ("agent_responses", "TEXT DEFAULT '[]'"),
         ("latest_score", "REAL"),            # AST-350: latest numeric score for batch priority sorting
-        ("board_search_id", "TEXT"),
     ]:
         if col not in cols:
             try:
@@ -1355,7 +1347,6 @@ def save_job(
     state_history: Optional[List[Dict[str, Any]]] = None,
     state_changed_at: Optional[str] = None,
     latest_score: Optional[float] = None,
-    board_search_id: Optional[str] = None,
     ) -> bool:
     """Upsert a job row. Insert if new (company and state required); update provided fields if exists.
     job_data: merge=True deep-merges with existing; merge=False overwrites.
@@ -1387,10 +1378,10 @@ def save_job(
                         """INSERT INTO job (
                             astral_job_id, company, company_job_id, job_title, job_link, job_data,
                             state, state_history, batch_id, batch_created_at,
-                            board_search_id, created_at, updated_at, state_changed_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+                            created_at, updated_at, state_changed_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
                         (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
-                         state, hist_str, board_search_id, now, now, state_changed_at or now),
+                         state, hist_str, now, now, state_changed_at or now),
                     )
                 except sqlite3.IntegrityError as e:
                     if _is_job_identity_unique_violation(e):
@@ -1405,7 +1396,7 @@ def save_job(
                     ("company", company), ("state", state),
                     ("company_job_id", company_job_id), ("job_title", job_title),
                     ("job_link", job_link), ("state_changed_at", state_changed_at),
-                    ("latest_score", latest_score), ("board_search_id", board_search_id),
+                    ("latest_score", latest_score),
                 ]:
                     if val is not None:
                         sets.append(f"{col} = ?")
@@ -2651,547 +2642,64 @@ def list_candidates() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-# ---- board_search ----
-
-def _finalize_board_search_state_schema(conn: sqlite3.Connection) -> None:
-    """Drop legacy enabled + batch-status columns → single workflow `state` (AST-471)."""
-    act, inactive, err = _BOARD_SEARCH_STATES
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(board_search)").fetchall()}
-    if "enabled" not in cols and "status" not in cols:
-        if "state" not in cols:
-            conn.execute(
-                "ALTER TABLE board_search ADD COLUMN state TEXT NOT NULL DEFAULT 'ACTIVE'"
-            )
-            conn.commit()
+def _apply_board_schema_sunset(conn: sqlite3.Connection) -> None:
+    """One-time AST-766: drop board tables and job.board_search_id column."""
+    global _board_schema_sunset_applied
+    if _board_schema_sunset_applied:
         return
-    if "state" not in cols:
-        conn.execute("ALTER TABLE board_search ADD COLUMN state TEXT")
-    conn.execute(
-        """UPDATE board_search SET state = CASE
-                WHEN COALESCE(enabled, 1) = 0 THEN ?
-                WHEN LOWER(TRIM(COALESCE(status, ''))) = 'error' THEN ?
-                ELSE ?
-            END""",
-        (inactive, err, act),
-    )
-    conn.execute(
-        """
-        CREATE TABLE             board_search_next (
-            board_search_id TEXT PRIMARY KEY,
-            candidate_id TEXT NOT NULL,
-            board_key TEXT NOT NULL,
-            label TEXT NOT NULL,
-            criteria TEXT NOT NULL,
-            state TEXT NOT NULL DEFAULT 'ACTIVE',
-            batch_id TEXT,
-            search_mode TEXT NOT NULL DEFAULT 'criteria',
-            deeplink_url TEXT,
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP NOT NULL,
-            last_scan_at TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO board_search_next (
-            board_search_id, candidate_id, board_key, label, criteria, state,
-            batch_id, search_mode, deeplink_url, created_at, updated_at, last_scan_at
-        )
-        SELECT
-            board_search_id, candidate_id, board_key, label, criteria, state,
-            batch_id,
-            COALESCE(NULLIF(TRIM(search_mode), ''), 'criteria'),
-            deeplink_url, created_at, updated_at, last_scan_at
-        FROM board_search
-        """
-    )
-    conn.execute("DROP TABLE board_search")
-    conn.execute("ALTER TABLE board_search_next RENAME TO board_search")
-    conn.commit()
-
-
-# update_board_search_row: omit deeplink_url column when unchanged.
-_BOARD_SEARCH_PATCH_OMIT = object()
-
-def _ensure_board_search_table(conn: sqlite3.Connection) -> None:
-    """Create board_search if missing and migrate AST-457 enabled/status → state (AST-471)."""
-    global _board_search_schema_ensured
-    if _board_search_schema_ensured:
-        return
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='board_search'"
-    )
-    if cursor.fetchone()[0] == 0:
-        conn.execute("""
-            CREATE TABLE board_search (
-                board_search_id TEXT PRIMARY KEY,
-                candidate_id TEXT NOT NULL,
-                board_key TEXT NOT NULL,
-                label TEXT NOT NULL,
-                criteria TEXT NOT NULL,
-                state TEXT NOT NULL DEFAULT 'ACTIVE',
-                batch_id TEXT,
-                search_mode TEXT NOT NULL DEFAULT 'criteria',
-                deeplink_url TEXT,
-                last_scan_at TIMESTAMP,
-                created_at TIMESTAMP NOT NULL,
-                updated_at TIMESTAMP NOT NULL
-            )
-        """)
+    conn.execute("DROP TABLE IF EXISTS board_search_run")
+    conn.execute("DROP TABLE IF EXISTS board_search")
+    job_exists = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='job'"
+    ).fetchone()[0]
+    if not job_exists:
         conn.commit()
-        _board_search_schema_ensured = True
+        _board_schema_sunset_applied = True
         return
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(board_search)").fetchall()}
-    for col, col_def in (
-        ("status", "TEXT DEFAULT 'active'"),
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(job)").fetchall()}
+    if "board_search_id" not in cols:
+        conn.commit()
+        _board_schema_sunset_applied = True
+        return
+    had_identity_idx = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+        (_JOB_IDENTITY_UNIQUE_INDEX,),
+    ).fetchone() is not None
+    _job_col_defs = [
+        ("astral_job_id", "TEXT PRIMARY KEY"),
+        ("company", "TEXT NOT NULL"),
+        ("company_job_id", "TEXT"),
+        ("job_title", "TEXT"),
+        ("job_link", "TEXT"),
+        ("job_data", "TEXT"),
+        ("state", "TEXT NOT NULL"),
+        ("state_history", "TEXT"),
         ("batch_id", "TEXT"),
-        ("enabled", "INTEGER NOT NULL DEFAULT 1"),
-        ("search_mode", "TEXT NOT NULL DEFAULT 'criteria'"),
-        ("deeplink_url", "TEXT"),
-        ("last_scan_at", "TIMESTAMP"),
-    ):
-        if col not in cols:
-            conn.execute(f"ALTER TABLE board_search ADD COLUMN {col} {col_def}")
-            conn.commit()
-    _finalize_board_search_state_schema(conn)
-    _board_search_schema_ensured = True
-
-
-def _parse_board_search_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    if row.get("criteria") and isinstance(row["criteria"], str):
-        raw = row["criteria"]
-        try:
-            row["criteria"] = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            # Fail loud: corrupt DB blob must not silently pass through as an unparseable str.
-            bid = row.get("board_search_id") or "?"
-            _log.error(
-                "board_search %s: stored criteria is not valid JSON (%s chars): %s",
-                bid,
-                len(raw),
-                exc,
-            )
-            raise ValueError(f"board_search {bid}: stored criteria is not valid JSON") from exc
-    st = str(row.get("state") or _BOARD_SEARCH_STATES[0]).strip().upper()
-    row["state"] = st if st in _BOARD_SEARCH_STATES else _BOARD_SEARCH_STATES[0]
-    if not row.get("search_mode"):
-        row["search_mode"] = "criteria"
-    du = row.get("deeplink_url")
-    row["deeplink_url"] = None if du is None or du == "" else str(du)
-    return row
-
-
-def save_board_search_row(
-    board_search_id: str,
-    candidate_id: str,
-    board_key: str,
-    label: str,
-    criteria_json: str,
-    *,
-    state: Optional[str] = None,
-    search_mode: str = "criteria",
-    deeplink_url: Optional[str] = None,
-) -> None:
-    st = (
-        _BOARD_SEARCH_STATES[0]
-        if state is None or str(state).strip() == ""
-        else str(state).strip().upper()
-    )
-    if st not in _BOARD_SEARCH_STATES:
-        raise ValueError(f"invalid board_search state: {state!r}")
-
-    now = _utc_now()
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                """INSERT INTO board_search
-                   (board_search_id, candidate_id, board_key, label, criteria,
-                    state, search_mode, deeplink_url, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    board_search_id,
-                    candidate_id,
-                    board_key,
-                    label,
-                    criteria_json,
-                    st,
-                    search_mode,
-                    deeplink_url,
-                    now,
-                    now,
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
-
-
-def get_board_search_row(board_search_id: str) -> Optional[Dict[str, Any]]:
-    def _with_conn() -> Optional[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            row = conn.execute(
-                "SELECT * FROM board_search WHERE board_search_id = ?", (board_search_id,)
-            ).fetchone()
-            return _parse_board_search_row(_row_to_dict(row)) if row else None
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def list_board_search_rows(
-    candidate_id: str,
-    board_key: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    def _with_conn() -> List[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            if board_key:
-                rows = conn.execute(
-                    """SELECT * FROM board_search
-                       WHERE candidate_id = ? AND board_key = ?
-                       ORDER BY created_at""",
-                    (candidate_id, board_key),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM board_search WHERE candidate_id = ? ORDER BY created_at",
-                    (candidate_id,),
-                ).fetchall()
-            return [_parse_board_search_row(_row_to_dict(r)) for r in rows]
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def update_board_search_row(
-    board_search_id: str,
-    *,
-    label: Optional[str] = None,
-    criteria_json: Optional[str] = None,
-    state: Optional[str] = None,
-    search_mode: Optional[str] = None,
-    deeplink_url: Any = _BOARD_SEARCH_PATCH_OMIT,
-) -> None:
-    """Update board_search. Pass deeplink_url=None for SQL NULL; omit to leave unchanged."""
-
-    if (
-        label is None
-        and criteria_json is None
-        and state is None
-        and search_mode is None
-        and deeplink_url is _BOARD_SEARCH_PATCH_OMIT
-    ):
-        return
-    now = _utc_now()
-    sets: List[str] = ["updated_at = ?"]
-    params: List[Any] = [now]
-    if label is not None:
-        sets.append("label = ?")
-        params.append(label)
-    if criteria_json is not None:
-        sets.append("criteria = ?")
-        params.append(criteria_json)
-    if state is not None:
-        sets.append("state = ?")
-        params.append(state)
-    if search_mode is not None:
-        sets.append("search_mode = ?")
-        params.append(search_mode)
-    if deeplink_url is not _BOARD_SEARCH_PATCH_OMIT:
-        sets.append("deeplink_url = ?")
-        params.append(deeplink_url)
-    params.append(board_search_id)
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                f"UPDATE board_search SET {', '.join(sets)} WHERE board_search_id = ?",
-                tuple(params),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
-
-
-def update_board_search_last_scan_at(board_search_id: str) -> None:
-    """Set last_scan_at = now only; skip updated_at — scan cadence vs user edits (AST-482)."""
-    now = _utc_now()
-
-    def _inner() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                "UPDATE board_search SET last_scan_at = ? WHERE board_search_id = ?",
-                (now, board_search_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_inner)
-
-
-def claim_board_search_batch(
-    batch_id: str,
-    limit: int,
-    candidate_id: Optional[str] = None,
-    scan_interval_hours: Optional[float] = None,
-    sort_by: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """Claim board_search rows in ACTIVE with clear batch_id (§2.4 lock = batch_id only).
-
-    Mirrors set_company_batch scan gate: optional scan_interval_hours filters to NULL or stale
-    last_scan_at. sort_by whitelist → BOARD_SEARCH_BATCH_SORT_COLUMNS."""
-    act = _BOARD_SEARCH_STATES[0]
-    now = _utc_now()
-
-    def _with_conn() -> List[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            where_base = "state = ? AND (batch_id IS NULL OR batch_id = '')"
-            params: List[Any] = [batch_id, now, act]
-            if candidate_id:
-                where_base += " AND candidate_id = ?"
-                params.append(candidate_id)
-            if scan_interval_hours is not None:
-                where_base += " AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))"
-                params.append(str(float(scan_interval_hours)))
-            order_clause = (
-                f"ORDER BY {sort_by} ASC NULLS FIRST"
-                if sort_by and sort_by in BOARD_SEARCH_BATCH_SORT_COLUMNS
-                else "ORDER BY rowid"
-            )
-            _limit = int(limit) if limit else 0
-            limit_clause = "LIMIT ?" if _limit > 0 else ""
-            if _limit > 0:
-                params.append(_limit)
-            cur = conn.execute(
-                f"""UPDATE board_search SET batch_id = ?, updated_at = ?
-                   WHERE rowid IN (
-                       SELECT rowid FROM board_search
-                       WHERE {where_base}
-                       {order_clause}
-                       {limit_clause}
-                   )""".strip(),
-                tuple(params),
-            )
-            if cur.rowcount == 0:
-                conn.commit()
-                return []
-            claimed = conn.execute(
-                "SELECT * FROM board_search WHERE batch_id = ? ORDER BY rowid",
-                (batch_id,),
-            ).fetchall()
-            conn.commit()
-            return [_parse_board_search_row(_row_to_dict(r)) for r in claimed]
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-def clear_board_search_batch(batch_id: str) -> int:
-    now = _utc_now()
-
-    def _with_conn() -> int:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            cur = conn.execute(
-                """UPDATE board_search SET batch_id = NULL, updated_at = ?
-                   WHERE batch_id = ?""",
-                (now, batch_id),
-            )
-            conn.commit()
-            return cur.rowcount
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def set_board_search_state(board_search_id: str, state: str) -> None:
-    st = str(state).strip().upper()
-    if st not in _BOARD_SEARCH_STATES:
-        raise ValueError(f"invalid board_search state: {state!r}")
-    now = _utc_now()
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                "UPDATE board_search SET state = ?, updated_at = ? WHERE board_search_id = ?",
-                (st, now, board_search_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
-
-
-def delete_board_search_row(board_search_id: str) -> bool:
-    def _with_conn() -> bool:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            cur = conn.execute(
-                "DELETE FROM board_search WHERE board_search_id = ?", (board_search_id,)
-            )
-            conn.commit()
-            return cur.rowcount > 0
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def board_listing_is_duplicate(candidate_id: str, board_key: str, listing_key: str) -> bool:
-    """True if this candidate already has a job with the same board listing_key on board_key."""
-    prefix = "__board__"
-    company = f"{prefix}{board_key}"
-
-    def _with_conn() -> bool:
-        conn = _get_connection()
-        try:
-            _ensure_job_schema(conn)
-            _ensure_company_candidate_fk(conn)
-            row = conn.execute(
-                """SELECT 1 FROM job j
-                   JOIN company c ON j.company = c.short_name
-                   WHERE c.candidate_id = ?
-                     AND json_extract(j.job_data, '$.board_key') = ?
-                     AND json_extract(j.job_data, '$.board_listing_key') = ?
-                   LIMIT 1""",
-                (candidate_id, board_key, listing_key),
-            ).fetchone()
-            if row:
-                return True
-            # Fallback: placeholder company row without join if candidate_id not set yet
-            row = conn.execute(
-                """SELECT 1 FROM job
-                   WHERE company = ?
-                     AND json_extract(job_data, '$.board_key') = ?
-                     AND json_extract(job_data, '$.board_listing_key') = ?
-                   LIMIT 1""",
-                (company, board_key, listing_key),
-            ).fetchone()
-            return row is not None
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def _ensure_board_search_run_table(conn: sqlite3.Connection) -> None:
-    global _board_search_run_schema_ensured
-    if _board_search_run_schema_ensured:
-        return
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='board_search_run'"
-    )
-    if cursor.fetchone()[0] == 0:
-        conn.execute("""
-            CREATE TABLE board_search_run (
-                batch_id TEXT NOT NULL,
-                board_search_id TEXT NOT NULL,
-                candidate_id TEXT NOT NULL,
-                board_key TEXT NOT NULL,
-                new INTEGER NOT NULL,
-                duplicates INTEGER NOT NULL,
-                invalid_title INTEGER NOT NULL,
-                completed_at TIMESTAMP NOT NULL,
-                status TEXT NOT NULL,
-                PRIMARY KEY (batch_id, board_search_id)
-            )
+        ("batch_created_at", "TEXT"),
+        ("created_at", "TEXT"),
+        ("updated_at", "TEXT"),
+        ("state_changed_at", "TEXT"),
+        ("agent_responses", "TEXT DEFAULT '[]'"),
+        ("latest_score", "REAL"),
+    ]
+    copy_cols = [name for name, _ in _job_col_defs if name in cols and name != "board_search_id"]
+    col_defs = ", ".join(f"{name} {typedef}" for name, typedef in _job_col_defs if name in copy_cols)
+    select_list = ", ".join(copy_cols)
+    conn.execute(f"CREATE TABLE job_next ({col_defs})")
+    conn.execute(f"INSERT INTO job_next ({select_list}) SELECT {select_list} FROM job")
+    conn.execute("DROP TABLE job")
+    conn.execute("ALTER TABLE job_next RENAME TO job")
+    if had_identity_idx:
+        conn.execute(f"""
+            CREATE UNIQUE INDEX {_JOB_IDENTITY_UNIQUE_INDEX}
+            ON job (company, job_title, company_job_id)
+            WHERE company_job_id IS NOT NULL
+              AND job_title IS NOT NULL
+              AND TRIM(company_job_id) != ''
+              AND TRIM(job_title) != ''
         """)
-        conn.commit()
-    else:
-        pk_cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(board_search_run)").fetchall()
-            if row[5]
-        }
-        if pk_cols == {"batch_id"}:
-            conn.execute("""
-                CREATE TABLE board_search_run_new (
-                    batch_id TEXT NOT NULL,
-                    board_search_id TEXT NOT NULL,
-                    candidate_id TEXT NOT NULL,
-                    board_key TEXT NOT NULL,
-                    new INTEGER NOT NULL,
-                    duplicates INTEGER NOT NULL,
-                    invalid_title INTEGER NOT NULL,
-                    completed_at TIMESTAMP NOT NULL,
-                    status TEXT NOT NULL,
-                    PRIMARY KEY (batch_id, board_search_id)
-                )
-            """)
-            conn.execute("""
-                INSERT INTO board_search_run_new
-                SELECT batch_id, board_search_id, candidate_id, board_key, new, duplicates,
-                       invalid_title, completed_at, status
-                FROM board_search_run
-            """)
-            conn.execute("DROP TABLE board_search_run")
-            conn.execute("ALTER TABLE board_search_run_new RENAME TO board_search_run")
-            conn.commit()
-    _board_search_run_schema_ensured = True
-
-
-def record_board_search_run(
-    batch_id: str,
-    board_search_id: str,
-    candidate_id: str,
-    board_key: str,
-    counts: Dict[str, int],
-    *,
-    status: str = "COMPLETED",
-) -> None:
-    now = _utc_now()
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_run_table(conn)
-            conn.execute(
-                """INSERT OR REPLACE INTO board_search_run
-                   (batch_id, board_search_id, candidate_id, board_key, new, duplicates,
-                    invalid_title, completed_at, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    batch_id,
-                    board_search_id,
-                    candidate_id,
-                    board_key,
-                    counts.get("new", 0),
-                    counts.get("duplicates", 0),
-                    counts.get("invalid_title", 0),
-                    now,
-                    status,
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
+    conn.commit()
+    _board_schema_sunset_applied = True
 
 
 # ---- company_search_terms (AST-524) ----
@@ -5852,10 +5360,6 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "UPDATE dispatch_task SET sort_by = 'last_scan_at' WHERE task_key = 'gaze' AND sort_by = 'updated_at'"
     )
     conn.commit()
-    conn.execute(
-        "UPDATE dispatch_task SET sort_by = 'last_scan_at' WHERE task_key = 'gaze_board' AND sort_by = 'updated_at'"
-    )
-    conn.commit()
     # AST-485: legacy locate_job_page scheduled rows → find_job_page (before NO_OPENINGS find_job_page→recheck below).
     conn.execute(
         "UPDATE dispatch_task SET task_key = 'find_job_page' WHERE task_key = 'locate_job_page'"
@@ -5968,8 +5472,6 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "agent_responses": ("_agent_responses_schema_ensured",),
     "agent_task": ("_agent_task_schema_ensured",),
     "app_log": ("_app_log_schema_ensured",),
-    "board_search": ("_board_search_schema_ensured",),
-    "board_search_run": ("_board_search_run_schema_ensured",),
     "candidate": ("_candidate_schema_ensured",),
     "candidate_intake_session": ("_intake_session_schema_ensured",),
     "company": ("_company_schema_ensured", "_company_candidate_fk_ensured"),
@@ -5989,8 +5491,6 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
     "agent_responses": _ensure_agent_responses_schema,
     "agent_task": _ensure_agent_task_schema,
     "app_log": _ensure_app_log_schema,
-    "board_search": _ensure_board_search_table,
-    "board_search_run": _ensure_board_search_run_table,
     "candidate": _ensure_candidate_schema,
     "candidate_intake_session": _ensure_candidate_intake_session_table,
     "company": _ensure_company_table_for_upsert,
@@ -6219,7 +5719,6 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
 
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
-    For board_search gaze_board: freq_hrs when > 0, else _GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS — same staleness predicate as claim_board_search_batch.
     Other company states and all job states use count_entities_in_state (no per-task freq filter)."""
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
@@ -6267,30 +5766,6 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
                     conn.close()
 
             return _run_with_retry(_with_conn)
-    if entity_type == "board_search":
-        act = _BOARD_SEARCH_STATES[0]
-        freq = float(task.get("freq_hrs") or 0)
-        scan_h = freq if freq > 0 else _GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS
-        effective = float(scan_h) if float(scan_h) > 0 else _GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS
-        hours = str(float(effective))
-
-        def _with_conn_bs() -> int:
-            conn = _get_connection()
-            try:
-                _ensure_board_search_table(conn)
-                row = conn.execute(
-                    """SELECT COUNT(*) FROM board_search
-                       WHERE candidate_id = ?
-                         AND state = ?
-                         AND (batch_id IS NULL OR batch_id = '')
-                         AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                    (candidate_id, act, hours),
-                ).fetchone()
-                return int(row[0])
-            finally:
-                conn.close()
-
-        return _run_with_retry(_with_conn_bs)
     if entity_type == "job" and floor is not None:
         def _with_conn() -> int:
             conn = _get_connection()

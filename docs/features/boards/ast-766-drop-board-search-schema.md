@@ -154,3 +154,12 @@
 | §3.5 naming | Sunset helper follows `_ensure_*` / `_apply_*` module conventions |
 
 No conflicts requiring escalation.
+
+---
+
+## Review (build-child stub)
+
+**Branch:** `origin/sub/AST-757/AST-766-drop-board-search-schema`  
+**Built:** Stages 1–5 — `_apply_board_schema_sunset` drops board tables and rebuilds `job` without `board_search_id`; deleted board DDL/DML block and bridge constants; cleaned `save_job`, upsert registries, `count_eligible_for_dispatch_task`, and legacy `gaze_board` migration. Product grep clean under `src/` outside sunset DROP strings in `database.py`.
+
+**Betty handoff:** Delete/update board-only tests (`test_board_ingest.py`, `test_board_search_integration.py`, conftest `_board_search_schema_ensured` resets).
