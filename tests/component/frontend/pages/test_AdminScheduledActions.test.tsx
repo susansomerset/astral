@@ -758,4 +758,115 @@ describe("AdminScheduledActions", () => {
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     }, 20000)
   })
+
+  describe("AST-773 edit modal task_key", () => {
+    const extendedTaskKeys = {
+      ...taskKeysConfig,
+      grade_do: {
+        entity_type: "job",
+        trigger_state: "PASSED_JD",
+        task_group_order: "D. Job Analysis",
+        task_group_name: "D. Job Analysis",
+        task_seq: 3,
+        task_name: "grade_do",
+        is_scored: true,
+      },
+    }
+
+    it("edit modal shows Task select with current key selected", async () => {
+      mockApi(false, { tasks: [dispatchTask], taskKeysPayload: extendedTaskKeys, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      const taskSelect = within(modal).getAllByRole("combobox")[0]
+      expect(taskSelect).toHaveValue("scan_jobs")
+    }, 20000)
+
+    it("task change preserves trigger_state and score_floor in PUT body", async () => {
+      let putBody: Record<string, unknown> | null = null
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => extendedTaskKeys } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: ["NEW", "PASSED_JD"], company: ["WATCH"] }) } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
+          putBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, json: async () => ({}) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(within(modal).getAllByRole("combobox")[0], "grade_do")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBody).not.toBeNull())
+      expect(putBody!.task_key).toBe("grade_do")
+      expect(putBody!.trigger_state).toBe("NEW")
+      expect(putBody!.score_floor).toBe(1.5)
+    }, 20000)
+
+    it("AUTO row cannot open Edit Task", async () => {
+      mockApi(false, {
+        tasks: [sparseRow],
+        taskKeysPayload: taskKeysConfig,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+      await userEvent.click(within(rosterPanel).getByText("watch_cos"))
+      expect(screen.queryByText("Edit Task")).not.toBeInTheDocument()
+    }, 20000)
+
+    it("running thread row can edit and save new task_key", async () => {
+      let putBody: Record<string, unknown> | null = null
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
+        if (url === "/api/admin/scheduler/thread_status") {
+          return {
+            ok: true,
+            json: async () => ({
+              1: { running: true, draining: false, task_key: "scan_jobs", candidate_id: "c1", is_auto: false },
+            }),
+          } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => extendedTaskKeys } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: ["NEW", "PASSED_JD"], company: ["WATCH"] }) } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
+          putBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, json: async () => ({}) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(within(modal).getAllByRole("combobox")[0], "grade_do")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBody?.task_key).toBe("grade_do"))
+      await waitFor(() => expect(screen.queryByText("Edit Task")).not.toBeInTheDocument())
+    }, 20000)
+
+    it("409 on save keeps edit modal open", async () => {
+      mockApi(false, { putOk: false, tasks: [dispatchTask], taskKeysPayload: extendedTaskKeys, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+    }, 20000)
+  })
 })

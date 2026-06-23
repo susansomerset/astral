@@ -575,6 +575,100 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
+# AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
+class TestAst773UpdateDispatchTaskTaskKey:
+    def test_dispatch_task_key_trigger_error_helper(self) -> None:
+        assert admin_mod._dispatch_task_key_trigger_error("", "NEW") == "task_key is required"
+        assert admin_mod._dispatch_task_key_trigger_error("grade_do", "") == "trigger_state is required"
+        err = admin_mod._dispatch_task_key_trigger_error("grade_do", "NOT_A_JOB_STATE")
+        assert err is not None and "grade_do" in err
+        assert admin_mod._dispatch_task_key_trigger_error("qualify_job_listings", "VALID_TITLE") is None
+
+    def test_update_dispatch_task_task_key_persists_derived_columns(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "qualify_job_listings",
+                "trigger_state": "VALID_TITLE",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "grade_do", "trigger_state": "NEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["task_key"] == "grade_do"
+        assert kw["entity_type"] == "job"
+        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults("grade_do")["sort_by"]
+        assert kw["batch_call_mode"] == cfg.dispatch_task_admin_defaults("grade_do")["batch_call_mode"]
+
+    def test_update_dispatch_task_invalid_task_key_trigger_combo_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"task_key": "scan_jobs", "trigger_state": "NEW", "candidate_id": "c1", "auto_mode": 0},
+        )
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "watch_cos", "trigger_state": "NEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "watch_cos" in resp.get_json()["error"]
+
+    def test_update_dispatch_task_auto_mode_blocks_non_toggle_edit_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"task_key": "scan_jobs", "trigger_state": "NEW", "candidate_id": "c1", "auto_mode": 1},
+        )
+        blocked = admin_client.put("/api/admin/dispatch_tasks/1", json={"min_count": 2}, headers=auth_headers)
+        assert blocked.status_code == 400
+        assert "AUTO" in blocked.get_json()["error"]
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        toggle = admin_client.put("/api/admin/dispatch_tasks/1", json={"auto_mode": False}, headers=auth_headers)
+        assert toggle.status_code == 200
+        update.assert_called_once()
+
+    def test_update_dispatch_task_unique_collision_409_new_triple(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"task_key": "scan_jobs", "trigger_state": "NEW", "candidate_id": "c1", "auto_mode": 0},
+        )
+        monkeypatch.setattr(
+            admin_mod,
+            "update_dispatch_task",
+            MagicMock(side_effect=Exception("UNIQUE constraint failed: dispatch_task")),
+        )
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "grade_do", "trigger_state": "PASSED_JD"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        err = resp.get_json()["error"]
+        assert "grade_do" in err
+        assert "PASSED_JD" in err
+        assert "c1" in err
+
+
 # Branches: timesheet list/export with optional req_dict filters.
 class TestTimesheets:
     def test_list_and_export_timesheets(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
