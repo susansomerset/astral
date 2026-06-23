@@ -609,6 +609,42 @@ class TestProcessRecheckNoOpenings:
         uc.assert_called_once_with("acme", job_site="https://final.example/path")
 
 
+class TestAst759SharedPageScrapeContract:
+    """AST-759: shared page scrape contract + select live content parity."""
+
+    def test_finalize_page_scrape_contract_collapses_and_enumerates(self) -> None:
+        raw = {
+            "visible_text": "intro\n\n\nbody",
+            "nav_urls": ["https://acme.com/jobs"],
+            "final_url": "https://acme.com",
+        }
+        out = roster_mod.finalize_page_scrape_contract(raw)
+        assert out["visible_text"] == "intro\n\nbody"
+        assert "acme.com/jobs" in out["enumerated_nav_links"]
+
+    def test_finalize_page_scrape_contract_empty_nav(self) -> None:
+        out = roster_mod.finalize_page_scrape_contract(
+            {"visible_text": "body", "nav_urls": []},
+        )
+        assert out["enumerated_nav_links"] == ""
+
+    def test_build_select_job_page_live_content_appends_nav_block(self) -> None:
+        assembled = "=== PAGE 1 ===\nroles"
+        nav = "1: https://acme.com/careers"
+        out = roster_mod._build_select_job_page_live_content(assembled, nav)
+        assert "=== NAV LINKS ===" in out
+        assert nav in out
+        assert out.startswith("=== PAGE 1")
+
+    def test_build_select_job_page_live_content_idempotent(self) -> None:
+        nav = "1: https://acme.com/careers"
+        assembled = f"content\n{nav}"
+        assert roster_mod._build_select_job_page_live_content(assembled, nav) == assembled
+
+    def test_build_select_job_page_live_content_blank_nav(self) -> None:
+        assert roster_mod._build_select_job_page_live_content("page body", "  ") == "page body"
+
+
 class TestAst719PjlRosterHelpers:
     """AST-719: additive PJL scrape ledger helpers."""
 
@@ -629,6 +665,17 @@ class TestAst719PjlRosterHelpers:
         assert len(merged) == 2
         assert merged[1]["visible_text"] == "new page"
 
+    def test_merge_pjl_scrape_record_persists_enumerated_nav_links(self) -> None:
+        merged = roster_mod._merge_pjl_scrape_record(
+            [],
+            {
+                "url": "https://acme.com/careers",
+                "visible_text": "roles",
+                "enumerated_nav_links": "1: /jobs",
+            },
+        )
+        assert merged[0]["enumerated_nav_links"] == "1: /jobs"
+
     def test_assemble_pjl_content_sections(self) -> None:
         pages = [
             {"url": "https://acme.com/careers", "visible_text": "roles"},
@@ -640,6 +687,18 @@ class TestAst719PjlRosterHelpers:
             "=== PAGE 2: https://acme.com/jobs ===\nlist"
         )
 
+    def test_assemble_pjl_content_includes_per_page_nav_section(self) -> None:
+        pages = [
+            {
+                "url": "https://acme.com/careers",
+                "visible_text": "roles",
+                "enumerated_nav_links": "1: /about",
+            },
+        ]
+        out = roster_mod._assemble_pjl_content(pages)
+        assert "--- NAV LINKS ---" in out
+        assert "1: /about" in out
+
     def test_merge_pjl_nav_links_appends_deduped(self) -> None:
         existing = "1: https://acme.com/about\n2: https://acme.com/careers"
         merged = roster_mod._merge_pjl_nav_links(
@@ -649,9 +708,6 @@ class TestAst719PjlRosterHelpers:
         assert "acme.com/about" in merged
         assert "acme.com/careers" in merged
         assert "acme.com/team" in merged
-        assert merged.count("acme.com/careers") == 1
-
-
         assert merged.count("acme.com/careers") == 1
 
 
@@ -711,6 +767,32 @@ class TestAst720PjlReadySelectDispatch:
             company_website="https://acme.com",
             company_data=company_data,
         )
+
+    @pytest.mark.asyncio
+    async def test_select_dispatch_passes_live_content_with_nav_links(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        nav = "1: https://acme.com/careers\n2: https://acme.com/newjobs"
+        company = self._pjl_ready_company(pjl_nav_links=nav)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        captured: Dict[str, Any] = {}
+
+        async def fake_find(**kwargs: Any) -> Dict[str, Any]:
+            captured["assembled_content"] = kwargs.get("assembled_content")
+            return {
+                "state": "JOBLIST_IDENTIFIED",
+                "response_type": "JOBLIST_TITLES",
+                "job_site": "",
+            }
+
+        monkeypatch.setattr(roster_mod, "_find_job_page_from_assembled", fake_find)
+        await roster_mod.run_select_job_page_dispatch(company, "batch-759")
+        live = captured.get("assembled_content") or ""
+        assert "=== NAV LINKS ===" in live
+        assert nav in live
 
     @pytest.mark.asyncio
     async def test_joblist_titles_identified_without_job_site_column(
@@ -1021,57 +1103,81 @@ class TestAst721ParseJobListDispatch:
 
 
 class TestAst701ScrapeCompanyHomepageContent:
+    @staticmethod
+    def _mock_browser_page(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        ctx = MagicMock()
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=MagicMock()))
+        monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
+        return ctx
+
     @pytest.mark.asyncio
     async def test_scrape_exception_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ctx = self._mock_browser_page(monkeypatch)
         monkeypatch.setattr(
             roster_mod,
-            "get_visible_text",
+            "scrape_loaded_page_contract",
             AsyncMock(side_effect=RuntimeError("blocked")),
         )
-        out = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
+        out = await roster_mod.scrape_company_homepage_content(
+            "acme", "https://acme.com", browser_context=ctx,
+        )
         assert out["error"] == "blocked"
         assert out["visible_text"] == ""
 
     @pytest.mark.asyncio
     async def test_redirect_and_empty_text_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ctx = self._mock_browser_page(monkeypatch)
         monkeypatch.setattr(
             roster_mod,
-            "get_visible_text",
+            "scrape_loaded_page_contract",
             AsyncMock(side_effect=[
-                ("hello", "https://canonical.example"),
-                ("   ", "https://acme.com"),
+                {
+                    "visible_text": "hello",
+                    "final_url": "https://canonical.example",
+                    "enumerated_nav_links": "1. /about",
+                    "nav_urls": ["https://canonical.example/about"],
+                },
+                {
+                    "visible_text": "   ",
+                    "final_url": "https://acme.com",
+                    "enumerated_nav_links": "",
+                    "nav_urls": [],
+                },
             ]),
         )
         update = MagicMock()
         monkeypatch.setattr(roster_mod, "update_company", update)
-        monkeypatch.setattr(
-            roster_mod,
-            "extract_site_page_list",
-            AsyncMock(return_value=["https://canonical.example/about"]),
+        redirected = await roster_mod.scrape_company_homepage_content(
+            "acme", "https://old.example", browser_context=ctx,
         )
-        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
-        redirected = await roster_mod.scrape_company_homepage_content("acme", "https://old.example")
         assert redirected["error"] is None
         assert redirected["company_website"] == "https://canonical.example"
         assert redirected["enumerated_nav_links"] == "1. /about"
         update.assert_called_once_with("acme", company_website="https://canonical.example")
 
-        empty = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
+        empty = await roster_mod.scrape_company_homepage_content(
+            "acme", "https://acme.com", browser_context=ctx,
+        )
         assert empty["error"] == "No visible text extracted"
 
     @pytest.mark.asyncio
     async def test_nav_failure_is_non_fatal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ctx = self._mock_browser_page(monkeypatch)
         monkeypatch.setattr(
             roster_mod,
-            "get_visible_text",
-            AsyncMock(return_value=("hello world", "https://acme.com")),
+            "scrape_loaded_page_contract",
+            AsyncMock(
+                return_value={
+                    "visible_text": "hello world",
+                    "final_url": "https://acme.com",
+                    "enumerated_nav_links": "",
+                    "nav_urls": [],
+                }
+            ),
         )
-        monkeypatch.setattr(
-            roster_mod,
-            "extract_site_page_list",
-            AsyncMock(side_effect=RuntimeError("nav boom")),
+        out = await roster_mod.scrape_company_homepage_content(
+            "acme", "https://acme.com", browser_context=ctx,
         )
-        out = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
         assert out["error"] is None
         assert out["visible_text"] == "hello world"
         assert out["enumerated_nav_links"] == ""
@@ -1080,18 +1186,22 @@ class TestAst701ScrapeCompanyHomepageContent:
     async def test_collapses_consecutive_blank_lines_at_scrape(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        ctx = self._mock_browser_page(monkeypatch)
         monkeypatch.setattr(
             roster_mod,
-            "get_visible_text",
-            AsyncMock(return_value=("intro\n\n\n\nbody", "https://acme.com")),
+            "scrape_loaded_page_contract",
+            AsyncMock(
+                return_value={
+                    "visible_text": "intro\n\nbody",
+                    "final_url": "https://acme.com",
+                    "enumerated_nav_links": "1. /about",
+                    "nav_urls": ["https://acme.com/about"],
+                }
+            ),
         )
-        monkeypatch.setattr(
-            roster_mod,
-            "extract_site_page_list",
-            AsyncMock(return_value=["https://acme.com/about"]),
+        out = await roster_mod.scrape_company_homepage_content(
+            "acme", "https://acme.com", browser_context=ctx,
         )
-        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
-        out = await roster_mod.scrape_company_homepage_content("acme", "https://acme.com")
         assert out["error"] is None
         assert out["visible_text"] == "intro\n\nbody"
 
