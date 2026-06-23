@@ -323,25 +323,73 @@ class TestAst641UnionClaimCount:
         assert db.count_eligible_for_dispatch_task(task) == 2
 
 
-class TestAst701FetchWebsiteRetrySeed:
-    """AST-701: _RETRY_TASK_SEED clones fetch_website -> WEBSITE_FOUND_RETRY companion row."""
+class TestAst745StopAutomaticDispatchRowSeeding:
+    """AST-745: schema ensure no longer re-inserts deleted *_RETRY or gaze_board dispatch rows."""
 
-    def test_schema_backfill_clones_fetch_website_retry_row(self, sqlite_in_memory) -> None:
+    def test_schema_ensure_does_not_reinsert_deleted_retry_rows(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_dispatch_task("c701", "fetch_website", min_count=1, trigger_state="WEBSITE_FOUND")
+        db.save_dispatch_task("c745", "fetch_website", min_count=1, trigger_state="WEBSITE_FOUND")
+        db.save_dispatch_task("c745", "fetch_website", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "DELETE FROM dispatch_task WHERE candidate_id = ? AND trigger_state LIKE '%_RETRY'",
+                ("c745",),
+            )
+            conn.commit()
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND trigger_state LIKE '%_RETRY'",
+                ("c745",),
+            ).fetchone()[0]
+            assert n == 0
+        finally:
+            conn.close()
+
+    def test_schema_ensure_does_not_reinsert_gaze_board_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c745gb"
+        db.save_dispatch_task(cid, "gaze", min_count=1, trigger_state="ACTIVE")
+        db.save_board_search_row("bs745", cid, "tst", "lbl", "{}", state="ACTIVE")
         conn = db._get_connection()
         try:
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            row = conn.execute(
-                "SELECT trigger_state FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = ? AND trigger_state = ?",
-                ("c701", "fetch_website", "WEBSITE_FOUND_RETRY"),
-            ).fetchone()
-            assert row is not None
-            assert row[0] == "WEBSITE_FOUND_RETRY"
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'gaze_board'",
+                (cid,),
+            ).fetchone()[0]
+            assert n == 0
         finally:
             conn.close()
+
+    def test_primary_row_claims_retry_entities_without_retry_dispatch_row(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c745q"
+        db.save_company("co745", state="IMPORTED", candidate_id=cid, company_name="co745")
+        db.save_job("jp", company="co745", state="VALID_TITLE")
+        db.save_job("jr", company="co745", state="VALID_TITLE_RETRY")
+        db.save_dispatch_task(cid, "qualify_job_listings", min_count=1, trigger_state="VALID_TITLE")
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            retry_rows = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND trigger_state = 'VALID_TITLE_RETRY'",
+                (cid,),
+            ).fetchone()[0]
+            assert retry_rows == 0
+        finally:
+            conn.close()
+        task = {
+            "entity_type": "job",
+            "trigger_state": "VALID_TITLE",
+            "task_key": "qualify_job_listings",
+            "candidate_id": cid,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
 
 
 class TestAst702PrefilterDispatchMigration:
@@ -379,13 +427,6 @@ class TestAst702PrefilterDispatchMigration:
         finally:
             conn.close()
 
-    def test_retry_task_seed_omits_prefilter_website_found_retry(self) -> None:
-        from src.data.database import _RETRY_TASK_SEED
-
-        assert ("prefilter", "WEBSITE_FOUND_RETRY") not in _RETRY_TASK_SEED
-        assert ("fetch_website", "WEBSITE_FOUND_RETRY") in _RETRY_TASK_SEED
-
-
 class TestAst703PrefilterMigrationUniqueCollision:
     """AST-703 UAT: legacy dual prefilter rows migrate without UNIQUE violation."""
 
@@ -408,5 +449,79 @@ class TestAst703PrefilterMigrationUniqueCollision:
             ).fetchone()
             assert n == 1
             assert tuple(row) == ("HOMEPAGE_READY", 1)
+        finally:
+            conn.close()
+
+
+class TestAst748ConsultToGradeDispatchMigration:
+    """AST-748: consult_* dispatch rows rename to grade_* under triple-unique constraint."""
+
+    def _insert_legacy_dispatch_row(
+        self, conn, candidate_id: str, task_key: str, trigger_state: str,
+        batch_size: int = 1, freq_hrs: float = 0, auto_mode: int = 0,
+    ) -> None:
+        # Pre-AST-747 legacy rows — save_dispatch_task rejects retired keys after config cutover.
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, trigger_state, min_count, auto_mode,
+                batch_size, freq_hrs, entity_type, sort_by, batch_call_mode
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, 'job', 'updated_at', 1)
+            """,
+            (candidate_id, task_key, trigger_state, auto_mode, batch_size, freq_hrs),
+        )
+        conn.commit()
+
+    def test_schema_renames_consult_do_row_to_grade_do(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_legacy_dispatch_row(
+                conn, "c748", "consult_do", "PASSED_JD", batch_size=8, freq_hrs=4.0, auto_mode=1,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            row = conn.execute(
+                "SELECT task_key, batch_size, freq_hrs, auto_mode FROM dispatch_task "
+                "WHERE candidate_id = ? AND trigger_state = 'PASSED_JD'",
+                ("c748",),
+            ).fetchone()
+            assert row[0] == "grade_do"
+            assert row[1] == 8
+            assert row[2] == 4.0
+            assert row[3] == 1
+            legacy = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE task_key IN ('consult_do','consult_get','consult_like')",
+            ).fetchone()[0]
+            assert legacy == 0
+        finally:
+            conn.close()
+
+    def test_schema_deletes_consult_row_when_grade_triple_exists(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c748b", "grade_do", min_count=1, trigger_state="PASSED_JD", batch_size=5)
+        conn = db._get_connection()
+        try:
+            self._insert_legacy_dispatch_row(
+                conn, "c748b", "consult_do", "PASSED_JD", batch_size=99,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'grade_do' AND trigger_state = 'PASSED_JD'",
+                ("c748b",),
+            ).fetchone()[0]
+            row = conn.execute(
+                "SELECT batch_size FROM dispatch_task WHERE candidate_id = ? AND task_key = 'grade_do' AND trigger_state = 'PASSED_JD'",
+                ("c748b",),
+            ).fetchone()
+            assert n == 1
+            assert row[0] == 5
+            legacy = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE task_key IN ('consult_do','consult_get','consult_like')",
+            ).fetchone()[0]
+            assert legacy == 0
         finally:
             conn.close()

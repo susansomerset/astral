@@ -358,20 +358,20 @@ class TestRunConsultTask:
             [{"astral_job_id": "job-1"}],
             "batch-1",
             {},
-            dispatch_task_key="consult_do",
+            dispatch_task_key="grade_do",
         )
         assert out["total_passed"] == 1
 
     @pytest.mark.asyncio
-    async def test_ast503_routes_two_passed_jd_jobs_to_consult_do_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """N>1 DO consult entities use Pattern-A batch entry (consult_do_batch), not per-job render_verdict."""
+    async def test_ast503_routes_two_passed_jd_jobs_to_grade_do_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """N>1 DO consult entities use Pattern-A batch entry (grade_do_batch), not per-job render_verdict."""
         cb = AsyncMock(return_value={"success": True, "passed": 2, "failed": 0, "total": 2})
-        monkeypatch.setattr(consult_mod, "consult_do_batch", cb)
+        monkeypatch.setattr(consult_mod, "grade_do_batch", cb)
         rv = AsyncMock()
         monkeypatch.setattr(consult_mod, "render_verdict", rv)
         entities = [{"astral_job_id": "job-1"}, {"astral_job_id": "job-2"}]
         out = await consult_mod.run_consult_task(
-            "job", "PASSED_JD", entities, "batch-do", {}, debug=False, dispatch_task_key="consult_do",
+            "job", "PASSED_JD", entities, "batch-do", {}, debug=False, dispatch_task_key="grade_do",
         )
         assert out["total_processed"] == 2
         assert out["total_passed"] == 2
@@ -615,7 +615,7 @@ class TestAst534DispatchTaskKeyHonesty:
             [{"astral_job_id": "job-1"}],
             "batch-534",
             {},
-            dispatch_task_key="consult_do",
+            dispatch_task_key="grade_do",
         )
         assert out["total_passed"] == 1
 
@@ -777,7 +777,7 @@ class TestRenderVerdict:
         transition = MagicMock()
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: None)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -801,7 +801,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         out = await consult_mod.render_verdict(
-            "consult_do",
+            "grade_do",
             "job-1",
             ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
@@ -815,7 +815,7 @@ class TestRenderVerdict:
         transition = MagicMock()
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: None)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_not_called()
 
@@ -826,7 +826,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod.tracker, "get_company", lambda short_name: None)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        out = await consult_mod.render_verdict("consult_like", "job-1")
+        out = await consult_mod.render_verdict("grade_like", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -836,7 +836,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod.tracker, "get_company", lambda short_name: {"short_name": "co"})
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value=False))
-        out = await consult_mod.render_verdict("consult_like", "job-1")
+        out = await consult_mod.render_verdict("grade_like", "job-1")
         assert out["to_state"] == "NEED_WEBSITE_CONTENT"
 
     @pytest.mark.asyncio
@@ -846,7 +846,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value=False))
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -858,7 +858,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
         monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={"success": False, "error": "bad"}))
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -891,7 +891,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         out = await consult_mod.render_verdict(
-            "consult_do",
+            "grade_do",
             "job-1",
             ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
@@ -921,7 +921,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         out = await consult_mod.render_verdict(
-            "consult_do",
+            "grade_do",
             "job-1",
             ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
@@ -950,7 +950,7 @@ class TestRenderVerdict:
                 }
             ),
         )
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -966,7 +966,7 @@ class TestRenderVerdict:
             "do_task",
             AsyncMock(return_value={"success": True, "parsed_response": {"grades": None}, "timesheet": {}}),
         )
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -993,7 +993,7 @@ class TestRenderVerdict:
             "_hydrate_grade_reasons_from_rubric",
             MagicMock(side_effect=ValueError("missing rubric")),
         )
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
 
     @pytest.mark.asyncio
@@ -1016,7 +1016,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod, "_hydrate_grade_reasons_from_rubric", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is True
         assert out["score"] is None
 
@@ -1042,7 +1042,7 @@ class TestRenderVerdict:
             ),
         )
         monkeypatch.setattr(consult_mod, "_hydrate_grade_reasons_from_rubric", MagicMock())
-        out = await consult_mod.render_verdict("consult_do", "job-1")
+        out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -1065,7 +1065,7 @@ class TestRenderVerdict:
             ),
         )
         monkeypatch.setattr(consult_mod, "_hydrate_grade_reasons_from_rubric", MagicMock())
-        out = await consult_mod.render_verdict("consult_do", "job-1", ctx={"candidate_data": {}})
+        out = await consult_mod.render_verdict("grade_do", "job-1", ctx={"candidate_data": {}})
         assert out["success"] is False
         transition.assert_called_once()
 
@@ -1090,7 +1090,7 @@ class TestRenderVerdict:
         )
         monkeypatch.setattr(consult_mod, "_hydrate_grade_reasons_from_rubric", MagicMock())
         out = await consult_mod.render_verdict(
-            "consult_do",
+            "grade_do",
             "job-1",
             ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
@@ -1116,7 +1116,7 @@ class TestRenderVerdict:
         )
         monkeypatch.setattr(consult_mod, "_hydrate_grade_reasons_from_rubric", MagicMock())
         with pytest.raises(ValueError, match="Unknown grading_mode"):
-            await consult_mod.render_verdict("consult_do", "job-1")
+            await consult_mod.render_verdict("grade_do", "job-1")
 
     @pytest.mark.asyncio
     async def test_saves_score_for_non_scored_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1140,7 +1140,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         out = await consult_mod.render_verdict(
-            "consult_do",
+            "grade_do",
             "job-1",
             ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
@@ -1617,7 +1617,7 @@ class TestRunConsultTaskRoutes:
         monkeypatch.setattr(consult_mod, "render_verdict", AsyncMock(return_value={"success": False, "error": "bad"}))
         out = await consult_mod.run_consult_task(
             "job", "PASSED_JD", [{"astral_job_id": "job-1"}], "batch-1", {},
-            dispatch_task_key="consult_do",
+            dispatch_task_key="grade_do",
         )
         assert out["total_errors"] == 1
 
@@ -2976,10 +2976,10 @@ class TestAst726LatestOnlyConsultOutcomes:
         save = MagicMock()
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
-        cfg = consult_mod._consult_orchestration("consult_do")
+        cfg = consult_mod._consult_orchestration("grade_do")
         ctx = {"candidate_data": {"artifacts": {"do_rubric": [_rubric_item()]}}}
         consult_mod._apply_render_verdict_decoded_job(
-            "consult_do",
+            "grade_do",
             "job-726",
             {"grades": [_pass_grade()], "notes": ""},
             cfg,

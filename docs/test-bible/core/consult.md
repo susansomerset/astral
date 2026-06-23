@@ -23,12 +23,12 @@
 
 ### AST-466 · AST-467 · AST-468 · AST-376
 
-Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title`, `scrape_jd`, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** (`consult_*` dispatch keys → **`grade_*`** orchestration via **`_consult_orchestration`** in consult). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
+Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title`, `scrape_jd`, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`**, board registry layout | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestBoardRegistryAst457`**, **`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
-| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `consult_*` dispatch → **`grade_*`** orch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). **`TestProcessGazeBoardBatch`** is **`§7.13q`** / boards spine (**`process_gaze_board_batch`**) — if that symbol is absent on your tip, rerun gazer narrowly with **`pytest tests/component/core/test_gazer.py -k 'not ProcessGazeBoardBatch'`** alongside consult before asserting full-file green. |
+| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). **`TestProcessGazeBoardBatch`** is **`§7.13q`** / boards spine (**`process_gaze_board_batch`**) — if that symbol is absent on your tip, rerun gazer narrowly with **`pytest tests/component/core/test_gazer.py -k 'not ProcessGazeBoardBatch'`** alongside consult before asserting full-file green. |
 | Dispatch resolution helpers (**AST-468**) | `src/core/dispatcher.py`, `src/data/database.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_admin.py` |
 | Board-sourced pipeline still sees same states | `src/core/tracker.py`, consult + gazer | `tests/component/core/test_board_sourced_qualify_evaluate.py` |
 
@@ -293,3 +293,26 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
   tests/component/core/test_consult.py::TestQualifyJobListings::test_runs_debug_and_passing_job_path \
   -q
 ```
+
+### AST-748 · AST-736
+
+**AST-736 runtime cutover:** `consult_*` → `grade_*` dispatch routing in **`run_consult_task`**, **`render_verdict`**, **`grade_do_batch` / `grade_get_batch` / `grade_like_batch`**; **`_consult_orchestration`** direct **`TASK_CONFIG`** lookup (no alias). Prerequisite **AST-747** config on publish tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Graded batch routing + `render_verdict` | `src/core/consult.py` | **`TestRunConsultTask`**, **`TestAst534DispatchTaskKeyHonesty`**, **`TestRenderVerdict`** (revised `grade_*` keys) |
+| DB row rename | `src/data/database.py` | **`TestAst748ConsultToGradeDispatchMigration`** (`test_dispatch_tasks.py`) |
+
+**AST-748** narrowed run (with **AST-747** config on tip):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst748ConsultToGradeDispatchMigration \
+  tests/component/core/test_consult.py::TestRunConsultTask::test_ast503_routes_two_passed_jd_jobs_to_grade_do_batch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args — not zero-arg harness until siblings integrated.
+
