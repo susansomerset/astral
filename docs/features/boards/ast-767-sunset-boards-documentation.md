@@ -156,3 +156,31 @@
 | DRY | Single §3.7 anchor; bible stubs point there rather than duplicating SHAs |
 
 No conflicts requiring escalation.
+
+---
+
+## Radia review (2026-06-23)
+
+**Diff:** `origin/dev...origin/sub/AST-757/AST-767-sunset-boards-documentation` @ `2d0050a`  
+**Product commit reviewed:** `a62c6a7` (docs only)
+
+### What’s solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stages 1–5 | **§3.7** added after §3.6 with both revival SHAs, `git diff`/`git show` hints, archive pointers; monolith §7.13 consolidated header + **RETIRED** stubs for §7.13q/r/s/v/za/zzu; §7.13w board registry/gaze/board-sourced rows removed; decomposed bible sunset stubs in dispatcher, consult, gazer, tracker, playwright, config, frontend root/pages, dispatch_tasks, cleanup script doc (`__board__` literal). |
+| Stage 5 grep | Remaining hits only in **RETIRED** / **historical** / §3.7 cross-ref context (`dispatch_tasks.md`, `frontend/root.md`). |
+| Scope | No `src/`, `tests/`, or `scripts/spikes/` in `a62c6a7`; `docs/features/boards/README.md` reframed as historical archive. |
+| Betty | `merge-tests(AST-767)` at tip — bible README sunset pointer; no doc regressions. |
+
+### Issues
+
+None **fix-now**.
+
+### Advisory
+
+Three-dot diff vs `origin/dev` includes **AST-765** / **AST-766** product + test removal (expected epic stacking). AST-767 doc surface is `a62c6a7` only.
+
+### Recommended actions
+
+Ada → **resolve-child** — no changes required.
