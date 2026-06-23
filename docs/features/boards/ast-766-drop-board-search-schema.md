@@ -163,3 +163,30 @@ No conflicts requiring escalation.
 **Built:** Stages 1–5 — `_apply_board_schema_sunset` drops board tables and rebuilds `job` without `board_search_id`; deleted board DDL/DML block and bridge constants; cleaned `save_job`, upsert registries, `count_eligible_for_dispatch_task`, and legacy `gaze_board` migration. Product grep clean under `src/` outside sunset DROP strings in `database.py`.
 
 **Betty handoff:** Delete/update board-only tests (`test_board_ingest.py`, `test_board_search_integration.py`, conftest `_board_search_schema_ensured` resets).
+
+### Radia review (2026-06-23)
+
+**Diff:** `origin/dev...origin/sub/AST-757/AST-766-drop-board-search-schema` @ `7e9bd1e`  
+**Product commit reviewed:** `0a1efd3` (`src/data/database.py` only)
+
+#### What’s solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stages 1–5 | `_apply_board_schema_sunset` drops `board_search_run` / `board_search`, rebuilds `job` without `board_search_id` with explicit column list + `idx_job_identity_unique` recreation; bridge constants and full board DDL/DML block deleted; `save_job` omits `board_search_id`; upsert registries cleaned; `count_eligible_for_dispatch_task` `board_search` branch removed; legacy `gaze_board` sort migration removed. |
+| Product grep | Only sunset DROP / `board_search_id` strings remain in `database.py` (expected). |
+| §2.4 / §3.3 | Dead claim/count paths removed; no new cross-layer imports; `BOARD_SEARCH_STATES` / `BOARDS_CONFIG` imports dropped. |
+| Tests | Betty `merge-tests(AST-766)` — `test_board_ingest.py` and `test_board_search_integration.py` deleted; `test_dispatch_tasks.py` updated; bible trimmed. `fix(AST-766)` reverted merge-tests cross-ticket `src/` bleed. |
+| Self-assessment | Single-component data-layer scope matches diff; AST-765 prerequisite satisfied on branch. |
+
+#### Issues
+
+| Severity | Item |
+|----------|------|
+| **advisory** | Three-dot diff vs `origin/dev` also carries **AST-765** boards `src/` removal (expected epic stacking on shared publish ancestry). AST-766-specific product surface is `0a1efd3` only. |
+
+#### Recommended actions
+
+| Owner | Action |
+|-------|--------|
+| Ada | **resolve-child** — no code changes required. |
