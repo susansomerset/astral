@@ -190,3 +190,13 @@ No conflicts requiring escalation.
 | Owner | Action |
 |-------|--------|
 | Ada | **resolve-child** — no code changes required. |
+
+---
+
+## Resolution (2026-06-23)
+
+**Review:** Radia clean — no fix-now, discuss, or product changes.
+
+**§9a:** `origin/sub/AST-757/AST-766-drop-board-search-schema` merges cleanly into `origin/dev` and `origin/ftr/AST-757-sunset-astral-boards`.
+
+**Shipped @ resolve:** `7566300` (Radia review doc) — product unchanged from `0a1efd3`; tests @ `7e9bd1e`.
