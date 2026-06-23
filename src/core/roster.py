@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.external.playwright import (
+    extract_page_scrape_contract,
     extract_site_page_list,
     extract_visible_text,
     extract_page_dom,
@@ -1201,6 +1202,38 @@ def _has_dealbreaker_f(grades: List[Dict[str, Any]]) -> bool:
         and g["confidence"] >= 2
         for g in (grades or [])
     )
+
+
+def finalize_page_scrape_contract(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Collapse visible text and enumerate nav links from raw Playwright scrape (AST-759)."""
+    out = dict(raw or {})
+    visible_text = collapse_consecutive_blank_lines(out.get("visible_text") or "")
+    nav_urls = out.get("nav_urls") or []
+    out["visible_text"] = visible_text
+    out["enumerated_nav_links"] = enumerate_array("", nav_urls) if nav_urls else ""
+    out["nav_urls"] = nav_urls
+    return out
+
+
+async def scrape_loaded_page_contract(page, *, debug: bool = False) -> Dict[str, Any]:
+    """Single page load → collapsed visible text + enumerated nav links (AST-759)."""
+    raw = await extract_page_scrape_contract(page)
+    contract = finalize_page_scrape_contract(raw)
+    if debug:
+        log = logger
+        log.set_debug_flag(True)
+        final_url = contract.get("final_url") or getattr(page, "url", "")
+        visible_text = contract.get("visible_text") or ""
+        nav_urls = contract.get("nav_urls") or []
+        log.debug_index(
+            func="roster.scrape_loaded_page_contract",
+            index=1,
+            total=1,
+            identifier=final_url,
+            outcome=f"visible_chars={len(visible_text)} nav_links={len(nav_urls)}",
+        )
+        log.debug_detail(f"collapsed_visible_chars={len(visible_text)}")
+    return contract
 
 
 async def scrape_company_homepage_content(

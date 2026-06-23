@@ -539,6 +539,20 @@ async def extract_visible_text(page: PageHandle) -> Dict[str, Any]:  # pragma: n
     }
 
 
+async def extract_page_scrape_contract(page: PageHandle) -> Dict[str, Any]:  # pragma: no cover
+    """Raw visible text + nav URL list from one loaded page (AST-759 shared contract)."""
+    vt = await extract_visible_text(page)
+    try:
+        nav_urls = await extract_site_page_list(page=page, max_depth=1, verify=False) or []
+    except Exception:
+        nav_urls = []
+    return {
+        "visible_text": vt.get("text") or "",
+        "nav_urls": nav_urls,
+        "final_url": vt.get("url") or page.url,
+    }
+
+
 async def get_visible_text(  # pragma: no cover
     url: Optional[str] = None,
     *,
