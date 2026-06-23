@@ -209,3 +209,15 @@ No conflicts requiring `conf-!!-NONE`.
 | **resolve-child** — no code changes required from review. | Katherine |
 | **discuss (optional hygiene):** `TestWarnStaleFrontendDist` mutates `ui.server._FRONTEND_SRC` / `_DIST` module globals without restore — fine while this class is last in the module; consider `monkeypatch` teardown if more server tests land below it. | Katherine (optional) |
 | Susan Stage 4 manual UAT: `git pull` → `zsh launch.sh --flask` without manual rebuild → `:5001` Scheduled Actions shows AST-746 layout. | Susan |
+
+---
+
+## Resolution (2026-06-23)
+
+**Engineer:** Katherine · **Review ref:** `origin/sub/AST-744/AST-758-uat-local-dev-not-showing-scheduled-actions-ui-fix` @ `06337d8` (Radia doc) · product @ `d440264`
+
+**Changes vs Radia review:** None required — **fix-now** empty. Optional `TestWarnStaleFrontendDist` monkeypatch hygiene deferred (discuss only).
+
+**§9a dry-run:** `origin/sub/…` merges cleanly into `origin/dev` and `origin/ftr/AST-744-remove-column-gap-in-scheduled-actions`.
+
+**Advisory:** Susan Stage 4 manual UAT — pull `dev`, `zsh launch.sh --flask` without manual `npm run build`, confirm AST-746 column layout on `:5001`.
