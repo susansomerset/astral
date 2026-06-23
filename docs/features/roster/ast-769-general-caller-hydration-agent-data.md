@@ -259,3 +259,37 @@ No unresolved conflicts.
 
 **Publish ref:** `origin/sub/AST-752/AST-769-general-caller-hydration-agent-data`  
 **Product commit:** `174a747` — general caller hydration helpers; `do_task` entry hydration; `run_next` storage-first caller dispatch; debug extension for all hydration hops
+
+## Radia review (2026-06-23)
+
+**Diff:** `origin/dev...origin/sub/AST-752/AST-769-general-caller-hydration-agent-data` @ `ec7e710`  
+**Product commit reviewed:** `174a747` (`src/core/agent.py` only)
+
+### What’s solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (Stages 1–4) | Helpers generalized from AST-597; `do_task` entry hydration; `run_next` strips in-memory `CALLER_*` and re-hydrates via `_caller_anchor_batch_id`; resume seed uses `_hydrate_caller_chain_context` + merge. |
+| Fail-closed | Hydration miss returns `success: False` with clear error before LLM; `_mid_chain_empty_caller_tokens` remains second-line on `_cc` built from `effective_chain_context`. |
+| Chain semantics | `in_chain` still reads original `chain_context`; token resolution / `_chain_context` use `effective_chain_context` — matches plan Stage 2. |
+| Batch anchor | `_anchor_batch_id_from_state_history` + anchor retry without batch on miss; candidate no-`state_history` fallback documented. |
+| §1.5.1 debug | `debug_detail` only when `debug=True`; `caller_hydration=agent_data` gated on `_caller_hydration_source`; run_next boundary adds `caller_hydration=live_llm parent=…`. |
+| §3.3 layer | Lazy `tracker` / `candidate` in `_entity_row` matches existing `agent.py` precedent; core→data reads only. |
+| Tests (AST-769) | `TestAst769GeneralCallerHydration` covers anchor, merge, roster company hop, job cover letter, miss-without-LLM, debug; AST-597 class updated for storage-first debug path. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | Publish ref tip vs `origin/dev` — `tests/component/` | ~14 component test methods **removed** on sub tip vs dev (tracker placeholder ingest ×4, `TestBoardRegistryAst457` ×6, gaze_board admin + config ×4). Not AST-769 scope — restore via proper `merge origin/dev` + `merge-tests` on publish ref before resolve; do not land with regressed dev coverage. |
+| **fix-now** | `src/utils/config.py`, `src/ui/api/api_admin.py`, `docs/features/roster/ast-750-…` | AST-750 product (score_floor dropdown API + config labels) on **this** publish ref; plan **Out of scope** for AST-769. Split or re-sync sub tip so resolve-child only carries AST-769 (+ tests) unless Susan approved intentional rollup. |
+| **discuss** | `agent.py` `_hydrate_caller_chain_context` | Parameter `entry_task_key` unused in body (plan signature only) — drop or include in error strings. |
+| **advisory** | `agent.py` `_parent_hop_task_key_for_child` | Full `get_task_keys()` scan on each caller-token `do_task` — fine for current chain size; revisit if task catalog grows. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Re-sync `origin/sub/AST-752/AST-769-general-caller-hydration-agent-data` with `origin/dev` + Betty `merge-tests`; restore deleted non–AST-769 tests | Engineer (`resolve-child`) |
+| Remove or relocate AST-750 product delta off this sub ref (or confirm rollup intent with Susan on AST-752) | Engineer / Chuckles |
+| Optional: remove or use `entry_task_key` in `_hydrate_caller_chain_context` | Engineer |
