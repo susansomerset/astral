@@ -310,3 +310,14 @@ None (**fix-now**).
 | **Advisory** | `filterOptionValues` derives dropdown sets from full `data` (not filtered rows) as planned — if the dataset grows very large, option lists could get long; acceptable for admin triage today. | `filteredRows` / `filterOptionValues` memos |
 
 **Verdict:** Clean — `resolve-child` may proceed.
+
+---
+
+## Resolution
+
+**Date:** 2026-06-23  
+**Review ref:** `origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ Radia `docs(AST-751): Radia review — clean`
+
+No **fix-now** items. Product unchanged from build @ `9408943` + Betty `merge-tests(AST-751)`. Advisory notes (hardcoded floor min/max options; `filterOptionValues` from full `data`) accepted per plan — **AST-750** owns score-floor-zero API when that sibling ships.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-735-scheduled-actions-screen-edits`.
