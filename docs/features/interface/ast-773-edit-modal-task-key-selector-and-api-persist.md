@@ -115,3 +115,19 @@ Susan cannot change `task_key` when editing an existing Scheduled Actions row โ€
 | ยง3.5 naming | Follows `_dispatch_*` / `update_dtask` conventions. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review (Radia)
+
+**Built:** `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `7b024e5`
+
+| Axis | Rating |
+|------|--------|
+| Plan fidelity | TBD |
+| Code rules | TBD |
+| Boundaries | TBD |
+
+**Product:** TBD
+
+**Tests:** Betty manifest pending at Code Complete.
