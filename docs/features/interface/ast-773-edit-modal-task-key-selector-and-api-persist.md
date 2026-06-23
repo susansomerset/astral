@@ -120,14 +120,28 @@ No conflicts requiring plan revision.
 
 ## Review (Radia)
 
-**Built:** `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `7b024e5`
+**Built:** `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `d811040` (diff `origin/dev...origin/sub/AST-763/AST-773-edit-modal-task-key-and-api`)
 
 | Axis | Rating |
 |------|--------|
-| Plan fidelity | TBD |
-| Code rules | TBD |
-| Boundaries | TBD |
+| Plan fidelity | **A** — Stages 1–2 match plan: PUT whitelist + `_dispatch_task_key_trigger_error`, derived columns, AUTO guard, 409 triple fix; edit Task `<select>`, `taskKeyChangePatch`, AUTO toast/row block, `task_key` in PUT body. |
+| Code rules | **A** — §3.3 layer compliance; config-driven validation via existing helpers; no silent failures or `print()`. |
+| Boundaries | **B** — AST-750 `DISPATCH_SCORE_FLOOR_*` on three-dot diff via merge history; not in AST-773 plan and UI still hardcodes `scoreFloorOptions`. |
 
-**Product:** TBD
+**Product:** Edit flow delivers the parent epic goal — Susan can retarget `task_key` on non-AUTO rows with preserved Input State / Score Floor; server rejects invalid combos and AUTO edits symmetrically with the UI.
 
-**Tests:** Betty manifest pending at Code Complete.
+**Tests:** Betty `merge-tests` — `TestAst773UpdateDispatchTaskTaskKey` (5) + frontend `AST-773 edit modal task_key` (5); bible rows in `api_admin.md` / `pages.md`.
+
+### Findings
+
+**discuss — sibling bleed at merge-child**
+
+`src/utils/config.py` adds `DISPATCH_SCORE_FLOOR_VALUES` / `dispatch_score_floor_option_labels()` (AST-750) on the three-dot diff but not from Katherine’s `code(AST-773)` commits — landed via `merge AST-750` ancestry. No `/dispatch_tasks/score_floor_options` on this ref; `AdminScheduledActions.tsx` still uses hardcoded `scoreFloorOptions` (1.00–10.00). Confirm at **merge-child**: strip from sub rollup or defer full AST-750 landing on `ftr/AST-763`.
+
+**advisory — trigger_state-only PUT**
+
+`_dispatch_task_key_trigger_error` runs only when `"task_key" in data`. PUT with `trigger_state` alone does not re-validate against the row’s existing `task_key` (pre-PUT behavior; plan scoped validation to task_key changes). Optional hardening in a follow-up if Susan wants parity with POST.
+
+**advisory — task retarget UX edge**
+
+`taskKeyChangePatch` updates `is_scored` from catalog while preserving `trigger_state`. Retargeting to a scored catalog key with a non-scored trigger_state can briefly show Score Floor until save; server coerces via `dispatch_claim_uses_score_floor(trigger_state)` — acceptable given plan’s “preserve Input State” decision.
