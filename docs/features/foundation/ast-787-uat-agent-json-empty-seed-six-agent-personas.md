@@ -132,3 +132,29 @@ No unresolved conflicts.
 | 1 | `1c8364e` | Seed `data/admin/agent.json` from UAT fixture (6 personas, repo columns) |
 
 **Hand-verify:** `load_repo_admin_json_file('agent')` → 6 rows; fixture `model_code` stripped per AST-782 column contract.
+
+## Radia review (2026-06-24) — FIX-UAT
+
+**Ref:** `origin/dev...origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `16e2dc1`
+
+### What's solid
+
+- **UAT fix verified:** `code(AST-787)` @ `1c8364e` replaces `[]` with **six** persona rows mapped from `docs/uat-fixtures/AST-756/expected-agent.json` — repo columns only (`model_code` stripped), sorted by `agent_id`, `brain_setting` verbatim from fixture.
+- **AST-782 contract:** row keys match `REPO_ADMIN_JSON_CONFIG` agent columns exactly; Betty manifest `TestAst787AgentRepoJsonSeed` locks id set, fixture mapping, column shape, spot-checks, and `apply_agent_repo_json_startup` smoke.
+- **Scope gate:** no `src/**` changes; `data/admin/agent_task.json` untouched (AST-786 sibling).
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **advisory** | `code(AST-787)` commit | Same commit includes build-stub lines in plan doc (not just `data/admin/agent.json`) — harmless doc delta, not a product scope leak. |
+| **advisory** | Branch diff vs `origin/dev` | Includes **AST-786** `agent_task.json` + fixture rollup from epic merge line — AST-787 product delta is `agent.json` only. |
+
+No **fix-now** items. Closes empty-`agent.json` discuss from **AST-782/786** reviews.
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| resolve-child | None — merge with AST-786 when parent UAT lane clears. |
+| Post-merge UAT | Fresh clone restart → Manage Agents shows six personas; divergence banner clears when DB matches repo file. |
