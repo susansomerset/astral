@@ -169,4 +169,4 @@ No **fix-now** items. Closes empty-`agent.json` discuss from **AST-782/786** rev
 
 **§9a dry-run:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task`.
 
-**Publish tip at resolve:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `ea90c1c`.
+**Publish tip at resolve:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `58208f7`.
