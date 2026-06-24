@@ -97,3 +97,18 @@ No conflicts.
 Stage 1: `ENTITY_TYPES` import + early return `0` in `count_eligible_for_dispatch_task` when `entity_type not in ENTITY_TYPES` — legacy `board_search` rows no longer 500 the admin list.
 
 **Betty / qa-child:** Flip `test_count_eligible_board_search_entity_raises` to expect `0`; add `test_api_admin.py` regression for `list_dtasks` with legacy `board_search` row (`available_count == 0`, no count monkeypatch).
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type` @ `15db572`  
+**Product:** `2e229d6` — no **fix-now** items. Plan fidelity and ASTRAL_CODE_RULES checks passed.
+
+---
+
+## Resolution (2026-06-24)
+
+Radia review had **zero fix-now** items — no product changes in resolve pass. Betty manifest green (2 tests). §9a dry-run: `HEAD` merges cleanly into `origin/dev` and `origin/ftr/AST-763-edit-modal-task-key` after epic worktree synced with `origin/dev`.
+
+**Publish tip:** `origin/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type` @ _(tip after push)_
