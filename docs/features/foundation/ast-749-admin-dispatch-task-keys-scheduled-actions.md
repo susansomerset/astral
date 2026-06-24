@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-749 archived 2026-06-23 -->
+
+## Linear archive (AST-749)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-749/admin-dispatch-task-keys-and-scheduled-actions-alignment-task-keys-vs  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-736 — Task keys vs. dispatch task keys  
+**Blocked by / blocks / related:** parent: AST-736
+
+### Description
+
+## What this implements
+
+Admin dispatch surfaces expose `grade_*` keys directly: `GET /api/admin/dispatch_tasks/task_keys` and Scheduled Actions phase grouping/sequence use `TASK_CONFIG` metadata for the row's `task_key` without consult alias resolution or `(unassigned)` buckets.
+
+## Acceptance criteria
+
+4. Scheduled Actions phase grouping and sequence order for the three graded consult tasks match `TASK_CONFIG` without `(unassigned)` buckets caused by alias resolution.
+5. Admin API rejects new saves using retired `consult_*` keys with a clear validation error; no read-time alias accepts them post-cutover; `GET /api/admin/dispatch_tasks/task_keys` lists `grade_*` with correct phase/seq/trigger defaults.
+
+## Boundaries
+
+* Does **not** own [config.py](<http://config.py>) alias removal — blocked on **AST-737** (may consume its API shape).
+* Does **not** own DB migration or consult batch execution — sibling **Hedy** ticket.
+* Does **not** implement **AST-572** filters or Retry flag UI.
+
+## Notes for planning
+
+* Primary: `src/ui/api/api_admin.py` (`dispatch_task_keys`, form meta), Scheduled Actions admin React components.
+* Follow **AST-568** pattern: group by dispatch row `task_key`; metadata from config, not literal `TASK_CONFIG.get("consult_do")`.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-736-task-keys-vs-dispatch-task-keys`, child `sub/AST-736/AST-739-admin-dispatch-task-keys-scheduled-actions`.
+
+### Comments
+
+#### radia — 2026-06-23T19:50:55.001Z
+## Radia review (AST-749)
+
+**Diff:** `origin/dev...origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` @ `276ab22` (+ doc commit pending push)
+**Doc:** `docs/features/foundation/ast-749-admin-dispatch-task-keys-scheduled-actions.md` (Review Radia section)
+
+**AST-749 commits:** `b303a07` (+7 lines), `18f5cfe`. Sibling **AST-747/748** changes on publish ref — not Katherine product scope (§5d clean).
+
+### What's solid
+
+- **Stage 1:** `DISPATCH_RETIRED_TASK_KEYS` loop skip + terminal `seen.pop`; docstring; direct `catalog_key` trim (no alias map).
+- **Tests:** API excludes legacy `consult_*` from `task_keys`; Vitest `grade_do` groups under `task_group_name`, not `(unassigned)`.
+
+### fix-now
+
+None.
+
+### Recommended
+
+**resolve-child** — no code changes. Susan UAT: Add Task picker has `grade_*` not `consult_*`; Scheduled Actions buckets `grade_do` after **AST-748** migration.
+
+#### betty — 2026-06-23T19:48:05.029Z
+## QA test manifest (AST-749)
+
+**Publish:** `origin/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions` @ `276ab22` (`merge-tests(AST-749): origin/tests 18f5cfe`)
+
+**Run (narrowed):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst749DispatchTaskKeysRetiredFilter \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-749"
+```
+
+1. `tests/component/ui/api/test_api_admin.py` — `TestAst749DispatchTaskKeysRetiredFilter::test_dispatch_task_keys_excludes_retired_consult_keys` (`consult_*` absent from GET even when `list_dispatch_tasks` returns legacy rows; `grade_do` present with schedulable defaults)
+2. `tests/component/ui/api/test_api_admin.py` — `TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key` (verify **AST-747** POST guard)
+3. `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — `AST-749: grade_do row groups under task_keys metadata not (unassigned)` (**§6c** routed page)
+
+**Bible shasum (`origin/sub/…` @ `276ab22`):**
+- `docs/test-bible/ui/api/api_admin.md` — `269623c3f7aba5a14472b1bbb8b16c09267833a6339f106b7db4e68e2997dbd2`
+- `docs/test-bible/frontend/pages.md` — `8f56a6647502feb5b84e3c84365eca037524f7f8a10fbc3bd4d68930b5c5c543`
+
+— Betty
+
+#### katherine — 2026-06-23T19:45:54.049Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-736/AST-749-admin-dispatch-task-keys-scheduled-actions/docs/features/foundation/ast-749-admin-dispatch-task-keys-scheduled-actions.md
+
+**Scope:** `Single-Component` — `dispatch_task_keys` retirement filter + docstring in `api_admin.py`; Scheduled Actions already buckets by `allTaskKeys[row.task_key]` (AST-739).
+
+**Conf:** `high` — mirrors hidden-key pop pattern; AST-747 already guards POST and identity catalog lookup.
+
+**Risk:** `Medium` — mis-filtering would hide keys from Add Task picker or mis-bucket `grade_*` in UI without breaking runtime.
+
+---
+
 # AST-749 — Admin dispatch task_keys and Scheduled Actions alignment
 
 - **Linear (this ticket):** [AST-749](https://linear.app/astralcareermatch/issue/AST-749/admin-dispatch-task-keys-and-scheduled-actions-alignment-task-keys-vs-dispatch)
