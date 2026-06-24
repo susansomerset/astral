@@ -214,3 +214,182 @@ class TestAst783RepoAdminJsonDivergence:
     def test_revert_unknown_table_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown repo admin JSON table"):
             repo_json_mod.revert_repo_admin_json_table("__nope__")
+
+
+AST786_EXPECTED_TASK_KEYS = frozenset(
+    {
+        "advise_job_resume",
+        "analysis_upshot",
+        "anticipate_scan",
+        "check_cover_letter",
+        "check_job_resume",
+        "contemplate_job",
+        "craft_company_search_terms",
+        "craft_do_rubric",
+        "craft_get_rubric",
+        "craft_jobdesc_rubric",
+        "craft_joblist_rubric",
+        "craft_like_rubric",
+        "craft_prefilter_rubric",
+        "craft_resume_base",
+        "draft_cover_letter",
+        "draft_job_resume",
+        "evaluate_jd",
+        "fetch_jd",
+        "fetch_job_pages",
+        "fetch_website",
+        "finalize_cover_letter",
+        "finalize_job_resume",
+        "gaze",
+        "grade_do",
+        "grade_get",
+        "grade_like",
+        "inflow_discovery",
+        "intake_build_request",
+        "intake_candidate_response",
+        "intake_initiate_candidate",
+        "parse_job_list",
+        "prefilter_company",
+        "propose_application_responses",
+        "qualify_job_listings",
+        "recheck_no_openings",
+        "select_job_page",
+        "vet_inflow_discovery",
+    },
+)
+
+
+class TestAst786AgentTaskRepoJsonSeed:
+    """AST-786 UAT: populated 37-row agent_task repo JSON from UAT fixture."""
+
+    def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
+        repo = Path("data/admin/agent_task.json")
+        fixture = Path("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert repo.is_file() and fixture.is_file()
+        assert repo.read_bytes() == fixture.read_bytes()
+
+    def test_repo_json_has_37_current_catalog_keys(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        assert len(rows) == 37
+        assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
+        assert all(row["current"] == 1 for row in rows)
+
+    def test_spot_check_rows_have_agent_id_and_user_prompt(self) -> None:
+        by_key = {
+            row["task_key"]: row
+            for row in json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        }
+        for task_key in ("prefilter_company", "grade_get", "anticipate_scan"):
+            row = by_key[task_key]
+            assert str(row["agent_id"]).strip()
+            assert str(row["user_prompt"]).strip()
+
+    def test_startup_apply_loads_all_37_current_rows(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.data import database as database_mod
+
+        monkeypatch.setattr(database_mod, "_validate_run_next", lambda _c, _k, _rn: None)
+        rows = repo_json_mod.load_repo_admin_json_file("agent_task")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            sqlite_in_memory._ensure_agent_task_schema(conn)
+            expected_cols = set(sqlite_in_memory.table_columns(conn, "agent_task"))
+            for index, row in enumerate(rows, start=1):
+                assert set(row.keys()) == expected_cols, f"row {index} {row['task_key']}"
+            sqlite_in_memory.apply_agent_task_repo_json_startup(conn, rows)
+            conn.commit()
+            count = conn.execute(
+                "SELECT COUNT(*) FROM agent_task WHERE current = 1",
+            ).fetchone()[0]
+            assert count == 37
+            loaded = sqlite_in_memory.get_agent_task("prefilter_company")
+            assert loaded is not None
+            assert loaded["agent_id"] == "job_analyst_grace"
+            assert loaded["user_prompt"]
+        finally:
+            conn.close()
+
+
+AST787_EXPECTED_AGENT_IDS = frozenset(
+    {
+        "ats_expert_atlas",
+        "college_intern_ruth",
+        "content_writer_judith",
+        "job_analyst_grace",
+        "principal_recruiter_estelle",
+        "web_scraper_laslo",
+    },
+)
+
+AST787_AGENT_REPO_COLUMNS = (
+    "agent_id",
+    "content",
+    "brain_setting",
+    "temperature",
+    "max_tokens",
+    "updated_at",
+)
+
+
+def _ast787_fixture_repo_row(fixture_row: dict[str, object]) -> dict[str, object]:
+    return {column: fixture_row[column] for column in AST787_AGENT_REPO_COLUMNS}
+
+
+class TestAst787AgentRepoJsonSeed:
+    """AST-787 UAT: six persona rows in agent repo JSON mapped from UAT fixture."""
+
+    def test_repo_json_has_six_sorted_persona_ids(self) -> None:
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        assert len(rows) == 6
+        assert frozenset(row["agent_id"] for row in rows) == AST787_EXPECTED_AGENT_IDS
+        assert [row["agent_id"] for row in rows] == sorted(AST787_EXPECTED_AGENT_IDS)
+
+    def test_repo_rows_match_fixture_repo_column_mapping(self) -> None:
+        repo_rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        fixture_by_id = {
+            row["agent_id"]: row
+            for row in json.loads(
+                Path("docs/uat-fixtures/AST-756/expected-agent.json").read_text(encoding="utf-8"),
+            )
+        }
+        for repo_row in repo_rows:
+            expected = _ast787_fixture_repo_row(fixture_by_id[repo_row["agent_id"]])
+            assert repo_row == expected
+
+    def test_repo_rows_use_repo_columns_only(self) -> None:
+        expected_cols = set(AST787_AGENT_REPO_COLUMNS)
+        for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8")):
+            assert set(row.keys()) == expected_cols
+            assert "model_code" not in row
+
+    def test_spot_check_personas_have_content_and_brain_setting(self) -> None:
+        by_id = {
+            row["agent_id"]: row
+            for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        }
+        for agent_id in (
+            "job_analyst_grace",
+            "ats_expert_atlas",
+            "principal_recruiter_estelle",
+        ):
+            row = by_id[agent_id]
+            assert str(row["content"]).strip()
+            assert str(row["brain_setting"]).strip()
+
+    def test_startup_apply_loads_all_six_agents(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        rows = repo_json_mod.load_repo_admin_json_file("agent")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            sqlite_in_memory.apply_agent_repo_json_startup(conn, rows)
+            conn.commit()
+            listed = {row["agent_id"] for row in sqlite_in_memory.list_agents()}
+            assert listed == AST787_EXPECTED_AGENT_IDS
+            grace = sqlite_in_memory.get_agent("job_analyst_grace")
+            assert grace is not None
+            assert grace["brain_setting"] == "Medium"
+            assert grace["content"]
+        finally:
+            conn.close()

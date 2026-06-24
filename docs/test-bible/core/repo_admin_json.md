@@ -35,3 +35,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 | Shared banner + themed confirm | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` |
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
+
+**UAT seed (AST-786):** populated 37-row catalog — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**).
+
+**UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
