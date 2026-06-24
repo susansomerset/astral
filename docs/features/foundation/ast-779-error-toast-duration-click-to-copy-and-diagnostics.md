@@ -336,3 +336,32 @@ No plan conflicts requiring escalation.
 | **Built tip** | `cc9b5f0` |
 | **Stages** | 1 — `api_errors.py` + `/api/*` handler (`501b915`); 2 — `toastDiagnostics.ts` (`f8bde5c`); 3 — Toast 15s + click-to-copy + CSS (`0379f75`); 4 — AdminAgentPrompts + CandidateProfile ApiError wiring (`cc9b5f0`) |
 | **Betty next** | `test_Toast.test.tsx` extensions + `test_api_errors.py` per plan test manifest |
+
+## Radia review (2026-06-24)
+
+**Diff:** `origin/dev...origin/sub/AST-770/AST-779-error-toast-diagnostics` @ `50ae12a`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (Stages 1–4) | `api_errors.py` + `/api/*` handler; `toastDiagnostics.ts` helpers; Toast 15s error dismiss, click-to-copy, copied feedback without timer reset; representative `AdminAgentPrompts` + `CandidateProfile` `readApiError` wiring. |
+| Backward compatibility | Pages passing `{ text, variant: "error" }` only still get route + candidate id via Toast auto-context; success/info unchanged (~3s, non-interactive). |
+| §3.3 layer | `api_errors.py` Flask/jsonify only; frontend lib has no core/data imports; `server.py` late import matches existing pattern. |
+| §1.5 logging | Traceback in JSON 500 responses only — no new `app_log` / debug-contract emission. |
+| Handler scope | Non-`/api/` paths re-raise; test manifest covers enriched 500 JSON and non-API propagation. |
+| Tests | Betty manifest rows present: Toast Vitest (15s/3s/copy/copied), `test_api_errors.py` helper + handler contract. |
+| Self-Assessment | Scope `Single-Component` matches diff footprint; Conf `high` — no `!!-NONE` gap. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | `server.py` `_api_uncaught_exception` | Catch-all `Exception` on `/api/*` would also wrap Werkzeug `HTTPException` (404/403) as enriched 500 if a route later uses `abort()` — today no `abort`/`HTTPException` in `src/ui/`. Optional hardening: re-raise `HTTPException` subclasses before `server_error_from_exception`. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None required for resolve | — |
+| Optional: guard `HTTPException` in handler when touching this file again | Engineer (future) |
