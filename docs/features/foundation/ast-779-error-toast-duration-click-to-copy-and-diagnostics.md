@@ -365,3 +365,11 @@ No plan conflicts requiring escalation.
 |--------|-------|
 | None required for resolve | — |
 | Optional: guard `HTTPException` in handler when touching this file again | Engineer (future) |
+
+## Resolution (2026-06-24)
+
+Radia **Review Posted** — **no fix-now**; **discuss** none; **advisory** (`HTTPException` hardening) deferred per review table.
+
+**Product:** No changes — build @ `cc9b5f0` + Betty tests @ `50ae12a` + Radia doc @ `ae601ec` on publish ref unchanged.
+
+**§9a:** `origin/sub/AST-770/AST-779-error-toast-diagnostics` dry-run merge clean into `origin/dev` and `origin/ftr/AST-770-update-error-toast`.
