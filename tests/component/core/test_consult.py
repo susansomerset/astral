@@ -571,6 +571,120 @@ class TestAst371ResumeArtifactDispatch:
 
 
 @_SKIP_AST552_RESUME_BODY
+class TestAst789TerminalGraduation:
+    """AST-789 — batch exit promotes to CANDIDATE_REVIEW via _try_graduate_artifact_job_to_candidate_review."""
+
+    @pytest.mark.asyncio
+    async def test_artifact_entry_batch_graduates_after_finalize_hop_entry(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        chain = AsyncMock(return_value={"success": True})
+        cover = AsyncMock()
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
+        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
+        out = await consult_mod._run_job_artifact_entry_batch(
+            "batch-789",
+            [{"astral_job_id": "job-x"}],
+            {},
+            False,
+            "finalize_job_resume",
+        )
+        assert out["total_passed"] == 1
+        chain.assert_awaited_once()
+        assert chain.await_args.kwargs["first_task_key"] == "finalize_job_resume"
+        transition.assert_called_once_with(["job-x"], "CANDIDATE_REVIEW")
+        cover.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_artifact_entry_batch_graduates_on_anticipate_scan_first_hop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        chain = AsyncMock(return_value={"success": True})
+        cover = AsyncMock()
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
+        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
+        out = await consult_mod._run_job_artifact_entry_batch(
+            "batch-789",
+            [{"astral_job_id": "job-scan"}],
+            {},
+            False,
+            "anticipate_scan",
+        )
+        assert out["total_passed"] == 1
+        transition.assert_called_once_with(["job-scan"], "CANDIDATE_REVIEW")
+        cover.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_artifact_entry_batch_transition_failure_releases_claim(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        chain = AsyncMock(return_value={"success": True})
+        cover = AsyncMock()
+        released: list[str] = []
+        transition = MagicMock(side_effect=ValueError("invalid transition"))
+        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
+        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "release_job_dispatch_claim",
+            lambda aid: released.append(aid),
+        )
+        out = await consult_mod._run_job_artifact_entry_batch(
+            "batch-789",
+            [{"astral_job_id": "job-fail"}],
+            {},
+            False,
+            "contemplate_job",
+        )
+        assert out["total_errors"] == 1
+        assert out["total_passed"] == 0
+        transition.assert_called_once_with(["job-fail"], "CANDIDATE_REVIEW")
+        assert released == ["job-fail"]
+        cover.assert_not_awaited()
+
+    def test_try_graduate_uses_fresh_persist_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        persist_calls: list[tuple[str, object]] = []
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": "BUILD_ARTIFACTS.finalize_job_resume"},
+        )
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "job_has_persisted_resume_body",
+            lambda aid, row=None: persist_calls.append((aid, row)) or True,
+        )
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", MagicMock())
+        ok, reason = consult_mod._try_graduate_artifact_job_to_candidate_review("job-fresh")
+        assert ok is True
+        assert reason == "ok"
+        assert persist_calls == [("job-fresh", None)]
+
+
+@_SKIP_AST552_RESUME_BODY
 class TestAst534DispatchTaskKeyHonesty:
     """AST-534 — dispatch row task_key drives consult entry; trigger_state claims only."""
 
@@ -601,6 +715,11 @@ class TestAst534DispatchTaskKeyHonesty:
         monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
         monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", MagicMock())
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+        )
         monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
         compound = cfg.resume_artifact_compound_state("anticipate_scan")
         out = await consult_mod.run_consult_task(
