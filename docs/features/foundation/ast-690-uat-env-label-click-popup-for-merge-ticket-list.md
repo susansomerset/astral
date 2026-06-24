@@ -1,3 +1,138 @@
+<!-- linear-archive: AST-690 archived 2026-06-23 -->
+
+## Linear archive (AST-690)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-690/uat-env-label-click-popup-for-merge-ticket-list  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-675 — Create a ticket log in utils  
+**Blocked by / blocks / related:** parent: AST-675
+
+### Description
+
+## What failed
+
+With `ASTRAL_DEPLOY_ENV` set and an admin session on staging, the deploy footer environment label shows a text (I-beam) cursor on hover and **no** merge-ticket list appears — the native `title` tooltip does not surface ticket history.
+
+## Expected
+
+Admin can see up to **20** most recent logged parent tickets (id + timestamp), most recent first, with line breaks between entries — via an obvious click interaction on the environment label (popup/list), per Susan UAT feedback.
+
+## Repro
+
+1. Log in as admin on staging with `ASTRAL_DEPLOY_ENV` set (e.g. `dev`).
+2. Open left nav; locate the deploy footer environment label.
+3. Hover the environment string — I-beam cursor; no ticket list appears.
+4. Susan expects click on the environment label to open a small popup/list of logged tickets.
+
+## Parent AC (quoted inline)
+
+> 4. With `ASTRAL_DEPLOY_ENV` set and admin session, hovering the environment label shows up to **20** ticket lines (id + timestamp), most recent first, separated by line breaks.
+
+*(Implementation may use click + popup instead of hover* `title` *if that satisfies the display requirement and fixes the UAT failure.)*
+
+## Boundaries
+
+* This bug does **not** change: merge ticket log storage, append tool, finish-up wiring, deploy-status API shape, or non-admin nav.
+* Does not add SHA to entries; does not call Linear API for ticket titles.
+
+### Comments
+
+#### radia — 2026-06-15T20:29:18.617Z
+**Diff:** `origin/dev...origin/sub/AST-675/ast-690-uat-env-label-click-popup-for-merge-ticket-list` (`fd9e663b`)
+
+### Plan fidelity (Stage 1)
+
+Implementation matches the approved plan: `mergeTicketDisplayLines`, click-toggle `button` with `aria-expanded` / `aria-haspopup`, outside `mousedown` dismiss on `envWrapRef`, static `span` when `merge_tickets` empty/missing, `title` removed, 20-line cap preserved, poll/error/uptime branches untouched. No backend, API, utils, or sibling-scope drift (AST-681/683).
+
+Ordering assumption holds: `deploy_status.py` already returns `merge_tickets` most-recent-first (`list(reversed(entries))`); UI `slice(0, 20)` is correct.
+
+### ASTRAL_CODE_RULES
+
+| Check | Result |
+|-------|--------|
+| §1.3 DRY | Reuses `fmtTime`; outside-click pattern consistent with admin UI conventions |
+| §3.3 layer | Frontend-only; no `data` / `external` imports |
+| §3.2 UI config | No hardcoded state lists; consumes API payload |
+| §1.5 / §5f–g | N/A — no backend or LLM paths touched |
+
+**fix-now:** none
+
+### Tests / manifest
+
+Betty manifest and `test_AdminDeployFooter.test.tsx` updates align with plan QA table: popup open/close, 20-item cap, static span when empty, no `title`. `docs/test-bible/frontend/components.md` AST-690 row matches pytest names. Tests Passed gate is credible for this scope.
+
+### Advisory (non-blocking)
+
+- **`key={line}`** on popup `<li>` — duplicate `ticket_id` + identical formatted timestamp would collide; consider `key={\`${ticket_id}-${recorded_at}\`}` or index if log ever duplicates (unlikely).
+- **ARIA:** `role="listbox"` with plain `<li>` children is loose vs strict combobox/listbox pattern (`role="option"`); fine for admin footer, optional polish later.
+- **Poll while open:** if `merge_tickets` empties on refresh, `ticketsOpen` can stay `true` with no visible popup until next interactive session — harmless edge case.
+
+#### betty — 2026-06-15T20:27:28.514Z
+## QA test manifest (AST-690)
+
+**Publish ref:** `origin/sub/AST-675/ast-690-uat-env-label-click-popup-for-merge-ticket-list` @ `fd9e663b` (`merge-tests(AST-690): origin/tests 557cc266`)
+
+**Bible shasum:** `docs/test-bible/frontend/components.md` → `d462a3e8d88014a9ee3c37b72f2d6b19f7174cf3`
+
+### 1. Existing coverage (unchanged — no rerun required)
+
+| Area | Bible | Notes |
+| --- | --- | --- |
+| Deploy status API / `merge_tickets` payload | `docs/test-bible/utils/deploy_status.md` | AST-681 — no API shape change this ticket |
+| Non-admin footer gate | `docs/test-bible/frontend/components.md` AST-646 | `test_NavigationShell.test.tsx` unchanged |
+
+### 2. Broken / obsolete tests (revised this pass)
+
+| Old (AST-682) | Replacement (AST-690) |
+| --- | --- |
+| `test_sets_merge_ticket_tooltip_on_environment_label_when_merge_tickets_present` | `test_opens_merge_ticket_popup_on_environment_button_click_when_merge_tickets_present` |
+| `test_omits_title_on_environment_label_when_merge_tickets_empty_or_missing` | `test_renders_static_environment_span_when_merge_tickets_empty_or_missing` |
+| `test_caps_merge_ticket_tooltip_at_20_lines` | `test_caps_merge_ticket_popup_at_20_list_items` |
+
+### 3. Manifest (test-child — run all)
+
+**Compile:**
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+```
+
+**Vitest (required):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx
+```
+
+**Cases covered:**
+
+1. Click env **button** opens `listbox` popup with ticket lines (`ticket_id` + `fmtTime`), API order, no `title` on control
+2. Second click toggles closed; **outside `mousedown`** dismisses popup
+3. Empty / missing `merge_tickets` → static **span**, no button, no popup
+4. At most **20** `<li>` rows when API returns >20 entries
+5. Existing: env+uptime success, env absent, deploy_status error — unchanged
+
+**Pass criterion:** all manifest lines green; no backend pytest required (UI-only bug).
+
+— Betty
+
+#### katherine — 2026-06-15T20:11:28.466Z
+Plan: `docs/features/foundation/ast-690-uat-env-label-click-popup-for-merge-ticket-list.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-675/ast-690-uat-env-label-click-popup-for-merge-ticket-list/docs/features/foundation/ast-690-uat-env-label-click-popup-for-merge-ticket-list.md
+
+**Scope:** `Single-Component` — `AdminDeployFooter.tsx` + popup CSS in `App.css`; replaces broken native `title` with click-to-toggle list; no backend/API changes.
+
+**Conf:** `high` — Reuses `fmtTime`, 20-line cap, and existing outside-click pattern from admin UI.
+
+**Risk:** `low` — Admin-only footer display; does not touch dispatch, auth, or non-admin nav.
+
+---
+
 # UAT: env label click popup for merge ticket list
 
 **Linear:** [AST-690 — UAT: env label click popup for merge ticket list](https://linear.app/astralcareermatch/issue/AST-690/uat-env-label-click-popup-for-merge-ticket-list)
