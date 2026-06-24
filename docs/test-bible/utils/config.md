@@ -86,6 +86,40 @@ Narrow (**`test-astral`** **AST-483** tip):
 
 ---
 
+### AST-775 · AST-754
+
+**AST-775:** Register **`VET_FAILED`** in **`COMPANY_STATES`** and **`("NEW", "VET_FAILED")`** in **`company_state_transitions`** — vet dispatch wiring is **AST-776**. Discovery batch record-only path: **`docs/test-bible/core/roster.md`** (**AST-775**).
+
+| Area | Manifest tests |
+| --- | --- |
+| **`VET_FAILED`** state + transition | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition` |
+
+---
+
+### AST-776 · AST-754
+
+**AST-776:** **`INFLOW_CONFIG["vet"]`** block; **`vet_inflow_discovery`** schedulable as company/**`NEW`**; **`_dispatch_trigger_state_for_task_key`** vet branch; eligibility counters **`count_company_new_pending_inflow_vet`** / narrowed **`count_company_new_without_website`**. Roster vet execution: **`docs/test-bible/core/roster.md`** (**AST-776**).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`INFLOW_CONFIG["vet"]`** literals + admin defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals`; `::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults` |
+| 2 | Eligibility split vet vs resolve | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible` |
+
+**AST-776** narrowed run (config + database slice):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-504 · AST-505 · AST-506 · AST-490
 
 Phase 0: newline-delimited **`artifacts.company_search_terms`**, **`craft_company_search_terms`** (on-demand generate only — no **`dispatch_tasks`** row), Artifacts page + save normalization. Phase 1 (**AST-505**): weekly **`inflow_discovery`** candidate dispatch, Google CSE per term, **`vet_inflow_discovery`**, **`ingest_new_companies`** with candidate-scoped URL dedupe, **`NEW`** / **`WEBSITE_FOUND`** company states. Phase 2 (**AST-506**): **`inflow_resolve_website`** company dispatch for **`NEW`** rows with empty **`company_website`**; CSE resolution (20 results, no date restrict) + **`find_company_website`** → **`WEBSITE_FOUND`** or **`NO_WEBSITE`**.
@@ -482,3 +516,13 @@ cd src/ui/frontend && npm run test:component -- \
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+---
+
+### AST-782 · AST-756
+
+**`REPO_ADMIN_JSON_CONFIG`:** repo-relative paths under `data/admin/`, agent export column list (excludes legacy `model_code`), fixed apply order **agent → agent_task**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Path helpers + table key order | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig` |

@@ -1018,12 +1018,13 @@ class TestAst505InflowDiscoveryConfig:
         assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
+        assert d["vet_dispatch_trigger_state"] == "NEW"
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]
         assert "phase" not in entry
         assert "seq" not in entry
-        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
         items = entry["response_schema"]["results"]["items_schema"]
         assert items["action"]["type"] == "str"
@@ -1034,11 +1035,31 @@ class TestAst505InflowDiscoveryConfig:
         assert ("NEW", "WEBSITE_FOUND") in transitions
         assert ("NEW", "NO_WEBSITE") in transitions
 
+    def test_vet_failed_state_and_transition(self) -> None:
+        assert "VET_FAILED" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("NEW", "VET_FAILED") in transitions
+
+    def test_inflow_config_vet_literals(self) -> None:
+        v = cfg.INFLOW_CONFIG["vet"]
+        assert v["task_key"] == "vet_inflow_discovery"
+        assert v["dispatch_trigger_state"] == "NEW"
+        assert v["pass_state"] == "WEBSITE_FOUND"
+        assert v["fail_state"] == "VET_FAILED"
+        assert v["blurb_data_key"] == "inflow_discovery_blurb"
+
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("inflow_discovery")
         assert d["entity_type"] == "candidate"
         assert d["trigger_state"] == "LIVE_PROMPTS"
         assert "inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+
+    def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "NEW"
+        assert d["batch_call_mode"] == 0
+        assert "vet_inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
 
 class TestAst506InflowResolveConfig:
@@ -1274,3 +1295,22 @@ class TestAst725RubricOwnerRunKeys:
 
     def test_prefilter_company_grades_key(self) -> None:
         assert cfg.TASK_CONFIG["prefilter_company"]["grades_key"] == "prefilter_grades"
+
+
+class TestAst782RepoAdminJsonConfig:
+    def test_table_keys_order_agent_before_agent_task(self) -> None:
+        assert cfg.get_repo_admin_json_table_keys() == ("agent", "agent_task")
+
+    def test_paths_resolve_under_project_root(self) -> None:
+        agent_path = cfg.get_repo_admin_json_path("agent")
+        task_path = cfg.get_repo_admin_json_path("agent_task")
+        assert agent_path.name == "agent.json"
+        assert task_path.name == "agent_task.json"
+        assert agent_path.parent.name == "admin"
+        assert agent_path.parent.parent.name == "data"
+        assert agent_path.is_absolute()
+        assert task_path.is_absolute()
+
+    def test_unknown_table_key_raises(self) -> None:
+        with pytest.raises(KeyError, match="unknown repo admin JSON table"):
+            cfg.get_repo_admin_json_path("__no_such_table__")

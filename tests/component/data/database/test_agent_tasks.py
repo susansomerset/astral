@@ -220,3 +220,64 @@ class TestAst738TaskGroupingMetadata:
         finally:
             conn.close()
 
+
+TASK_KEY_REPO_A = "__ast782_repo_task_a__"
+TASK_KEY_REPO_B = "__ast782_repo_task_b__"
+
+
+# AST-782: repo-owned agent_task JSON startup upsert + export queries.
+class TestAst782AgentTaskRepoJsonStartup:
+    @pytest.fixture(autouse=True)
+    def _no_run_next_graph(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.data import database as database_mod
+
+        monkeypatch.setattr(database_mod, "_validate_run_next", lambda _c, _k, _rn: None)
+
+    def _current_row_dict(self, db, task_key: str) -> dict:
+        conn = db._get_connection()
+        try:
+            cols = db.table_columns(conn, "agent_task")
+            row = conn.execute(
+                f"SELECT {','.join(cols)} FROM agent_task WHERE task_key = ? AND current = 1",
+                (task_key,),
+            ).fetchone()
+            assert row is not None
+            return dict(zip(cols, row))
+        finally:
+            conn.close()
+
+    def test_startup_retires_absent_keys_and_imports_json(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(TASK_KEY_REPO_A, agent_id="a1", user_prompt="seed-a")
+        db.save_agent_task(TASK_KEY_REPO_B, agent_id="b1", user_prompt="seed-b")
+        json_row = self._current_row_dict(db, TASK_KEY_REPO_A)
+        json_row["user_prompt"] = "repo-wins"
+        conn = db._get_connection()
+        try:
+            db.apply_agent_task_repo_json_startup(conn, [json_row])
+            conn.commit()
+            current_a = db.get_agent_task(TASK_KEY_REPO_A)
+            assert current_a is not None
+            assert current_a["user_prompt"] == "repo-wins"
+            assert db.get_agent_task(TASK_KEY_REPO_B) is None
+            retired = conn.execute(
+                "SELECT COUNT(*) FROM agent_task WHERE task_key = ? AND current = 0",
+                (TASK_KEY_REPO_B,),
+            ).fetchone()[0]
+            assert retired >= 1
+        finally:
+            conn.close()
+
+    def test_fetch_export_rows_only_current(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(TASK_KEY_REPO_A, agent_id="a1", user_prompt="current")
+        db.save_agent_task(TASK_KEY_REPO_A, user_prompt="retired")
+        conn = db._get_connection()
+        try:
+            rows = db.fetch_agent_task_repo_json_export_rows(conn)
+            keys = {row["task_key"] for row in rows}
+            assert TASK_KEY_REPO_A in keys
+            assert all(row["current"] == 1 for row in rows)
+            assert len([row for row in rows if row["task_key"] == TASK_KEY_REPO_A]) == 1
+        finally:
+            conn.close()

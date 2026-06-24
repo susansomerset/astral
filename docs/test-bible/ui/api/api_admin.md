@@ -195,3 +195,23 @@ Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
   -q
 ```
 
+
+---
+
+### AST-783 · AST-756
+
+**Repo JSON divergence API:** **`GET /api/admin/repo_json/status`** returns per-table `{ diverged, repo_relative_path }`; **`POST /api/admin/repo_json/revert/<table_key>`** restores one table from checked-in JSON (400 for invalid `table_key`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Status + revert routes | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi` |
+
+Core compare/revert: **`docs/test-bible/core/repo_admin_json.md`**. UI banner: **`docs/test-bible/frontend/components.md`** (**AST-783**).
+
+**AST-783** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi \
+  -q
+```
