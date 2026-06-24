@@ -486,9 +486,23 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
     def _strip_seg_imp(s: Optional[str]) -> str:
         return (s if s is not None else "").strip()
 
+    def _grouping_from_copy_row(r: dict[str, Any]) -> tuple[str, str, float, str]:
+        go = "" if r["task_group_order"] is None else (
+            r["task_group_order"] if isinstance(r["task_group_order"], str) else str(r["task_group_order"])
+        )
+        gn = "" if r["task_group_name"] is None else (
+            r["task_group_name"] if isinstance(r["task_group_name"], str) else str(r["task_group_name"])
+        )
+        gs = float(r["task_seq"]) if r["task_seq"] is not None else 999.0
+        tn = "" if r["task_name"] is None else (
+            r["task_name"] if isinstance(r["task_name"], str) else str(r["task_name"])
+        )
+        return go.strip(), gn.strip(), gs, tn.strip()
+
     sel_cur = """SELECT task_key_uuid, agent_id, user_prompt, cache_prompt,
                         cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                        nocache_prompt, run_next, system_prompt
+                        nocache_prompt, run_next, system_prompt,
+                        task_group_order, task_group_name, task_seq, task_name
                  FROM agent_task WHERE task_key = ? AND current = 1"""
 
     for tk_str in sorted(task_to_row.keys()):
@@ -553,7 +567,18 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             elif new_rn != rn_db_strip:
                 skip_row = False
             else:
-                skip_row = True
+                db_go = cur_before[10] if cur_before[10] is not None else ""
+                db_gn = cur_before[11] if cur_before[11] is not None else ""
+                db_gs = float(cur_before[12]) if cur_before[12] is not None else 999.0
+                db_tn = cur_before[13] if cur_before[13] is not None else tk_str
+                file_go, file_gn, file_gs, file_tn = _grouping_from_copy_row(r)
+                grouping_changed = (
+                    file_go != (db_go.strip() if isinstance(db_go, str) else str(db_go).strip())
+                    or file_gn != (db_gn.strip() if isinstance(db_gn, str) else str(db_gn).strip())
+                    or file_gs != db_gs
+                    or file_tn != (db_tn.strip() if isinstance(db_tn, str) else str(db_tn).strip())
+                )
+                skip_row = not grouping_changed
 
         if skip_row:
             skipped += 1
@@ -573,6 +598,10 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             nocache_prompt=r["nocache_prompt"],
             run_next=r["run_next"],
             system_prompt=r["system_prompt"],
+            task_group_order=r["task_group_order"],
+            task_group_name=r["task_group_name"],
+            task_seq=r["task_seq"],
+            task_name=r["task_name"],
             import_explicit=True,
         )
         if was_absent:
