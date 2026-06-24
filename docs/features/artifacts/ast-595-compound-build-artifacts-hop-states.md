@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-595 archived 2026-06-23 -->
+
+## Linear archive (AST-595)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-595/compound-build-artifacts-hop-states-and-chain-order-config-need-to  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-593 — Need to pick up and parse daisy chained prompts from the middle using agent_data content  
+**Blocked by / blocks / related:** parent: AST-593; blocks: AST-597; blocks: AST-596
+
+### Description
+
+## What this implements
+
+Extend the artifact resume chain job lifecycle with explicit compound **BUILD_ARTIFACTS.<task_key>** entries in **JOB_STATES** and a config block listing hop order (explicit task keys for v1 — no runtime TASK_CONFIG ordering). **Generate Artifacts** approval transitions the job to the configured first compound state (Susan: e.g. **BUILD_ARTIFACTS.anticipate_scan** or first hop in the explicit list). Mid-chain failures do **not** move jobs to **BUILD_FAILED**; the job stays at the last successful compound state until a later hop succeeds or Susan intervenes.
+
+## Acceptance criteria
+
+1. After hop *N* succeeds in a resume artifact chain, the job's recorded progress reflects that *N* completed and identifies the next hop entry task — observable without re-running hop *N*. (state/progress half — compound state encodes completed + next entry)
+2. A full successful chain still lands the job in **CANDIDATE_REVIEW** with non-empty structure-keyed `resume_content`; mid-chain progress alone never shows a candidate-ready draft in the Job Analysis Report. (terminal transition from final compound state only)
+
+## Boundaries
+
+* Does not hydrate **agent_data** into caller tokens — sibling Ada ticket.
+* Does not change Manage Tasks `run_next` authoring (**AST-313**).
+* Does not fix **draft_job_resume** validation (**AST-592**).
+* Cover letter / consult / roster chains out of scope.
+
+## Notes for planning
+
+* **ASTRAL_CODE_RULES §2.1** — all state lists and hop order in `config.py`.
+* Align compound states with Phase E task keys already registered (**AST-450**).
+* Susan resolved: compound **JOB_STATES** strings, explicit config order, no **BUILD_FAILED** on daisy-chain hop failure.
+
+## Git branch (authoritative)
+
+Per **orientation-astral § Branch law**: parent **ftr/AST-593-mid-chain-artifact-resume**, child **sub/AST-593/<child-id>-compound-build-artifacts-hop-states**. Created at dispatch-linear.
+
+### Comments
+
+#### radia — 2026-06-12T16:51:31.895Z
+**Review** — `origin/dev...origin/sub/AST-593/AST-595-compound-build-artifacts-hop-states` @ `8f23c644` (product @ `3d1651cf` + `8ab0fe54`, manifest @ `edd5eb1a`)
+
+**Plan doc:** [`docs/features/artifacts/ast-595-compound-build-artifacts-hop-states.md`](https://github.com/susansomerset/astral/blob/sub/AST-593/AST-595-compound-build-artifacts-hop-states/docs/features/artifacts/ast-595-compound-build-artifacts-hop-states.md) — Radia review section @ `8f23c644`
+
+### Solid (plan + rules)
+
+- All four plan stages: `hop_task_keys`, compound `JOB_STATES` + helpers/asserts, generate/cancel/approve → `BUILD_ARTIFACTS.anticipate_scan`, dispatch `trigger_state` per hop, `_dispatch_sort_by_for` compound prefix.
+- **§2.1 / §2.6:** Config-driven hop order; transitions via `tracker.transition_job_state` with registered `prior_states`.
+- **§3.3:** `tracker.py` imports only `config` helpers.
+- Self-Assessment scope holds (`Single-Component`); `first_task_key` vs `hop_task_keys[0]` split preserved for siblings.
+- Betty `§7.13zz` manifest covers registry, dispatch, recommended UI manifest, generate/cancel/approve, mid-hop cancel.
+
+### discuss
+
+- `src/ui/frontend/src/components/CandidateJobRowActions.tsx:3` — `REVIEW_LIKE` still lists flat `"BUILD_ARTIFACTS"` only; compound hop jobs may miss row actions until frontend follow-up (out of scope here — confirm sibling ticket).
+- `src/core/consult.py:56` — flat `"BUILD_ARTIFACTS"` → `contemplate_job` mapping remains; **AST-596** must align consult/dispatch claim before mid-chain production use.
+
+### advisory
+
+- `_dispatch_sort_by_for` retains legacy `"BUILD_ARTIFACTS"` tuple member alongside compound prefix check — harmless until flat state retired.
+- Module-level `_RESUME_ARTIFACT_HOP_TASK_KEYS` seeds `JOB_STATES` before `BUILD_CONFIG`; public helpers read `BUILD_CONFIG` — same tuple reference, acceptable.
+
+**No fix-now.** Hedy may proceed **`resolve-astral`** unless Susan wants frontend compound-state wiring tracked on epic before **AST-596**/**AST-597**.
+
+#### betty — 2026-06-12T04:42:51.416Z
+**QA manifest (AST-595)** — `origin/sub/AST-593/AST-595-compound-build-artifacts-hop-states` @ `edd5eb1a`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `fe6b16817b29bb48ba6e1816c1f4baa8e4f549df`
+
+**§7.13zz** — compound `BUILD_ARTIFACTS.<task_key>` registry; generate/cancel/approve entry; dispatch `trigger_state` per hop. Sibling **AST-596** / **AST-597** consult/dispatcher flat-`BUILD_ARTIFACTS` tests intentionally **not** in this manifest.
+
+1. `tests/component/utils/test_config.py::TestAst595CompoundBuildArtifactsHopStates`
+2. `tests/component/utils/test_config.py::TestAst479LikePassStates::test_recommended_job_states_post_synthesis_exclude_passed_like`
+3. `tests/component/utils/test_config.py::TestAst520AnticipateScanTaskKey::test_build_artifacts_entry_unchanged`
+4. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast522_recommended_manifest_sections_and_phase_columns`
+5. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_primary_actions_by_state`
+6. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_prior_states_allow_cancel_from_build`
+7. `tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults::test_contemplate_job_artifact_trigger_sort`
+8. `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_start_artifact_build_from_recommended`
+9. `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_cancel_from_mid_hop_compound_state`
+10. `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_cancel_rejects_wrong_state`
+11. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default`
+12. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_from_recommended`
+13. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_wrong_state_returns_409`
+14. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_missing_job_returns_404`
+15. `tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes::test_generate_artifacts_happy_path`
+16. `tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes::test_cancel_artifact_build_happy_path`
+17. `tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes::test_cancel_artifact_build_409_wrong_state`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst595CompoundBuildArtifactsHopStates \
+  tests/component/utils/test_config.py::TestAst479LikePassStates::test_recommended_job_states_post_synthesis_exclude_passed_like \
+  tests/component/utils/test_config.py::TestAst520AnticipateScanTaskKey::test_build_artifacts_entry_unchanged \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast522_recommended_manifest_sections_and_phase_columns \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_primary_actions_by_state \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_prior_states_allow_cancel_from_build \
+  tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults::test_contemplate_job_artifact_trigger_sort \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_start_artifact_build_from_recommended \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_cancel_from_mid_hop_compound_state \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_cancel_rejects_wrong_state \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_from_recommended \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_wrong_state_returns_409 \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_missing_job_returns_404 \
+  tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes::test_generate_artifacts_happy_path \
+  tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes::test_cancel_artifact_build_happy_path \
+  tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes::test_cancel_artifact_build_409_wrong_state
+```
+
+— Betty
+
+#### hedy — 2026-06-11T23:44:44.690Z
+Plan: [`docs/features/artifacts/ast-595-compound-build-artifacts-hop-states.md`](https://github.com/susansomerset/astral/blob/sub/AST-593/AST-595-compound-build-artifacts-hop-states/docs/features/artifacts/ast-595-compound-build-artifacts-hop-states.md) @ `381695ba`
+
+**Scope — Single-Component:** `config.py` compound `JOB_STATES` + helpers; `tracker.py` / `api_jobs.py` generate/cancel/approve entry only.
+
+**Conf — Medium:** Susan resolved compound encoding and explicit hop list; split between `hop_task_keys[0]` (Generate Artifacts) and legacy `first_task_key` (chain helper default) is documented for siblings.
+
+**Risk — HIGH:** Wrong `prior_states` / `RECOMMENDED_JOB_STATES` breaks recommended list, cancel, and dispatch `trigger_state` alignment — **AST-596** and **AST-597** depend on this registry.
+
+Four stages: (1) `hop_task_keys` + compound registry, (2) generate/cancel API, (3) dispatch `trigger_state` mapping, (4) compile verify. Out of scope: `consult.py`, `agent.py`, per-hop transitions (**AST-597**), batch release (**AST-596**).
+
+---
+
 # Compound BUILD_ARTIFACTS hop states and chain order config
 
 **Linear:** [AST-595](https://linear.app/astralcareermatch/issue/AST-595/compound-build-artifacts-hop-states-and-chain-order-config-need-to)  
