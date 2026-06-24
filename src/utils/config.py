@@ -313,7 +313,7 @@ TASK_CONFIG = {
         "context_format": "vet_inflow_discovery_{index}",
         "entity_type": "company",
         "requires_candidate_key": True,
-        "trigger_state": None,
+        "trigger_state": "NEW",
     },
     # Phase D. Run Time Job Analysis
     # RUNTIME JOB VETTING PROMPTS - Ruth 1
@@ -726,6 +726,7 @@ COMPANY_STATES = {
     "PREFILTER_PASSED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
+    "VET_FAILED": {},
     "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
@@ -912,6 +913,13 @@ INFLOW_CONFIG = {
         "task_key": "inflow_resolve_website",
         "ai_task_key": "find_company_website",
         "dispatch_trigger_state": "NEW",
+    },
+    "vet": {
+        "task_key": "vet_inflow_discovery",
+        "dispatch_trigger_state": "NEW",
+        "pass_state": "WEBSITE_FOUND",
+        "fail_state": "VET_FAILED",
+        "blurb_data_key": "inflow_discovery_blurb",
     },
 }
 
@@ -1300,7 +1308,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
     if task_key == "vet_inflow_discovery":
-        return INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"]
+        return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "validate_title":
         return "NEW"
     if task_key == "qualify_job_listings":
@@ -1851,6 +1859,7 @@ ASTRAL_CONFIG = {
         ("IMPORTED", "WEBSITE_REVIEW"),
         ("NEW", "WEBSITE_FOUND"),
         ("NEW", "NO_WEBSITE"),
+        ("NEW", "VET_FAILED"),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
