@@ -30,3 +30,14 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 ```
 
 **Out of scope (siblings):** React Manage Tasks / Scheduled Actions layout (**AST-739**); `TASK_CONFIG` `phase`/`seq` removal (**AST-740**).
+
+---
+
+### AST-782 · AST-756
+
+**Repo-wins startup upsert for `agent_task`:** retire all `current = 1` rows, then import JSON via `apply_agent_task_copy_upsert` semantics. Keys absent from JSON remain `current = 0` only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retire-all-current + import | `src/data/database.py` | `TestAst782AgentTaskRepoJsonStartup::test_startup_retires_absent_keys_and_imports_json` |
+| Export current rows only | `src/data/database.py` | `TestAst782AgentTaskRepoJsonStartup::test_fetch_export_rows_only_current` |

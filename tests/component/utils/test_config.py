@@ -1295,3 +1295,22 @@ class TestAst725RubricOwnerRunKeys:
 
     def test_prefilter_company_grades_key(self) -> None:
         assert cfg.TASK_CONFIG["prefilter_company"]["grades_key"] == "prefilter_grades"
+
+
+class TestAst782RepoAdminJsonConfig:
+    def test_table_keys_order_agent_before_agent_task(self) -> None:
+        assert cfg.get_repo_admin_json_table_keys() == ("agent", "agent_task")
+
+    def test_paths_resolve_under_project_root(self) -> None:
+        agent_path = cfg.get_repo_admin_json_path("agent")
+        task_path = cfg.get_repo_admin_json_path("agent_task")
+        assert agent_path.name == "agent.json"
+        assert task_path.name == "agent_task.json"
+        assert agent_path.parent.name == "admin"
+        assert agent_path.parent.parent.name == "data"
+        assert agent_path.is_absolute()
+        assert task_path.is_absolute()
+
+    def test_unknown_table_key_raises(self) -> None:
+        with pytest.raises(KeyError, match="unknown repo admin JSON table"):
+            cfg.get_repo_admin_json_path("__no_such_table__")
