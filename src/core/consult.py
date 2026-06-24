@@ -1622,6 +1622,41 @@ def _artifact_entry_hop_failed(aid: str) -> None:
     tracker.release_job_dispatch_claim(aid)
 
 
+def _try_graduate_artifact_job_to_candidate_review(
+    astral_job_id: str,
+    *,
+    debug: bool = False,
+) -> Tuple[bool, str]:
+    """Terminal batch exit: persist gate + CANDIDATE_REVIEW (AST-789 / AST-552)."""
+    row = tracker.get_job(astral_job_id)
+    if not row:
+        return False, "job_not_found"
+    if not tracker.job_has_persisted_resume_body(astral_job_id, None):
+        return False, "persist_gate_failed"
+    from_state = (row.get("state") or "").strip()
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_index(
+            func="_try_graduate_artifact_job_to_candidate_review",
+            index=1,
+            total=1,
+            identifier=astral_job_id,
+            outcome="attempt",
+        )
+        dbg.debug_detail(f"from_state={from_state!r} persist_gate=pass")
+    try:
+        tracker.transition_job_state([astral_job_id], "CANDIDATE_REVIEW")
+    except ValueError as exc:
+        if debug:
+            get_logger(__name__, debug_flag=True).debug_detail(
+                f"graduation=failed error={exc!r} from_state={from_state!r}"
+            )
+        return False, f"transition_failed:{exc}"
+    if debug:
+        get_logger(__name__, debug_flag=True).debug_detail("graduation=CANDIDATE_REVIEW success")
+    return True, "ok"
+
+
 async def _run_job_artifact_entry_batch(
     batch_id: str,
     entities: List[Dict[str, Any]],
@@ -1644,18 +1679,18 @@ async def _run_job_artifact_entry_batch(
             _artifact_entry_hop_failed(aid)
             errors += 1
             continue
+        ok, reason = _try_graduate_artifact_job_to_candidate_review(aid, debug=debug)
+        if not ok:
+            logger.warning(
+                "[%s] terminal graduation failed reason=%s entry_task_key=%s",
+                aid,
+                reason,
+                entry_task_key,
+            )
+            _artifact_entry_hop_failed(aid)
+            errors += 1
+            continue
         row = tracker.get_job(aid) or job
-        if not tracker.job_has_persisted_resume_body(aid, row):
-            _artifact_entry_hop_failed(aid)
-            errors += 1
-            continue
-        try:
-            tracker.transition_job_state([aid], "CANDIDATE_REVIEW")
-        except ValueError as exc:
-            logger.warning("[%s] CANDIDATE_REVIEW transition failed: %s", aid, exc)
-            _artifact_entry_hop_failed(aid)
-            errors += 1
-            continue
         passed += 1
         if entry_task_key == "contemplate_job":
             await _run_cover_letter_for_job(aid, row, base_ctx, debug)
