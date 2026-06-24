@@ -246,3 +246,16 @@ No **`conf-!!-NONE`** conflicts identified.
 | **Advisory** | **`terminal_ok`** in **`run_company_task`** lists both **`INFLOW_CONFIG["vet"]["pass_state"]`** and literal **`"WEBSITE_FOUND"`** — redundant but harmless. |
 
 **Verdict:** Findings — two **fix-now** items; **`resolve-child`** after test + merge-clean fixes.
+
+---
+
+## Resolution (Hedy / resolve)
+
+**Publish ref:** `origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt` @ `97d5c43`
+
+| Radia fix-now | Fix |
+| --- | --- |
+| **`DISPATCH_SCORE_FLOOR_*` stripped by merge-resume** | Restored **`DISPATCH_SCORE_FLOOR_VALUES`** and **`dispatch_score_floor_option_labels()`** from **`origin/dev`** in **`config.py`**. |
+| **`test_inflow_config_discovery_literals` KeyError** | Dropped stale **`vet_dispatch_trigger_state`** discovery assertion — **`test_inflow_config_vet_literals`** covers **`INFLOW_CONFIG["vet"]`**. Betty: mirror same one-line drop on **`origin/tests`**. |
+
+**Verification:** **`TestAst505InflowDiscoveryConfig`** + Betty AST-776 manifest (27 tests) green; §9a dry-run vs **`origin/dev`** clean; vs **`origin/ftr/AST-754-vet-inflow-discovery-split`** clean (no merge-tree **`CONFLICT`** hunks).
