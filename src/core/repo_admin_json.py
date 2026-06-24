@@ -99,4 +99,21 @@ def apply_repo_admin_json_at_startup() -> None:
 
 
 def export_repo_admin_json_to_files() -> Dict[str, int]:
-    raise NotImplementedError("AST-782 Stage 4")
+    """Write current DB rows to configured repo JSON paths."""
+    conn = database._get_connection()
+    try:
+        agent_rows = database.fetch_agent_repo_json_export_rows(conn)
+        task_rows = database.fetch_agent_task_repo_json_export_rows(conn)
+    finally:
+        conn.close()
+
+    counts: Dict[str, int] = {}
+    for table_key, rows in (("agent", agent_rows), ("agent_task", task_rows)):
+        path = get_repo_admin_json_path(table_key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(rows, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        counts[table_key] = len(rows)
+    return counts
