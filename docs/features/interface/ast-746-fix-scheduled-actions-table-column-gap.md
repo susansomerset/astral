@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-746 archived 2026-06-23 -->
+
+## Linear archive (AST-746)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-746/fix-scheduled-actions-table-column-gap-remove-column-gap-in-scheduled  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-744 — Remove column gap in scheduled_actions  
+**Blocked by / blocks / related:** parent: AST-744
+
+### Description
+
+## What this implements
+
+Fix the whitespace gap between Candidate and Task columns on the Scheduled Actions admin page, and correct Task/Entity column positioning so they no longer overlay the State column.
+
+## Acceptance criteria
+
+* No visible gap between Candidate and Task columns
+* Task and Entity columns align correctly without overlapping State column values
+* Frozen column sticky layout still works at default and configured frozen column counts
+
+## Boundaries
+
+* CSS/layout fix in scheduled actions table only — no API or backend changes
+* No changes to other admin list tables unless shared layout helper fix is required
+
+## Notes for planning
+
+* Primary file: `src/ui/frontend/src/pages/AdminScheduledActions.tsx`
+* Uses `useListTableColumnMeasure`, `stickyLeftPx`, `listTableLayout` — compare with other admin list pages that render correctly
+* Existing test: `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx`
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-744-remove-column-gap-in-scheduled-actions`, child `sub/AST-744/AST-745-fix-scheduled-actions-table-column-gap`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-23T19:00:43.864Z
+### Review (`origin/dev`…`origin/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap`)
+
+**Tip:** `2477e62` (includes doc commit) · product tip `f869adf`
+
+**Plan fidelity:** Stage 1 matches plan — conditional `ScheduledPhaseTable` mount when section expanded, sort-icon remeasure deps, `scheduledFrozenStyle` width lock + `predecessorsReady` gate before sticky `left`. Scope confined to `AdminScheduledActions.tsx`; shared `listTableLayout` / hook untouched per plan.
+
+**Code rules:** §1.3 DRY and §3.3 UI layer — clean. `predecessorsReady` / `(mergedWidths[k] ?? 0) > 0` is intentional (plan + inline comment); avoids `stickyLeftPx` 120px fallback when hidden-panel measure returned zero widths — not an unbounded D3 swallow.
+
+**Tests:** `AST-746` component case covers mount-on-expand, no erroneous `120px` Task `left`, State column unfrozen; remeasure after mocked header widths aligns with manifest.
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:** Susan manual UAT still required — expand **each** phase section on Scheduled Actions and confirm gap/overlap fix + horizontal scroll frozen alignment (test-bible pass criterion).
+
+**Doc:** [ast-746-fix-scheduled-actions-table-column-gap.md](https://github.com/susansomerset/astral/blob/2477e62/docs/features/interface/ast-746-fix-scheduled-actions-table-column-gap.md) § Review (Radia)
+
+**Handoff:** Katherine → **resolve-child** (no code changes from review).
+
+#### betty — 2026-06-18T23:00:31.089Z
+## QA test manifest (AST-746)
+
+**Publish:** `origin/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap` @ `f869adf` (`merge-tests(AST-746): origin/tests 9626bb8`)
+
+### 1. Existing coverage (re-run)
+1. **`AST-647: phase table freezes first three data columns`** — frozen class wiring on expanded phase table (regression guard).
+
+### 2. New coverage
+1. **`AST-746: phase table mounts on expand; measured sticky left avoids 120px fallback gap`** — collapsed sections render no `<table>`; expanded table defers erroneous `120px` sticky fallback on Task; mocked `offsetWidth` yields cumulative `left` (`88px` / `160px`); State column (index 3) unfrozen with no inline `left`.
+
+### 3. Manual UAT (Susan)
+Scheduled Actions, multiple phase sections: expand each — no gap between Candidate/Task; Entity does not overlay State; horizontal scroll keeps three frozen columns aligned.
+
+**Run (test-child):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-746|AST-647"
+```
+
+**Pass criterion:** Vitest green on narrowed run + Susan manual multi-phase UAT.
+
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `b7d9148726408e8185642d69c4e1fcaa2c047fbc` on publish ref.
+
+**Builds on:** AST-647 / AST-652 / AST-657 list-table layout (`docs/test-bible/frontend/components.md`). No API or shared helper changes in scope.
+
+#### katherine — 2026-06-18T22:48:40.210Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-744/AST-746-fix-scheduled-actions-table-column-gap/docs/features/interface/ast-746-fix-scheduled-actions-table-column-gap.md
+
+**Self-assessment**
+- **Scope:** `minor` — One bespoke admin page file; presentation-only layout fix scoped to Scheduled Actions phase tables.
+- **Conf:** `high` — Root cause is measurement while `CollapsiblePanel` body is `hidden` (zero `offsetWidth` → 120px sticky fallback); fix mounts table on expand and locks frozen widths to measured values.
+- **Risk:** `low` — Isolated to `AdminScheduledActions.tsx`; shared ListPage/helpers unchanged.
+
+**Root cause (for validate-plan):** `useListTableColumnMeasure` runs while phase tables are inside `hidden` collapsed panels, so `mergedWidths` never gets real header widths and `stickyLeftPx` falls back to 120px per column — visible gap between Candidate/Task and Entity overlapping State.
+
+---
+
 # AST-746 — Fix scheduled actions table column gap
 
 **Linear:** [AST-746 — Fix scheduled actions table column gap (Remove column gap in scheduled_actions)](https://linear.app/astralcareermatch/issue/AST-746/fix-scheduled-actions-table-column-gap-remove-column-gap-in-scheduled)  
