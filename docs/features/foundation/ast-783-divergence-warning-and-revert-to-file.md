@@ -213,3 +213,31 @@ No unresolved conflicts.
 | 1 | `31bcef0` | Core divergence compare + `revert_repo_admin_json_table` |
 | 2 | `10d3273` | `GET /api/admin/repo_json/status`, `POST .../revert/<table_key>` |
 | 3 | `c022d5c` | `RepoJsonDivergenceBanner` + Manage Agents / Manage Tasks wiring |
+
+## Radia review (2026-06-24)
+
+**Ref:** `origin/dev...origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ `3d0132c`
+
+### What's solid
+
+- All three plan stages landed: core compare/revert (`get_repo_admin_json_divergence_status`, `revert_repo_admin_json_table`), admin API routes (`GET /api/admin/repo_json/status`, `POST .../revert/<table_key>`), shared `RepoJsonDivergenceBanner` wired on Manage Agents / Manage Tasks with `refreshToken` + `useUserConfirm` danger revert.
+- **§3.3 layers:** React → API only; `api_admin` delegates to core; no new data-layer SQL; revert reuses AST-782 `apply_*_repo_json_startup` in a transaction (FK on, rollback on failure).
+- **Compare contract:** export-shaped DB rows vs bare JSON array; scalar normalization (`task_seq` float→int); sort by stable row key; exact list equality — matches plan decisions.
+- **§1.5:** no new logging (plan OK).
+- Tests cover core divergence/revert integration, API status/error/revert paths, banner show/hide/revert confirm, and page wiring (manifest-aligned).
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **advisory** | Branch diff vs `origin/dev` | Diff includes full **AST-782** foundation (bootstrap, seed JSON, data upsert) as dependency — expected on this publish ref, not AST-783 scope smuggling. |
+| **discuss** | Inherited from AST-782 seed | `data/admin/agent.json` remains `[]`; **Revert to file** on Manage Agents runs the same repo-wins delete-all-agents semantics as startup. Confirm Susan accepts that revert path for empty persona file. |
+
+No **fix-now** items (layers, silent failure, UI hardcoded job states N/A, debug contract N/A).
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| resolve-child | None required — proceed when discuss item acknowledged. |
+| Before prod | Populate `agent.json` via export if revert/startup should not wipe personas (same as AST-782). |
