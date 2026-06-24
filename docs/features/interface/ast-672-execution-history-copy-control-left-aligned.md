@@ -1,3 +1,115 @@
+<!-- linear-archive: AST-672 archived 2026-06-23 -->
+
+## Linear archive (AST-672)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-672/execution-history-copy-control-left-aligned-move-the-copy-link-to-the  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-670 — Move the "copy" link to the left side of the page  
+**Blocked by / blocks / related:** parent: AST-670
+
+### Description
+
+## What this implements
+
+Reposition the **Copy logs to clipboard** control in the Execution History expanded batch log panel from the right side of the log toolbar to the **left**, so Susan can reach it without horizontal scrolling on the wide ledger table. Copy behavior and clipboard payload stay unchanged.
+
+## Acceptance criteria
+
+1. On Execution History, expand any batch row that has log entries; the **Copy** control appears on the **left** side of the log panel toolbar (not right-aligned).
+2. Without horizontal scrolling, the **Copy** control is visible when the expanded log panel is in view (Susan can click it from the left side of the page).
+3. Clicking **Copy** still copies the full log text for that batch to the clipboard; content matches pre-change behavior for the same batch.
+4. After copy, transient **Copied** feedback still appears on the control as today.
+5. Collapsed rows, empty log state, and loading log state are unchanged except that any **Copy** control shown uses left placement when present.
+6. No regressions to row expand/collapse, sorting, filters, or navigation to Agent Timesheets via cost link.
+
+## Boundaries
+
+* Execution History expanded log panel only — no other admin screens or copy controls.
+* Does not change log fetch, log table columns, batch expand/collapse, batch_id link, Agent Data modal, candidate filter, frozen-column table layout, or ledger columns.
+* Does not add new copy targets or change clipboard format.
+* No backend work.
+
+## Notes for planning
+
+* Parent AST-670 — UI placement only; likely AdminPerformanceMonitor log panel toolbar + App.css alignment.
+* plan-child §3.5 — new components go in `src/components/` flat (prefer adjusting existing markup/CSS).
+* Extend existing AdminPerformanceMonitor component tests for copy button placement if practical.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-670-move-the-copy-link-to-the-left-side-of-the-page`, child `sub/AST-670/<child-id>-execution-history-copy-left`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-15T17:37:46.894Z
+**Diff:** `origin/dev...origin/sub/AST-670/AST-672-execution-history-copy-left` @ `4460e707` (product); review doc @ `ccad8f4f`.
+
+**Plan doc:** [ast-672-execution-history-copy-control-left-aligned.md](https://github.com/susansomerset/astral/blob/sub/AST-670/AST-672-execution-history-copy-left/docs/features/interface/ast-672-execution-history-copy-control-left-aligned.md#review)
+
+### Solid
+
+- **Stage 1 / AC:** `App.css` `.dispatch-log-toolbar` `justify-content: flex-start` — CSS-only; `LogViewer` markup and copy handler unchanged. Matches AST-672 boundaries (no ledger, fetch, or backend).
+- **§3.2 / G1:** No new UI state strings; style stays in existing dispatch-log CSS block.
+- **Scope:** `scope-minor` footprint accurate — one property + test extension.
+
+### discuss
+
+- **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — `ensureDispatchLogToolbarCss()` injects the toolbar rule in `beforeAll` because jsdom does not apply `import App.css` to `getComputedStyle`. Plan Stage 2 ⚠️ explicitly said stop with 🛑 rather than inject inline styles. Betty's QA manifest documents the workaround; **product CSS is correct**, but the placement assertion is satisfied by the injected `<style>`, so reverting `App.css` to `flex-end` would not fail this test. @Susan — accept inject as standing jsdom workaround, or drop inject and fix Vitest CSS loading so the test reads real `App.css`.
+
+### advisory
+
+- **`docs/test-bible/frontend/pages.md` § AST-672** — manifest cites `import App.css` as the guard; align wording with inject (or pipeline fix) when approach is settled.
+
+**fix-now:** none (product change is correct for UAT).
+
+#### betty — 2026-06-15T17:35:17.191Z
+## QA test manifest (AST-672)
+
+**Publish ref:** `origin/sub/AST-670/AST-672-execution-history-copy-left` @ `4460e707` (`merge-tests(AST-672): origin/tests 3b5462a8`)
+
+### 1. Existing coverage (bible-backed)
+
+Execution History routed page — `docs/test-bible/frontend/pages.md` § AST-672 · AST-670; base file `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` (date blur/clear, expand/collapse, copy, modals — unchanged).
+
+### 2. Broken / obsolete tests
+
+None — extend existing integration test only.
+
+### 3. Gaps (new / expanded — Betty landed)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `AdminPerformanceMonitor > loads ledger rows, filters, expands logs, and opens batch modal` | After log expand, `.dispatch-log-toolbar` computed `justify-content` is `flex-start`; copy still writes clipboard; agent-data modal path unchanged |
+
+**Narrowed run (test-child):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "loads ledger rows"
+```
+
+**Regression guard:** full `test_AdminPerformanceMonitor.test.tsx` before parent UAT.
+
+**Bible shasum** (`docs/test-bible/frontend/pages.md` on publish ref): `a51064a821a123e0919557e26f800541ae33147493af9930403c1321c0bf9fd3`
+
+**Note:** Vitest does not apply `import App.css` to jsdom `getComputedStyle`; test injects the AST-672 toolbar rule in `beforeAll` to assert placement AC without TSX changes.
+
+#### katherine — 2026-06-15T17:27:57.056Z
+Plan: [ast-672-execution-history-copy-control-left-aligned.md](https://github.com/susansomerset/astral/blob/sub/AST-670/AST-672-execution-history-copy-left/docs/features/interface/ast-672-execution-history-copy-control-left-aligned.md) (`d17e1829`)
+
+**Scope:** `minor` — one `justify-content` change on `.dispatch-log-toolbar` in `App.css` plus a small test extension; no TSX or backend.
+
+**Conf:** `high` — root cause is explicit `flex-end` on the log toolbar; parent AST-670 has no open questions.
+
+**Risk:** `low` — copy behavior and ledger layout untouched; only toolbar flex alignment in the expanded log panel.
+
+---
+
 # Execution History copy control left-aligned (Move the "copy" link to the left side of the page)
 
 **Linear:** [AST-672](https://linear.app/astralcareermatch/issue/AST-672/execution-history-copy-control-left-aligned-move-the-copy-link-to-the)  

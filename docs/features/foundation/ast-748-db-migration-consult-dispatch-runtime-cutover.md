@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-748 archived 2026-06-23 -->
+
+## Linear archive (AST-748)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-748/db-migration-and-consult-dispatch-runtime-cutover-task-keys-vs  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-736 — Task keys vs. dispatch task keys  
+**Blocked by / blocks / related:** parent: AST-736
+
+### Description
+
+## What this implements
+
+Ship idempotent DB rename of existing `dispatch_task` rows from `consult_*` to `grade_*` under triple-unique constraint, and update consult/dispatcher runtime so manual Run, AUTO dispatch, and Execution History record `grade_do` / `grade_get` / `grade_like` with no consult alias layer post-cutover.
+
+## Acceptance criteria
+
+1. Susan can create and run a `grade_do` dispatch row at `PASSED_JD` (and `PASSED_JD_RETRY` where used) with no `consult_do` row or alias required.
+2. After migration, existing environments show **zero** `dispatch_task` rows with `task_key` in `{consult_do, consult_get, consult_like}`; equivalent `grade_*` rows preserve scheduling fields (`freq_hrs`, `batch_size`, `debug`, `AUTO`, etc.).
+3. Manual Run and AUTO dispatch for those rows execute the same graded consult batches as today; Execution History first-hop Task column shows `grade_do` / `grade_get` / `grade_like`.
+
+## Boundaries
+
+* Does **not** own config schedulable-key catalog changes — blocked on sibling **AST-737**.
+* Does **not** own Scheduled Actions UI phase grouping — sibling Katherine ticket.
+* Does **not** backfill historical `dispatch_ledger` alias strings.
+
+## Notes for planning
+
+* Primary: `src/data/database.py` (migration), `src/core/consult.py`, `src/core/dispatcher.py`.
+* Preserve **AST-534** row `task_key` drives entry; remove consult-only routing assumptions.
+* Migration must be idempotent on deploy.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-736-task-keys-vs-dispatch-task-keys`, child `sub/AST-736/AST-738-db-migration-consult-dispatch-runtime-cutover`.
+
+### Comments
+
+#### radia — 2026-06-23T19:40:29.357Z
+## Radia review (AST-748)
+
+**Diff:** `origin/dev...origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` @ `d6949be`
+**Doc:** `docs/features/foundation/ast-748-db-migration-consult-dispatch-runtime-cutover.md` (Review Radia section)
+
+**AST-748 commits:** `bf8eaa3`, `61eaf25`, `27d950d`. Publish ref rolls up resolved **AST-747** / sibling qa — not in Hedy product commits (§5d clean).
+
+### What's solid
+
+- **Stage 1:** Migration block matches plan — collision DELETE then UPDATE; local rename tuple; triple-unique safe.
+- **Stage 2:** Zero `consult_*` in `consult.py` / `dispatcher.py`; `_consult_orchestration` → `TASK_CONFIG[tk]`; `grade_*_batch` entrypoints; `run_consult_task` + `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` cutover.
+- **§2.7:** `agent_task` fallback to dispatch key — Execution History attribution `grade_*` (intended AST-736).
+- **Tests:** `TestAst748ConsultToGradeDispatchMigration` (rename + collision); consult/dispatcher manifest on `grade_*`.
+
+### fix-now
+
+None.
+
+### Recommended
+
+**resolve-child** — no code changes from review. Susan UAT: legacy `consult_*` rows renamed on staging; Run/AUTO graded hops show `grade_*` in Execution History.
+
+#### betty — 2026-06-23T19:38:07.262Z
+## QA test manifest (AST-748)
+
+**Publish:** `origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` @ `13352e9` (`merge-tests(AST-748): origin/tests 27d950d`)
+
+**Run (narrowed — 9 pytest):**
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_dispatch_tasks.py::TestAst748ConsultToGradeDispatchMigration   tests/component/core/test_consult.py::TestRunConsultTask::test_ast503_routes_two_passed_jd_jobs_to_grade_do_batch   tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty   tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states   -q
+```
+
+1. `tests/component/data/database/test_dispatch_tasks.py` — `TestAst748ConsultToGradeDispatchMigration` (consult_*→grade_* schema rename + duplicate-row delete when grade triple exists)
+2. `tests/component/core/test_consult.py` — `test_ast503_routes_two_passed_jd_jobs_to_grade_do_batch` (PASSED_JD → `grade_do_batch`)
+3. `tests/component/core/test_consult.py` — `TestAst534DispatchTaskKeyHonesty` (dispatch keys `grade_do` / `grade_get` / `grade_like`; no `consult_*` routing)
+4. `tests/component/core/test_dispatcher.py` — `test_uses_default_score_floor_for_scored_states` (`task_key: grade_do`)
+
+**Bible shasum (`origin/sub/…` @ `13352e9`):**
+- `docs/test-bible/core/consult.md` — `f2d355cb7f2d6ac0bc0a01643d9234274faaad8dedaf1569a1ec56a623859dfb`
+- `docs/test-bible/core/dispatcher.md` — `e4f433654a47cc56d2562ce33599aaab0a9724be629f9356048e2e3f5a304268`
+- `docs/test-bible/data/database/dispatch_tasks.md` — `191ce4ccfc6351d8f08ea4b7e0c504b47819830cfe897832bcca0fb5503565d1`
+
+**Out of manifest (sibling integration):** full `test_consult.py` zero-arg harness; `test_roster.py` ledger dedup tests retain legacy `consult_*` strings in historical `agent_response` fixtures until roster cutover sibling lands.
+
+— Betty
+
+#### hedy — 2026-06-23T19:33:21.907Z
+Plan: [docs/features/foundation/ast-748-db-migration-consult-dispatch-runtime-cutover.md](https://github.com/susansomerset/astral/blob/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover/docs/features/foundation/ast-748-db-migration-consult-dispatch-runtime-cutover.md) on `origin/sub/AST-736/AST-748-db-migration-consult-dispatch-runtime-cutover` @ `1adffe5`.
+
+**Self-assessment**
+- **Scope:** Single-Component — `database.py` consult→grade row migration, `consult.py` graded routing, `dispatcher.py` chunk-exhaustion frozenset.
+- **Conf:** high — AST-703-style DELETE-before-UPDATE collision pattern; runtime is string rename + drop `resolve_dispatch_task_config_key` in consult.
+- **Risk:** HIGH — migration `IntegrityError` bricks Scheduled Actions; wrong `agent_task` breaks `render_verdict` / timesheet attribution for graded hops.
+
+---
+
 # AST-748 — DB migration and consult dispatch runtime cutover
 
 - **Linear (this ticket):** [AST-748](https://linear.app/astralcareermatch/issue/AST-748/db-migration-and-consult-dispatch-runtime-cutover-task-keys-vs-dispatch)

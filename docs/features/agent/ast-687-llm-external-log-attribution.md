@@ -1,3 +1,127 @@
+<!-- linear-archive: AST-687 archived 2026-06-23 -->
+
+## Linear archive (AST-687)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-687/llm-provider-log-attribution-and-shared-utils-helpers-why-is  
+**Status at archive:** Done  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-680 — Why is src.external.anthropic still in the logs?  
+**Blocked by / blocks / related:** parent: AST-680
+
+### Description
+
+## What this implements
+
+Fix misleading log module attribution when DeepSeek is the active LLM provider: move shared helpers used by both Anthropic and DeepSeek external clients into `utils/` per §3.3, eliminate cross-external imports, and ensure each provider client emits debug-contract and INFO lines under its own module identity.
+
+## Acceptance criteria
+
+1. Reproduce Susan's staging scenario: run `select_job_page` (or any representative DeepSeek dispatch task) with `debug=True` on the fixed build. Log prefix identifies the DeepSeek external module — **not** `src.external.anthropic` — while detail lines still show `provider=deepseek` and the correct vendor model.
+2. Run a representative Anthropic-backed task with `debug=True`. Log prefix identifies the Anthropic external module; no DeepSeek module prefix appears.
+3. Review of LLM external modules confirms no DeepSeek call path emits through the Anthropic module logger (including shared debug helpers).
+4. Shared helpers used by both clients live in `utils/`; neither `anthropic` nor `deepseek` external module imports from the other.
+5. Existing component tests for provider routing (`do_task` anthropic vs deepseek branches) remain green; add or adjust tests only where needed to lock attribution behavior.
+
+## Boundaries
+
+* Does not change provider selection, brain-setting tiers, or timesheet cost math.
+* Does not backfill debug logging outside LLM external modules and applicable utils helpers.
+* Does not add new LLM providers.
+* Does not update Radia review criteria — sibling AST-688.
+
+## Notes for planning
+
+* Root cause: shared `_emit_llm_call_debug` in anthropic module uses anthropic `__name__` logger; deepseek imports it (AST-620).
+* Susan approved: shared helpers belong in `utils/`, not cross-external imports.
+* Preserve AST-538 debug contract shape; only fix attribution.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-680-llm-external-log-attribution`, child `sub/AST-680/AST-687-llm-external-log-attribution`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T20:38:21.011Z
+### Plan fidelity
+
+AST-687 commits (`3cf168d1` → `e690760b` on `origin/sub/AST-680/AST-687-llm-external-log-attribution`) match the plan: new `src/utils/llm_external.py`, anthropic/deepseek rewired, `agent.py` import only, Betty attribution tests + bible rows.
+
+**Diff note:** `origin/dev...origin/sub/...` also includes sibling **AST-680** ftr children (roster, database, deploy footer, etc.) inherited from branch base — not introduced by AST-687 commits. Review scoped to AST-687 product delta.
+
+### External layer cleanliness (AST-680 / §5g)
+
+**Pass** — no remaining cross-external imports between LLM clients (`rg` clean). Shared helpers live in `src/utils/llm_external.py`; imports are utils-only (`get_logger`). All six `emit_llm_call_debug` call sites pass `logger_name=__name__` with correct `func_name` / `provider=` per module. `log_llm_batch_summary` still uses each module's existing `logger = get_logger(__name__)` — unchanged, correct.
+
+### ASTRAL_CODE_RULES
+
+| Area | Verdict |
+|------|---------|
+| §3.3 layer imports | Pass — external → utils; core → utils for `extract_api_response_text` |
+| §1.5.1 debug contract | Pass — AST-538 index/detail/block shape preserved; emission only on `debug=True` paths |
+| §1.3 DRY | Pass — duplicate helper removed from anthropic |
+| §5d boundaries | Pass in AST-687 commits (no dispatcher/config/cost/routing changes) |
+
+### Tests (Betty manifest)
+
+Manifest paths lock `logger_name` attribution (`test_llm_external.py`, `test_debug_true_emits_under_deepseek_module`) plus anthropic regression — appropriate for AC #3–#5.
+
+### discuss
+
+**Stage 4 manual smoke:** Plan Stage 4 asks for one-line `debug=True` log samples (DeepSeek prefix `src.external.deepseek`, Anthropic prefix `src.external.anthropic`) on this ticket before UAT. Not present in build/test comments yet. Unit tests cover attribution; please add smoke evidence during **resolve-child** or confirm Susan will capture on staging UAT.
+
+### advisory
+
+- `merge-tests` @ `cc05e3dc` also carried **AST-690** footer tooltip test/bible lines from `origin/tests` — Betty noted; out of AST-687 scope.
+- No Anthropic-side `get_logger` patch test mirroring deepseek — optional hardening; not required by plan.
+
+#### betty — 2026-06-15T20:29:51.580Z
+## QA test manifest (AST-687)
+
+**Publish:** `origin/sub/AST-680/AST-687-llm-external-log-attribution` @ `cc05e3dc` (`merge-tests(AST-687): origin/tests e690760b`)
+
+**Bible shasums (on publish ref):**
+- `docs/test-bible/utils/llm_external.md` — `8d39b5c52293d734506b2e5775367fac77c334596e41995b710e5d2624d071fc`
+- `docs/test-bible/external/anthropic.md` — `506ca7ef80226f01a9b36cfb52812727cf551f38f4bb7271d9c3357d1ac46f44`
+
+1. **New — `src/utils/llm_external.py`:** `tests/component/utils/test_llm_external.py` (full file) — last text block extraction, skip non-text blocks, `emit_llm_call_debug` uses `logger_name`.
+2. **Attribution — DeepSeek path:** `tests/component/external/test_deepseek.py::TestSendToDeepseekTimesheetMapping::test_debug_true_emits_under_deepseek_module` — patches `src.utils.llm_external.get_logger`; asserts `src.external.deepseek` + `debug_flag=True`.
+3. **Regression — existing external coverage:** `tests/component/external/test_anthropic.py` (full file); `tests/component/external/test_deepseek.py` (remainder).
+
+**Run (pytest-only gate):**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_llm_external.py \
+  tests/component/external/test_deepseek.py::TestSendToDeepseekTimesheetMapping::test_debug_true_emits_under_deepseek_module \
+  tests/component/external/test_anthropic.py \
+  -q
+```
+
+**Betty local:** 26 passed on manifest paths before push.
+
+**Note:** `merge-tests` also carried `test(AST-690)` ancestry from `origin/tests` (footer tooltip tests + bible line) — same merge mechanics as prior children; manifest above is AST-687 scope.
+
+— Betty
+
+#### ada — 2026-06-15T20:11:25.818Z
+Plan published on `sub/AST-680/AST-687-llm-external-log-attribution`:
+
+https://github.com/susansomerset/astral/blob/sub/AST-680/AST-687-llm-external-log-attribution/docs/features/agent/ast-687-llm-external-log-attribution.md
+
+**Approach:** New `src/utils/llm_external.py` holds `extract_api_response_text` and `emit_llm_call_debug` (moved from anthropic). The debug helper takes required `logger_name`; each external client passes `__name__` so DeepSeek lines prefix `src.external.deepseek` instead of inheriting anthropic's logger. Removes the illegal `deepseek → anthropic` import per §3.3.
+
+**Self-assessment**
+- **Scope:** Single-Component — one new utils module, anthropic/deepseek rewires, single agent import update.
+- **Conf:** high — root cause confirmed in code; fix is a straight utils extraction with explicit logger attribution.
+- **Risk:** low — debug prefix only; no routing, cost math, or API behavior changes.
+
+Four build stages: utils module → rewire clients → attribution tests → manual smoke samples for UAT.
+
+---
+
 # AST-687 — LLM provider log attribution and shared utils helpers
 
 **Parent:** [AST-680 — LLM external log attribution (UAT)](https://linear.app/astralcareermatch/issue/AST-680/llm-external-log-attribution-uat)  

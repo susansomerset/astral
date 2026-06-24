@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-622 archived 2026-06-23 -->
+
+## Linear archive (AST-622)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-622/gazer-company-gaze-and-job-list-cache-debug-instrumentation-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-544 — Debug logging backfill: gazer  
+**Blocked by / blocks / related:** parent: AST-544
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **gazer** / roster watch paths in `src/core/gazer.py` (company gaze, job list cache interactions, claim/process loops). Per **index N/M** header lines and `|` detail for URLs checked, cache hits/misses, and state transitions Susan needs during UAT.
+
+## Acceptance criteria
+
+1. Debug gaze batch shows per-company/job index detail.
+2. `debug=False` unchanged.
+
+## Boundaries
+
+* No gazer business logic changes.
+* **AST-542** (roster inflow) owns `roster.py` inflow paths — gazer watch/gaze only here.
+
+## Notes for planning
+
+* Use `src/utils/logging.py` helpers (`debug_index`, `debug_detail`, `debug_detail_block`) per **ASTRAL_CODE_RULES** §1.5.
+* Align index header shape with dispatcher + roster conventions from sibling backfills.
+* Grandfather untouched `[DEBUG]` lines only where file is not otherwise touched.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-544-debug-logging-backfill-gazer`, child `sub/AST-544/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T05:05:06.301Z
+**Review** — `origin/dev...origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug` @ `6b8bda45`
+
+### Solid (plan + §1.5.1)
+
+- All four batch paths instrumented per plan; `set_debug_flag` + `debug_index` / `debug_detail`; legacy `if debug: _log.info` and board `_log.debug` removed in touched blocks.
+- `debug=False` unchanged for business logic, transitions, and warnings.
+- `_log_listing_dedupe_trace` read-only via `raw_job_listing_is_duplicate`; cap 25; no tracker/roster scope bleed.
+
+### fix-now
+
+1. **`src/core/gazer.py` ~192–193** (`scrape_jd_batch`): `pruned_chars` `debug_detail` runs before the per-job `debug_index` on pass / too-short / classified-fail paths — §1.5.1 detail should sit under that item’s index header. Move into the terminal `debug_index` block (detail after header) or fold into `outcome`.
+
+2. **`src/core/gazer.py` ~422–433 + ~450–458** (`process_gazer_batch`): gather `Exception` path logs an index header, then the main loop logs a second header for the same `short_name` (`scrape failed: {e}` vs `failure — scrape failed`). One header per scrape failure.
+
+### discuss
+
+- **`src/core/gazer.py` ~41–43`:** `_gazer_company_identifier` unused — drop or use for company `identifier=` fields.
+
+### advisory
+
+- Concurrent `scrape_jd_batch` may interleave lines (plan decision — OK for UAT).
+- Plan doc: `docs/features/foundation/ast-622-gazer-company-gaze-job-cache-debug-instrumentation.md` § Review (Radia).
+
+#### betty — 2026-06-14T05:01:05.889Z
+## QA test manifest (AST-622)
+
+**Publish ref:** `origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug` @ `6b8bda45` (`merge-tests(AST-622): origin/tests 4905191c`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `2fe3efb473cbbba639c9c2408ad1cfc7f384bfc6` — see **§7.13zzi**
+
+**Classification:** instrumentation-only (AST-538 §1.5.1 backfill in `src/core/gazer.py`). **No new log-string tests** per parent/plan. Extended **`test_gazer.py`** for **`LOCKED_AT_100`** branch pairs on new `debug=True`/`False` gates.
+
+### Run (numbered)
+
+1. `.venv/bin/python -m pytest tests/component/core/test_gazer.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q`
+2. Equivalent harness: `./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py`
+
+### Manifest focus
+
+| Touched path | Tests |
+| --- | --- |
+| `scrape_jd_batch` | **`TestScrapeJdBatch`**, **`TestScrapeJdBatchDebugPaths`**, **`TestScrapeJdBatchDebugBranchCoverage`** |
+| `validate_title_batch` | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
+| `process_gazer_batch` + dedupe trace | **`TestProcessGazerBatch`**, **`TestProcessGazerBatchDebugPaths`**, **`TestProcessGazerBatchDebugBranchCoverage`**, **`TestLogListingDedupeTrace`** |
+| `process_gaze_board_batch` | **`TestProcessGazeBoardBatch`**, **`TestProcessGazeBoardBatchDebugPaths`** |
+| Identifier helpers | **`TestGazerIdentifierHelpers`** |
+| `debug=False` unchanged | **`debug=False`** rows in classes above; full-file branch lock |
+
+— Betty
+
+#### hedy — 2026-06-14T04:54:58.826Z
+Plan: `docs/features/foundation/ast-622-gazer-company-gaze-job-cache-debug-instrumentation.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug/docs/features/foundation/ast-622-gazer-company-gaze-job-cache-debug-instrumentation.md
+
+Four stages in `src/core/gazer.py` only: `scrape_jd_batch`, `validate_title_batch`, `process_gazer_batch` (company gaze + read-only per-listing dedupe trace via `raw_job_listing_is_duplicate`), `process_gaze_board_batch`. Retires legacy `if debug: _log.info` and board noise `_log.debug` in touched blocks.
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — one core module, logging layer only across four batch entry points.
+- **Conf:** `conf-high` — follows AST-615/AST-621 and consult qualify per-job index patterns; no new APIs.
+- **Risk:** `risk-Medium` — critical scrape/ingest path; logging-only but volume at `debug=True` could be noisy if mis-gated.
+
+Published: `origin/sub/AST-544/AST-622-gazer-company-gaze-job-cache-debug` @ `263cda51`.
+
+---
+
 # AST-622 — Gazer company gaze and job list cache debug instrumentation (Debug logging backfill: gazer)
 
 - **Linear (this ticket):** [AST-622](https://linear.app/astralcareermatch/issue/AST-622/gazer-company-gaze-and-job-list-cache-debug-instrumentation-debug)

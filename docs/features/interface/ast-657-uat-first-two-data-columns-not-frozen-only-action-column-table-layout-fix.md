@@ -1,3 +1,106 @@
+<!-- linear-archive: AST-657 archived 2026-06-23 -->
+
+## Linear archive (AST-657)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-657/uat-first-two-data-columns-not-frozen-only-action-column-table-layout  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-633 — Table Layout fix  
+**Blocked by / blocks / related:** parent: AST-633
+
+### Description
+
+## What failed
+
+On wide list/table screens with horizontal scroll, the **row action** column stays frozen (sticky) when scrolling right, but the **first two data columns** do **not** remain visible — contrary to config default **N=2**.
+
+Susan UAT (2026-06-15): *"Action column freezes, but not the first 2 columns, per the config default."*
+
+Likely regression or incomplete sticky offset wiring after autosize (`table-layout: auto`) change in AST-652; checkbox/action columns should freeze **in addition to** **N** data columns per open question resolution.
+
+## Expected
+
+With config default **2**, horizontal scroll on a wide ListPage (or equivalent list-table) keeps the leftmost **two data columns** visible (plus checkbox and action columns always frozen), while columns to the right scroll underneath.
+
+## Repro
+
+1. Open a wide **ListPage** consumer with horizontal overflow (e.g. Agent Timesheets) after staging/dev with AST-647 + AST-652 landed.
+2. Scroll horizontally to the right.
+3. Observe: action column sticks; first two data columns scroll away instead of staying visible.
+
+## Parent AC (quoted inline)
+
+> With config default **2**, a wide list screen with horizontal overflow keeps the leftmost **two** data columns visible while scrolling right; remaining columns scroll normally.
+
+> When a list shows a checkbox selection column, does that column count toward the configured **N** frozen columns, or should the checkbox column always stay frozen in addition to **N** data columns?
+> Do not count the checkbox or "action" column in the default, but always include them in the freeze.
+
+## Boundaries
+
+* This bug does **not** change: autosize / remove force-fit behavior (AST-652), sticky header row, 30-char truncation/tooltips, or config default value.
+* Layout/sticky offset fix only for **N** left data columns on shared list-table presentation.
+
+### Comments
+
+#### radia — 2026-06-15T07:42:28.971Z
+**Review** — `origin/dev...9870490e` (+ doc `d9ca5a55`)
+
+Plan doc: `docs/features/interface/ast-657-uat-first-two-data-columns-not-frozen-only-action-column-table-layout-fix.md` (Review section)
+
+### Solid
+
+- Root-cause fix matches plan: measure header `offsetWidth` after autosize layout, merge with user-resized widths, feed `stickyLeftPx` + measured checkbox width.
+- `useListTableColumnMeasure` shared by ListPage and `ScheduledPhaseTable`; CSS re-states `position: sticky` on frozen th/td.
+- `9870490e` `widthsEqual` / stable deps — correct fix for measure-hook re-render loop on Scheduled Actions.
+- Unit + component tests for merge/measure/checkbox param and cumulative frozen `left`.
+- Boundaries respected — no config/backend/autosize/truncation changes.
+
+### discuss
+
+- **UAT gate:** jsdom `offsetWidth` is 0 — AST-657 ListPage test validates fallback offset chain, not real measured widths. Susan repro (**Agent Timesheets**, scroll right: checkbox + first **2 data columns** stick, action column stays right) is required to close this bug.
+- **First paint:** pre-measure offsets use 40px/120px fallbacks — watch for one-frame flash; discuss only if visible in UAT.
+
+**Verdict:** findings — no fix-now; resolve-child after UAT pass.
+
+#### betty — 2026-06-15T01:06:22.422Z
+## QA test manifest
+
+1. `tests/component/frontend/lib/test_listTableLayout.test.ts` — full file (`AST-657:` `mergeWidthsForSticky`, `measureListTableColumnWidths`, measured-checkbox `stickyLeftPx`)
+2. `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` — full file (`AST-657: frozen data columns get cumulative sticky left offsets after measure`)
+3. Re-run **AST-647** `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-647: phase table freezes first three data columns`**
+
+**Narrowed run:**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_listTableLayout.test.ts \
+  ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Publish:** `origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns` @ `c0683633` (`merge-tests(AST-657): origin/tests ef741562`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `3354efe6684e4a273ea4860482377d7b84e199cb` (§7.13zzt **AST-657** row added)
+
+— Betty
+
+#### katherine — 2026-06-15T01:01:16.653Z
+Plan: [`docs/features/interface/ast-657-uat-first-two-data-columns-not-frozen-only-action-column-table-layout-fix.md`](https://github.com/susansomerset/astral/blob/sub/AST-633/AST-657-uat-freeze-first-n-data-columns/docs/features/interface/ast-657-uat-first-two-data-columns-not-frozen-only-action-column-table-layout-fix.md) on `origin/sub/AST-633/AST-657-uat-freeze-first-n-data-columns` @ `22a338ab`.
+
+**Root cause (plan):** AST-652 autosize means rendered column widths no longer match `stickyLeftPx`'s 120px fallbacks; action column still sticks via `right: 0` without cumulative offset math.
+
+**Fix approach:** `useLayoutEffect` measurement of header `offsetWidth` → merged with user-resized widths → fed into `stickyLeftPx` for ListPage + AdminScheduledActions.
+
+**Self-assessment**
+- **Scope:** `minor` — layout helpers, ListPage, Scheduled Actions, small CSS; no backend/config.
+- **Conf:** `Medium` — cause matches Susan's repro; measurement hook needs correct re-measure deps.
+- **Risk:** `Medium` — ListPage-wide presentation change; sort/resize/localStorage untouched.
+
+---
+
 # AST-657 — UAT: First two data columns not frozen (only action column)
 
 **Linear:** [AST-657 — UAT: First two data columns not frozen (only action column) (Table Layout fix)](https://linear.app/astralcareermatch/issue/AST-657/uat-first-two-data-columns-not-frozen-only-action-column-table-layout)  

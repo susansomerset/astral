@@ -1,3 +1,98 @@
+<!-- linear-archive: AST-583 archived 2026-06-23 -->
+
+## Linear archive (AST-583)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-583/uat-intake-continue-vs-start-over-dialog  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539
+
+### Description
+
+## Repro
+
+Susan UAT 2026-06-05: need **Continue vs Start Over** when opening Intake with active session.
+
+## Expected
+
+Prompt: **"Would you like to continue your intake?"**
+
+* **Continue** (default) — resume thread.
+* **Start Over** — call **AST-580** archive API, then fresh auto-start.
+
+`CandidateIntake.tsx`; Vitest in `test_CandidateIntake.test.tsx`.
+
+## Boundaries
+
+Blocked by **AST-580**. Parent: AST-539.
+
+### Comments
+
+#### radia — 2026-06-05T20:30:20.917Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-539/AST-583-intake-continue-vs-start-over` @ `5ac9b230` (product); doc commit `6452dc6a`.
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### advisory
+- `CandidateIntake.tsx` — `IntakeResumeDialog` mirrors `UserPrompt` markup but renders inline (no `createPortal`). `position: fixed` should cover the viewport; if UAT sees stacking/clipping under nav, portal to `document.body` like `UserPromptProvider`.
+- `CandidateIntake.tsx` — redundant second `GET …/sessions/active` when modal opens after page probe; harmless.
+
+### Plan / rules
+- UAT repro satisfied: active session → **"Would you like to continue your intake?"** with **Continue** (primary/save) and **Start Over** (archive `POST …/sessions/active/archive` then `autoStart` fresh session). Dismiss → profile. No-active path unchanged (**Start Intake** confirm).
+- **§3.3 / §3.5:** UI-only; page + §6c tests. No backend/debug surface.
+- **Self-Assessment** `scope-Single-Component` matches diff. Vitest asserts archive/create call counts per plan Stage 2 (landed via test-astral).
+- Local `IntakeResumeDialog` vs extending `UserPrompt`: plan-documented — binary confirm API insufficient for Continue/Start Over pair; session logic stays in `IntakeChatModal`.
+
+**Doc:** `docs/features/candidate/ast-583-uat-intake-continue-vs-start-over-dialog.md` — § Review (Radia).
+
+Katherine may proceed to `resolve-astral` (dry-run merge with `origin/dev`) — no engineer fixes required from this review.
+
+#### betty — 2026-06-05T20:27:22.850Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-539/AST-583-intake-continue-vs-start-over` @ `5ac9b230`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `0a5d81d23ce0afedfdf433d032fe9f79b9fd1c69` (§7.13zr **AST-583** row)
+
+### Existing coverage (bible-backed — run full file)
+
+1. `tests/component/frontend/pages/test_CandidateIntake.test.tsx` — **§6c** routed page + `IntakeChatModal` regressions (**AST-559**, **AST-578**)
+
+### New / expanded (this ticket)
+
+2. `CandidateIntake page` describe — **Resume Intake** dialog when active session exists (not **Start Intake** confirm)
+3. **Continue** — resumes thread; `archiveCalls === 0`, `sessionCreateBodies.length === 0`
+4. **Start Over** — `POST …/sessions/active/archive` then fresh auto-start; prior transcript gone
+5. Overlay dismiss (backdrop click) — no chat modal
+
+### Engineer run
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx
+```
+
+Merge **`origin/sub/AST-539/AST-583-intake-continue-vs-start-over`** and parent **`origin/ftr/ast-539-candidate-intake-chat-session`** on **`dev-kath`** before **`test-astral`**. **Start Over** path requires **AST-582** archive API on the merged tree.
+
+#### katherine — 2026-06-05T20:19:17.796Z
+Plan: [`docs/features/candidate/ast-583-uat-intake-continue-vs-start-over-dialog.md`](https://github.com/susansomerset/astral/blob/sub/AST-539/AST-583-intake-continue-vs-start-over/docs/features/candidate/ast-583-uat-intake-continue-vs-start-over-dialog.md) @ `4360e135`
+
+**Scope:** `Single-Component` — page-entry gate in `CandidateIntake.tsx` plus §6c Vitest; archive API from **AST-582** already on parent `ftr/`.
+
+**Conf:** `high` — resume/auto-start in `IntakeChatModal` is done; this wires the UAT prompt and archive-before-create on **Start Over**.
+
+**Risk:** `Medium` — mis-ordered dialogs could skip archive or block resume; plan pins explicit active GET → resume dialog → modal open with call-count tests.
+
+---
+
 # AST-583 — UAT: Intake Continue vs Start Over dialog
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-583/uat-intake-continue-vs-start-over-dialog  

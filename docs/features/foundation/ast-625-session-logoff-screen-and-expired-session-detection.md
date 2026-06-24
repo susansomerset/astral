@@ -1,3 +1,125 @@
+<!-- linear-archive: AST-625 archived 2026-06-23 -->
+
+## Linear archive (AST-625)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-625/session-log-off-screen-and-expired-session-detection-log-off-screen  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-624 — Log-off screen  
+**Blocked by / blocks / related:** parent: AST-624
+
+### Description
+
+## What this implements
+
+When the React SPA detects that a user previously had a valid Stytch session but no longer does, show a dedicated log-off screen instead of the normal Login page. The screen uses reason-specific copy for inactivity/session timeout vs API 401 server rejection, includes a visible Refresh control that reloads the page, and matches existing full-page auth styling. Detection runs in the frontend only — wire session expiry and centralized 401 handling so first-time visitors still see Login.
+
+## Acceptance criteria
+
+* With a valid session, using the app normally works unchanged.
+* After Stytch session expiry or inactivity logout (simulated or real), the user sees the log-off screen with **inactivity/timeout** messaging — not the Stytch login widget and not an empty shell.
+* After an API 401 while authenticated, the user sees the same log-off screen with **server rejection** messaging (wording distinct from the timeout case).
+* The log-off screen includes copy that the user should refresh to log in again, plus a working Refresh control that reloads the page.
+* After refresh, the standard Login flow appears and the user can authenticate and reach the app.
+* A user who opens the site without ever having logged in still sees the existing Login page, not the log-off screen.
+* No regression to magic-link/OAuth login (AST-612/613) or admin UI gating.
+
+## Boundaries
+
+* Does not change Stytch session duration, idle timeout policy, or Dashboard configuration.
+* Does not add manual sign-out UX, account settings, or session management controls.
+* Does not build MFA, password login, or broad session-refresh error handling beyond this log-off screen.
+* Does not alter Flask auth decorators, `/api/me`, or admin gating from AST-611.
+* No backend debug-logging requirements (UI-only feature).
+
+## Notes for planning
+
+Primary touchpoints: `RequireAuth.tsx`, `AuthContext.tsx`, `Login.tsx`, shared `api.ts` fetch layer, and a new log-off page/component. Follow AST-612 Stytch patterns. Track "had session" vs never-authenticated to avoid showing log-off to first-time visitors.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-624-log-off-screen`, child `sub/AST-624/AST-625-session-logoff-screen`. Created at dispatch-parent.
+
+### Comments
+
+#### katherine — 2026-06-14T05:42:58.053Z
+**Review** — diff `origin/dev...origin/sub/AST-624/AST-625-session-logoff-screen` @ `606c0100` (+ doc `d0cf799c`)
+
+Plan doc: [ast-625-session-logoff-screen-and-expired-session-detection.md](https://github.com/susansomerset/astral/blob/sub/AST-624/AST-625-session-logoff-screen/docs/features/foundation/ast-625-session-logoff-screen-and-expired-session-detection.md)
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### Advisory
+- **`RequireAuth.tsx` L19–21** — `setLogOffReason("timeout")` during render is a side effect; plan Stage 4 prescribes it, write is idempotent, tests green. Acceptable with plan exception; move to `useEffect` only if Strict Mode ever misbehaves.
+- **Server-rejection Refresh loop** — if Stytch client session survives after Refresh, user may see LogOff again until Stytch expires (no `session.revoke()` per plan). Flag for Susan UAT on AST-624.
+
+### Solid
+- All four plan stages delivered; frontend-only (§3.3).
+- Had-session gating prevents log-off for first-time visitors; 401 hook gated on `getHadSession()`.
+- Distinct timeout vs server-rejection copy; Refresh clears marks.
+- Betty manifest §7.13zzk + five Vitest files cover routing matrix.
+
+#### betty — 2026-06-14T05:39:50.987Z
+## QA test manifest (AST-625)
+
+**Publish ref:** `origin/sub/AST-624/AST-625-session-logoff-screen` @ `606c0100` (`merge-tests(AST-625): origin/tests 675534ba`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `31e764e74252fcddb0b0972e6dfadb598ad873b1` — see **§7.13zzk**
+
+**Classification:** new Vitest coverage for frontend-only session log-off gate (extends AST-612 patterns). No Python tests; no backend changes.
+
+### Run (numbered)
+
+From `src/ui/frontend/`:
+
+1. `npm run test:component -- ../tests/component/frontend/lib/test_sessionAuthMark.test.ts`
+2. `npm run test:component -- ../tests/component/frontend/lib/test_api.test.ts`
+3. `npm run test:component -- ../tests/component/frontend/contexts/test_AuthContext.test.tsx`
+4. `npm run test:component -- ../tests/component/frontend/components/test_RequireAuth.test.tsx`
+5. `npm run test:component -- ../tests/component/frontend/components/test_LogOffScreen.test.tsx`
+
+Or single narrowed run (§7.13zzk):
+
+6. `npm run test:component -- ../tests/component/frontend/lib/test_sessionAuthMark.test.ts ../tests/component/frontend/lib/test_api.test.ts ../tests/component/frontend/contexts/test_AuthContext.test.tsx ../tests/component/frontend/components/test_RequireAuth.test.tsx ../tests/component/frontend/components/test_LogOffScreen.test.tsx`
+
+### Coverage matrix
+
+| AC area | Test |
+| --- | --- |
+| First-time visitor → Login (not log-off) | `test_RequireAuth` — no session, no had-session |
+| Session loss after auth → timeout log-off | `test_RequireAuth` — had-session + null session |
+| API 401 while authenticated → server-rejection | `test_api` 401 + handler; `test_AuthContext` `/api/me` 401; `test_RequireAuth` with reason set |
+| Reason-specific copy + Refresh clears marks | `test_LogOffScreen` |
+| Valid session → children unchanged | `test_RequireAuth` — session present |
+| `sessionStorage` helpers | `test_sessionAuthMark` |
+
+### Regression spot-check (after manifest green)
+
+7. `npm run test:component -- ../tests/component/frontend/pages/test_Login.test.tsx ../tests/component/frontend/components/test_AdminRoute.test.tsx`
+
+— Betty
+
+#### katherine — 2026-06-14T05:34:37.664Z
+Plan doc: [ast-625-session-logoff-screen-and-expired-session-detection.md](https://github.com/susansomerset/astral/blob/sub/AST-624/AST-625-session-logoff-screen/docs/features/foundation/ast-625-session-logoff-screen-and-expired-session-detection.md)
+
+**Approach:** Tab-scoped `sessionStorage` marks (`had session` + log-off reason `timeout` | `server-rejection`). `RequireAuth` routes to new `LogOffScreen` before `Login` when a reason is set or Stytch session drops after auth. `api.ts` centralizes 401 → `server-rejection` when had-session is set. Refresh clears marks and reloads so Login appears post-refresh.
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — five frontend auth-gate files, no backend changes.
+- **Conf:** `conf-high` — extends AST-612 Stytch gate patterns with explicit routing and copy.
+- **Risk:** `risk-Medium` — auth routing mistakes could block protected routes or show LogOff to first-time visitors.
+
+Four stages: (1) `sessionAuthMark` + `api` 401 hook, (2) `LogOffScreen`, (3) `AuthContext` marking/re-render, (4) `RequireAuth` routing + lint/build.
+
+---
+
 # AST-625 — Session log-off screen and expired-session detection (Log-off screen)
 
 - **Linear (this ticket):** [AST-625](https://linear.app/astralcareermatch/issue/AST-625/session-log-off-screen-and-expired-session-detection-log-off-screen)

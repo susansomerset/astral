@@ -1,3 +1,129 @@
+<!-- linear-archive: AST-596 archived 2026-06-23 -->
+
+## Linear archive (AST-596)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-596/mid-chain-dispatch-claim-and-hop-failure-batch-release-need-to-pick-up  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-593 — Need to pick up and parse daisy chained prompts from the middle using agent_data content  
+**Blocked by / blocks / related:** parent: AST-593
+
+### Description
+
+## What this implements
+
+Scheduled Actions and auto dispatch claim **BUILD_ARTIFACTS.<task_key>** jobs using the dispatch row's **task_key** as the mid-chain entry hop (not only chain entry at **contemplate_job**). On hop failure, release the job from the in-flight batch claim so the next tick can redispatch at the correct compound state without double-processing the same job.
+
+## Acceptance criteria
+
+2. Susan can dispatch a mid-chain Scheduled Action (e.g. `draft_job_resume` at **BUILD_ARTIFACTS.<matching state>**) for a job whose upstream hops already succeeded; the run starts at that hop. (dispatch half — claim + entry)
+3. When hop *N* fails, the job is not left claimed in a batch that blocks redispatch on the next tick; a subsequent manual or auto dispatch at the correct entry task processes the job once.
+
+## Boundaries
+
+* Does not define compound states — blocked by sibling state/config ticket.
+* Does not load **agent_data** into caller tokens — Ada sibling.
+* Must not break **AST-534** honor-dispatch-task_key behavior for entry hops.
+
+## Notes for planning
+
+* `dispatch_tasks` row **trigger_state** must align with compound **JOB_STATES** keys.
+* Consult artifact batch path (`_run_job_artifact_entry_batch`) must respect mid-chain entry + failure release.
+
+## Git branch (authoritative)
+
+Parent **ftr/AST-593-mid-chain-artifact-resume**, child **sub/AST-593/<child-id>-mid-chain-dispatch-claim-release**.
+
+### Comments
+
+#### radia — 2026-06-12T16:53:33.462Z
+**Review** — `origin/dev...origin/sub/AST-593/AST-596-mid-chain-dispatch-claim-release` @ `b1db91a6`
+
+### What's solid
+
+- Plan stages 1–4 match the diff: **`release_job_dispatch_claim`** in **`tracker`**, pre-claim compound guard in **`dispatcher._run_unified`**, consult row validation + **`_artifact_entry_hop_failed`** on all three failure branches in **`_run_job_artifact_entry_batch`**.
+- **`BUILD_FAILED`** and **`clear_job_artifact_resume_content`** removed from hop-failure paths; success path still gates **`CANDIDATE_REVIEW`** and **`contemplate_job`** cover letter (AST-534).
+- **§2.4:** mismatch returns before claim; per-job lock release on failure; dispatcher **`finally`** **`clear_job_batch`** untouched.
+- Betty manifest covers mismatch skip, mid-chain entry, hop-failure release, tracker delegation (**§7.13zm**).
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **discuss** | `src/core/dispatcher.py` ~L166–177 | Inline **`resume_artifact_*`** import inside **`_run_unified`** (no lazy-load comment). Grandfathered by existing board_search pattern — optional hoist to module top in **resolve-astral**. |
+| **advisory** | Epic integration | Sub tip needs **AST-595** helpers wherever merged for UAT; per-hop transitions / **`agent_data`** hydration are **AST-597**, not this ticket. |
+
+**No fix-now.**
+
+### Doc
+
+Plan review blob: `docs/features/artifacts/ast-596-mid-chain-dispatch-claim-and-hop-failure-batch-release.md` @ `b1db91a6` (`docs(AST-596): Radia review — mid-chain claim release sign-off`).
+
+**Hedy:** proceed **resolve-astral** (optional discuss item only).
+
+#### betty — 2026-06-12T05:01:58.018Z
+**Correction:** `docs/ASTRAL_TEST_BIBLE.md` shasum on `origin/sub/AST-593/AST-596-mid-chain-dispatch-claim-release` @ `78e3cd43` is `e56d17003f27e15f87f58513ff17c8fb2c2da523` (not `f804f594` — pre-reconcile).
+
+— Betty
+
+#### betty — 2026-06-12T05:01:35.479Z
+## QA test manifest (AST-596)
+
+**Publish ref:** `origin/sub/AST-593/AST-596-mid-chain-dispatch-claim-release` @ `78e3cd43`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `f804f5943d85f3b572fd836e1288346d9df91e8f`
+
+### Manifest (run in order)
+
+1. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch` — compound trigger routing; hop failure releases claim (no `BUILD_FAILED`, no resume wipe); terminal success unchanged
+2. `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty` — mid-chain `draft_job_resume` + matching compound `trigger_state`; mismatch returns zero summary
+3. `tests/component/core/test_consult.py::TestAst596MidChainDispatchClaimRelease::test_release_job_dispatch_claim_delegates_to_database`
+4. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult` — compound `trigger_state` + resume hop `task_key` forwards to consult
+5. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim` — mismatch skips claim/consult (`_SUMMARY_ZERO`)
+
+### Narrow run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst596MidChainDispatchClaimRelease \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim
+```
+
+### Test deltas (this pass)
+
+- **Revised:** `test_artifact_entry_batch_errors_skip_cover_letter`, `test_artifact_entry_batch_empty_persist_releases_claim` — expect `release_job_dispatch_claim`, not `BUILD_FAILED` / resume wipe
+- **Revised:** AST-534 / AST-371 consult routes use compound `BUILD_ARTIFACTS.<task_key>` trigger states (AST-595 dependency)
+- **Revised:** `test_ast534_forwards_dispatch_task_key_to_consult` uses compound trigger state
+- **Added:** mid-chain compound trigger + dispatch/consult mismatch guards; tracker helper smoke
+
+### Publish SHAs (Joan)
+
+| Commit | Subject | On publish ref |
+| --- | --- | --- |
+| `054841bc` | `test(AST-596): mid-chain dispatch claim and hop failure release manifest` | yes |
+| `78e3cd43` | `docs(AST-596): test bible §7.13zv–§7.13zz including dispatch claim row` | yes (bible reconcile — sub tip lacked §7.13zv–§7.13zz; appended before Appendix A) |
+
+— Betty
+
+#### hedy — 2026-06-11T23:46:38.353Z
+Plan: [`docs/features/artifacts/ast-596-mid-chain-dispatch-claim-and-hop-failure-batch-release.md`](https://github.com/susansomerset/astral/blob/sub/AST-593/AST-596-mid-chain-dispatch-claim-release/docs/features/artifacts/ast-596-mid-chain-dispatch-claim-release.md) @ `origin/sub/AST-593/AST-596-mid-chain-dispatch-claim-release` @ `1fc82c99`
+
+**Scope — Single-Component:** `consult.py`, `dispatcher.py`, and `tracker.py` only — compound-state claim guard, per-job batch release on hop failure, no `BUILD_FAILED` on daisy-chain failures.
+
+**Conf — Medium:** AST-534 entry wiring exists; this adds AST-595-dependent claim alignment and failure release. Build blocked until Katherine's compound states land.
+
+**Risk — HIGH:** Stuck `batch_id` or wrong claim guard blocks mid-chain redispatch; removing `BUILD_FAILED` without immediate lock release strands jobs.
+
+Betty delta noted in plan Stage 4 (consult + dispatcher tests for no `BUILD_FAILED`, batch release, mismatch guard).
+
+---
+
 # Mid-chain dispatch claim and hop failure batch release
 
 **Linear:** [AST-596](https://linear.app/astralcareermatch/issue/AST-596/mid-chain-dispatch-claim-and-hop-failure-batch-release-need-to-pick-up)  

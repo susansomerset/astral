@@ -1,3 +1,110 @@
+<!-- linear-archive: AST-767 archived 2026-06-23 -->
+
+## Linear archive (AST-767)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-767/sunset-boards-in-code-rules-test-bible-and-feature-docs-sunset-astral  
+**Status at archive:** Done  
+**Project:** Astral Boards  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-757 — Sunset Astral Boards  
+**Blocked by / blocks / related:** parent: AST-757
+
+### Description
+
+## What this implements
+
+Add **Sunset — Astral Boards** section to `docs/ASTRAL_CODE_RULES.md` with rationale and both commit SHAs (pre-removal `dev` tip at dispatch + first removal commit from AST-758). Remove or consolidate active boards manifest sections in `docs/ASTRAL_TEST_BIBLE.md` and decomposed `docs/test-bible/` files that exist only for boards. Mark `docs/features/boards/` as historical archive with sunset preamble.
+
+## Acceptance criteria
+
+1. `docs/ASTRAL_CODE_RULES.md` contains sunset section with rationale and both SHAs.
+2. Test bible contains no boards manifests implying active test obligations.
+3. `docs/features/boards/` remains as historical archive only with clear sunset framing.
+
+## Boundaries
+
+Does not remove src/ or database schema (siblings AST-758, AST-759). Betty owns test manifest updates in qa-child — engineer may note bible sections to retire; Betty executes bible edits at Tests Ready.
+
+## Notes for planning
+
+Pre-removal SHA: `{PRE_DEV_SHA}`. First removal SHA comes from AST-758's first boards-removal commit on sub branch.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-757-sunset-astral-boards`, child `sub/AST-757/<child-segment>`, standalone `ftr/<segment>`. Created at **dispatch-parent**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-23T20:47:07.144Z
+**Diff:** `origin/dev...origin/sub/AST-757/AST-767-sunset-boards-documentation` @ `2d0050a` (doc commit adds full table)
+
+### clean
+
+- **§3.7** Sunset — Astral Boards: both revival SHAs, revival `git` hints, archive pointers to `docs/features/boards/` and bible sunset stubs.
+- Monolith **§7.13** consolidated SUNSET header; §7.13q/r/s/v/za/zzu → **RETIRED** stubs; §7.13w trimmed board registry/gaze/board-sourced rows.
+- Decomposed test-bible sunset stubs (dispatcher, consult, gazer, tracker, playwright, config, frontend, dispatch_tasks, cleanup doc).
+- `docs/features/boards/README.md` historical archive framing.
+- Stage 5 grep: board test symbols only in RETIRED/historical context.
+- Docs-only `a62c6a7`; no `src/` or `tests/` edits.
+
+### advisory
+
+Three-dot vs `origin/dev` includes AST-765/766 product+test removal (epic stacking). AST-767 product surface is docs commit only.
+
+**Doc:** `docs/features/boards/ast-767-sunset-boards-documentation.md` § Radia review (2026-06-23)
+
+#### betty — 2026-06-23T20:45:52.341Z
+## QA test manifest (AST-767)
+
+**Docs-only** — no new component tests. Engineer `code(AST-767)` @ `a62c6a7`; Betty bible honesty pass @ `2d0050a` (`merge-tests(AST-767): origin/tests e7cc684`).
+
+**Publish ref:** `origin/sub/AST-757/AST-767-sunset-boards-documentation` @ `2d0050a`
+
+**tests commit:** `e7cc684` on `origin/tests`
+
+### Scope verified
+
+1. **`docs/ASTRAL_CODE_RULES.md` §3.7** — revival SHAs + archive pointers.
+2. **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset) — no active board manifests.
+3. Decomposed **`docs/test-bible/**`** — sunset stubs; no rows pointing at deleted `test_board*` / `api_boards` modules as live obligations.
+4. **`docs/features/boards/`** — archive preamble.
+
+### Betty honesty fixes (on publish ref)
+
+- `docs/test-bible/README.md` — **AST-767** docs-only handoff block.
+- `frontend/pages.md` — **AST-531** sources drop removed `boards.py`.
+- `frontend/components.md` — **AST-653** sources drop `api_boards` / `boards`.
+- `dev/cleanup_duplicate_and_board_gaze_jobs.md` — **AST-729** table drops retired `TestBoardGazeCleanup` row.
+
+### test-child
+
+**No pytest manifest.** Verify docs acceptance (grep / read). Product removal tests remain **AST-765** / **AST-766** siblings if a smoke pass is desired — not required for this ticket.
+
+**Bible shasums on publish ref:**
+- `docs/test-bible/README.md` → `$(shasum -a 256 <<< "$(git show origin/sub/AST-757/AST-767-sunset-boards-documentation:docs/test-bible/README.md)" | awk '{print $1}')` 
+- `docs/test-bible/README.md` → `47fe474354c65d9f5ee42afc0724145d6e8d93b499fe752d40b4ed1964e36b46`
+- `docs/test-bible/core/dispatcher.md` → `80d85a5016b2b4307bb7bf989019c2d198ca230dbd09910d6c2b506de06104f3`
+- `docs/test-bible/core/consult.md` → `624c7be4ae559dfca43c044ab11b113280adc80c3018a3e66947ad7e9b6a5418`
+- `docs/ASTRAL_CODE_RULES.md` → `ea3b8f683feb7b775133e9236785d1f780ff14568172e660c0418c4e99629f1d`
+
+— Betty
+
+#### ada — 2026-06-23T20:44:09.107Z
+Built @ `origin/sub/AST-757/AST-767-sunset-boards-documentation` `a62c6a7`. Docs-only: Code Rules §3.7 (SHAs 8d9b01e5 + e8fe814), monolith + decomposed test-bible sunset stubs, boards README archive preamble. Betty may trim any remaining historical rows on next qa pass; no `tests/` changes in this ticket.
+
+#### ada — 2026-06-23T20:42:29.655Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-757/AST-767-sunset-boards-documentation/docs/features/boards/ast-767-sunset-boards-documentation.md
+
+**Scope:** Single-Component — docs-only: Code Rules §3.7 sunset (SHAs 8d9b01e5 + e8fe814), monolith + decomposed test-bible consolidation, boards README archive preamble.
+
+**Conf:** high — SHAs and file list fixed by parent epic and AST-765/766 siblings.
+
+**Risk:** low — doc-only; Stage 5 grep catches stray active board manifests.
+
+---
+
 # Sunset boards in Code Rules, test bible, and feature docs (Sunset Astral Boards)
 
 **Parent:** [AST-757](https://linear.app/astralcareermatch/issue/AST-757/sunset-astral-boards)  

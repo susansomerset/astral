@@ -1,3 +1,106 @@
+<!-- linear-archive: AST-634 archived 2026-06-23 -->
+
+## Linear archive (AST-634)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-634/admin-candidate-filter-on-three-admin-tabs-remove-selected-candidate  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-628 — Remove "Selected Candidate" filter on admin tabs  
+**Blocked by / blocks / related:** parent: AST-628
+
+### Description
+
+## What this implements
+
+Add a consistent **Candidate** dropdown filter (**All** + full global candidate list) on **Scheduled Actions**, **Execution History**, and **Agent Timesheets**. Remove silent left-nav-only filtering on Scheduled Actions; replace free-text candidate input on Agent Timesheets; fix Execution History to use the full candidate list (not only candidates in the loaded result set). Default each screen's filter to the left-nav selected candidate (or **All** when none selected). Implement nav-sync: while the on-page filter is still at default, left-nav changes update the dropdown; after manual selection, the on-page filter stays until changed again.
+
+## Acceptance criteria
+
+1. On **Scheduled Actions**, with left-nav candidate **A** selected and no manual filter change yet, the **Candidate** filter shows **A** and the table lists only dispatch tasks for **A**; choosing **All** shows tasks for every candidate; choosing **B** shows only **B**'s tasks. No hidden nav-only filtering remains.
+2. On **Execution History**, with left-nav candidate **A** selected on first visit (no `candidate_id` in URL), the **Candidate** filter defaults to **A** and the ledger list is scoped to **A**; **All** shows all candidates (within other active filters); the dropdown lists every candidate from the global list, including candidates with zero rows in the current date window.
+3. On **Agent Timesheets**, with left-nav candidate **A** selected, the **Candidate** dropdown defaults to **A**; **All** shows all candidates within date/other filters; totals bars and **Export CSV** match the active candidate filter.
+4. With no candidate selected in the left nav, all three screens default the **Candidate** filter to **All**.
+5. All three screens use the same **Candidate** / **All** dropdown pattern and readable candidate labels.
+6. **Nav sync:** With the on-page filter still at default on a screen, switching left-nav from **A** to **B** updates that screen's **Candidate** filter to **B** without a page reload. After Susan manually sets the on-page filter to **All** or a specific candidate other than the current default, subsequent left-nav changes do **not** change the on-page filter until she changes the dropdown.
+
+## Boundaries
+
+* Does **not** change the left-nav candidate selector or other candidate-scoped screens.
+* Does **not** add server-side authorization changes or new admin APIs unless a plan discovers an existing endpoint cannot support **All** — prefer client-side filtering and existing list endpoints.
+* Does **not** redesign table columns, phase grouping, run/stop behavior, or non-candidate filters on these three screens.
+
+## Notes for planning
+
+* Primary files: `src/ui/frontend/src/pages/AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx`, `AdminAgentTimesheets.tsx`; `useCandidate` from `CandidateContext`.
+* Consider a shared hook or small component for candidate dropdown + nav-sync default tracking if it reduces duplication.
+* plan-child: Vitest coverage per screen or shared filter hook.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-628-remove-selected-candidate-filter-on-admin-tabs`, child `sub/AST-628/<child-id>-<slug>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T19:11:36.974Z
+**Review** — `origin/dev...origin/sub/AST-628/AST-634-admin-candidate-filter-on-three-admin-tabs` (product tip `87911345`; doc `7eb0b981`)
+
+Plan doc: `docs/features/interface/ast-634-admin-candidate-filter-on-three-admin-tabs.md` (Review section)
+
+### Solid
+- Stages 1–4 match plan: shared `candidateLabel` / `useAdminCandidateFilter` / `AdminCandidateFilterControl`; Scheduled Actions explicit client filter (silent nav filter removed); Execution History + Timesheets URL-backed with one-time nav default effect.
+- Betty manifest covers default-from-nav, All, manual pin, global candidate list (Execution History), export `candidate_id` (Timesheets).
+- §3.3 clean — frontend-only; label logic aligns with `NavigationShell.tsx`.
+
+### discuss
+- **`useAdminCandidateFilter.ts`** — `applyFilter` depends on inline `urlBacked` object identity from callers; nav-sync `useEffect` may re-run every parent render while `syncWithNav` and repeatedly call `setSearchParams`. Tests seed `candidate_id` on mount (`withCandidateQuery`) to avoid RTL hang. Consider stabilizing deps (`setValue`/`value` as separate args) before UAT on first visit with no `candidate_id` query param.
+- **Duplicate URL helpers** in `AdminPerformanceMonitor.tsx` + `AdminAgentTimesheets.tsx` — acceptable for this scope; extract only if a fourth admin screen needs the same pattern.
+
+### advisory
+- Execution History `tz` still follows **nav** `selectedId`, not on-page filter (pre-existing).
+- `candidateLabel.ts` `candidate_data || {}` — bounded display use, matches nav shell.
+
+**Verdict:** No fix-now blockers — proceed to `resolve-child` / UAT. Optional hardening on hook deps if first-load URL default flickers in staging.
+
+#### betty — 2026-06-14T19:08:14.768Z
+**QA test manifest** — `origin/sub/AST-628/AST-634-admin-candidate-filter-on-three-admin-tabs` @ `849595b8` (`merge-tests(AST-634): origin/tests d4652222`)
+
+1. `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` — nav default, manual pin blocks nav sync, URL-backed mode
+2. `tests/component/frontend/lib/test_candidateLabel.test.ts` — label formatting + sort order
+3. `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-634`** describe: default from nav, **All**, manual **All** blocks nav sync, nav sync before manual change
+4. `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — **`AST-634`** describe: global candidate list in dropdown; `candidate_id` in ledger fetch URL
+5. `tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx` — **`AST-634`** describe: Candidate `<select>` + export URL includes `candidate_id`
+
+**Regression guard:** full `test_AdminPerformanceMonitor.test.tsx` (helper seeds `candidate_id=c1` when absent — see bible RTL note).
+
+**Narrowed run:**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/lib/test_candidateLabel.test.ts \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  -t "AST-634|useAdminCandidateFilter|candidateLabel"
+```
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` §7.13zzn — shasum on publish ref: `afda00e35ba70acee48d2cce5912fb71a0ed1c0e`
+
+#### katherine — 2026-06-14T18:23:54.552Z
+Plan: [`docs/features/interface/ast-634-admin-candidate-filter-on-three-admin-tabs.md`](https://github.com/susansomerset/astral/blob/sub/AST-628/AST-634-admin-candidate-filter-on-three-admin-tabs/docs/features/interface/ast-634-admin-candidate-filter-on-three-admin-tabs.md)
+
+Four build stages: shared `useAdminCandidateFilter` + label helper + control, then wire Scheduled Actions (remove silent nav filter), Execution History (full candidate list + URL default/sync), Agent Timesheets (dropdown replaces free text). Betty QA manifest covers nav-sync pin, zero-row candidates in dropdown, and export URL parity — no engineer commits under `tests/`.
+
+**Self-assessment**
+- **Scope:** Single-Component — three admin pages plus shared hook/control; frontend only.
+- **Conf:** high — mirrors existing `NavigationShell` labels and URL filter patterns; AC fully specified on AST-628/634.
+- **Risk:** Medium — wrong default/sync would mis-scope admin list views but not dispatch or DB state.
+
+---
+
 # Admin candidate filter on three admin tabs (Remove "Selected Candidate" filter on admin tabs)
 
 **Linear:** [AST-634](https://linear.app/astralcareermatch/issue/AST-634/admin-candidate-filter-on-three-admin-tabs-remove-selected-candidate)  

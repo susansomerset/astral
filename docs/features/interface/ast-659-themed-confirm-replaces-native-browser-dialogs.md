@@ -1,3 +1,157 @@
+<!-- linear-archive: AST-659 archived 2026-06-23 -->
+
+## Linear archive (AST-659)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-659/themed-confirm-replaces-native-browser-dialogs-upsert-modal-is-still  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-639 — Upsert modal is still using the browser confirmation popup instead of our pretty one.  
+**Blocked by / blocks / related:** parent: AST-639
+
+### Description
+
+## What this implements
+
+Audit every production `window.confirm` call in the React frontend and migrate each to the shared themed confirm dialog (`useUserConfirm` / `UserPromptProvider`). Covers Data Management Table Upsert apply, Manage Candidates logical delete and clear-API-key, and any other production call sites discovered in the audit. Deliver a short audit summary at Code Complete listing each former native confirm and its migration status.
+
+## Acceptance criteria
+
+1. On Data Management → Table Upsert: paste JSON, choose a table, click Save — Susan sees the Astral-themed confirm dialog, not the browser-native popup. Cancel dismisses the dialog and does not post; confirm runs the upsert and shows the same outcome toasts as today.
+2. On Manage Candidates: logical delete and clear API key each show the themed confirm dialog with clear action labels; cancel aborts; confirm performs the same API action as today.
+3. A frontend audit finds no remaining `window.confirm` in production page/components code except documented test-only fallbacks in shared modal/prompt infrastructure.
+4. Component tests that mocked or asserted `window.confirm` for migrated flows are updated so CI passes without relying on native browser dialogs in wrapped test trees (provider present).
+5. No regression in pages already using `useUserConfirm` (intake resume/start-over, board search delete/mode switch).
+
+## Boundaries
+
+* Does not change upsert API semantics, validation, or toast copy beyond confirm/cancel behavior.
+* Does not remove `UserPrompt` / `Modal` test-only fallbacks when no provider is present.
+* Does not add new confirmation steps where none existed today.
+* Does not touch backend or debug logging.
+
+## Notes for planning
+
+* `UserPromptProvider` wraps the app in `NavigationShell`; follow patterns in `CandidateBoardSearches.tsx` and `CandidateIntake.tsx` for titles, labels, and danger variant on destructive actions.
+* Known native confirm sites at dispatch: `AdminDataManagement.tsx` (upsert apply), `AdminManageCandidates.tsx` (delete, clear API key).
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-639-themed-confirm-dialog`, child `sub/AST-639/<child-segment>`. Created at **dispatch-parent**. Engineers publish to `origin/sub/*` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-15T01:57:43.154Z
+**Diff:** `origin/dev...origin/sub/AST-639/AST-659-themed-confirm-native-browser` @ `eeeb1a4f`
+
+**Plan doc:** [ast-659-themed-confirm-replaces-native-browser-dialogs.md](https://github.com/susansomerset/astral/blob/sub/AST-639/AST-659-themed-confirm-native-browser/docs/features/interface/ast-659-themed-confirm-replaces-native-browser-dialogs.md) — § Review (Radia)
+
+### Solid (themed confirm — ship as built)
+
+- `AdminDataManagement.tsx` upsert apply → `useUserConfirm` (`"Apply upsert"` / `"Apply"`); empty-JSON guard before confirm unchanged.
+- `AdminManageCandidates.tsx` delete + clear-key → `useUserConfirm` with `variant: "danger"`; API/toast paths unchanged.
+- Audit: no `window.confirm` under `src/ui/frontend/src/pages/`; only `UserPrompt.tsx` / `Modal.tsx` fallbacks remain.
+- In-scope manifest specs (`test_AdminDataManagement`, `test_AdminManageCandidates`, `test_CandidateIntake` api-mock stubs) match plan Stage 3.
+
+### fix-now
+
+1. **`tests/component/frontend/lib/test_listTableLayout.test.ts`** — AST-657 cases import `mergeWidthsForSticky`, `measureListTableColumnWidths` and call 6-arg `stickyLeftPx`; **exports do not exist** on `listTableLayout.ts` at this ref. Ran file locally: **3 failed / 4 passed**.
+2. **`tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx`** — `AST-657: frozen data columns get cumulative sticky left offsets after measure` expects measured-width sticky product not on this branch.
+
+### discuss
+
+- **Cross-ticket (§5d):** Plan scope = two admin pages + two page specs. Diff also bundles **AST-657** list-table tests (+ bible AST-657 row) with **no** AST-657 product in the three-dot diff. Narrowed AST-659 manifest skips the broken files; full `test_listTableLayout` run fails. **Revert AST-657 hunks on this sub-branch** or land only with AST-657 product on its own `sub/AST-639/AST-657-*`.
+
+No product-code changes needed for themed confirm wiring.
+
+#### betty — 2026-06-15T01:55:07.797Z
+[check-linear] Tests updated for [qa-handoff] — added `setAuthTokenGetter` / `setUnauthorizedHandler` to `lib/api` mocks in all three manifest page specs (matches `test_AdminPerformanceMonitor` pattern). Vitest manifest green locally (29 passed, 2 skipped).
+
+**Publish:** `merge-tests(AST-659): origin/tests d698b6c3` → `origin/sub/AST-639/AST-659-themed-confirm-native-browser` @ tip after push.
+
+Reassigned **Katherine Johnson** for **test-child** — stay **Tests Ready**.
+
+#### katherine — 2026-06-15T01:53:33.358Z
+[qa-handoff]
+
+@Betty White — manifest fails before any confirm/assertion logic runs. **Not a product bug** from AST-659 themed-confirm work.
+
+**Command (Betty manifest):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
+```
+
+**Result:** 29 failed | 2 skipped | 0 passed @ `origin/sub/AST-639/AST-659-themed-confirm-native-browser` `e478c88f`
+
+**Root error (every test, at `renderWithProviders` → `AuthProvider` mount):**
+```
+[vitest] No "setAuthTokenGetter" export is defined on the "../../../../src/ui/frontend/src/lib/api" mock.
+[vitest] No "setUnauthorizedHandler" export is defined on the "../../../../src/ui/frontend/src/lib/api" mock.
+```
+
+**Cause:** All three files use a partial `vi.mock` with only `{ default: vi.fn() }`. `AuthContext` calls `setAuthTokenGetter` / `setUnauthorizedHandler` on mount; `renderWithProviders` wraps with `AuthProvider`.
+
+**Working pattern in repo:**
+- `test_AdminPerformanceMonitor.test.tsx` — adds `setAuthTokenGetter: vi.fn()` and `setUnauthorizedHandler: vi.fn()` to the mock
+- `test_App.test.tsx` — `async (importOriginal) => { const actual = await importOriginal(); return { ...actual, default: vi.fn() } }`
+
+**Ask:** Update the `lib/api` mock in the three manifest page specs (or shared setup) so AuthProvider can mount. Reassign me when manifest is green.
+
+Product build (`npm run build` in `src/ui/frontend`) passes; no product commits from test-child.
+
+#### betty — 2026-06-15T01:52:14.256Z
+## QA test manifest (AST-659)
+
+**Publish ref:** `origin/sub/AST-639/AST-659-themed-confirm-native-browser` @ `e478c88f`  
+**`merge-tests(AST-659):`** `origin/tests` `040fdcc3`  
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref = `1340026dc607fea0cf3a1852b53bf905a963d2fe` (**§7.13zzx**)
+
+Engineer **`code()`** already updated page Vitest specs for themed **`alertdialog`** paths; Betty bible-only delivery this pass.
+
+1. **`tests/component/frontend/pages/test_AdminDataManagement.test.tsx`** — routed page (**§6c**): table upsert Save → **`alertdialog`** name **"Apply upsert"** → button **Apply**; empty JSON skips confirm; **`ok:false`** API path confirms then toasts error.
+2. **`tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`** — Edit modal Clear → **"Clear API key"** / **Clear key**; row Delete → **"Delete candidate"** / **Delete**; existing add/view/edit assertions unchanged.
+3. **`tests/component/frontend/pages/test_CandidateIntake.test.tsx`** — **AC5 regression** (intake **`useUserConfirm`** flows untouched; existing coverage must stay green).
+
+**Narrowed run:**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
+```
+
+**Audit (product, no remaining page `window.confirm`):** only **`UserPrompt.tsx`** / **`Modal.tsx`** documented fallbacks — matches plan Stage 4.
+
+#### katherine — 2026-06-15T01:50:13.376Z
+**Audit — native confirm migration**
+
+| Former site | Action guarded | Status |
+|-------------|----------------|--------|
+| `AdminDataManagement.tsx` handleUpsertApply | Apply JSON upsert | → `useUserConfirm` ("Apply upsert") |
+| `AdminManageCandidates.tsx` handleDelete | Logical delete | → `useUserConfirm` ("Delete candidate", danger) |
+| `AdminManageCandidates.tsx` Clear button | Clear API key | → `useUserConfirm` ("Clear API key", danger) |
+| `UserPrompt.tsx` / `Modal.tsx` | Test-only fallback | Excluded per ticket boundaries |
+
+`origin/sub/AST-639/AST-659-themed-confirm-native-browser` @ `36ada25c`
+
+#### katherine — 2026-06-15T01:47:21.428Z
+**Plan:** [ast-659-themed-confirm-replaces-native-browser-dialogs.md](https://github.com/susansomerset/astral/blob/sub/AST-639/AST-659-themed-confirm-native-browser/docs/features/interface/ast-659-themed-confirm-replaces-native-browser-dialogs.md) @ `f1470df3`
+
+Four stages: (1) `AdminDataManagement` upsert apply → `useUserConfirm`, (2) `AdminManageCandidates` delete + clear-key with danger variant, (3) update both page Vitest specs to click through `alertdialog` instead of mocking `window.confirm`, (4) `rg` audit + summary comment at Code Complete.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — two admin pages and two component test files only; no backend or config.
+- **Conf:** `high` — copies existing `useUserConfirm` patterns; provider already wraps tests via `renderWithProviders`.
+- **Risk:** `low` — confirm gating only; API payloads and toast copy unchanged.
+
+---
+
 # Themed confirm replaces native browser dialogs
 
 **Linear:** [AST-659](https://linear.app/astralcareermatch/issue/AST-659/themed-confirm-replaces-native-browser-dialogs-upsert-modal-is-still)  
