@@ -1218,6 +1218,13 @@ IN_REVIEW_STATES = [
 # UI treats misses as Skipped while DB state stays PASSED (see api_jobs skipped / in_review).
 PASSED_SCORE_GATED_STATES = frozenset({"PASSED_JD", "PASSED_DO", "PASSED_GET", "PASSED_LIKE"})
 
+DISPATCH_SCORE_FLOOR_VALUES: tuple[float, ...] = tuple(i * 0.5 for i in range(21))  # 0.0 … 10.0
+
+
+def dispatch_score_floor_option_labels() -> list[str]:
+    """Two-decimal strings for admin score_floor <select> options."""
+    return [f"{v:.2f}" for v in DISPATCH_SCORE_FLOOR_VALUES]
+
 
 def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
     """True when job claim should filter latest_score >= dispatch_task.score_floor.
