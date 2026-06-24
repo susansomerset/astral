@@ -1035,6 +1035,19 @@ class TestAst505InflowDiscoveryConfig:
         assert ("NEW", "WEBSITE_FOUND") in transitions
         assert ("NEW", "NO_WEBSITE") in transitions
 
+    def test_vet_failed_state_and_transition(self) -> None:
+        assert "VET_FAILED" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("NEW", "VET_FAILED") in transitions
+
+    def test_inflow_config_vet_literals(self) -> None:
+        v = cfg.INFLOW_CONFIG["vet"]
+        assert v["task_key"] == "vet_inflow_discovery"
+        assert v["dispatch_trigger_state"] == "NEW"
+        assert v["pass_state"] == "WEBSITE_FOUND"
+        assert v["fail_state"] == "VET_FAILED"
+        assert v["blurb_data_key"] == "inflow_discovery_blurb"
+
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("inflow_discovery")
         assert d["entity_type"] == "candidate"
