@@ -30,6 +30,10 @@ from src.core.dispatcher import (
 )
 from src.core.candidate import preview_task_prompt
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
+from src.core.repo_admin_json import (
+    get_repo_admin_json_divergence_status,
+    revert_repo_admin_json_table,
+)
 from src.utils.config import (
     ASTRAL_CONFIG,
     AGENT_CONFIG,
@@ -265,6 +269,31 @@ def delete_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' is assigned to {task_count} task(s) — unassign first"}), 409
     database.delete_agent(agent_id)
     return jsonify({"deleted": agent_id})
+
+
+# ---------------------------------------------------------------------------
+# Repo admin JSON divergence (AST-783)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/repo_json/status")
+@require_admin
+def repo_json_status():
+    try:
+        return jsonify(get_repo_admin_json_divergence_status())
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@admin_bp.route("/repo_json/revert/<table_key>", methods=["POST"])
+@require_admin
+def repo_json_revert(table_key: str):
+    if table_key not in ("agent", "agent_task"):
+        return jsonify({"error": "table_key must be agent or agent_task"}), 400
+    try:
+        count = revert_repo_admin_json_table(table_key)
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "table_key": table_key, "row_count": count})
 
 
 # ---------------------------------------------------------------------------
