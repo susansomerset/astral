@@ -52,7 +52,7 @@ Prior board integration retired (**AST-765** product, **AST-766** schema); activ
 | --- | --- | --- |
 | Sunset migration + fresh schema | `src/data/database.py` | **`TestAst766BoardSchemaSunset`** |
 | Dead DDL surface | same | **`test_board_search_ddl_helpers_removed`** |
-| Eligibility board_search unknown entity | same | **`test_count_eligible_board_search_entity_raises`** |
+| Eligibility board_search unknown entity (pre-AST-781) | same | superseded by **AST-781** — **`test_count_eligible_board_search_entity_returns_zero`** |
 
 **Retired (AST-766):** `test_board_ingest.py`; `test_board_search_integration.py` (AST-765); **`TestAst745StopAutomaticDispatchRowSeeding::test_schema_ensure_does_not_reinsert_gaze_board_rows`**.
 
@@ -61,5 +61,23 @@ Prior board integration retired (**AST-765** product, **AST-766** schema); activ
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset \
+  -q
+```
+
+### AST-781 · AST-763
+
+UAT: **`GET /api/admin/dispatch_tasks`** returned **500** when legacy `dispatch_task` rows still had `entity_type='board_search'` (boards sunset **AST-766** left DB rows). **`count_eligible_for_dispatch_task`** returns **`0`** when `entity_type not in ENTITY_TYPES` — list loads; legacy rows show **Available = 0**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired entity_type guard | `src/data/database.py` | **`TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero`** |
+| Admin list enrichment | `src/ui/api/api_admin.py` | **`TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count`** |
+
+**AST-781** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero \
+  tests/component/ui/api/test_api_admin.py::TestAst781ListDtasksRetiredEntityType \
   -q
 ```

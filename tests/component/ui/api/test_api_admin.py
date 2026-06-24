@@ -575,6 +575,35 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
+# AST-781: legacy board_search entity_type rows do not 500 list_dtasks enrichment.
+class TestAst781ListDtasksRetiredEntityType:
+    def test_list_dtasks_legacy_board_search_row_returns_zero_available_count(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 99,
+                    "task_key": "gaze_board",
+                    "trigger_state": "ACTIVE",
+                    "entity_type": "board_search",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        resp = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers)
+        assert resp.status_code == 200
+        rows = resp.get_json()
+        assert len(rows) == 1
+        assert rows[0]["task_key"] == "gaze_board"
+        assert rows[0]["entity_type"] == "board_search"
+        assert rows[0]["available_count"] == 0
+
+
 # AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
 class TestAst773UpdateDispatchTaskTaskKey:
     def test_dispatch_task_key_trigger_error_helper(self) -> None:
