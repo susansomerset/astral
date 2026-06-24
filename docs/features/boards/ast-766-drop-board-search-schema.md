@@ -1,3 +1,110 @@
+<!-- linear-archive: AST-766 archived 2026-06-23 -->
+
+## Linear archive (AST-766)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-766/drop-board-search-schema-and-board-only-db-surface-sunset-astral  
+**Status at archive:** Done  
+**Project:** Astral Boards  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-757 — Sunset Astral Boards  
+**Blocked by / blocks / related:** parent: AST-757
+
+### Description
+
+## What this implements
+
+Remove `board_search` table and job/company columns or sentinel values used only for board-sourced ingest from the data layer and schema ensure/migration paths. No runtime code may read or write board-search rows after this ships. No production data purge — schema/code removal only.
+
+## Acceptance criteria
+
+1. Database schema on a fresh migrate/ensure reflects removal of board-only tables/columns.
+2. No application layer imports board-search DDL helpers after sibling AST-758 lands.
+3. Grep-equivalent: no `board_search` table usage in active code paths on publish ref.
+
+## Boundaries
+
+Does not remove src/ boards modules (AST-758 — must be Review Posted first). Does not update test bible or Code Rules (AST-760).
+
+## Notes for planning
+
+Blocked until AST-758 removes all src references to board_search. Data layer changes only.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-757-sunset-astral-boards`, child `sub/AST-757/<child-segment>`, standalone `ftr/<segment>`. Created at **dispatch-parent**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-23T20:37:37.262Z
+**Diff:** `origin/dev...origin/sub/AST-757/AST-766-drop-board-search-schema` @ `7e9bd1e` (doc commit adds full table)
+
+### advisory
+
+- Three-dot diff vs `origin/dev` includes **AST-765** boards `src/` removal (expected epic stacking). AST-766 product commit `0a1efd3` is `database.py` only and matches plan Stages 1–5.
+- `fix(AST-766)` reverted merge-tests cross-ticket bleed — good branch hygiene.
+
+### clean
+
+- `_apply_board_schema_sunset`: drops board tables, rebuilds `job` without `board_search_id` (explicit cols + identity index recreation).
+- Board DDL/DML block, bridge constants, `save_job` param, upsert registry keys, `count_eligible` `board_search` branch, and `gaze_board` migration removed.
+- Product grep clean outside sunset strings in `database.py`.
+- Betty board-only test deletion + dispatch_tasks bible updates landed; manifest green.
+
+**Doc:** `docs/features/boards/ast-766-drop-board-search-schema.md` § Radia review (2026-06-23)
+
+#### betty — 2026-06-23T20:35:44.340Z
+## QA test manifest (AST-766)
+
+**Publish ref:** `origin/sub/AST-757/AST-766-drop-board-search-schema` @ `7e9bd1e` (`merge-tests(AST-766): origin/tests 0effd2c`; bleed revert `7e9bd1e`)
+
+**tests commit:** `0effd2c` on `origin/tests`
+
+1. **New:** `TestAst766BoardSchemaSunset` — fresh DB no board tables/column; legacy sunset migration; board DDL helpers removed; `count_eligible_for_dispatch_task` raises for `entity_type=board_search`.
+2. **Retired:** `test_board_ingest.py`; `board_search_integration.md`; `TestAst745StopAutomaticDispatchRowSeeding::test_schema_ensure_does_not_reinsert_gaze_board_rows`; conftest board_search schema flags.
+
+**Narrowed run (test-child):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset \
+  -q
+```
+
+**Bible shasums on publish ref:**
+- `docs/test-bible/data/database.md` → `4f69f8be269c089a8e0d91c0ea482d872d57fc3c7eb6d5cd6c94ad95edfb3379`
+- `docs/test-bible/data/database/dispatch_tasks.md` → `a6f468c58a0acd3cc08f6302b3fe3b4cdc67622c959fc9b1baf3bb69807402d4`
+
+Note: `merge-tests` briefly pulled AST-750 config/admin bible bleed from `tests` ftr merge; reverted on sub before push so delivery is tests+bible only.
+
+— Betty
+
+#### ada — 2026-06-23T20:31:39.145Z
+origin/sub/AST-757/AST-766-drop-board-search-schema @ 0a1efd3
+
+Betty: delete/update board-only tests (`test_board_ingest.py`, `test_board_search_integration.py`, conftest `_board_search_schema_ensured` resets).
+
+#### ada — 2026-06-23T20:29:40.271Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-757/AST-766-drop-board-search-schema/docs/features/boards/ast-766-drop-board-search-schema.md
+
+**Scope:** Single-Component — `src/data/database.py` only: drop `board_search`/`board_search_run`, rebuild `job` without `board_search_id`, delete all board DDL/DML helpers and the dead `count_eligible_for_dispatch_task` `board_search` branch.
+
+**Conf:** high — AST-765 left a documented orphan inventory; no remaining `src/` importers outside `database.py`.
+
+**Risk:** Medium — job table rebuild on legacy DBs must preserve columns/indexes; Betty owns test manifest updates after `code()`.
+
+#### ada — 2026-06-23T20:29:37.433Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-757/AST-766-drop-board-search-schema/docs/features/boards/ast-766-drop-board-search-schema.md
+
+**Scope:** Single-Component — `src/data/database.py` only: drop `board_search`/`board_search_run`, rebuild `job` without `board_search_id`, delete all board DDL/DML helpers and the dead `count_eligible_for_dispatch_task` `board_search` branch.
+
+**Conf:** high — AST-765 left a documented orphan inventory; no remaining `src/` importers outside `database.py`.
+
+**Risk:** Medium — job table rebuild on legacy DBs must preserve columns/indexes; Betty owns test manifest updates after `code()`.
+
+---
+
 # Drop board_search schema and board-only DB surface (Sunset Astral Boards)
 
 **Parent:** [AST-757](https://linear.app/astralcareermatch/issue/AST-757/sunset-astral-boards)  
