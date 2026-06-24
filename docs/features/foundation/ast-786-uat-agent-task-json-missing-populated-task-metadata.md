@@ -140,3 +140,15 @@ No **fix-now** items.
 | --- | --- |
 | resolve-child | None for AST-786 — merge when parent UAT lane clears. |
 | Follow-on | Track **AST-787** (or sibling) for populated `agent.json` if persona UAT still open. |
+
+## Resolution (2026-06-24)
+
+**Radia review:** clean — no **fix-now** items.
+
+**Discuss (`data/admin/agent.json` = `[]`):** Acknowledged. Out of scope for AST-786 per plan — task metadata UAT is closed here; empty persona seed tracked separately (**AST-787**).
+
+**Product changes:** none — resolve pass is doc-only.
+
+**§9a dry-run:** `origin/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task` (no conflict markers in `git merge-tree`).
+
+**Publish tip at resolve:** `origin/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata` @ Radia doc `3818646`.
