@@ -142,3 +142,29 @@ No unresolved conflicts.
 | 1 | `cb7ec1f` | Forward grouping columns in `apply_agent_task_copy_upsert`; extend skip guard |
 
 **Hand-verify:** `apply_agent_task_repo_json_startup` → `anticipate_scan` grouping **Job Artifacts** / **5000** / **Anticipate Scan** / **1.0**; grouping-only re-import restores repo values after DB mutation.
+
+## Radia review (2026-06-24) — FIX-UAT
+
+**Ref:** `origin/dev...origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` @ `5eda8b9`
+
+### What's solid
+
+- **Root cause + fix aligned:** `apply_agent_task_copy_upsert` now forwards four grouping kwargs to `_save_agent_task_on_connection(..., import_explicit=True)` and extends `sel_cur` + skip guard so grouping-only diffs re-import when prompt content unchanged — fixes startup (AST-782), revert (AST-783), and Copy Output paste on one path per plan.
+- **Scope gate:** `code(AST-790)` @ `cb7ec1f` touches **`src/data/database.py` only** — no repo JSON / UI / `repo_admin_json.py` edits.
+- **§1.3 DRY / §3.3:** data-layer-only; reuses existing save helper; no new cross-layer imports; no data-layer logging added.
+- **Tests:** `TestAst790AgentTaskGroupingImport` covers startup import (`anticipate_scan`), grouping-only copy upsert when prompts unchanged, and revert-after-DB-mutation — matches hand-verify script in plan.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **advisory** | `task_seq` compare in skip guard | Uses `float` equality — fine for catalog values (`1.0`, `999`); if future rows use high-precision seq values, consider normalized compare (not blocking this UAT fix). |
+
+No **fix-now** items.
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| resolve-child | None — merge when parent UAT lane clears. |
+| Post-merge UAT | Revert **anticipate_scan** after grouping drift → Manage Tasks shows **Job Artifacts** section, not **(unassigned)**. |
