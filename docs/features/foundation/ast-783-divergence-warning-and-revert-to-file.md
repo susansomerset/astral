@@ -252,4 +252,4 @@ No **fix-now** items (layers, silent failure, UI hardcoded job states N/A, debug
 
 **§9a dry-run:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task` (no `merge-tree` conflict hunks).
 
-**Publish tip at resolve:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ Radia doc `b1d5cf1`.
+**Publish tip at resolve:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ `982aa2d`.
