@@ -168,3 +168,13 @@ No **fix-now** items.
 | --- | --- |
 | resolve-child | None — merge when parent UAT lane clears. |
 | Post-merge UAT | Revert **anticipate_scan** after grouping drift → Manage Tasks shows **Job Artifacts** section, not **(unassigned)**. |
+
+## Resolution (2026-06-24)
+
+**Radia review:** clean — no **fix-now** items.
+
+**Product changes:** none — resolve pass is doc-only. Shipped fix remains `code(AST-790)` @ `cb7ec1f` (`apply_agent_task_copy_upsert` forwards grouping columns + extended skip guard).
+
+**§9a dry-run:** `origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task` (no conflict markers in `git merge-tree`).
+
+**Publish tip at resolve:** `origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` @ Radia doc `7e597ef`.
