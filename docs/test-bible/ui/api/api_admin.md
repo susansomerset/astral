@@ -160,11 +160,48 @@ Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
 
 Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
 
+### AST-781 · AST-763
+
+`GET /api/admin/dispatch_tasks` enriches each row via **`count_eligible_for_dispatch_task`**; legacy rows with retired **`entity_type`** (e.g. **`board_search`**) get **`available_count=0`** instead of raising through **`count_entities_in_state`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List enrichment tolerance | `src/ui/api/api_admin.py` | `TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count` |
+| Data-layer guard | `src/data/database.py` | `TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero` (**`docs/test-bible/data/database/dispatch_tasks.md`**) |
+
+**AST-781** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst781ListDtasksRetiredEntityType \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero \
+  -q
+```
+
 **AST-773** narrowed pytest:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey \
+  -q
+```
+
+### AST-785 · AST-754
+
+`GET /api/admin/dispatch_tasks` (`list_dtasks`) filters **`DISPATCH_RETIRED_TASK_KEYS`** before enrichment (parity with **`task_keys`** AST-749); wraps **`count_eligible_for_dispatch_task`** in try/except — logs warning, sets **`available_count=0`** on failure instead of 500ing the list.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retirement filter on list path | `src/ui/api/api_admin.py` | `TestAst785ListDtasksRobustness::test_list_dtasks_omits_retired_task_keys` |
+| Enrichment failure tolerance | same | `TestAst785ListDtasksRobustness::test_list_dtasks_enrichment_failure_returns_zero_count_not_500` |
+
+Routed page auto-open + filter-empty copy: **`docs/test-bible/frontend/pages.md`** (**AST-785**).
+
+**AST-785** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst785ListDtasksRobustness \
   -q
 ```
 
@@ -177,3 +214,23 @@ Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
   -q
 ```
 
+
+---
+
+### AST-783 · AST-756
+
+**Repo JSON divergence API:** **`GET /api/admin/repo_json/status`** returns per-table `{ diverged, repo_relative_path }`; **`POST /api/admin/repo_json/revert/<table_key>`** restores one table from checked-in JSON (400 for invalid `table_key`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Status + revert routes | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi` |
+
+Core compare/revert: **`docs/test-bible/core/repo_admin_json.md`**. UI banner: **`docs/test-bible/frontend/components.md`** (**AST-783**).
+
+**AST-783** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi \
+  -q
+```
