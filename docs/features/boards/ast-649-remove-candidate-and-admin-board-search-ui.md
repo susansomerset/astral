@@ -1,3 +1,166 @@
+<!-- linear-archive: AST-649 archived 2026-06-23 -->
+
+## Linear archive (AST-649)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-649/remove-candidate-and-admin-board-search-ui-remove-board-searches-and  
+**Status at archive:** Done  
+**Project:** Astral Boards  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-648 — Remove "Board Searches" and related references  
+**Blocked by / blocks / related:** parent: AST-648
+
+### Description
+
+## What this implements
+
+Remove all user-visible board-search product surfaces while leaving backend board infrastructure dormant: drop **Board Searches** from candidate navigation, remove the board-searches management route/page, and hide `gaze_board` from Admin Scheduled Actions (Susan: do not keep admin board dispatch exposed). Retire any remaining frontend copy that still presents board searches as a candidate feature after nav/route removal.
+
+## Acceptance criteria
+
+1. With a logged-in user and any eligible candidate selected, the sidebar **does not** show **Board Searches**.
+2. Navigating to the former board-searches URL **does not** render the Board Searches management UI (no list, no create/edit modal, no board picker).
+3. All other candidate, company, artifacts, and admin pages load and behave as before this change.
+4. Component test suite passes after board-search UI tests are updated or removed to match the new product surface.
+
+## Boundaries
+
+* Does **not** drop `board_search` tables, remove `/api/boards` routes, delete `BOARD_CONFIG`, disable backend `gaze_board` dispatch, or change ingest/tracker behavior.
+* Does **not** migrate or delete existing board search data.
+* Does **not** change company-centric ingest, roster, consult, or artifacts flows.
+
+## Notes for planning
+
+* Navigation visibility is config-driven via `NAV_CONFIG` / `/api/nav_config` — remove the nav item there, not via hard-coded sidebar exceptions.
+* Admin Scheduled Actions: hide `gaze_board` from the UI per parent open-question resolution (Susan: No).
+* Bookmarked `/candidate/board_searches`: generic not-found is acceptable (Susan: redirect not necessary).
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-648-remove-board-searches-and-related-references`, child `sub/AST-648/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T22:38:05.608Z
+**Review** (`origin/dev...origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui`)
+
+Plan doc: [ast-649-remove-candidate-and-admin-board-search-ui.md](https://github.com/susansomerset/astral/blob/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui/docs/features/boards/ast-649-remove-candidate-and-admin-board-search-ui.md) (doc commit `6b870da1`)
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### What's solid
+- **Plan fidelity:** `NAV_CONFIG` Board Searches removed; `routes.tsx` route + import gone; `CandidateBoardSearches.tsx` deleted; `App.css` section comments removed; `ADMIN_CONFIG.hidden_dispatch_task_keys` + `admin_hidden_dispatch_task_keys()` filter `list_dtasks`, `dispatch_task_keys`, and `scheduler_thread_status`.
+- **AC:** No nav item; no board-searches route; admin Scheduled Actions omit `gaze_board`; backend `/api/boards`, core board modules, and `DISPATCH_SCHEDULABLE_TASK_KEYS` unchanged.
+- **§2.1 / §1.3 / §3.3:** Config-driven nav + admin hide; DRY helper; no new layer violations.
+- **Frontend sweep:** No remaining `board_searches` / `Board Searches` / `gaze_board` under `src/ui/frontend`.
+
+### Advisory
+- Branch tip includes Betty test/bible work plus incidental drift fixes (`test_boards.py`, `test_roster.py`, `contemplate_job` assertion) — qa-child scope, not product defects.
+- `gaze_board` still exists in backend config; raw API POST could create a row — intentional UI-only hide per plan boundaries.
+
+**→ Katherine:** proceed to `resolve-child` (no product changes required).
+
+#### betty — 2026-06-14T22:29:15.052Z
+[check-linear] Cleared `[qa-handoff]` — full component pytest green (1512 passed). Fixed 15 unrelated test-tree failures on `origin/tests`:
+
+- **AST-595:** `test_api_admin` task_keys `contemplate_job.trigger_state` → `cfg.resume_artifact_compound_state("contemplate_job")`
+- **AST-459:** `test_boards` deeplink gaze uses stored URL; blank deeplink raises
+- **Roster:** `claim_company_batch` expects `states=None` kwarg
+- **AST-458 REST:** boards integration uses `test-token` + Stytch auth stub (was 401)
+
+**Publish ref:** `origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui` @ `51da72b4` (`merge-tests(AST-649): origin/tests cca9f901`)
+
+Narrow manifest unchanged (§7.13zzu). Assignee → Katherine for `test-child`.
+
+#### katherine — 2026-06-14T22:25:29.321Z
+[qa-handoff]
+
+@Betty White — narrow manifest **green**; full harness gate **red** with failures **unrelated** to AST-649 product (UI removal + `gaze_board` admin filter).
+
+**Git:** `origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui` @ `b9f654e0` merged on epic worktree.
+
+### Narrow manifest (all pass)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls
+# 3 passed
+
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/test_routes.test.tsx
+# 2 passed
+```
+
+### Full `./scripts/testing/run_component_tests.sh` — 15 failed (not AST-649 product)
+
+| Area | Tests | Why not product fix here |
+|------|-------|--------------------------|
+| Board gaze (§7.13q spine) | `test_boards.py::TestRunBoardSearchGazeAst459` (2) | Deeplink URL assertion stale vs current `run_board_search_gaze`; backend unchanged by AST-649 |
+| Board REST (§7.13q) | `test_board_search_integration.py::TestBoardSearchRestAst458` (10) | Mostly **401** on POST/PATCH — auth/harness, not nav/UI removal; `/api/boards` untouched |
+| Admin task_keys (pre-existing) | `test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry`, `test_ast549_task_keys_config_derivation_authoritative` | Expect `BUILD_ARTIFACTS`; product correctly returns `BUILD_ARTIFACTS.contemplate_job` (AST-595 compound states) — unrelated to `hidden_dispatch_task_keys` |
+| Roster | `test_roster.py::TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` | Unrelated batch API |
+
+AST-649-specific tests (`test_nav_config_omits_board_searches`, `test_ast649_hides_gaze_board_from_scheduled_actions`, routes, scheduler controls) all pass.
+
+**Ask:** For this UI-only ticket, either (a) scope harness gate to the narrow manifest above, or (b) update/skip the unrelated failing tests on publish ref so full suite is green. Reassign me when ready.
+
+#### betty — 2026-06-14T22:23:57.639Z
+## QA test manifest (AST-649)
+
+**Publish ref:** `origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui` @ `b9f654e0` (`merge-tests(AST-649): origin/tests da8406f3`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `d5319a92fddc50ff8ba575c285c8325db15c1eb14e93c219e87631c2bd38d5a0` — see §7.13zzu
+
+### 1. Existing coverage (bible-backed — backend unchanged)
+
+- **§7.13q** board_search REST/DDL/dispatch spine — **no rerun required** for this UI-only ticket unless `test-child` full suite flags regressions unrelated to removed UI.
+
+### 2. Broken / obsolete tests (revised this pass)
+
+- **Deleted** `tests/component/frontend/pages/test_CandidateBoardSearches.test.tsx` (page removed).
+- **Updated** `tests/component/frontend/test_routes.test.tsx` — `candidate/board_searches` route **absent**.
+- **Updated** `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls` — thread_status empty dict shape (post-filter API).
+- **§7.13s** bible table trimmed; cross-ref **§7.13zzu**.
+
+### 3. New / expanded tests
+
+1. `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches` — no `/candidate/board_searches` in any nav group.
+2. `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions` — `gaze_board` absent from `task_keys`, list rows, and `scheduler/thread_status`.
+
+### Run (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/test_routes.test.tsx
+```
+
+Then full `./scripts/testing/run_component_tests.sh` (zero args) for harness gate.
+
+— Betty
+
+#### katherine — 2026-06-14T22:19:36.339Z
+Plan: [`docs/features/boards/ast-649-remove-candidate-and-admin-board-search-ui.md`](https://github.com/susansomerset/astral/blob/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui/docs/features/boards/ast-649-remove-candidate-and-admin-board-search-ui.md) on `origin/sub/AST-648/ast-649-remove-candidate-and-admin-board-search-ui` @ `12447a33`.
+
+Two stages: (1) remove `NAV_CONFIG` Board Searches item, delete `CandidateBoardSearches.tsx` + route + CSS comments; (2) add `ADMIN_CONFIG.hidden_dispatch_task_keys` and filter `gaze_board` from Scheduled Actions list/task_keys/thread_status APIs — backend dispatch untouched.
+
+**Self-Assessment**
+- **Scope:** `Single-Component` — UI presentation and admin API filtering only; one React page deleted.
+- **Conf:** `high` — Established NAV_CONFIG / routes SYNC and ADMIN_CONFIG extension; no new business logic.
+- **Risk:** `low` — Removal-only; board backend, `/api/boards`, and dispatcher paths stay dormant.
+
+---
+
 # Remove candidate and admin board search UI
 
 **Linear:** [AST-649](https://linear.app/astralcareermatch/issue/AST-649/remove-candidate-and-admin-board-search-ui-remove-board-searches-and)  
