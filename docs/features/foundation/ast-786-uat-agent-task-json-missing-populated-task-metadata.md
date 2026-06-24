@@ -113,3 +113,30 @@ No unresolved conflicts.
 | 1 | `54ceac3` | Normalized 37-row fixture (`current=1`, PRAGMA key order) → `data/admin/agent_task.json` |
 
 **Hand-verify:** 37 task keys match ticket set; `prefilter_company` / `grade_get` / `anticipate_scan` have non-empty `agent_id` + `user_prompt`; `load_repo_admin_json_file` + `apply_agent_task_repo_json_startup` → 37 `current=1` rows; fixture and repo JSON byte-identical (129643 bytes).
+
+## Radia review (2026-06-24) — FIX-UAT
+
+**Ref:** `origin/dev...origin/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata` @ `0721ae2`
+
+### What's solid
+
+- **UAT fix verified:** `code(AST-786)` @ `54ceac3` touches **only** `data/admin/agent_task.json` + `docs/uat-fixtures/AST-756/expected-agent_task.json` (scope gate PASS — no `src/**`).
+- **37-key catalog:** normalized rows match ticket task-key set; all `current = 1`; PRAGMA column keys validated in `test_startup_apply_loads_all_37_current_rows`.
+- **Fixture parity:** repo JSON byte-identical to authoritative fixture (129643 bytes); Betty manifest `TestAst786AgentTaskRepoJsonSeed` locks parity + spot-checks + startup smoke.
+- **Plan decisions honored:** `current` promoted to `1`; did not regenerate from local DB export; six tasks with empty `user_prompt` documented in plan (scraper/dispatch keys).
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **discuss** | `data/admin/agent.json` (unchanged `[]`) | Out of scope for AST-786 per plan — startup still wipes personas until sibling fix lands (**AST-787** on epic). UAT for **task** metadata is addressed here; agent personas remain a separate gap. |
+| **advisory** | `docs/uat-fixtures/AST-756/expected-agent.json` | Reference fixture added on branch (includes legacy `model_code`); not applied to repo `agent.json` — OK as staging artifact, not part of `code(AST-786)` commit. |
+
+No **fix-now** items.
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| resolve-child | None for AST-786 — merge when parent UAT lane clears. |
+| Follow-on | Track **AST-787** (or sibling) for populated `agent.json` if persona UAT still open. |
