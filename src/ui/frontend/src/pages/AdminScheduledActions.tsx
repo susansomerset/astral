@@ -10,6 +10,7 @@ import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
 import { useListTableColumnMeasure } from "../lib/useListTableColumnMeasure"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 
 type TaskKeyMeta = {
   entity_type: string
@@ -480,8 +481,11 @@ export default function ScheduledActions() {
       body: JSON.stringify({ auto_mode: !row.auto_mode }),
     })
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error || `Update failed (${res.status})`)
+      try {
+        await readApiError(res, `/api/admin/dispatch_tasks/${row.id}`, "PUT")
+      } catch (e) {
+        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Update failed (${res.status})`, variant: "error" })
+      }
       return
     }
     loadData()
@@ -500,8 +504,11 @@ export default function ScheduledActions() {
     e.stopPropagation()
     const res = await api(`/api/admin/dispatch_tasks/${row.id}/run`, { method: "POST" })
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error || `Run failed (${res.status})`)
+      try {
+        await readApiError(res, `/api/admin/dispatch_tasks/${row.id}/run`, "POST")
+      } catch (e) {
+        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Run failed (${res.status})`, variant: "error" })
+      }
       return
     }
     setTimeout(loadThreadStatus, 500)
@@ -578,8 +585,11 @@ export default function ScheduledActions() {
           }),
         })
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          alert(err.error || `Save failed (${res.status})`)
+          try {
+            await readApiError(res, `/api/admin/dispatch_tasks/${editRow.id}`, "PUT")
+          } catch (e) {
+            setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Save failed (${res.status})`, variant: "error" })
+          }
           return
         }
       } else {
@@ -599,8 +609,11 @@ export default function ScheduledActions() {
           }),
         })
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          alert(err.error || `Save failed (${res.status})`)
+          try {
+            await readApiError(res, "/api/admin/dispatch_tasks", "POST")
+          } catch (e) {
+            setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Save failed (${res.status})`, variant: "error" })
+          }
           return
         }
       }
