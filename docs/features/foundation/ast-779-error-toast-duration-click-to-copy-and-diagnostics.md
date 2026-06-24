@@ -327,3 +327,12 @@ Apply to: agent list load error path (~line 147), update save, create save, dele
 | §1.5 logging | No new backend debug logging; traceback only in JSON error responses for operator copy, not `app_log`. |
 
 No plan conflicts requiring escalation.
+
+## Review stub
+
+| Field | Value |
+|-------|-------|
+| **Publish ref** | `origin/sub/AST-770/AST-779-error-toast-diagnostics` |
+| **Built tip** | `cc9b5f0` |
+| **Stages** | 1 — `api_errors.py` + `/api/*` handler (`501b915`); 2 — `toastDiagnostics.ts` (`f8bde5c`); 3 — Toast 15s + click-to-copy + CSS (`0379f75`); 4 — AdminAgentPrompts + CandidateProfile ApiError wiring (`cc9b5f0`) |
+| **Betty next** | `test_Toast.test.tsx` extensions + `test_api_errors.py` per plan test manifest |
