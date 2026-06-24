@@ -309,3 +309,87 @@ class TestAst786AgentTaskRepoJsonSeed:
             assert loaded["user_prompt"]
         finally:
             conn.close()
+
+
+AST787_EXPECTED_AGENT_IDS = frozenset(
+    {
+        "ats_expert_atlas",
+        "college_intern_ruth",
+        "content_writer_judith",
+        "job_analyst_grace",
+        "principal_recruiter_estelle",
+        "web_scraper_laslo",
+    },
+)
+
+AST787_AGENT_REPO_COLUMNS = (
+    "agent_id",
+    "content",
+    "brain_setting",
+    "temperature",
+    "max_tokens",
+    "updated_at",
+)
+
+
+def _ast787_fixture_repo_row(fixture_row: dict[str, object]) -> dict[str, object]:
+    return {column: fixture_row[column] for column in AST787_AGENT_REPO_COLUMNS}
+
+
+class TestAst787AgentRepoJsonSeed:
+    """AST-787 UAT: six persona rows in agent repo JSON mapped from UAT fixture."""
+
+    def test_repo_json_has_six_sorted_persona_ids(self) -> None:
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        assert len(rows) == 6
+        assert frozenset(row["agent_id"] for row in rows) == AST787_EXPECTED_AGENT_IDS
+        assert [row["agent_id"] for row in rows] == sorted(AST787_EXPECTED_AGENT_IDS)
+
+    def test_repo_rows_match_fixture_repo_column_mapping(self) -> None:
+        repo_rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        fixture_by_id = {
+            row["agent_id"]: row
+            for row in json.loads(
+                Path("docs/uat-fixtures/AST-756/expected-agent.json").read_text(encoding="utf-8"),
+            )
+        }
+        for repo_row in repo_rows:
+            expected = _ast787_fixture_repo_row(fixture_by_id[repo_row["agent_id"]])
+            assert repo_row == expected
+
+    def test_repo_rows_use_repo_columns_only(self) -> None:
+        expected_cols = set(AST787_AGENT_REPO_COLUMNS)
+        for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8")):
+            assert set(row.keys()) == expected_cols
+            assert "model_code" not in row
+
+    def test_spot_check_personas_have_content_and_brain_setting(self) -> None:
+        by_id = {
+            row["agent_id"]: row
+            for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        }
+        for agent_id in (
+            "job_analyst_grace",
+            "ats_expert_atlas",
+            "principal_recruiter_estelle",
+        ):
+            row = by_id[agent_id]
+            assert str(row["content"]).strip()
+            assert str(row["brain_setting"]).strip()
+
+    def test_startup_apply_loads_all_six_agents(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        rows = repo_json_mod.load_repo_admin_json_file("agent")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            sqlite_in_memory.apply_agent_repo_json_startup(conn, rows)
+            conn.commit()
+            listed = {row["agent_id"] for row in sqlite_in_memory.list_agents()}
+            assert listed == AST787_EXPECTED_AGENT_IDS
+            grace = sqlite_in_memory.get_agent("job_analyst_grace")
+            assert grace is not None
+            assert grace["brain_setting"] == "Medium"
+            assert grace["content"]
+        finally:
+            conn.close()
