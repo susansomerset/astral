@@ -214,3 +214,35 @@ No **`conf-!!-NONE`** conflicts identified.
 **Smoke (Admin UAT):** discovery → NEW + blurb → vet dispatch → separate `batch_id`, `WEBSITE_FOUND` or `VET_FAILED`; `fetch_website` only after `WEBSITE_FOUND`.
 
 ---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt` @ `60df32a`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–4 delivered: **`INFLOW_CONFIG["vet"]`**, company/**`NEW`** **`TASK_CONFIG`** + schedulable keys; eligibility split (**`count_company_new_pending_inflow_vet`** / narrowed **`count_company_new_without_website`**); **`vet_inflow_discovery_company`** + **`run_company_task`** **`dispatch_task_key`** routing; consult no longer redirects company vet to **`run_inflow_discovery_batch`**; mechanical **`agent_task`** migration with idempotent marker. |
+| §2.6 state machine | Vet transitions **`NEW→WEBSITE_FOUND`** (with **`company_website`**) or **`NEW→VET_FAILED`** only from **`vet_inflow_discovery_company`**; discovery batch record-only (AST-775 dependency) — no inline vet under discovery **`batch_id`**. |
+| §1.5.1 debug | **`vet_inflow_discovery_company`** gates contract lines on **`debug=True`**; per-index headers + **`debug_detail_block`** for blurb; outcome index on pass/fail/reject. |
+| §2.2 do_task | Vet LLM only via **`do_task(vet_inflow_discovery)`** with company slug as **`index`**. |
+| Tests / bible | **`TestAst776VetInflowDiscoveryCompany`** and **`TestAst776InflowVetEligible`** pass on publish ref; test-bible rows updated for AST-776 manifest. |
+
+### Issues
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| **fix-now** | **`test_inflow_config_discovery_literals`** asserts **`INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"]`**, but Stage 1 moved trigger to **`INFLOW_CONFIG["vet"]`** and removed that discovery key. Test fails on publish ref (`KeyError`). Update assertion to **`INFLOW_CONFIG["vet"]["dispatch_trigger_state"]`** (or drop redundant discovery assertion — **`test_inflow_config_vet_literals`** already covers vet block). | `tests/component/utils/test_config.py` |
+| **fix-now** | Three-dot diff vs **`origin/dev`** **deletes** **`DISPATCH_SCORE_FLOOR_VALUES`** and **`dispatch_score_floor_option_labels()`** from **`config.py`** — dev-owned AST-750 product not in AST-776 scope. **`merge-resume(AST-776)`** did not preserve these symbols. Restore from **`origin/dev`** at **`resolve-child`** merge-clean gate; do not ship sub rollup that strips them. | `src/utils/config.py` |
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **fix-now** | Fix **`test_inflow_config_discovery_literals`** before **`resolve-child`** publish; re-run **`TestAst505InflowDiscoveryConfig`** (not only the narrowed AST-776 slice). |
+| **fix-now** | On **`git merge origin/dev`**, restore **`DISPATCH_SCORE_FLOOR_*`** / **`dispatch_score_floor_option_labels`** if conflict resolution dropped them. |
+| **Advisory** | Diff includes AST-775 discovery record-only rollup — expected vs **`origin/dev`** where sibling is not landed yet; not scope smuggle. |
+| **Advisory** | **`terminal_ok`** in **`run_company_task`** lists both **`INFLOW_CONFIG["vet"]["pass_state"]`** and literal **`"WEBSITE_FOUND"`** — redundant but harmless. |
+
+**Verdict:** Findings — two **fix-now** items; **`resolve-child`** after test + merge-clean fixes.
