@@ -203,3 +203,13 @@ When live SQLite content for `agent` or `agent_task` differs from the checked-in
 | §3.6 debug | No spike scripts; no repo-root artifacts |
 
 No unresolved conflicts.
+
+## Build review stub
+
+**Built:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ `<pending>`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `31bcef0` | Core divergence compare + `revert_repo_admin_json_table` |
+| 2 | `10d3273` | `GET /api/admin/repo_json/status`, `POST .../revert/<table_key>` |
+| 3 | `<pending>` | `RepoJsonDivergenceBanner` + Manage Agents / Manage Tasks wiring |
