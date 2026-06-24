@@ -158,3 +158,15 @@ No **fix-now** items. Closes empty-`agent.json` discuss from **AST-782/786** rev
 | --- | --- |
 | resolve-child | None — merge with AST-786 when parent UAT lane clears. |
 | Post-merge UAT | Fresh clone restart → Manage Agents shows six personas; divergence banner clears when DB matches repo file. |
+
+## Resolution (2026-06-24)
+
+**Radia review:** clean — no **fix-now** items.
+
+**Advisory (AST-786 rollup on branch diff):** Expected on epic merge line; AST-787 product delta remains `data/admin/agent.json` only.
+
+**Product changes:** none — resolve pass is doc-only. Persona seed shipped in `code(AST-787)` @ `1c8364e`; closes empty-`agent.json` discuss from AST-782/783 reviews.
+
+**§9a dry-run:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task`.
+
+**Publish tip at resolve:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `ea90c1c`.
