@@ -122,3 +122,13 @@ No unresolved conflicts.
 - **AST-782** established repo JSON load/apply and excluded `model_code` from `agent` export columns.
 - **AST-783** divergence UI warns when DB ≠ repo file; seeding `agent.json` clears false “empty repo” behavior on fresh clone.
 - **AST-786** owns `agent_task.json` population separately — not this ticket.
+
+## Build review stub
+
+**Built:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `<pending>`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `<pending>` | Seed `data/admin/agent.json` from UAT fixture (6 personas, repo columns) |
+
+**Hand-verify:** `load_repo_admin_json_file('agent')` → 6 rows; fixture `model_code` stripped per AST-782 column contract.
