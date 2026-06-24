@@ -241,3 +241,15 @@ No **fix-now** items (layers, silent failure, UI hardcoded job states N/A, debug
 | --- | --- |
 | resolve-child | None required — proceed when discuss item acknowledged. |
 | Before prod | Populate `agent.json` via export if revert/startup should not wipe personas (same as AST-782). |
+
+## Resolution (2026-06-24)
+
+**Radia review:** clean — no **fix-now** items.
+
+**Discuss (inherited AST-782 `agent.json` = `[]`):** Acknowledged. **Revert to file** on Manage Agents uses the same repo-wins semantics as startup (`apply_agent_repo_json_startup` deletes agents absent from JSON). Empty `[]` is intentional per AST-782; operators populate via Manage Agents then `python3 scripts/export_repo_admin_json.py` before prod if personas must persist.
+
+**Product changes:** none — resolve pass is doc-only.
+
+**§9a dry-run:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task` (no `merge-tree` conflict hunks).
+
+**Publish tip at resolve:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ Radia doc `b1d5cf1`.
