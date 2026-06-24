@@ -62,3 +62,25 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 ```
 
 **test-child scope gate (required):** `git show 54ceac3 --name-only` — expect **only** `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` under `code(AST-786)` (no `src/`).
+
+---
+
+### AST-790 · AST-756 (UAT bug)
+
+**Product fix:** `apply_agent_task_copy_upsert` forwards **`task_group_name`**, **`task_group_order`**, **`task_name`**, **`task_seq`** from repo JSON / Copy Output rows; skip guard compares grouping so revert/startup restore metadata when prompts already match. **`src/data/database.py` only** — no repo JSON seed edits.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Startup import grouping | `src/data/database.py` | `TestAst790AgentTaskGroupingImport::test_startup_import_forwards_grouping_metadata` |
+| Grouping-only copy upsert | same | `TestAst790AgentTaskGroupingImport::test_copy_upsert_updates_grouping_when_prompts_unchanged` |
+| Revert restores grouping | `src/core/repo_admin_json.py`, `src/data/database.py` | `TestAst790AgentTaskGroupingImport::test_revert_restores_grouping_when_prompts_match` |
+
+**AST-790** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst790AgentTaskGroupingImport \
+  -q
+```
+
+**test-child scope gate (required):** `git show cb7ec1f --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-790-uat-agent-task-grouping-metadata-not-applied-on-revert-startup.md` (no `data/admin/**`).
