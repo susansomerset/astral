@@ -39,3 +39,5 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 **UAT seed (AST-786):** populated 37-row catalog — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**).
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
+
+**Grouping on revert/startup (AST-790):** import forwards four grouping columns — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-790**).
