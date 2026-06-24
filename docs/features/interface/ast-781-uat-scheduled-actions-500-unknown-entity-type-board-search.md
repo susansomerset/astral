@@ -87,3 +87,13 @@ Susan UAT: **Admin → Scheduled Actions** (`GET /api/admin/dispatch_tasks`) ret
 | Layer boundaries | Data-layer guard only; no UI/core changes |
 
 No conflicts.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type` @ `2e229d6`
+
+Stage 1: `ENTITY_TYPES` import + early return `0` in `count_eligible_for_dispatch_task` when `entity_type not in ENTITY_TYPES` — legacy `board_search` rows no longer 500 the admin list.
+
+**Betty / qa-child:** Flip `test_count_eligible_board_search_entity_raises` to expect `0`; add `test_api_admin.py` regression for `list_dtasks` with legacy `board_search` row (`available_count == 0`, no count monkeypatch).
