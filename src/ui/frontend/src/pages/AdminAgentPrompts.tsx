@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import ListPage from "../components/ListPage"
 import Modal from "../components/Modal"
+import RepoJsonDivergenceBanner from "../components/RepoJsonDivergenceBanner"
 import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
 import { useCandidate } from "../contexts/CandidateContext"
@@ -94,6 +95,7 @@ export default function AgentPrompts() {
   const [previewText, setPreviewText] = useState("")
   const [previewCandidateId, setPreviewCandidateId] = useState("")
   const [previewSource, setPreviewSource] = useState<"edit" | "add">("edit")
+  const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
   const loadAll = useCallback(() => {
     setLoading(true)
@@ -172,6 +174,7 @@ export default function AgentPrompts() {
       .then(() => {
         setEditOpen(false); setEditAgent(null)
         setToast({ text: "Agent updated", variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
       .catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
@@ -202,6 +205,7 @@ export default function AgentPrompts() {
         setAddBrainSetting(brainSettings[0]?.brain_setting || "")
         setAddTemp(""); setAddMaxTok("")
         setToast({ text: `Agent "${id}" created`, variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
       .catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
@@ -217,6 +221,7 @@ export default function AgentPrompts() {
       .then(() => {
         setDeleteTarget(null)
         setToast({ text: `Agent "${deleteTarget.agent_id}" deleted`, variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
       .catch(e => { setDeleteTarget(null); setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }) })
@@ -258,6 +263,11 @@ export default function AgentPrompts() {
 
   return (
     <>
+      <RepoJsonDivergenceBanner
+        tableKey="agent"
+        refreshToken={repoJsonRefresh}
+        onReverted={() => { setRepoJsonRefresh(n => n + 1); loadAll() }}
+      />
       <ListPage<Agent>
         title="Manage Agents"
         columns={LIST_COLUMNS}
