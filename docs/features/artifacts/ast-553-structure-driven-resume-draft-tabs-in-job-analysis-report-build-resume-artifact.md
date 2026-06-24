@@ -1,3 +1,121 @@
+<!-- linear-archive: AST-553 archived 2026-06-23 -->
+
+## Linear archive (AST-553)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-553/structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-300 — Build Resume Artifact  
+**Blocked by / blocks / related:** parent: AST-300
+
+### Description
+
+## What this implements
+
+Job Analysis Report exposes structure-driven resume draft tabs (mirroring **AST-519** Base Resume Content pattern) loaded from `job_data.artifacts.resume_content`. Candidate edits save back to `job_data.artifacts.resume_content` before Applied/Skip. Saved content consumable by resume HTML builder/print route using candidate structure for section order (**AST-518**).
+
+## Acceptance criteria
+
+4. On chain success, the job is **CANDIDATE_REVIEW** and the Job Analysis Report shows editable resume draft content loaded from `resume_content`.
+5. Candidate edits in the report save back to `job_data.artifacts.resume_content` and appear in the resume print/preview output for that job.
+
+## Boundaries
+
+Does not run dispatch or chain (**sibling Ada/Hedy tickets**). Does not define candidate structure catalog (**AST-477** Done). Modal shell is **AST-307** Done — this ticket adds structure-keyed draft panels only.
+
+## Notes for planning
+
+Plan against **AST-307** / **AST-519** patterns. API client + React in Katherine domain.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent **ftr/AST-300-build-resume-artifact**, child **sub/AST-300/<child-id>-jar-resume-draft-tabs**.
+
+### Comments
+
+#### betty — 2026-06-03T00:45:39.609Z
+[check-linear]
+
+- Removed four `test_approve_artifacts_*` cases from `tests/component/ui/api/test_api_jobs.py` on **`origin/sub/AST-300/AST-553-jar-resume-draft-tabs`** @ `0e20dccf` (Radia fix-now / `[qa-handoff]` — route lives on **AST-552** only).
+- Manifest unchanged: §7.13zs **AST-553** narrowed run already lists only `test_put_resume_content_*` + frontend component tests.
+
+@Katherine Johnson — test tree on publish ref matches manifest; you can continue **resolve-astral** (§9a) and advance when green.
+
+#### katherine — 2026-06-03T00:43:30.284Z
+[qa-handoff]
+
+@Betty White — Radia **fix-now**: remove the four `test_approve_artifacts_*` cases from `tests/component/ui/api/test_api_jobs.py` on **AST-553** publish ref only (`origin/sub/AST-300/AST-553-jar-resume-draft-tabs`). They belong on **AST-552** — this tip has no `POST …/approve_artifacts` route, so those tests 404 here.
+
+**Product resolve landed:** `782edd7a` — `ArtifactEditor` job-load `.catch` + `entity-error` (Radia discuss closed). Plan doc Resolution section updated.
+
+After you republish test/bible fixes to `origin/sub/AST-300/AST-553-jar-resume-draft-tabs`, reassign **Katherine** — I'll run §9a dry-runs and advance to **User Testing**.
+
+#### radia — 2026-06-03T00:42:20.598Z
+**Review** (`origin/dev...origin/sub/AST-300/AST-553-jar-resume-draft-tabs`, tip `7e904f38` → review doc `f3c1c4ae`)
+
+**fix-now**
+- `tests/component/ui/api/test_api_jobs.py` — `test_approve_artifacts_*` (4 cases) ship on this publish ref but `api_jobs.py` has no `POST …/approve_artifacts` here (**AST-552** scope on `origin/sub/AST-300/AST-552-build-artifacts-gate-persistence`). Those tests 404 on this tip. Remove from **AST-553** or land **AST-552** API on the integration line first.
+
+**discuss**
+- `ArtifactEditor.tsx` job-load `useEffect` (~L166–175 on tip) — `GET /api/jobs/<id>` has no `.catch`; failed load leaves editor stuck without error toast.
+
+**advisory**
+- `PUT …/artifacts/resume_content` → `save_job_artifact_resume_content` — correct delegation (**§3.2**).
+- `ArtifactEditor` `jobPersistence` + `JobAnalysisReportModal` `CANDIDATE_REVIEW` + structure fetch — matches plan / AC #4–5.
+- Literal `CANDIDATE_REVIEW` gate — per plan exception to config-driven UI for this modal.
+
+**Doc:** `docs/features/artifacts/ast-553-structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume-artifact.md` (Radia review section)
+
+#### betty — 2026-06-03T00:36:32.718Z
+**Publish:** `origin/sub/AST-300/AST-553-jar-resume-draft-tabs` @ `7e904f38`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum** (on publish ref): `8f11bba5eadcad3c737dbe5dae781661cf8f6ad5f7859697e0077157b2a75723`
+
+**Coverage (AST-553):** job `PUT /api/jobs/<id>/artifacts/resume_content`; `ArtifactEditor` job persistence mode (load/save `resume_content`, no Generate); JAR structure-keyed resume draft tabs visible in **CANDIDATE_REVIEW**, hidden on **RECOMMENDED**. Depends on **AST-552** for chain-populated `resume_content` at UAT.
+
+**Manifest — run in order:**
+
+1. `./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_resume_content_persists_via_tracker \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_resume_content_404_when_job_missing \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_resume_content_400_when_not_dict`
+
+2. `cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx`
+
+Bible §7.13zs **AST-553** narrowed run block matches the above.
+
+— Betty
+
+#### katherine — 2026-06-02T22:31:15.023Z
+Plan: [`docs/features/artifacts/ast-553-structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume.md`](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-553-jar-resume-draft-tabs/docs/features/artifacts/ast-553-structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume.md) @ `origin/sub/AST-300/AST-553-jar-resume-draft-tabs` (`e5b1acbd`).
+
+Four stages: (1) `job_editable_resume_sections` / `contact_resume_snapshot_sections` + `GET/PUT` jobs resume-draft API delegating to `save_job_artifact_resume_content`; (2) new `JobResumeDraftEditor` (structure tabs + read-only contact + autosave + `/candidate/resume/<job_id>` preview); (3) mount in `JobAnalysisReportModal` when `CANDIDATE_REVIEW` + non-empty `resume_content`; (4) component/API tests.
+
+**Scope:** `Single-Component` — one new React component, small jobs API, two core helpers, modal wiring; no chain/dispatch/builder changes.
+
+**Conf:** `Medium` — mirrors AST-519 tab UX and reuses AST-518 save/filter; consumes AST-552-populated `resume_content` at UAT but UI slice is buildable now.
+
+**Risk:** `Medium` — saves must go through `save_job_artifact_resume_content` only; structure-bound tabs prevent orphan persistence.
+
+— Katherine
+
+#### katherine — 2026-06-02T22:31:07.476Z
+Plan doc: [ast-553-structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume-artifact.md](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-553-jar-resume-draft-tabs/docs/features/artifacts/ast-553-structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume-artifact.md)
+
+**Self-assessment**
+- **Scope — Single-Component:** Job API PUT, `ArtifactEditor` job persistence mode, and `JobAnalysisReportModal` wiring only; reuses `save_job_artifact_resume_content` and AST-519 structure tabs.
+- **Conf — Medium:** Pattern exists on Base Resume Content; new pieces are the job-scoped PUT route and editor save target.
+- **Risk — HIGH:** Wrong save path or key leakage would corrupt per-job `resume_content` and print output; mitigated by delegating persistence to tracker.
+
+Published to `origin/sub/AST-300/AST-553-jar-resume-draft-tabs` @ `8148de94`. Integration line synced with `origin/dev` (merge commit `155af712`).
+
+---
+
 # Structure-driven resume draft tabs in Job Analysis Report (Build Resume Artifact)
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-553/structure-driven-resume-draft-tabs-in-job-analysis-report-build-resume-artifact  
