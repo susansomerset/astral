@@ -103,3 +103,13 @@ Susan UAT on fresh deploy: `data/admin/agent_task.json` shipped from **AST-782**
 | §3.6 | UAT fixture under `docs/uat-fixtures/AST-756/` per ticket; not spike output under `debug/spikes/`. |
 
 No unresolved conflicts.
+
+## Build review stub
+
+**Built:** `origin/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata` @ `54ceac3`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `54ceac3` | Normalized 37-row fixture (`current=1`, PRAGMA key order) → `data/admin/agent_task.json` |
+
+**Hand-verify:** 37 task keys match ticket set; `prefilter_company` / `grade_get` / `anticipate_scan` have non-empty `agent_id` + `user_prompt`; `load_repo_admin_json_file` + `apply_agent_task_repo_json_startup` → 37 `current=1` rows; fixture and repo JSON byte-identical (129643 bytes).
