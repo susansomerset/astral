@@ -685,6 +685,24 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-749** (retired-key filter on read paths), **AST-768** (Section/Group filter), **AST-739** (grouping sections), **AST-751** (filter bar).
 
+### AST-780 · AST-761
+
+Susan UAT: Scheduled Actions still used native **`alert()`** on four API failure paths (AUTO toggle, manual Run, edit save PUT, add save POST). **AST-780** replaces those with **`readApiError`** + **`errorToastFromApiError`** (same pattern as **AST-779** / Manage Agents) so server **`error`** text shows in the shared **`<Toast>`** and click-to-copy diagnostics attach on failure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-780 error toast replaces alert`** describe (3 cases: auto toggle + run, edit PUT, add POST); re-run **`AST-785 dispatch_tasks list UX`** load-failure toast |
+
+**AST-780** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-780|AST-785"
+```
+
+**Builds on:** **AST-779** (error toast diagnostics), **AST-785** (load-failure toast on same page).
+
 ---
 
 ### AST-783 · AST-756
