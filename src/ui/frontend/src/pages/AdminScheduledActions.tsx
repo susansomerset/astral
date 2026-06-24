@@ -266,6 +266,7 @@ export default function ScheduledActions() {
   const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[] }>({ job: [], company: [] })
   const [openSection, setOpenSection] = useState<string | null>(null)
+  const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -325,6 +326,7 @@ export default function ScheduledActions() {
         api("/api/admin/dispatch_tasks/state_options"),
       ])
       if (tasksRes.ok) setData(await tasksRes.json())
+      else setToast({ text: `Failed to load dispatch tasks (${tasksRes.status})`, variant: "error" })
       if (keysRes.ok) {
         const keys = await keysRes.json()
         setAllTaskKeys(typeof keys === "object" && !Array.isArray(keys) ? keys : {})
@@ -452,6 +454,12 @@ export default function ScheduledActions() {
         }
       })
   }, [filteredRows, allTaskKeys, sortRowsWithinSection])
+
+  useEffect(() => {
+    if (didAutoOpenSectionRef.current || sections.length === 0) return
+    didAutoOpenSectionRef.current = true
+    setOpenSection(sections[0].sectionKey)
+  }, [sections])
 
   const resolvedOpenSection = useMemo(() => {
     if (sections.length === 0) return null
@@ -712,7 +720,11 @@ export default function ScheduledActions() {
       {loading ? (
         <div className="list-page-status">Loading…</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No dispatch tasks configured</div>
+        <div className="list-page-status">
+          {data.length > 0
+            ? "No dispatch tasks match the current filters. Try Candidate: All or clear Section/Group and Task filters."
+            : "No dispatch tasks configured"}
+        </div>
       ) : sections.map(sec => (
         <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
           <CollapsiblePanel
