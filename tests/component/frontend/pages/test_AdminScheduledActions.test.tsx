@@ -377,55 +377,6 @@ describe("AdminScheduledActions", () => {
     expect(within(modal).getByRole("button", { name: "Save" })).toBeDisabled()
   }, 20000)
 
-  it("alerts on auto toggle failure and run failure", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {})
-    mockApi(false, { putOk: false, runOk: false, threads: {} })
-    renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
-    await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
-    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
-    await userEvent.click(within(tbody).getAllByRole("button", { name: "OFF" })[0])
-    await userEvent.click(within(tbody).getByRole("button", { name: "Run" }))
-    expect(alertSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
-    alertSpy.mockRestore()
-  }, 20000)
-
-  it("alerts when edit save PUT fails", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {})
-    mockApi(false, { putOk: false, threads: {} })
-    renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
-    await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
-    await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
-    await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    expect(alertSpy).toHaveBeenCalled()
-    alertSpy.mockRestore()
-  }, 20000)
-
-  it("alerts when add save POST fails", async () => {
-    localStorage.setItem("astral_selected_candidate", "c1")
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {})
-    installBaseApiMocks(mockedApi, async (url, init) => {
-      if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
-      if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [] } as Response
-      if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
-      if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
-      if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
-      if (url === "/api/admin/dispatch_tasks" && init?.method === "POST") return { ok: false, json: async () => ({ error: "nope" }) } as Response
-    })
-    renderWithProviders(<ScheduledActions />)
-    await waitFor(() => expect(screen.getByText("No dispatch tasks configured")).toBeInTheDocument())
-    await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
-    const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
-    const selects = within(modal).getAllByRole("combobox")
-    await userEvent.selectOptions(selects[0], "scan_jobs")
-    await userEvent.selectOptions(selects[1], "NEW")
-    await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
-    expect(alertSpy).toHaveBeenCalled()
-    alertSpy.mockRestore()
-  }, 20000)
-
   it("stop-all modal: overlay and cancel close", async () => {
     mockApi(true, {
       threads: {
@@ -762,6 +713,58 @@ describe("AdminScheduledActions", () => {
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
       await selectFilterByLabel("AUTO", "on")
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+  })
+
+  describe("AST-780 error toast replaces alert", () => {
+    it("shows error toast on auto toggle failure and run failure", async () => {
+      mockApi(false, { putOk: false, runOk: false, threads: {}, taskKeysPayload: taskKeysConfig })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      await userEvent.click(within(tbody).getAllByRole("button", { name: "OFF" })[0])
+      await waitFor(() => expect(screen.getByText("put bad")).toBeInTheDocument())
+      expect(window.alert).not.toHaveBeenCalled()
+      await userEvent.click(within(tbody).getByRole("button", { name: "Run" }))
+      await waitFor(() => expect(screen.getByText("run bad")).toBeInTheDocument())
+      expect(window.alert).not.toHaveBeenCalled()
+    }, 20000)
+
+    it("shows error toast when edit save PUT fails", async () => {
+      mockApi(false, { putOk: false, threads: {}, taskKeysPayload: taskKeysConfig })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText("put bad")).toBeInTheDocument())
+      expect(window.alert).not.toHaveBeenCalled()
+    }, 20000)
+
+    it("shows error toast when add save POST fails", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      installBaseApiMocks(mockedApi, async (url, init) => {
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        if (url === "/api/admin/dispatch_tasks" && init?.method === "POST") return { ok: false, json: async () => ({ error: "nope" }) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("No dispatch tasks configured")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      const selects = within(modal).getAllByRole("combobox")
+      await userEvent.selectOptions(selects[0], "scan_jobs")
+      await userEvent.selectOptions(selects[1], "NEW")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText("nope")).toBeInTheDocument())
+      expect(window.alert).not.toHaveBeenCalled()
     }, 20000)
   })
 
