@@ -25,6 +25,7 @@ Config sections:
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
   AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
+  REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
 """
 
 import json
@@ -1725,6 +1726,42 @@ TRACKER_CONFIG = {
 MERGE_TICKET_LOG_CONFIG = {
     "log_path": _PROJECT_ROOT / "data" / "merge_ticket_log.json",
 }
+
+# Repo-owned admin tables — checked-in JSON applied at startup (AST-782).
+REPO_ADMIN_JSON_CONFIG = {
+    "schema_version": 1,
+    "tables": {
+        "agent": {
+            "repo_relative_path": "data/admin/agent.json",
+            "columns": (
+                "agent_id",
+                "content",
+                "brain_setting",
+                "temperature",
+                "max_tokens",
+                "updated_at",
+            ),
+        },
+        "agent_task": {
+            "repo_relative_path": "data/admin/agent_task.json",
+            "columns": None,
+        },
+    },
+}
+
+
+def get_repo_admin_json_path(table_key: str) -> Path:
+    """Absolute path to repo JSON file for ``table_key`` (agent | agent_task)."""
+    tables = REPO_ADMIN_JSON_CONFIG["tables"]
+    if table_key not in tables:
+        raise KeyError(f"unknown repo admin JSON table: {table_key!r}")
+    rel = tables[table_key]["repo_relative_path"]
+    return _PROJECT_ROOT / rel
+
+
+def get_repo_admin_json_table_keys() -> tuple[str, ...]:
+    """Apply order: agent personas before agent_task rows that reference agent_id."""
+    return ("agent", "agent_task")
 
 # ---------------------------------------------------------------------------
 # ASTRAL_CONFIG: code-related. Paths, API, state machines, batch settings.
