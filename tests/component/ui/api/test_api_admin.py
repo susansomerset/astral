@@ -604,6 +604,92 @@ class TestAst781ListDtasksRetiredEntityType:
         assert rows[0]["available_count"] == 0
 
 
+
+# AST-785: list_dtasks filters retired keys; enrichment errors do not 500 the list.
+class TestAst785ListDtasksRobustness:
+    def test_list_dtasks_omits_retired_task_keys(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "consult_do",
+                    "trigger_state": "PASSED_JD",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "vet_inflow_discovery",
+                    "trigger_state": "NEW",
+                    "entity_type": "company",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+                {
+                    "id": 3,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", lambda row: 4)
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        keys = [r["task_key"] for r in rows]
+        assert "consult_do" not in keys
+        assert "vet_inflow_discovery" in keys
+        assert "scan_jobs" in keys
+
+    def test_list_dtasks_enrichment_failure_returns_zero_count_not_500(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "watch_cos",
+                    "trigger_state": "WATCH",
+                    "entity_type": "company",
+                    "candidate_id": "c2",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+
+        def count(row: dict[str, Any]) -> int:
+            if row.get("id") == 1:
+                raise RuntimeError("boom")
+            return 5
+
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", count)
+        resp = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers)
+        assert resp.status_code == 200
+        rows = resp.get_json()
+        assert len(rows) == 2
+        by_id = {r["id"]: r for r in rows}
+        assert by_id[1]["available_count"] == 0
+        assert by_id[2]["available_count"] == 5
+
+
 # AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
 class TestAst773UpdateDispatchTaskTaskKey:
     def test_dispatch_task_key_trigger_error_helper(self) -> None:

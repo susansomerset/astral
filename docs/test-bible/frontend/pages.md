@@ -663,6 +663,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-768** (Section/Group filter), **AST-751** (filter bar), **AST-739** (grouping sections), **AST-750** (score floor options on edit save).
 
+### AST-785 · AST-754
+
+UAT: Scheduled Actions looked empty when `dispatch_task` rows existed — collapsed default sections, misleading empty copy when filters hid rows, and brittle `available_count` enrichment could break the list. **AST-785** auto-opens the first section once on load, shows filter-aware empty text when `data.length > 0` but no section matches, and toasts on failed `GET /api/admin/dispatch_tasks`. API **`list_dtasks`** omits **`DISPATCH_RETIRED_TASK_KEYS`** (parity with **`task_keys`** AST-749) and logs enrichment failures with `available_count=0` instead of 500.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-785 dispatch_tasks list UX`** describe (3 cases); revised **`groups rows…`**, **`AST-746`**, **`AST-768`** filter-empty copy |
+| **`GET /api/admin/dispatch_tasks`** list robustness | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py` — **`TestAst785ListDtasksRobustness`** (2 cases) |
+
+**AST-785** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst785ListDtasksRobustness \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-785|groups rows into DB grouping|AST-746|AST-768 section"
+```
+
+**Builds on:** **AST-749** (retired-key filter on read paths), **AST-768** (Section/Group filter), **AST-739** (grouping sections), **AST-751** (filter bar).
 
 ---
 

@@ -186,6 +186,25 @@ Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
   -q
 ```
 
+### AST-785 · AST-754
+
+`GET /api/admin/dispatch_tasks` (`list_dtasks`) filters **`DISPATCH_RETIRED_TASK_KEYS`** before enrichment (parity with **`task_keys`** AST-749); wraps **`count_eligible_for_dispatch_task`** in try/except — logs warning, sets **`available_count=0`** on failure instead of 500ing the list.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retirement filter on list path | `src/ui/api/api_admin.py` | `TestAst785ListDtasksRobustness::test_list_dtasks_omits_retired_task_keys` |
+| Enrichment failure tolerance | same | `TestAst785ListDtasksRobustness::test_list_dtasks_enrichment_failure_returns_zero_count_not_500` |
+
+Routed page auto-open + filter-empty copy: **`docs/test-bible/frontend/pages.md`** (**AST-785**).
+
+**AST-785** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst785ListDtasksRobustness \
+  -q
+```
+
 **AST-749** narrowed pytest:
 
 ```bash

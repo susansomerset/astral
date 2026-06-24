@@ -146,6 +146,8 @@ describe("AdminScheduledActions", () => {
   }
 
   async function expandFirstPhaseSection() {
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    if (screen.queryByRole("table")) return
     await waitFor(() =>
       expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBeGreaterThan(0),
     )
@@ -201,6 +203,10 @@ describe("AdminScheduledActions", () => {
     await selectAllCandidatesFilter()
     expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+    const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+    await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
+    await userEvent.click(within(rosterPanel).getByRole("button", { name: "Collapse section" }))
+    await waitFor(() => expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument())
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
     const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
@@ -275,7 +281,6 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
-    expect(screen.queryByRole("table")).not.toBeInTheDocument()
 
     await expandFirstPhaseSection()
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
@@ -647,7 +652,7 @@ describe("AdminScheduledActions", () => {
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
       const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(jobPanel).getByRole("table")).toBeInTheDocument())
       const tbody = within(jobPanel).getByRole("table").querySelector("tbody") as HTMLElement
       const candidateCells = within(tbody).getAllByRole("row").map(r => within(r).getAllByRole("cell")[11].textContent)
       expect(candidateCells[0]).toContain("c1")
@@ -705,7 +710,6 @@ describe("AdminScheduledActions", () => {
       expect(screen.queryByText(/D\. Job Analysis \(.*AUTO\)/)).not.toBeInTheDocument()
       expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
       const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
       await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
       expect(within(rosterPanel).queryByText("scan_jobs")).not.toBeInTheDocument()
     }, 20000)
@@ -716,7 +720,9 @@ describe("AdminScheduledActions", () => {
       await selectAllCandidatesFilter()
       await selectFilterByLabel("Section/Group", jobGroupKey)
       await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
-      await waitFor(() => expect(screen.getByText("No dispatch tasks configured")).toBeInTheDocument())
+      await waitFor(() =>
+        expect(screen.getByText(/No dispatch tasks match the current filters/)).toBeInTheDocument(),
+      )
     }, 20000)
 
     it("Section/Group and AUTO filters intersect", async () => {
@@ -740,7 +746,7 @@ describe("AdminScheduledActions", () => {
       await selectFilterByLabel("Section/Group", jobGroupKey)
       expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
       const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(jobPanel).getByRole("table")).toBeInTheDocument())
       const tbody = within(jobPanel).getByRole("table").querySelector("tbody") as HTMLElement
       const candidateCells = within(tbody).getAllByRole("row").map(r => within(r).getAllByRole("cell")[11].textContent)
       expect(candidateCells[0]).toContain("c1")
