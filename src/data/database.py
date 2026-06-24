@@ -85,6 +85,7 @@ from src.utils.config import (
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
+    REPO_ADMIN_JSON_CONFIG,
     task_keys_for_rubric_owner,
 )
 from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
@@ -580,6 +581,107 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             updated += 1
 
     return {"inserted": inserted, "updated": updated, "skipped": skipped}
+
+
+def _agent_repo_json_columns() -> tuple[str, ...]:
+    return REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
+
+
+def _validate_agent_repo_json_rows(rows: list[dict[str, Any]]) -> None:
+    cols = set(_agent_repo_json_columns())
+    for i, row in enumerate(rows, start=1):
+        if set(row.keys()) != cols:
+            raise ValueError(
+                f"agent repo JSON row {i}: keys must be {sorted(cols)} (got {sorted(row.keys())})",
+            )
+        aid = row.get("agent_id")
+        if aid is None or not str(aid).strip():
+            raise ValueError(f"agent repo JSON row {i}: agent_id required")
+        bs = row.get("brain_setting")
+        if bs is None or not str(bs).strip():
+            raise ValueError(f"agent repo JSON row {i}: brain_setting required")
+
+
+def _validate_agent_task_repo_json_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    cols = set(table_columns(conn, "agent_task"))
+    seen_task_keys: set[str] = set()
+    for i, row in enumerate(rows, start=1):
+        if set(row.keys()) != cols:
+            raise ValueError(f"agent_task repo JSON row {i}: keys must match schema")
+        if _coerce_agent_task_current_for_import(row["current"]) != 1:
+            raise ValueError(f"agent_task repo JSON row {i}: current must be 1")
+        tk_raw = row.get("task_key")
+        if tk_raw is None or not str(tk_raw).strip():
+            raise ValueError(f"agent_task repo JSON row {i}: task_key required")
+        tk_str = tk_raw if isinstance(tk_raw, str) else str(tk_raw)
+        if tk_str in seen_task_keys:
+            raise ValueError(f"agent_task repo JSON: duplicate task_key {tk_str!r}")
+        seen_task_keys.add(tk_str)
+
+
+def fetch_agent_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Current agent rows for repo JSON export (AST-782)."""
+    _ensure_agent_schema(conn)
+    cols = _agent_repo_json_columns()
+    cols_sql = ", ".join(_sql_quote_ident(c) for c in cols)
+    return [_row_to_dict(r) for r in conn.execute(
+        f"SELECT {cols_sql} FROM agent ORDER BY agent_id",
+    ).fetchall()]
+
+
+def fetch_agent_task_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Current=1 agent_task rows for repo JSON export (AST-782)."""
+    _ensure_agent_task_schema(conn)
+    return [_row_to_dict(r) for r in conn.execute(
+        "SELECT * FROM agent_task WHERE current = 1 ORDER BY task_key",
+    ).fetchall()]
+
+
+def apply_agent_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Repo-wins upsert for agent table; delete rows absent from JSON (caller commits)."""
+    _ensure_agent_schema(conn)
+    _validate_agent_repo_json_rows(rows)
+    now = _utc_now()
+    ids: List[str] = []
+    for row in rows:
+        aid = str(row["agent_id"]).strip()
+        ids.append(aid)
+        content = "" if row["content"] is None else (
+            row["content"] if isinstance(row["content"], str) else str(row["content"])
+        )
+        bs = str(row["brain_setting"]).strip()
+        validate_allowed_brain_setting(bs)
+        temp = row.get("temperature")
+        max_t = row.get("max_tokens")
+        updated = row.get("updated_at")
+        if updated is None or (isinstance(updated, str) and not str(updated).strip()):
+            updated = now
+        existing = conn.execute("SELECT agent_id FROM agent WHERE agent_id = ?", (aid,)).fetchone()
+        if existing is None:
+            conn.execute(
+                """INSERT INTO agent (agent_id, content, brain_setting, temperature, max_tokens, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (aid, content, bs, temp, max_t, updated),
+            )
+        else:
+            conn.execute(
+                """UPDATE agent SET content = ?, brain_setting = ?, temperature = ?, max_tokens = ?, updated_at = ?
+                   WHERE agent_id = ?""",
+                (content, bs, temp, max_t, updated, aid),
+            )
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM agent WHERE agent_id NOT IN ({placeholders})", ids)
+    else:
+        conn.execute("DELETE FROM agent")
+
+
+def apply_agent_task_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Retire all current agent_task rows, then import repo JSON via Copy Output semantics."""
+    _ensure_agent_task_schema(conn)
+    _validate_agent_task_repo_json_rows(conn, rows)
+    conn.execute("UPDATE agent_task SET current = 0 WHERE current = 1")
+    apply_agent_task_copy_upsert(conn, rows)
 
 
 def apply_config_table_upsert(
