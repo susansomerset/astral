@@ -578,10 +578,10 @@ class TestAst766BoardSchemaSunset:
         ):
             assert not hasattr(db_mod, name)
 
-    def test_count_eligible_board_search_entity_raises(self, sqlite_in_memory) -> None:
+    def test_count_eligible_board_search_entity_returns_zero(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("c766", state="NEW")
-        with pytest.raises(ValueError, match="Unknown entity_type"):
+        assert (
             db.count_eligible_for_dispatch_task(
                 {
                     "entity_type": "board_search",
@@ -590,4 +590,6 @@ class TestAst766BoardSchemaSunset:
                     "task_key": "gaze_board",
                 }
             )
+            == 0
+        )
 

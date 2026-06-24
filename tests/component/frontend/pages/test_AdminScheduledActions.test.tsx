@@ -869,4 +869,46 @@ describe("AdminScheduledActions", () => {
       await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
     }, 20000)
   })
+
+  describe("AST-785 dispatch_tasks list UX", () => {
+    const jobGroupKey = `${"D. Job Analysis"}\u0000${"D. Job Analysis"}`
+
+    it("auto-opens first section on load so table is visible without manual expand", async () => {
+      mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+    }, 20000)
+
+    it("shows filter-aware empty message when rows exist but filters hide all", async () => {
+      const multiRows = [dispatchTask, sparseRow]
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Section/Group", jobGroupKey)
+      await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
+      await waitFor(() =>
+        expect(screen.getByText(/No dispatch tasks match the current filters/)).toBeInTheDocument(),
+      )
+    }, 20000)
+
+    it("shows toast when dispatch_tasks fetch fails", async () => {
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks") {
+          return { ok: false, status: 500, json: async () => ({ error: "boom" }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") {
+          return { ok: true, json: async () => ({ job: [], company: [] }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+      })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Failed to load dispatch tasks (500)")).toBeInTheDocument())
+    }, 20000)
+  })
 })

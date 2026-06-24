@@ -160,6 +160,24 @@ Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
 
 Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
 
+### AST-781 · AST-763
+
+`GET /api/admin/dispatch_tasks` enriches each row via **`count_eligible_for_dispatch_task`**; legacy rows with retired **`entity_type`** (e.g. **`board_search`**) get **`available_count=0`** instead of raising through **`count_entities_in_state`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List enrichment tolerance | `src/ui/api/api_admin.py` | `TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count` |
+| Data-layer guard | `src/data/database.py` | `TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero` (**`docs/test-bible/data/database/dispatch_tasks.md`**) |
+
+**AST-781** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst781ListDtasksRetiredEntityType \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero \
+  -q
+```
+
 **AST-773** narrowed pytest:
 
 ```bash
