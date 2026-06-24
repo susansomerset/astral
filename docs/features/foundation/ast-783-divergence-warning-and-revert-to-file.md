@@ -206,10 +206,10 @@ No unresolved conflicts.
 
 ## Build review stub
 
-**Built:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ `<pending>`
+**Built:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ `c022d5c`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `31bcef0` | Core divergence compare + `revert_repo_admin_json_table` |
 | 2 | `10d3273` | `GET /api/admin/repo_json/status`, `POST .../revert/<table_key>` |
-| 3 | `<pending>` | `RepoJsonDivergenceBanner` + Manage Agents / Manage Tasks wiring |
+| 3 | `c022d5c` | `RepoJsonDivergenceBanner` + Manage Agents / Manage Tasks wiring |
