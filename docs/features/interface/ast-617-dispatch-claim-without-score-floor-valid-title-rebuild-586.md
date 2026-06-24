@@ -1,3 +1,106 @@
+<!-- linear-archive: AST-617 archived 2026-06-23 -->
+
+## Linear archive (AST-617)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-617/dispatch-claim-without-score-floor-on-valid-title-rebuild-586-git  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-600 — Rebuild 586 (git casualty)  
+**Blocked by / blocks / related:** parent: AST-600
+
+### Description
+
+## What this implements
+
+Restore the **AST-586** dispatch fix lost in git merges: separate **dispatch claim score-floor gating** from **task grading metadata** so **qualify_job_listings** on trigger **VALID_TITLE** claims jobs without **latest_score**, while post-score outcome triggers (**PASSED_JD**, **PASSED_DO**, **PASSED_GET**, **PASSED_LIKE**, etc.) still honor **score_floor**. Align Scheduled Actions admin rows and eligible-job counts with the same claim rules.
+
+Partial restoration may exist on **dev** (config helper + dispatcher claim path); **database** count/backfill and **admin API** paths must match.
+
+## Acceptance criteria
+
+1. With a dispatch task configured for **qualify_job_listings** + trigger **VALID_TITLE**, running dispatch claims at least one eligible **VALID_TITLE** job that has no **latest_score**.
+2. The same configuration does not claim zero jobs solely because **latest_score** is null when jobs are otherwise eligible at **VALID_TITLE**.
+3. Dispatch on **PASSED_JD** (and other post-score outcome triggers) still applies **score_floor** — jobs below floor are not claimed.
+4. Scheduled Actions list shows **VALID_TITLE** / **qualify_job_listings** rows as not score-gated for claim; post-score rows still show scored/floor semantics consistent with claim behavior.
+5. Component tests covering the AST-586 claim-floor contract pass on the merged branch.
+
+## Boundaries
+
+* Does not change **jd_score** persistence or Recommended list rendering ([AST-560](https://linear.app/astralcareermatch/issue/AST-560)).
+* Does not alter **pass_threshold** grading math, consult verdict logic, or job state transitions.
+* Does not change React UI beyond what the admin API returns for dispatch task metadata.
+
+## Notes for planning
+
+Reference: `docs/features/interface/ast-586-qualify-no-score-floor-valid-title.md` (approved plan from original ship). Verify all four call-site layers (config helper, dispatcher, database count/backfill, admin API) before claiming done — **dev** may only have partial restoration.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-600-rebuild-586-git-casualty`, child `sub/AST-600/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T04:08:00.875Z
+**Diff:** `origin/dev...origin/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586` @ `682474fd`  
+**Plan doc:** [ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md](https://github.com/susansomerset/astral/blob/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586/docs/features/interface/ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md) — § Review (Radia)
+
+### fix-now
+
+- **Sibling scope bleed (§5d / plan boundaries):** Publish ref includes **AST-601 AST-616** commits (`842b6dda`–`ef194b22`, merge at `ef194b22`) — `src/ui/api/api_candidate.py` (`GET /api/candidates/<id>/resume_structure`), `ArtifactsBaseResumeContent.tsx`, `docs/features/interface/ast-616-*.md`. AST-617 plan scopes **only** `database.py` count/backfill + `api_admin.py`; React/candidate API are out of scope. **Re-publish** `sub/AST-600/AST-617-*` without AST-616 commits before ftr merge (keep `6e5f2e17` + AST-617 plan/test merges).
+
+### discuss
+
+- **`ef194b22` intent:** Was merging `origin/sub/AST-601/AST-616-*` required for the test harness, or accidental during `merge-tests`? If intentional, confirm how AST-616 tracks to Done without this ticket absorbing AST-601 ship scope.
+
+### advisory (AST-617 product — clean)
+
+- **`database.py`:** `count_eligible_for_dispatch_task` + `_ensure_dispatch_task_schema` backfill now use `dispatch_claim_uses_score_floor`; `score_floor_by_trigger_for_candidate` (~1555) still uses `trigger_state_used_by_scored_dispatch_task` inside `PASSED_SCORE_GATED_STATES` loop — matches plan.
+- **`api_admin.py`:** All five `is_scored` / floor call sites use claim helper; grading import removed from this file.
+- **Config + dispatcher:** Already on `origin/dev` (no diff) — claim path aligned with AST-586/615.
+- **Rules:** §2.1 claim vs grading split intact; §3.3 layer imports OK; no batch/state-machine changes.
+
+#### betty — 2026-06-14T04:04:53.827Z
+## QA test manifest
+
+**Coverage class:** bible-backed existing (**§7.13zv** AST-586 + **§7.13zzc** AST-617 rebuild). No new test files — **AST-615** already landed claim-floor regression on **`origin/ftr/AST-600-rebuild-586-git-casualty`**; **AST-617** restores **`database.py`** + **`api_admin.py`** call sites covered by the same manifest.
+
+1. **`tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor`** — `dispatch_claim_uses_score_floor` (VALID_TITLE False; PASSED_JD / PASSED_JOBLIST True; RETRY / None / "" False).
+2. **`tests/component/core/test_dispatcher.py::TestRunUnified::test_qualify_valid_title_claim_without_score_floor`** — `qualify_job_listings` + VALID_TITLE passes `score_floor=None` into `get_new_job_batch`.
+3. **`tests/component/ui/api/test_api_admin.py::TestDispatchTasks`** — list/create/update: VALID_TITLE row `is_scored=False`, `score_floor=None`; PASSED_JOBLIST still scored with default floor 1.0.
+4. **`tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers`** — config helper imports assert claim vs grading metadata split.
+
+**Run (narrow):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_qualify_valid_title_claim_without_score_floor \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers
+```
+
+**Publish:** `origin/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586` @ `2ad10c34` (`merge-tests(AST-617): origin/tests 45062446`).
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `f75773d01ae47523dd4939e808aacc1aa77bf1f2`
+
+— Betty
+
+#### hedy — 2026-06-14T04:00:43.052Z
+Plan: [ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md](https://github.com/susansomerset/astral/blob/sub/AST-600/AST-617-qualify-no-score-floor-valid-title-rebuild-586/docs/features/interface/ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md) @ `2329248b`
+
+**Scope:** `Single-Component` — restore AST-586 claim-floor call sites in `database.py` (count + schema backfill) and `api_admin.py`; config + dispatcher verified already correct on branch.
+
+**Conf:** `high` — reuses shipped AST-586 helper and exact line-level swaps; plan-time grep confirms git-casualty sites.
+
+**Risk:** `Medium` — count/admin mismatch if wrong helper left in place; mitigated by existing AST-586 component tests on branch.
+
+Plan-time finding: `dispatch_claim_uses_score_floor` + dispatcher claim path present; `trigger_state_used_by_scored_dispatch_task` still used at database ~4890/5201 and api_admin ~532/560/618/640/677.
+
+---
+
 # Dispatch claim without score_floor on VALID_TITLE (Rebuild 586 — AST-617)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-617/dispatch-claim-without-score-floor-on-valid-title-rebuild-586-git  
