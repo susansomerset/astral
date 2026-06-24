@@ -118,4 +118,20 @@ Binding per **plan-child**: **Stage 1** only; **one commit** on epic worktree du
 
 ## Review (Radia)
 
-**Built:** `origin/sub/AST-761/ast-780-scheduled-actions-error-toast` @ `523abff`
+**Diff:** `origin/dev...origin/sub/AST-761/ast-780-scheduled-actions-error-toast` @ `47414cc`
+
+### What's solid
+
+- **Plan fidelity:** Stage 1 complete — four `alert()` call sites in `toggleAutoMode`, `handleRun`, and both `handleSave` branches replaced with `readApiError` + `errorToastFromApiError`; import from `toastDiagnostics` added; existing load-failure and AUTO edit-guard toasts untouched.
+- **Audit:** `rg '\balert\(' src/ui/frontend/src/pages/` returns zero matches on the branch tip.
+- **Pattern:** Matches established **AST-779** / `AdminAgentPrompts.tsx` error-toast wiring; server `error` text surfaces in `<Toast>` and diagnostics bundle attaches on failure.
+- **Scope:** Single-component footprint matches Self-Assessment (`AdminScheduledActions.tsx` only in product code); Betty manifest honored — three AST-780 component tests replace alert spies; test-bible entry documents narrowed run.
+- **Rules:** Frontend-only; no layer violations, config/state-machine, or debug-logging surfaces touched.
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+None — ready for **resolve-child** / UAT on Scheduled Actions error paths.
