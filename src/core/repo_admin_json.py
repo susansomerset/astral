@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from src.data import database
 from src.utils.config import (
+    REPO_ADMIN_JSON_CONFIG,
     _PROJECT_ROOT,
     get_repo_admin_json_path,
     get_repo_admin_json_table_keys,
@@ -22,9 +23,13 @@ from src.utils.logging import get_logger
 __all__ = [
     "apply_repo_admin_json_at_startup",
     "export_repo_admin_json_to_files",
+    "get_repo_admin_json_divergence_status",
     "load_repo_admin_json_file",
     "repo_admin_json_paths",
+    "revert_repo_admin_json_table",
 ]
+
+_REPO_JSON_ROW_KEY = {"agent": "agent_id", "agent_task": "task_key"}
 
 logger = get_logger(__name__)
 
@@ -40,6 +45,81 @@ def repo_admin_json_paths() -> Dict[str, Path]:
 def _reject_nested_json(v: Any, human_path: str) -> None:
     if isinstance(v, (dict, list)):
         raise ValueError(f"{human_path}: repo JSON rows must use flat JSON scalars only")
+
+
+def _normalize_repo_json_scalar(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, float):
+        return value
+    return str(value)
+
+
+def _normalize_repo_json_row(_table_key: str, row: dict[str, Any]) -> dict[str, Any]:
+    return {k: _normalize_repo_json_scalar(v) for k, v in row.items()}
+
+
+def _sorted_normalized_rows(table_key: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    key_col = _REPO_JSON_ROW_KEY[table_key]
+    normalized = [_normalize_repo_json_row(table_key, row) for row in rows]
+    return sorted(normalized, key=lambda r: str(r.get(key_col) or ""))
+
+
+def _fetch_db_repo_json_rows(conn, table_key: str) -> list[dict[str, Any]]:
+    if table_key == "agent":
+        return database.fetch_agent_repo_json_export_rows(conn)
+    if table_key == "agent_task":
+        return database.fetch_agent_task_repo_json_export_rows(conn)
+    raise ValueError(f"unknown repo admin JSON table: {table_key!r}")
+
+
+def _repo_admin_json_table_diverged(conn, table_key: str) -> bool:
+    file_rows = load_repo_admin_json_file(table_key)
+    db_rows = _fetch_db_repo_json_rows(conn, table_key)
+    return _sorted_normalized_rows(table_key, db_rows) != _sorted_normalized_rows(table_key, file_rows)
+
+
+def get_repo_admin_json_divergence_status() -> dict[str, dict[str, Any]]:
+    """Compare live DB export rows to checked-in repo JSON per table (AST-783)."""
+    conn = database._get_connection()
+    try:
+        status: dict[str, dict[str, Any]] = {}
+        for table_key in get_repo_admin_json_table_keys():
+            status[table_key] = {
+                "diverged": _repo_admin_json_table_diverged(conn, table_key),
+                "repo_relative_path": REPO_ADMIN_JSON_CONFIG["tables"][table_key]["repo_relative_path"],
+            }
+        return status
+    finally:
+        conn.close()
+
+
+def revert_repo_admin_json_table(table_key: str) -> int:
+    """Restore one table from checked-in repo JSON without server restart (AST-783)."""
+    if table_key not in get_repo_admin_json_table_keys():
+        raise ValueError(f"unknown repo admin JSON table: {table_key!r}")
+    rows = load_repo_admin_json_file(table_key)
+    conn = database._get_connection()
+    txn = False
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("BEGIN IMMEDIATE")
+        txn = True
+        if table_key == "agent":
+            database.apply_agent_repo_json_startup(conn, rows)
+        else:
+            database.apply_agent_task_repo_json_startup(conn, rows)
+        conn.commit()
+        txn = False
+    except Exception:
+        if txn:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
+    return len(rows)
 
 
 def load_repo_admin_json_file(table_key: str) -> List[Dict[str, Any]]:
