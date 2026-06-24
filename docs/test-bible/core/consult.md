@@ -315,6 +315,30 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness until siblings integrated.
 
+---
+
+### AST-789 · AST-788
+
+**AST-788 (parent):** BUILD_ARTIFACTS compound substates do not auto-graduate per hop — terminal batch exit in **`consult._run_job_artifact_entry_batch`** promotes to **`CANDIDATE_REVIEW`** after persist gate passes. **AST-789** extracts **`_try_graduate_artifact_job_to_candidate_review`** (fresh DB persist read via **`job_has_persisted_resume_body(..., None)`**, structured failure reasons, AST-538 Style D debug); wires batch loop; graduation stays in **`consult.py`** only (not **`agent.py`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Terminal graduation helper + batch wiring | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst789TerminalGraduation` |
+| Full-chain / first-hop regression | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::{test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job,test_artifact_entry_batch_empty_persist_releases_claim}`; `TestAst789TerminalGraduation::test_artifact_entry_batch_graduates_on_anticipate_scan_first_hop` |
+| Persist / transition failure paths | `src/core/consult.py` | `TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_empty_persist_releases_claim`; `TestAst789TerminalGraduation::test_artifact_entry_batch_transition_failure_releases_claim` |
+| AST-597 per-hop regression (unchanged) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` |
+
+**AST-789** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst789TerminalGraduation \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 ---
 
