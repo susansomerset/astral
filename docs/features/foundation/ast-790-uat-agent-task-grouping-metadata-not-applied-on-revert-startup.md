@@ -132,3 +132,13 @@ Susan UAT: `data/admin/agent_task.json` carries full grouping metadata (`task_gr
 | §3.3 imports | Data-layer-only change; no new cross-layer imports. |
 
 No unresolved conflicts.
+
+## Build review stub
+
+**Built:** `origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` @ `cb7ec1f`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `cb7ec1f` | Forward grouping columns in `apply_agent_task_copy_upsert`; extend skip guard |
+
+**Hand-verify:** `apply_agent_task_repo_json_startup` → `anticipate_scan` grouping **Job Artifacts** / **5000** / **Anticipate Scan** / **1.0**; grouping-only re-import restores repo values after DB mutation.
