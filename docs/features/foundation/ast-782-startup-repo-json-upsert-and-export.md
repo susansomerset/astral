@@ -231,3 +231,15 @@ No **fix-now** items (layers, SQL bind counts, silent failure, debug contract N/
 | --- | --- |
 | Before prod deploy | Run `scripts/export_repo_admin_json.py` after personas exist if `agent.json` should not wipe `agent` on boot. |
 | resolve-child | None required — proceed when discuss item acknowledged. |
+
+## Resolution (2026-06-24)
+
+**Radia review:** clean — no **fix-now** items.
+
+**Discuss (`data/admin/agent.json` = `[]`):** Acknowledged. Seed came from build-time export against local dev DB (`agent=0`, `agent_task current=33`). Empty array is repo-wins-by-design per plan — startup deletes all `agent` rows when JSON is `[]`. Operators populate personas via Manage Agents then `python3 scripts/export_repo_admin_json.py` before prod deploy if empty personas are not intended.
+
+**Product changes:** none — resolve pass is doc-only.
+
+**§9a dry-run:** `origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task` (no conflict markers in `git merge-tree`).
+
+**Publish tip at resolve:** `origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` @ Radia doc `4fd6901`.
