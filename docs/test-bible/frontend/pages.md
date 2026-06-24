@@ -663,3 +663,28 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-768** (Section/Group filter), **AST-751** (filter bar), **AST-739** (grouping sections), **AST-750** (score floor options on edit save).
 
+
+---
+
+### AST-783 · AST-756
+
+**Repo JSON divergence warning** on Manage Agents and Manage Tasks: each routed page mounts **`RepoJsonDivergenceBanner`** with `tableKey` **`agent`** / **`agent_task`**; banner refetches after successful save via `refreshToken` increment.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Manage Agents routed page (**§6c**) | `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — **`AST-783: shows agent repo JSON divergence banner on routed page`** |
+| Manage Tasks routed page (**§6c**) | `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — **`AST-783: shows task repo JSON divergence banner on routed page`** |
+
+**AST-783** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst783RepoAdminJsonDivergence \
+  tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  -t "AST-783"
+```

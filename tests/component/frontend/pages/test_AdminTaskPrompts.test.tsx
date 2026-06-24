@@ -65,6 +65,15 @@ describe("AdminTaskPrompts", () => {
 
   function mockApi() {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
       if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") return { json: async () => tasks } as Response
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return jsonResponse(["candidate_name"])
@@ -304,4 +313,23 @@ describe("AdminTaskPrompts", () => {
       ).toBe(true),
     )
   }, 20000)
+
+  it("AST-783: shows task repo JSON divergence banner on routed page", async () => {
+    installBaseApiMocks(mockedApi, async (url: string) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: true, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
+      if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") return { json: async () => tasks } as Response
+      if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
+    })
+    renderWithProviders(<TaskPrompts />)
+    await waitFor(() => expect(screen.getByText(/task prompts/)).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Revert to file" })).toBeInTheDocument()
+  }, 15000)
 })

@@ -128,3 +128,89 @@ class TestExportRepoAdminJsonToFiles:
         assert json.loads(agent_path.read_text(encoding="utf-8")) == agent_rows
         assert json.loads(task_path.read_text(encoding="utf-8")) == task_rows
         assert agent_path.read_text(encoding="utf-8").endswith("\n")
+
+
+class TestAst783RepoAdminJsonDivergence:
+    def test_scalar_normalization_coerces_integer_floats(self) -> None:
+        assert repo_json_mod._normalize_repo_json_scalar(1.0) == 1
+        assert repo_json_mod._normalize_repo_json_scalar(3.0) == 3
+        assert repo_json_mod._normalize_repo_json_scalar(2.5) == 2.5
+
+    def _patch_repo_paths(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    ) -> tuple[Path, Path]:
+        agent_path = tmp_path / "admin" / "agent.json"
+        task_path = tmp_path / "admin" / "agent_task.json"
+        monkeypatch.setattr(
+            repo_json_mod,
+            "get_repo_admin_json_path",
+            lambda key: agent_path if key == "agent" else task_path,
+        )
+        return agent_path, task_path
+
+    def test_status_not_diverged_when_db_matches_repo_files(
+        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
+        db = sqlite_in_memory
+        db.save_agent("agent_a", "prompt-body", brain_setting="Medium")
+        conn = db._get_connection()
+        try:
+            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
+        finally:
+            conn.close()
+        _write_json(agent_path, [file_row])
+        _write_json(task_path, [])
+
+        status = repo_json_mod.get_repo_admin_json_divergence_status()
+
+        assert status["agent"]["diverged"] is False
+        assert status["agent_task"]["diverged"] is False
+
+    def test_status_diverged_after_db_edit(
+        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
+        db = sqlite_in_memory
+        db.save_agent("agent_a", "on-disk", brain_setting="Medium")
+        conn = db._get_connection()
+        try:
+            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
+        finally:
+            conn.close()
+        _write_json(agent_path, [file_row])
+        _write_json(task_path, [])
+        db.save_agent("agent_a", "edited-in-db", brain_setting="Medium")
+
+        status = repo_json_mod.get_repo_admin_json_divergence_status()
+
+        assert status["agent"]["diverged"] is True
+
+    def test_revert_restores_db_from_repo_file(
+        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
+        db = sqlite_in_memory
+        db.save_agent("agent_a", "repo-copy", brain_setting="Little")
+        conn = db._get_connection()
+        try:
+            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
+        finally:
+            conn.close()
+        _write_json(agent_path, [file_row])
+        _write_json(task_path, [])
+        db.save_agent("agent_a", "local-edit", brain_setting="Big")
+        assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is True
+
+        count = repo_json_mod.revert_repo_admin_json_table("agent")
+
+        assert count == 1
+        row = db.get_agent("agent_a")
+        assert row is not None
+        assert row["content"] == "repo-copy"
+        assert row["brain_setting"] == "Little"
+        assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is False
+
+    def test_revert_unknown_table_raises(self) -> None:
+        with pytest.raises(ValueError, match="unknown repo admin JSON table"):
+            repo_json_mod.revert_repo_admin_json_table("__nope__")

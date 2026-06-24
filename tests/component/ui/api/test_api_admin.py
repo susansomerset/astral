@@ -1680,3 +1680,51 @@ class TestAst725VectorFeedback:
         assert body["rows"][0]["code"] == "G1"
         keys = admin_client.get("/api/admin/vector_feedback/task_keys", headers=auth_headers).get_json()
         assert "grade_get" in keys
+
+
+class TestAst783RepoJsonApi:
+    def test_repo_json_status_returns_divergence_map(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "get_repo_admin_json_divergence_status",
+            lambda: {
+                "agent": {"diverged": True, "repo_relative_path": "data/admin/agent.json"},
+                "agent_task": {"diverged": False, "repo_relative_path": "data/admin/agent_task.json"},
+            },
+        )
+        resp = admin_client.get("/api/admin/repo_json/status", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["agent"]["diverged"] is True
+        assert body["agent_task"]["diverged"] is False
+
+    def test_repo_json_status_surfaces_core_errors(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _boom() -> dict:
+            raise RuntimeError("repo admin JSON missing")
+
+        monkeypatch.setattr(admin_mod, "get_repo_admin_json_divergence_status", _boom)
+        resp = admin_client.get("/api/admin/repo_json/status", headers=auth_headers)
+        assert resp.status_code == 500
+        assert "missing" in resp.get_json()["error"]
+
+    def test_repo_json_revert_invalid_table_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str],
+    ) -> None:
+        resp = admin_client.post("/api/admin/repo_json/revert/nope", headers=auth_headers)
+        assert resp.status_code == 400
+        assert "agent or agent_task" in resp.get_json()["error"]
+
+    def test_repo_json_revert_success(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "revert_repo_admin_json_table", lambda key: 4 if key == "agent" else 9)
+        resp = admin_client.post("/api/admin/repo_json/revert/agent", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert body["table_key"] == "agent"
+        assert body["row_count"] == 4
