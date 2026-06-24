@@ -153,7 +153,7 @@ Make `agent` and `agent_task` **repo-owned** under `data/admin/`: two checked-in
    - `sys.path` bootstrap matching other scripts in `scripts/`.
    - Call `export_repo_admin_json_to_files()`; print counts to stdout; exit 0.
 
-3. **Seed files (this commit):** On the epic worktree, run `python3 scripts/export_repo_admin_json.py` against the local DB Susan uses for development (the worktree `data/astral.db` symlink target). Commit the resulting `data/admin/agent.json` and `data/admin/agent_task.json`.
+3. **Seed files `10f050b`:** On the epic worktree, run `python3 scripts/export_repo_admin_json.py` against the local DB Susan uses for development (the worktree `data/astral.db` symlink target). Commit the resulting `data/admin/agent.json` and `data/admin/agent_task.json`.
 
 4. Hand-verify (document in build completion comment, not in plan execution during build):
    - `SELECT COUNT(*) FROM agent` equals JSON array length.
@@ -187,3 +187,18 @@ Make `agent` and `agent_task` **repo-owned** under `data/admin/`: two checked-in
 | §3.6 debug output | No spikes under `debug/` for this feature; seed JSON lives at `data/admin/` (tracked). |
 
 No unresolved conflicts.
+
+## Build review stub
+
+**Built:** `origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` @ `10f050b`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `a986669` | `REPO_ADMIN_JSON_CONFIG` + `repo_admin_json.py` loaders |
+| 2 | `10ec853` | Data-layer startup upsert + export queries |
+| 3 | `1a82413` | Bootstrap wire before `sync_agent_tasks` |
+| 4 | `10f050b` | Export CLI + seed `data/admin/*.json` |
+
+**Hand-verify:** Export counts matched local DB (`agent=0`, `agent_task current=33`); `apply_repo_admin_json_at_startup()` round-trip preserved counts.
+
+**Radia:** diff `origin/dev...origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` when Tests Passed.
