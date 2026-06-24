@@ -208,3 +208,13 @@ No **fix-now** or **discuss** items.
 | --- | --- |
 | resolve-child | None — proceed to User Testing when parent lane clears. |
 | UAT | Confirm Manage Tasks resume chain reaches `finalize_job_resume` terminal hop and job lands in **Ready** (`CANDIDATE_REVIEW`); if stuck, check warning for `reason=persist_gate_failed` or `reason=transition_failed:…`. |
+
+## Resolution
+
+**Resolved:** 2026-06-24 (Hedy)
+
+Radia review @ `adecb4d` — **no fix-now** or **discuss** items. No product commits in resolve pass; publish ref unchanged at `adecb4d` (product @ `35326f8`, tests @ `131dae4`).
+
+**§9a dry-run:** `origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` merges cleanly into `origin/dev` and `origin/ftr/AST-788-build-artifacts-substates-do-not-graduate`.
+
+**Advisory accepted:** Susan UAT on parent AST-788 should confirm full chain graduation to **Ready**; use `debug=True` and graduation warning `reason=` if still stuck.
