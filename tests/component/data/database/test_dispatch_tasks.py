@@ -126,6 +126,60 @@ class TestAst506InflowResolveEligible:
         assert db.count_eligible_for_dispatch_task(task) == 1
 
 
+
+
+class TestAst776InflowVetEligible:
+    """AST-776: vet vs resolve eligibility split on inflow_discovery_blurb."""
+
+    def test_count_new_pending_inflow_vet(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company(
+            "vet_me",
+            state="NEW",
+            candidate_id="c776",
+            company_name="vet_me",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        db.save_company("no_blurb", state="NEW", candidate_id="c776", company_name="no_blurb")
+        assert db.count_company_new_pending_inflow_vet("c776") == 1
+
+    def test_count_new_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company(
+            "blurb_only",
+            state="NEW",
+            candidate_id="c776",
+            company_name="blurb_only",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        db.save_company("legacy_new", state="NEW", candidate_id="c776", company_name="legacy_new")
+        assert db.count_company_new_without_website("c776") == 1
+
+    def test_count_eligible_vet_vs_resolve_split(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company(
+            "vet_row",
+            state="NEW",
+            candidate_id="c776",
+            company_name="vet_row",
+            company_data={"inflow_discovery_blurb": "000|Co|https://vet.example|snip"},
+        )
+        db.save_company("resolve_row", state="NEW", candidate_id="c776", company_name="resolve_row")
+        vet_task = {
+            "entity_type": "company",
+            "trigger_state": "NEW",
+            "task_key": "vet_inflow_discovery",
+            "candidate_id": "c776",
+        }
+        resolve_task = {
+            "entity_type": "company",
+            "trigger_state": "NEW",
+            "task_key": "inflow_resolve_website",
+            "candidate_id": "c776",
+        }
+        assert db.count_eligible_for_dispatch_task(vet_task) == 1
+        assert db.count_eligible_for_dispatch_task(resolve_task) == 1
+
 class TestAst508PrefilterPassedEligible:
     """AST-508: company dispatch score_floor on claim/count for PREFILTER_PASSED."""
 

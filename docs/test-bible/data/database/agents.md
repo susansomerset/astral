@@ -18,3 +18,15 @@ Narrow manifest (**agents cluster**):
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_agents.py
 ```
+
+---
+
+### AST-782 · AST-756
+
+**Repo-wins startup upsert for `agent`:** upsert rows from JSON; delete agents absent from payload. Export selects configured columns only (excludes legacy `model_code`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Upsert / update / delete-not-in-json | `src/data/database.py` | `TestAst782AgentRepoJsonStartup::test_apply_upserts_updates_and_deletes_absent_agents` |
+| Export column policy | `src/data/database.py` | `TestAst782AgentRepoJsonStartup::test_fetch_export_rows_use_repo_columns` |
+| Row shape validation | `src/data/database.py` | `TestAst782AgentRepoJsonStartup::test_rejects_wrong_row_keys` |
