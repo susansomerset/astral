@@ -125,10 +125,10 @@ No unresolved conflicts.
 
 ## Build review stub
 
-**Built:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `<pending>`
+**Built:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `1c8364e`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | `<pending>` | Seed `data/admin/agent.json` from UAT fixture (6 personas, repo columns) |
+| 1 | `1c8364e` | Seed `data/admin/agent.json` from UAT fixture (6 personas, repo columns) |
 
 **Hand-verify:** `load_repo_admin_json_file('agent')` → 6 rows; fixture `model_code` stripped per AST-782 column contract.
