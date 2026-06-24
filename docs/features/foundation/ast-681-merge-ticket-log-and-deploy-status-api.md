@@ -1,3 +1,109 @@
+<!-- linear-archive: AST-681 archived 2026-06-23 -->
+
+## Linear archive (AST-681)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-681/merge-ticket-log-and-deploy-status-api-create-a-ticket-log-in-utils  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-675 — Create a ticket log in utils  
+**Blocked by / blocks / related:** parent: AST-675; blocks: AST-683; blocks: AST-682
+
+### Description
+
+## What this implements
+
+Persisted append-only merge ticket log in utils, a callable tool that appends one parent ticket id with tool-run timestamp, and exposure of ticket history (most recent first) through the existing admin deploy-status payload.
+
+## Acceptance criteria
+
+1. After finish-up lands a parent on `dev`, the persisted log contains a new entry with that parent’s Linear id and the tool-run timestamp; prior entries remain in the file.
+2. The log file is never truncated — all historical entries are preserved after each append.
+3. `GET /api/deploy_status` for an authenticated admin includes ticket history sufficient to render the tooltip (empty when log is empty).
+4. No backfill from git history — first entry appears only after the first post-ship finish-up that invokes the tool.
+
+## Boundaries
+
+* Does not implement admin nav tooltip (sibling Katherine ticket).
+* Does not wire finish-up script (sibling Hedy ticket).
+* No SHA in entries. No Linear API lookups. No runtime git mining.
+
+## Notes for planning
+
+Extends `deploy_status.py` and AST-646 payload. Log is sole writer via utils tool; API read-only. Full history stored; consumers may bound display.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/ast-675-create-a-ticket-log-in-utils**, child **sub/AST-675/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T19:28:12.749Z
+**Review:** `origin/dev...origin/sub/AST-675/ast-681-merge-ticket-log-and-deploy-status-api` @ `08ded1c0`  
+**Verdict:** Clean — no fix-now / discuss items.
+
+### What's solid
+
+- **Plan fidelity:** Append-only JSON log (`data/merge_ticket_log.json`), sole writer `append_merge_ticket_log`, read-only `merge_tickets` on `get_deploy_status_payload()` (most recent first), CLI for sibling AST-683. No finish-up wiring, tooltip, SHA, Linear API, or backfill — boundaries respected.
+- **Layer / rules:** `merge_ticket_log` → stdlib + `config` only; `deploy_status` → utils import only; `.gitignore` does not exclude shipped log file.
+- **Atomic append:** temp file + `replace` + cleanup on failure (re-raise, not swallowed).
+- **Tests:** Betty manifest covers missing file, file order, non-array rejection, invalid id, no truncation, payload reversal, API shape.
+
+### Advisory
+
+- Invalid JSON syntax on read → `JSONDecodeError`; non-array top-level → `ValueError` — admin deploy-status fails loud (per plan), no silent reset.
+- RMW without lock assumes single-writer (finish-up); concurrent append edge case acceptable for now.
+
+### Recommended actions
+
+None — **resolve-child** may proceed.
+
+**Doc:** `docs/features/foundation/ast-681-merge-ticket-log-and-deploy-status-api.md` — Radia review section (`docs(AST-681): Radia review — clean`).
+
+#### betty — 2026-06-15T19:25:50.922Z
+## QA test manifest (AST-681)
+
+**Publish ref:** `origin/sub/AST-675/ast-681-merge-ticket-log-and-deploy-status-api` @ `61482c0f` (`merge-tests(AST-681): origin/tests 7ffedcc0`)
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/utils/deploy_status.md` — `eaf9b5274bb1c4042fd878fb014bf85f09796cef61f546efe33c4f7bb683aa9b`
+- `docs/test-bible/utils/merge_ticket_log.md` — `fac1ac6b2ef6f2a00af7f2b8caa8f5c770b91f8022287c88e5ee01e4afb09690`
+
+1. **`tests/component/utils/test_merge_ticket_log.py`** — `TestReadMergeTicketLog::test_read_empty_when_missing`, `test_read_returns_file_order`, `test_read_rejects_non_array`; `TestAppendMergeTicketLog::test_append_and_read_preserves_order`, `test_append_rejects_invalid_id`, `test_append_never_truncates` (tmp log path; never touches repo `data/merge_ticket_log.json`).
+
+2. **`tests/component/utils/test_deploy_status.py`** — `TestGetDeployStatusPayload::test_merge_tickets_most_recent_first`, `test_merge_tickets_empty_when_log_empty`; existing uptime tests assert `merge_tickets: []`.
+
+3. **`tests/component/ui/api/test_api_system.py`** — `TestDeployStatus::test_admin_returns_payload`, `test_admin_omits_environment_when_unset` (expected JSON includes `merge_tickets`).
+
+**Pytest gate:**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_merge_ticket_log.py \
+  tests/component/utils/test_deploy_status.py \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus \
+  -q
+```
+
+**Bible:** `docs/test-bible/utils/merge_ticket_log.md` (new), `docs/test-bible/utils/deploy_status.md` (AST-681 block).
+
+— Betty
+
+#### ada — 2026-06-15T19:18:33.616Z
+Plan doc: [ast-681-merge-ticket-log-and-deploy-status-api.md](https://github.com/susansomerset/astral/blob/sub/AST-675/ast-681-merge-ticket-log-and-deploy-status-api/docs/features/foundation/ast-681-merge-ticket-log-and-deploy-status-api.md)
+
+**Scope:** `scope-Single-Component` — New `merge_ticket_log` utils module, config path, shipped `data/merge_ticket_log.json` seed, `merge_tickets` on deploy-status payload, and `scripts/append_merge_ticket_log.py`; no UI, finish-up hook, or DB.
+
+**Conf:** `conf-high` — Append-only JSON + deploy_status extension matches AST-646/679 patterns; AST-682/683 own tooltip and finish-up wiring.
+
+**Risk:** `risk-low` — Failure only affects admin ticket history metadata; uptime/environment and non-admin paths unchanged.
+
+Three stages: (1) config + utils read/append, (2) deploy_status payload + CLI, (3) Betty manifest tests.
+
+---
+
 # Merge ticket log and deploy-status API
 
 **Linear:** [AST-681 — Merge ticket log and deploy-status API](https://linear.app/astralcareermatch/issue/AST-681/merge-ticket-log-and-deploy-status-api-create-a-ticket-log-in-utils)
