@@ -176,3 +176,14 @@ Susan UAT (post **AST-754** prep-uat): Admin → **Scheduled Actions** shows no 
 | §3.5 naming | Filter message plain English; ref name `didAutoOpenSectionRef` matches page conventions |
 
 No **`conf-!!-NONE`** conflicts identified.
+
+## Review stub (build)
+
+**Publish ref:** `origin/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui`  
+**Product tip:** `ac0d250` — `58b0f1b` (UI auto-open + filter copy + load toast) + `ac0d250` (list_dtasks retired filter + enrichment guard)
+
+**Stage 1 finding:** Root cause is client-side — AST-568 zero-expanded sections hide `ScheduledPhaseTable` until manual expand; misleading “No dispatch tasks configured” when Candidate filter hides rows. No seeding/dispatch defect found; AST-775 boundary intact (no inline vet in `run_inflow_discovery_batch`).
+
+**Built:** One-shot auto-open first section on load; filter-aware empty copy; toast on failed `GET /api/admin/dispatch_tasks`; `list_dtasks` filters `DISPATCH_RETIRED_TASK_KEYS` and guards per-row `available_count` enrichment.
+
+**QA note:** Betty manifest expected for auto-open first visit, filter-empty copy, retired row omitted from list API, enrichment failure does not 500 — `[qa-handoff]` on AST-785.
