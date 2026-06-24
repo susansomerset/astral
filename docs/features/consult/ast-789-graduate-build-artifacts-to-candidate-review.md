@@ -181,3 +181,30 @@ No unresolved conflicts with ASTRAL_CODE_RULES.
 **Built:** `origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` @ `35326f8`
 
 Stage 1–2: `_try_graduate_artifact_job_to_candidate_review` — fresh DB persist gate (`job_has_persisted_resume_body(..., None)`), `CANDIDATE_REVIEW` transition, AST-538 Style D debug; `_run_job_artifact_entry_batch` calls helper with structured failure logging. Component tests deferred to Betty per build-child test-tree ban.
+
+## Radia review (2026-06-24)
+
+**Ref:** `origin/dev...origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` @ `131dae4`
+
+### What's solid
+
+- **Plan fidelity (Stage 1–2):** `_try_graduate_artifact_job_to_candidate_review` matches spec — fresh `tracker.get_job`, persist gate via `job_has_persisted_resume_body(..., None)`, structured `(ok, reason)` tuple, single `transition_job_state(..., "CANDIDATE_REVIEW")` call site (grep confirms one in `consult.py`).
+- **Batch wiring:** `_run_job_artifact_entry_batch` calls helper after chain success; failure logs `reason=` + `entry_task_key=` before `_artifact_entry_hop_failed`; cover-letter side effect preserved for `contemplate_job`.
+- **§1.5.1 debug (AST-538):** Style D `debug_index` (universal `index 1/1`) + `debug_detail` on attempt/success/failure when `debug=True`; no contract emission when `debug=False`.
+- **§2.4 / §2.6:** Claim release on graduation failure unchanged; transitions only through `tracker.transition_job_state`; graduation stays in `consult.py` (AST-597 boundary honored).
+- **Tests (Betty manifest):** `TestAst789TerminalGraduation` covers finalize entry, first-hop regression, transition failure + claim release, and fresh-persist `None` passthrough; persist-gate failure covered by existing `TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_empty_persist_releases_claim`; `TestAst534DispatchTaskKeyHonesty` updated with `get_job` mock for post-helper refresh path.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **advisory** | Plan Self-Assessment | **Risk HIGH / Conf Medium** — code hardens the known batch-exit path; Susan UAT still needed to confirm which failure mode fired in production (`transition_failed:` vs `persist_gate_failed` vs chain-success-without-finalize). Not a code **fix-now**; watch logs on next resume-artifact run with `debug=True`. |
+
+No **fix-now** or **discuss** items.
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| resolve-child | None — proceed to User Testing when parent lane clears. |
+| UAT | Confirm Manage Tasks resume chain reaches `finalize_job_resume` terminal hop and job lands in **Ready** (`CANDIDATE_REVIEW`); if stuck, check warning for `reason=persist_gate_failed` or `reason=transition_failed:…`. |
