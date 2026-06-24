@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-531 archived 2026-06-23 -->
+
+## Linear archive (AST-531)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-531/per-hop-dispatch-ledger-rows-for-run-next-chains-per-hop-execution  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-528 — Per-hop Execution History for daisy-chained tasks  
+**Blocked by / blocks / related:** parent: AST-528; blocks: AST-532
+
+### Description
+
+## What this implements
+
+Each `run_next` hop in a daisy chain gets its own `dispatch_ledger` row with a distinct batch identifier, scoped `agent_data` / audit storage, and app log association for that hop's execution window. Applies to **all** `run_next` chains (consult, roster, artifacts, scheduled dispatch). No parent/summary row for the entry task Susan clicked — only rows for hops that actually executed.
+
+## Acceptance criteria
+
+1. After a manual **Run** on a dispatch task whose chain includes at least two hops (e.g. `anticipate_scan` → `contemplate_job`), Execution History lists **separate rows** for each executed hop, each showing the correct task key in the Task column.
+2. Opening prompt/response inspection on the `anticipate_scan` row shows that hop's prompt blocks and model response only; opening inspection on the `contemplate_job` row shows that hop's content only — no commingling of prior-hop blocks under one batch view.
+3. Expanding app logs on each hop row shows log lines for that hop's execution window, not the entire chain under the entry task row only.
+4. Each hop row reports its own status (RUNNING / COMPLETED / FAILED) and cost; a failure on a mid-chain hop does not appear as success on that hop's row.
+
+## Boundaries
+
+* Does **not** change console/server debug logging — **AST-527**.
+* Does **not** fix caller-token propagation — **AST-529**.
+* Does not author prompts or `run_next` wiring — **AST-313**.
+* Frontend polish and regression verification for Execution History UI is **AST-532** (sibling).
+
+## Notes for planning
+
+* **AST-303** intentionally used one batch id across hops; this ticket **reverses that for Execution History** — do not revert to one row per chain.
+* Reference **AST-515** ad-hoc workbench test ledger pattern (one inspectable row per LLM call).
+* Hot files: `src/core/agent.py`, `src/core/dispatcher.py`, `src/data/database.py`, possibly `src/ui/api/api_admin.py`.
+* Rows appear individually — no chain grouping metadata required (parent open Q #3).
+
+## Git branch (authoritative)
+
+Per `orientation-astral` **§ Branch law**: parent `ftr/AST-528-per-hop-execution-history`, child `sub/AST-528/AST-531-per-hop-dispatch-ledger`. Created at **dispatch-linear**.
+
+### Comments
+
+#### radia — 2026-05-30T00:38:56.244Z
+**Review** (`origin/dev`…`origin/sub/AST-528/AST-531-per-hop-dispatch-ledger`)
+
+### What's solid
+- **Plan fidelity (Stages 1–4):** `_open_run_next_hop_ledger` / `_finalize_run_next_hop_ledger`, `batch_id = hop_ledger_batch_id or log_batch_id.get()`, parent hop finalized before child `do_task`, `log_batch_id` cleared between hops — matches AST-515 one-row-per-call pattern and acceptance #1–#4 intent.
+- **§2.4 batch split:** `_dispatch_one` always sets `ctx["entity_batch_id"]`; dispatch-level `save_dispatch_ledger` / `update_dispatch_ledger` / `monitor.auto_run_error` gated when `has_run_next_chain`; `_run_unified` claims with `entity_batch_id` only. Component test `test_run_next_chain_skips_dispatch_level_ledger` covers the skip path.
+- **UI wrappers:** `candidate.py` / `boards.py` skip outer ledger when `run_next` set; `batch_id` in API response falls back to final hop via `log_batch_id.get()` — aligns with plan Stage 4.
+- **Tests:** `TestAst531RunNextHopLedger` — two-hop `qualify_job_listings` → `evaluate_jd` asserts two distinct ledger `batch_id`s, hop `task_key`s, COMPLETED updates, `log_batch_id` cleared. Bible §7.13zm documents manifest.
+
+### discuss
+- **AST-529 scope in this diff (§5d):** Ticket boundary says caller-token propagation is **AST-529**, but this branch also adds `CALLER_HOP_TOKEN_NAMES`, `_mid_chain_empty_caller_tokens` hard-fail, `_chain_context` stripping `_hop_*` keys, `resolve_tokens` `chain_entry` / `parent_caller_summary` logging, and hop-boundary logs. Substantive sibling work — confirm Susan approved co-ship on AST-531 vs split before UAT, or track residual AST-529 acceptance separately.
+- **`_dispatch_one` lazy import (§3 / B1):** `from src.core.agent import _current_agent_task_run_next` inside the function has no in-code rationale; prefer module-top import or a one-line comment if kept lazy to avoid cycles.
+
+### advisory
+- **Hop ledger without `astral_candidate_id`:** Warn-and-skip leaves `batch_id` on outer `log_batch_id` (entity claim id) for that hop’s `agent_data` — acceptable only if that path cannot occur for production `run_next` dispatch; worth a manual check on consult/roster chains.
+- **No `try/finally` around hop open:** `_close_hop_ledger` on known return paths is thorough; an uncaught exception after `_open_run_next_hop_ledger` could leave a RUNNING row (pre-existing class of risk, not introduced uniquely here).
+- **Minor:** `agent_performance: {}` backfill on strict batch consult path is outside AST-531 plan stages — harmless if intentional fix from test manifest.
+- **Coverage gap:** No component test asserting FAILED hop ledger on mid-chain API/validation failure (acceptance #4) — optional before parent UAT.
+
+**Verdict:** Per-hop ledger mechanics look correct for happy path and sibling **AST-532** UI work; resolve AST-529 bundling question before treating AST-529 as Done.
+
+#### ada — 2026-05-30T00:36:46.301Z
+[check-linear]
+
+**Session scope:** Parent **AST-528** / **Astral Artifacts** — assigned **AST-531**.
+
+**§0a:** `dev-ada` @ `/Users/susan/chuckles/astral-ada`; `git fetch origin`, `merge origin/dev` — already up to date. Gate: **BEHIND=0**, `origin/dev` ancestor of **HEAD** (`9f1dfc12`).
+
+**§0b:** `@ada` issue search (Team Astral + **Astral Artifacts** project). Full threads on **AST-531**, parent **AST-528**, sibling **AST-532**.
+
+**§2:** **0** actionable comments — nothing `@ada` or directed at Ada needing reply or small fix after Ada’s **Tests Passed** post (`0bbbc0ee`). Katherine’s AST-532 build-pause note (plan-only publish ref) is superseded by product on **`origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `634707cc`**.
+
+**Pipeline:** **Tests Passed** — inbox quiet; next gate is **`review-astral`** (not invoked from this pass). No `build-astral` / `test-astral` / `resolve-astral`.
+
+#### ada — 2026-05-30T00:35:47.364Z
+**Tests Passed** — Betty manifest green after product fix.
+
+**Fix:** `fix(AST-531): add CALLER_HOP config symbols` — `CALLER_HOP_TOKEN_NAMES`, `_caller_key_status_line`, `resolve_tokens` hop kwargs (AST-527 parity) so `agent.py` imports and `do_task` token resolution work on the sub branch.
+
+**Manifest:**
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::TestAst531RunNextHopLedger` — **pass** (2/2)
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestDispatchOne::test_run_next_chain_skips_dispatch_level_ledger` — **pass** (pytest node; script also runs frontend vitest suite)
+
+**Publish:** `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `634707cc`
+
+#### betty — 2026-05-30T00:32:12.812Z
+**Bible shasum** on `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger`: `a432caf70569246cace1a2d20c8aca449b801b19`
+
+#### betty — 2026-05-30T00:32:08.323Z
+**Product fix before manifest:** `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `247d9033` — `src/core/agent.py` imports `CALLER_HOP_TOKEN_NAMES` / `_TOKEN_RE` from `src/utils/config.py`, but that sub branch has no AST-530 config symbols. Pytest collection fails with `ImportError` until Ada lands the missing config (or removes accidental AST-530 hunks from the AST-531 build commit). AST-527 ftr has the config; not merged to this sub yet.
+
+**QA test manifest** (`origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `ca6306cd`):
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::TestAst531RunNextHopLedger`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestDispatchOne::test_run_next_chain_skips_dispatch_level_ledger`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` §7.13zm — shasum on publish ref: `$(git show origin/sub/AST-528/AST-531-per-hop-dispatch-ledger:docs/ASTRAL_TEST_BIBLE.md | shasum | awk '{print $1}')` (run locally after fetch).
+
+**Coverage intent:** Two-hop `run_next` → two distinct `save_dispatch_ledger` rows with hop `task_key`s; single-hop `do_task` with outer `log_batch_id` does not open hop ledger; dispatch **Run** on a task with planned `run_next` skips dispatch-level ledger row (hop rows only from `do_task`).
+
+#### ada — 2026-05-30T00:25:42.245Z
+[check-linear]
+
+**Session scope:** Parent **AST-528** / **Astral Artifacts** — assigned **AST-531**.
+
+**§0a:** `dev-ada` @ `/Users/susan/chuckles/astral-ada`; `git fetch origin`, `merge origin/dev` — already up to date. Gate: **BEHIND=0**, `origin/dev` ancestor of **HEAD** (`32da2acb`).
+
+**§0b:** `@ada` issue search (Team Astral + **Astral Artifacts** project); union with assignee-me in session project. Full threads on **AST-531**, parent **AST-528**, sibling **AST-532**, and other @ada / assignee hits (**AST-313**, **AST-530**, …).
+
+**§2:** **0** actionable comments — nothing `@ada` or directed at Ada needing reply or small fix after Ada’s plan doc post (`590e18a0`).
+
+**Pipeline:** **Plan Approved** — no comment inbox work. Publish ref unchanged: `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `3287b80e`. Next gate is **`build-astral`** (not invoked from this pass).
+
+#### ada — 2026-05-30T00:24:21.953Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-528/AST-531-per-hop-dispatch-ledger/docs/features/artifacts/ast-531-per-hop-dispatch-ledger-rows-for-run-next-chains-per-hop-execution.md
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — `do_task` hop ledger, dispatcher entity/audit split, craft/board wrappers.
+- **Conf:** Medium — AST-515 pattern is clear; dispatcher `entity_batch_id` vs hop `log_batch_id` needs care.
+- **Risk:** HIGH — wrong batch scoping breaks per-hop inspection and blocks AST-528 UAT.
+
+Published @ `3287b80e` on `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger`.
+
+---
+
 # AST-531 — Per-hop dispatch_ledger rows for run_next chains
 
 **Linear:** [AST-531](https://linear.app/astralcareermatch/issue/AST-531/per-hop-dispatch-ledger-rows-for-run-next-chains-per-hop-execution)  
