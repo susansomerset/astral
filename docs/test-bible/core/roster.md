@@ -443,13 +443,30 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 **Broken / obsolete (Betty revision):** **`TestAst505InflowDiscovery::test_run_batch_happy_path`** — removed **`do_task`** / vet ingest mocks; asserts mechanical **`co_example`** **`NEW`** record (**AST-775**).
 
-**AST-775** narrowed run:
+---
+
+### AST-776 · AST-754
+
+**AST-776 (child):** Schedulable **`vet_inflow_discovery`** company dispatch on **`NEW`** — read **`inflow_discovery_blurb`**, **`do_task(vet_inflow_discovery)`** under company **`batch_id`**, pass → **`WEBSITE_FOUND`** + **`company_website`**, reject → **`VET_FAILED`**. **`run_company_task`** routes **`dispatch_task_key`** vet vs **`inflow_resolve_website`** on **`NEW`**. Eligibility split: blurb rows vet-only; legacy **`NEW`** without blurb → Phase 2 resolve. Local **`agent_task`** mechanical prompt migration (**AST-776**).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`INFLOW_CONFIG["vet"]`** + schedulable company/**`NEW`** defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals`; `::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults` |
+| 2 | Vet eligibility vs resolve on blurb | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible` |
+| 3 | **`vet_inflow_discovery_company`** outcomes + **`run_company_task`** routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` |
+| 4 | Consult company vet → **`run_company_task`** (not discovery batch) | `src/core/consult.py` | `::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+
+**Broken / obsolete (Betty revision):** **`TestAst774VetInflowDiscoveryDispatch`** removed — **AST-776** routes vet to **`vet_inflow_discovery_company`**, not **`run_inflow_discovery_batch`**.
+
+**AST-776** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_roster.py::TestAst505InflowDiscovery \
-  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew \
-  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
   -q
 ```
 
