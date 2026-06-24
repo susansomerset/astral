@@ -135,3 +135,15 @@ None (**fix-now** / **discuss**).
 ### Recommended actions
 
 None — ready for **resolve-child** / UAT on Scheduled Actions error paths.
+
+---
+
+## Resolution
+
+**2026-06-24 — Katherine (`resolve-child`)**
+
+Radia posted **Review Posted** with **fix-now: none** and **discuss: none**. No product changes required beyond the shipped `code(AST-780)` @ `523abff` and Betty `merge-tests` @ `47414cc`.
+
+**§9a dry-run:** `origin/sub/AST-761/ast-780-scheduled-actions-error-toast` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-761-ui-error-toast`**.
+
+**Outcome:** Ticket advanced to **User Testing** for Susan UAT on Scheduled Actions error paths (AUTO toggle failure, manual Run failure, edit/add save failures — toast not blocking `alert()`).
