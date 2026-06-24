@@ -202,3 +202,32 @@ No unresolved conflicts.
 **Hand-verify:** Export counts matched local DB (`agent=0`, `agent_task current=33`); `apply_repo_admin_json_at_startup()` round-trip preserved counts.
 
 **Radia:** diff `origin/dev...origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` when Tests Passed.
+
+## Radia review (2026-06-24)
+
+**Ref:** `origin/dev...origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` @ `1cb5ba9`
+
+### What's solid
+
+- All four plan stages landed: `REPO_ADMIN_JSON_CONFIG`, `repo_admin_json.py` load/apply/export, data-layer upsert + export queries, bootstrap wire before `sync_agent_tasks`, export CLI + seed JSON.
+- **§3.3 layers:** core orchestrates file I/O + one INFO line per table; data holds SQL and raises; UI untouched. Bootstrap top-level import only.
+- **§2.4 / transactions:** `BEGIN IMMEDIATE`, `PRAGMA foreign_keys=ON`, rollback on failure, single connection for agent → agent_task order.
+- **§1.3 DRY:** `agent_task` path reuses `apply_agent_task_copy_upsert` after retire-all-current; `agent` upsert mirrors `save_agent` column set (excludes legacy `model_code` per plan).
+- **§1.5 logging:** count-only INFO in core; no data-layer logging.
+- Tests align with Betty manifest (`test_repo_admin_json`, `TestAst782*` data tests, bootstrap call-order update, config path helpers).
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **discuss** | `data/admin/agent.json` (`[]`) | Empty repo file deletes all `agent` rows on every startup (`DELETE FROM agent` when JSON array empty). Matches plan hand-verify (`agent=0`) and documented HIGH deploy risk — confirm Susan wants empty personas in repo until populated via export. |
+| **advisory** | Branch diff vs `origin/dev` | Diff also carries sibling **AST-775/776** roster tests + bible rows from epic merge line; **AST-782 product footprint** stays within the plan file table — not scope smuggling in the AST-782 commits. |
+
+No **fix-now** items (layers, SQL bind counts, silent failure, debug contract N/A).
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| Before prod deploy | Run `scripts/export_repo_admin_json.py` after personas exist if `agent.json` should not wipe `agent` on boot. |
+| resolve-child | None required — proceed when discuss item acknowledged. |
