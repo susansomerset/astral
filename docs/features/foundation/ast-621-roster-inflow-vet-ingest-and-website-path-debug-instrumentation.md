@@ -1,3 +1,124 @@
+<!-- linear-archive: AST-621 archived 2026-06-23 -->
+
+## Linear archive (AST-621)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-621/roster-inflow-vet-ingest-and-website-path-debug-instrumentation-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-542 — Debug logging backfill: roster  
+**Blocked by / blocks / related:** parent: AST-542
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **roster** inflow paths in `src/core/roster.py`: `vet_inflow_discovery`, `ingest_new_companies`, website resolution, and related batch loops. Per **index N/M** header lines, `|` detail for CSE hits, vet/ingest outcomes, and warnings (e.g. slug owned by another candidate) under the matching index header.
+
+## Acceptance criteria
+
+1. Debug inflow batch logs Google CSE result summary and vet/ingest record outcome per index N/M.
+2. Matches sample shape documented on **AST-538**.
+3. `debug=False` unchanged.
+
+## Boundaries
+
+* No change to roster state machine or ingest rules.
+* **AST-540** (dispatcher) and **AST-541** (agent) own their layers — roster only.
+
+## Notes for planning
+
+* Use `src/utils/logging.py` helpers (`debug_index`, `debug_detail`, `debug_detail_block`) per **ASTRAL_CODE_RULES** §1.5.
+* Grandfather untouched `[DEBUG]` lines only where file is not otherwise touched.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-542-debug-logging-backfill-roster`, child `sub/AST-542/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T04:43:23.332Z
+**Diff:** `origin/dev...origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug` (5 commits; product focus `src/core/roster.py` + merge-clean `src/core/agent.py`).
+
+### What's solid
+
+- **Plan fidelity (Stages 1–3):** `_ingest_failure_reason`, vet-row outcome strings, `resolve_company_website` contract debug (CSE → vet block → state outcomes), empty-dedupe header, and `debug=debug` on `do_task` — all match the approved plan.
+- **§1.5.1 gating:** New contract emission is `if debug:` throughout; `log.set_debug_flag(debug)` at `resolve_company_website` entry; helpers are `debug_index` / `debug_detail` / `debug_detail_block` (no new hand-rolled `[DEBUG]` in touched roster paths).
+- **§2.6 / boundaries:** No state-machine or ingest-rule changes; `_ingest_failure_reason` is read-only and aligns with `ingest_new_companies` pre-checks.
+- **AST-557 baseline:** Discovery term/vet-row instrumentation preserved; only the planned empty-dedupe block added.
+
+### fix-now
+
+| Location | Issue |
+|----------|--------|
+| `src/core/roster.py` ~563–575 (`run_inflow_discovery_batch` vet-row loop) | `log.debug_detail(f"ingest failed: {fail_reason}")` runs **before** the row's `debug_index`. §1.5.1 requires working detail **under** the matching index header (same pattern as the `action=` line below). **Move** the ingest-failed detail **after** `debug_index`, before or combined with the existing `action=` detail line. |
+
+### discuss
+
+| Location | Issue |
+|----------|--------|
+| `src/core/agent.py` (commit `3357bb6c`, merge-clean) | Conflict resolution keeps ftr `run_next dispatch` `debug_detail` and drops origin/dev `caller_hydration=live_llm` (resume-artifact-only) line. Documented as merge hygiene, but file is **AST-541/618** scope. On **`ftr/AST-542` integration**, confirm the broader `run_next dispatch` line satisfies AST-618 intent and that dropping the dev-side resume-only line is intentional — not a roster ticket fix unless integration still needs both. |
+
+### advisory
+
+- **`resolve_company_website` zero-hit path:** Two consecutive `index 1/1` headers (`0 CSE hit(s)` then `NO_WEBSITE — zero CSE hits`) — acceptable for UAT traceability; optional dedupe later if noisy.
+- **Scope note:** Self-Assessment says roster-only; branch also carries Betty bible §7.13zzf + agent merge-clean — expected publish artifacts, not roster logic creep.
+- **`agent.py`:** Pre-existing `logger.info("[DEBUG] … literal encoded agent_payload` unchanged in merge-clean file — grandfather per §1.5.1; not introduced by AST-621.
+
+**Handoff:** Hedy — address **fix-now** via `resolve-child`; reply on **discuss** if agent merge needs Susan/Chuckles on ftr before closing.
+
+#### betty — 2026-06-14T04:40:24.502Z
+## QA test manifest (AST-621)
+
+**Publish ref:** `origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug` @ `be1cc505` (`merge-tests(AST-621): origin/tests fe3a3126`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `dc5a7d5f00bd00d182904dd8aac2bdf674180423`
+
+**Classification:** manifest-only — no new tests. Parent + plan forbid Betty log-string assertions; **`debug=False`** unchanged is the automated gate.
+
+### 1. Existing coverage (bible-backed)
+
+1. **`tests/component/core/test_roster.py`** — full file (**`LOCKED_AT_100`**); manifest focus **`TestAst505InflowDiscovery`** + **`TestAst506InflowResolve`**
+2. **`tests/component/utils/test_debug_logging.py`** — **§7.13zt** contract regression (gating + truncation math only)
+3. **`tests/component/utils/test_logging_batch.py`** — **§7.13zt** contract regression
+
+### 2. Broken / obsolete tests
+
+None identified — instrumentation is **`debug=True`**-gated only; no state machine or ingest rule changes.
+
+### 3. Gaps
+
+None — manual UAT spot-check per plan Stage 4 (Susan / post-**Tests Passed**).
+
+### Run command
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_roster.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py
+```
+
+— Betty
+
+#### hedy — 2026-06-14T04:33:45.845Z
+Plan doc: [ast-621-roster-inflow-vet-ingest-and-website-path-debug-instrumentation.md](https://github.com/susansomerset/astral/blob/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug/docs/features/foundation/ast-621-roster-inflow-vet-ingest-and-website-path-debug-instrumentation.md)
+
+**Scope:** `Single-Component` — `src/core/roster.py` only; builds on AST-557 discovery instrumentation already on ftr, adds `resolve_company_website` contract debug, ingest failure ` | ` detail under vet-row headers, and empty-dedupe header.
+
+**Conf:** `high` — Same file/patterns as AST-557; `resolve_company_website` mirrors discovery CSE/vet structure at index 1/1.
+
+**Risk:** `Medium` — Inflow paths are production-critical, but all new emission is `debug=True`-gated with no state/ingest rule changes.
+
+Four stages: (1) `_ingest_failure_reason` + row detail, (2) full `resolve_company_website` contract + `do_task(debug=)`, (3) empty dedupe header, (4) manual spot-check only (no Betty log tests).
+
+---
+
 # AST-621 — Roster inflow vet, ingest, and website path debug instrumentation (Debug logging backfill: roster)
 
 - **Linear (this ticket):** [AST-621](https://linear.app/astralcareermatch/issue/AST-621/roster-inflow-vet-ingest-and-website-path-debug-instrumentation-debug)
