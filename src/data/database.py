@@ -69,6 +69,7 @@ from src.utils.config import (
     CHARS_PER_TOKEN,
     CANDIDATE_STATES,
     COMPANY_STATES,
+    ENTITY_TYPES,
     INFLOW_CONFIG,
     PASSED_SCORE_GATED_STATES,
     ROSTER_CONFIG,
@@ -5728,6 +5729,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
     if not entity_type or not state or not candidate_id:
+        return 0
+    if entity_type not in ENTITY_TYPES:
         return 0
     claim_states = dispatch_claim_states(state, entity_type)
     if not claim_states:
