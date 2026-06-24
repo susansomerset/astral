@@ -1,3 +1,125 @@
+<!-- linear-archive: AST-739 archived 2026-06-23 -->
+
+## Linear archive (AST-739)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-739/admin-ui-task-grouping-from-db-metadata-organizing-tasks  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-734 — Organizing Tasks  
+**Blocked by / blocks / related:** parent: AST-734; blocks: AST-740
+
+### Description
+
+## What this implements
+
+Manage Tasks and Scheduled Actions (and any other admin UI that orders catalog tasks without runtime timestamps) consume the four DB grouping fields from Organizing Tasks. Manage Tasks edit modal exposes all four fields; list views group into collapsible sections by `task_group_order` / `task_group_name`, sort rows by `task_seq`, show `task_name` as the human-readable label, and never display the numeric sequence. Scheduled Actions resolves dispatch alias keys to catalog metadata the same way AST-568 resolved phase/seq, but reads DB fields instead of config.
+
+## Acceptance criteria
+
+4. Manage Tasks list groups tasks into collapsible sections ordered by `task_group_order`; within each section, rows order by `task_seq`; section titles show `task_group_name`; no visible `task_seq` column or number.
+5. Scheduled Actions groups and sorts dispatch rows using DB metadata (including alias keys resolving to catalog metadata).
+6. Invalid or inconsistent group data can be saved without server-side rejection (Susan verifies manually).
+7. Existing component tests for Manage Tasks and Scheduled Actions are updated where grouping/sort expectations change; no regressions to edit-modal prompt save or dispatch row actions.
+
+## Boundaries
+
+* Does not implement AST-735 Scheduled Actions screen edits (AUTO summary, expanded filters, Candidate column layout) — separate parent blocked by this epic.
+* Does not remove `phase` / `seq` from TASK_CONFIG — sibling Ada ticket.
+* Does not change dispatch run/stop, scheduler, or Stop All / Add Task behaviors beyond grouping/sort source.
+* Collapsible sections must still allow zero expanded panels.
+
+## Notes for planning
+
+* Reuse CollapsiblePanel patterns from current Manage Tasks / Scheduled Actions (AST-426, AST-568).
+* `GET /api/admin/dispatch_tasks/task_keys` should expose grouping metadata from DB for form defaults.
+* Task keys remain read-only from catalog; no add/delete in UI.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-734-organizing-tasks`, child `sub/AST-734/<child-id>-admin-ui-task-grouping-from-db-metadata`. Blocked by metadata storage child until API/DB fields exist.
+
+### Comments
+
+#### radia — 2026-06-18T22:37:47.215Z
+## Radia review — AST-739
+
+**Ref:** `origin/dev...origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` @ `c002406` (includes prerequisite AST-738 from ftr merge + Betty tests).
+
+**Verdict:** Clean — no **fix-now** / **discuss**.
+
+### Plan (Stages 1–3)
+- `GET /api/admin/dispatch_tasks/task_keys` returns `task_group_*` via `_catalog_task_grouping_meta`; drops `phase`/`seq`; orphan keys get empty defaults.
+- Manage Tasks: section bucketing on `task_group_order`+`task_group_name`, within-section `task_seq` sort, `task_name` display, four editable modal fields on PUT.
+- Scheduled Actions: same section pattern; Task column still `task_key`; default sort uses `task_seq`.
+
+### ASTRAL_CODE_RULES
+- **§3.2 layer:** Frontend pages API-only; `api_admin.py` uses existing `database.get_agent_task` — no new layer violations.
+- **§2.1 config:** UI paths no longer read `TASK_CONFIG` `phase`/`seq` for grouping (AST-738 backward-compat `phase`/`seq` on Manage Tasks GET remains until AST-740 — expected).
+- **§5f/§5g:** N/A (no debug/LLM external changes).
+
+### Advisory (non-blocking)
+- `_dispatch_task_key_form_meta` docstring still mentions "TASK_CONFIG first" — stale after DB grouping (`api_admin.py`).
+- Stray `# placeholder removed = "qualify_job_listings"` in `test_agent_tasks.py` header (Betty cleanup).
+- Duplicate section-key `useMemo` across two pages — acceptable per plan Self-Review.
+
+**Doc:** `docs/features/interface/ast-739-admin-ui-task-grouping-from-db-metadata.md` — Review (Radia) section.
+
+#### betty — 2026-06-18T22:29:52.323Z
+## QA test manifest (AST-739)
+
+**Publish:** `origin/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata` @ `3932d03` (`merge-tests(AST-739): origin/tests 328867a`)
+
+**Prerequisite:** **AST-738** data/API grouping on publish tip (sibling `merge-tests` on ftr rollup).
+
+### 1. New coverage
+1. **API — `dispatch_task_keys` DB grouping** (`TestAst739DispatchTaskKeysGrouping`): `consult_do` reads `grade_do` agent_task row; orphan keys get empty grouping; no `phase`/`seq` keys.
+2. **Vitest — Manage Tasks routed page** (`test_AdminTaskPrompts.test.tsx` **AST-739**): section labels from `task_group_name`; edit modal PUT includes four grouping fields; `task_name` display.
+3. **Vitest — Scheduled Actions routed page** (`test_AdminScheduledActions.test.tsx` **AST-739**): section labels driven by `task_keys` grouping metadata.
+
+### 2. Broken / revised tests
+1. **`test_ast549_task_keys_config_derivation_authoritative`** — no longer asserts config `phase`/`seq`; expects `task_group_name` key instead.
+2. **`test_AdminTaskPrompts.test.tsx`** — fixtures use `task_group_*` not `phase`/`seq`; `vi.mock(api)` preserves `setAuthTokenGetter` / `setUnauthorizedHandler` (partial mock like Scheduled Actions).
+3. **`test_AdminScheduledActions.test.tsx`** — `taskKeysConfig` / `keysDefault` mocks use DB grouping shape.
+4. **`test_AdminTaskPrompts` AST-513** — `task_name: contemplate_job` so row click matches display label.
+
+### 3. Existing coverage (unchanged)
+- **AST-738** data/API tests on publish tip (from `origin/tests` ancestry) — still required green for grouping persistence underlying UI.
+
+### Run (test-child)
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast549_task_keys_config_derivation_authoritative \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Bible shasum (`origin/sub/...`)
+- `docs/test-bible/frontend/pages.md` `c0e684ae248779f450c19dd0158688d7a663b4b4758143f445f5d0fb96e67013`
+- `docs/test-bible/ui/api/api_admin.md` `658553beaa0139e3db05dabeedfb7128f0d3f4c19f4765f66112ae6e716b1f23`
+
+#### katherine — 2026-06-18T22:17:45.684Z
+Plan doc on publish ref:
+
+https://github.com/susansomerset/astral/blob/sub/AST-734/AST-739-admin-ui-task-grouping-from-db-metadata/docs/features/interface/ast-739-admin-ui-task-grouping-from-db-metadata.md
+
+**Scope:** Single-Component — `api_admin.py` dispatch `task_keys` DB grouping + Manage Tasks + Scheduled Actions React section/sort/label swap off config `phase`/`seq`.
+
+**Conf:** Medium — AST-568 CollapsiblePanel pattern is reusable; build blocked until AST-738 merges to ftr (DB columns + task GET/PUT/_enrich_tasks).
+
+**Risk:** Medium — alias resolution (`consult_do` → `grade_do`) must read catalog row grouping or rows land in `(unassigned)`; no pipeline execution impact.
+
+Three stages: (1) `_dispatch_task_key_form_meta` DB fields, (2) Manage Tasks list/modal, (3) Scheduled Actions sections. Prerequisite gate documents AST-738 on ftr before Stage 1.
+
+---
+
 # Admin UI task grouping from DB metadata (Organizing Tasks)
 
 **Linear:** [AST-739](https://linear.app/astralcareermatch/issue/AST-739/admin-ui-task-grouping-from-db-metadata-organizing-tasks)  

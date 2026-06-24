@@ -1,3 +1,119 @@
+<!-- linear-archive: AST-678 archived 2026-06-23 -->
+
+## Linear archive (AST-678)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-678/craft-rubric-importance-explainer-and-admin-prompt-updates-update  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-655 — update criteria prompts to specify the importance and explain what that means  
+**Blocked by / blocks / related:** parent: AST-655; related: AST-656
+
+### Description
+
+## What this implements
+
+Draft the **shared importance explainer** (identical across all rubric stages) covering 1–10 weights, the configured multiplier table, and how importance combines with runtime letter grades and confidence at scoring time. Insert that explainer into admin-managed **agent_task** prompt bodies for all six rubric craft tasks (including **craft_prefilter_rubric** after rename), instructing the model to return `importance` on every criterion.
+
+## Acceptance criteria
+
+2. All six rubric craft tasks share the same importance explainer in prompt text and explicitly instruct the model to return `importance` per criterion.
+3. **Generate** on any rubric criteria Artifacts page (including Company Watch) returns criteria rows that include model-chosen importance values visible in the editor before save.
+4. After save, persisted artifact rows retain those importance values (not replaced solely by the default of 5 unless the model omitted them — which should no longer pass validation).
+5. Regenerating one rubric does not alter other rubric artifacts or consult runtime grading for jobs already scored.
+
+## Boundaries
+
+* Does **not** change TASK_CONFIG response_schema ([AST-656](https://linear.app/astralcareermatch/issue/AST-656/execution-history-candidate-select-issue)).
+* Does **not** change consult scoring math or rubric UI layout.
+* Does **not** bulk re-generate existing candidate rubrics.
+
+## Notes for planning
+
+* Prompt updates are in **agent_task** store (Manage Tasks); plan must cover local + production deploy path Susan uses today.
+* Use final task key **craft_prefilter_rubric** after [AST-656](https://linear.app/astralcareermatch/issue/AST-656/execution-history-candidate-select-issue) lands on ftr.
+
+## Git branch (authoritative)
+
+Child `sub/AST-655/AST-658-craft-rubric-importance-explainer-prompts`. Depends on [AST-656](https://linear.app/astralcareermatch/issue/AST-656/execution-history-candidate-select-issue) for final task keys and schema contract.
+
+### Comments
+
+#### radia — 2026-06-15T19:02:27.390Z
+**Review** — `origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts` @ **`1325d02b`** vs **`origin/dev`**
+
+### What's solid
+
+- **AST-678 footprint** matches plan Stages 1–2: `_AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER`, `_patch_ast678_importance_into_user_prompt`, `_apply_ast678_craft_rubric_importance_migration` wired into `_ensure_agent_task_schema` after AST-561 migration (`src/data/database.py`).
+- Explainer prose matches plan verbatim; **`AST-678_VECTOR_IMPORTANCE`** marker gives idempotent patch; inserts **before** `{$RESPONSE_SCHEMA}`; **`user_prompt` only** (not `nocache_prompt`) per plan decision.
+- Prefilter **`agent_task`** rename: copies `craft_company_prefilter` → `craft_prefilter_rubric` when new row blank; retires old key (`current=0`); artifact key `company_prefilter` untouched.
+- Component tests (`test_ast678_craft_rubric_importance_migration.py`) cover patch placement, idempotency, prefilter rename, all six keys — aligns with Betty bible block.
+- **§1.3 DRY** — one explainer constant + one patch helper + one migration. **§2.1** — multiplier behavior stays in config; prose is admin `agent_task` content. **§3.3** — data layer only, uses existing `_save_agent_task_on_connection`.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | Branch tip vs `origin/dev` | Three-dot diff is **15 files** — includes stacked **AST-676** (config/validator), **AST-677** (frontend test), **AST-674**, bible updates from ftr merge. **AST-678-only** product diff is **3 files** (+428 lines: `database.py`, migration tests, plan doc). Expected epic stacking; **resolve-child** should not re-touch sibling scope. |
+| **discuss** | `database.py` `_apply_ast678_craft_rubric_importance_migration` | `except sqlite3.Error: pass` on retire `UPDATE` for `craft_company_prefilter` — **§1.5/D2-adjacent** (no comment, no stderr). AST-561 migrations use early `return` on read failure, not silent write swallow. Low likelihood on healthy DB; if retire fails, both keys could remain `current=1`. Acceptable for merge if Ada acknowledges; tighten later if desired. |
+| **advisory** | Explainer prose | Multiplier table is literal copy from plan, not dynamically bound to `ASTRAL_CONFIG["consult_importance"]` — documented plan tradeoff (same as AST-676 literal schema bounds). |
+| **advisory** | Plan Stage 3 / build stub | **Generate smoke** (AC 3) not run — deferred until **AST-677** UI task key on same ftr line. Confirm on one rubric Artifacts page during **resolve-child** or UAT. |
+| **advisory** | Production deploy | Susan runs `python3 scripts/push_tables_to_prod.py agent_task` after staging merge (optional pre-check: `ast438_admin_prompt_rubric_diagnostic.py --prompt-only`). |
+
+### Recommended actions
+
+| Item | Owner | Action |
+|------|-------|--------|
+| — | Ada | **No fix-now.** Proceed to **resolve-child**; acknowledge discuss items in resolution appendix. |
+| Generate smoke | Ada | Post-resolve: one rubric **Generate** with **AST-677** on ftr; confirm criteria show model-chosen `importance` before save. |
+| Prod prompts | Susan | `push_tables_to_prod.py agent_task` after staging verification. |
+
+#### betty — 2026-06-15T18:57:36.588Z
+**Tests Ready** — Betty qa-child pass (AST-678)
+
+**Publish ref:** `origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts` @ `1325d02b` (`merge-tests(AST-678): origin/tests 355d71d9`)
+
+**Bible shasum:** `docs/test-bible/data/database.md` → `3c5aaa75688f8e1df83f66b652a5b2b18f36a2fa`
+
+## QA test manifest
+
+1. **`tests/component/data/test_ast678_craft_rubric_importance_migration.py::TestAst678PatchHelper::test_patch_inserts_before_response_schema`** — explainer inserted before `{$RESPONSE_SCHEMA}` (patch helper).
+2. **`tests/component/data/test_ast678_craft_rubric_importance_migration.py::TestAst678CraftRubricImportanceMigration::test_migration_idempotent`** — migration is idempotent (no duplicate explainer blocks).
+3. **`tests/component/data/test_ast678_craft_rubric_importance_migration.py::TestAst678CraftRubricImportanceMigration::test_prefilter_task_key_rename`** — `craft_company_prefilter` → `craft_prefilter_rubric` in `agent_task` store; old key retired.
+4. **`tests/component/data/test_ast678_craft_rubric_importance_migration.py::TestAst678CraftRubricImportanceMigration::test_all_six_keys_receive_marker`** — all six `craft_*_rubric` keys receive `AST-678_VECTOR_IMPORTANCE` marker.
+
+**Regression (sibling scope — run if touching shared paths):**
+
+5. **`tests/component/utils/test_config.py::TestAst676CraftRubricSchema`** — craft rubric schema registry (**AST-676**).
+6. **`tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection`** and **`::test_ast676_craft_rubric_criteria_schema`** — `do_task` schema validation (**AST-676**).
+
+**Manual (plan Stage 3 — not automated):** Generate smoke on a rubric Artifacts page after **AST-677** on ftr; Susan production deploy via `python3 scripts/push_tables_to_prod.py agent_task`.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_ast678_craft_rubric_importance_migration.py
+```
+
+— Betty
+
+#### ada — 2026-06-15T18:35:02.008Z
+Plan ready on **`origin/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts`** @ `239ce2ef`.
+
+**Plan doc:** [docs/features/consult/ast-678-craft-rubric-importance-explainer-prompts.md](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-678-craft-rubric-importance-explainer-prompts/docs/features/consult/ast-678-craft-rubric-importance-explainer-prompts.md)
+
+**Approach:** One shared `_AST678_CRAFT_RUBRIC_IMPORTANCE_EXPLAINER` in `database.py`, idempotent migration patching `user_prompt` on all six `craft_*_rubric` tasks (insert before `{$RESPONSE_SCHEMA}`), plus `agent_task` retire/rename `craft_company_prefilter` → `craft_prefilter_rubric`. Production deploy documented as Susan's `push_tables_to_prod.py agent_task` path.
+
+**Self-assessment**
+- **Scope — `scope-Single-Component`:** `database.py` migration + one component test module only; no config validator or UI changes.
+- **Conf — `conf-high`:** AST-561 migration pattern; explainer mirrors landed `consult_importance` / `_render_score`; local DB confirms all six tasks use `{$RESPONSE_SCHEMA}` in `user_prompt`.
+- **Risk — `risk-Medium`:** All rubric Generate paths depend on correct prompt patch; epic sequencing with AST-676 schema + AST-677 UI key until this lands.
+
+---
+
 # AST-678 — Craft rubric importance explainer and admin prompt updates
 
 **Linear:** [AST-678](https://linear.app/astralcareermatch/issue/AST-678/craft-rubric-importance-explainer-and-admin-prompt-updates-update)  

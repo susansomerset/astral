@@ -5676,7 +5676,11 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
         return None
 
 
-_DISPATCH_TASK_UPDATE_COLS = {"min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor"}
+_DISPATCH_TASK_UPDATE_COLS = {
+    "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
+    "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor",
+    "task_key", "sort_by", "batch_call_mode",
+}
 
 
 def update_dispatch_task(task_id: int, **kwargs) -> None:

@@ -1,3 +1,135 @@
+<!-- linear-archive: AST-685 archived 2026-06-23 -->
+
+## Linear archive (AST-685)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-685/uat-revert-ast-678-agent-task-auto-migration-update-criteria-prompts  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-655 — update criteria prompts to specify the importance and explain what that means  
+**Blocked by / blocks / related:** parent: AST-655; blocks: AST-686
+
+### Description
+
+## What failed
+
+AST-678 landed an automatic `agent_task` migration in `database.py` that inserts the importance explainer into all six rubric craft prompts at schema init. Susan UAT: she wanted a **standalone text file** she could copy/paste via **Manage Tasks** — not product code that mutates prompt bodies.
+
+## Expected
+
+Remove AST-678 migration code, related tests, and bible entries from the epic branch. `agent_task` prompt bodies return to pre-678 behavior until Susan manually pastes approved text via the admin UI.
+
+## Repro
+
+1. Open Manage Tasks (or inspect local DB after app start).
+2. Observe craft rubric task prompts already contain `AST-678_VECTOR_IMPORTANCE` marker text without manual edit.
+3. Susan expected to paste explainer herself — not have migration inject it.
+
+## Parent AC (quoted inline)
+
+> All six rubric craft tasks share the same importance explainer in prompt text and explicitly instruct the model to return `importance` per criterion.
+
+*(Delivery mechanism corrected per UAT: manual paste after approval — not auto-migration.)*
+
+## Boundaries
+
+* Does **not** change TASK_CONFIG / response_schema (**AST-676**).
+* Does **not** change UI task key rename (**AST-677**).
+* Does **not** add replacement prompt text in this bug — see sibling **UAT: proposed explainer text** bug.
+
+### Comments
+
+#### radia — 2026-06-15T21:20:54.332Z
+### Plan fidelity (Stage 1)
+
+**Solid:** `a74e0def` fully removes AST-678 — constants, `_patch_ast678_importance_into_user_prompt`, `_apply_ast678_craft_rubric_importance_migration`, and the call from `_ensure_agent_task_schema`. Migration chain is `_apply_ast469` → `_apply_ast561` → `_agent_task_schema_ensured = True`. `rg '678|ast678|AST678' src/data/database.py` — no matches on publish ref.
+
+Matches plan decisions: no undo migration, no replacement explainer in product code; AST-676/677/686 boundaries respected.
+
+### Betty manifest
+
+**Solid:** `d7df703f` — deleted `test_ast678_craft_rubric_importance_migration.py`; bible § AST-678 → § AST-685; manual-paste notes in `pages.md` / `config.md` per plan.
+
+### ASTRAL_CODE_RULES
+
+Subtractive data-layer deletion only — no new imports, logging, layer violations, or SQL bind changes. Self-Assessment (minor / high conf / low risk) matches diff footprint.
+
+### Cross-ticket (advisory)
+
+Publish ref @ `d37d388e` also includes sibling **AST-687** / **AST-688** commits (`e690760b`, `f9201d8c`) — LLM attribution tests + bible README block. Not AST-685 scope; no conflict with revert. Track under those tickets at merge-parent.
+
+---
+
+**Verdict:** Clean — no **fix-now** / **discuss**.
+
+**Doc:** [`docs/features/consult/ast-685-uat-revert-ast-678-agent-task-auto-migration.md`](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-685-uat-revert-ast-678-agent-task-auto-migration/docs/features/consult/ast-685-uat-revert-ast-678-agent-task-auto-migration.md) — Radia review section @ `d37d388e`.
+
+#### betty — 2026-06-15T21:17:37.253Z
+## QA test manifest (AST-685)
+
+**Publish ref:** `origin/sub/AST-655/AST-685-uat-revert-ast-678-agent-task-auto-migration` @ `bb18a3df` (`merge-tests(AST-685): origin/tests d7df703f`)
+
+**Betty commit:** `d7df703f` — deleted `test_ast678_craft_rubric_importance_migration.py`; replaced **§ AST-678** bible block with **§ AST-685**; updated sibling notes in `pages.md` / `config.md`.
+
+**Bible shasum on publish ref:**
+- `docs/test-bible/data/database.md` → `063b950180bfd08288da19597ce5ede4a27963ac2f0b1f13d8d94743833a253e`
+- `docs/test-bible/frontend/pages.md` → `e7d093c31ffaafae3a696d2f59d052d41db5e9052cc435c7b3acb627cdfdf2de`
+- `docs/test-bible/utils/config.md` → `d2188a08579802d1c5bb240795bbd19ae674fe323fe8772ccc28893bc3247ff6`
+
+### Manifest (test-child)
+
+1. **Revert verification (required):** Confirm `src/data/database.py` has zero `678` / `AST678` / `_apply_ast678` references (Ada `code()` @ `a74e0def`).
+
+2. **Database smoke (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/data/test_database.py
+```
+
+3. **AST-676 regression (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst676CraftRubricSchema \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema
+```
+
+4. **AST-677 regression (required — §6c routed page):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+**Pass criterion:** items 1–4 green. **Not** zero-arg harness / full branch-lock gate.
+
+**Broken / obsolete (resolved this pass):** `tests/component/data/test_ast678_craft_rubric_importance_migration.py` — deleted; **§ AST-678 · AST-655** removed from `docs/test-bible/data/database.md`.
+
+— Betty
+
+#### chuckles — 2026-06-15T19:50:30.715Z
+[check-linear] answered: not stuck — Plan Ready > validate-plan (@susan)
+
+#### susan — 2026-06-15T19:48:11.755Z
+@chuckles Is this ticket stuck?
+
+#### ada — 2026-06-15T19:32:19.497Z
+Plan: [`docs/features/consult/ast-685-uat-revert-ast-678-agent-task-auto-migration.md`](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-685-uat-revert-ast-678-agent-task-auto-migration/docs/features/consult/ast-685-uat-revert-ast-678-agent-task-auto-migration.md)
+
+**Self-assessment**
+- **Scope:** `minor` — Single-product-file revert in `database.py`; Betty owns test/bible cleanup in qa-child.
+- **Conf:** `high` — Straight removal of isolated `ed37ea95` migration block; no new design.
+- **Risk:** `low` — AST-676/677 untouched; forward migration removal only stops new auto-patching.
+
+**Stage 1 (engineer):** Delete AST-678 constants/helpers/migration + call site in `_ensure_agent_task_schema`.
+
+**QA manifest (Betty):** Delete `test_ast678_craft_rubric_importance_migration.py`; remove/update bible § AST-678 references in `database.md`, `pages.md`, `config.md`.
+
+---
+
 # AST-685 — UAT: Revert AST-678 agent_task auto-migration
 
 **Linear:** [AST-685 — UAT: Revert AST-678 agent_task auto-migration](https://linear.app/astralcareermatch/issue/AST-685/uat-revert-ast-678-agent-task-auto-migration-update-criteria-prompts)  

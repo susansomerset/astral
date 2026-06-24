@@ -1,3 +1,163 @@
+<!-- linear-archive: AST-747 archived 2026-06-23 -->
+
+## Linear archive (AST-747)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-747/config-schedulable-keys-retire-consult-aliases-task-keys-vs-dispatch  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-736 — Task keys vs. dispatch task keys  
+**Blocked by / blocks / related:** parent: AST-736; blocks: AST-749; blocks: AST-748
+
+### Description
+
+## What this implements
+
+Retire `consult_do`, `consult_get`, and `consult_like` from the schedulable dispatch vocabulary and collapse the consult→grade alias map in config so `DISPATCH_SCHEDULABLE_TASK_KEYS`, dispatch admin defaults, batch-call-mode grouping, and scored-trigger helpers use `grade_do`, `grade_get`, and `grade_like` — the same strings as `TASK_CONFIG` and Manage Tasks. Hard cutover: no read-time alias acceptance in config validation paths.
+
+## Acceptance criteria
+
+5. Admin API rejects new saves using retired `consult_*` keys with a clear validation error; no read-time alias accepts them post-cutover; `GET /api/admin/dispatch_tasks/task_keys` lists `grade_*` with correct phase/seq/trigger defaults.
+6. `ASTRAL_CODE_RULES` dispatch pipeline table and test bible consult/dispatch sections reference `grade_*` only for those steps (no operator-facing `consult_*` schedulable names).
+
+## Boundaries
+
+* Does **not** implement the DB row rename or consult/dispatcher runtime paths — sibling **Hedy** ticket.
+* Does **not** change Scheduled Actions React UI — sibling **Katherine** ticket.
+* Does **not** rename `TASK_CONFIG` entry contents or grading semantics.
+
+## Notes for planning
+
+* Primary: `src/utils/config.py` — `DISPATCH_SCHEDULABLE_TASK_KEYS`, `_CONSULT_TASK_TO_AGENT_TASK`, `resolve_dispatch_task_config_key`, `_dispatch_trigger_state_for_task_key`, `_DISPATCH_BATCH_CALL_MODE_ONE`, `dispatch_task_admin_defaults`, `dispatch_task_key_is_scored`.
+* Secondary: `src/ui/api/api_admin.py` if task_keys defaults must change with config (coordinate with Katherine if split is awkward).
+* Docs: `docs/ASTRAL_CODE_RULES.md`, `docs/ASTRAL_TEST_BIBLE.md` / test-bible consult sections.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-736-task-keys-vs-dispatch-task-keys`, child `sub/AST-736/AST-737-config-schedulable-keys-retire-consult-aliases`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-06-23T19:25:33.416Z
+[check-linear]
+
+Cleared **[qa-handoff]** (Radia fix-now #2): **`docs/ASTRAL_TEST_BIBLE.md`** Stage 3 items 4–5 on publish ref — **`grade_like`** schedulable hop (~§7.13y) and **`grade_do`** / identity-only **`resolve_dispatch_task_config_key`** note (~§7.13zz AST-654 test-child note).
+
+**Publish:** `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` @ `e64fda3` (`merge-tests(AST-747): origin/tests 8664ce5`)
+
+**Monolith shasum:** `docs/ASTRAL_TEST_BIBLE.md` → verify on tip after merge.
+
+Ada — re-run **resolve-child** §9a + manifest; bootstrap/`catalog_key` fix already @ `c2cdaa3`.
+
+— Betty
+
+#### ada — 2026-06-23T19:24:25.983Z
+[qa-handoff]
+
+Radia fix-now #2 — engineer hook blocks `docs/ASTRAL_TEST_BIBLE.md`. Product resolve landed @ `c2cdaa3` (bootstrap + `catalog_key` trim). Manifest 16/16 green.
+
+**Please update monolith on publish ref per plan Stage 3 items 4–5:**
+- ~L370: schedulable hop **`consult_like`** → **`grade_like`** (dispatch vocabulary)
+- ~L1839: example **`consult_do`** → **`grade_do`**; replace alias-resolution sentence with identity-only resolver / direct `TASK_CONFIG` membership note
+
+Reassign Ada when done; stay **Review Posted** until bible lands, then Ada re-runs resolve → **User Testing**.
+
+@Betty White
+
+#### radia — 2026-06-23T19:23:00.558Z
+## Radia review (AST-747)
+
+**Diff:** `origin/dev...origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` @ `733e036`
+**Doc:** `docs/features/foundation/ast-747-config-schedulable-keys-retire-consult-aliases.md` (Review Radia section)
+
+**AST-747 commits:** `e0c9e27`, `627a5f9`, `6eb729e`, `5467924`. Publish ref rolls up sibling qa (**AST-745/746/751**) — not AST-747 scope on Ada commits.
+
+### What's solid
+
+- Stage 1 config cutover: `DISPATCH_RETIRED_TASK_KEYS`, `dispatch_task_key_retired_message`, `grade_*` schedulable/batch frozensets, alias map removed, identity resolver, trigger/entity/scored helpers updated.
+- Admin `POST /api/admin/dispatch_tasks` rejects retired `consult_*` with operator message before save.
+- `ASTRAL_CODE_RULES.md` §2.6–2.7 + pipeline table use `grade_*`; §2.6.2 example corrected for `grade_do` / `PASSED_JD` → `PASSED_DO`.
+- Betty manifest covers retired-key guard, `grade_do` defaults, `task_keys` grouping on catalog row.
+
+### fix-now
+
+1. **Plan Stage 2 incomplete — bootstrap validation** (`src/core/bootstrap.py` L33–36): `_validate_runtime_coupling()` still uses alias-era `resolved = resolve_dispatch_task_config_key(key)` branch. Plan requires `if key in TASK_CONFIG: continue` and drop unused import. Harmless while resolver is identity; stale vs cutover contract (§2.1).
+
+2. **Plan Stage 3 incomplete — `ASTRAL_TEST_BIBLE.md`**: dispatch vocabulary still references `consult_do` / alias resolution (~L1839) and **`consult_like`** schedulable hop (~L370). Plan items 4–5 not in engineer commits.
+
+### discuss
+
+- `_dispatch_task_key_form_meta` still calls `resolve_dispatch_task_config_key` for `catalog_key`; plan asked for trim-only. Behavior identical — inline during resolve-child or defer to **AST-748**?
+
+### advisory
+
+- Three-dot diff includes **AST-745** (`database.py`), **AST-746/751** (`AdminScheduledActions.tsx`) from sibling qa merges — expected epic rollup, not boundary violation on AST-747 commits.
+- **AST-748** still required for runtime consult/dispatcher cutover.
+
+#### chuckles — 2026-06-18T22:55:28.385Z
+## QA test manifest (AST-747)
+
+**Publish:** `origin/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases` @ `5467924`
+
+**Scope:** Config/admin cutover — schedulable `grade_*`, retired `consult_*`, identity `resolve_dispatch_task_config_key`. **AST-748** owns `consult.py` / `dispatcher.py` runtime; do **not** expect zero-arg harness or full `test_consult.py` green on this tip alone.
+
+**Bible shasum (`origin/sub/…`):**
+- `docs/test-bible/utils/config.md` → `4a26ccf7607967d479f60a5aef47140bdd787411044fabbb0090c9207f34aeaa`
+- `docs/test-bible/ui/server.md` → `96fe59b18b32b39c0fe97965638ee404896c806b7d9df1d56ca678bbed947ec4`
+- `docs/test-bible/ui/api/api_admin.md` → `e031db46a62adff6eaaee3080a550ff7fb78c040b92d57001c5c1f97159f3e5e`
+
+**Manifest (test-child) — narrowed; pass = pytest green, not zero-arg harness:**
+
+1. **Config schedulable / retired keys** — `tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers`.
+
+2. **Admin `task_keys` grouping on `grade_do`** — `tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping`.
+
+3. **Admin POST rejects retired `consult_do`** — `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key`.
+
+4. **Schedulable derivation regression** — `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast549_task_keys_config_derivation_authoritative`.
+
+5. **Scored-trigger helper** — `tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers \
+  tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_rejects_retired_consult_key \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_ast549_task_keys_config_derivation_authoritative \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers \
+  -q
+```
+
+**Broken / obsolete (revised this pass):** `TestAst471DispatchConfigHelpers` alias-map assertions; `TestAst739DispatchTaskKeysGrouping` / `test_ast549_*` — `consult_do` → `grade_do` catalog grouping.
+
+**Out of manifest (AST-748):** `tests/component/core/test_consult.py`, `tests/component/core/test_dispatcher.py` consult `dispatch_task_key="consult_*"` routing.
+
+— Betty
+
+#### ada — 2026-06-18T22:49:13.128Z
+Plan: [`docs/features/foundation/ast-747-config-schedulable-keys-retire-consult-aliases.md`](https://github.com/susansomerset/astral/blob/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases/docs/features/foundation/ast-747-config-schedulable-keys-retire-consult-aliases.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — config schedulable frozensets + alias removal, bootstrap validation loop, admin API retired-key guard, operator docs.
+- **Conf:** high — `grade_*` already in `TASK_CONFIG`; work is explicit key substitution and deleting `_CONSULT_TASK_TO_AGENT_TASK`.
+- **Risk:** Medium — admin metadata/validation wrong until AST-748/749 land; runtime consult/dispatcher untouched in this ticket.
+
+Three stages: (1) config cutover, (2) bootstrap + admin API, (3) ASTRAL_CODE_RULES + test bible schedulable vocabulary. Siblings AST-748 (DB + runtime) and AST-749 (React) stay out of scope.
+
+#### ada — 2026-06-18T22:48:55.032Z
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-736/AST-747-config-schedulable-keys-retire-consult-aliases/docs/features/foundation/ast-747-config-schedulable-keys-retire-consult-aliases.md
+
+Three stages: (1) config — swap schedulable frozensets to `grade_*`, add `DISPATCH_RETIRED_TASK_KEYS`, identity `resolve_dispatch_task_config_key`; (2) admin API — 400 on create with retired `consult_*`; (3) `ASTRAL_CODE_RULES` pipeline table + §2.7 wording. Runtime/DB/UI out of scope (AST-748/749). Test-bible AC #6 → Betty manifest.
+
+**Self-assessment**
+- **Scope:** Single-Component — config schedulable vocabulary + narrow admin validation + rules doc.
+- **Conf:** high — same AST-549 defaults pattern; rename three keys and delete three-entry alias map.
+- **Risk:** Medium — config cutover needs AST-748 before full test green; wrong trigger pairing would mis-label admin defaults for graded consult hops only.
+
+---
+
 # AST-747 — Config schedulable keys retire consult aliases
 
 - **Linear (this ticket):** [AST-747](https://linear.app/astralcareermatch/issue/AST-747/config-schedulable-keys-retire-consult-aliases-task-keys-vs-dispatch)

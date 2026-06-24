@@ -1,3 +1,170 @@
+<!-- linear-archive: AST-664 archived 2026-06-23 -->
+
+## Linear archive (AST-664)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-664/agent-skill-updates-for-test-bible-tree-restructure-astral-test  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-598 — Restructure ASTRAL_TEST_BIBLE.md into per-component bible files  
+**Blocked by / blocks / related:** parent: AST-598
+
+### Description
+
+## What this implements
+
+Update `~/.cursor/skills/` (`qa-child`, `test-child`, `build-child`, `review-child`, `resolve-child`, `dispatch-parent`, `check-linear`, `do-all-the-things`) and `~/.cursor/agents/betty-AGENTS.md` so manifest contract, engineer ban paths, rollup/shasum instructions, and read-only review pointers use `docs/test-bible/` instead of the monolith. Engineer pre-commit blocks `docs/test-bible/**`.
+
+## Acceptance criteria
+
+5. Agent skills and `betty-AGENTS.md` updated; engineer pre-commit blocks `docs/test-bible/**`.
+6. After sibling migration lands, active workflow docs/skills do not instruct agents to edit `docs/ASTRAL_TEST_BIBLE.md`.
+
+## Boundaries
+
+* Does not perform bible content migration — sibling **Per-component test bible migration** ticket (Betty).
+* Skills live outside the product repo; publish via engineer workflow on `sub/*`.
+* Blocked until Betty migration branch has `docs/test-bible/` tree on `origin/ftr/`.
+
+## Notes for planning
+
+See Chuckles `[check-linear]` comment on parent AST-598 for the file checklist. Pair with Betty migration landing on `ftr`.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-598-restructure-astral_test_biblemd-into-per-component-bible`, child `sub/AST-598/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T05:58:42.690Z
+**Review** — `origin/dev...origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` @ `d5a55d2d` (post-review doc: tip after push)
+
+### What's solid
+
+- Eight global skills + four agent handoffs + `~/.cursor/hooks/pre-commit/engineer.sh`: manifest contract, engineer bans, rollup/shasum, and read-only review pointers use **`docs/test-bible/**`**; transitional monolith ban retained.
+- **`qa-child`**: sole writer is the tree; **`### AST-NNN`** manifest registry; per-path shasum; no instruction to append new manifests to **`docs/ASTRAL_TEST_BIBLE.md`**.
+- **`build-child` / `test-child` / `resolve-child`** + engineer **AGENTS.md**: ban **`docs/test-bible/**`** alongside monolith; hook blocks **`docs/test-bible/*`**.
+- **`review-child`**, **dispatch-parent**, **check-linear**, **do-all-the-things**: README + component file pointers / skip lists updated.
+- Betty manifest in **`docs/test-bible/README.md` § AST-664**: narrowed **`tests/component`** smoke documented correctly (workflow-only; skip zero-arg **LOCKED_AT_100** gate).
+- **`test_api_admin.py`** **`run_task`** mock (**ui_initiated**) — Betty **AST-653** handoff; matches manifest.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| advisory | Branch diff vs plan “repo plan only” | Diff includes **AST-663** tree + Betty **merge-tests** + workflow doc pointer updates from **`ftr`** integration — expected on **`sub/*`**, not **AST-664** engineer product scope. |
+| advisory | **`.gitignore`** `/AGENTS.md` | **AST-663** root-anchor fix; consistent, out of **AST-664** record. |
+
+**fix-now:** none  
+**discuss:** none
+
+### Recommended actions
+
+- **Ada:** **resolve-child** — no product changes; acknowledge and advance when ready.
+- **AST-598 parent:** monolith retirement remains a separate Radia gate after siblings land.
+
+Plan review section: `docs/features/foundation/ast-664-agent-skill-updates-test-bible.md` (Radia doc commit on publish ref).
+
+#### betty — 2026-06-15T05:55:03.353Z
+`[check-linear]`
+
+Cleared Ada's **`[qa-handoff]`** — narrowed workflow manifest: **do not** run zero-arg harness ( **`LOCKED_AT_100`** gate fails on **`sub/*`** replay unrelated to AST-664).
+
+**Manifest delta (item 1):** `./scripts/testing/run_component_tests.sh tests/component` — pytest green is pass criterion; skips **`$# == 0`** coverage gate + Vitest tail. Item 2 (plan audit) unchanged.
+
+**Publish:** `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` @ **`d5a55d2d`** (`merge-tests(AST-664): origin/tests 5aed6dc8`).
+
+**Bible shasum:** `docs/test-bible/README.md` → `c426e8f50aabc49d8be2c2331a8252522b1c2743`
+
+Assignee → **Ada** for **`test-child`** re-run. Status stays **Tests Ready**.
+
+#### ada — 2026-06-15T05:53:35.737Z
+`[qa-handoff]`
+
+**Re-run** on `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` @ **`db3a2593`** after Betty **`ui_initiated`** fix.
+
+**Manifest item 1** — `./scripts/testing/run_component_tests.sh` (zero args):
+
+- **pytest:** **1528 passed**, 2 skipped — **green** (including `TestDispatchTasks::test_scheduler_and_run_controls`)
+- **Harness exit 1:** `check_per_file_coverage.py` — 14 `LOCKED_AT_100` files below 100% branch (e.g. `config.py` 93.5%, `roster.py` 79.5%). **`HEAD` is not contained in `origin/ftr/*`**, so **`ASTRAL_FTR_COVERAGE_INTEGRATION`** does not apply per `run_component_tests.sh` / README §7.12b.
+- Vitest tail never runs (script `set -e` after coverage gate).
+
+**Why test/manifest, not product:** AST-664 has no `src/**` commits. Zero-arg full harness + branch-lock gate is documented as unreliable on **`sub/*`** until locks regain 100% (see `docs/test-bible/utils/config.md` **AST-483** note). Workflow-only ticket should not require restoring all `LOCKED_AT_100` files.
+
+**Manifest item 2 (plan audit):** **OK** — Implementation record lists eight skills + four agent handoffs + hook verification.
+
+**Ask:** Revise **Tests Ready** manifest to a **narrowed** command that skips the `$# == 0` coverage gate (e.g. pytest-only smoke or the single fixed node), **or** explicitly accept **pytest green** as pass criterion for this workflow child. Republish + reassign Ada.
+
+@Betty White
+
+#### betty — 2026-06-15T05:51:12.395Z
+`[check-linear]`
+
+Cleared Ada's **`[qa-handoff]`** — **`TestDispatchTasks::test_scheduler_and_run_controls`** mock now accepts **`ui_initiated`** (**AST-653** / `origin/dev` product; unrelated to AST-664 workflow scope).
+
+**Fix:** `tests/component/ui/api/test_api_admin.py` — `run_task` monkeypatch `lambda task_id, ui_initiated=False: True`; README **`### AST-664`** block notes handoff revision.
+
+**Publish:** `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` @ **`db3a2593`** (`merge-tests(AST-664): origin/tests 7776dc3c`). Single **`merge-tests`** on sub (rewound before first delivery).
+
+**Bible shasum:** `docs/test-bible/README.md` → `d0c11906a043a016ce29f9cf81fdcdfb3c0a6475`
+
+Assignee → **Ada** for **`test-child`** re-run. Status stays **Tests Ready**.
+
+#### ada — 2026-06-15T05:47:54.366Z
+`[qa-handoff]`
+
+**Manifest item 1** — `./scripts/testing/run_component_tests.sh` (zero args) on `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` @ `3b51dd71`:
+
+**Result:** 1527 passed, 2 skipped, **1 failed**
+
+```
+FAILED tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls
+TypeError: ...<lambda>() got an unexpected keyword argument 'ui_initiated'
+```
+
+**Why test/manifest, not AST-664 product:** This child has **no** `src/**` or `tests/**` commits (plan + bible manifest only). Product on `origin/dev` calls `run_task(task_id, ui_initiated=True)` in `api_admin.py:1201` (**AST-653**). The test still monkeypatches `run_task` with `lambda task_id: True` — mock does not accept `ui_initiated`.
+
+**Plan audit (item 2):** Implementation record in `docs/features/foundation/ast-664-agent-skill-updates-test-bible.md` lists all eight skills + four agent handoffs + hook verification — spot-check OK.
+
+**Ask:** Update the mock in `test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls` (or narrow manifest to exclude this unrelated failure if full harness is intentionally out of scope for workflow-only tickets). Republish `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` and reassign Ada.
+
+@Betty White
+
+#### betty — 2026-06-15T05:46:21.187Z
+## QA test manifest (AST-664 — global skills / workflow)
+
+**Publish:** `origin/sub/AST-598/AST-664-agent-skill-updates-test-bible` @ `3b51dd71` (`merge-tests(AST-664): origin/tests 36935ab1`)
+
+**Bible shasum:** `docs/test-bible/README.md` → `a373d1ed70a7458b52b7caae030e1a989e80c33b`
+
+**Scope delivered (Betty):** `### AST-664` manifest block in `docs/test-bible/README.md` — manifest-only; global skill/agent/hook updates documented in plan **Implementation record** (outside repo git).
+
+**Manifest (test-child):**
+
+1. **`./scripts/testing/run_component_tests.sh`** — full harness regression (zero args); no product or test-tree changes on this ticket.
+2. **Plan audit:** Confirm **Implementation record** in `docs/features/foundation/ast-664-agent-skill-updates-test-bible.md` lists all eight skills + four agent handoffs + hook verification (read-only spot-check acceptable).
+
+**Existing coverage (bible-backed):** No new pytest/Vitest files — workflow-only ticket per plan boundaries.
+
+**Broken / obsolete tests:** None expected.
+
+**Notes:** Engineer **`test()`** commit on publish ref should be **`test(AST-664): …`** if any product fix is needed (unlikely). If manifest or hook verification fails, **`[qa-handoff]`** → Betty.
+
+#### hedy — 2026-06-15T05:38:59.753Z
+Plan: [`docs/features/foundation/ast-664-agent-skill-updates-test-bible.md`](https://github.com/susansomerset/astral/blob/sub/AST-598/AST-664-agent-skill-updates-test-bible/docs/features/foundation/ast-664-agent-skill-updates-test-bible.md) @ `5acc8190`
+
+Seven build stages: (1) **`qa-child`** manifest/rollup/shasum → **`docs/test-bible/**`** + `### AST-NNN`; (2) **`betty-AGENTS.md`**; (3) engineer bans in **`build-child`**, **`test-child`**, **`resolve-child`**; (4) **`review-child`** read-only pointers; (5) **`dispatch-parent`**, **`check-linear`**, **`do-all-the-things`**; (6) verify engineer hook + **`ada`/`hedy`/`katherine` AGENTS** ban lines; (7) publish + Implementation record. Path mirror table in plan. Depends on **AST-663** tree on **`ftr`** (present).
+
+**Scope:** `scope-Single-Component` — global skills/agents/hook only; no product or bible content.
+
+**Conf:** `conf-high` — Chuckles parent checklist + **AST-598** AC #5 fix the contract; **AST-663** already landed the tree.
+
+**Risk:** `risk-Medium` — stale monolith references would break Betty/engineer handoffs or reintroduce bible merge conflicts under the new tree.
+
+---
+
 # AST-664 — Agent skill updates for test-bible tree
 
 - **Linear (this ticket):** [AST-664](https://linear.app/astralcareermatch/issue/AST-664/agent-skill-updates-for-test-bible-tree-restructure-astral-test)

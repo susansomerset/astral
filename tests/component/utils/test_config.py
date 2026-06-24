@@ -1018,6 +1018,7 @@ class TestAst505InflowDiscoveryConfig:
         assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
+        assert d["vet_dispatch_trigger_state"] == "NEW"
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]

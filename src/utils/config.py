@@ -904,6 +904,7 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "LIVE_PROMPTS",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
+        "vet_dispatch_trigger_state": "NEW",
     },
     "resolve": {
         "max_results": 20,
@@ -1218,6 +1219,7 @@ IN_REVIEW_STATES = [
 # UI treats misses as Skipped while DB state stays PASSED (see api_jobs skipped / in_review).
 PASSED_SCORE_GATED_STATES = frozenset({"PASSED_JD", "PASSED_DO", "PASSED_GET", "PASSED_LIKE"})
 
+# Admin Edit Dispatch Task modal — score_floor dropdown (AST-743 / AST-750).
 DISPATCH_SCORE_FLOOR_VALUES: tuple[float, ...] = tuple(i * 0.5 for i in range(21))  # 0.0 … 10.0
 
 

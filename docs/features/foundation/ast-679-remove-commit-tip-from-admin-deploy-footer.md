@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-679 archived 2026-06-23 -->
+
+## Linear archive (AST-679)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-679/remove-commit-tip-from-admin-deploy-footer-drop-sha-tip-from-nav  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-658 — Drop SHA tip from nav display  
+**Blocked by / blocks / related:** parent: AST-658; blocks: AST-686
+
+### Description
+
+## What this implements
+
+Remove the git commit tip from the admin deploy status footer and from the deploy status API payload. The footer shows only the deploy environment label (when configured) and server uptime. Stops useless git subprocess work on Railway where `.git` is unavailable.
+
+## Acceptance criteria
+
+1. Signed in as admin on Railway staging or production → nav footer shows deploy environment (when configured) and uptime only; no commit hash, tooltip, or `unknown` commit text.
+2. Signed in as admin on local dev → footer shows environment (when configured) and uptime only; no commit hash or tooltip.
+3. Signed in as non-admin on the same deploy → nav footer absent; layout unchanged.
+4. Uptime strings still follow AST-640 format rules (`<1m` under one minute; minute-only under one hour; `XhYm` under one day; `XdYhZZm` at one day+).
+5. After a server restart or redeploy, displayed uptime reflects the new process within one normal API refresh cycle.
+
+## Boundaries
+
+* Does not add Railway links, PR numbers, or build IDs elsewhere in the UI.
+* Does not change Performance Monitor, scheduler status, or `/health`.
+* Does not change admin gating or footer refresh interval.
+* Sibling scope: none — this ticket covers the full parent functional scope.
+
+## Notes for planning
+
+* Touches admin deploy footer UI, `GET /api/deploy_status` response shape, and deploy status helpers in utils.
+* AST-646 / AST-640 established the footer; this is a refinement only.
+* Update component tests for deploy status API and footer behavior per test bible.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-658-drop-sha-tip-from-nav-display`, child `sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-15T18:36:40.037Z
+**Diff:** `origin/dev...origin/sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer` (tip `9846f148` → doc commit after review)
+
+**Plan fidelity:** Stage 1–2 delivered. `get_deploy_status_payload()` returns only `uptime`, `uptime_seconds`, optional `environment`; no git subprocess. `AdminDeployFooter` shows env (when set) + uptime only; `.nav-deploy-commit` removed. Enumerated component tests + Betty bible rows match.
+
+**ASTRAL_CODE_RULES:** §1.3 dead-path removal OK; §3.3 unused `subprocess`/`Path` dropped; no UI→data imports; §1.5 N/A.
+
+**fix-now**
+- Commit `a0e02d28` on this publish ref adds **AST-676** craft-rubric tests + bible (`test_agent.py`, `test_config.py`, `core/agent.md`, `utils/config.md`). AST-676 parent is **AST-655** (not AST-658). Revert on this sub branch or ensure those hunks live only on the AST-676 publish ref before `merge-parent`.
+
+**advisory**
+- AST-676 spill is tests/docs only; does not break AST-679 AC but widens the child diff.
+
+**Doc:** `docs/features/foundation/ast-679-remove-commit-tip-from-admin-deploy-footer.md` § Review (Radia)
+
+#### betty — 2026-06-15T18:33:12.107Z
+## QA test manifest — AST-679
+
+**Publish ref:** `origin/sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer` @ `9846f148` (`merge-tests(AST-679): origin/tests d997407b`)
+
+**Classification:** Existing coverage revised — engineer removed commit fields in `code()`; Betty aligned tests + bible on `origin/tests` @ `d997407b`.
+
+### 1. Run (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py::TestGetDeployStatusPayload \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+### 2. Python — payload builder (`docs/test-bible/utils/deploy_status.md`)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `TestGetDeployStatusPayload::test_includes_uptime_without_environment` | `uptime`, `uptime_seconds`; no `environment`; **no commit keys** |
+| 2 | `TestGetDeployStatusPayload::test_includes_environment_when_set` | `environment` + uptime; **no commit keys** |
+
+### 3. Python — API route (`docs/test-bible/frontend/components.md` AST-679 row)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 3 | `TestDeployStatus::test_admin_returns_payload` | Expected JSON without `commit_short` / `commit_message` |
+| 4 | `TestDeployStatus::test_admin_omits_environment_when_unset` | Payload without commit keys |
+| 5 | `TestDeployStatus::test_admin_uptime_format_samples_via_payload_builder` | No `_git_head_info` mock |
+
+### 4. Frontend — footer components
+
+| # | Test | Asserts |
+|---|------|---------|
+| 6 | `AdminDeployFooter` — `renders environment and uptime when deploy_status succeeds` | `local`, `5m`; **no commit text/tooltip** |
+| 7 | `AdminDeployFooter` — `omits environment label when API payload has no environment` | `<1m` only |
+| 8 | `AdminDeployFooter` — `shows unavailable message when deploy_status fetch fails` | unchanged error path |
+| 9 | `NavigationShell` — admin nav test | deploy_status mock without commit fields; **no `abc1234` assertion** |
+
+### 5. Broken tests revised this pass
+
+Dropped `_git_head_info` mocks and commit-key assertions across utils, API, and RTL tests (listed above).
+
+### 6. Bible shasum on publish ref
+
+- `docs/test-bible/utils/deploy_status.md`: `4926539db3dc6267328b503fa477ff048fa44abe830cf80ef1fdb2b1a46059ce`
+- `docs/test-bible/frontend/components.md`: `90c3c353f6d072ef33875d9d78cacd6c1ea3092653fa343995dad42434bd468f`
+
+§6c routed-page / filter UX: **N/A** — component-only footer change, no page or URL-bound filter edits.
+
+— Betty
+
+#### katherine — 2026-06-15T18:12:40.602Z
+Plan published on `sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer`.
+
+**Doc:** [ast-679-remove-commit-tip-from-admin-deploy-footer.md](https://github.com/susansomerset/astral/blob/sub/AST-658/AST-679-remove-commit-tip-from-admin-deploy-footer/docs/features/foundation/ast-679-remove-commit-tip-from-admin-deploy-footer.md)
+
+**Approach:** Two stages — (1) remove `_git_head_info` and `commit_short`/`commit_message` from `get_deploy_status_payload` plus backend tests; (2) slim `AdminDeployFooter` to environment + uptime, drop `.nav-deploy-commit` CSS, update frontend component tests.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one admin deploy readout across utils, footer component, CSS, and component tests.
+- **Conf:** `high` — direct removal of AST-646 commit tip code; uptime/env behavior unchanged.
+- **Risk:** `low` — admin-only footer and API; non-admin layout untouched.
+
+---
+
 # Remove commit tip from admin deploy footer
 
 **Linear:** [AST-679](https://linear.app/astralcareermatch/issue/AST-679/remove-commit-tip-from-admin-deploy-footer-drop-sha-tip-from-nav)  

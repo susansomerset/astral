@@ -1,3 +1,183 @@
+<!-- linear-archive: AST-616 archived 2026-06-23 -->
+
+## Linear archive (AST-616)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-616/admin-api-and-base-resume-content-ui-from-candidate-structure-rebuild  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-601 — Rebuild 519 (git casualty)  
+**Blocked by / blocks / related:** parent: AST-601
+
+### Description
+
+## What this implements
+
+Recreate [AST-519](https://linear.app/astralcareermatch/issue/AST-519) per-candidate **Base Resume Content** behavior lost in git merges: candidate admin API exposes each candidate's enabled resume section catalog; **Base Resume Content** shows one tab per enabled section in catalog order (not global shapes alone); editor loads/saves `artifacts.base_resume` keyed by section ids with orphan keys stripped on save; accent reads/writes `artifacts.resume_structure.accent_color`.
+
+## Acceptance criteria
+
+1. Authenticated `GET` for a candidate's resume structure returns enabled sections in catalog order with labels and accent color (or null when absent).
+2. **Base Resume Content** shows one tab per enabled section for the selected candidate, in defined order — not tabs from the global template alone.
+3. Saving base resume content persists only keys allowed by that candidate's structure; orphan keys in the request body are dropped before merge.
+4. Accent picker reads initial value from structure and saves to `artifacts.resume_structure.accent_color`.
+5. A second candidate with a different section catalog shows different tabs; switching between candidates does not leak one catalog into the other.
+6. No orphan section keys appear as editor tabs when structure and stored content disagree.
+7. Component tests covering the AST-519 API and Base Resume Content UI contract pass on the merged branch.
+
+## Boundaries
+
+* Does **not** implement structure persistence or `craft_resume_base` — [AST-517](https://linear.app/astralcareermatch/issue/AST-517) (Done on dev).
+* Does **not** own resume builder HTML merge or job artifact key filtering — [AST-518](https://linear.app/astralcareermatch/issue/AST-518).
+* Does **not** implement job-scoped resume draft tabs in JAR — [AST-553](https://linear.app/astralcareermatch/issue/AST-553) lineage.
+
+## Notes for planning
+
+Reference: `docs/features/candidate/ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md` (approved plan from original ship). Partial backend helpers may remain on dev; verify GET route and Base Resume Content wiring against plan.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-601-rebuild-519-git-casualty`, child `sub/AST-601/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T04:13:41.434Z
+**Review** — `origin/dev...origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `be1c3618`
+
+Plan: [ast-616 plan doc](https://github.com/susansomerset/astral/blob/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519/docs/features/interface/ast-616-admin-api-and-base-resume-content-ui-from-candidate-structure-rebuild-519.md)
+
+### Solid (AST-616 scope)
+
+- **`GET …/resume_structure`** — route before catch-all; 404; `enabled_resume_structure_sections` + accent null when non-string (`api_candidate.py`).
+- **Imports** — structure helpers restored; duplicate `company_search_terms_*` lines removed.
+- **`ArtifactsBaseResumeContent.tsx`** — structure GET drives tabs + accent; `useCandidateResumeStructure` + `structureSections`; accent PUT → `artifacts.resume_structure.accent_color`.
+- **Tests / bible** — page tests mock structure GET, hide orphans, assert accent PUT, candidate switch; §7.13zzd manifest matches.
+- **Layers** — API → core only; no §5f debug touched.
+
+### fix-now
+
+1. **`src/data/database.py` + `src/ui/api/api_admin.py`** (commit `6e5f2e17`, AST-617 label) — **§5d cross-ticket scope.** Replaces `dispatch_claim_uses_score_floor` with `trigger_state_used_by_scored_dispatch_task` on claim count/backfill/admin `is_scored`. **`origin/dev` already has the correct `dispatch_claim_uses_score_floor` call sites** (`config.py`: VALID_TITLE input triggers must not score-gate claim). This branch **reverts AST-586** — qualify on VALID_TITLE would incorrectly apply `score_floor`. Revert both files to match `origin/dev`.
+
+2. **`docs/features/interface/ast-617-dispatch-claim-without-score-floor-valid-title-rebuild-586.md`** — deleted on branch; exists on `origin/dev`. Restore from dev (sibling AST-617 doc, not this ticket).
+
+### Recommended actions
+
+| Action | Notes |
+| --- | --- |
+| Revert `database.py` + `api_admin.py` to `origin/dev` | Keep AST-616: `api_candidate.py`, `ArtifactsBaseResumeContent.tsx`, tests, bible |
+| Restore AST-617 plan doc from `origin/dev` | `git checkout origin/dev -- docs/features/interface/ast-617-…` |
+| Re-run §7.13zzd narrowed manifest | After revert |
+
+#### betty — 2026-06-14T04:11:43.529Z
+[check-linear] Cleared epic **`origin/dev`** merge blocker on **`docs/ASTRAL_TEST_BIBLE.md`**: **`astral-tests`** merged **`origin/dev`** @ **`718bd68d`** — **§7.13zzd** (AST-616) retained alongside dev cumulative sections. Sub publish ref unchanged bible-wise (**§7.13zzd** already present); **`merge-tests`** records delivery @ **`26bb967e`**.
+
+**Tests lane:** `origin/tests` @ **`44554e56`** (`docs(AST-616): tests origin/dev merge clean`)
+
+**Publish:** `origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ **`26bb967e`** (`merge-tests(AST-616): origin/tests 44554e56`)
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `31df000bef9567aec8bbc0ed3abdd65cd9165b15642ae3be536ecd62d8ba888e`
+
+Epic worktree **`git merge origin/dev`** should reconcile bible using **`origin/tests`** (post-**`718bd68d`**) as reference for **§7.13zzd**. Reassigned **Katherine Johnson**.
+
+#### betty — 2026-06-14T04:08:49.212Z
+[check-linear] Cleared [qa-handoff]: `test_ArtifactEditor.test.tsx` now uses `importOriginal` partial api mock (preserves `setAuthTokenGetter` for `AuthProvider`). Vitest manifest `-t "structureSections|Base Resume Content|resume_structure"` green locally.
+
+**Publish:** `origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `a2feddd7` (`merge-tests(AST-616): origin/tests ee5a83e2`)
+
+Reassigned **Katherine Johnson** for **test-child**.
+
+#### katherine — 2026-06-14T04:07:42.777Z
+[qa-handoff]
+
+@Betty White — manifest run on `origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `31829dc8` (epic worktree merge-clean).
+
+**Pytest (green):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi
+```
+→ 11 passed
+
+**Vitest (1 fail):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t "structureSections|Base Resume Content|resume_structure"
+```
+→ `test_ArtifactsBaseResumeContent.test.tsx` passed (1 run, 2 skipped)
+→ `ArtifactEditor > loads fixed tabs from structureSections without shapes fetch` **failed**
+
+**Failure (test harness, not product):**
+```
+[vitest] No "setAuthTokenGetter" export is defined on the "../../../../src/ui/frontend/src/lib/api" mock.
+```
+`renderWithProviders` mounts `AuthProvider`, which calls `setAuthTokenGetter` in `useLayoutEffect`. `test_ArtifactEditor.test.tsx` still uses a bare `vi.mock(..., () => ({ default: vi.fn() }))` without `setAuthTokenGetter`.
+
+**Fix:** Match `test_ArtifactsBaseResumeContent.test.tsx` / `test_App.test.tsx` — partial mock via `importOriginal`:
+```ts
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
+```
+
+Product code unchanged; no `src/` fix needed. Please republish manifest tip and reassign me when green locally.
+
+#### betty — 2026-06-14T04:06:36.071Z
+## QA test manifest (AST-616)
+
+**Publish:** `origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `31829dc8` (`merge-tests(AST-616): origin/tests 9d18d74e`)
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `899690bc876fc9b0312dd406ae9cf53bd605ebd5`
+
+### 1. Existing coverage (bible-backed — AST-519 contract)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers`
+2. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi`
+3. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx -t "structureSections"`
+
+### 2. Revised this pass
+
+4. **`tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`** — mocks `GET …/resume_structure` (not shapes); asserts orphan `base_resume` key hidden; accent PUT to `artifacts.resume_structure.accent_color`; candidate switch isolation (**§6c** routed page).
+5. **`tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi`** — PUT tests monkeypatch `apply_company_search_terms_save` (AST-524 API path; replaces stale `normalize_company_search_terms_on_save` on module).
+
+### 3. Gaps
+
+None — manifest matches plan AC + **§7.13zzd**.
+
+### Narrowed run (all manifest lines)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t "structureSections|Base Resume Content|resume_structure"
+```
+
+#### katherine — 2026-06-14T04:03:27.333Z
+[qa-handoff] Page tests still mock legacy shapes/accent — update `test_ArtifactsBaseResumeContent.test.tsx` to AST-519 contract (`GET …/resume_structure`, accent PUT to `resume_structure`). API + ArtifactEditor structure tests should pass after Stage 1–2.
+
+`origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `842b6dda`
+
+#### katherine — 2026-06-14T04:00:09.940Z
+Plan: [ast-616-admin-api-and-base-resume-content-ui-from-candidate-structure-rebuild-519.md](https://github.com/susansomerset/astral/blob/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519/docs/features/interface/ast-616-admin-api-and-base-resume-content-ui-from-candidate-structure-rebuild-519.md) on `origin/sub/AST-601/AST-616-base-resume-content-ui-rebuild-519` @ `591cc4cd`.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — API route/import restore plus `ArtifactsBaseResumeContent.tsx` rewire; core helpers and `ArtifactEditor` structure mode already on branch.
+- **Conf:** `Medium` — Rebuild tracks approved AST-519 spec; casualty inventory shows partial merge (missing GET route, page still on global shapes) but JAR already uses structure mode.
+- **Risk:** `Medium` — Wrong catalog could hide content or leak orphans; accent path change affects styling until structure backfill (AST-517 shim covers legacy read).
+
+**Casualty highlights:** `GET …/resume_structure` and API imports missing; Base Resume Content page still uses `shapesKey` and `base_resume.accent_color`. Page component tests still assert legacy behavior — Betty qa update called out in plan Stage 3.
+
+---
+
 # Admin API and Base Resume Content UI from candidate structure (Rebuild 519)
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-616/admin-api-and-base-resume-content-ui-from-candidate-structure-rebuild-519  

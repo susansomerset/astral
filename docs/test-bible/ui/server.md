@@ -46,3 +46,19 @@ Local dev: Flask `:5001` serves gitignored **`frontend/dist/`**; **`git pull`** 
 ```
 
 **Manual UAT:** Susan Stage 4 in plan — `:5001` after pull without manual rebuild shows AST-746 Scheduled Actions layout.
+
+---
+
+### AST-779 · AST-770
+
+**API error enrichment:** **`api_errors.py`** + **`server.py`** `/api/*` uncaught exception handler returns JSON **`error`**, **`exception_type`**, **`traceback`** on 500; non-`/api/` routes re-raise (not swallowed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared error JSON helpers + handler contract | `src/ui/api_errors.py`, `src/ui/server.py` (`_api_uncaught_exception`) | `tests/component/ui/api/test_api_errors.py` |
+
+**AST-779** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_errors.py -q
+```

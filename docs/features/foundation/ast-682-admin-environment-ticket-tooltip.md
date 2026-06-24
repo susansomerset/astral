@@ -1,3 +1,119 @@
+<!-- linear-archive: AST-682 archived 2026-06-23 -->
+
+## Linear archive (AST-682)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-682/admin-environment-ticket-tooltip-create-a-ticket-log-in-utils  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-675 — Create a ticket log in utils  
+**Blocked by / blocks / related:** parent: AST-675
+
+### Description
+
+## What this implements
+
+Admin deploy footer: hovering the environment label shows up to 20 most recent logged tickets (id + timestamp), line-broken, using deploy-status payload. Non-admin and absent-env behavior unchanged.
+
+## Acceptance criteria
+
+4. With `ASTRAL_DEPLOY_ENV` set and admin session, hovering the environment label shows up to **20** ticket lines (id + timestamp), most recent first, separated by line breaks.
+5. When the environment label is absent, ticket history is still available via deploy status; no environment-hover tooltip is required.
+6. Non-admin navigation is unchanged.
+7. Existing deploy footer fields (commit short, commit message tooltip, uptime) behave as before AST-675.
+
+## Boundaries
+
+* Does not implement log storage or finish-up append (siblings).
+* No new API routes beyond consuming existing deploy_status fields.
+
+## Notes for planning
+
+`AdminDeployFooter.tsx` + existing `title` tooltip pattern. Depends on sibling API field from deploy-status extension.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/ast-675-create-a-ticket-log-in-utils**, child **sub/AST-675/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T19:39:48.480Z
+**Review:** `origin/dev...origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip` @ `989dd99b` (product `01dec4cf`, tests `7556b3c1`)
+
+**Verdict:** Clean — no fix-now or discuss.
+
+### Plan fidelity (Stage 1)
+
+- Product diff is **`AdminDeployFooter.tsx` only**: `MergeTicket` / extended `DeployStatus`, `formatMergeTicketTooltip` with `MERGE_TICKET_TOOLTIP_LIMIT = 20`, native `title` on `.nav-deploy-env` via `fmtTime`.
+- Poll interval, error branch, uptime markup unchanged. No backend, API, or finish-up changes in AST-682 commits.
+
+### Acceptance criteria
+
+| AC | Status |
+|----|--------|
+| 4 — up to 20 ticket lines (id + timestamp, `\n`, most recent first) | Pass — client slice preserves API order |
+| 5 — env absent → no hover tooltip required | Pass — env span not rendered |
+| 6 — non-admin unchanged | Pass — shell gating verify-only |
+| 7 — uptime / existing footer fields | Pass |
+
+### Rules (ASTRAL_CODE_RULES)
+
+- §1.3 DRY — `fmtTime` reused; single helper in component file
+- §2.1 — display cap 20 is UI concern per plan, not config
+- §3.3 — frontend-only imports; no layer violations
+- §5d — no sibling scope smuggled (AST-681 stacked on branch; already reviewed clean)
+
+### Tests (Betty manifest)
+
+`test_AdminDeployFooter.test.tsx`: tooltip when populated, no title when empty, 20-line cap, uptime without title.
+
+### Advisory
+
+- Multiline native `title` rendering is browser-dependent — matches plan decision (pre-AST-679 pattern).
+
+**Doc:** [ast-682-admin-environment-ticket-tooltip.md](https://github.com/susansomerset/astral/blob/sub/AST-675/ast-682-admin-environment-ticket-tooltip/docs/features/foundation/ast-682-admin-environment-ticket-tooltip.md) — Radia section appended (`docs(AST-682): Radia review — clean` on publish ref after push).
+
+**Recommended actions:** None — resolve-child may proceed.
+
+#### betty — 2026-06-15T19:38:19.007Z
+## QA test manifest (AST-682)
+
+**Publish:** `origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip` @ `989dd99b` (`merge-tests(AST-682): origin/tests 7556b3c1`)
+
+**Bible on publish ref:** `docs/test-bible/frontend/components.md` — sha256 `c42282d6c2c1d114f646f850156154d10ec6dc0a6e416704e15612c1e3e7d7e8`
+
+### Run (narrowed)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx
+```
+
+### Manifest lines
+
+1. **`test_AdminDeployFooter.test.tsx`** — `sets merge ticket tooltip on environment label when merge_tickets present` — env `.nav-deploy-env` `title` is newline-separated `ticket_id` + `fmtTime(recorded_at)` in API order; uptime span has no `title`.
+2. **`test_AdminDeployFooter.test.tsx`** — `omits title on environment label when merge_tickets empty or missing`.
+3. **`test_AdminDeployFooter.test.tsx`** — `caps merge ticket tooltip at 20 lines` — 25 tickets → 20 lines, includes `AST-0`, excludes `AST-24`.
+4. **Regression (existing):** `renders environment and uptime when deploy_status succeeds`; `omits environment label when API payload has no environment`; `shows unavailable message when deploy_status fetch fails`.
+
+**Existing coverage (no new pytest):** AST-681 backend `merge_tickets` on deploy status — `tests/component/utils/test_deploy_status.py`, `test_api_system.py::TestDeployStatus` (sibling; already on `origin/tests`).
+
+**Out of scope this ticket:** `NavigationShell` admin gate (unchanged AC 6); finish-up append (AST-683).
+
+— Betty
+
+#### katherine — 2026-06-15T19:32:23.611Z
+Plan: [`docs/features/foundation/ast-682-admin-environment-ticket-tooltip.md`](https://github.com/susansomerset/astral/blob/sub/AST-675/ast-682-admin-environment-ticket-tooltip/docs/features/foundation/ast-682-admin-environment-ticket-tooltip.md) @ `origin/sub/AST-675/ast-682-admin-environment-ticket-tooltip` (ba2a7cb8)
+
+**Self-assessment**
+- **Scope:** Single-Component — `AdminDeployFooter.tsx` only; consumes existing `merge_tickets` from AST-681 deploy status.
+- **Conf:** high — Reuses `title` tooltip + `fmtTime`; no API or backend work.
+- **Risk:** low — Admin-only display; non-admin nav and uptime/error paths unchanged.
+
+---
+
 # Admin environment ticket tooltip
 
 **Linear:** [AST-682 — Admin environment ticket tooltip](https://linear.app/astralcareermatch/issue/AST-682/admin-environment-ticket-tooltip-create-a-ticket-log-in-utils)

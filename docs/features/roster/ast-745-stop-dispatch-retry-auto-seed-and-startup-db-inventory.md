@@ -1,3 +1,124 @@
+<!-- linear-archive: AST-745 archived 2026-06-23 -->
+
+## Linear archive (AST-745)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-745/stop-dispatch-retry-auto-seed-and-startup-db-inventory-stop-rebuilding  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-741 — Stop rebuilding unnecessary dispatch_task data  
+**Blocked by / blocks / related:** parent: AST-741
+
+### Description
+
+## What this implements
+
+Remove legacy automatic `dispatch_task` row seeding on lazy schema ensure: stop `INSERT OR IGNORE` of separate `*_RETRY` companion rows and decommissioned `gaze_board` companion rows. Preserve primary-row companion claim behavior (one row on primary trigger state processes both primary and retry holding states). Produce `debug/startup_db_inventory.md` cataloging every code path that mutates `agent_task` or `dispatch_task`, tagged automatic vs operator-initiated.
+
+## Acceptance criteria
+
+1. Susan deletes all `*_RETRY` `dispatch_task` rows for a candidate, restarts the server, and those rows are still absent.
+2. Primary dispatch rows for the same `task_key` continue to claim and process entities in the companion retry holding state (e.g. jobs in `VALID_TITLE_RETRY` still process when `qualify_job_listings` is scheduled on `VALID_TITLE`).
+3. No automatic path re-inserts `gaze_board` dispatch rows on restart or schema ensure.
+4. `debug/startup_db_inventory.md` lists every mutating code path for `agent_task` and `dispatch_task`, tagged automatic vs manual, with enough detail that Susan can tell which paths may recreate deleted rows.
+5. No automatic writer re-inserts deleted `*_RETRY` dispatch rows on restart or lazy schema ensure.
+6. Manage Dispatch and Manage Tasks still create, update, and delete rows as today.
+
+## Boundaries
+
+* Does not change job/company state machines or consult retry routing into holding states.
+* Does not implement AST-572 retry-flag UI or Scheduled Actions filters.
+* Does not remove `sync_agent_tasks` blank-row inserts for missing `TASK_CONFIG` keys.
+* Does not add or extend `gaze_board` task content beyond removing its automatic seed path.
+* Does not alter `dispatch_ledger` or other tables.
+
+## Notes for planning
+
+* Primary files: `src/data/database.py` (`_RETRY_TASK_SEED`, `_ensure_dispatch_task_schema`, `_ensure_gaze_board_dispatch_tasks`), `src/core/bootstrap.py` (`sync_agent_tasks` — document only unless inventory proves delete-then-reappear). Companion claim logic lives in config `dispatch_claim_states` — do not break.
+* Inventory path: `debug/startup_db_inventory.md` (Susan-specified). Include admin API, config-table upsert, push/pull scripts, dispatcher runtime updates (`last_run_at`), and one-time migrations vs recurring seeds.
+* Tests: component tests for schema ensure no longer re-inserting deleted retry rows after restart simulation.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-741-stop-dispatch-retry-seed`, child `sub/AST-741/AST-742-stop-dispatch-retry-seed`. Created at **dispatch-parent**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-06-23T19:02:08.989Z
+[merge-child] blocked: git pull merge on sub + AST-747/AST-751 pollution — see parent.
+
+#### radia — 2026-06-23T19:00:45.753Z
+### Review — `origin/dev...origin/sub/AST-741/AST-745-stop-dispatch-retry-seed`
+
+**Plan fidelity:** Stage 1 removes only `_RETRY_TASK_SEED`, the retry `INSERT OR IGNORE` loop, `_ensure_gaze_board_dispatch_tasks`, and its trailing call; module header updated. One-time migrations (prefilter HOMEPAGE_READY cutover, triple-unique rebuild, gaze/`find_job_page` retargets) remain in `_ensure_dispatch_task_schema`. Stage 2 delivers `debug/startup_db_inventory.md` with required columns and **Removed AST-745** / **Not in scope** sections; `.gitignore` uses `debug/*` + `!debug/startup_db_inventory.md` (correct negation pattern). `dispatch_claim_states` / `config.py` untouched. Self-assessment **Single-Component** / **high** conf matches the diff.
+
+**ASTRAL_CODE_RULES (touched paths):**
+- **§2.1 / §2.6:** Recurring seed dict removed; companion entity claim stays on primary rows via config — covered by `TestAst745StopAutomaticDispatchRowSeeding::test_primary_row_claims_retry_entities_without_retry_dispatch_row` and regression `TestAst641UnionClaimCount`.
+- **§3.3 / B2:** Data-layer-only deletion; no new cross-layer imports.
+- **§1.5 / D2:** No new logging or swallowed exceptions in `database.py`.
+- **Database binds:** Deletions only; remaining migration SQL unchanged (column/`?` counts consistent).
+
+**Tests (Betty, on publish ref):** `TestAst745StopAutomaticDispatchRowSeeding` covers AC 1–3; obsolete `TestAst701FetchWebsiteRetrySeed` and `_RETRY_TASK_SEED` symbol test removed appropriately; `test_api_admin` comment updated after gaze_board seed removal.
+
+**advisory:** `docs/test-bible/core/gazer.md` still describes `_RETRY_TASK_SEED` companion rows (pre–AST-745); not in this diff — optional Betty bible trim on parent closeout.
+
+**fix-now:** none
+
+**discuss:** none
+
+#### betty — 2026-06-18T22:54:09.758Z
+## QA test manifest (AST-745)
+
+**Publish ref:** `origin/sub/AST-741/AST-745-stop-dispatch-retry-seed` @ `317f8d4`
+**Tests SHA:** `cdfc64c` on `origin/tests`
+
+**Bible shasum:** `docs/test-bible/data/database/dispatch_tasks.md` → `64162a4c53a9e2ff403cffbb4ed14f64777f7bec`
+
+### Broken / obsolete (revised this pass)
+- `TestAst701FetchWebsiteRetrySeed` — asserted auto-insert of `WEBSITE_FOUND_RETRY` row; removed with AST-745 product change
+- `TestAst702PrefilterDispatchMigration::test_retry_task_seed_omits_prefilter_website_found_retry` — `_RETRY_TASK_SEED` symbol deleted
+
+### Manifest (test-child)
+
+1. **No retry re-seed (required):** `tests/component/data/database/test_dispatch_tasks.py::TestAst745StopAutomaticDispatchRowSeeding::test_schema_ensure_does_not_reinsert_deleted_retry_rows`
+
+2. **No gaze_board re-seed (required):** `tests/component/data/database/test_dispatch_tasks.py::TestAst745StopAutomaticDispatchRowSeeding::test_schema_ensure_does_not_reinsert_gaze_board_rows`
+
+3. **Companion claim intact (required):** `tests/component/data/database/test_dispatch_tasks.py::TestAst745StopAutomaticDispatchRowSeeding::test_primary_row_claims_retry_entities_without_retry_dispatch_row`
+
+4. **Regression — union claim (required):** `tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount`
+
+5. **Regression — one-time prefilter migrations unchanged (required):** `tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration` + `TestAst703PrefilterMigrationUniqueCollision`
+
+6. **Inventory artifact audit (required):** `debug/startup_db_inventory.md` on publish ref lists `dispatch_task` + `agent_task` writers, automatic vs operator-initiated, and **Removed AST-745** subsection.
+
+**Narrowed run:**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst745StopAutomaticDispatchRowSeeding \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```
+
+**Pass criterion:** items 1–5 pytest green; item 6 artifact present — not zero-arg harness / branch-lock gate.
+
+#### hedy — 2026-06-18T22:48:26.047Z
+Plan doc: [docs/features/roster/ast-745-stop-dispatch-retry-auto-seed-and-startup-db-inventory.md](https://github.com/susansomerset/astral/blob/sub/AST-741/AST-745-stop-dispatch-retry-seed/docs/features/roster/ast-745-stop-dispatch-retry-auto-seed-and-startup-db-inventory.md) @ `117c611f`
+
+**Self-assessment**
+- **Scope:** `Single-Component` — removes `_RETRY_TASK_SEED` + `_ensure_gaze_board_dispatch_tasks` recurring inserts from `_ensure_dispatch_task_schema`; adds checked-in `debug/startup_db_inventory.md`.
+- **Conf:** `high` — restart re-seed is the documented `INSERT OR IGNORE` loop; companion claim stays in `dispatch_claim_states` (no config changes).
+- **Risk:** `Medium` — schema-ensure runs on every admin dispatch read until ensured; one-time migrations must remain untouched (plan limits deletion to the two seed blocks only).
+
+Two build stages: (1) delete automatic retry/gaze_board row seeding, (2) inventory doc + `.gitignore` exception for `debug/startup_db_inventory.md`. Betty owns component tests for deleted-row survival after restart simulation.
+
+---
+
 # Stop dispatch retry auto-seed and startup DB inventory
 
 **Linear:** [AST-745](https://linear.app/astralcareermatch/issue/AST-745/stop-dispatch-retry-auto-seed-and-startup-db-inventory-stop-rebuilding)  

@@ -1,3 +1,123 @@
+<!-- linear-archive: AST-697 archived 2026-06-23 -->
+
+## Linear archive (AST-697)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-697/prefilter-link-set-schema-example-and-bracket-decode-prefilter-output  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-696 — Prefilter output with links  
+**Blocked by / blocks / related:** parent: AST-696
+
+### Description
+
+## What this implements
+
+Fix the **prefilter_company** prompt contract and runtime parsing so compact encoded `agent_payload` responses include and decode **link_set** metadata — bracket tail indices for `possible_job_links` and `culture_links_to_explore`. Update the **{$RESPONSE_SCHEMA}** example and output-type payload instructions to show Susan's canonical shape `000|ERC2|MEA3|PGA2|[13]|[3,6,19]`. Teach `_decode_payload` (and shared helpers if needed) to map positional bracket **link_set** tails after grade segments into the decoded job row. Existing **AST-603** alternate response shapes must not regress.
+
+## Acceptance criteria
+
+1. Resolved **{$RESPONSE_SCHEMA}** for **prefilter_company** shows `agent_payload` example `000|ERC2|MEA3|PGA2|[13]|[3,6,19]` (or equivalent with bracket **link_set** tails documented in the same block) — not grades-only `000|ERC2|MEA3|PGA2`.
+2. A model response `000|RCA3|MPB3|USA3|[59,60]|[51,46,53]` (matching live rubric vector count) decodes to `possible_job_links == [59, 60]` and `culture_links_to_explore == [51, 46, 53]`.
+3. Susan's exact proposed example `000|ERC2|MEA3|PGA2|[13]|[3,6,19]` decodes with the same link field mapping (first tail → job links, second → culture links).
+4. **AST-603** normalization paths still pass existing component tests — dict JSON, letter-pipe, `JOB:`/`CULT:` tails, and JSON-string payloads unchanged.
+5. On prefilter pass (inflow or legacy watch path), `company_data` persisted after a successful run includes the parsed link lists when the model supplied them; UAT on a company with enumerated nav links shows non-empty `possible_job_links` when the model returns bracket tails.
+6. Grades-only encoded responses (no link tails) still pass/fail prefilter and persist empty link lists — no new validation failures.
+
+## Boundaries
+
+* **prefilter_company only** — no unrelated encoded consult tasks unless a one-line shared-helper fix is required.
+* No rubric vector redesign, no UI, no new company states.
+* Sibling scope: none (single child epic).
+
+## Notes for planning
+
+* Hot files: `src/utils/config.py` (`stringify_response_schema`, `grades_encoded_prefilter_links` output type), `src/core/agent.py` (`_decode_payload` meta parsing), possibly `src/core/consult.py` (`_parse_link_index_field` reuse).
+* Roster persist path already writes link fields when present — verify AC #5 but likely no roster changes if decode is fixed.
+* Feature doc folder: `docs/features/consult/`.
+* plan-child §3 maps **Astral Consult** → `docs/features/consult/`.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-696-prefilter-output-with-links`, child `sub/AST-696/<child-id>-prefilter-link-set-schema-and-bracket-decode`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-16T02:42:13.739Z
+### Radia review — `origin/dev...origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode`
+
+**Doc:** `docs/features/consult/ast-697-prefilter-link-set-schema-and-bracket-decode.md` @ `d30f25b`
+
+**What's solid**
+- Stage 1 + 2 match plan: bracket schema example + `payload_instructions` in `config.py`; `_apply_prefilter_encoded_link_meta` in `consult.py`; `_decode_payload` delegates. Roster unchanged.
+- §1.3 DRY — single helper reuses `_parse_link_index_field`; no duplicated prefix/bracket logic in `agent.py`.
+- §2.1 config — verified `stringify_response_schema("prefilter_company")` → `000|ERC2|MEA3|PGA2|[13]|[3,6,19]`.
+- §3.3 — `agent`→`consult` lazy import matches existing pattern (~L1845); no layer violations.
+- Manifest covers canonical brackets, RCA/MPB/USA tails, `JOB:`/`CULT:` prefix regression, grades-only omission, normalizer path.
+
+**discuss:** Plan decision cites `JOB:16|[51,46]` → culture from bracket tail when prefix fills job links, but `_apply_prefilter_encoded_link_meta` only assigns culture from `positional[1:]` when `len(positional) > 1`, so a lone bracket after `JOB:` is still dropped (same as pre-697 encoded decode; `_job_from_letter_pipe` would map it). Confirm parity needed vs out-of-scope before UAT if models emit that mixed shape. (`src/core/consult.py`)
+
+**advisory:** Inline `^JOB:`/`^CULT:` regex duplicates `_LINK_PREFIX_RE` one function above — cosmetic only.
+
+**Counts:** 0 fix-now · 1 discuss · 1 advisory
+
+#### betty — 2026-06-16T02:39:27.052Z
+**Bible shasums** (`origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode`):
+- `docs/test-bible/core/consult.md` — `81027a61fe8487b0a62a2060c2f4fe9524707d3032da819d3bdf827d1e689eb8`
+- `docs/test-bible/core/agent.md` — `38de54af8efcc7102fc6c03361e323d9315819fa994a2f0cac47bf58cb9a55a2`
+- `docs/test-bible/utils/config.md` — `bfea9a1ec17e87f2c363ba940997e9ba93408fb4d2a1f920d0e75ffe4d95016e`
+
+#### betty — 2026-06-16T02:39:17.256Z
+**QA test manifest (AST-697)**
+
+Publish: `origin/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode` @ `12f848d` (`merge-tests(AST-697): origin/tests d5c47e8`)
+
+1. **Schema example (new):** `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` — `stringify_response_schema("prefilter_company")` → `000|ERC2|MEA3|PGA2|[13]|[3,6,19]`.
+
+2. **Bracket decode via `_decode_payload` (new):** `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode` — Susan canonical line, RCA/MPB/USA bracket tails, grades-only omits link keys.
+
+3. **Consult normalizer bracket path (new):** `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails` — `000|RCA3|MPB3|USA3|[59,60]|[51,46,53]` end-to-end.
+
+4. **AST-603 prefix-tail regression (existing):** `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_job_cult_tails` — `JOB:`/`CULT:` unchanged.
+
+5. **Roster persist smoke (existing):** `tests/component/core/test_roster.py::TestAst603ConsultParityHydration` — hydration + link list persistence unchanged.
+
+6. **Output type registry (existing):** `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded`.
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails \
+  tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize \
+  tests/component/core/test_roster.py::TestAst603ConsultParityHydration \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded
+```
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/consult.md` — see publish ref
+- `docs/test-bible/core/agent.md` — see publish ref
+- `docs/test-bible/utils/config.md` — see publish ref
+
+— Betty
+
+#### ada — 2026-06-16T02:30:47.450Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-696/AST-697-prefilter-link-set-schema-and-bracket-decode/docs/features/consult/ast-697-prefilter-link-set-schema-and-bracket-decode.md
+
+**Self-assessment**
+- **Scope:** Single-Component — config schema example + output instructions, shared link-meta helper in consult.py, one-line hook in agent._decode_payload; roster persist verified only.
+- **Conf:** high — AST-603 already owns normalization and persist; this closes the known bracket-tail + schema-example gap with minimal surface area.
+- **Risk:** Medium — wrong positional mapping would drop link indices on encoded prefilter runs; grades-only and JOB:/CULT: tails must stay green (AC #4/#6).
+
+Two stages: (1) stringify_response_schema + output_types bracket link_set docs, (2) _apply_prefilter_encoded_link_meta + _decode_payload wiring. Betty manifest for bracket decode tests — no engineer test-tree edits.
+
+#### ada — 2026-06-16T02:29:51.675Z
+test
+
+---
+
 # Prefilter link_set schema example and bracket decode (Prefilter output with links)
 
 **Linear:** [AST-697](https://linear.app/astralcareermatch/issue/AST-697/prefilter-link-set-schema-and-bracket-decode-prefilter-output-with-links)  

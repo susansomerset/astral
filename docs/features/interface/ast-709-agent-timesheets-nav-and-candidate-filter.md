@@ -1,3 +1,131 @@
+<!-- linear-archive: AST-709 archived 2026-06-23 -->
+
+## Linear archive (AST-709)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-709/agent-timesheets-nav-escape-and-candidate-filter-stability-nav-menu  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-705 — Nav Menu stops working while on agent timesheets  
+**Blocked by / blocks / related:** parent: AST-705
+
+### Description
+
+## What this implements
+
+Fix Agent Timesheets so sidebar navigation away from `/admin/agent_timesheets` works reliably — no address-bar flicker and snap-back. Stabilize URL-backed candidate filter behavior on this page (default from left-nav, **All**, manual pin) and add direct candidate-to-candidate switching without an intermediate **All** selection, matching Execution History behavior from AST-662. Preserve existing timesheet list, filters, totals, and CSV export semantics.
+
+## Acceptance criteria
+
+1. With Agent Timesheets active and a left-nav candidate selected, clicking at least two other **Admin** nav items (e.g. Scheduled Actions, Execution History) navigates successfully — pathname changes and the destination page renders; no return to `agent_timesheets`.
+2. With Agent Timesheets active, clicking at least one **non-admin** nav item navigates successfully with the same no-revert behavior Susan reported as intermittently failing.
+3. After navigating away and back to Agent Timesheets, filters behave per AST-634: empty URL defaults candidate from nav; manually pinned candidate stays pinned; **All** shows cross-candidate rows.
+4. In-page candidate dropdown supports direct switch between two specific candidates without selecting **All** first (parity with AST-662 on Execution History).
+5. No new console errors during nav-away from Agent Timesheets in a normal session.
+
+## Boundaries
+
+* Does not change timesheet API, cost calculation, or ledger schema.
+* Does not change nav config, sidebar layout, or admin route gating.
+* Does not redesign Execution History or Scheduled Actions — only shared hook changes that are safe for those pages.
+* Does not change table layout (AST-633) or export format beyond filter-driven query params.
+
+## Notes for planning
+
+* Primary files: `AdminAgentTimesheets.tsx`, `useAdminCandidateFilter.ts` (compare `AdminPerformanceMonitor.tsx` post-AST-662).
+* Regression coverage in `test_AdminAgentTimesheets.test.tsx`; extend for nav-away and direct candidate switch.
+* plan-child §3.5 — components in `src/components/` flat.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-705-nav-menu-stops-working-while-on-agent-timesheets`, child `sub/AST-705/<child-id>-agent-timesheets-nav-and-candidate-filter`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-16T19:53:03.497Z
+**Diff:** `origin/dev...origin/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter` @ `d19a6a0`
+
+**Verdict:** Clean — no fix-now or discuss items.
+
+### What's solid
+
+- **Stage 1** — `useAdminCandidateFilter`: `applyFilter` depends on `urlSetValue` instead of whole `urlBacked` object; stops nav-sync `useEffect` from re-firing every render while `syncWithNav === true`.
+- **Stage 2** — `AdminAgentTimesheets`: memoized `urlBacked` matches AST-662 Execution History pattern.
+- **Tests** — hook churn regression; page tests for c1→c2 refetch without All intermediate step; nav click to Scheduled Actions sticks on destination.
+- **Rubric** — UI-only; no cross-layer imports, silent catches, or new logging.
+
+### Advisory
+
+- Nav-escape test uses `renderWithProviders` + nested `Routes` instead of plan's `createMemoryRouter` stack — simpler, still covers AC1.
+- Non-admin nav escape (Jobs Recommended, etc.) remains manual UAT per plan QA manifest.
+
+**Doc:** [ast-709-agent-timesheets-nav-and-candidate-filter.md](https://github.com/susansomerset/astral/blob/d19a6a0/docs/features/interface/ast-709-agent-timesheets-nav-and-candidate-filter.md#radia-review-2026-06-16)
+
+**resolve-child** may proceed.
+
+#### betty — 2026-06-16T19:50:25.699Z
+## QA test manifest (Betty)
+
+**Publish ref:** `origin/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter` @ `b512ac1` (`merge-tests(AST-709): origin/tests dda7617`)
+
+**Classification:** new regression coverage for AST-662-class nav-sync defect on Agent Timesheets; existing AST-634 filter/export behavior retained.
+
+### Manifest (test-child)
+
+Run from repo root:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  -t "AST-709|inline urlBacked|AST-634 admin candidate filter"
+```
+
+1. **`inline urlBacked identity churn does not spam setValue from nav sync`** — `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` (hook stability under parent re-renders with new inline `urlBacked` object).
+2. **`direct candidate switch c1 to c2 refetches timesheets without All intermediate step`** — `tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx` (`AST-709 nav and candidate filter`).
+3. **`nav click away from Agent Timesheets stays on destination`** — same file/describe (NavigationShell + MemoryRouter routes; Scheduled Actions stub).
+4. **Regression — AST-634 export wiring** — `uses Candidate dropdown and passes candidate_id on export` in same page file.
+
+**Pass criterion:** all four items green on narrowed Vitest run above (not zero-arg full harness).
+
+### Bible
+
+- `docs/test-bible/frontend/pages.md` — `### AST-709 · AST-705` block
+- shasum @ publish ref: `3385476db43565cf8a2a7a2ab487577a1221415c`
+
+### Broken / obsolete tests
+
+None identified — AST-634 Timesheets cases unchanged.
+
+— Betty
+
+#### katherine — 2026-06-16T19:46:25.732Z
+Plan: [`docs/features/interface/ast-709-agent-timesheets-nav-and-candidate-filter.md`](https://github.com/susansomerset/astral/blob/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter/docs/features/interface/ast-709-agent-timesheets-nav-and-candidate-filter.md) on `origin/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter` @ `f1701fff`.
+
+**Root cause:** Inline `urlBacked` on Agent Timesheets recreates `applyFilter` every render → nav-sync `useEffect` spams `setSearchParams({ replace: true })` and races sidebar `NavLink` navigation (AST-662 fixed Execution History only).
+
+**Fix (3 stages):** (1) stabilize hook `applyFilter` deps via `urlSetValue`; (2) memoize `urlBacked` on Timesheets; (3) Betty regression tests for nav escape + direct c1→c2 switch.
+
+**Self-assessment**
+- **Scope:** Single-Component — shared hook + Agent Timesheets page; frontend-only.
+- **Conf:** high — same defect class as AST-662; proven fix pattern.
+- **Risk:** Medium — shared hook on three admin tabs; `urlSetValue` dep change must not regress AST-634/662 filter behavior.
+
+#### katherine — 2026-06-16T19:44:22.408Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-705/AST-709-agent-timesheets-nav-and-candidate-filter/docs/features/interface/ast-709-agent-timesheets-nav-and-candidate-filter.md
+
+Root cause: inline `urlBacked` on Agent Timesheets makes `applyFilter` unstable → nav-sync effect calls `setSearchParams` every render and fights sidebar navigation.
+
+**Scope:** Single-Component — hook `applyFilter` dep fix + Timesheets `urlBacked` memoization.
+
+**Conf:** high — same defect/fixin class as AST-662 on Execution History.
+
+**Risk:** Medium — shared hook used on three admin tabs; fix depends on stable `setValue` callbacks only.
+
+---
+
 # Agent Timesheets nav escape and candidate filter stability (Nav Menu stops working while on agent timesheets)
 
 **Linear:** [AST-709](https://linear.app/astralcareermatch/issue/AST-709/agent-timesheets-nav-escape-and-candidate-filter-stability-nav-menu-stops)  

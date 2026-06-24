@@ -1,3 +1,119 @@
+<!-- linear-archive: AST-647 archived 2026-06-23 -->
+
+## Linear archive (AST-647)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-647/list-table-layout-freeze-columns-sticky-header-cell-tooltips-table  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-633 — Table Layout fix  
+**Blocked by / blocks / related:** parent: AST-633
+
+### Description
+
+## What this implements
+
+Shared list/table presentation for **ListPage** and pages using the same list-table markup: configurable **N** frozen left data columns (default **2** from `UI_CONFIG` via `/api/system/ui_config`), checkbox and row-action columns always frozen in addition to **N**, vertical **sticky header** in the table scroll region, horizontal scroll for wide tables, and long cells truncated to **30** characters with full value in a hover tooltip. Add the default frozen-column count to `config.py` / UI config API. Apply the same layout contract to at least one bespoke grouped list table (e.g. Recommended or Scheduled Actions phase table) so acceptance covers both ListPage and non-ListPage consumers.
+
+## Acceptance criteria
+
+1. With config default **2**, a wide list screen with horizontal overflow keeps the leftmost **two** data columns visible while scrolling right; remaining columns scroll normally.
+2. A screen that declares a different frozen-column count (e.g. **3**) keeps that many left columns visible instead of the default.
+3. Scrolling down through a long table keeps header labels visible at the top of the table scroll area on representative screens using both ListPage (e.g., Agent Timesheets) and a bespoke grouped list (e.g., Recommended or Scheduled Actions phase table).
+4. A cell with content longer than 30 characters displays truncated text with ellipsis; hovering shows the full value in a tooltip.
+5. On a screen that already opens detail on row click (e.g., company or job list with modal), row click still opens that detail after this change.
+6. List screens that do not override frozen-column count all inherit **2** from config via the UI config API — no hardcoded default in frontend source.
+7. Sort, filter, checkbox selection, and column drag/reorder still work on at least one ListPage consumer and one bespoke table after the layout change.
+
+## Boundaries
+
+* Layout and cell presentation only — no changes to column definitions, sort/filter, bulk actions, phase grouping, or row actions beyond layout props.
+* No backend debug logging changes (UI-only).
+* Does not apply to non-tabular admin views (artifact editors, profile forms, script sandbox log stream, Data Management ad-hoc query result table unless explicitly adopted later).
+* Must not break ListPage column reorder, resize, or localStorage layout persistence.
+
+## Notes for planning
+
+* Primary files: `src/utils/config.py` (`UI_CONFIG`), `src/ui/frontend/src/components/ListPage.tsx`, shared list-table CSS, and one bespoke phase/grouped list page.
+* Checkbox/action columns: do **not** count toward **N** but are always included in the freeze set (parent open question resolved).
+* Per-screen override via declarative prop on ListPage (and equivalent on bespoke tables).
+* Katherine owns React/TS + UI config exposure; no new API endpoints beyond existing `ui_config` if the key fits there.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-633`, child `sub/AST-633/<child-segment>`. Created at **dispatch-parent**. Engineers publish to `origin/sub/...` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-14T21:43:56.521Z
+**Review** — `origin/dev...origin/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips` @ `5b9b971a` (+ doc `86c65f32`)
+
+Plan doc: `docs/features/interface/ast-647-list-table-layout-freeze-sticky-tooltips.md` (Review section)
+
+### Solid
+
+- Stages 1–4 delivered: `UI_CONFIG` keys, shared `listTableLayout` / `uiConfig` / `ListTableTruncatedCell`, ListPage freeze + truncate + always-on scroll wrap, `AdminScheduledActions` with 3 frozen cols, sticky-header CSS fix (removed `position: relative` override).
+- §2.1 / §1.3 / §3.3: config-driven defaults, DRY extract, UI-only layers; boundaries respected (sort/filter/checkbox/drag/resize/localStorage untouched).
+- Betty manifest covered: helper unit tests, truncated cell, ListPage layout classes + override, ui_config API assertion, Scheduled Actions frozen-class test.
+
+### discuss
+
+- **`AdminScheduledActions.tsx`** — `scheduledFrozenStyle` calls `stickyLeftPx(..., {}, ...)` while columns use **% widths** (`9%`, `14%`, `7%`). Sticky `left` uses **120px defaults** per prior column; col 0 is fine, cols 1–2 may **misalign** on horizontal scroll. Tests only assert CSS classes.
+  - **UAT:** Scheduled Actions, narrow viewport / wide rows — scroll horizontally; confirm Candidate / Task / Entity stay aligned. If broken, feed measured pixel widths or use min-width colgroup + `--auto`.
+
+### advisory
+
+- `frozenN === 0` until ui_config fetch completes (brief flash).
+- Global `tbody td` `max-width: 0` + nowrap — watch `expandable` columns in UAT.
+- No hover bg rule for `list-table-cell-frozen-right` (cosmetic).
+
+**Verdict:** findings — no ListPage fix-now blockers; resolve-child should confirm Scheduled Actions sticky alignment in UAT.
+
+#### betty — 2026-06-14T21:33:52.247Z
+## QA test manifest (AST-647)
+
+**Publish ref:** `origin/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips` @ `5b9b971a` (`merge-tests(AST-647): origin/tests 434d24c3`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref = `1361add1fbfa6f9340b825698e3665b0d2712761` (**§7.13zzt**)
+
+1. **`tests/component/frontend/lib/test_listTableLayout.test.ts`** — `resolveFrozenDataColumns`, `truncateForDisplay`, `stickyLeftPx` helpers (AC1/AC2/AC4 math).
+2. **`tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx`** — ellipsis + `title` tooltip when string length > 30 (AC4).
+3. **`tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx`** — ListPage renders `list-table-cell-frozen` on checkbox + first **N=2** data columns and `list-table-cell-frozen-right` on row-actions; honors `frozenDataColumns` override (AC1/AC2/AC6).
+4. **`tests/component/frontend/components/test_ListPage.test.tsx`** — regression: api mock serves `/api/system/ui_config` after **uiConfig** module extract (sort/filter/checkbox/drag/resize paths — AC7 baseline).
+5. **`tests/component/frontend/pages/test_AdminScheduledActions.test.tsx`** — **`AST-647: phase table freezes first three data columns`** (bespoke grouped table, **N=3**); existing sort/filter/row-click tests retained; candidate-filter harness fixes for **All** / empty-candidates cases.
+6. **`tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults`** — `list_table_frozen_data_columns: 2` and `list_table_cell_truncate_chars: 30` on `GET /api/ui_config` (AC6).
+
+**Narrowed run (Appendix — §7.13zzt):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_listTableLayout.test.ts \
+  ../../../tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Manual smoke (plan):** Agent Timesheets horizontal scroll + sticky header; Scheduled Actions three frozen cols; company/job list row-click modal still opens.
+
+— Betty
+
+#### katherine — 2026-06-14T21:24:38.413Z
+Plan: [`docs/features/interface/ast-647-list-table-layout-freeze-sticky-tooltips.md`](https://github.com/susansomerset/astral/blob/sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips/docs/features/interface/ast-647-list-table-layout-freeze-sticky-tooltips.md) @ `5b404807`
+
+Four build stages: (1) `UI_CONFIG` keys for frozen-column default **2** and truncate **30**; (2) shared `listTableLayout.ts` / `ListTableTruncatedCell` + CSS fix for sticky header (`position: relative` was overriding sticky) and frozen-column classes; (3) ListPage prop `frozenDataColumns?`, always-on scroll wrap, checkbox + **N** data cols + row-actions sticky; (4) **AdminScheduledActions** bespoke adoption with `frozenDataColumns={3}`.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one layout contract across shared helpers, ListPage, CSS, and one bespoke page; config literals only on backend.
+- **Conf:** `Medium` — sticky `left` offsets must track drag-reordered columns and user-resized widths, but we reuse existing markup and native `title` tooltips with no new deps.
+- **Risk:** `Medium` — ListPage is widely consumed; mistakes would be presentation-only but visible on many list screens — sort/filter/checkbox/reorder paths are explicitly untouched.
+
+---
+
 # List table layout — freeze columns, sticky header, cell tooltips
 
 **Linear:** [AST-647](https://linear.app/astralcareermatch/issue/AST-647/list-table-layout-freeze-columns-sticky-header-cell-tooltips-table)  

@@ -1,3 +1,95 @@
+<!-- linear-archive: AST-715 archived 2026-06-23 -->
+
+## Linear archive (AST-715)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-715/uat-fetch-website-saves-skip-blank-line-collapse-at-runtime-remove  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-710 — Remove empty lines from visible text  
+**Blocked by / blocks / related:** parent: AST-710
+
+### Description
+
+## What failed
+
+After **AST-713** landed, Susan ran `fetch_website_batch` (and related fetch-website flows) from current code. Newly saved `company_data.homepage_text` still contained consecutive blank lines that `backfill_collapse_blank_lines.py` subsequently removed — runtime gazer normalization is not taking effect on the website-fetch save path.
+
+## Expected
+
+Every gazer path that persists scraped homepage visible text applies `collapse_consecutive_blank_lines` immediately after scrape and **before** save, so a fresh `fetch_website` run writes already-normalized text (at most one blank line between content blocks). No backfill needed for new scrapes.
+
+## Repro
+
+1. Pick a company whose homepage scrape produces multiple consecutive blank lines in raw visible text.
+2. Run `fetch_website_batch` from the deployed/local app code (not the backfill script).
+3. Inspect saved `company_data.homepage_text` — observe multiple consecutive blank lines remain.
+4. Run `scripts/migrations/backfill_collapse_blank_lines.py --company <short_name> --dry-run` — script reports the same row would change.
+
+## Parent AC (quoted inline)
+
+> 3. Persisted job descriptions from JD scrape batches and homepage text from website fetch batches reflect normalized text, verifiable by inspecting saved records after a scrape run.
+
+> 1. Given visible text with three or more consecutive blank lines (or whitespace-only lines) between content, the normalizer produces at most one blank line between those blocks.
+
+## Boundaries
+
+* This bug does **not** change: backfill script behavior (**AST-714**), JD scrape paths unless the same root cause applies there, HTML extraction, or UI.
+* Does **not** require re-running backfill for historical rows — fix forward runtime saves only (backfill remains for existing data).
+* Reuse `collapse_consecutive_blank_lines` from `src/utils/formatting.py`.
+
+### Comments
+
+#### betty — 2026-06-17T20:53:07.717Z
+## QA test manifest (AST-715)
+
+**Publish ref:** `origin/sub/AST-710/AST-715-fetch-website-runtime-blank-line-collapse` @ `3c10b0b`
+**Tests SHA:** `2da5b59` (`merge-tests(AST-715): origin/tests 2da5b59`)
+
+1. **Collapse at shared scrape helper (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_collapses_consecutive_blank_lines_at_scrape -q
+```
+
+2. **Gazer fetch_website passthrough (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_persists_normalized_visible_text_from_scrape_helper -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless widened.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/roster.md` → `1806162e0fe51819f12b0f1ae884a9197be6bcb6`
+- `docs/test-bible/core/gazer.md` → `f8441ea2cde9ea8406f0df02aa4ca5a6995bcce8`
+
+**Coverage delta:**
+- `test_collapses_consecutive_blank_lines_at_scrape` — UAT fix: normalize in `scrape_company_homepage_content`
+- Replaced AST-713 gazer collapse test with `test_persists_normalized_visible_text_from_scrape_helper` (helper owns normalize)
+- Updated **AST-713** bible block: JD path only; homepage → **AST-715**
+
+— Betty
+
+#### hedy — 2026-06-17T20:49:23.160Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-710/AST-715-fetch-website-runtime-blank-line-collapse/docs/features/foundation/ast-715-fetch-website-runtime-blank-line-collapse.md
+
+**Scope:** Single-Component — move `collapse_consecutive_blank_lines` into `scrape_company_homepage_content`; remove redundant call in `fetch_website_batch`.
+
+**Conf:** high — UAT repro is explicit; fix aligns with AST-701 shared-scrape DRY and parent “immediately after scrape” AC.
+
+**Risk:** low — idempotent helper; empty-scrape gate unchanged; JD path untouched in this bug fix.
+
+#### hedy — 2026-06-17T20:48:29.649Z
+Plan: [`docs/features/foundation/ast-715-fetch-website-runtime-blank-line-collapse.md`](https://github.com/susansomerset/astral/blob/sub/AST-710/AST-715-fetch-website-runtime-blank-line-collapse/docs/features/foundation/ast-715-fetch-website-runtime-blank-line-collapse.md) on `origin/sub/AST-710/AST-715-fetch-website-runtime-blank-line-collapse` @ `0fac0600`.
+
+**Self-assessment**
+- **Scope:** Single-Component — `scrape_company_homepage_content` in `roster.py` + remove duplicate collapse line in `gazer.fetch_website_batch`.
+- **Conf:** high — move normalization to AST-701 shared scrape boundary (same post-scrape / pre-empty-gate ordering as AST-713 JD path).
+- **Risk:** low — idempotent helper; no state/config changes; JD and backfill paths untouched.
+
+---
+
 # AST-715 — UAT: fetch_website saves skip blank-line collapse at runtime (Remove empty lines from visible text)
 
 - **Linear (this ticket):** [AST-715](https://linear.app/astralcareermatch/issue/AST-715/uat-fetch-website-saves-skip-blank-line-collapse-at-runtime-remove)

@@ -1,3 +1,126 @@
+<!-- linear-archive: AST-615 archived 2026-06-23 -->
+
+## Linear archive (AST-615)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-615/dispatcher-claim-loop-and-guard-path-debug-instrumentation-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-540 — Debug logging backfill: dispatcher  
+**Blocked by / blocks / related:** parent: AST-540
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **dispatcher** orchestration in `src/core/dispatcher.py`: task start context, per-entity claim index headers and `|` detail lines, batch loop drain iterations, skip/guard early exits, batch-end summaries (after per-index detail), and unchanged **debug** passthrough to consult/roster/agent runners.
+
+## Acceptance criteria
+
+1. A representative **inflow_discovery** (or other company-batch) dispatch with **debug=True** on the task row shows, **before** the batch summary line, index headers and `|` detail for each claimed entity in that pass plus loop-iteration context when multiple passes run.
+2. A **job** dispatch using batch-call mode with chunk exhaustion shows debug headers for each chunk (index, size, task key) before downstream consult output.
+3. A dispatch skipped for network unreachable or below **min_count** with **debug=True** emits `|` detail explaining the skip reason; with **debug=False** behavior is unchanged from today.
+4. **debug=False** produces no new debug-only log lines on touched dispatcher paths (spot-check one company batch and one job batch).
+5. Radia review treats missing or inadequate debug instrumentation on touched dispatcher **debug** surfaces as **fix-now** per **AST-538**.
+
+## Boundaries
+
+* Does **not** instrument consult, roster, agent, gazer, builder, or external LLM modules — sibling backfill tickets **AST-541**–**AST-546**.
+* Does **not** change hop-boundary logging from **AST-527** / **AST-530**.
+* Does **not** change dispatch business logic, batch sizes, ledger schema, or scheduler threading model.
+* Does **not** add Betty log-string tests.
+
+## Notes for planning
+
+* Use shared debug helper from **AST-538** (`src/utils/logging.py`); retire hand-rolled `[DEBUG]` INFO lines in touched dispatcher code.
+* Primary file: `src/core/dispatcher.py`. Scheduler handoff paths in dispatch layer only.
+* **AST-557** added representative inflow_discovery instrumentation under **AST-538** — extend to full dispatcher coverage per parent **AST-540** definition; do not regress existing hop/passthrough behavior.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-540-debug-logging-backfill-dispatcher`, child `sub/AST-540/<child-id>-dispatcher-claim-loop-guard-debug`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T03:43:52.450Z
+**Review (Radia)** — diff `origin/dev...origin/sub/AST-540/AST-615-dispatcher-claim-loop-guard-debug` @ `f1921df1`
+
+Plan doc: `docs/features/foundation/ast-615-dispatcher-claim-loop-and-guard-path-debug-instrumentation.md` (§ Review (Radia))
+
+### What's solid
+
+- Stages 1–5 match plan: entity identifier helper, `_dispatch_one` start/skip, loop iteration + exit detail, `_run_task` / `_run_unified` generalized **§1.5.1** contract, circuit-breaker context, chunk headers before consult, batch-end summary after per-index detail.
+- `[DEBUG]` retired in touched dispatcher blocks; `debug=False` paths unchanged (existing component tests).
+- AST-557 inflow-only gates removed — one code path for all task keys.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | `src/utils/config.py` + `_trigger_state_scored` | `f8d5b3a8` adds `dispatch_claim_uses_score_floor` and switches claim gating from `trigger_state_used_by_scored_dispatch_task`. Aligns with **§2.1** / **AST-586** (VALID_TITLE must not score-floor at claim) but ticket says *no business logic* and plan scope is *dispatcher.py only*. Confirm co-land here vs **AST-586** sibling; note on parent if intentional. |
+| **advisory** | `_run_dispatch_loop` | `total=loop_iter` mid-loop — plan Stage 2 decision; OK for UAT. |
+
+### Recommended actions
+
+- **resolve-child:** no **fix-now** on debug instrumentation.
+- **discuss:** confirm config/claim-helper scope (row above) before merge-parent rollup.
+- Susan UAT Stage 6 optional per plan.
+
+#### ada — 2026-06-14T03:41:35.785Z
+Manifest green @ `f8d5b3a8`:
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_dispatcher.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+**85 passed.** One product fix: `dispatch_claim_uses_score_floor` + `_trigger_state_scored` wiring (AST-586 claim regression in Betty's dispatcher suite).
+
+#### betty — 2026-06-14T03:39:49.893Z
+## QA test manifest (Betty)
+
+**Publish ref:** `origin/sub/AST-540/AST-615-dispatcher-claim-loop-guard-debug` @ `f5228acc`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `a1b59e32bbcaf603bd06deac798965b3bdaadd1ebcd7a97aa749df6477681cd7` — see §7.13zzb
+
+**Classification:** manifest-only — instrumentation-only diff in `src/core/dispatcher.py`; parent and child forbid Betty log-string tests. Existing **`LOCKED_AT_100`** dispatcher suite + AST-538 contract regression.
+
+### Run (engineer `test-child`)
+
+1. **`tests/component/core/test_dispatcher.py`** (full file) — branch-lock regression for touched orchestration paths:
+   - **`TestRunUnified`** — claim, chunk exhaust, inflow company batches, `test_returns_zero_without_debug_logging` (debug=False spot-check path)
+   - **`TestRunDispatchLoop`** — min_count skip, drain flag, zero processed, max_runs
+   - **`TestDispatchOne`** — scheduler handoff / `_dispatch_one`
+   - **`TestRunTask::test_runs_without_debug_logging`**
+   - **`TestCircuitBreaker`**
+
+2. **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** — §7.13zt contract helper regression (no log-string golden files)
+
+**Narrowed gate:**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_dispatcher.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+### Out of manifest scope (plan Stage 6)
+
+Manual UAT spot-check with `debug=True` / `debug=False` on live dispatch rows — Ada documents in build comment or Susan UAT; not automated in this pass.
+
+— Betty
+
+#### ada — 2026-06-14T03:32:09.195Z
+Plan doc: [ast-615-dispatcher-claim-loop-and-guard-path-debug-instrumentation.md](https://github.com/susansomerset/astral/blob/sub/AST-540/AST-615-dispatcher-claim-loop-guard-debug/docs/features/foundation/ast-615-dispatcher-claim-loop-and-guard-path-debug-instrumentation.md) @ `7079d25a`
+
+Five implementation stages in `src/core/dispatcher.py` only: scheduler task start + guard skips, loop drain iteration/stop reasons, generalized `_run_task` (retire all `[DEBUG]` there), full `_run_unified` claim/chunk/batch-end instrumentation (unify AST-557 inflow-only gates), circuit-breaker debug detail. Stage 6 is manual UAT spot-check per parent AC 4 — no Betty log-string tests.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — single core file; helpers stay in `logging.py` unchanged.
+- **Conf:** `high` — AST-554/557 patterns extend to all dispatcher paths with step-level instructions.
+- **Risk:** `Medium` — shared scheduler/dispatch infrastructure; gating mistakes would affect all tasks.
+
+---
+
 # AST-615 — Dispatcher claim, loop, and guard-path debug instrumentation (Debug logging backfill: dispatcher)
 
 - **Linear (this ticket):** [AST-615](https://linear.app/astralcareermatch/issue/AST-615/dispatcher-claim-loop-and-guard-path-debug-instrumentation-debug)

@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-613 archived 2026-06-23 -->
+
+## Linear archive (AST-613)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-613/uat-stytch-magic-link-and-google-oauth-redirect-url-mismatch-use  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-609 — Use stytch for user authentication  
+**Blocked by / blocks / related:** parent: AST-609
+
+### Description
+
+## What failed
+
+On the Login page, entering `susan@susansomerset.com` for magic link returns Stytch error: *The magic_link_url in the request did not match any redirect URLs set for this project.*
+
+Clicking Google SSO returns HTTP 400 `no_match_for_provided_oauth_url` — *The oauth redirect url in the request did not match any redirect URLs set for this project.*
+
+## Expected
+
+Magic link and Google OAuth complete successfully; user lands on `/authenticate` then the authenticated app with Bearer on API calls.
+
+## Repro
+
+1. Open the app (Railway staging or local) → Login page.
+2. Enter email for magic link **or** click Google — observe Stytch redirect URL validation error.
+3. App currently sends redirect `${window.location.origin}/authenticate` from `Login.tsx`.
+
+## Parent AC (quoted inline)
+
+> Unauthenticated users see login; authenticated users reach the app with valid Bearer on all API calls.
+
+> It is time to implement proper user authentication and I want to use the STYTCH platform for this purpose.
+
+## Boundaries
+
+* This bug does **not** change: Flask auth decorators (**AST-611**), Stytch Python client (**AST-610**), admin UI gating logic beyond login redirect configuration.
+* Does **not** replace Stytch with another provider.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-609-use-stytch-for-user-authentication`, child `sub/AST-609/AST-613-stytch-login-redirect-urls`.
+
+### Comments
+
+#### radia — 2026-06-13T00:00:16.594Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-609/AST-613-stytch-login-redirect-urls` @ `cb671bbe`
+
+Doc: `docs/features/foundation/ast-613-stytch-login-redirect-urls.md` (Review section)
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### Advisory
+
+- **Stage 3 ops (Susan):** Stytch Dashboard must register exact redirect URLs (Login + Sign-up) and Railway must set `VITE_STYTCH_REDIRECT_URL` to the same string — code cannot bypass Stytch allowlist validation. See plan Stage 3 and `env.example`.
+- **`Login.tsx`:** `stytchLoginConfig` is rebuilt each render; fine at this scale. Consider `useMemo` only if Stytch re-init becomes visible in profiling.
+
+### Signed off
+
+| Check | Result |
+|-------|--------|
+| Plan Stages 1–2 | `stytchRedirect.ts`, env contract, `Login.tsx` all four redirect fields |
+| §1.3 DRY / §2.1 Config | Single helper; Vite env + origin fallback matches AST-612 pattern |
+| §3.3 Layers | Frontend-only; no scope creep into AST-610/611/612 |
+| Betty tests | Env trim/slash, fallback, Login config wiring covered |
+
+#### betty — 2026-06-12T23:58:50.919Z
+## QA test manifest (AST-613)
+
+**Publish ref:** `origin/sub/AST-609/AST-613-stytch-login-redirect-urls` @ `c12b9af8`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum:** `075a7200eda2218752169855cf2bb9ab8b2e2980`
+
+1. `tests/component/frontend/lib/test_stytchRedirect.test.ts` — `VITE_STYTCH_REDIRECT_URL` trimmed (no trailing slash); fallback `${origin}/authenticate` when env unset
+2. `tests/component/frontend/pages/test_Login.test.tsx` — renders `Login` page; asserts magic-link + OAuth redirect URLs wired through helper (§6c routed page)
+
+**Narrowed run** (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../tests/component/frontend/lib/test_stytchRedirect.test.ts \
+  ../tests/component/frontend/pages/test_Login.test.tsx
+```
+
+**Existing coverage (unchanged):** AST-612 manifest rows in bible §7.13zza — no regressions expected on auth gate components.
+
+**Note:** Stytch Dashboard allowlist + Railway `VITE_STYTCH_REDIRECT_URL` remain operator prerequisites for manual UAT; tests mock Stytch and do not hit the live API.
+
+#### katherine — 2026-06-12T23:55:07.234Z
+Plan: [docs/features/foundation/ast-613-stytch-login-redirect-urls.md](https://github.com/susansomerset/astral/blob/sub/AST-609/AST-613-stytch-login-redirect-urls.md) @ `origin/sub/AST-609/AST-613-stytch-login-redirect-urls` @ `0c7a3b6c`
+
+**Approach:** Stytch requires an exact allowlist match for magic-link and OAuth redirect URLs. AST-612 sent `${window.location.origin}/authenticate` at runtime; this fails when the dashboard still has Stytch defaults (`localhost:3000`) or when Railway needs a build-time pin. Plan adds `getStytchAuthenticateRedirectUrl()` (`VITE_STYTCH_REDIRECT_URL` → fallback to current origin), wires `Login.tsx`, and expands `env.example` with the precise Dashboard checklist (Login + Sign-up redirect types, Authorized environments, Google OAuth).
+
+**Self-assessment**
+- **Scope:** `scope-minor` — one helper, `Login.tsx`, env typings/docs only.
+- **Conf:** `conf-high` — Stytch exact-match rules are documented; change reuses AST-612 `StytchLogin` shape.
+- **Risk:** `risk-Medium` — login remains critical-path; wrong URL blocks entire auth flow (same as current UAT failure).
+
+**Susan ops (required for UAT):** Register `http://localhost:5173/authenticate` and `https://<railway-host>/authenticate` (Login + Sign-up) plus matching Authorized environment origins before re-testing.
+
+---
+
 # AST-613 — UAT: Stytch magic link and Google OAuth redirect URL mismatch (Use stytch for user authentication)
 
 - **Linear (this ticket):** [AST-613](https://linear.app/astralcareermatch/issue/AST-613/uat-stytch-magic-link-and-google-oauth-redirect-url-mismatch-use)
