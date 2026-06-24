@@ -214,3 +214,98 @@ class TestAst783RepoAdminJsonDivergence:
     def test_revert_unknown_table_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown repo admin JSON table"):
             repo_json_mod.revert_repo_admin_json_table("__nope__")
+
+
+AST786_EXPECTED_TASK_KEYS = frozenset(
+    {
+        "advise_job_resume",
+        "analysis_upshot",
+        "anticipate_scan",
+        "check_cover_letter",
+        "check_job_resume",
+        "contemplate_job",
+        "craft_company_search_terms",
+        "craft_do_rubric",
+        "craft_get_rubric",
+        "craft_jobdesc_rubric",
+        "craft_joblist_rubric",
+        "craft_like_rubric",
+        "craft_prefilter_rubric",
+        "craft_resume_base",
+        "draft_cover_letter",
+        "draft_job_resume",
+        "evaluate_jd",
+        "fetch_jd",
+        "fetch_job_pages",
+        "fetch_website",
+        "finalize_cover_letter",
+        "finalize_job_resume",
+        "gaze",
+        "grade_do",
+        "grade_get",
+        "grade_like",
+        "inflow_discovery",
+        "intake_build_request",
+        "intake_candidate_response",
+        "intake_initiate_candidate",
+        "parse_job_list",
+        "prefilter_company",
+        "propose_application_responses",
+        "qualify_job_listings",
+        "recheck_no_openings",
+        "select_job_page",
+        "vet_inflow_discovery",
+    },
+)
+
+
+class TestAst786AgentTaskRepoJsonSeed:
+    """AST-786 UAT: populated 37-row agent_task repo JSON from UAT fixture."""
+
+    def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
+        repo = Path("data/admin/agent_task.json")
+        fixture = Path("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert repo.is_file() and fixture.is_file()
+        assert repo.read_bytes() == fixture.read_bytes()
+
+    def test_repo_json_has_37_current_catalog_keys(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        assert len(rows) == 37
+        assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
+        assert all(row["current"] == 1 for row in rows)
+
+    def test_spot_check_rows_have_agent_id_and_user_prompt(self) -> None:
+        by_key = {
+            row["task_key"]: row
+            for row in json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        }
+        for task_key in ("prefilter_company", "grade_get", "anticipate_scan"):
+            row = by_key[task_key]
+            assert str(row["agent_id"]).strip()
+            assert str(row["user_prompt"]).strip()
+
+    def test_startup_apply_loads_all_37_current_rows(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.data import database as database_mod
+
+        monkeypatch.setattr(database_mod, "_validate_run_next", lambda _c, _k, _rn: None)
+        rows = repo_json_mod.load_repo_admin_json_file("agent_task")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            sqlite_in_memory._ensure_agent_task_schema(conn)
+            expected_cols = set(sqlite_in_memory.table_columns(conn, "agent_task"))
+            for index, row in enumerate(rows, start=1):
+                assert set(row.keys()) == expected_cols, f"row {index} {row['task_key']}"
+            sqlite_in_memory.apply_agent_task_repo_json_startup(conn, rows)
+            conn.commit()
+            count = conn.execute(
+                "SELECT COUNT(*) FROM agent_task WHERE current = 1",
+            ).fetchone()[0]
+            assert count == 37
+            loaded = sqlite_in_memory.get_agent_task("prefilter_company")
+            assert loaded is not None
+            assert loaded["agent_id"] == "job_analyst_grace"
+            assert loaded["user_prompt"]
+        finally:
+            conn.close()
