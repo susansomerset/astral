@@ -516,3 +516,13 @@ cd src/ui/frontend && npm run test:component -- \
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+---
+
+### AST-782 · AST-756
+
+**`REPO_ADMIN_JSON_CONFIG`:** repo-relative paths under `data/admin/`, agent export column list (excludes legacy `model_code`), fixed apply order **agent → agent_task**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Path helpers + table key order | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig` |
