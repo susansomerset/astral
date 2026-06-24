@@ -113,3 +113,9 @@ No conflicts requiring plan revision.
 ## Execution contract
 
 Binding per **plan-child**: **Stage 1** only; **one commit** on epic worktree during **build-child**, publish to **`origin/sub/AST-761/ast-780-scheduled-actions-error-toast`**. Do not edit `tests/`, `docs/ASTRAL_TEST_BIBLE.md`, or `docs/test-bible/**`. On ambiguity — **`🛑 Stage 1 blocked`** on parent **AST-761**; stop.
+
+---
+
+## Review (Radia)
+
+**Built:** `origin/sub/AST-761/ast-780-scheduled-actions-error-toast` @ `523abff`
