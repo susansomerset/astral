@@ -173,3 +173,11 @@ Incorrect graduation (promote without persist, or skip after success) breaks Rec
 | §3.5 naming | `_try_graduate_*` prefix matches consult artifact batch private helpers. |
 
 No unresolved conflicts with ASTRAL_CODE_RULES.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` @ `35326f8`
+
+Stage 1–2: `_try_graduate_artifact_job_to_candidate_review` — fresh DB persist gate (`job_has_persisted_resume_body(..., None)`), `CANDIDATE_REVIEW` transition, AST-538 Style D debug; `_run_job_artifact_entry_batch` calls helper with structured failure logging. Component tests deferred to Betty per build-child test-tree ban.
