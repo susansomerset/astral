@@ -326,3 +326,41 @@ No conflicts requiring `!!-NONE`.
 **Built:** All four plan stages — idempotent dispatch migration; config qualify @ **NEW** + alias removal; **`fetch_jd_batch`**; inline **`validate_title_batch`** in **`qualify_job_listings`**; **`fetch_jd`** routing cutover.
 
 **QA note:** Betty manifest for migration tests, **`fetch_jd`** routing, inline qualify, gazer/tracker renames — verify-only per plan.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-794/ast-797-runtime-routing-db-migration-inline-validate-title` @ `1a14ea5`  
+**Product commits:** `ab9cbf4` database · `01b1c49` config · `af00bbd` gazer · `0461cf7` consult/tracker/admin/dispatcher  
+**Includes AST-796 config cutover** on publish ref (epic prerequisite — expected rollup, not sibling bleed).
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Stage 1 — DB migration | DELETE-before-UPDATE **`scrape_jd` → `fetch_jd`** (collision-safe); purge **`validate_title`** / **`gaze_board`**; qualify **`VALID_TITLE` → `NEW`** + **`VALID_TITLE_RETRY`** companion seed; bind tuple / column count verified; idempotent on re-ensure. |
+| Stage 2 — Config | Transitional **`GAZER_CONFIG["scrape_jd"]`** alias removed; **`qualify_job_listings`** trigger **`NEW`**; AST-796 schedulable/retired catalogs retained. |
+| Stage 3 — Gazer | **`fetch_jd_batch`** rename complete; reads **`GAZER_CONFIG["fetch_jd"]`**; **`func="gazer.fetch_jd_batch"`** on all debug paths (§1.5.1). |
+| Stage 4 — Runtime | Inline **`validate_title_batch`** pre-step in **`qualify_job_listings`** with **`claimed_total`** accounting; **`fetch_jd`** routing; retired **`validate_title`** / **`scrape_jd`** branches removed; tracker coat-check + admin adhoc updated. |
+| §2.4 / §2.6 | Title screening still via gazer transitions; qualify AI gated on **`VALID_TITLE`** / **`VALID_TITLE_RETRY`** only; batch summary merges inline failures into **`failed`/`total`**. |
+| §3.3 | Lazy gazer imports in consult match existing routing pattern; no new cross-layer violations. |
+| Tests + bible | **`TestAst797DispatchKeyCutoverMigration`**, **`TestAst797QualifyInlineValidateTitle`**, config/gazer/tracker/dispatcher renames; bible manifest rows updated. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — ship with **AST-796** on epic rollup; do not isolate to **`dev`** without sibling runtime (plan Risk: HIGH).
+
+— Radia
