@@ -57,6 +57,11 @@ def rewrite_merge_ticket_log(entries: list[dict]) -> None:
     _write_entries(entries)
 
 
+def rebuild_merge_ticket_log(entries: list[dict]) -> None:
+    """Replace log contents from prep-uat rebuild (AST-800)."""
+    rewrite_merge_ticket_log(entries)
+
+
 def append_merge_ticket_log(ticket_id: str) -> dict:
     """Record parent id for deploy UI. Re-prep-uat of same id updates timestamp only."""
     normalized = _normalize_ticket_id(ticket_id)

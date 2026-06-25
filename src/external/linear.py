@@ -1,4 +1,4 @@
-"""Linear GraphQL client for deploy-status parent state lookup (AST-792)."""
+"""Linear GraphQL client for deploy-status and prep-uat log rebuild (AST-792/800)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,11 @@ LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
 _TEAM_KEY = "AST"
 _LINEAR_KEY_ENVS = ("LINEAR_API_KEY", "LINEAR_KEY_CHUCKLES", "LINEAR_KEY_CURSOR")
 
-__all__ = ["LinearApiError", "fetch_parent_issue_states"]
+__all__ = [
+    "LinearApiError",
+    "fetch_parent_issue_states",
+    "fetch_user_testing_parent_ids",
+]
 
 
 def _resolve_linear_api_key() -> str:
@@ -93,3 +97,44 @@ def fetch_parent_issue_states(ticket_ids: list[str]) -> dict[str, str | None]:
         if isinstance(identifier, str) and isinstance(name, str):
             found[identifier] = name
     return {ticket_id: found.get(ticket_id) for ticket_id in normalized}
+
+
+def fetch_user_testing_parent_ids(uat_state_name: str = "User Testing") -> list[str]:
+    """Return sorted top-level parent epic ids in the given Linear workflow state."""
+    query = """
+    query UserTestingParents($teamKey: String!, $state: String!, $after: String) {
+      issues(
+        filter: {
+          team: { key: { eq: $teamKey } }
+          state: { name: { eq: $state } }
+          parent: { null: true }
+        }
+        first: 100
+        after: $after
+      ) {
+        pageInfo { hasNextPage endCursor }
+        nodes { identifier }
+      }
+    }
+    """
+    identifiers: set[str] = set()
+    after: str | None = None
+    while True:
+        variables: dict = {
+            "teamKey": _TEAM_KEY,
+            "state": uat_state_name,
+            "after": after,
+        }
+        data = _graphql(query, variables)
+        issues = data.get("issues") or {}
+        for node in issues.get("nodes") or []:
+            identifier = node.get("identifier")
+            if isinstance(identifier, str) and identifier.strip():
+                identifiers.add(identifier.strip().upper())
+        page_info = issues.get("pageInfo") or {}
+        if not page_info.get("hasNextPage"):
+            break
+        after = page_info.get("endCursor")
+        if not after:
+            break
+    return sorted(identifiers)
