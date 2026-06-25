@@ -59,7 +59,8 @@ from src.utils.config import (
     dispatch_task_key_retired_message,
     get_task_keys,
     dispatch_claim_uses_score_floor,
-    resume_artifact_compound_state,
+    BUILD_ARTIFACTS_BASE_STATE,
+    legacy_build_artifacts_hop,
     resume_artifact_hop_task_keys,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
@@ -936,9 +937,8 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     else:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
     if tk in resume_artifact_hop_task_keys():
-        expected = resume_artifact_compound_state(tk)
-        if ts != expected:
-            return f"task_key {tk!r} requires trigger_state {expected!r} (got {ts!r})"
+        if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_build_artifacts_hop(ts) != tk:
+            return f"task_key {tk!r} requires trigger_state {BUILD_ARTIFACTS_BASE_STATE!r} (got {ts!r})"
     return None
 
 

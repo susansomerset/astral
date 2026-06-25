@@ -376,3 +376,11 @@ Wrong chain entry, graduation, or retry/error classification breaks Recommended 
 | §3.5 naming | `do_chain_for_job`, `_chain_*` helpers, `BUILD_ARTIFACTS_BASE_STATE` constants. |
 
 No unresolved conflicts with ASTRAL_CODE_RULES.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-788/AST-803-build-artifacts-chain-dispatch` (pending publish)
+
+Stages 1–7: flat `BUILD_ARTIFACTS` + `ERROR_BUILD_ARTIFACTS`, `task_type: CHAIN` on resume hops, removed AST-789/597 compound progression, `do_chain_for_job` + `_run_build_artifacts_chain_batch`, dispatcher/admin flat trigger validation. Component tests deferred to Betty per build-child test-tree ban.
