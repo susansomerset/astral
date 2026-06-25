@@ -190,3 +190,15 @@ No conflicts flagged.
 **Outcome:** Clean — next prep-uat land should include landing parent in deploy-env tooltip.
 
 — Radia
+
+---
+
+## Resolution (2026-06-25)
+
+**Review:** Radia clean — 0 fix-now · 0 discuss · 0 advisory @ `7f84f9d`.
+
+**Product changes:** None beyond build (`f52d9f3`, `06419e3`). No resolve commits required.
+
+**§9a dry-run:** `origin/sub/AST-801/AST-805-uat-merge-ticket-log-missing-after-prep-uat` @ `7f84f9d` merges cleanly into `origin/dev` and `origin/ftr/AST-801-inflow-discovery-eligibility-zero-available`.
+
+**Shipped:** Prep-uat **`--landing-parent`** bypass closes the Linear-state ordering gap; next **AST-801** (or any parent) prep-uat land includes the landing parent in `merge_ticket_log.json` before Chuckles moves Linear to **User Testing**.
