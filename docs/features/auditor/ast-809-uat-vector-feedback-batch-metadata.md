@@ -204,12 +204,35 @@ No unresolved rule conflicts.
 
 ## Review (Radia)
 
-_Pending review after build._
+**Diff:** `origin/dev...origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata` (code tip `4a9f125`)  
+**Reviewed:** 2026-06-18
 
----
+Focused UAT fix diff (10 files) — sibling epic commits already on `origin/ftr`; this review is AST-809 only.
 
-## Build (Ada)
+### What's solid
 
-**Publish ref:** `origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata`
+| Area | Notes |
+|------|-------|
+| Plan fidelity (backend) | Lazy `ALTER TABLE` for `batch_size` + `completed_at`; greenfield CREATE updated; header inventory updated. |
+| Insert path | 11 columns / 11 bind params; `ts` shared for `completed_at` + `created_at`; `bs` default 1; truthy `batch_id` gate on insert. |
+| Capture hook | `_capture_rubric_vector_feedback` skips when `batch_id` blank; passes `batch_size` + `completed_at` from `do_task` SUCCESS hook. |
+| Admin API | `_VECTOR_FEEDBACK_COLUMNS` + `list_vector_feedback` SELECT include new fields; `req_dict=1` tests pass. |
+| §2.4 batch | Metadata sourced from dispatch `batch_id` / `ctx.batch_size`; no grading impact. |
+| Tests | `TestAst809VectorFeedbackBatchMetadata` (agent + api_admin); database list test in manifest. |
 
-**Commits:** `f9a01f6` (schema + insert + list query), `0d48bfc` (capture hook), `5316f88` (admin columns)
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| **fix-now** | `AdminVectorFeedback.tsx` | Plan Stage 3 assumes columns appear via `req_dict=1`, but the page uses **hardcoded** `detailColumns` and fetches `/api/admin/vector_feedback` **without** `req_dict`. `batch_size` and `completed_at` are in API JSON but **not rendered** — UAT AC requires Admin exposure of all three metadata fields. Add columns after `batch_id` (mirror `_VECTOR_FEEDBACK_COLUMNS`) or switch detail table to `req_dict=1` pattern. |
+| advisory | Plan vs AST-725 | Stage 3 "no React changes" relied on req_dict auto-display; AST-725 shipped static columns — plan assumption stale. |
+| advisory | Legacy rows | Post-`ALTER`, existing rows have NULL `completed_at` / `batch_size` until re-capture — expected per Self-Assessment. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | Add `batch_size` + `completed_at` to `detailColumns` in `AdminVectorFeedback.tsx` (or req_dict-driven columns); optional frontend test assertion. |
+| UAT | Re-run Susan scenario: dispatch rubric task → Admin Vector Feedback shows batch id, size, and completed timestamp on new rows. |
+
+**Verdict:** One fix-now (Admin UI columns). Backend/capture path approve; resolve then UAT.
