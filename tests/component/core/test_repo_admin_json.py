@@ -393,8 +393,6 @@ class TestAst787AgentRepoJsonSeed:
             assert grace["content"]
         finally:
             conn.close()
-<<<<<<< HEAD
-=======
 
 class TestAst793AgentTaskRevertDivergence:
     """AST-793 UAT: revert clears agent_task divergence via exact repo JSON apply."""
@@ -476,4 +474,3 @@ class TestAst793AgentTaskRevertDivergence:
         repo_json_mod.revert_repo_admin_json_table("agent_task")
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent_task"]["diverged"] is False
 
->>>>>>> 7b2051b
