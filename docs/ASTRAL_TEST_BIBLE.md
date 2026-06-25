@@ -274,37 +274,21 @@ Hop-to-hop **`chain_context`** uses **`CALLER_SYSTEM`**, **`CALLER_CACHE_A`**–
 | --- | --- | --- |
 | Routed Manage Tasks UX | `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` (**`AST-456`**), `tests/component/frontend/lib/test_manageTasksTokenPicker.test.ts` (**merged picker**) |
 
+## 7.13 boards channel (SUNSET — AST-757)
+
+**No active manifest.** Astral Boards removed (**AST-765** product, **AST-766** schema). Revival SHAs and rationale: **`docs/ASTRAL_CODE_RULES.md` §3.7**. Historical plans: **`docs/features/boards/`**. Retired monolith subsections below are archive index only.
+
 ## 7.13q Astral Boards `board_search` REST + DDL + workflow **`state`** (**AST-458**, **AST-471**, parent **AST-379**)
 
-Workflow **`state`**: **`ACTIVE`** | **`INACTIVE`** | **`ERROR`** (literals **`BOARD_SEARCH_STATES`**); claim requires **`ACTIVE`** plus clear **`batch_id`** (§2.4 lock = **`batch_id`** only — **`clear_board_search_batch`** clears **`batch_id`** alone). **`enabled`** removed. **`search_mode`** (API **`mode`**: `criteria` \| `deeplink`), **`deeplink_url`**, **`entry_url`** / deeplink **`netloc`** parity, duplicates per **AST-458**. **`gaze_board`** seed uses **`trigger_state`** **`ACTIVE`**, **`entity_type`** **`board_search`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| `board_search` schema + **`claim_board_search_batch`** ACTIVE + clear batch + **`last_scan_at`** cadence (AST-482) | `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestClaimBoardSearchSqlShape`**, **`TestBoardSearchLastScanCadenceAst482`**) |
-| Deeplink normalization + duplicate fingerprints | `src/core/boards.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardDeeplinkNormalize`**) |
-| REST `/api/boards/searches` (reject legacy **`enabled`**) | `src/ui/api/api_boards.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**, **`test_list_adopted_boards_for_picker`**) |
-| **`ingest_board_listings`** (gaze → jobs) | `src/core/tracker.py` | `tests/component/core/test_tracker.py` (**`TestIngestBoardListings`**) |
-| **`process_gaze_board_batch`** + **`set_board_search_state`** | `src/core/gazer.py` | `tests/component/core/test_gazer.py` (**`TestProcessGazeBoardBatch`**) |
-| **`run_consult_task`** / **`_run_unified`** `entity_type=board_search` (**`ACTIVE`**) | `src/core/consult.py`, `src/core/dispatcher.py` | `tests/component/core/test_consult.py`, `tests/component/core/test_dispatcher.py` |
-| **`board_search_deeplink`** | `src/external/playwright.py` | `tests/component/external/test_playwright.py` (**`TestBoardSearchDeeplink`**) |
-| Scheduler **`_tick_loop`** wait → **`clear`** | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py` (**`TestScheduler::test_tick_loop_calls_clear_after_wait_then_stops`**) |
-| Locked-file branch gate (AST-455 chain preview ripple on **458** handoff) | `src/core/candidate.py`, `src/core/agent.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_candidate.py` (**chain_sim preview**), `tests/component/core/test_agent.py` (**`TestAst455SevenSegmentAssembly`**, **`TestChainContext`**, **`TestStoreBlocks`**), `tests/component/ui/api/test_api_admin.py` (**`test_preview_task_chain_sim_and_chain_tokens`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh` (includes this file).
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13r `gaze_board` claim filter — **`state = ACTIVE`** (**AST-471**, supersedes **AST-459** **`enabled`** idea)
 
-Eligible rows for **`claim_board_search_batch`** are **`state = 'ACTIVE'`** with **`batch_id`** cleared. User pause = **`INACTIVE`**; gaze failure sets **`ERROR`** until resume **`ACTIVE`**. Deeplink **`search_mode`** / **`run_board_search_gaze`** URL contract remains **`TestRunBoardSearchGazeAst459`** in **`test_boards.py`** where named.
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13s Manage Candidate Board Searches UI (**AST-457**, **AST-471** UX, parent **AST-379**; **UI retired AST-649**, parent **AST-648**)
 
-**Retired (AST-649):** **`CandidateBoardSearches.tsx`** deleted; nav/route removed — backend **`/api/boards`** and core board modules remain (**§7.13q**). Manifest for removal: **§7.13zzu** (**AST-649**).
-
-**Historical (pre-649):** **`CandidateBoardSearches`** — Active / Paused toggles PATCH **`state`** **`ACTIVE`** ↔ **`INACTIVE`**; **`ERROR`** row shows **Resume ACTIVE**. CRUD via **`/api/boards/searches`**, **`GET /api/boards`** picker.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| REST + DDL (backend unchanged) | `src/ui/api/api_boards.py`, `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**) |
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7. UI removed **AST-649**; backend removed **AST-765**.
 
 ## 7.13t NO_OPENINGS Playwright recheck + **JOBS_FOUND** (**AST-463**, parent **AST-460**)
 
@@ -328,14 +312,7 @@ Generic **`apply_copy_output_table_upsert(table_name, json_payload)`**: parse JS
 
 ## 7.13v Board-sourced qualify + evaluate dispatch (**AST-419**, parent **AST-379**)
 
-Board jobs ingested via **`ingest_board_listings`** (placeholder **`__board__{board_key}`** company, **`board_search_id`**, state **`NEW`**) must reach **`validate_title` → `qualify_job_listings` → `scrape_jd` → `evaluate_jd`** through normal **`claim_job_batch` / `get_new_job_batch`** dispatch — no state-machine bypass. Uses real SQLite (**`seeded_db`**); consult/scrape agent calls mocked.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Board ingest → **`NEW`** + placeholder company | `src/core/tracker.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`TestBoardSourcedQualifyEvaluateAst419::test_board_ingest_starts_in_new_with_board_search_id`**) |
-| Full qualify/evaluate dispatch chain for board jobs | `src/core/tracker.py`, `src/core/gazer.py`, `src/core/consult.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`test_board_job_reaches_qualify_and_evaluate_dispatch`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core/test_board_sourced_qualify_evaluate.py`.
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13w Consult config absorb — `GAZER_CONFIG` + `TASK_CONFIG` orchestration (**AST-466**, **AST-467**, **AST-468**, parent **AST-376**)
 
@@ -343,14 +320,13 @@ Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_tit
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`**, board registry layout | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestBoardRegistryAst457`**, **`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
-| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `consult_*` dispatch → **`grade_*`** orch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). **`TestProcessGazeBoardBatch`** is **`§7.13q`** / boards spine (**`process_gaze_board_batch`**) — if that symbol is absent on your tip, rerun gazer narrowly with **`pytest tests/component/core/test_gazer.py -k 'not ProcessGazeBoardBatch'`** alongside consult before asserting full-file green. |
+| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
+| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `consult_*` dispatch → **`grade_*`** orch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). |
 | Dispatch resolution helpers (**AST-468**) | `src/core/dispatcher.py`, `src/data/database.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_admin.py` |
-| Board-sourced pipeline still sees same states | `src/core/tracker.py`, consult + gazer | `tests/component/core/test_board_sourced_qualify_evaluate.py` |
 
 Sibling **AST-468** dispatch helpers documented in **§7.13x**.
 
-Manifest default ( **`test-astral`** on publish tip — consult/config scope; avoids unrelated **`origin/dev`** board integration gaps): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
+Manifest default ( **`test-astral`** on publish tip — consult/config scope): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
 
 **Harness:** `./scripts/testing/run_component_tests.sh` with trailing paths forwards them to **`pytest`** (narrow selection + same **`--cov=src`** / JSON report wiring). **`check_per_file_coverage.py`** (**`LOCKED_AT_100`**) runs **only** with zero args (full **`tests/component`** selection); narrowed manifest calls skip that gate because branch rows are incomplete for untouched locked modules.
 
@@ -367,7 +343,7 @@ Manifest default ( **`test-astral`** on publish tip — dispatch/admin resolutio
 
 ## 7.13y LIKE → `PASSED_LIKE`, Recommended queue, synthesis handoff (**AST-479** / **AST-480**, parent **AST-478**)
 
-**`consult_like`** success lands in **`PASSED_LIKE`** (not **`BUILD_ARTIFACTS`**). **`RECOMMENDED_JOB_STATES`** lists **`RECOMMENDED`**, **`BUILD_ARTIFACTS`**, **`CANDIDATE_REVIEW`** — pre-upshot **`PASSED_LIKE`** stays in **`IN_REVIEW`** / score-gated consult views. **`analysis_upshot`** dispatch (**AST-480**) runs at **`PASSED_LIKE`** / **`PASSED_LIKE_RETRY`** (scored claim), persists **`job_data["analysis_upshot"]`**, transitions **`PASSED_LIKE` → `RECOMMENDED`** (or **`PASSED_LIKE_RETRY`** on failure).
+**`grade_like`** success lands in **`PASSED_LIKE`** (not **`BUILD_ARTIFACTS`**). **`RECOMMENDED_JOB_STATES`** lists **`RECOMMENDED`**, **`BUILD_ARTIFACTS`**, **`CANDIDATE_REVIEW`** — pre-upshot **`PASSED_LIKE`** stays in **`IN_REVIEW`** / score-gated consult views. **`analysis_upshot`** dispatch (**AST-480**) runs at **`PASSED_LIKE`** / **`PASSED_LIKE_RETRY`** (scored claim), persists **`job_data["analysis_upshot"]`**, transitions **`PASSED_LIKE` → `RECOMMENDED`** (or **`PASSED_LIKE_RETRY`** on failure).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -434,25 +410,7 @@ When **pytest** is green, full **`./scripts/testing/run_component_tests.sh`** re
 
 ## 7.13za Board search **`last_scan_at`** **`gaze_board`** cadence (**AST-482**, parent **AST-379**)
 
-Mirror company **`WATCH` / `gaze`**: nullable **`board_search.last_scan_at`**, **`BOARDS_CONFIG["gaze_board"]["scan_interval_hours"]`** (default **24**), staleness **`AND`** in **`claim_board_search_batch`** matches **`count_eligible_for_dispatch_task`** ( **`freq_hrs` override** when **> 0**). **`dispatch_task`** seed **`sort_by`** **`last_scan_at`** (+ migration **`updated_at` → `last_scan_at`** for legacy rows). **`update_board_search_last_scan_at`** bumps **only success path** after **`run_board_search_gaze`** in **`process_gaze_board_batch`** (no bump on **`except`**). Dispatcher passes **`scan_interval_hours`** + **`sort_by`** into **`claim_board_search_batch`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Claim staleness **`NULL`** / stale / fresh + **`count_eligible`** parity + **`freq_hrs`** tightening | `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchLastScanCadenceAst482`**) |
-| Success bump vs failure silent | `src/core/gazer.py` | `tests/component/core/test_gazer.py` (**`TestProcessGazeBoardBatch`**) |
-| **`_run_unified`** board_search **`scan_interval_hours`** / **`sort_by`** kwargs | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py` (**`TestRunUnified`**) |
-| **`BOARDS_CONFIG["gaze_board"]["scan_interval_hours"]`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst471DispatchConfigHelpers::test_gaze_board_boards_config_scan_interval_hours`**) |
-
-Narrow (**`test-astral`** **AST-482** tip):
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_board_search_integration.py::TestBoardSearchLastScanCadenceAst482 \
-  tests/component/core/test_gazer.py::TestProcessGazeBoardBatch \
-  tests/component/core/test_dispatcher.py::TestRunUnified::test_claims_board_search_batch_and_clears \
-  tests/component/core/test_dispatcher.py::TestRunUnified::test_board_search_claim_passes_freq_and_sort_kw \
-  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_gaze_board_boards_config_scan_interval_hours
-```
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13zb First-segment grade token readability (**AST-483**, parent **AST-472**)
 
@@ -1475,7 +1433,6 @@ Equivalent harness:
 | `scrape_jd_batch` outcome paths (missing link, scrape error, empty/short JD, classify fail, pass) | **`TestScrapeJdBatch`**, **`TestScrapeJdBatchDebugPaths`**, **`TestScrapeJdBatchDebugBranchCoverage`** |
 | `validate_title_batch` pass/fail + batch summary | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
 | `process_gazer_batch` scrape/parse/ingest + dedupe trace | **`TestProcessGazerBatch`**, **`TestProcessGazerBatchDebugPaths`**, **`TestProcessGazerBatchDebugBranchCoverage`**, **`TestLogListingDedupeTrace`** |
-| `process_gaze_board_batch` success/failure rows | **`TestProcessGazeBoardBatch`**, **`TestProcessGazeBoardBatchDebugPaths`** |
 | Identifier helpers | **`TestGazerIdentifierHelpers`** |
 | `debug=False` unchanged | All **`debug=False`** rows above; full-file branch lock |
 
@@ -1803,22 +1760,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ## 7.13zzu Remove board search UI + hide `gaze_board` from Scheduled Actions (**AST-649**, parent **AST-648**)
 
-Retire candidate **Board Searches** nav/route/page and hide **`gaze_board`** from Admin Scheduled Actions APIs (**`ADMIN_CONFIG.hidden_dispatch_task_keys`** + **`admin_hidden_dispatch_task_keys()`**). Backend board tables, **`/api/boards`**, **`DISPATCH_SCHEDULABLE_TASK_KEYS`**, and core dispatch unchanged (**§7.13q**).
-
-| Child | Behavior | Sources | Manifest tests |
-| --- | --- | --- | --- |
-| **AST-649** | Drop **`NAV_CONFIG`** Board Searches item; delete **`CandidateBoardSearches.tsx`** + route; filter **`gaze_board`** from **`GET /api/admin/dispatch_tasks`**, **`/task_keys`**, **`/scheduler/thread_status`** | `src/utils/config.py`, `src/ui/frontend/src/routes.tsx`, `src/ui/api/api_admin.py` | `tests/component/frontend/test_routes.test.tsx` — **`candidate/board_searches`** route absent; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches`; `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions`; **delete** `tests/component/frontend/pages/test_CandidateBoardSearches.test.tsx` |
-
-**AST-649** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_board_searches \
-  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions
-
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/test_routes.test.tsx
-```
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7. UI retired **AST-649**; backend removed **AST-765**.
 
 ## 7.13zzw Core bootstrap runtime startup (**AST-654**, parent **AST-383**)
 
@@ -1836,7 +1778,7 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/ui/test_server.py
 ```
 
-**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** are dispatch-row keys (e.g. **`consult_do`**, **`prefilter`**) resolved via **`resolve_dispatch_task_config_key()`** into **`TASK_CONFIG`** agent keys — raw membership in **`TASK_CONFIG`** fails server import until **`bootstrap.py`** aligns validation with that helper.
+**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** use **`grade_*`** dispatch-row keys (e.g. **`grade_do`**, **`prefilter`**) — same strings as **`TASK_CONFIG`** after **AST-747** identity cutover; **`resolve_dispatch_task_config_key()`** trims only.
 
 ## 7.13zzx Themed confirm — admin native `window.confirm` migration (**AST-659**, parent **AST-639**)
 

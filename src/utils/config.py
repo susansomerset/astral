@@ -8,6 +8,7 @@ Required environment variables (set in Railway / .env):
   ASTRAL_ENCRYPTION_KEY — Encryption key for candidate API keys at rest
   ASTRAL_ALLOWED_IPS    — Comma-separated list of allowed IP addresses for UI access
   ANTHROPIC_API_KEY     — Fallback Anthropic API key (candidates carry their own)
+  LINEAR_API_KEY        — Linear GraphQL (admin deploy footer UAT ticket tooltip — AST-792)
 
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
@@ -17,7 +18,7 @@ Config sections:
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state progression
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
-  GAZER_CONFIG    — gazer batch steps (validate_title, scrape_jd, gaze)
+  GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
   TRACKER_CONFIG  — tracker-specific (ingest, jd processing)
   NAV_CONFIG      — UI navigation structure
@@ -25,6 +26,7 @@ Config sections:
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
   AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
+  REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
 """
 
 import json
@@ -77,8 +79,9 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
 
 _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
     "label": {"type": "str", "required": True},
+    "code": {"type": "str", "required": True},
     "content": {"type": "str", "required": True},
-    "importance": {"type": "int", "required": True, "min": 1, "max": 10},
+    "importance": {"type": "int", "required": True, "min": 0, "max": 10},
 }
 _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "criteria": {
@@ -87,6 +90,21 @@ _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
         "items_schema": _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA,
     },
 }
+
+# Optional TASK_CONFIG.task_type: CRAFT | RUBRIC | CHAT | CHAIN (schema-only except CHAIN in consult).
+TASK_TYPES = frozenset({"CRAFT", "RUBRIC", "CHAT", "CHAIN"})
+BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
+ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
+LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
+RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
+_RESUME_ARTIFACT_HOP_TASK_KEYS = (
+    "anticipate_scan",
+    "contemplate_job",
+    "advise_job_resume",
+    "draft_job_resume",
+    "check_job_resume",
+    "finalize_job_resume",
+)
 
 # ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
@@ -97,8 +115,6 @@ TASK_CONFIG = {
     # PREP CANDIDATE ARTIFACTS PROMPTS
     # CRAFT RESUME BASE - Judith 3
     "craft_resume_base": {
-        "phase": "A. Candidate Context",
-        "seq": 1,
         "response_schema": {
             "resume_structure": {"type": "dict", "required": True},
             "candidate_name": {"type": "str", "required": True},
@@ -119,8 +135,6 @@ TASK_CONFIG = {
     },
     # BOOTSTRAP CANDIDATE CONTEXT - Estelle 3
     "bootstrap_candidate_context": {
-        "phase": "A. Candidate Context",
-        "seq": 2,
         "response_schema": {
             "bio_summary": {"type": "str", "required": True},
             "strengths": {"type": "str", "required": True},
@@ -135,8 +149,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "intake_initiate_candidate": {
-        "phase": "A. Candidate Intake",
-        "seq": 1,
         "response_schema": {
             "ready_to_build": {"type": "bool", "required": True},
             "assistant_message": {"type": "str", "required": True},
@@ -148,8 +160,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "intake_candidate_response": {
-        "phase": "A. Candidate Intake",
-        "seq": 2,
         "response_schema": {
             "ready_to_build": {"type": "bool", "required": True},
             "assistant_message": {"type": "str", "required": True},
@@ -161,8 +171,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "intake_build_request": {
-        "phase": "A. Candidate Intake",
-        "seq": 3,
         "response_schema": {
             "context.bio_summary": {"type": "str", "required": True},
             "context.backstory": {"type": "str", "required": True},
@@ -180,8 +188,6 @@ TASK_CONFIG = {
     },
     # Phase B. Candidate Artifacts
     "craft_prefilter_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 1,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -189,8 +195,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_joblist_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 2,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -198,8 +202,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_jobdesc_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 3,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -207,8 +209,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_get_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 4,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -216,8 +216,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_do_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 5,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -225,8 +223,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_like_rubric": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 6,
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
         "entity_type": None,
@@ -234,8 +230,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "craft_company_search_terms": {
-        "phase": "B. Candidate Artifacts",
-        "seq": 8,
         "response_schema": {
             "search_terms": {"type": "str", "required": True},
         },
@@ -248,8 +242,6 @@ TASK_CONFIG = {
     # Phase C. Company Roster
     # VET COMPANY PROMPT - Estelle 3
     "find_company_website": {
-        "phase": "C. Company Roster",
-        "seq": 1,
         "response_schema": {
             "task_success": {"type": "bool", "required": True},
             "website": {"type": "str", "required": True},
@@ -261,8 +253,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "prefilter_company": {
-        "phase": "C. Company Roster",
-        "seq": 2,
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
         "scored": True,
@@ -295,8 +285,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "select_job_page": {
-        "phase": "C. Company Roster",
-        "seq": 4,
         "response_schema": {
             "selected_page": {"type": "int", "required": True},
             "response_type": {"type": "str", "required": True},
@@ -313,8 +301,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "parse_job_list": {
-        "phase": "C. Company Roster",
-        "seq": 6,
         "response_schema": {
             "job_container": {"type": "str", "required": True},
             "job_tag": {"type": "str", "required": True},
@@ -327,8 +313,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "vet_inflow_discovery": {
-        "phase": "C. Company Roster",
-        "seq": 7,
         "response_schema": {
             "results": {
                 "type": "list",
@@ -343,15 +327,13 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "context_format": "vet_inflow_discovery_{index}",
-        "entity_type": "candidate",
+        "entity_type": "company",
         "requires_candidate_key": True,
-        "trigger_state": None,
+        "trigger_state": "NEW",
     },
     # Phase D. Run Time Job Analysis
     # RUNTIME JOB VETTING PROMPTS - Ruth 1
     "qualify_job_listings": {
-        "phase": "D. Job Analysis",
-        "seq": 1,
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
         "output_type": "grades_encoded_meta",
         "scored": True,
@@ -388,8 +370,6 @@ TASK_CONFIG = {
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
-        "phase": "D. Job Analysis",
-        "seq": 2,
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
         "output_type": "grades_encoded",
         "scored": True,
@@ -423,8 +403,6 @@ TASK_CONFIG = {
     # RUNTIME JOB ANALYSIS PROMPTS
     # DO ANALYSIS - Grace 2
     "grade_do": {
-        "phase": "D. Job Analysis",
-        "seq": 3,
         "scored": True,
         "grades_key": "do_grades",
         "rubric_artifact": "do_rubric",
@@ -451,8 +429,6 @@ TASK_CONFIG = {
     },
     # GET ANALYSIS - Atlas 3 (needs ATS recommendations, so higher caliber model)
     "grade_get": {
-        "phase": "D. Job Analysis",
-        "seq": 4,
         "scored": True,
         "grades_key": "get_grades",
         "rubric_artifact": "get_rubric",
@@ -479,8 +455,6 @@ TASK_CONFIG = {
     },
     # LIKE ANALYSIS - Grace 2
     "grade_like": {
-        "phase": "D. Job Analysis",
-        "seq": 5,
         "scored": True,
         "grades_key": "like_grades",
         "rubric_artifact": "like_rubric",
@@ -508,8 +482,6 @@ TASK_CONFIG = {
     },
     # JAR synthesis upshot — Opus/json (AST-480). Dispatch score_floor only; Chuckles/board: persist under job_data.analysis_upshot.
     "analysis_upshot": {
-        "phase": "D. Job Analysis",
-        "seq": 6,
         "scored": True,
         "response_format": "json",
         "response_schema": {
@@ -547,12 +519,10 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
 
-    # Phase E. Job Artifacts — dumb chain registry (AST-450). Ordering is agent_task.run_next
-    # in Admin only. Prompt authors: caller chain tokens {$CALLER_CACHE_A}–{$CALLER_CACHE_D} / AST-455; avoid
+    # Phase E. Job Artifacts — dumb chain registry (AST-450). Group order is DB task_seq (AST-734).
+    # Prompt authors: caller chain tokens {$CALLER_CACHE_A}–{$CALLER_CACHE_D} / AST-455; avoid
     # duplicating --- CACHED CONTEXT --- in child prompts (AST-303). Details: AST-313.
     "anticipate_scan": {
-        "phase": "E. Job Artifacts",
-        "seq": 1,
         "print_label": "Anticipate Scan",
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
@@ -562,10 +532,10 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "contemplate_job": {
-        "phase": "E. Job Artifacts",
-        "seq": 2,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -574,10 +544,10 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "advise_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 3,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -586,11 +556,11 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     # Structure-keyed resume draft hop (AST-551 / AST-594); section bodies validated at runtime.
     "draft_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 4,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -601,10 +571,10 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "check_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 5,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -613,10 +583,10 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "finalize_job_resume": {
-        "phase": "E. Job Artifacts",
-        "seq": 6,
         "response_schema": {
             "candidate_name": {"type": "str", "required": False},
             "candidate_title": {"type": "str", "required": False},
@@ -631,10 +601,10 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "draft_cover_letter": {
-        "phase": "E. Job Artifacts",
-        "seq": 7,
         "nocache_prompt": (
             "Return JSON only. Fields re_line and body are required prose from you. "
             "Leave signature empty — the server injects {$COVER_LETTER_SIGNATURE} at build time; "
@@ -653,8 +623,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "check_cover_letter": {
-        "phase": "E. Job Artifacts",
-        "seq": 8,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -665,8 +633,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "finalize_cover_letter": {
-        "phase": "E. Job Artifacts",
-        "seq": 9,
         "response_schema": {
             "re_line": {"type": "str", "required": False},
             "body": {"type": "str", "required": False},
@@ -677,8 +643,6 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "propose_application_responses": {
-        "phase": "E. Job Artifacts",
-        "seq": 10,
         "response_schema": {
             "astral_job_id": {"type": "str", "required": False},
             "company": {"type": "str", "required": False},
@@ -689,6 +653,20 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
 }
+
+# Dispatch consult hops that enter the job-artifact chain (AST-534 / AST-740).
+# Excludes draft_cover_letter — cover-letter chain uses _run_craft_job_cover_letter_batch.
+JOB_ARTIFACT_ENTRY_TASK_KEYS = frozenset({
+    "anticipate_scan",
+    "contemplate_job",
+    "advise_job_resume",
+    "draft_job_resume",
+    "check_job_resume",
+    "finalize_job_resume",
+    "check_cover_letter",
+    "finalize_cover_letter",
+    "propose_application_responses",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -716,57 +694,6 @@ CONFIDENCE_DESCRIPTIONS = {
     2: "The source makes a vague reference.",
     1: "The source doesn't say it out loud, but it's possible.",
 }
-
-# Workflow state for saved board searches (claims use ACTIVE only; AST-471 / §2.4).
-BOARD_SEARCH_STATES = ("ACTIVE", "INACTIVE", "ERROR")
-
-
-# Board feature metadata (criteria shape contracts).
-BOARDS_CONFIG: Dict[str, Any] = {
-    "board_search": {
-        "criteria_version": 1,
-        "save_modes": ("criteria", "deeplink"),
-    },
-    "ingest": {
-        "initial_state": "NEW",
-        "placeholder_company_prefix": "__board__",
-    },
-    "gaze_board": {
-        "batch_size": 5,
-        # Mirror COMPANY_STATES WATCH gaze cadence (AST-482).
-        "scan_interval_hours": 24,
-        "claim_status": "active",
-        "running_status": "running",
-    },
-}
-
-# Adopted board profiles (AST-415). Engineer-owned registry — no board table.
-BOARD_CONFIG: Dict[str, Dict[str, Any]] = {'a16z': {'label': 'a16z Jobs', 'entry_url': 'https://jobs.a16z.com/jobs', 'adopted': True, 'parse_instructions': {'container': 'div.job-list', 'job_tag': 'div.job-list-job', 'job_link': "div.job-list-job h2.job-list-job-title a[href*='gh_jid=']", 'title': 'h2.job-list-job-title a', 'company': 'a.job-list-job-company-link', 'posted': 'span.job-list-badge-posted', 'notes': 'a16z /jobs board (Consider) as of spike: one card root is .job-list-job; title lives in h2.job-list-job-title a; apply link often has gh_jid=. Fragile if Consider renames classes — re-verify against results_visible.txt + DOM. This run had zero job cards after filters; selectors match DOM structure from populated searches but were not re-counted on cards this session.'}, 'search_criteria_schema': {'type': 'object', 'properties': {'title_query': {'type': 'string'}, 'work_mode': {'type': 'string'}, 'max_listing_age': {'type': 'string'}}, 'additionalProperties': False}, 'criteria_param_map': {'title_query': {'widget_id': 'w-00002', 'page_label': 'Search by title', 'lookup_pattern': 'free_text'}, 'work_mode': {'widget_id': 'w-00009', 'page_label': 'All jobs', 'lookup_pattern': 'select_option'}, 'max_listing_age': {'widget_id': 'w-00010', 'page_label': 'Anytime', 'lookup_pattern': 'select_option'}}, 'craft_task_key': 'craft_board_search_criteria', 'scrape_mode': 'interactive', 'widgets': {'w-00001': {'id': 'w-00001', 'label': 'w-00001', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.locator("#header-menu-button")', 'css_path_hint': '#header-menu-button'}, 'w-00002': {'id': 'w-00002', 'label': 'Search by title', 'subtitle': '', 'kind': 'textbox', 'interaction': 'text_entry', 'locator_playwright': 'page.get_by_placeholder("Search by title")', 'css_path_hint': 'input.search-input-field', 'lookup': {'pattern': 'free_text', 'options': []}}, 'w-00003': {'id': 'w-00003', 'label': 'Roles', 'subtitle': 'Enter roles', 'kind': 'button', 'interaction': 'block_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Roles\\nEnter roles")', 'css_path_hint': 'button.block-tray-toggle', 'lookup': {'pattern': 'typeahead', 'options': [{'value': 'Engineer', 'label': 'Engineer'}, {'value': 'Software Engineer', 'label': 'Software Engineer'}, {'value': 'Sales', 'label': 'Sales'}, {'value': 'Account Executive', 'label': 'Account Executive'}, {'value': 'Marketing', 'label': 'Marketing'}, {'value': 'Senior Software Engineer', 'label': 'Senior Software Engineer'}, {'value': 'Mechanical Engineer', 'label': 'Mechanical Engineer'}, {'value': 'Solutions Architect', 'label': 'Solutions Architect'}, {'value': 'Marketing Manager', 'label': 'Marketing Manager'}, {'value': 'Frontend Engineer', 'label': 'Frontend Engineer'}]}}, 'w-00004': {'id': 'w-00004', 'label': 'Skills', 'subtitle': 'Enter skills', 'kind': 'button', 'interaction': 'block_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Skills\\nEnter skills")', 'css_path_hint': 'button.block-tray-toggle', 'lookup': {'pattern': 'typeahead', 'options': [{'value': 'Artificial Intelligence', 'label': 'Artificial Intelligence'}, {'value': 'Infrastructure', 'label': 'Infrastructure'}, {'value': 'Python', 'label': 'Python'}, {'value': 'Quality Assurance', 'label': 'Quality Assurance'}, {'value': 'Analytics', 'label': 'Analytics'}, {'value': 'Grant Writing', 'label': 'Grant Writing'}, {'value': 'Networking Technologies', 'label': 'Networking Technologies'}, {'value': '3D', 'label': '3D'}, {'value': 'Computer Vision', 'label': 'Computer Vision'}, {'value': 'Machine Learning', 'label': 'Machine Learning'}]}}, 'w-00005': {'id': 'w-00005', 'label': 'Location', 'subtitle': 'Enter locations', 'kind': 'button', 'interaction': 'block_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Location\\nEnter locations")', 'css_path_hint': 'button.block-tray-toggle', 'lookup': {'pattern': 'typeahead', 'options': [{'value': 'United States', 'label': 'United States'}, {'value': 'San Francisco Bay Area', 'label': 'San Francisco Bay Area'}, {'value': 'Europe', 'label': 'Europe'}, {'value': 'New York', 'label': 'New York'}, {'value': 'Orange County, California Area', 'label': 'Orange County, California Area'}, {'value': 'New York City Area', 'label': 'New York City Area'}, {'value': 'United Kingdom', 'label': 'United Kingdom'}, {'value': 'Texas', 'label': 'Texas'}, {'value': 'Greater Los Angeles Area', 'label': 'Greater Los Angeles Area'}, {'value': 'Latin America', 'label': 'Latin America'}]}}, 'w-00006': {'id': 'w-00006', 'label': 'Company Stage', 'subtitle': 'Enter stages', 'kind': 'button', 'interaction': 'block_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Company Stage\\nEnter stages")', 'css_path_hint': 'button.block-tray-toggle', 'lookup': {'pattern': 'select_pill', 'options': [{'value': 'Seed funded', 'label': 'Seed'}, {'value': 'Series A', 'label': 'Series A'}, {'value': 'Growth', 'label': 'Growth (Series B or later)'}, {'value': '1-10', 'label': '1–10 employees'}, {'value': '10-100', 'label': '10–100 employees'}, {'value': '100-1000', 'label': '100–1000 employees'}, {'value': '1000-undefined', 'label': '1000+ employees'}]}}, 'w-00007': {'id': 'w-00007', 'label': 'Industry', 'subtitle': 'Enter industries', 'kind': 'button', 'interaction': 'block_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Industry\\nEnter industries")', 'css_path_hint': 'button.block-tray-toggle', 'lookup': {'pattern': 'typeahead', 'options': [{'value': 'Enterprise', 'label': 'Enterprise'}, {'value': 'American Dynamism', 'label': 'American Dynamism'}, {'value': 'AI', 'label': 'AI'}, {'value': 'Consumer', 'label': 'Consumer'}, {'value': 'Fintech', 'label': 'Fintech'}, {'value': 'Bio + Health', 'label': 'Bio + Health'}, {'value': 'Crypto/Web', 'label': 'Crypto/Web'}, {'value': 'Games', 'label': 'Games'}]}}, 'w-00008': {'id': 'w-00008', 'label': 'Salary', 'subtitle': 'Select...', 'kind': 'button', 'interaction': 'block_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Salary\\nSelect...")', 'css_path_hint': 'button.block-tray-toggle', 'lookup': {'pattern': 'salary_range_slider', 'options': [], 'panel_inner_text': 'Set salary range\n0\n-\n500,000\nUSD per year\n0\n500k\nUSD\nYear'}}, 'w-00009': {'id': 'w-00009', 'label': 'All jobs', 'subtitle': '', 'kind': 'button', 'interaction': 'inline_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="All jobs")', 'css_path_hint': 'button.inline-tray-toggle', 'lookup': {'pattern': 'select_option', 'options': [{'value': 'Remote', 'label': 'Remote'}, {'value': 'Hybrid', 'label': 'Hybrid'}, {'value': 'Remote or Hybrid', 'label': 'Remote or Hybrid'}, {'value': 'All jobs', 'label': 'All jobs'}]}}, 'w-00010': {'id': 'w-00010', 'label': 'Anytime', 'subtitle': '', 'kind': 'button', 'interaction': 'inline_tray', 'locator_playwright': 'page.get_by_role(\'button\', name="Anytime")', 'css_path_hint': 'button.inline-tray-toggle', 'lookup': {'pattern': 'select_option', 'options': [{'value': 'Past 24 hours', 'label': 'Past 24 hours'}, {'value': 'Past 7 days', 'label': 'Past 7 days'}, {'value': 'Past 30 days', 'label': 'Past 30 days'}, {'value': 'Past 3 months', 'label': 'Past 3 months'}, {'value': 'Past 12 months', 'label': 'Past 12 months'}, {'value': 'Anytime', 'label': 'Anytime'}]}}, 'w-00011': {'id': 'w-00011', 'label': 'Show more jobs', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Show more jobs")', 'css_path_hint': 'button.button'}, 'w-00012': {'id': 'w-00012', 'label': 'Back to top', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Back to top")', 'css_path_hint': 'button.boards-pagination-back-to-top'}}, 'search_keys': {'Search by title': {'widget_id': 'w-00002', 'options': [], 'locator_playwright': 'page.get_by_placeholder("Search by title")', 'lookup_pattern': 'free_text'}, 'Roles': {'widget_id': 'w-00003', 'options': [{'value': 'Engineer', 'label': 'Engineer'}, {'value': 'Software Engineer', 'label': 'Software Engineer'}, {'value': 'Sales', 'label': 'Sales'}, {'value': 'Account Executive', 'label': 'Account Executive'}, {'value': 'Marketing', 'label': 'Marketing'}, {'value': 'Senior Software Engineer', 'label': 'Senior Software Engineer'}, {'value': 'Mechanical Engineer', 'label': 'Mechanical Engineer'}, {'value': 'Solutions Architect', 'label': 'Solutions Architect'}, {'value': 'Marketing Manager', 'label': 'Marketing Manager'}, {'value': 'Frontend Engineer', 'label': 'Frontend Engineer'}], 'locator_playwright': 'page.get_by_role(\'button\', name="Roles\\nEnter roles")', 'lookup_pattern': 'typeahead', 'subtitle': 'Enter roles'}, 'Skills': {'widget_id': 'w-00004', 'options': [{'value': 'Artificial Intelligence', 'label': 'Artificial Intelligence'}, {'value': 'Infrastructure', 'label': 'Infrastructure'}, {'value': 'Python', 'label': 'Python'}, {'value': 'Quality Assurance', 'label': 'Quality Assurance'}, {'value': 'Analytics', 'label': 'Analytics'}, {'value': 'Grant Writing', 'label': 'Grant Writing'}, {'value': 'Networking Technologies', 'label': 'Networking Technologies'}, {'value': '3D', 'label': '3D'}, {'value': 'Computer Vision', 'label': 'Computer Vision'}, {'value': 'Machine Learning', 'label': 'Machine Learning'}], 'locator_playwright': 'page.get_by_role(\'button\', name="Skills\\nEnter skills")', 'lookup_pattern': 'typeahead', 'subtitle': 'Enter skills'}, 'Location': {'widget_id': 'w-00005', 'options': [{'value': 'United States', 'label': 'United States'}, {'value': 'San Francisco Bay Area', 'label': 'San Francisco Bay Area'}, {'value': 'Europe', 'label': 'Europe'}, {'value': 'New York', 'label': 'New York'}, {'value': 'Orange County, California Area', 'label': 'Orange County, California Area'}, {'value': 'New York City Area', 'label': 'New York City Area'}, {'value': 'United Kingdom', 'label': 'United Kingdom'}, {'value': 'Texas', 'label': 'Texas'}, {'value': 'Greater Los Angeles Area', 'label': 'Greater Los Angeles Area'}, {'value': 'Latin America', 'label': 'Latin America'}], 'locator_playwright': 'page.get_by_role(\'button\', name="Location\\nEnter locations")', 'lookup_pattern': 'typeahead', 'subtitle': 'Enter locations'}, 'Company Stage': {'widget_id': 'w-00006', 'options': [{'value': 'Seed funded', 'label': 'Seed'}, {'value': 'Series A', 'label': 'Series A'}, {'value': 'Growth', 'label': 'Growth (Series B or later)'}, {'value': '1-10', 'label': '1–10 employees'}, {'value': '10-100', 'label': '10–100 employees'}, {'value': '100-1000', 'label': '100–1000 employees'}, {'value': '1000-undefined', 'label': '1000+ employees'}], 'locator_playwright': 'page.get_by_role(\'button\', name="Company Stage\\nEnter stages")', 'lookup_pattern': 'select_pill', 'subtitle': 'Enter stages'}, 'Industry': {'widget_id': 'w-00007', 'options': [{'value': 'Enterprise', 'label': 'Enterprise'}, {'value': 'American Dynamism', 'label': 'American Dynamism'}, {'value': 'AI', 'label': 'AI'}, {'value': 'Consumer', 'label': 'Consumer'}, {'value': 'Fintech', 'label': 'Fintech'}, {'value': 'Bio + Health', 'label': 'Bio + Health'}, {'value': 'Crypto/Web', 'label': 'Crypto/Web'}, {'value': 'Games', 'label': 'Games'}], 'locator_playwright': 'page.get_by_role(\'button\', name="Industry\\nEnter industries")', 'lookup_pattern': 'typeahead', 'subtitle': 'Enter industries'}, 'Salary': {'widget_id': 'w-00008', 'options': [], 'locator_playwright': 'page.get_by_role(\'button\', name="Salary\\nSelect...")', 'lookup_pattern': 'salary_range_slider', 'panel_inner_text': 'Set salary range\n0\n-\n500,000\nUSD per year\n0\n500k\nUSD\nYear', 'subtitle': 'Select...'}, 'All jobs': {'widget_id': 'w-00009', 'options': [{'value': 'Remote', 'label': 'Remote'}, {'value': 'Hybrid', 'label': 'Hybrid'}, {'value': 'Remote or Hybrid', 'label': 'Remote or Hybrid'}, {'value': 'All jobs', 'label': 'All jobs'}], 'locator_playwright': 'page.get_by_role(\'button\', name="All jobs")', 'lookup_pattern': 'select_option'}, 'Anytime': {'widget_id': 'w-00010', 'options': [{'value': 'Past 24 hours', 'label': 'Past 24 hours'}, {'value': 'Past 7 days', 'label': 'Past 7 days'}, {'value': 'Past 30 days', 'label': 'Past 30 days'}, {'value': 'Past 3 months', 'label': 'Past 3 months'}, {'value': 'Past 12 months', 'label': 'Past 12 months'}, {'value': 'Anytime', 'label': 'Anytime'}], 'locator_playwright': 'page.get_by_role(\'button\', name="Anytime")', 'lookup_pattern': 'select_option'}}}, 'heavybit': {'label': 'Heavybit Jobs', 'entry_url': 'https://www.heavybit.com/jobs', 'adopted': True, 'parse_instructions': {'container': 'main', 'job_tag': '[id^="collapsible-trigger-"]', 'job_link': '[id^="collapsible-trigger-"]', 'title': '[id^="collapsible-trigger-"]', 'company': '[id^="collapsible-trigger-"]', 'posted': '', 'notes': 'Heavybit /jobs: job rows are collapsible triggers; title/company/location in trigger visible_text. Phase 2 had no filter trays.'}, 'search_criteria_schema': {'type': 'object', 'properties': {'title_query': {'type': 'string'}}, 'additionalProperties': False}, 'criteria_param_map': {'title_query': {'widget_id': 'w-00002', 'page_label': 'SEARCH FOR TITLES, THEMES, KEYWORDS...', 'lookup_pattern': 'free_text'}}, 'craft_task_key': 'craft_board_search_criteria', 'scrape_mode': 'interactive', 'widgets': {'w-00001': {'id': 'w-00001', 'label': '⌘ + K', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="\\u2318 + K")', 'css_path_hint': 'button.flex'}, 'w-00002': {'id': 'w-00002', 'label': 'SEARCH FOR TITLES, THEMES, KEYWORDS...', 'subtitle': '', 'kind': 'textbox', 'interaction': 'text_entry', 'locator_playwright': 'page.get_by_placeholder("SEARCH FOR TITLES, THEMES, KEYWORDS...")', 'css_path_hint': 'input.search', 'lookup': {'pattern': 'free_text', 'options': []}}, 'w-00003': {'id': 'w-00003', 'label': 'Senior Solutions Engineer', 'subtitle': 'EUROPE', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Solutions Engineer")', 'css_path_hint': '#collapsible-trigger-1779051491603'}, 'w-00004': {'id': 'w-00004', 'label': 'Senior Front-end Engineer', 'subtitle': 'EUROPE', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Front-end Engineer")', 'css_path_hint': '#collapsible-trigger-1779051491605'}, 'w-00005': {'id': 'w-00005', 'label': 'Senior Customer Support Engineer', 'subtitle': 'USA', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Customer Support Engineer")', 'css_path_hint': '#collapsible-trigger-1779051491607'}, 'w-00006': {'id': 'w-00006', 'label': 'Senior Cloud Infrastructure Engineer', 'subtitle': 'EUROPE', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Cloud Infrastructure Engineer")', 'css_path_hint': '#collapsible-trigger-1779051491608'}, 'w-00007': {'id': 'w-00007', 'label': 'Lead Bazel Engineer', 'subtitle': 'EUROPE', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Lead Bazel Engineer")', 'css_path_hint': '#collapsible-trigger-1779051491608'}, 'w-00008': {'id': 'w-00008', 'label': 'Senior Backend Engineer', 'subtitle': 'EUROPE', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Backend Engineer")', 'css_path_hint': '#collapsible-trigger-1779051491609'}, 'w-00009': {'id': 'w-00009', 'label': 'SDR', 'subtitle': 'NEW YORK, NEW YORK, UNITED STATES', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="SDR")', 'css_path_hint': '#collapsible-trigger-1779051491609'}, 'w-00010': {'id': 'w-00010', 'label': 'Sales Development Representative', 'subtitle': 'NEW YORK, NEW YORK, UNITED STATES', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Sales Development Representative")', 'css_path_hint': '#collapsible-trigger-1779051491610'}, 'w-00011': {'id': 'w-00011', 'label': 'Product Marketing Manager', 'subtitle': 'NEW YORK, NEW YORK, UNITED STATES', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Product Marketing Manager")', 'css_path_hint': '#collapsible-trigger-1779051491610'}, 'w-00012': {'id': 'w-00012', 'label': 'IT Specialist', 'subtitle': 'NEW YORK, NEW YORK, UNITED STATES', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="IT Specialist")', 'css_path_hint': '#collapsible-trigger-1779051491611'}, 'w-00013': {'id': 'w-00013', 'label': 'Senior Backend Engineer - AI Platform ()', 'subtitle': 'DUBLIN, DUBLIN, IRELAND', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Backend Engineer - AI Platform ()")', 'css_path_hint': '#collapsible-trigger-1779051491611'}, 'w-00014': {'id': 'w-00014', 'label': 'Senior Enterprise Account Executive - DMV', 'subtitle': 'REMOTE - US', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Enterprise Account Executive - DMV")', 'css_path_hint': '#collapsible-trigger-1779051491613'}, 'w-00015': {'id': 'w-00015', 'label': 'Senior Product Designer (Contract)', 'subtitle': 'REMOTE', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Senior Product Designer (Contract)")', 'css_path_hint': '#collapsible-trigger-1779051491613'}, 'w-00016': {'id': 'w-00016', 'label': 'Account Director - Chicago', 'subtitle': 'US CENTRAL (REMOTE)', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Account Director - Chicago")', 'css_path_hint': '#collapsible-trigger-1779051491614'}, 'w-00017': {'id': 'w-00017', 'label': 'Strategic Account Executive - Large Enterprise', 'subtitle': 'NEW YORK CITY, NEW YORK, UNITED STATES', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Strategic Account Executive - Large Enterprise")', 'css_path_hint': '#collapsible-trigger-1779051491614'}, 'w-00018': {'id': 'w-00018', 'label': 'ENTER EMAIL', 'subtitle': '', 'kind': 'textbox', 'interaction': 'text_entry', 'locator_playwright': 'page.get_by_placeholder("ENTER EMAIL")', 'css_path_hint': '#email', 'lookup': {'pattern': 'free_text', 'options': []}}, 'w-00019': {'id': 'w-00019', 'label': 'w-00019', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.locator("button.absolute")', 'css_path_hint': 'button.absolute'}}, 'search_keys': {'SEARCH FOR TITLES, THEMES, KEYWORDS...': {'widget_id': 'w-00002', 'options': [], 'locator_playwright': 'page.get_by_placeholder("SEARCH FOR TITLES, THEMES, KEYWORDS...")', 'lookup_pattern': 'free_text'}, 'ENTER EMAIL': {'widget_id': 'w-00018', 'options': [], 'locator_playwright': 'page.get_by_placeholder("ENTER EMAIL")', 'lookup_pattern': 'free_text'}}}, 'general-catalyst': {'label': 'General Catalyst Jobs', 'entry_url': 'https://jobs.generalcatalyst.com/jobs', 'adopted': True, 'parse_instructions': {'container': 'main', 'job_tag': 'a[href*="/jobs/"], a[href*="positions"]', 'job_link': 'a[href*="/jobs/"], a[href*="positions"]', 'title': 'a[href*="/jobs/"], a[href*="positions"]', 'company': '', 'posted': '', 'notes': "General Catalyst / Getro jobs board: listings are link clusters under 'Showing N jobs'; company/location often in sibling text nodes. Re-verify selectors."}, 'search_criteria_schema': {'type': 'object', 'properties': {'title_query': {'type': 'string'}, 'work_mode': {'type': 'string'}}, 'additionalProperties': False}, 'criteria_param_map': {'title_query': {'widget_id': 'w-00001', 'page_label': 'Job title, company or keyword', 'lookup_pattern': 'free_text'}, 'work_mode': {'widget_id': 'w-00002', 'page_label': 'Location', 'lookup_pattern': 'free_text'}}, 'craft_task_key': 'craft_board_search_criteria', 'scrape_mode': 'interactive', 'widgets': {'w-00001': {'id': 'w-00001', 'label': 'Job title, company or keyword', 'subtitle': '', 'kind': 'textbox', 'interaction': 'text_entry', 'locator_playwright': 'page.get_by_placeholder("Job title, company or keyword")', 'css_path_hint': '#:R5b6il6:', 'lookup': {'pattern': 'free_text', 'options': []}}, 'w-00002': {'id': 'w-00002', 'label': 'Location', 'subtitle': '', 'kind': 'textbox', 'interaction': 'text_entry', 'locator_playwright': 'page.get_by_placeholder("Location")', 'css_path_hint': '#:Rtb6il6:', 'lookup': {'pattern': 'free_text', 'options': []}}, 'w-00003': {'id': 'w-00003', 'label': 'Open location filter', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Open location filter")', 'css_path_hint': 'button.sc-aXZVg'}, 'w-00004': {'id': 'w-00004', 'label': 'Job function', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Job function")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00005': {'id': 'w-00005', 'label': 'Seniority', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Seniority")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00006': {'id': 'w-00006', 'label': 'Salary', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Salary")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00007': {'id': 'w-00007', 'label': 'Industry', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Industry")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00008': {'id': 'w-00008', 'label': 'Company stage', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Company stage")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00009': {'id': 'w-00009', 'label': 'Company size', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Company size")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00010': {'id': 'w-00010', 'label': 'Sector', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Sector")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00011': {'id': 'w-00011', 'label': 'Company', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Company")', 'css_path_hint': 'div.sc-aXZVg'}, 'w-00012': {'id': 'w-00012', 'label': 'Create job alert', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Create job alert")', 'css_path_hint': 'button.sc-eqUAAy'}, 'w-00013': {'id': 'w-00013', 'label': 'Your email', 'subtitle': '', 'kind': 'textbox', 'interaction': 'text_entry', 'locator_playwright': 'page.get_by_placeholder("Your email")', 'css_path_hint': '#:rh:-email', 'lookup': {'pattern': 'free_text', 'options': []}}, 'w-00014': {'id': 'w-00014', 'label': 'Get alerts', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Get alerts")', 'css_path_hint': 'button.sc-eqUAAy'}, 'w-00015': {'id': 'w-00015', 'label': 'Load more', 'subtitle': '', 'kind': 'button', 'interaction': 'button', 'locator_playwright': 'page.get_by_role(\'button\', name="Load more")', 'css_path_hint': 'button.sc-eqUAAy'}}, 'search_keys': {'Job title, company or keyword': {'widget_id': 'w-00001', 'options': [], 'locator_playwright': 'page.get_by_placeholder("Job title, company or keyword")', 'lookup_pattern': 'free_text'}, 'Location': {'widget_id': 'w-00002', 'options': [], 'locator_playwright': 'page.get_by_placeholder("Location")', 'lookup_pattern': 'free_text'}, 'Your email': {'widget_id': 'w-00013', 'options': [], 'locator_playwright': 'page.get_by_placeholder("Your email")', 'lookup_pattern': 'free_text'}}}}
-
-
-def list_adopted_boards() -> list:
-    """Return [{board_key, label, entry_url, scrape_mode, craft_task_key}, ...] for adopted:true only."""
-    rows = []
-    for board_key in sorted(BOARD_CONFIG.keys()):
-        entry = BOARD_CONFIG[board_key]
-        if not entry.get("adopted"):
-            continue
-        rows.append({
-            "board_key": board_key,
-            "label": entry["label"],
-            "entry_url": entry["entry_url"],
-            "scrape_mode": entry["scrape_mode"],
-            "craft_task_key": entry["craft_task_key"],
-        })
-    return rows
-
-
-def get_board_entry(board_key: str) -> Optional[Dict[str, Any]]:
-    """Return full entry if board_key exists and adopted:true; else None."""
-    entry = BOARD_CONFIG.get(board_key)
-    if not entry or not entry.get("adopted"):
-        return None
-    return dict(entry)
 
 
 def get_task_keys() -> list:
@@ -827,6 +754,7 @@ COMPANY_STATES = {
     "PREFILTER_PASSED_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
+    "VET_FAILED": {},
     "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
@@ -1005,6 +933,7 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "LIVE_PROMPTS",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
+        "vet_dispatch_trigger_state": "NEW",
     },
     "resolve": {
         "max_results": 20,
@@ -1013,12 +942,19 @@ INFLOW_CONFIG = {
         "ai_task_key": "find_company_website",
         "dispatch_trigger_state": "NEW",
     },
+    "vet": {
+        "task_key": "vet_inflow_discovery",
+        "dispatch_trigger_state": "NEW",
+        "pass_state": "WEBSITE_FOUND",
+        "fail_state": "VET_FAILED",
+        "blurb_data_key": "inflow_discovery_blurb",
+    },
 }
 
 # ---------------------------------------------------------------------------
-# GAZER_CONFIG: gazer-batch steps (validate_title, scrape_jd, gaze). Mirrors orchestration for
-# gazer-owned paths until gazer.py reads this block directly (AST-467). ROSTER_CONFIG["gaze"]
-# duplicates error_state intentionally — semantic twin must stay literal-identical here.
+# GAZER_CONFIG: gazer-batch steps (validate_title inline-only qualify pre-step; fetch_jd; gaze).
+# Mirrors orchestration for gazer-owned paths until gazer.py reads this block directly (AST-467).
+# ROSTER_CONFIG["gaze"] duplicates error_state intentionally — semantic twin must stay literal-identical here.
 # ---------------------------------------------------------------------------
 GAZER_CONFIG = {
     "validate_title": {
@@ -1026,7 +962,7 @@ GAZER_CONFIG = {
         "pass_state": "VALID_TITLE",
         "fail_state": "INVALID_TITLE",
     },
-    "scrape_jd": {
+    "fetch_jd": {
         "fallback_batch_size": 10,
         "pass_state": "JD_READY",
         "fail_state": "JD_SCRAPE_FAIL",
@@ -1142,42 +1078,16 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     },
 )
 
-# AST-595: resume artifact chain hop order (canonical copy also in BUILD_CONFIG['resume_artifact_chain']).
-RESUME_ARTIFACT_COMPOUND_PREFIX = "BUILD_ARTIFACTS."
-_RESUME_ARTIFACT_HOP_TASK_KEYS = (
-    "anticipate_scan",
-    "contemplate_job",
-    "advise_job_resume",
-    "draft_job_resume",
-    "check_job_resume",
-    "finalize_job_resume",
-)
+# AST-803: legacy BUILD_ARTIFACTS.<hop> names for in-flight rows (mid-chain resume until flattened).
+def _legacy_build_artifacts_compound_state_for_hop(task_key: str) -> str:
+    return f"{LEGACY_BUILD_ARTIFACTS_PREFIX}{task_key}"
 
 
-def _resume_artifact_compound_state_for_hop(task_key: str) -> str:
-    return f"{RESUME_ARTIFACT_COMPOUND_PREFIX}{task_key}"
+def _legacy_build_artifacts_compound_state_names() -> tuple[str, ...]:
+    return tuple(_legacy_build_artifacts_compound_state_for_hop(tk) for tk in _RESUME_ARTIFACT_HOP_TASK_KEYS)
 
 
-def _all_resume_artifact_compound_state_names() -> tuple[str, ...]:
-    return tuple(_resume_artifact_compound_state_for_hop(tk) for tk in _RESUME_ARTIFACT_HOP_TASK_KEYS)
-
-
-def _resume_artifact_compound_job_states() -> Dict[str, Dict[str, Any]]:
-    out: Dict[str, Dict[str, Any]] = {}
-    keys = _RESUME_ARTIFACT_HOP_TASK_KEYS
-    for i, tk in enumerate(keys):
-        cs = _resume_artifact_compound_state_for_hop(tk)
-        out[cs] = {
-            "prior_states": (
-                ["RECOMMENDED"]
-                if i == 0
-                else [_resume_artifact_compound_state_for_hop(keys[i - 1])]
-            ),
-        }
-    return out
-
-
-_ALL_RESUME_ARTIFACT_COMPOUND_STATES = _all_resume_artifact_compound_state_names()
+_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES = _legacy_build_artifacts_compound_state_names()
 
 # ---------------------------------------------------------------------------
 # JOB_STATES: job state registry.
@@ -1190,7 +1100,7 @@ JOB_STATES = {
     "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": "VALID_TITLE_RETRY"},
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
     "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # qualify_job_listings retry holding state
-    "PASSED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
+    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST"],    "retry_state": "JD_READY_RETRY"},
@@ -1215,12 +1125,13 @@ JOB_STATES = {
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES]},
-    **_resume_artifact_compound_job_states(),
-    "BUILD_FAILED":           {"prior_states": list(_ALL_RESUME_ARTIFACT_COMPOUND_STATES)},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
+    ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     # AST-311/312: return-to-review from skipped and post-outcome states
-    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
-    "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "RECOMMENDED"]},
+    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
+    "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
@@ -1228,11 +1139,11 @@ JOB_STATES = {
     "FAILED_TECHNICAL_LIKE":  {"prior_states": ["PASSED_GET"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
-    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "RECOMMENDED"]},
+    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
 }
 
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
-RECOMMENDED_JOB_STATES = ["RECOMMENDED", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "CANDIDATE_REVIEW"]
+RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
 
 JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
@@ -1256,10 +1167,9 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
             "path_suffix": "generate_artifacts",
         },
     ],
-    **{
-        cs: [_JOBS_RECOMMENDED_CANCEL_BUILD_ACTION]
-        for cs in _ALL_RESUME_ARTIFACT_COMPOUND_STATES
-    },
+    BUILD_ARTIFACTS_BASE_STATE: [
+        _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION,
+    ],
     "CANDIDATE_REVIEW": [
         {
             "action_key": "apply",
@@ -1312,6 +1222,14 @@ IN_REVIEW_STATES = [
 # UI treats misses as Skipped while DB state stays PASSED (see api_jobs skipped / in_review).
 PASSED_SCORE_GATED_STATES = frozenset({"PASSED_JD", "PASSED_DO", "PASSED_GET", "PASSED_LIKE"})
 
+# Admin Edit Dispatch Task modal — score_floor dropdown (AST-743 / AST-750).
+DISPATCH_SCORE_FLOOR_VALUES: tuple[float, ...] = tuple(i * 0.5 for i in range(21))  # 0.0 … 10.0
+
+
+def dispatch_score_floor_option_labels() -> list[str]:
+    """Two-decimal strings for admin score_floor <select> options."""
+    return [f"{v:.2f}" for v in DISPATCH_SCORE_FLOOR_VALUES]
+
 
 def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
     """True when job claim should filter latest_score >= dispatch_task.score_floor.
@@ -1347,37 +1265,35 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
     return [ts]
 
 
+DISPATCH_RETIRED_TASK_KEYS = frozenset({
+    "consult_do", "consult_get", "consult_like",
+    "scrape_jd", "validate_title", "gaze_board",
+})
+
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
 DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
-    "recheck_no_openings", "gaze", "gaze_board",
-    "inflow_discovery", "inflow_resolve_website",
-    "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
-    "consult_do", "consult_get", "consult_like", "analysis_upshot",
+    "recheck_no_openings", "gaze",
+    "inflow_discovery", "inflow_resolve_website", "vet_inflow_discovery",
+    "qualify_job_listings", "fetch_jd", "evaluate_jd",
+    "grade_do", "grade_get", "grade_like", "analysis_upshot",
     "contemplate_job", "draft_cover_letter",
+    *_RESUME_ARTIFACT_HOP_TASK_KEYS,
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "evaluate_jd", "consult_do", "consult_get",
-    "consult_like", "gaze_board",
+    "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
+    "grade_like",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
-    "recheck_no_openings", "gaze", "inflow_resolve_website",
+    "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
 })
 
-_CONSULT_TASK_TO_AGENT_TASK: Dict[str, str] = {
-    "consult_do": "grade_do",
-    "consult_get": "grade_get",
-    "consult_like": "grade_like",
-}
-
-
 def resolve_dispatch_task_config_key(task_key: str) -> str:
-    """Map dispatch `task_key` to the TASK_CONFIG entry (consult batch prompts → grading keys)."""
-    tk = (task_key or "").strip()
-    return _CONSULT_TASK_TO_AGENT_TASK.get(tk, tk)
+    """Return task_key unchanged — dispatch and TASK_CONFIG share one string (AST-736)."""
+    return (task_key or "").strip()
 
 
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
@@ -1391,17 +1307,15 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "NO_OPENINGS"
     if task_key == "gaze":
         return "WATCH"
-    if task_key == "gaze_board":
-        return "ACTIVE"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
-    if task_key == "validate_title":
-        return "NEW"
+    if task_key == "vet_inflow_discovery":
+        return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
-        return "VALID_TITLE"
-    if task_key == "scrape_jd":
+        return "NEW"
+    if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
     if task_key == "fetch_job_pages":
         states = GAZER_CONFIG["fetch_job_pages"].get("fetch_job_pages_trigger_states") or ["PREFILTER_PASSED"]
@@ -1410,16 +1324,16 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WEBSITE_FOUND"
     if task_key == "evaluate_jd":
         return "JD_READY"
-    if task_key == "consult_do":
+    if task_key == "grade_do":
         return "PASSED_JD"
-    if task_key == "consult_get":
+    if task_key == "grade_get":
         return "PASSED_DO"
-    if task_key == "consult_like":
+    if task_key == "grade_like":
         return "PASSED_GET"
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
     if task_key in resume_artifact_hop_task_keys():
-        return resume_artifact_compound_state(task_key)
+        return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
         return "CANDIDATE_REVIEW"
     if task_key not in DISPATCH_SCHEDULABLE_TASK_KEYS:
@@ -1437,8 +1351,6 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "gaze_board":
-        return "board_search"
     if task_key == "inflow_discovery":
         return "candidate"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
@@ -1446,8 +1358,8 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "validate_title", "scrape_jd", "qualify_job_listings", "evaluate_jd",
-        "consult_do", "consult_get", "consult_like", "analysis_upshot",
+        "fetch_jd", "qualify_job_listings", "evaluate_jd",
+        "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
         return "job"
@@ -1458,8 +1370,8 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
     if entity_type == "job":
         if trigger_state in PASSED_SCORE_GATED_STATES:
             return "latest_score"
-        if trigger_state in ("BUILD_ARTIFACTS", "CANDIDATE_REVIEW") or trigger_state.startswith(
-            RESUME_ARTIFACT_COMPOUND_PREFIX
+        if trigger_state in (BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW") or (
+            isinstance(trigger_state, str) and trigger_state.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
         ):
             return "state_changed_at"
         if trigger_state not in JOB_STATES:
@@ -1471,8 +1383,6 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
         if not sort_by:
             raise KeyError(f"dispatch sort_by: company state {trigger_state!r} missing batch_criteria.sort_by")
         return str(sort_by)
-    if entity_type == "board_search":
-        return "last_scan_at"
     if entity_type == "candidate":
         return "updated_at"
     raise KeyError(f"dispatch sort_by: unknown entity_type {entity_type!r}")
@@ -1482,9 +1392,52 @@ def _dispatch_batch_call_mode_for(task_key: str) -> int:
     return 1 if task_key in _DISPATCH_BATCH_CALL_MODE_ONE else 0
 
 
+_RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS = {
+    "consult_do": "grade_do",
+    "consult_get": "grade_get",
+    "consult_like": "grade_like",
+    "scrape_jd": "fetch_jd",
+}
+
+_RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES = {
+    "validate_title": (
+        "task_key 'validate_title' is retired; title screening runs inline before qualify_job_listings"
+    ),
+    "gaze_board": (
+        "task_key 'gaze_board' is retired; boards are decommissioned"
+    ),
+}
+
+
+def dispatch_task_key_retired_message(task_key: str) -> Optional[str]:
+    """Return operator-facing error text when task_key is retired, else None."""
+    tk = (task_key or "").strip()
+    if tk not in DISPATCH_RETIRED_TASK_KEYS:
+        return None
+    replacement = _RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS.get(tk)
+    if replacement is not None:
+        return f"task_key {tk!r} is retired; use {replacement!r}"
+    return _RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES[tk]
+
+
+def dispatch_entity_state_registry(entity_type: str) -> Dict[str, Any]:
+    """Return the state registry for a dispatch entity_type (ENTITY_TYPES members only)."""
+    registries: Dict[str, Dict[str, Any]] = {
+        "job": JOB_STATES,
+        "company": COMPANY_STATES,
+        "candidate": CANDIDATE_STATES,
+    }
+    if entity_type not in registries:
+        raise KeyError(f"unknown dispatch entity_type: {entity_type!r}")
+    return registries[entity_type]
+
+
 def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
     """Admin + DB insert defaults for dispatch_task columns. Raises KeyError if task_key is not schedulable."""
     tk = (task_key or "").strip()
+    retired = dispatch_task_key_retired_message(tk)
+    if retired:
+        raise KeyError(retired)
     if tk not in DISPATCH_SCHEDULABLE_TASK_KEYS:
         raise KeyError(f"dispatch_task_admin_defaults: task_key {tk!r} not schedulable")
     entity_type = _dispatch_entity_type_for_task_key(tk)
@@ -1498,8 +1451,8 @@ def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
 
 
 def dispatch_task_key_is_scored(task_key: str) -> bool:
-    rk = resolve_dispatch_task_config_key(task_key)
-    return bool((TASK_CONFIG.get(rk) or {}).get("scored"))
+    tk = (task_key or "").strip()
+    return bool((TASK_CONFIG.get(tk) or {}).get("scored"))
 
 
 def _task_config_transition_strings(tc: Dict[str, Any]) -> FrozenSet[str]:
@@ -1576,10 +1529,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
 
 JOBS_RECOMMENDED_UI_SECTIONS = [
     {"state": "RECOMMENDED", "label": "Recommended"},
-    *[
-        {"state": cs, "label": "In Progress"}
-        for cs in _ALL_RESUME_ARTIFACT_COMPOUND_STATES
-    ],
+    {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "In Progress"},
     {"state": "CANDIDATE_REVIEW", "label": "Ready"},
 ]
 
@@ -1807,7 +1757,44 @@ TRACKER_CONFIG = {
 # ---------------------------------------------------------------------------
 MERGE_TICKET_LOG_CONFIG = {
     "log_path": _PROJECT_ROOT / "data" / "merge_ticket_log.json",
+    "uat_state_name": "User Testing",
 }
+
+# Repo-owned admin tables — checked-in JSON applied at startup (AST-782).
+REPO_ADMIN_JSON_CONFIG = {
+    "schema_version": 1,
+    "tables": {
+        "agent": {
+            "repo_relative_path": "data/admin/agent.json",
+            "columns": (
+                "agent_id",
+                "content",
+                "brain_setting",
+                "temperature",
+                "max_tokens",
+                "updated_at",
+            ),
+        },
+        "agent_task": {
+            "repo_relative_path": "data/admin/agent_task.json",
+            "columns": None,
+        },
+    },
+}
+
+
+def get_repo_admin_json_path(table_key: str) -> Path:
+    """Absolute path to repo JSON file for ``table_key`` (agent | agent_task)."""
+    tables = REPO_ADMIN_JSON_CONFIG["tables"]
+    if table_key not in tables:
+        raise KeyError(f"unknown repo admin JSON table: {table_key!r}")
+    rel = tables[table_key]["repo_relative_path"]
+    return _PROJECT_ROOT / rel
+
+
+def get_repo_admin_json_table_keys() -> tuple[str, ...]:
+    """Apply order: agent personas before agent_task rows that reference agent_id."""
+    return ("agent", "agent_task")
 
 # ---------------------------------------------------------------------------
 # ASTRAL_CONFIG: code-related. Paths, API, state machines, batch settings.
@@ -1897,6 +1884,7 @@ ASTRAL_CONFIG = {
         ("IMPORTED", "WEBSITE_REVIEW"),
         ("NEW", "WEBSITE_FOUND"),
         ("NEW", "NO_WEBSITE"),
+        ("NEW", "VET_FAILED"),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
@@ -2424,8 +2412,6 @@ ADMIN_CONFIG = {
         # Prefix for downloaded reconciliation CSV filenames.
         "export_filename_prefix": "astral",
     },
-    # AST-649: omit from Scheduled Actions UI; backend dispatch unchanged.
-    "hidden_dispatch_task_keys": ("gaze_board",),
 }
 
 
@@ -2966,7 +2952,7 @@ BUILD_CONFIG = {
     },
 }
 
-# AST-595: compound BUILD_ARTIFACTS.<task_key> helpers (hop order from BUILD_CONFIG).
+# AST-803: BUILD_ARTIFACTS chain helpers (hop order from BUILD_CONFIG).
 def resume_artifact_hop_task_keys() -> tuple[str, ...]:
     chain = BUILD_CONFIG.get("resume_artifact_chain") or {}
     keys = chain.get("hop_task_keys")
@@ -2976,43 +2962,47 @@ def resume_artifact_hop_task_keys() -> tuple[str, ...]:
 
 
 def resume_artifact_compound_state(task_key: str) -> str:
-    return f"{RESUME_ARTIFACT_COMPOUND_PREFIX}{task_key}"
+    """Legacy compound label BUILD_ARTIFACTS.<hop> — in-flight rows only."""
+    return _legacy_build_artifacts_compound_state_for_hop(task_key)
 
 
-def resume_artifact_first_compound_state() -> str:
-    return resume_artifact_compound_state(resume_artifact_hop_task_keys()[0])
-
-
-def resume_artifact_next_compound_state(task_key: str) -> str | None:
-    keys = resume_artifact_hop_task_keys()
-    try:
-        idx = keys.index(task_key)
-    except ValueError:
-        return None
-    if idx + 1 >= len(keys):
-        return None
-    return resume_artifact_compound_state(keys[idx + 1])
-
-
-def parse_resume_artifact_hop(state: str) -> str | None:
+def legacy_build_artifacts_hop(state: str) -> str | None:
     st = state or ""
-    if not st.startswith(RESUME_ARTIFACT_COMPOUND_PREFIX):
+    if not st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX):
         return None
-    return st[len(RESUME_ARTIFACT_COMPOUND_PREFIX):]
+    hop = st[len(LEGACY_BUILD_ARTIFACTS_PREFIX):]
+    return hop if hop in resume_artifact_hop_task_keys() else None
 
 
-def is_resume_artifact_in_progress(state: str) -> bool:
-    return (state or "").startswith(RESUME_ARTIFACT_COMPOUND_PREFIX)
+parse_resume_artifact_hop = legacy_build_artifacts_hop
+
+
+def is_build_artifacts_in_progress(state: str) -> bool:
+    st = (state or "").strip()
+    if st in (BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE):
+        return True
+    return st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
+
+
+is_resume_artifact_in_progress = is_build_artifacts_in_progress
+
+
+def build_artifacts_claim_states() -> tuple[str, ...]:
+    return (BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES)
 
 
 def all_resume_artifact_compound_states() -> tuple[str, ...]:
-    return tuple(resume_artifact_compound_state(tk) for tk in resume_artifact_hop_task_keys())
+    return _LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES
 
 
 _RAH = resume_artifact_hop_task_keys()
 assert len(_RAH) >= 1
 assert all(tk in TASK_CONFIG for tk in _RAH)
 assert all((TASK_CONFIG[tk] or {}).get("entity_type") == "job" for tk in _RAH)
+for _tk, _tc in TASK_CONFIG.items():
+    _tt = (_tc or {}).get("task_type")
+    if _tt is not None:
+        assert _tt in TASK_TYPES, f"TASK_CONFIG[{_tk!r}].task_type invalid: {_tt!r}"
 
 # Per-candidate resume section catalog (AST-517); persistence on artifacts.resume_structure.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (

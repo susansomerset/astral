@@ -18,7 +18,7 @@ from src.utils.config import (
     build_state_ui_manifest,
 )
 from src.utils.logging import get_logger
-from src.utils.deploy_status import get_deploy_status_payload
+from src.core.deploy_status import get_deploy_status_payload
 
 system_bp = Blueprint("system", __name__, url_prefix="/api")
 

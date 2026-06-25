@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import time
+
+import pytest
 from flask.testing import FlaskClient
 
 
@@ -30,3 +34,58 @@ class TestServeReact:
         resp = server_client.get("/asset.txt")
         assert resp.status_code == 200
         assert resp.data == b"asset"
+
+
+class TestWarnStaleFrontendDist:
+    def test_warns_when_dist_missing(self, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+        import ui.server as server_mod
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "App.tsx").write_text("x", encoding="utf-8")
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        server_mod._FRONTEND_SRC = src
+        server_mod._DIST = dist
+        server_mod._warn_stale_frontend_dist()
+        err = capsys.readouterr().err
+        assert "frontend/dist missing" in err
+
+    def test_warns_when_src_newer_than_dist(self, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+        import ui.server as server_mod
+
+        src = tmp_path / "src"
+        src.mkdir()
+        tsx = src / "App.tsx"
+        tsx.write_text("x", encoding="utf-8")
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        dist_index = dist / "index.html"
+        dist_index.write_text("old", encoding="utf-8")
+        now = time.time()
+        os.utime(dist_index, (now - 120, now - 120))
+        os.utime(tsx, (now, now))
+        server_mod._FRONTEND_SRC = src
+        server_mod._DIST = dist
+        server_mod._warn_stale_frontend_dist()
+        err = capsys.readouterr().err
+        assert "frontend/dist older than src/" in err
+
+    def test_silent_when_dist_is_fresh(self, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+        import ui.server as server_mod
+
+        src = tmp_path / "src"
+        src.mkdir()
+        tsx = src / "App.tsx"
+        tsx.write_text("x", encoding="utf-8")
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        dist_index = dist / "index.html"
+        dist_index.write_text("ok", encoding="utf-8")
+        now = time.time()
+        os.utime(tsx, (now - 120, now - 120))
+        os.utime(dist_index, (now, now))
+        server_mod._FRONTEND_SRC = src
+        server_mod._DIST = dist
+        server_mod._warn_stale_frontend_dist()
+        assert capsys.readouterr().err == ""

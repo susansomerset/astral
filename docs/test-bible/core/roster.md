@@ -194,6 +194,37 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-759 · AST-753
+
+**Shared page scrape contract** — single Playwright load → collapsed visible text + enumerated nav links; **`scrape_company_homepage_content`** and **`_scrape_pjl_page`** route through **`scrape_loaded_page_contract`** / **`finalize_page_scrape_contract`**; PJL rows persist **`enumerated_nav_links`**; **`_assemble_pjl_content`** embeds per-page **`--- NAV LINKS ---`**; **`run_select_job_page_dispatch`** passes **`_build_select_job_page_live_content`** (global **`pjl_nav_links`**) into **`_find_job_page_from_assembled`**. Does not change AST-720 routing or **`fetch_job_pages_batch`** pass/fail transitions.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Contract finalize + select live content helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract` |
+| PJL merge/assemble nav persistence | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+| PJL_READY select live content parity | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links` |
+| Homepage scrape via shared contract | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` |
+
+Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AST-759**).
+
+**Broken / obsolete (Betty revision):** **`TestAst701ScrapeCompanyHomepageContent`** — mocks **`scrape_loaded_page_contract`** instead of separate **`get_visible_text`** / **`extract_site_page_list`** (AST-759 single-load refactor).
+
+**AST-759** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract \
+  tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent \
+  tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-720 · AST-716
 
 **`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`**.
@@ -396,3 +427,47 @@ Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md
 | Backfill normalizer (drop empty key, dedupe stats) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill` |
 
 Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md`** (**AST-727**).
+
+---
+
+### AST-775 · AST-754
+
+**AST-775 (child):** Split **`run_inflow_discovery_batch`** — CSE + URL dedupe records each hit as **`NEW`** via **`record_inflow_discovery_hit`** (mechanical hostname slug, **`inflow_discovery_blurb`** + **`inflow_discovery_notes`**); **no** inline **`do_task(vet_inflow_discovery)`**. Zero deduped hits is success (nothing to record). Registers **`VET_FAILED`** terminal state + **`(NEW, VET_FAILED)`** transition for sibling **AST-776** vet dispatch.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`VET_FAILED`** state + transition from **`NEW`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition` |
+| 2 | Mechanical slug + blurb/notes persist on **`NEW`** row | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_slug_from_discovery_url_hostname`; `::test_record_hit_creates_new_with_blurb_and_notes`; `::test_discovery_blurb_line_truncates_snippet` |
+| 3 | Expanded URL dedupe (**notes**, **blurb** pipe URL) + slug suffix collision | `src/core/roster.py` | `::TestAst775InflowDiscoveryRecordNew::test_record_hit_skips_duplicate_url_via_notes`; `::test_record_hit_skips_duplicate_url_via_blurb`; `::test_record_hit_slug_collision_suffix_other_candidate` |
+| 4 | Batch records hits; zero deduped hits not an error | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_run_batch_happy_path`; `::TestAst775InflowDiscoveryRecordNew::test_run_batch_no_deduped_hits_is_success`; `::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`; `::test_run_batch_searches_only_stale_terms`; `::test_run_batch_no_stale_terms_returns_zero_errors`; `::test_consult_routes_candidate_entity` |
+
+**Broken / obsolete (Betty revision):** **`TestAst505InflowDiscovery::test_run_batch_happy_path`** — removed **`do_task`** / vet ingest mocks; asserts mechanical **`co_example`** **`NEW`** record (**AST-775**).
+
+---
+
+### AST-776 · AST-754
+
+**AST-776 (child):** Schedulable **`vet_inflow_discovery`** company dispatch on **`NEW`** — read **`inflow_discovery_blurb`**, **`do_task(vet_inflow_discovery)`** under company **`batch_id`**, pass → **`WEBSITE_FOUND`** + **`company_website`**, reject → **`VET_FAILED`**. **`run_company_task`** routes **`dispatch_task_key`** vet vs **`inflow_resolve_website`** on **`NEW`**. Eligibility split: blurb rows vet-only; legacy **`NEW`** without blurb → Phase 2 resolve. Local **`agent_task`** mechanical prompt migration (**AST-776**).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`INFLOW_CONFIG["vet"]`** + schedulable company/**`NEW`** defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals`; `::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults` |
+| 2 | Vet eligibility vs resolve on blurb | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible` |
+| 3 | **`vet_inflow_discovery_company`** outcomes + **`run_company_task`** routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` |
+| 4 | Consult company vet → **`run_company_task`** (not discovery batch) | `src/core/consult.py` | `::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+
+**Broken / obsolete (Betty revision):** **`TestAst774VetInflowDiscoveryDispatch`** removed — **AST-776** routes vet to **`vet_inflow_discovery_company`**, not **`run_inflow_discovery_batch`**.
+
+**AST-776** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.

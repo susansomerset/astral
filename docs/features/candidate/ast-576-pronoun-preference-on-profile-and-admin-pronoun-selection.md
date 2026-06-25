@@ -1,3 +1,142 @@
+<!-- linear-archive: AST-576 archived 2026-06-15 -->
+
+## Linear archive (AST-576)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-576/pronoun-preference-on-profile-and-admin-pronoun-selection  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-573 — Pronoun selection  
+**Blocked by / blocks / related:** parent: AST-573
+
+### Description
+
+## What this implements
+
+Expose pronoun preference on Candidate Profile and Admin Manage Candidates with the five ordered options from the parent definition; save/load through existing profile paths.
+
+## Acceptance criteria
+
+1. Candidate Profile shows a pronoun preference control with the five options in the specified order; saving persists and reload shows the same selection.
+2. Admin Manage Candidates can view, set, change, and clear pronoun preference through existing admin save paths.
+3. Prompts that use only name tokens behave unchanged regardless of pronoun setting.
+
+## Boundaries
+
+Does not implement TOKEN_SOURCES or resolve_tokens (sibling Ada ticket). Does not add intake UI.
+
+## Notes for planning
+
+Parent AST-573. Config-driven field in DATA_SHAPES profile contact section per ASTRAL_CODE_RULES §3.5.
+
+## Git branch (authoritative)
+
+Per orientation-astral § Branch law: parent **ftr/ast-573-pronoun-selection**, child **sub/AST-573/AST-575-pronoun-preference-profile-and-admin-ui**.
+
+### Comments
+
+#### betty — 2026-06-03T23:19:50.008Z
+**Betty — bible rollup reconcile (AST-573 ftr conflict)**
+
+On **`dev-betty`**: merged **`origin/dev`** → **`origin/ftr/ast-573-pronoun-selection`** (resolved **`docs/ASTRAL_TEST_BIBLE.md`** conflict) → **`origin/sub/AST-573/AST-576-pronoun-preference-profile-and-admin-ui`**.
+
+**§7.13zzb** kept as one epic block: **AST-575** + **AST-576** rows, both narrowed runs, combined rollup reconcile line.
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum:** `0e986bbe4183929744aeae163ac6064f98aae04ffe923b9c866ba3e8f8b3efa8` — matches **`origin/sub/AST-573/AST-576-pronoun-preference-profile-and-admin-ui`** @ `4fabcc50` (no **`store-qa-commit`** needed).
+
+**`origin/ftr/ast-573-pronoun-selection`** still has AST-575-only §7.13zzb until Chuckles **`rollup-child`** re-merges this **`sub/*`** tip.
+
+— Betty
+
+#### radia — 2026-06-03T23:17:22.889Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-573/AST-576-pronoun-preference-profile-and-admin-ui` @ `367955ec`
+
+**Doc:** `docs/features/candidate/ast-576-pronoun-preference-on-profile-and-admin-pronoun-selection.md` (§ Review (Radia))
+
+### fix-now
+None.
+
+### discuss
+- **`src/utils/config.py`** — Plan out-of-scope + prerequisite gate forbid `config.py` on AST-576; build added `DATA_SHAPES` `profile.pronoun_preference` because AST-575 omitted shapes. Pragmatic unblock — confirm Susan wants this hunk on 576 vs folded into AST-575 before epic land (**§5d**).
+- **`src/utils/config.py`** — Shape `options` duplicate `PRONOUN_PREFERENCE_OPTIONS` literals (**§1.3** / **§2.1**). OK if kept in sync; optional: generate select options from one tuple on resolve.
+- **Self-Assessment** — “No new config blocks” vs shipped `DATA_SHAPES` field — footnote mismatch only.
+
+### advisory
+- Vitest mocks (`test_CandidateProfile`, `test_AdminManageCandidates`) use four pronoun options in shapes; production config has five (`ze/zir`, `e/eir` omitted in mocks). Wiring tests are fine; extend mocks when convenient.
+
+### solid (plan + rules)
+- Admin: `pronounFieldFromShapes` / `PronounSelect`, shapes-backed labels/options, POST/PUT + clear via `""` — Stage 1 + AC #2.
+- Profile: no `CandidateProfile.tsx` change; component test covers shape-driven contact save — AC #1 wiring.
+- **§3.2 / §3.3:** UI-only; no `src.data` / token code in diff.
+- Option values match AST-575 `PRONOUN_PREFERENCE_OPTIONS` (`they/them` … `e/eir`).
+
+**Next:** `resolve-astral` — no blocking UI fixes. Joan publish: review doc on publish ref (`367955ec`; initial `store-review-commit` hit add/add on plan file — resolved via worktree).
+
+#### betty — 2026-06-03T23:11:02.473Z
+## QA test manifest (AST-576)
+
+**Publish ref:** `origin/sub/AST-573/AST-576-pronoun-preference-profile-and-admin-ui` @ `4fabcc50` (tests `a290446d`, bible `4fabcc50`)
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `0e986bbe4183929744aeae163ac6064f98aae04ffe923b9c866ba3e8f8b3efa8`
+
+### 1. Existing coverage (bible-backed)
+
+| # | Area | Command |
+|---|------|---------|
+| 1 | **AST-575** backend (regression — sibling on epic) | `.venv/bin/python -m pytest tests/component/utils/test_config.py::TestAst575PronounTokens -q` |
+| 2 | **AST-575** backfill migration | `.venv/bin/python -m pytest tests/component/data/database/test_candidate_migrations.py -q` |
+| 3 | Name tokens unchanged | `tests/component/utils/test_config.py::TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` |
+
+### 2. Broken / obsolete tests
+
+None identified for this diff.
+
+### 3. Gaps — new Vitest (§6c routed pages)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 4 | `test_CandidateProfile.test.tsx` — **`saves pronoun preference from contact grid`** | Pronoun `<select>` in contact grid; PUT `profile.pronoun_preference` |
+| 5 | `test_AdminManageCandidates.test.tsx` — **`includes profile.pronoun_preference in create and edit payloads`** | POST/PUT include preference; clear sends `""` |
+
+### Engineer gate (run before marking Tests Passed)
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+Optional full component gate per **§7.13zzb** in bible.
+
+— Betty
+
+#### katherine — 2026-06-03T23:03:21.897Z
+🛑 Prerequisite gate blocked: AST-575 backend/shapes not on `dev-kath`
+
+Step: Prerequisite gate (plan § — before Stage 1)
+
+Issue: After `git merge origin/ftr/ast-573-pronoun-selection` and `origin/sub/AST-573/AST-576-pronoun-preference-profile-and-admin-ui`, `src/` has **no** `PRONOUN_PREFERENCE`, **no** `profile.pronoun_preference` in `DATA_SHAPES`, and **no** pronoun validation in `save_candidate_data`. `origin/sub/AST-573/AST-575-pronoun-profile-data-and-prompt-tokens` tip is plan-only (`docs(AST-575): plan — pronoun profile data and prompt tokens`). **AST-575** is still **Plan Approved** (Ada). This ticket cannot source admin/profile options from shapes without violating the execution contract (no `config.py` / token patches here).
+
+Proposed resolutions:
+1. **Preferred:** Ada runs **build-astral** on **AST-575**, Joan publishes to `sub/AST-573/AST-575-…`, Chuckles **rollup-child** → `ftr/ast-573-pronoun-selection`, then re-queue Katherine on **AST-576**.
+2. Susan explicitly waives the gate and directs Katherine to hardcode the five option values in React (conflicts with plan § Prerequisite gate and §2.1 DRY — would need plan revision).
+
+Build paused; status unchanged (**Plan Approved**).
+
+#### katherine — 2026-06-03T23:00:58.002Z
+Plan: [`docs/features/candidate/ast-576-pronoun-preference-on-profile-and-admin-pronoun-selection.md`](https://github.com/susansomerset/astral/blob/sub/AST-573/AST-576-pronoun-preference-profile-and-admin-ui/docs/features/candidate/ast-576-pronoun-preference-on-profile-and-admin-pronoun-selection.md)
+
+**Scope:** `scope-Single-Component` — Admin Manage Candidates add/edit pronoun select wired from `DATA_SHAPES`; Candidate Profile verify-only via existing shape-driven contact grid; frontend Vitest coverage.
+
+**Conf:** `conf-high` — Follows AST-511 admin payload pattern and `FormFields` select; hard prerequisite gate on AST-575 for `PRONOUN_PREFERENCE` + shapes field before any UI work.
+
+**Risk:** `risk-low` — Profile/admin save paths only; no token resolution or config ownership in this ticket.
+
+---
+
 # AST-576 — Pronoun preference on Profile and Admin (Pronoun selection)
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-576/pronoun-preference-on-profile-and-admin-pronoun-selection  

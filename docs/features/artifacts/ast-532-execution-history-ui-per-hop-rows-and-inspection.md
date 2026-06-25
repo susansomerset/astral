@@ -1,3 +1,122 @@
+<!-- linear-archive: AST-532 archived 2026-06-23 -->
+
+## Linear archive (AST-532)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-532/execution-history-ui-per-hop-rows-and-inspection-per-hop-execution  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-528 — Per-hop Execution History for daisy-chained tasks  
+**Blocked by / blocks / related:** parent: AST-528
+
+### Description
+
+## What this implements
+
+Execution History UI correctly lists and inspects per-hop rows for daisy-chained runs: correct task key per row, hop-scoped prompt/response inspection, hop-scoped app logs, and no regression for single-hop dispatch or ad-hoc workbench test rows. Rows display individually (no chain grouping UI).
+
+## Acceptance criteria
+
+5. Rows from one chained run are discoverable as a group (filterable or visually grouped) without collapsing back into a single row.
+   * Parent resolution: show tasks as if called individually — natural list order; no special group chrome required.
+6. Single-hop dispatch runs and ad-hoc workbench test rows behave as before — no duplicate or missing history rows.
+
+Also verify AC #1–#4 end-to-end in the UI after **AST-531** lands (task column, per-hop inspect, per-hop app logs, per-hop status/cost).
+
+## Boundaries
+
+* Does **not** implement ledger creation — **AST-531**.
+* Does **not** change console debug logging — **AST-527**.
+* Does not fix caller tokens — **AST-529**.
+
+## Notes for planning
+
+* Primary: `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` and related components.
+* API contract comes from **AST-531** — plan against publish ref after blocker merges.
+* Vitest §6c for routed page tests per **ASTRAL_TEST_BIBLE**.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-528-per-hop-execution-history`, child `sub/AST-528/AST-532-execution-history-ui-per-hop`. `blockedBy` **AST-531**.
+
+### Comments
+
+#### radia — 2026-05-30T00:47:18.025Z
+## Review (Radia) — `origin/dev...origin/sub/AST-528/AST-532-execution-history-ui-per-hop` @ `1f166417`
+
+**Diff:** 3 files (+342): plan doc, `test_AdminPerformanceMonitor.test.tsx` (`AST-532 per-hop execution history UI` ×6), `docs/ASTRAL_TEST_BIBLE.md` §7.13zn. **No** `AdminPerformanceMonitor.tsx`, **no** `BatchAgentDataModal.tsx`, **no** backend — matches plan Stages 2–3 and sibling boundaries (**AST-531** ledger, **AST-527**/**AST-529** out of scope).
+
+### Plan fidelity
+- Self-assessment **`scope-Single-Component`** matches footprint (Vitest + bible manifest only).
+- All seven planned Stage 2 cases present: separate hop rows, hop-scoped logs, hop-scoped agent_data modal, `task_key` query param on ledger fetch, adhoc/user prefix regression, FAILED badge (`dispatch-status-fail`).
+- No chain-grouping UI — correct per parent AST-528 decision.
+- Existing page already keys expand/inspect off `row.batch_id` (**AST-515**); tests lock that contract without redundant page edits.
+
+### ASTRAL_CODE_RULES (§3.3 / §3.5)
+- Test-only diff under `tests/component/frontend/pages/` — no layer violations, no new runtime modules, no hardcoded state lists in React.
+
+### Advisory
+- **`ASTRAL_TEST_BIBLE.md` §7.13zn** landed in engineer commit; Betty corrected shasum in thread — content aligns with manifest. No action for resolve.
+- **`chainHopRowsForToday()`** pins fixture `started_at` to candidate TZ (`America/Los_Angeles`) so rows survive the page’s default `date_from=todayInTz` filter — same intent as existing tests; acceptable.
+
+### Recommended actions
+| Severity | Item | Action |
+|----------|------|--------|
+| — | None | **resolve-astral** may proceed (no fix-now / discuss). |
+
+**UAT note:** Component tests prove batch_id scoping with mocks; parent **AST-528** manual checklist (AC #1–#6 against live chained dispatch after **AST-531** on parent ftr) remains Susan’s UAT pass.
+
+#### betty — 2026-05-30T00:42:46.151Z
+**Bible shasum correction:** on `origin/sub/AST-528/AST-532-execution-history-ui-per-hop` after fetch: `800b3ba857b4c4355f3be2365309eae6f1033a2c` (§7.13zn — disambiguated from §7.13zm **AST-522** on this branch).
+
+#### katherine — 2026-05-30T00:37:31.019Z
+[check-linear]
+
+**Session scope:** Parent **AST-528** / **Astral Artifacts** — assigned **AST-532**.
+
+**§0a (`astral-kath` / `dev-kath`):** `git fetch origin`, `checkout dev-kath`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`).
+
+**§0b:** `@katherine` issue search (Team Astral). Full threads on **AST-532**, **AST-528**, sibling **AST-531**. **0** actionable @-mention comments.
+
+**§1:** **AST-532** assignee-me — **Plan Approved**. Thread after prior `[check-linear]` (`2026-05-30T00:25`): only Katherine **Stage 1 blocked** note (`00:26`) — no external replies. Sibling **AST-531** now **Tests Passed** with product on `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `634707cc` (Ada) — supersedes plan-only @ `3287b80e`; **AST-532 Stage 1 gate is clear**.
+
+**Pipeline:** Inbox quiet; no `build-astral` from this pass (happy path).
+
+#### katherine — 2026-05-30T00:26:22.322Z
+🛑 Stage 1 blocked: AST-531 publish ref has no per-hop ledger commits yet.
+
+Checked `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` @ `3287b80e` — tip is `docs(AST-531): plan` only; diff vs `origin/dev` is the plan doc (+190 lines), no changes under `src/core/`, `src/data/`, or `src/ui/api/`.
+
+Build paused on **dev-kath** per plan Stage 1 step 3. **Ada** needs to land AST-531 product commits on that publish ref before Katherine can merge and proceed with AST-532.
+
+#### katherine — 2026-05-30T00:25:43.743Z
+[check-linear]
+
+**Session scope:** Parent **AST-528** / **Astral Artifacts** — assigned **AST-532**. Publish ref `origin/sub/AST-528/AST-532-execution-history-ui-per-hop`.
+
+**§0a (`astral-kath` / `dev-kath`):** `git fetch origin`, `checkout dev-kath`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`). No publish-ref merge (check-linear only; no `build-astral` / `test-astral`).
+
+**§0b:** `@katherine` issue search (Team Astral + **Astral Artifacts** project). Full threads on **AST-532**, parent **AST-528**, sibling **AST-531**. **0** actionable @-mention comments.
+
+**§1:** Assignee-me in **Astral Artifacts**: **AST-532** (active). **Plan Approved**; latest thread is Katherine plan doc @ `2026-05-30T00:23` — no external replies or nags yet. Sibling **AST-531** assignee Ada (Plan Approved); parent git table comment is informational only.
+
+**Pipeline:** Inbox quiet; no `build-astral` from this pass (happy path).
+
+#### katherine — 2026-05-30T00:23:52.976Z
+Plan doc: [ast-532-execution-history-ui-per-hop-rows-and-inspection.md](https://github.com/susansomerset/astral/blob/sub/AST-528/AST-532-execution-history-ui-per-hop/docs/features/artifacts/ast-532-execution-history-ui-per-hop-rows-and-inspection.md)
+
+**Self-assessment**
+
+- **Scope:** `scope-Single-Component` — Vitest in `test_AdminPerformanceMonitor.test.tsx` plus at-most-minor Execution History page tweaks; no backend/ledger work (AST-531).
+- **Conf:** `conf-Medium` — UI follows AST-515 batch_id-scoped patterns, but build gates on AST-531 publish ref containing product commits; contract documented from parent/sibling definitions until then.
+- **Risk:** `risk-Medium` — Execution History is operator-critical for artifact pipeline UAT; regressions on adhoc/user/dispatch rows or wrong batch scoping would block mid-chain prompt debugging.
+
+**Approach:** Stage 1 merges `origin/sub/AST-528/AST-531-per-hop-dispatch-ledger` and stops if empty. Stages 2–3 add per-hop Vitest coverage (separate rows, hop-scoped logs + agent_data, task filter, FAILED badge, adhoc/user/dispatch regression) and touch page source only if tests expose a scoping bug — no chain-grouping UI per parent open Q #3.
+
+---
+
 # AST-532 — Execution History UI per-hop rows and inspection
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-532/execution-history-ui-per-hop-rows-and-inspection-per-hop-execution  

@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-520 archived 2026-06-15 -->
+
+## Linear archive (AST-520)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-520/register-anticipate-scan-task-key-insert-task-anticipate-scan-in-the  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-516 — Insert task "anticipate_scan" in the daisy chain  
+**Blocked by / blocks / related:** parent: AST-516
+
+### Description
+
+## What this implements
+
+Add `anticipate_scan` as a tenth Phase E artifact-pipeline task key using the same dumb-chain registry pattern as **AST-450**. The key must appear in the authoritative task registry, sync a blank `agent_task` row on startup, and remain a non-dispatch hop ( `BUILD_ARTIFACTS` still enters at `contemplate_job` only). Susan wires `contemplate_job` **→** `anticipate_scan` **→** `advise_job_resume` via `run_next` in Manage Tasks; code must not encode chain order.
+
+## Acceptance criteria
+
+1. `anticipate_scan` appears as a configured task key in Manage Tasks and in the authoritative task-key registry.
+2. App startup sync creates a current `agent_task` row for `anticipate_scan` (blank until Susan authors prompts).
+3. With Susan’s `run_next` wiring (`contemplate_job` **→** `anticipate_scan` **→** `advise_job_resume`), a full resume artifact chain run executes all three hops in order for a single job.
+4. `advise_job_resume` receives `anticipate_scan` output through `{$CALLER_RESPONSE}` (or equivalent chain token Susan wires), not stale output from `contemplate_job` alone.
+5. `BUILD_ARTIFACTS` dispatch still enters at `contemplate_job` only.
+6. Susan can assign the Atlas agent and save all prompt segments for `anticipate_scan` in Manage Tasks without code changes.
+7. Manage Tasks preview for `anticipate_scan` with a selected job entity resolves job-scoped tokens (`{$VISIBLE_JD}`, `{$ANALYSIS_*}`, etc.) the same way `contemplate_job` preview does after **AST-513** lands.
+8. For a job in the **ready** state, opening it in the **Recommended** Job Analysis Report modal shows the `anticipate_scan` agent response in the same agent-response section pattern as other artifact pipeline hops.
+
+## Boundaries
+
+* Does **not** author Atlas prompt prose — Susan’s **AST-313** work.
+* Does **not** change cover letter chain, dispatch seeds, or hardcoded pipeline step lists.
+* Does **not** persist Atlas output to dedicated `job_data` fields.
+* Does **not** modify `consult.py` dispatch routing unless a grep shows a required string-literal update (unlikely for a non-entry key).
+
+## Notes for planning
+
+* Follow **AST-450** / `docs/features/artifacts/ast-450-register-artifact-pipeline-task-keys-dumb-chain-registry.md`: minimal `TASK_CONFIG` stub between `contemplate_job` and `advise_job_resume` `seq` values; registry-only response schema.
+* `print_label` (or equivalent) if Job Analysis Report labels hops via `TASK_CONFIG` — verify acceptance **#8** without UI code if possible.
+* Betty owns `docs/ASTRAL_TEST_BIBLE.md` and test updates after **Code Complete**.
+
+## Git branch (authoritative)
+
+Per `orientation-astral` **§ Branch law**`**: parent **`**ftr/AST-516-insert-task-anticipate_scan-in-the-daisy-chain**`**, child **`**sub/AST-516/<child-segment>**`**. Created at **dispatch-linear**. Engineers cherry-pick to **`**origin/<sub-ref>**`** — never Linear **`**gitBranchName\`** when it disagrees.
+
+### Comments
+
+#### radia — 2026-05-28T23:19:20.461Z
+**Review** — `git diff origin/dev...origin/sub/AST-516/AST-520-register-anticipate_scan-task-key` @ `d4911f11` (8 files, +282/−14).
+
+### Plan fidelity
+- **Registry (AC #1–2, #5):** `anticipate_scan` inserted between `contemplate_job` and `advise_job_resume` with registry-only stub (`trigger_state: None`, minimal `response_schema`); Phase E `seq` renumbered 1→10; `BUILD_CONFIG["resume_artifact_chain"]["first_task_key"]` still `contemplate_job`; `anticipate_scan` absent from `_DISPATCH_TASK_TRIGGER_SEED` and `database._DISPATCH_TASK_SEED` — grep confirms only `config.py` product reference.
+- **Report UI (AC #8):** `get_entity_agent_story` adds `phase` + `label` from `TASK_CONFIG`; `JobAnalysisReportModal` filters `phase === "E. Job Artifacts"` and renders dynamic `CollapsiblePanel` + `AgentStoryTab` (no hardcoded hop list). `/api/jobs/:id` already attaches `agent_story` via `get_entity_agent_story` — enrichment flows without API change.
+- **Self-assessment:** `scope-Single-Component` / `conf-high` / `risk-low` still match the diff footprint (config + small roster + one modal).
+
+### ASTRAL_CODE_RULES
+- **§2.1 / §2.6:** Config-driven task key; no pipeline step arrays; dispatch entry unchanged (`consult.py` `BUILD_ARTIFACTS` → `contemplate_job` only).
+- **§3.3 (B2):** Core reads `TASK_CONFIG` in roster; UI consumes JSON only — no `src.data` / `src.external` in the TSX change.
+- **§3.5:** Key name `anticipate_scan`; `print_label` "Anticipate Scan" on the new entry only (per plan).
+
+### Rubric (5a)
+- No new silent failure, `print()`, or layer violations in the diff.
+- **G1 note:** `PHASE_E_ARTIFACTS = "E. Job Artifacts"` in the modal mirrors `TASK_CONFIG` phase text (not job-state literals) — acceptable per plan Stage 3.
+
+### Tests / bible
+- Betty manifest paths covered: `TestAst520AnticipateScanTaskKey`, roster label test, modal Phase E panel test; `ASTRAL_TEST_BIBLE.md` §7.13m updated for ten keys — aligned with publish ref.
+
+### Advisory (Susan / UAT — not code gaps)
+- **AC #3–4, #6–7:** Chain order, `{$CALLER_RESPONSE}` wiring, Atlas prompts, and Manage Tasks preview tokens depend on Susan `run_next` + **AST-313** / **AST-513** — verify in UAT after wiring.
+- Other Phase E hops in the report modal use raw `task_key` as panel title until `print_label` is added elsewhere (plan decision).
+
+### fix-now
+None.
+
+### discuss
+None.
+
+**Handoff:** Ada may run `resolve-astral` when ready (no blockers from this review).
+
+#### ada — 2026-05-28T23:17:52.137Z
+[check-linear]
+
+**Inbox (parent AST-516 / Astral Artifacts, assigned AST-520):**
+
+- **§0a:** `dev-ada` @ `/Users/susan/chuckles/astral-ada`; merged `origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`).
+- **§0b:** `@ada` issue search (team + **Astral Artifacts** project); union with assignee-me in project. Full threads on **AST-520**, parent **AST-516**, sibling **AST-513**, and other @ada / assignee hits in session project.
+- **0** actionable comments — nothing `@ada` or directed at Ada needing reply or small fix after Ada’s plan doc comment (`fe6718eb`).
+
+**AST-520:** **Tests Passed**, assignee Ada — Betty QA manifest on publish ref `origin/sub/AST-516/AST-520-register-anticipate_scan-task-key` @ `d4911f11`; no `@ada` thread work. Next gate is **`resolve-astral`** when Radia posts review (not invoked from this pass).
+
+**Session scope:** Happy path — no `plan-astral` / `build-astral` / `test-astral` / `resolve-astral` from check-linear.
+
+#### betty — 2026-05-28T23:13:15.597Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-516/AST-520-register-anticipate_scan-task-key` @ `d4911f11`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `80487d37115882eccdca297699334393a25607c9` — see §7.13m (AST-450 + AST-520).
+
+Run on **`dev-ada`** after `git fetch origin` and `git merge origin/sub/AST-516/AST-520-register-anticipate_scan-task-key`:
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst450ArtifactPipelineTaskKeys tests/component/utils/test_config.py::TestAst520AnticipateScanTaskKey`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestEntityAgentStory::test_ast520_agent_story_phase_and_print_label`
+3. `cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx`
+
+**Coverage intent:**
+- **#1–2:** tenth Phase E key `anticipate_scan` in `TASK_CONFIG` (seq renumber, no dispatch seed); `BUILD_ARTIFACTS` still enters at `contemplate_job`; legacy `craft_job_*` absent.
+- **#2:** `get_entity_agent_story` attaches `phase` + `print_label` display (`Anticipate Scan`).
+- **#3:** Recommended Job Analysis Report renders Phase E `agent_story` panels dynamically (not hardcoded hop list); non–Phase E entries filtered out.
+
+**Susan manual (not in manifest):** wire `contemplate_job` → `anticipate_scan` → `advise_job_resume` in Manage Tasks; chain run AC **#3–4**, **#6–7** after wiring + **AST-313** prompts.
+
+— Betty
+
+#### ada — 2026-05-28T23:07:58.572Z
+Plan doc: [ast-520-register-anticipate-scan-task-key-insert-task-anticipate-scan-in-the-daisy-chain.md](https://github.com/susansomerset/astral/blob/sub/AST-516/AST-520-register-anticipate_scan-task-key/docs/features/artifacts/ast-520-register-anticipate-scan-task-key-insert-task-anticipate-scan-in-the-daisy-chain.md)
+
+**Scope:** `scope-Single-Component` — one new `TASK_CONFIG` entry + Phase E `seq` renumber; small `get_entity_agent_story` metadata and Job Analysis Report Phase E panels for acceptance #8.
+
+**Conf:** `conf-high` — direct extension of **AST-450** dumb-chain registry; chain execution and tokens already shipped (**AST-303**, **AST-304**, **AST-513**).
+
+**Risk:** `risk-low` — non-dispatch hop; `seq` affects Manage Tasks sort only, not runtime chain order.
+
+Publish SHA: `fe6718eb` on `origin/sub/AST-516/AST-520-register-anticipate_scan-task-key`.
+
+---
+
 # AST-520 — Register `anticipate_scan` task key
 
 **Linear:** [AST-520 — Register anticipate_scan task key](https://linear.app/astralcareermatch/issue/AST-520/register-anticipate-scan-task-key-insert-task-anticipate-scan-in-the-daisy-chain)  

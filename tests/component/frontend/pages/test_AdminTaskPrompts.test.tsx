@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import TaskPrompts from "../../../../src/ui/frontend/src/pages/AdminTaskPrompts"
 import { installBaseApiMocks, jsonResponse, renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -17,8 +18,10 @@ const tasks = [
     task_key_uuid: "uuid-a",
     agent_id: "agent_a",
     run_next: "task_b",
-    phase: "phase_one",
-    seq: 1,
+    task_group_order: "phase_one",
+    task_group_name: "Phase One",
+    task_seq: 1,
+    task_name: "task_a",
     model_code: "claude",
     system_prompt_tokens: 10,
     base_cache_tokens: 20,
@@ -36,8 +39,10 @@ const tasks = [
     task_key_uuid: "uuid-b",
     agent_id: "agent_b",
     run_next: "",
-    phase: "phase_one",
-    seq: 2,
+    task_group_order: "phase_one",
+    task_group_name: "Phase One",
+    task_seq: 2,
+    task_name: "task_b",
     model_code: "claude",
     system_prompt_tokens: 11,
     base_cache_tokens: 21,
@@ -60,6 +65,15 @@ describe("AdminTaskPrompts", () => {
 
   function mockApi() {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
       if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") return { json: async () => tasks } as Response
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return jsonResponse(["candidate_name"])
@@ -141,7 +155,7 @@ describe("AdminTaskPrompts", () => {
     expect(JSON.parse(String(putCall?.[1]?.body)).system_prompt).toBe("custom system")
   }, 20000)
 
-  it("allows zero expanded phase sections on the list page", async () => {
+  it("allows zero expanded grouping sections on the list page", async () => {
     mockApi()
     renderWithProviders(<TaskPrompts />)
     await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
@@ -213,6 +227,35 @@ describe("AdminTaskPrompts", () => {
     expect(body.cache_prompt).toBe("cache")
   }, 25000)
 
+
+  it("AST-739: shows task_name, grouping sections, and persists grouping fields on save", async () => {
+    localStorage.setItem("astral_admin_task_prompts_default_expanded", "user")
+    mockApi()
+    renderWithProviders(<TaskPrompts />)
+    await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+    expect(screen.getByText(/Phase One \(2\)/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    await userEvent.click(screen.getByText("task_a"))
+    const editModal = screen.getByRole("heading", { name: /Edit: task_a/ }).closest(".modal-card")!
+    await waitFor(() => expect(within(editModal).getByDisplayValue("phase_one")).toBeInTheDocument())
+    const groupName = within(editModal).getByDisplayValue("Phase One")
+    await userEvent.clear(groupName)
+    await userEvent.type(groupName, "Renamed Group")
+    const seqInput = within(editModal).getByRole("spinbutton")
+    await userEvent.clear(seqInput)
+    await userEvent.type(seqInput, "9")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText(/Task "task_a" updated/)).toBeInTheDocument())
+    const putCall = mockedApi.mock.calls.find(
+      ([url, init]) => url === "/api/admin/tasks/task_a" && init?.method === "PUT",
+    )
+    const body = JSON.parse(String(putCall?.[1]?.body))
+    expect(body.task_group_order).toBe("phase_one")
+    expect(body.task_group_name).toBe("Renamed Group")
+    expect(body.task_seq).toBe(9)
+    expect(body.task_name).toBe("task_a")
+  }, 20000)
+
   it("handles load failures", async () => {
     installBaseApiMocks(mockedApi, async (url: string) => {
       if (url.includes("/api/admin/tasks")) throw new Error("tasks failed")
@@ -229,6 +272,7 @@ describe("AdminTaskPrompts", () => {
       {
         ...tasks[0],
         task_key: "contemplate_job",
+        task_name: "contemplate_job",
         entity_type: "job",
       },
     ]
@@ -269,4 +313,23 @@ describe("AdminTaskPrompts", () => {
       ).toBe(true),
     )
   }, 20000)
+
+  it("AST-783: shows task repo JSON divergence banner on routed page", async () => {
+    installBaseApiMocks(mockedApi, async (url: string) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: true, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
+      if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") return { json: async () => tasks } as Response
+      if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
+    })
+    renderWithProviders(<TaskPrompts />)
+    await waitFor(() => expect(screen.getByText(/task prompts/)).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Revert to file" })).toBeInTheDocument()
+  }, 15000)
 })

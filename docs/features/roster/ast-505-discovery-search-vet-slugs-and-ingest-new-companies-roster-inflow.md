@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-505 archived 2026-06-15 -->
+
+## Linear archive (AST-505)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-505/discovery-search-vet-slugs-and-ingest-new-companies-roster-inflow  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-490 — Roster inflow  
+**Blocked by / blocks / related:** parent: AST-490; blocks: AST-506
+
+### Description
+
+## What this implements
+
+Phase 1 of roster inflow: weekly per-candidate Google CSE discovery (100 results, 7-day date restrict, no site filters), AI vetting (slug / ignore / optional URL), **ingest_new_companies** with candidate-scoped URL pattern-match dedupe, and **NEW** company state. Uses existing dispatch/scheduler patterns (gaze-like cadence).
+
+## Acceptance criteria
+
+2. Phase 1 dispatch runs weekly per candidate (7-day scan interval) via task dispatcher configuration.
+3. Phase 1 executes general Google CSE searches (no site filters), up to 100 results, with 7-day date restrict, using terms from the artifact.
+4. Phase 1 vetting returns slug, ignore, and optional URL per hit; ignored hits do not create company rows.
+5. ingest_new_companies creates **NEW** rows for accepted hits; URL pattern-match dedupe skips companies whose URLs already exist on the **candidate's** roster.
+6. When Phase 1 supplies a URL, the company reaches **WEBSITE_FOUND** without Phase 2 dispatch.
+
+## Boundaries
+
+* Phase 2 website resolution — sibling ticket.
+* **IMPORTED** manual path unchanged.
+* No new DB columns without Susan flag (AST-490 pattern fidelity).
+
+## Notes for planning
+
+* Google CSE: AST-489 `search_google_cse` in external layer.
+* Gazer/dispatch patterns — not a parallel orchestration model.
+* Hot-file overlap with AST-491 on `origin/dev`; merge `origin/dev` into sub before publish.
+
+## Git branch (authoritative)
+
+`sub/AST-490/AST-505-discovery-search-vet-slugs-ingest-new-companies`
+
+### Comments
+
+#### radia — 2026-05-28T00:11:13.944Z
+**Review** — `origin/dev...origin/sub/AST-490/AST-505-discovery-search-vet-slugs-and-ingest-new-companies` (tip `fcda6d67`)
+
+Doc: `docs/features/roster/ast-505-discovery-search-vet-slugs-and-ingest-new-companies-roster-inflow.md` § Review (`fcda6d67`)
+
+### fix-now
+
+- **`src/core/roster.py` L34** — imports `company_search_terms_lines` from `src.core.candidate`, but that symbol is **not on this publish ref** (lives on **AST-504** sub only). **ImportError at module load** until AST-504 is on the integration line or cherry-picked here. Plan noted the dependency; ref is not self-contained.
+
+### discuss
+
+- **`database._candidate_search_term_lines` vs AST-504 `company_search_terms_lines`** — data-layer mirror is intentional; after AST-504 merge, two parsers exist — drift could split eligibility vs batch if normalization changes.
+- **`consult.run_consult_task` candidate branch** — routes all `entity_type == "candidate"` to inflow discovery with no `task_key` guard. OK while `inflow_discovery` is the sole candidate task.
+
+### advisory
+
+- **`consult.py` lazy import** — add cycle-break comment (cf. `board_search`) — B1 polish.
+- **`run_inflow_discovery_batch`** — `batch_id` / `debug` unused.
+- **UAT:** Admin `vet_inflow_discovery` prompt row; **AST-504** before live dispatch.
+
+### solid
+
+Config/dispatch seed, `INFLOW_CONFIG`, `NEW` + transitions, weekly eligibility, dispatcher candidate routing (no company clear), CSE→vet→ingest, URL/slug dedupe, `NEW`/`WEBSITE_FOUND` branching, tests §7.13zg — align with plan and acceptance criteria. `IMPORTED` untouched; layers clean in diff.
+
+#### betty — 2026-05-28T00:01:20.555Z
+**QA manifest** — run on `origin/sub/AST-490/AST-505-discovery-search-vet-slugs-and-ingest-new-companies` @ `102e2acf`
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig`
+2. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst505InflowDiscoveryEligible`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestRunUnified::test_ast505_candidate_entity_routes_ctx_without_company_clear`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst505InflowDiscovery`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `376263c591b1895e3415fea14d7e813878a9a266f6e8ed8e7673a8fbed929d84` (§7.13zg)
+
+**Blocker note:** Phase 1 depends on **AST-504** search-terms artifact on the integration line for live dispatch/UAT; manifest above is Phase 1 test coverage only.
+
+**Integration heads-up:** On `dev-betty` with **AST-507** merged alongside **AST-505**, `roster` ↔ `consult` top-level imports can circular-import when `test_consult` loads first — consult routing for candidate is covered in `TestAst505InflowDiscovery::test_consult_routes_candidate_entity` instead.
+
+#### hedy — 2026-05-27T23:47:26.523Z
+**Blocked:** AST-504 (Company search terms artifact and craft task) is **Plan Approved**, not **Code Complete**. Phase 1 discovery depends on the Phase 0 search-terms artifact and craft task.
+
+**Needed:** AST-504 build → Code Complete before this ticket can proceed.
+
+**Publish ref (unchanged):** `origin/sub/AST-490/AST-505-discovery-search-vet-slugs-and-ingest-new-companies`
+
+#### hedy — 2026-05-27T23:43:47.327Z
+Plan: `docs/features/roster/ast-505-discovery-search-vet-slugs-and-ingest-new-companies-roster-inflow.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-490/AST-505-discovery-search-vet-slugs-and-ingest-new-companies/docs/features/roster/ast-505-discovery-search-vet-slugs-and-ingest-new-companies-roster-inflow.md
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — config + dispatch candidate entity type, consult routing, roster CSE/vet/ingest, and `NEW` company state.
+- **Conf:** `Medium` — reuses AST-489 CSE and dispatch patterns, but task-level weekly cadence (`freq_hrs` + `last_run_at`) and candidate `entity_type` are new.
+- **Risk:** `Medium` — slug/URL dedupe mistakes duplicate or drop companies; does not touch manual `IMPORTED` path.
+
+Build blocked until **AST-504** (`company_search_terms_lines`) is on the integration line. Publish ref cherry-pick: `49883c9b`.
+
+---
+
 # AST-505 — Discovery search, vet slugs, and ingest NEW companies (Roster inflow)
 
 - **Linear:** [AST-505](https://linear.app/astralcareermatch/issue/AST-505/discovery-search-vet-slugs-and-ingest-new-companies-roster-inflow)

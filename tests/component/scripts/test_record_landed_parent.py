@@ -1,4 +1,4 @@
-"""AST-683 / AST-693: record-landed-parent helper + merge-parent / prep-uat wiring."""
+"""AST-683 / AST-693 / AST-800 / AST-805 / AST-806: record-landed-parent helper + prep-uat wiring."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 RECORD_SCRIPT = REPO_ROOT / "scripts/git/record-landed-parent.sh"
 MERGE_PARENT_SH = REPO_ROOT / "scripts/git/merge-parent.sh"
 PREP_UAT_LAND_SH = REPO_ROOT / "scripts/git/prep-uat-land.sh"
-APPEND_SCRIPT = REPO_ROOT / "scripts/append_merge_ticket_log.py"
+REBUILD_SCRIPT = REPO_ROOT / "scripts/rebuild_merge_ticket_log.py"
 
 _FAKE_GIT = """#!/usr/bin/env bash
 set -euo pipefail
@@ -28,13 +28,47 @@ done
 exec "$REAL_GIT" "$@"
 """
 
+_REBUILD_STUB = """#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.utils.merge_ticket_log import rebuild_merge_ticket_log
+
+parent = "AST-999"
+if "--landing-parent" in sys.argv:
+    parent = sys.argv[sys.argv.index("--landing-parent") + 1]
+
+rebuild_merge_ticket_log(
+    [{"ticket_id": parent, "recorded_at": "2026-06-25T00:00:00+00:00"}]
+)
+print(json.dumps({"count": 1, "parents": [parent], "landing_parent": parent.upper()}))
+"""
+
 
 def _copy_tree(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
 
-def _mini_repo(tmp_path: Path, *, with_append: bool = True) -> Path:
+def _ensure_venv_python(repo: Path) -> Path:
+    venv_python = repo / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True, exist_ok=True)
+    venv_python.write_text(
+        f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
+        encoding="utf-8",
+    )
+    venv_python.chmod(0o755)
+    return venv_python
+
+
+def _mini_repo(
+    tmp_path: Path,
+    *,
+    with_rebuild: bool = True,
+    with_venv: bool = True,
+) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     for rel in (
@@ -49,15 +83,19 @@ def _mini_repo(tmp_path: Path, *, with_append: bool = True) -> Path:
     (repo / "src/utils/config.py").write_text(
         f'"""Minimal config stub for AST-683 shell tests."""\n'
         f"from pathlib import Path\n\n"
-        f'MERGE_TICKET_LOG_CONFIG = {{"log_path": Path(r"{log_path}")}}\n',
+        f'MERGE_TICKET_LOG_CONFIG = {{"log_path": Path(r"{log_path}"), "uat_state_name": "User Testing"}}\n',
         encoding="utf-8",
     )
-    if with_append:
-        _copy_tree(APPEND_SCRIPT, repo / "scripts/append_merge_ticket_log.py")
+    if with_rebuild:
+        rebuild_path = repo / "scripts/rebuild_merge_ticket_log.py"
+        rebuild_path.parent.mkdir(parents=True, exist_ok=True)
+        rebuild_path.write_text(_REBUILD_STUB, encoding="utf-8")
     log_path.write_text("[]\n", encoding="utf-8")
     (repo / "scripts/git/record-landed-parent.sh").chmod(0o755)
-    if with_append:
-        (repo / "scripts/append_merge_ticket_log.py").chmod(0o755)
+    if with_rebuild:
+        (repo / "scripts/rebuild_merge_ticket_log.py").chmod(0o755)
+    if with_venv:
+        _ensure_venv_python(repo)
 
     real_git = shutil.which("git") or "/usr/bin/git"
     subprocess.run(
@@ -98,23 +136,26 @@ def _mini_repo(tmp_path: Path, *, with_append: bool = True) -> Path:
     return repo
 
 
-def _run_record(repo: Path, parent_id: str = "AST-999") -> subprocess.CompletedProcess[str]:
+def _run_record(
+    repo: Path,
+    parent_id: str = "AST-999",
+    *,
+    astral_python: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     fake_bin = repo.parent / "bin"
     fake_bin.mkdir(exist_ok=True)
     fake_git = fake_bin / "git"
     fake_git.write_text(_FAKE_GIT, encoding="utf-8")
     fake_git.chmod(0o755)
-    fake_python = fake_bin / "python3"
-    fake_python.write_text(
-        f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
-        encoding="utf-8",
-    )
-    fake_python.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["REAL_GIT"] = shutil.which("git") or "/usr/bin/git"
     env["ASTRAL_DB_DIR"] = str(repo / "data")
     env["PYTHONUNBUFFERED"] = "1"
+    if astral_python is not None:
+        env["ASTRAL_PYTHON"] = astral_python
+    elif "ASTRAL_PYTHON" in env:
+        del env["ASTRAL_PYTHON"]
     return subprocess.run(
         ["bash", str(repo / "scripts/git/record-landed-parent.sh"), str(repo), parent_id],
         cwd=repo,
@@ -125,8 +166,29 @@ def _run_record(repo: Path, parent_id: str = "AST-999") -> subprocess.CompletedP
     )
 
 
+class TestRecordLandedParentShell:
+    def test_record_landed_parent_wires_rebuild_not_append(self) -> None:
+        text = RECORD_SCRIPT.read_text(encoding="utf-8")
+        assert "rebuild_merge_ticket_log.py" in text
+        assert "append_merge_ticket_log.py" not in text
+        assert "rebuild merge ticket log" in text
+
+    def test_record_landed_parent_passes_landing_parent_flag(self) -> None:
+        text = RECORD_SCRIPT.read_text(encoding="utf-8")
+        assert '--landing-parent "$PARENT_ID"' in text
+
+    def test_record_landed_parent_resolves_venv_python(self) -> None:
+        text = RECORD_SCRIPT.read_text(encoding="utf-8")
+        assert "ASTRAL_PYTHON" in text
+        assert ".venv/bin/python" in text
+        assert '"$PYTHON" "$REBUILD"' in text
+        assert 'python3 "$REBUILD"' not in text
+        assert "repo venv python missing" in text
+        assert "AST-806" in text
+
+
 class TestRecordLandedParent:
-    def test_record_landed_parent_appends_and_commits(self, tmp_path: Path) -> None:
+    def test_record_landed_parent_rebuilds_and_commits(self, tmp_path: Path) -> None:
         repo = _mini_repo(tmp_path)
         result = _run_record(repo, "AST-999")
         assert result.returncode == 0, result.stderr
@@ -136,6 +198,7 @@ class TestRecordLandedParent:
         assert len(log) == 1
         assert log[0]["ticket_id"] == "AST-999"
         assert "recorded_at" in log[0]
+        assert '"landing_parent": "AST-999"' in result.stdout
 
         log_result = subprocess.run(
             ["git", "log", "-1", "--oneline"],
@@ -144,14 +207,34 @@ class TestRecordLandedParent:
             text=True,
             check=True,
         )
-        assert "prep-uat(AST-999)" in log_result.stdout
+        assert "rebuild merge ticket log" in log_result.stdout
 
-    def test_record_landed_parent_missing_append_script_blocks(self, tmp_path: Path) -> None:
-        repo = _mini_repo(tmp_path, with_append=False)
+    def test_record_landed_parent_missing_rebuild_script_blocks(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, with_rebuild=False)
         result = _run_record(repo)
         assert result.returncode != 0
         assert "BLOCKED" in result.stderr
-        assert "append script missing" in result.stderr
+        assert "rebuild script missing" in result.stderr
+
+    def test_record_landed_parent_missing_venv_python_blocks(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, with_venv=False)
+        result = _run_record(repo)
+        assert result.returncode != 0
+        assert "BLOCKED" in result.stderr
+        assert "venv python missing" in result.stderr
+        assert "AST-806" in result.stderr
+
+    def test_record_landed_parent_honors_astral_python_override(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, with_venv=False)
+        override = tmp_path / "override-python"
+        override.write_text(
+            f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
+            encoding="utf-8",
+        )
+        override.chmod(0o755)
+        result = _run_record(repo, astral_python=str(override))
+        assert result.returncode == 0, result.stderr
+        assert "RESULT: record-landed-parent status=ok parent=AST-999" in result.stdout
 
 
 class TestMergeParentShell:

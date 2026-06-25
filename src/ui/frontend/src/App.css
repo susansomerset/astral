@@ -223,6 +223,8 @@ body {
 .nav-deploy-env {
   color: var(--text-secondary);
   text-transform: lowercase;
+  cursor: default;
+  user-select: none;
 }
 .nav-deploy-env-wrap {
   position: relative;
@@ -1651,6 +1653,20 @@ input.side-tab-heading-editable:focus {
 .toast-success { background: var(--cta-green); }
 .toast-error   { background: var(--danger); }
 .toast-info    { background: var(--bg-elevated); border: 1px solid var(--border); }
+
+.toast-error-clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.toast-error-clickable:hover {
+  filter: brightness(1.08);
+}
+.toast-copy-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
 
 /* === 12. Agent Timesheets === */
 

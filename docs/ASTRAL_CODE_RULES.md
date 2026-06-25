@@ -192,7 +192,7 @@ Example: a company in `NEW` is claimed by the prefilter dispatch task. Core eval
 
 Job states are defined in `JOB_STATES`. Each state carries `prior_states` (a list of valid predecessor states, or `None` for unrestricted entry). `tracker.transition_job_state` enforces these — it raises `ValueError` if the job's current state is not in `prior_states`. States with a `retry_state` key support per-job retry routing: when `_run_batch_consult` finds missing or invalid jobs, it transitions them to `retry_state` (rather than the error state) for a dedicated second-attempt dispatch batch. Core functions determine the outcome and call `tracker.transition_job_state` with the target state.
 
-Example: a job in `PASSED_JD` is claimed by the consult_get dispatch task. `render_verdict` grades it and transitions it to `PASSED_GET`, `FAILED_GET`, or `FAILED_TECHNICAL_GET`.
+Example: a job in `PASSED_JD` is claimed by the **`grade_do`** dispatch task. `render_verdict` grades it and transitions it to `PASSED_DO`, `FAILED_DO`, or `FAILED_TECHNICAL_DO`.
 
 #### 2.6.3 Candidates
 
@@ -206,7 +206,7 @@ Candidate states are defined in `CANDIDATE_STATES` and transitions in `ASTRAL_CO
 
 `render_verdict(task_type, astral_job_id)` is the standard orchestrator for per-job consult tasks in `src/core/consult.py`. It handles the full lifecycle for one job through one agent task:
 
-1. Resolve orchestration via **`TASK_CONFIG`** using **`resolve_dispatch_task_config_key(task_type)`** (`consult_*` dispatch keys map to **`grade_*`** orchestration entries).
+1. Resolve orchestration via **`TASK_CONFIG[task_type]`** — dispatch `task_key` and catalog key are the same string for graded consult steps (`grade_do`, `grade_get`, `grade_like`).
 2. Fetch job (and company if `requires_company`) from the data layer.
 3. Prep live_content via `_prep_live_content` (coat-check pattern for JD and website content).
 4. Call `do_task` with the `agent_task` key.
@@ -370,9 +370,9 @@ astral/
 | qualify_job_listings | | X | X |
 | scrape_jd | X | | X |
 | evaluate_jd | | X | X |
-| consult_do | | X | X |
-| consult_get | | X | X |
-| consult_like | / | X | X |
+| grade_do | | X | X |
+| grade_get | | X | X |
+| grade_like | / | X | X |
 
 ### 3.3 Import Rules
 
@@ -478,6 +478,25 @@ The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside
 **Spike path rule:** one directory per **Linear issue id** (`AST-NNN`), not per board nickname. Subfolders (`phase1/`, `phase2/`, …) are optional inside that issue folder.
 
 **Do not** create a top-level **`artifacts/`** directory. That name is reserved for the **Astral Artifacts** program and **`docs/features/artifacts/`** (production markdown plans only). Spike scripts must default **`--out`** / **`--out-dir`** to **`debug/spikes/<issue-id>/…`**, not `artifacts/…` or `docs/…`.
+
+### 3.7 Sunset — Astral Boards (AST-757)
+
+The **Astral Boards** channel is **removed** from production. Roster cultivation via Google CSE and company/job dispatch replaced the boards ingest + gaze workflow. Epic siblings **AST-765** (product removal) and **AST-766** (schema drop) deleted board modules, API routes, tables, and board-only tests; **AST-767** retires active test-bible manifests.
+
+| Label | SHA | Notes |
+|-------|-----|-------|
+| Pre-removal `dev` tip at dispatch | `8d9b01e5e75ace9c04c32711488430503075e0c3` | Last boards-capable tree before AST-757 removal |
+| First removal commit | `e8fe8143f7b0b73a703238af1c31a39252b65992` | `code(AST-765): delete boards modules and unregister API` — equivalent `f64c3c0` on AST-765 republish line |
+
+**Revival hints:**
+
+- `git diff 8d9b01e5..e8fe814` — start of product removal
+- `git show 8d9b01e5:<path>` — last known contents of removed board files (e.g. `src/core/boards.py`, `src/ui/api/api_boards.py`)
+
+**Archive pointers:**
+
+- Design history: **`docs/features/boards/`**
+- No active component-test obligations for boards — see monolith **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset) and decomposed **`docs/test-bible/**`** sunset stubs
 
 ---
 

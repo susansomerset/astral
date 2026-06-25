@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, process_gaze_board_batch, scrape_jd_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
 from roster for callers that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record); batch lifecycle (claim, release) is owned by CLI.
 """
@@ -24,14 +24,12 @@ from src.core.roster import (
     _pjl_scrape_ledger_keys,
     _scrape_pjl_page,
 )
-from src.utils.config import BOARD_SEARCH_STATES, GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG
+from src.utils.config import GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
 from src.data.database import (
     get_company,
     record_to_company_job_scan,
     raw_job_listing_is_duplicate,
-    set_board_search_state,
-    update_board_search_last_scan_at,
     update_company_last_scan_at,
 )
 from src.external.playwright import create_browser_context, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
@@ -118,7 +116,7 @@ def _classify_jd(text: str) -> str:
     return "ok"
 
 
-async def scrape_jd_batch(
+async def fetch_jd_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     debug: bool = False,
@@ -127,21 +125,21 @@ async def scrape_jd_batch(
     Transitions each job to JD_READY (pass) or JD_SCRAPE_FAIL (fail/short).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
-        raise ConnectionError(f"scrape_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
+        raise ConnectionError(f"fetch_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
     if debug:
         _log.set_debug_flag(True)
     cfg = TRACKER_CONFIG
     jd_key = cfg.get("job_data_keys", {}).get("job_description", "job_description")
     min_chars = cfg.get("jd_min_chars", 200)
     # Success / generic scrape-fail transitions (classified JD errors route via _JD_ERROR_STATES)
-    pass_state = GAZER_CONFIG["scrape_jd"]["pass_state"]
-    fail_state = GAZER_CONFIG["scrape_jd"]["fail_state"]
+    pass_state = GAZER_CONFIG["fetch_jd"]["pass_state"]
+    fail_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
     job_total = len(jobs)
 
     passed = failed = 0
     if debug and job_total > 0:
         _log.debug_index(
-            func="gazer.scrape_jd_batch",
+            func="gazer.fetch_jd_batch",
             index=1,
             total=1,
             identifier=batch_id,
@@ -156,7 +154,7 @@ async def scrape_jd_batch(
         if not job_link:
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -171,7 +169,7 @@ async def scrape_jd_batch(
         except Exception as e:
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -186,7 +184,7 @@ async def scrape_jd_batch(
         if not text or not text.strip():
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -201,7 +199,7 @@ async def scrape_jd_batch(
         if len(text) < min_chars:
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -217,7 +215,7 @@ async def scrape_jd_batch(
             error_state = _JD_ERROR_STATES[classification]
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -238,7 +236,7 @@ async def scrape_jd_batch(
         transition_job_state([aid], pass_state)
         if debug:
             _log.debug_index(
-                func="gazer.scrape_jd_batch",
+                func="gazer.fetch_jd_batch",
                 index=job_index,
                 total=job_total,
                 identifier=_gazer_job_identifier(job),
@@ -437,12 +435,27 @@ async def fetch_job_pages_batch(
             pending = [u for u in candidate_urls if normalize_link(u) not in ledger]
             new_nav_urls: List[str] = []
 
+            if debug:
+                skipped = [u for u in candidate_urls if normalize_link(u) in ledger]
+                for skip_idx, url in enumerate(skipped, start=1):
+                    _log.debug_index(
+                        func="gazer.fetch_job_pages_batch",
+                        index=skip_idx,
+                        total=len(skipped) or 1,
+                        identifier=short_name,
+                        outcome=f"pjl url {url!r} skipped-already-scraped",
+                    )
+
             for url_idx, url in enumerate(pending, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
                 if debug:
                     err = record.get("error")
                     chars = len(record.get("visible_text") or "")
-                    outcome = f"error={err!r}" if err else f"scraped {chars} chars"
+                    nav_count = len(record.get("page_links") or [])
+                    if err:
+                        outcome = f"error={err!r}"
+                    else:
+                        outcome = f"scraped visible_chars={chars} nav_links={nav_count}"
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",
                         index=url_idx,
@@ -450,6 +463,11 @@ async def fetch_job_pages_batch(
                         identifier=short_name,
                         outcome=f"pjl url {url!r} {outcome}",
                     )
+                    enum_nav = record.get("enumerated_nav_links") or ""
+                    if enum_nav:
+                        _log.debug_detail(
+                            f"enumerated_nav_chars={len(enum_nav)} collapsed_visible_chars={chars}"
+                        )
                 pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
                 new_nav_urls.extend(record.get("page_links") or [])
 
@@ -821,77 +839,6 @@ async def process_gazer_batch(
         success_ct = sum(1 for o in outcomes if o.get("status") == "success")
         _log.debug_detail(
             f"summary companies={company_total} success={success_ct} failure={company_total - success_ct}"
-        )
-
-    return outcomes
-
-
-async def process_gaze_board_batch(
-    batch_id: str,
-    searches: List[Dict[str, Any]],
-    debug: bool = False,
-    ctx: Optional[Dict[str, Any]] = None,
-) -> List[Dict[str, Any]]:
-    """Scrape claimed board_search rows (anonymous gaze_board path). Matches consult.run_consult_task board_search routing."""
-    from src.core.boards import run_board_search_gaze
-
-    act, _, err_st = BOARD_SEARCH_STATES
-    outcomes: List[Dict[str, Any]] = []
-    cctx = ctx if ctx is not None else {}
-    if debug:
-        _log.set_debug_flag(True)
-    search_total = len(searches)
-    if debug and search_total:
-        _log.debug_index(
-            func="gazer.process_gaze_board_batch",
-            index=1,
-            total=1,
-            identifier=batch_id,
-            outcome=f"batch start {search_total} board_search row(s)",
-        )
-    for si, row in enumerate(searches, start=1):
-        sid = (row.get("board_search_id") or "").strip()
-        if not sid:
-            continue
-        try:
-            r = await run_board_search_gaze(batch_id, row, ctx=cctx)
-            merged = dict(r)
-            merged.setdefault("status", "success")
-            update_board_search_last_scan_at(sid)
-            outcomes.append(merged)
-            set_board_search_state(sid, act)
-            if debug:
-                _log.debug_index(
-                    func="gazer.process_gaze_board_batch",
-                    index=si,
-                    total=search_total,
-                    identifier=sid,
-                    outcome=f"success -> {act}",
-                )
-                _log.debug_detail(f"board_key={(row.get('board_key') or '')!r}")
-        except Exception as e:
-            if debug:
-                _log.debug_index(
-                    func="gazer.process_gaze_board_batch",
-                    index=si,
-                    total=search_total,
-                    identifier=sid,
-                    outcome=f"failure -> {err_st}",
-                )
-                _log.debug_detail(f"board_key={(row.get('board_key') or '')!r} error={e!s}")
-            _log.error(
-                "process_gaze_board_batch board_search_id=%s board_key=%s error=%s",
-                sid,
-                (row.get("board_key") or ""),
-                str(e),
-            )
-            outcomes.append({"board_search_id": sid, "status": "failure", "error": str(e)})
-            set_board_search_state(sid, err_st)
-
-    if debug:
-        passed = sum(1 for o in outcomes if o.get("status") == "success")
-        _log.debug_detail(
-            f"summary processed={len(outcomes)} success={passed} failure={len(outcomes) - passed}"
         )
 
     return outcomes

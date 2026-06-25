@@ -3,26 +3,28 @@ Core business logic for job consulting/analysis.
 
 render_verdict(task_type, astral_job_id): single orchestrator for per-job consult tasks.
   Fetches job/company internally, preps live content, calls agent, audits, derives verdict.
-  Per-job orchestration (pass/fail/error, thresholds, rubric refs) merges TASK_CONFIG[task_type] with
-  agent_task when task_type wraps a grade_* row (consult_do → grade_do via _consult_orchestration).
+  Per-job orchestration (pass/fail/error, thresholds, rubric refs) from TASK_CONFIG[task_type] — dispatch and catalog share one string (AST-736).
 _render_pass_fail: binary grading (PASS/F) for qualify_job_listings and evaluate_jd_batch.
-_render_score: scored grading (AST-358 importance × universal grade values × confidence) for batch qualify/evaluate_jd and consult_get/do/like.
+_render_score: scored grading (AST-358 importance × universal grade values × confidence) for batch qualify/evaluate_jd and grade_get/do/like.
 When TASK_CONFIG[task_key].scored, transitions persist latest_score only when a numeric score exists.
 _run_batch_consult: shared scaffolding for batch AI tasks (ID reconciliation, audit, error handling).
 qualify_job_listings: batch job list screen (Pattern A) — thin wrapper over _run_batch_consult.
 evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over _run_batch_consult.
-consult_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(agent_task=*grade_*).
+grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 from src.core import tracker
 from src.core.agent import do_task
 from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
+    BUILD_ARTIFACTS_BASE_STATE,
+    ERROR_BUILD_ARTIFACTS_STATE,
+    JOB_ARTIFACT_ENTRY_TASK_KEYS,
     JOB_STATES,
     ASTRAL_CONFIG,
     CONFIDENCE_MULTIPLIERS,
@@ -32,8 +34,8 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     grade_value,
     importance_multiplier,
-    resolve_dispatch_task_config_key,
-    resume_artifact_compound_state,
+    is_build_artifacts_in_progress,
+    legacy_build_artifacts_hop,
     resume_artifact_hop_task_keys,
 )
 from src.utils.formatting import enumerate_array
@@ -47,18 +49,18 @@ def _consult_job_identifier(job: Dict[str, Any]) -> str:
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
 
 
-# input_state → TASK_CONFIG orchestration lookup key (`consult_*` → grade_* prompts via _consult_orchestration).
+# input_state → TASK_CONFIG orchestration lookup key (grade_* for scored consult hops).
 # Legacy map — not used for dispatch routing (AST-534). Tests pass dispatch_task_key explicitly.
 _INPUT_STATE_TO_TASK = {
-    "NEW":                "validate_title",
+    "NEW":                "qualify_job_listings",
     "VALID_TITLE":        "qualify_job_listings",
     "VALID_TITLE_RETRY":  "qualify_job_listings",
-    "PASSED_JOBLIST":     "scrape_jd",
+    "PASSED_JOBLIST":     "fetch_jd",
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
-    "PASSED_JD":          "consult_do",
-    "PASSED_DO":          "consult_get",
-    "PASSED_GET":         "consult_like",
+    "PASSED_JD":          "grade_do",
+    "PASSED_DO":          "grade_get",
+    "PASSED_GET":         "grade_like",
     "PASSED_LIKE":        "analysis_upshot",
     "PASSED_LIKE_RETRY":  "analysis_upshot",
     "BUILD_ARTIFACTS":    "contemplate_job",
@@ -67,10 +69,9 @@ _INPUT_STATE_TO_TASK = {
 
 
 def _consult_orchestration(task_key: str) -> Dict[str, Any]:
-    """Return pass/fail/error/rubric/pass_threshold/agent_task orch for qualify/evaluate or consult wrappers."""
-    orch_key = resolve_dispatch_task_config_key(task_key)
-    base = TASK_CONFIG[orch_key]
-    return base if orch_key == task_key else {**base, "agent_task": orch_key}
+    """Return TASK_CONFIG orchestration for dispatch/catalog task_key (same string after AST-736)."""
+    tk = (task_key or "").strip()
+    return TASK_CONFIG[tk]
 
 
 def _render_pass_fail(task_key: str, grades: list) -> str:
@@ -560,10 +561,10 @@ def _task_config_scored(task_key: str) -> bool:
     return bool((TASK_CONFIG.get(task_key) or {}).get("scored"))
 
 
-_DISPATCH_CONSULT_TO_HEADER = {
-    "consult_do": "DO",
-    "consult_get": "GET",
-    "consult_like": "LIKE",
+_GRADE_DISPATCH_TO_HEADER = {
+    "grade_do": "DO",
+    "grade_get": "GET",
+    "grade_like": "LIKE",
 }
 
 
@@ -806,7 +807,7 @@ def _apply_render_verdict_decoded_job(
     """Decode path: hydrate reasons, graded verdict, persist {prefix}_* + transition (single row or batch)."""
     if debug:
         logger.set_debug_flag(True)
-    agent_task = cfg.get("agent_task") or resolve_dispatch_task_config_key(dispatch_task_key)
+    agent_task = cfg.get("agent_task") or (dispatch_task_key or "").strip()
     grades = response_job.get("grades")
     if not isinstance(grades, list):
         raise ValueError("agent response missing grades")
@@ -829,7 +830,7 @@ def _apply_render_verdict_decoded_job(
     elif mode == "scored":
         rubric_key = cfg.get("rubric_artifact")
         if not rubric_key:
-            orch_key = resolve_dispatch_task_config_key(dispatch_task_key)
+            orch_key = (dispatch_task_key or "").strip()
             raise ValueError(f"TASK_CONFIG[{orch_key}] missing rubric_artifact")
         if not rubric_criteria:
             raise ValueError(f"Candidate missing rubric artifact: {rubric_key}")
@@ -859,7 +860,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
     Returns result dict for CLI logging."""
     cfg = _consult_orchestration(task_type)
-    agent_task = cfg["agent_task"]
+    agent_task = cfg.get("agent_task") or task_type
     error_state = cfg.get("error_state")
 
     if debug:
@@ -1228,8 +1229,33 @@ async def qualify_job_listings(
     otherwise one ``do_task`` for the claimed slice — never per-job ``_warm_then_gather`` fan-out from dispatch.
     AST-501: each chunk invokes one `_run_batch_consult` / one `do_task` for that slice's ``jobs`` list.
     """
+    claimed_total = len(jobs)
     task_key = "qualify_job_listings"
     cfg = _consult_orchestration(task_key)
+
+    title_screen_failed = 0
+    if any((j.get("state") or "") == "NEW" for j in jobs):
+        from src.core.gazer import validate_title_batch
+
+        new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
+        tr = await validate_title_batch(batch_id, new_jobs, ctx or {}, debug=debug)
+        title_screen_failed = int(tr.get("failed", 0))
+        for j in jobs:
+            if (j.get("state") or "") == "NEW":
+                fresh = tracker.get_job(j["astral_job_id"])
+                if fresh:
+                    j["state"] = fresh.get("state")
+    ai_jobs = [
+        j for j in jobs
+        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY")
+    ]
+    if not ai_jobs:
+        return {
+            "passed": 0,
+            "failed": title_screen_failed,
+            "total": claimed_total,
+        }
+    jobs = ai_jobs
 
     # AST-350: same as evaluate_jd_batch — numeric score for latest_score / dispatch sort (informational).
     rubric_list = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
@@ -1310,7 +1336,10 @@ async def qualify_job_listings(
                 logger.debug_detail(f"relative job_link: {job_link!r}")
             logger.warning(f"  {aid} skipped — relative job_link: {job_link}")
             raise ValueError(f"relative job_link: {job_link}")
-        tracker.initialize_job(aid, input_job["company"], response_job)
+        if not tracker.initialize_job(aid, input_job["company"], response_job):
+            if not debug:
+                logger.info(f"  {aid} -> deleted (identity collision)")
+            return cfg["fail_state"]
         _save_joblist_result()
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         if not debug:
@@ -1320,6 +1349,10 @@ async def qualify_job_listings(
     result = await _run_batch_consult(
         task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
     )
+    if title_screen_failed:
+        result = dict(result)
+        result["failed"] = int(result.get("failed", 0)) + title_screen_failed
+        result["total"] = claimed_total
     return result
 
 
@@ -1454,9 +1487,9 @@ async def _consult_scored_dispatch_batch_encoded(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
-    hdr = _DISPATCH_CONSULT_TO_HEADER[dispatch_task_key]
+    hdr = _GRADE_DISPATCH_TO_HEADER[dispatch_task_key]
     cfg_dispatch = _consult_orchestration(dispatch_task_key)
-    agent_tk = cfg_dispatch["agent_task"]
+    agent_tk = cfg_dispatch.get("agent_task") or dispatch_task_key
     error_state = cfg_dispatch.get("error_state")
     skipped = 0
 
@@ -1543,7 +1576,7 @@ async def _consult_scored_dispatch_batch_encoded(
     return result
 
 
-async def consult_do_batch(
+async def grade_do_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]] = None,
@@ -1551,11 +1584,11 @@ async def consult_do_batch(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
-        "consult_do", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        "grade_do", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
-async def consult_get_batch(
+async def grade_get_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]] = None,
@@ -1563,11 +1596,11 @@ async def consult_get_batch(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
-        "consult_get", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        "grade_get", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
-async def consult_like_batch(
+async def grade_like_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]] = None,
@@ -1575,7 +1608,7 @@ async def consult_like_batch(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
-        "consult_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        "grade_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
@@ -1597,71 +1630,278 @@ async def _run_cover_letter_for_job(
     await run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug)
 
 
-_JOB_ARTIFACT_ENTRY_KEYS = frozenset(
-    k for k, v in TASK_CONFIG.items()
-    if str(v.get("phase") or "").startswith("E. Job Artifacts")
-    and k != "draft_cover_letter"  # cover-letter chain, not resume entry batch (AST-534 review)
-)
-
-
-def _resume_artifact_dispatch_row_ok(entry_task_key: str, input_state: str) -> bool:
-    tk = (entry_task_key or "").strip()
-    if tk not in resume_artifact_hop_task_keys():
-        return True
-    expected = resume_artifact_compound_state(tk)
-    got = (input_state or "").strip()
-    if got != expected:
-        logger.warning(
-            "artifact entry: task_key=%s expects trigger_state=%s got %s",
-            tk,
-            expected,
-            got,
-        )
-        return False
-    return True
+_JOB_ARTIFACT_ENTRY_KEYS = JOB_ARTIFACT_ENTRY_TASK_KEYS
 
 
 def _artifact_entry_hop_failed(aid: str) -> None:
     tracker.release_job_dispatch_claim(aid)
 
 
-async def _run_job_artifact_entry_batch(
+def _chain_run_next_targets(task_keys: Iterable[str]) -> set[str]:
+    from src.data.database import get_agent_task
+
+    targets: set[str] = set()
+    for tk in task_keys:
+        row = get_agent_task(tk) or {}
+        nxt = (row.get("run_next") or "").strip()
+        if nxt:
+            targets.add(nxt)
+    return targets
+
+
+def _build_artifacts_chain_entry_task_key(candidate_id: str) -> str:
+    rows = tracker.list_dispatch_tasks_for_candidate(
+        candidate_id, trigger_state=BUILD_ARTIFACTS_BASE_STATE,
+    )
+    keys = [
+        (row.get("task_key") or "").strip()
+        for row in rows
+        if (row.get("task_key") or "").strip() in resume_artifact_hop_task_keys()
+    ]
+    if not keys:
+        fallback = resume_artifact_hop_task_keys()[0]
+        logger.warning(
+            "chain entry: no BUILD_ARTIFACTS dispatch rows for candidate=%s; fallback=%s",
+            candidate_id,
+            fallback,
+        )
+        return fallback
+    run_next_targets = _chain_run_next_targets(keys)
+    candidates = [k for k in keys if k not in run_next_targets]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise ValueError(
+            f"ambiguous BUILD_ARTIFACTS chain entry candidates: {candidates!r}"
+        )
+    fallback = resume_artifact_hop_task_keys()[0]
+    logger.warning(
+        "chain entry: no hop without incoming run_next for candidate=%s; fallback=%s",
+        candidate_id,
+        fallback,
+    )
+    return fallback
+
+
+def _resolve_chain_start_task_key(
+    job: Dict[str, Any],
+    *,
+    dispatch_task_key: str,
+    candidate_id: str,
+) -> Optional[str]:
+    tk = (dispatch_task_key or "").strip()
+    if tk not in resume_artifact_hop_task_keys():
+        return None
+    job_state = (job.get("state") or "").strip()
+    legacy_hop = legacy_build_artifacts_hop(job_state)
+    if legacy_hop:
+        return legacy_hop if tk == legacy_hop else None
+    if job_state == BUILD_ARTIFACTS_BASE_STATE:
+        return tk
+    return None
+
+
+def _chain_dispatch_row_ok(
+    job: Dict[str, Any],
+    dispatch_task_key: str,
+    input_state: str,
+    candidate_id: str,
+) -> bool:
+    ts = (input_state or "").strip()
+    tk = (dispatch_task_key or "").strip()
+    legacy_trigger = legacy_build_artifacts_hop(ts)
+    if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_trigger != tk:
+        logger.warning(
+            "artifact chain: task_key=%s expects trigger_state=%s got %s",
+            tk,
+            BUILD_ARTIFACTS_BASE_STATE,
+            ts,
+        )
+        return False
+    start = _resolve_chain_start_task_key(job, dispatch_task_key=tk, candidate_id=candidate_id)
+    if not start:
+        logger.warning(
+            "artifact chain: dispatch row mismatch task_key=%s job_state=%s",
+            tk,
+            (job.get("state") or "").strip(),
+        )
+        return False
+    return True
+
+
+def _chain_failure_mode(result: Dict[str, Any], task_key: str) -> Literal["retry", "hard"]:
+    err = str(result.get("error") or "")
+    if "Job not found" in err or "Missing candidate_data" in err:
+        return "hard"
+    return "retry"
+
+
+def _chain_fail_result(
+    astral_job_id: str,
+    error: str,
+    *,
+    task_key: str = "",
+) -> Dict[str, Any]:
+    """Hard failures transition to ERROR_BUILD_ARTIFACTS; retryable stay on BUILD_ARTIFACTS."""
+    result: Dict[str, Any] = {"success": False, "error": error}
+    if _chain_failure_mode(result, task_key) == "hard":
+        try:
+            tracker.transition_job_state([astral_job_id], ERROR_BUILD_ARTIFACTS_STATE)
+        except ValueError as exc:
+            logger.warning("[%s] ERROR_BUILD_ARTIFACTS transition failed: %s", astral_job_id, exc)
+    return result
+
+
+def _chain_graduate_to_candidate_review(
+    astral_job_id: str,
+    *,
+    debug: bool = False,
+) -> Tuple[bool, str]:
+    row = tracker.get_job(astral_job_id)
+    if not row:
+        return False, "job_not_found"
+    if not tracker.job_has_persisted_resume_body(astral_job_id, None):
+        return False, "persist_gate_failed"
+    from_state = (row.get("state") or "").strip()
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_index(
+            func="_chain_graduate_to_candidate_review",
+            index=1,
+            total=1,
+            identifier=astral_job_id,
+            outcome="attempt",
+        )
+        dbg.debug_detail(f"from_state={from_state!r} persist_gate=pass")
+    try:
+        tracker.transition_job_state([astral_job_id], "CANDIDATE_REVIEW")
+    except ValueError as exc:
+        if debug:
+            get_logger(__name__, debug_flag=True).debug_detail(
+                f"graduation=failed error={exc!r} from_state={from_state!r}"
+            )
+        return False, f"transition_failed:{exc}"
+    if debug:
+        get_logger(__name__, debug_flag=True).debug_detail("graduation=CANDIDATE_REVIEW success")
+    return True, "ok"
+
+
+async def do_chain_for_job(
+    astral_job_id: str,
+    *,
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]],
+    debug: bool,
+    dispatch_task_key: str,
+    input_state: str,
+) -> Dict[str, Any]:
+    """AST-803: run BUILD_ARTIFACTS CHAIN via do_task + run_next; graduate on success."""
+    from src.core import agent as agent_mod
+
+    job = tracker.get_job(astral_job_id)
+    if not job or not is_build_artifacts_in_progress(job.get("state") or ""):
+        return {"success": False, "error": "job_not_in_build_artifacts"}
+
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    if not candidate_id:
+        company_key = job.get("company")
+        if isinstance(company_key, str) and company_key.strip():
+            co = tracker.get_company(company_key.strip())
+            if co and co.get("candidate_id"):
+                candidate_id = str(co["candidate_id"])
+
+    start_key = _resolve_chain_start_task_key(
+        job, dispatch_task_key=dispatch_task_key, candidate_id=candidate_id,
+    )
+    if not start_key:
+        return {"success": False, "error": "dispatch_row_mismatch"}
+
+    base = dict(ctx or {})
+    cd = tracker._candidate_data_for_job(astral_job_id)
+    if not cd:
+        return _chain_fail_result(
+            astral_job_id,
+            f"Missing candidate_data for job {astral_job_id}",
+            task_key=start_key,
+        )
+
+    task_ctx: Dict[str, Any] = {
+        **base,
+        "batch_entities": [job],
+        "batch_size": 1,
+        "job": job,
+        "candidate_data": cd,
+    }
+    if candidate_id:
+        task_ctx["astral_candidate_id"] = candidate_id
+    if "vector_labels" not in task_ctx:
+        task_ctx["vector_labels"] = {}
+
+    seed_chain: Optional[Dict[str, str]] = None
+    parent = agent_mod._resume_artifact_parent_hop_key(start_key)
+    if parent:
+        hydrated, err = agent_mod._hydrate_caller_chain_context(
+            "job", astral_job_id, start_key, parent, None,
+        )
+        if err:
+            return {"success": False, "error": err}
+        seed_chain = agent_mod._merge_hydrated_caller_context(None, hydrated)
+
+    result = await do_task(
+        start_key,
+        index=astral_job_id,
+        ctx=task_ctx,
+        debug=debug,
+        chain_context=seed_chain,
+    )
+    if not result.get("success"):
+        return _chain_fail_result(
+            astral_job_id,
+            str(result.get("error") or "chain hop failed"),
+            task_key=start_key,
+        )
+
+    ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
+    if not ok:
+        logger.warning(
+            "[%s] terminal graduation failed reason=%s entry_task_key=%s",
+            astral_job_id,
+            reason,
+            dispatch_task_key,
+        )
+        return {"success": False, "error": reason}
+    return {"success": True}
+
+
+async def _run_build_artifacts_chain_batch(
     batch_id: str,
     entities: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]],
     debug: bool,
     entry_task_key: str,
+    input_state: str,
 ) -> Dict[str, int]:
-    """Run one Phase E artifact hop per job starting at entry_task_key (dispatch row task_key)."""
-    from src.core.agent import run_resume_artifact_chain_for_job
-
+    """Run BUILD_ARTIFACTS CHAIN for each job (AST-803)."""
     passed = errors = 0
-    base_ctx = dict(ctx or {})
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "").strip()
     for job in entities:
         aid = job["astral_job_id"]
-        chain_ctx = {**base_ctx, "job": job, "batch_entities": [job], "batch_size": 1}
-        r = await run_resume_artifact_chain_for_job(
-            aid, chain_ctx, debug=debug, first_task_key=entry_task_key,
+        row = tracker.get_job(aid) or job
+        if not _chain_dispatch_row_ok(row, entry_task_key, input_state, candidate_id):
+            continue
+        r = await do_chain_for_job(
+            aid,
+            batch_id=batch_id,
+            ctx=ctx,
+            debug=debug,
+            dispatch_task_key=entry_task_key,
+            input_state=input_state,
         )
         if not r.get("success"):
             _artifact_entry_hop_failed(aid)
             errors += 1
             continue
-        row = tracker.get_job(aid) or job
-        if not tracker.job_has_persisted_resume_body(aid, row):
-            _artifact_entry_hop_failed(aid)
-            errors += 1
-            continue
-        try:
-            tracker.transition_job_state([aid], "CANDIDATE_REVIEW")
-        except ValueError as exc:
-            logger.warning("[%s] CANDIDATE_REVIEW transition failed: %s", aid, exc)
-            _artifact_entry_hop_failed(aid)
-            errors += 1
-            continue
         passed += 1
-        if entry_task_key == "contemplate_job":
-            await _run_cover_letter_for_job(aid, row, base_ctx, debug)
     return {
         "total_processed": len(entities),
         "total_passed": passed,
@@ -1766,23 +2006,27 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
+        if task_key == "vet_inflow_discovery":
+            cand_id = _candidate_id_from_ctx(ctx)
+            if not cand_id:
+                cand_id = str((entities[0] or {}).get("candidate_id") or "").strip()
+            if not cand_id:
+                logger.warning(
+                    "run_consult_task: vet_inflow_discovery missing candidate_id in ctx and entity"
+                )
+                return zero
+            # Lazy import — avoids consult ↔ candidate cycle at module load (cf. agent.py).
+            from src.core.candidate import get_candidate
+            candidate = get_candidate(cand_id) or {}
+            if not candidate.get("astral_candidate_id"):
+                candidate = {**candidate, "astral_candidate_id": cand_id}
+            return await roster.run_inflow_discovery_batch(
+                candidate, batch_id, ctx, debug,
+            )
         return await roster.run_company_task(
             input_state, entities[0], batch_id, ctx, debug,
             dispatch_task_key=dispatch_task_key,
         )
-
-    if entity_type == "board_search":
-        # Lazy import: breaks circular consult/gazer imports at module load (cycle-break, ASTRAL_CODE_RULES B1).
-        from src.core.gazer import process_gaze_board_batch
-        outcomes = await process_gaze_board_batch(batch_id, entities, debug=debug, ctx=ctx)
-        passed = sum(1 for o in outcomes if o.get("status") == "success")
-        failed = len(outcomes) - passed
-        return {
-            "total_processed": len(outcomes),
-            "total_passed": passed,
-            "total_failed": failed,
-            "total_errors": 0,
-        }
 
     if entity_type == "candidate":
         return await roster.run_inflow_discovery_batch(
@@ -1797,12 +2041,9 @@ async def run_consult_task(
         )
         return zero
 
-    if task_key == "validate_title":
-        from src.core.gazer import validate_title_batch
-        r = await validate_title_batch(batch_id, entities, ctx, debug=debug)
-    elif task_key == "scrape_jd":
-        from src.core.gazer import scrape_jd_batch
-        r = await scrape_jd_batch(batch_id, entities, debug=debug)
+    if task_key == "fetch_jd":
+        from src.core.gazer import fetch_jd_batch
+        r = await fetch_jd_batch(batch_id, entities, debug=debug)
     elif task_key == "qualify_job_listings":
         r = await qualify_job_listings(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
@@ -1811,7 +2052,7 @@ async def run_consult_task(
         r = await evaluate_jd_batch(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
-    elif task_key in ("consult_do", "consult_get", "consult_like"):
+    elif task_key in ("grade_do", "grade_get", "grade_like"):
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
             orch = _consult_orchestration(task_key)
@@ -1820,18 +2061,20 @@ async def run_consult_task(
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        _batch = {"consult_do": consult_do_batch, "consult_get": consult_get_batch, "consult_like": consult_like_batch}[
-            task_key
-        ]
+        _batch = {
+            "grade_do": grade_do_batch,
+            "grade_get": grade_get_batch,
+            "grade_like": grade_like_batch,
+        }[task_key]
         r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
     elif task_key == "analysis_upshot":
         return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug)
     elif task_key == "draft_cover_letter":
         return await _run_craft_job_cover_letter_batch(batch_id, entities, ctx, debug)
     elif task_key in _JOB_ARTIFACT_ENTRY_KEYS:
-        if not _resume_artifact_dispatch_row_ok(task_key, input_state):
-            return zero
-        return await _run_job_artifact_entry_batch(batch_id, entities, ctx, debug, task_key)
+        return await _run_build_artifacts_chain_batch(
+            batch_id, entities, ctx, debug, task_key, input_state,
+        )
     else:
         logger.warning("run_consult_task: unhandled task_key=%s for input_state=%s", task_key, input_state)
         return zero

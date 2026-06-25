@@ -366,9 +366,22 @@ class TestTaskRoutes:
         assert admin_client.get("/api/admin/tasks/t1/preview?candidate_id=c1", headers=auth_headers).get_json()["ok"] is True
         monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
         assert admin_client.get("/api/admin/tasks/missing", headers=auth_headers).status_code == 404
-        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key": task_key})
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_key": task_key,
+                "task_group_name": "A. Candidate Context",
+                "task_group_order": "A. Candidate Context",
+                "task_seq": 1.0,
+                "task_name": task_key,
+            },
+        )
         got = admin_client.get("/api/admin/tasks/craft_resume_base", headers=auth_headers)
-        assert got.get_json()["phase"] is not None
+        body = got.get_json()
+        assert body["task_group_name"] == "A. Candidate Context"
+        assert "phase" not in body
+        assert "seq" not in body
         monkeypatch.setattr(admin_mod.database, "save_agent_task", MagicMock(side_effect=ValueError("bad save")))
         assert admin_client.put("/api/admin/tasks/t1", json={"run_next": "x"}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod.database, "save_agent_task", MagicMock())
@@ -404,6 +417,527 @@ class TestTaskRoutes:
             headers=auth_headers,
         )
         assert captured.get("astral_job_id") == "job-513"
+
+
+# AST-738: Manage Tasks grouping metadata from DB (not TASK_CONFIG phase/seq).
+class TestAst738TaskGroupingApi:
+    def test_grouping_from_agent_task_row_db_fields_only(self) -> None:
+        out = admin_mod._grouping_from_agent_task_row(
+            {
+                "task_group_order": "B. Phase",
+                "task_group_name": "B. Phase",
+                "task_seq": 2.0,
+                "task_name": "Label",
+            },
+            "some_key",
+        )
+        assert out["task_group_name"] == "B. Phase"
+        assert out["task_seq"] == 2.0
+        assert out["task_name"] == "Label"
+        assert "phase" not in out
+        assert "seq" not in out
+
+    def test_get_task_surfaces_db_grouping(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_key": task_key,
+                "task_group_order": "Z",
+                "task_group_name": "Z",
+                "task_seq": 5.0,
+                "task_name": "Display",
+            },
+        )
+        body = admin_client.get("/api/admin/tasks/t1", headers=auth_headers).get_json()
+        assert body["task_group_name"] == "Z"
+        assert body["task_seq"] == 5.0
+        assert "phase" not in body
+        assert "seq" not in body
+
+    def test_update_task_persists_grouping_fields(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: dict = {}
+
+        def _save(task_key: str, **kwargs: Any) -> None:
+            saved.update(kwargs)
+
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key": task_key})
+        monkeypatch.setattr(admin_mod.database, "save_agent_task", _save)
+        resp = admin_client.put(
+            "/api/admin/tasks/t1",
+            json={
+                "task_group_order": "G1",
+                "task_group_name": "Group One",
+                "task_seq": 7.5,
+                "task_name": "Friendly",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert saved["task_group_order"] == "G1"
+        assert saved["task_group_name"] == "Group One"
+        assert saved["task_seq"] == 7.5
+        assert saved["task_name"] == "Friendly"
+
+    def test_update_task_invalid_task_seq_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key": task_key})
+        resp = admin_client.put("/api/admin/tasks/t1", json={"task_seq": "not-a-number"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "task_seq" in resp.get_json()["error"]
+
+
+# AST-740: backward-compat phase/seq keys removed from Manage Tasks API payloads.
+class TestAst740NoConfigPhaseSeqInApi:
+    def test_get_task_payload_has_grouping_without_phase_seq(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_key": task_key,
+                "task_group_order": "G",
+                "task_group_name": "G",
+                "task_seq": 1.0,
+                "task_name": "Label",
+            },
+        )
+        body = admin_client.get("/api/admin/tasks/t1", headers=auth_headers).get_json()
+        assert set(body.keys()) & {"phase", "seq"} == set()
+        assert body["task_group_name"] == "G"
+
+
+# AST-739: dispatch task_keys returns DB grouping metadata (not config phase/seq).
+class TestAst739DispatchTaskKeysGrouping:
+    def test_dispatch_task_keys_grouping_from_agent_task_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_group_order": "Z-order",
+                "task_group_name": "Z-name",
+                "task_seq": 4.5,
+                "task_name": "Pretty",
+            }
+            if task_key == "grade_do"
+            else None,
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["grade_do"]["task_group_name"] == "Z-name"
+        assert keys["grade_do"]["task_group_order"] == "Z-order"
+        assert keys["grade_do"]["task_seq"] == 4.5
+        assert keys["grade_do"]["task_name"] == "Pretty"
+        assert "phase" not in keys["grade_do"]
+        assert "seq" not in keys["grade_do"]
+
+    def test_dispatch_task_keys_orphan_empty_grouping(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [{"task_key": "orphan_only", "entity_type": "job", "trigger_state": "NEW"}],
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["orphan_only"]["task_group_order"] == ""
+        assert keys["orphan_only"]["task_group_name"] == ""
+        assert keys["orphan_only"]["task_seq"] is None
+        assert keys["orphan_only"]["task_name"] == ""
+
+
+# AST-749: retired consult_* absent from task_keys even when list_dispatch_tasks returns legacy rows.
+class TestAst749DispatchTaskKeysRetiredFilter:
+    def test_dispatch_task_keys_excludes_retired_consult_keys(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {"task_key": "consult_do", "entity_type": "job", "trigger_state": "PASSED_JD"},
+                {"task_key": "consult_get", "entity_type": "job", "trigger_state": "PASSED_DO"},
+                {"task_key": "grade_do", "entity_type": "", "trigger_state": ""},
+            ],
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "consult_do" not in keys
+        assert "consult_get" not in keys
+        assert "consult_like" not in keys
+        assert "grade_do" in keys
+        assert keys["grade_do"]["entity_type"] == "job"
+        assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
+
+
+# AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired on admin paths.
+class TestAst796FetchJdRetiredDispatchKeys:
+    def test_dispatch_task_keys_includes_fetch_jd_excludes_retired(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "fetch_jd" in keys
+        assert keys["fetch_jd"]["entity_type"] == "job"
+        assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
+        for retired in ("scrape_jd", "validate_title", "gaze_board"):
+            assert retired not in keys
+
+    def test_create_dispatch_task_rejects_retired_scrape_jd(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "scrape_jd",
+                "trigger_state": "PASSED_JOBLIST",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "fetch_jd" in err
+
+    def test_create_dispatch_task_rejects_retired_validate_title(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "validate_title",
+                "trigger_state": "NEW",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "inline" in err
+
+    def test_create_dispatch_task_rejects_retired_gaze_board(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "gaze_board",
+                "trigger_state": "ACTIVE",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "decommissioned" in err
+
+
+# AST-781: legacy board_search entity_type rows do not 500 list_dtasks enrichment.
+class TestAst781ListDtasksRetiredEntityType:
+    def test_list_dtasks_legacy_board_search_row_returns_zero_available_count(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 99,
+                    "task_key": "gaze_board",
+                    "trigger_state": "ACTIVE",
+                    "entity_type": "board_search",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        resp = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers)
+        assert resp.status_code == 200
+        rows = resp.get_json()
+        assert len(rows) == 1
+        assert rows[0]["task_key"] == "gaze_board"
+        assert rows[0]["entity_type"] == "board_search"
+        assert rows[0]["available_count"] == 0
+
+
+# AST-785: list_dtasks filters retired keys; enrichment errors do not 500 the list.
+class TestAst785ListDtasksRobustness:
+    def test_list_dtasks_omits_retired_task_keys(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "consult_do",
+                    "trigger_state": "PASSED_JD",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "vet_inflow_discovery",
+                    "trigger_state": "NEW",
+                    "entity_type": "company",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+                {
+                    "id": 3,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", lambda row: 4)
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        keys = [r["task_key"] for r in rows]
+        assert "consult_do" not in keys
+        assert "vet_inflow_discovery" in keys
+        assert "scan_jobs" in keys
+
+    def test_list_dtasks_enrichment_failure_returns_zero_count_not_500(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "watch_cos",
+                    "trigger_state": "WATCH",
+                    "entity_type": "company",
+                    "candidate_id": "c2",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+
+        def count(row: dict[str, Any]) -> int:
+            if row.get("id") == 1:
+                raise RuntimeError("boom")
+            return 5
+
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", count)
+        resp = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers)
+        assert resp.status_code == 200
+        rows = resp.get_json()
+        assert len(rows) == 2
+        by_id = {r["id"]: r for r in rows}
+        assert by_id[1]["available_count"] == 0
+        assert by_id[2]["available_count"] == 5
+
+
+# AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
+class TestAst773UpdateDispatchTaskTaskKey:
+    def test_dispatch_task_key_trigger_error_helper(self) -> None:
+        assert admin_mod._dispatch_task_key_trigger_error("", "NEW") == "task_key is required"
+        assert admin_mod._dispatch_task_key_trigger_error("grade_do", "") == "trigger_state is required"
+        err = admin_mod._dispatch_task_key_trigger_error("grade_do", "NOT_A_JOB_STATE")
+        assert err is not None and "grade_do" in err
+        assert admin_mod._dispatch_task_key_trigger_error("qualify_job_listings", "VALID_TITLE") is None
+
+    def test_update_dispatch_task_task_key_persists_derived_columns(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "qualify_job_listings",
+                "trigger_state": "VALID_TITLE",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "grade_do", "trigger_state": "NEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["task_key"] == "grade_do"
+        assert kw["entity_type"] == "job"
+        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults("grade_do")["sort_by"]
+        assert kw["batch_call_mode"] == cfg.dispatch_task_admin_defaults("grade_do")["batch_call_mode"]
+
+    def test_update_dispatch_task_invalid_task_key_trigger_combo_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"task_key": "scan_jobs", "trigger_state": "NEW", "candidate_id": "c1", "auto_mode": 0},
+        )
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "watch_cos", "trigger_state": "NEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "watch_cos" in resp.get_json()["error"]
+
+    def test_update_dispatch_task_auto_mode_blocks_non_toggle_edit_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"task_key": "scan_jobs", "trigger_state": "NEW", "candidate_id": "c1", "auto_mode": 1},
+        )
+        blocked = admin_client.put("/api/admin/dispatch_tasks/1", json={"min_count": 2}, headers=auth_headers)
+        assert blocked.status_code == 400
+        assert "AUTO" in blocked.get_json()["error"]
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        toggle = admin_client.put("/api/admin/dispatch_tasks/1", json={"auto_mode": False}, headers=auth_headers)
+        assert toggle.status_code == 200
+        update.assert_called_once()
+
+    def test_update_dispatch_task_unique_collision_409_new_triple(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"task_key": "scan_jobs", "trigger_state": "NEW", "candidate_id": "c1", "auto_mode": 0},
+        )
+        monkeypatch.setattr(
+            admin_mod,
+            "update_dispatch_task",
+            MagicMock(side_effect=Exception("UNIQUE constraint failed: dispatch_task")),
+        )
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "grade_do", "trigger_state": "PASSED_JD"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        err = resp.get_json()["error"]
+        assert "grade_do" in err
+        assert "PASSED_JD" in err
+        assert "c1" in err
+
+
+# AST-804: candidate entity_type admin validation + state_options exposure.
+class TestAst804CandidateDispatchAdminValidation:
+    def test_dispatch_task_key_trigger_error_candidate_paths(self) -> None:
+        assert admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "LIVE_PROMPTS") is None
+        bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "NOT_A_CANDIDATE_STATE")
+        assert bad is not None and "inflow_discovery" in bad
+        job_bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "PASSED_JD")
+        assert job_bad is not None and "inflow_discovery" in job_bad
+        assert admin_mod._dispatch_task_key_trigger_error("grade_do", "PASSED_JD") is None
+        assert admin_mod._dispatch_task_key_trigger_error("vet_inflow_discovery", "NEW") is None
+
+    def test_state_options_includes_candidate_with_live_prompts(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers).get_json()
+        assert "candidate" in states
+        assert "LIVE_PROMPTS" in states["candidate"]
+
+    def test_create_dispatch_task_rejects_invalid_candidate_trigger_state(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "inflow_discovery",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "inflow_discovery" in resp.get_json()["error"]
+
+    def test_create_dispatch_task_candidate_entity_success(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=55)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "inflow_discovery",
+                "trigger_state": "LIVE_PROMPTS",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["task_key"] == "inflow_discovery"
+        assert save.call_args.kwargs["trigger_state"] == "LIVE_PROMPTS"
+
+    def test_update_dispatch_task_trigger_state_only_candidate_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "inflow_discovery",
+                "trigger_state": "LIVE_PROMPTS",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        ok = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"trigger_state": "NEW"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        update.assert_called_once()
+        bad = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"trigger_state": "PASSED_JD"},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert "inflow_discovery" in bad.get_json()["error"]
 
 
 # Branches: timesheet list/export with optional req_dict filters.
@@ -463,36 +997,52 @@ class TestDispatchTasks:
         assert keys["custom"]["trigger_state"] == "WATCH"
         states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers)
         assert "NEW" in states.get_json()["job"]
+        if hasattr(cfg, "dispatch_score_floor_option_labels"):
+            floors = admin_client.get("/api/admin/dispatch_tasks/score_floor_options", headers=auth_headers)
+            floor_values = floors.get_json()["values"]
+            assert len(floor_values) == 21
+            assert floor_values[0] == "0.00"
+            assert floor_values[1] == "0.50"
+            assert floor_values[-1] == "10.00"
 
-    def test_ast649_hides_gaze_board_from_scheduled_actions(
+
+    def test_create_dispatch_task_rejects_retired_consult_key(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        assert "gaze_board" not in keys
-        monkeypatch.setattr(
-            admin_mod,
-            "list_dispatch_tasks",
-            lambda: [
-                {"task_key": "scan_jobs", "trigger_state": "NEW", "entity_type": "job", "candidate_id": "c1", "score_floor": None},
-                {"task_key": "gaze_board", "trigger_state": "ACTIVE", "entity_type": "board_search", "candidate_id": "c1", "score_floor": None},
-            ],
-        )
-        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", lambda row: 0)
-        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
-        assert all(row.get("task_key") != "gaze_board" for row in rows)
-        assert any(row.get("task_key") == "scan_jobs" for row in rows)
-        monkeypatch.setattr(
-            admin_mod,
-            "task_status_all",
-            lambda: {
-                1: {"task_key": "scan_jobs", "candidate_id": "c1", "running": False, "draining": False, "is_auto": False},
-                2: {"task_key": "gaze_board", "candidate_id": "c1", "running": True, "draining": False, "is_auto": False},
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "consult_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
             },
+            headers=auth_headers,
         )
-        threads = admin_client.get("/api/admin/scheduler/thread_status", headers=auth_headers).get_json()
-        assert "1" in threads
-        assert "2" not in threads
-        assert threads["1"]["task_key"] == "scan_jobs"
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "grade_do" in err
+
+    def test_create_dispatch_task_rejects_retired_consult_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "consult_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "grade_do" in err
 
     def test_create_dispatch_task_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         assert admin_client.post("/api/admin/dispatch_tasks", json={"task_key": "t"}, headers=auth_headers).status_code == 400
@@ -587,7 +1137,7 @@ class TestAdhocHelpers:
         assert cfg.trigger_state_used_by_scored_dispatch_task(None) is False
         assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE_RETRY") is False
         assert cfg.trigger_state_used_by_scored_dispatch_task("PASSED_JOBLIST") is True
-        assert cfg.dispatch_task_key_is_scored("consult_do") is True
+        assert cfg.dispatch_task_key_is_scored("grade_do") is True
         # AST-586: claim gating diverges from legacy graded-trigger helper.
         assert cfg.dispatch_claim_uses_score_floor("VALID_TITLE") is False
         assert cfg.dispatch_claim_uses_score_floor("PASSED_JD") is True
@@ -1036,7 +1586,8 @@ class TestApiAdminBranchGaps:
             lambda job_id: {"astral_job_id": job_id, "job_data": {"raw_job_listing": "raw"}, "company": "acme"},
         )
         monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: {"job_site": "site"})
-        assert admin_mod._build_adhoc_live_content("validate_title", "", ["j1"]) != ""
+        assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["j1"]) != ""
+        assert admin_mod._build_adhoc_live_content("validate_title", "", ["j1"]) == ""
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["missing"]) == ""
         monkeypatch.setitem(admin_mod.TASK_CONFIG, "evaluate_jd", {**admin_mod.TASK_CONFIG["evaluate_jd"], "requires_company": True})
@@ -1089,17 +1640,19 @@ class TestApiAdminBranchGaps:
         for tk in admin_mod.get_task_keys():
             assert tk in keys
         assert keys["anticipate_scan"]["entity_type"] == "job"
-        assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
+        assert keys["contemplate_job"]["trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
 
     def test_ast549_task_keys_config_derivation_authoritative(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         """Schedulable keys merge dispatch_task_admin_defaults — not removed seed dict (AST-549)."""
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        assert keys["contemplate_job"]["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
+        assert keys["contemplate_job"]["trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
         assert keys["parse_job_list"]["entity_type"] == "company"
         assert keys["parse_job_list"]["trigger_state"] == "JOBLIST_IDENTIFIED"
-        assert keys["consult_do"]["phase"] == cfg.TASK_CONFIG["grade_do"]["phase"]
-        assert keys["consult_do"]["seq"] == cfg.TASK_CONFIG["grade_do"]["seq"]
+        # AST-739 / AST-747: grade_do catalog row for grouping — not TASK_CONFIG phase/seq.
+        assert "phase" not in keys["grade_do"]
+        assert "seq" not in keys["grade_do"]
+        assert "task_group_name" in keys["grade_do"]
 
     def test_ast485_adhoc_entities_select_job_page_fallbacks_to_config_defaults(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task_by_key", lambda tk: None)
@@ -1302,7 +1855,7 @@ class TestApiAdminBranchGaps:
         decode = MagicMock(return_value={"jobs": [{"astral_job_id": "j1"}]})
         monkeypatch.setattr(admin_mod, "_decode_payload", decode)
         # Isolate hydrate/decode path from real DB: full suite may set _board_search_schema_ensured
-        # without board_search on the shared ASTRAL_DB_DIR file (_ensure_gaze_board_dispatch_tasks).
+        # without board_search on the shared ASTRAL_DB_DIR file (schema ensure side effects).
         monkeypatch.setattr(admin_mod, "_build_adhoc_live_content", lambda *args, **kwargs: "")
         resp = admin_client.post(
             "/api/admin/adhoc/test",
@@ -1399,3 +1952,51 @@ class TestAst725VectorFeedback:
         assert body["rows"][0]["code"] == "G1"
         keys = admin_client.get("/api/admin/vector_feedback/task_keys", headers=auth_headers).get_json()
         assert "grade_get" in keys
+
+
+class TestAst783RepoJsonApi:
+    def test_repo_json_status_returns_divergence_map(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "get_repo_admin_json_divergence_status",
+            lambda: {
+                "agent": {"diverged": True, "repo_relative_path": "data/admin/agent.json"},
+                "agent_task": {"diverged": False, "repo_relative_path": "data/admin/agent_task.json"},
+            },
+        )
+        resp = admin_client.get("/api/admin/repo_json/status", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["agent"]["diverged"] is True
+        assert body["agent_task"]["diverged"] is False
+
+    def test_repo_json_status_surfaces_core_errors(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _boom() -> dict:
+            raise RuntimeError("repo admin JSON missing")
+
+        monkeypatch.setattr(admin_mod, "get_repo_admin_json_divergence_status", _boom)
+        resp = admin_client.get("/api/admin/repo_json/status", headers=auth_headers)
+        assert resp.status_code == 500
+        assert "missing" in resp.get_json()["error"]
+
+    def test_repo_json_revert_invalid_table_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str],
+    ) -> None:
+        resp = admin_client.post("/api/admin/repo_json/revert/nope", headers=auth_headers)
+        assert resp.status_code == 400
+        assert "agent or agent_task" in resp.get_json()["error"]
+
+    def test_repo_json_revert_success(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "revert_repo_admin_json_table", lambda key: 4 if key == "agent" else 9)
+        resp = admin_client.post("/api/admin/repo_json/revert/agent", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert body["table_key"] == "agent"
+        assert body["row_count"] == 4

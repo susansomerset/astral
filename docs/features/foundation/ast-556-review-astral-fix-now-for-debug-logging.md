@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-556 archived 2026-06-15 -->
+
+## Linear archive (AST-556)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-556/review-astral-fix-now-for-debug-logging-improve-quality-of-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** radia  
+**Priority / estimate:** None / —  
+**Parent:** AST-538 — Improve Quality of Debug Logging  
+**Blocked by / blocks / related:** parent: AST-538
+
+### Description
+
+## What this implements
+
+Update review-astral skill: insufficient debug on touched debug= surfaces is fix-now.
+
+## Acceptance criteria
+
+6 from parent.
+
+## Boundaries
+
+Doc/skill only.
+
+## Git branch (authoritative)
+
+Per orientation-astral: parent `ftr/ast-538-improve-quality-of-debug-logging`, child `sub/AST-538/<child-id>-<slug>`.
+
+### Comments
+
+#### radia — 2026-06-03T03:23:06.792Z
+`origin/sub/AST-538/AST-556-review-astral-debug-fix-now` @ `7cc02fe1` · §9a clean · ftr dry-run clean (publish rebased on `origin/ftr/ast-538`).
+
+#### radia — 2026-06-03T03:18:40.015Z
+**Diff:** `origin/dev...origin/sub/AST-538/AST-556-review-astral-debug-fix-now` @ `3682194d` (feat `bf87eb93` + Betty bible rows + review doc).
+
+**Plan fidelity (AST-538 AC 6):** Global `review-astral` **§5f** + **§5** / **§5a** cross-refs verified on disk; table rows align with **`ASTRAL_CODE_RULES.md` §1.5.1** on `origin/dev`. Implementation record + manifest greps pass. Parent inflow example (summary-only) → **fix-now** per §5f per-index / discovery rows.
+
+**fix-now:** none.
+
+**discuss:** `docs/ASTRAL_TEST_BIBLE.md` §7.13zs + AST-556 manifest block on publish ref — not in plan **Files Changed** (skill + plan only). Manifest-only, no log-string tests; OK if bible updates on child publish ref are standing **qa-astral** handoff — confirm or trim on resolve.
+
+**advisory:** Appendix A Vitest-only-with-zero-args note — orthogonal, fine.
+
+**Doc:** `docs/features/foundation/ast-556-review-astral-fix-now-for-debug-logging.md` (Review section) @ `3682194d`.
+
+— Radia
+
+#### betty — 2026-06-03T03:11:41.375Z
+**Tests Ready** — doc/skill-only child (**AST-556**). No new component tests; parent forbids log-string assertions. **`docs/ASTRAL_TEST_BIBLE.md`** on publish ref: `96759c27c96e36a9d90396a6fb7cdf3b158cf8f5eeb8112e97b6dd74a9c17d33` @ `4d78ff3b`.
+
+**Integration line (engineer `dev-radia` replay):**
+
+1. `git fetch origin`
+2. `git merge origin/dev`
+3. `git merge origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` (blocker)
+4. `git merge origin/sub/AST-538/AST-556-review-astral-debug-fix-now`
+
+**Manifest (`test-astral`):**
+
+1. Plan doc on publish tip: `docs/features/foundation/ast-556-review-astral-fix-now-for-debug-logging.md` includes **Implementation record** and §5f walkthrough.
+2. `test -f docs/features/foundation/ast-556-review-astral-fix-now-for-debug-logging.md`
+3. `grep -q 'Implementation record' docs/features/foundation/ast-556-review-astral-fix-now-for-debug-logging.md`
+4. `grep -F '#### 5f. Backend debug logging' ~/.cursor/skills/review-astral/SKILL.md` (global skill — not in repo)
+5. Epic regression (blocker helper tests; confirms merge line): `.venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q`
+
+Wrong test or manifest → `[qa-handoff]` first line, stay **Tests Ready**, assign **Betty**.
+
+— Betty
+
+#### radia — 2026-06-03T00:39:58.824Z
+Plan: `docs/features/foundation/ast-556-review-astral-fix-now-for-debug-logging.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-538/AST-556-review-astral-debug-fix-now/docs/features/foundation/ast-556-review-astral-fix-now-for-debug-logging.md
+
+**Self-Assessment**
+- **Scope:** `scope-minor` — Global `review-astral` §5f plus this plan doc only; no `src/` or Test Bible changes.
+- **Conf:** `conf-high` — Parent AC #6 and AST-554 §1.5.1 define the contract; this ticket only encodes the review rubric.
+- **Risk:** `risk-low` — Rubric miswording could skew review severity but does not affect runtime or integration merges.
+
+Publish tip: `507d4264` on `origin/sub/AST-538/AST-556-review-astral-debug-fix-now`.
+
+---
+
 # AST-556 — review-astral fix-now for debug logging (Improve Quality of Debug Logging)
 
 - **Linear (this ticket):** [AST-556](https://linear.app/astralcareermatch/issue/AST-556/review-astral-fix-now-for-debug-logging-improve-quality-of-debug)

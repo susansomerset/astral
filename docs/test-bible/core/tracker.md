@@ -10,16 +10,9 @@
 
 ---
 
-### AST-419 · AST-379
+### AST-419 · AST-379 (historical — SUNSET AST-757)
 
-Board jobs ingested via **`ingest_board_listings`** (placeholder **`__board__{board_key}`** company, **`board_search_id`**, state **`NEW`**) must reach **`validate_title` → `qualify_job_listings` → `scrape_jd` → `evaluate_jd`** through normal **`claim_job_batch` / `get_new_job_batch`** dispatch — no state-machine bypass. Uses real SQLite (**`seeded_db`**); consult/scrape agent calls mocked.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Board ingest → **`NEW`** + placeholder company | `src/core/tracker.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`TestBoardSourcedQualifyEvaluateAst419::test_board_ingest_starts_in_new_with_board_search_id`**) |
-| Full qualify/evaluate dispatch chain for board jobs | `src/core/tracker.py`, `src/core/gazer.py`, `src/core/consult.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`test_board_job_reaches_qualify_and_evaluate_dispatch`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core/test_board_sourced_qualify_evaluate.py`.
+**RETIRED (AST-757):** Board-sourced qualify/evaluate pipeline removed with boards channel. No active manifest. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
 
 ---
 
@@ -74,3 +67,38 @@ Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core
   tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
   tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job
 ```
+
+---
+
+### AST-732 · AST-728
+
+**`ingest_jobs`** and **`ingest_board_listings`** increment **`duplicates`** (not **`new`**) when **`database.save_job`** returns **`False`** on identity duplicate insert bounce. Pre-insert listing dedup unchanged. Facade **`tracker.save_job`** passthrough bool.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ingest count wiring | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestIngestJobs::test_counts_identity_duplicate_bounce_from_save_job`, `TestIngestBoardListings::test_counts_identity_duplicate_bounce_from_save_job` |
+
+See **`docs/test-bible/data/database/jobs.md`** for index + **`save_job`** bounce tests.
+
+### AST-733 · AST-728
+
+**`initialize_job`** returns **`False`** when another row already owns the complete **`(company, job_title, company_job_id)`** triple — current row deleted, canonical row untouched. Incomplete triples skip collision check. IntegrityError fallback deletes current row when **AST-732** index catches a race.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Collision delete + bool return | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst733InitializeJobCollision` |
+
+**AST-733** narrowed run (tracker slice):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_tracker.py::TestAst733InitializeJobCollision \
+  tests/component/core/test_tracker.py::TestInitializeJob \
+  -q
+```
+
+---
+
+### AST-765 · AST-757 (SUNSET — documentation)
+
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

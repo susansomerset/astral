@@ -1,3 +1,102 @@
+<!-- linear-archive: AST-643 archived 2026-06-23 -->
+
+## Linear archive (AST-643)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-643/trigger-adjacent-token-lookup-placement-token-lookup-list  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-638 — Token lookup list  
+**Blocked by / blocks / related:** parent: AST-638
+
+### Description
+
+## What this implements
+
+Fix the shared token-autocomplete textarea so the lookup list appears below the active `{$` trigger line instead of covering the textarea. Preserve existing open/filter/dismiss/keyboard behavior. Handle viewport edge cases by flipping above the trigger when there is insufficient room below. All current consumers (Manage Tasks, Manage Agents, Anthropic Ad Hoc) inherit the fix from the shared component.
+
+## Acceptance criteria
+
+1. On Manage Tasks, open any task's edit modal, type `{$` in any prompt segment — the lookup list appears below the trigger line and the partial token text in the textarea remains visible while typing.
+2. Typing `}` to close a token manually dismisses the lookup list without requiring Escape or a click.
+3. Manage Agents (Add and Edit modals) and Anthropic Ad Hoc (User, Cache, NoCache prompt tabs) show the same corrected placement when triggering autocomplete.
+4. Selecting a token from the list or via keyboard still inserts the full `{$TOKEN}` and dismisses the list, with cursor restored as today.
+5. Existing `TokenTextarea` component tests pass; tests cover that the dropdown no longer overlays the textarea origin when open.
+
+## Boundaries
+
+* Does not change which tokens appear in the list, token registry, or any admin API endpoints.
+* Does not alter token insertion format or preview/resolve behavior on parent screens.
+* Does not add autocomplete to new surfaces.
+* No backend work.
+
+## Notes for planning
+
+* Shared component used across admin prompt editors; fix once in the component layer.
+* plan-child §3.5 — component lives in the flat components directory per Code Rules.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent **ftr/ast-638**, child **sub/AST-638/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-14T20:56:16.309Z
+**Review** — `origin/dev...origin/sub/AST-638/AST-643-trigger-adjacent-token-lookup-placement` · doc `d79ec810`
+
+### What's solid
+- Stage 1 matches plan: `menuAnchor(ta, triggerCharIndex)` subtracts `scrollTop`, anchors from `{$` index, viewport flip constants, `triggerPos` on scroll/resize reposition. Single-file `TokenTextarea.tsx`; consumers unchanged.
+- §3.5 flat `components/`; no layer violations.
+- AC5: `AST-643` test — menu `style.top` > textarea `getBoundingClientRect().top` on first-line trigger; AST-636 portal + existing behavior rows intact.
+
+### Advisory
+- `docs/ASTRAL_TEST_BIBLE.md` ~1665 — orphan ` ``` ` before §7.13zzp (AST-644 bible merge). Betty cleanup on next bible touch; not blocking.
+- Flip-above / scrolled-textarea: manual smoke only per plan; no automated flip test (OK for this ticket).
+
+**Verdict:** clean — no fix-now. Katherine may proceed `resolve-child`.
+
+#### betty — 2026-06-14T20:50:44.952Z
+## QA test manifest (AST-643)
+
+**Publish:** `origin/sub/AST-638/AST-643-trigger-adjacent-token-lookup-placement` @ `9dc4b750` (`merge-tests(AST-643): origin/tests 7baf09b1`)
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `4c2934dce05d94b27a765b5091a8ebad96e21ff85a04834d8eb7a77b6b60d964`
+
+### 1. Existing coverage (bible-backed)
+
+Full **`tests/component/frontend/components/test_TokenTextarea.test.tsx`** — open/filter/dismiss/keyboard, **`AST-636`** portal, tab/Enter insertion, outside-click/Escape/closed-token paths.
+
+### 2. New / revised (this pass)
+
+1. **`AST-643`** — `portaled menu anchors below first-line trigger` — menu fixed `style.top` strictly greater than textarea origin when `{$` is on line 1 (AC5).
+
+### 3. Run command
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx
+```
+
+**Bible:** §7.13zzq (parent AST-638). Component-only — no routed-page §6c (shared component; consumers inherit).
+
+#### katherine — 2026-06-14T20:46:04.277Z
+Plan: [ast-643-trigger-adjacent-token-lookup-placement.md](https://github.com/susansomerset/astral/blob/sub/AST-638/AST-643-trigger-adjacent-token-lookup-placement/docs/features/interface/ast-643-trigger-adjacent-token-lookup-placement.md)
+
+**Root cause:** `menuAnchor` computes trigger-line Y from line index but omits `textarea.scrollTop`, so the portaled menu (AST-636) anchors to full content height instead of the visible viewport — dropdown overlaps typed text / textarea origin when content scrolls or in tall modals.
+
+**Fix (Stage 1, `TokenTextarea.tsx` only):** subtract `scrollTop`, anchor line index from `triggerPos` (`{$` start), flip above trigger when insufficient room below; no consumer page changes.
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — one shared component file; pages inherit automatically.
+- **Conf:** `conf-high` — extends AST-636 portal pattern with localized scroll/trigger math.
+- **Risk:** `risk-low` — isolated dropdown positioning; no API or data impact.
+
+**QA note for Betty:** add placement assertion in `test_TokenTextarea.test.tsx` — open menu `top` must be strictly below textarea `top` on first-line `{$` trigger (AC5).
+
+---
+
 # Trigger-adjacent token lookup placement (Token lookup list)
 
 **Linear:** [AST-643](https://linear.app/astralcareermatch/issue/AST-643/trigger-adjacent-token-lookup-placement-token-lookup-list)  

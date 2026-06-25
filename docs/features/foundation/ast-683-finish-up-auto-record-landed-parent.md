@@ -1,3 +1,109 @@
+<!-- linear-archive: AST-683 archived 2026-06-23 -->
+
+## Linear archive (AST-683)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-683/finish-up-auto-record-landed-parent-create-a-ticket-log-in-utils  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-675 — Create a ticket log in utils  
+**Blocked by / blocks / related:** parent: AST-675
+
+### Description
+
+## What this implements
+
+After successful finish-up land on `dev`, automatically invoke the utils append tool with the parent epic Linear id so the merge ticket log gains one entry per landed parent.
+
+## Acceptance criteria
+
+1. After finish-up lands a parent on `dev`, the persisted log contains a new entry with that parent’s Linear id and the tool-run timestamp; prior entries remain in the file.
+
+## Boundaries
+
+* Does not implement log format, storage, or deploy-status read path (Ada sibling).
+* Does not change finish-up steps except post-success append call.
+* Child ticket ids are not logged — parent epic id only.
+
+## Notes for planning
+
+Wire `finish-up-land.sh` (or delegated helper) after successful land. Tool API defined by Ada sibling.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/ast-675-create-a-ticket-log-in-utils**, child **sub/AST-675/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T19:53:59.923Z
+**Radia review — clean**
+
+**Diff:** `origin/dev...origin/sub/AST-675/ast-683-finish-up-auto-record-landed-parent` (AST-683 product: `f2742e3a`, `efd736f1`, `de1a4dea`)
+
+**Plan fidelity**
+- `record-landed-parent.sh` matches Stage 1; `merge-parent.sh` calls helper after ftr land push, before ftr delete; `prep-uat-land.sh` unchanged.
+- Parent id from segment via `AST-[0-9]+`; append via AST-681 CLI only; no child ids, log format, deploy-status, or UI in this ticket.
+
+**ASTRAL_CODE_RULES**
+- §1.3 / §2.1 / §3.3: bash orchestrates existing CLI/utils; no new Python modules or layer bends in AST-683 commits.
+
+**Tests**
+- `tests/component/scripts/test_record_landed_parent.py` — 3/3 pass (append+commit in temp repo, missing append → `BLOCKED`, static merge-parent wiring guard).
+
+**Advisory**
+- Next real `finish-up` for AST-675: confirm one `AST-675` entry on `origin/dev` (manual per plan).
+- Re-run after successful record appends duplicate parent id (append-only by design).
+
+**Doc:** `docs/features/foundation/ast-683-finish-up-auto-record-landed-parent.md` — Radia review section (`b79c15a2`).
+
+**fix-now:** none → **resolve-child** when ready.
+
+#### betty — 2026-06-15T19:51:46.837Z
+## QA test manifest (AST-683)
+
+**Publish ref:** `origin/sub/AST-675/ast-683-finish-up-auto-record-landed-parent` @ `cafeea82` (`merge-tests(AST-683): origin/tests de1a4dea`)
+
+**Existing coverage (bible-backed — no rerun required unless fixing regressions):**
+- `scripts/append_merge_ticket_log.py` + `src/utils/merge_ticket_log.py` — AST-681 manifest in `docs/test-bible/utils/merge_ticket_log.md`
+
+**New tests (this ticket):**
+
+1. **Pytest (required):**
+
+```bash
+.venv/bin/python -m pytest tests/component/scripts/test_record_landed_parent.py -q
+```
+
+| # | Behavior | Test |
+| --- | --- | --- |
+| 1 | `record-landed-parent.sh` append + commit in temp repo | `TestRecordLandedParent::test_record_landed_parent_appends_and_commits` |
+| 2 | Missing append CLI → `BLOCKED` | `TestRecordLandedParent::test_record_landed_parent_missing_append_script_blocks` |
+| 3 | `merge-parent.sh` invokes helper after land push | `TestMergeParentShell::test_merge_parent_shell_references_record_helper` |
+
+**Broken / obsolete tests:** none identified.
+
+**Verify-only (no product change this pass):** `scripts/git/prep-uat-land.sh` must remain unwired.
+
+**Bible shasum on publish ref:**
+- `docs/test-bible/dev/record_landed_parent.md` → `6fd784fe650e63eb20f8a61b14a8ac7cb2c1d350b4e97ae6909bf4294bb21fcb`
+- `docs/test-bible/utils/merge_ticket_log.md` → `0892f478d2b965a859dde1e118896bcd1793dd9bdc892197e86ca6a7358d9e66`
+
+— Betty
+
+#### hedy — 2026-06-15T19:46:23.160Z
+Plan: [ast-683-finish-up-auto-record-landed-parent.md](https://github.com/susansomerset/astral/blob/sub/AST-675/ast-683-finish-up-auto-record-landed-parent.md)
+
+**Self-assessment**
+- **Scope:** `scope-minor` — Two `scripts/git/` bash files plus one component test; wires existing AST-681 append CLI after land, no product-module edits.
+- **Conf:** `conf-high` — Append API and land flow are defined by AST-681 and existing `merge-parent.sh`; plan adds a delegated `record-landed-parent.sh` helper only.
+- **Risk:** `risk-Medium` — Finish-up land path is critical; failure modes use explicit `BLOCKED:` exits without changing pre-land steps.
+
+Publish ref @ `1ec9271d`.
+
+---
+
 # finish-up auto-record landed parent
 
 **Linear:** [AST-683 — finish-up auto-record landed parent](https://linear.app/astralcareermatch/issue/AST-683/finish-up-auto-record-landed-parent-create-a-ticket-log-in-utils)

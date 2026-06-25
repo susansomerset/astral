@@ -1,3 +1,173 @@
+<!-- linear-archive: AST-686 archived 2026-06-23 -->
+
+## Linear archive (AST-686)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-686/uat-proposed-importance-explainer-text-for-manual-paste-update  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-655 — update criteria prompts to specify the importance and explain what that means  
+**Blocked by / blocks / related:** parent: AST-655
+
+### Description
+
+## What failed
+
+Team shipped [AST-678](https://linear.app/astralcareermatch/issue/AST-678/craft-rubric-importance-explainer-and-admin-prompt-updates-update) as a DB migration instead of delivering **proposed explainer prose** Susan could review and paste into Manage Tasks herself.
+
+## Expected
+
+1. A **standalone text file outside** `src/` (e.g. under `docs/` or project root) containing the shared importance explainer draft.
+2. This ticket's description updated (or linked) with the **same PROPOSED text** for Susan approval.
+3. **No** automatic prompt mutation — Susan will manually update `agent_task` rows after approval.
+
+## Repro
+
+1. Susan UAT on [AST-655](https://linear.app/astralcareermatch/issue/AST-655/update-criteria-prompts-to-specify-the-importance-and-explain-what) — no copy/paste-ready explainer artifact exists.
+2. After this bug lands: open the text file, confirm identical explainer suitable for all six `craft_*_rubric` tasks.
+
+## Parent AC (quoted inline)
+
+> All six rubric craft tasks share the same importance explainer in prompt text and explicitly instruct the model to return `importance` per criterion.
+
+## Boundaries
+
+* Does **not** modify `database.py` or run migrations.
+* Does **not** change TASK_CONFIG ([AST-676](https://linear.app/astralcareermatch/issue/AST-676/rename-prefilter-rubric-task-and-require-importance-in-craft-rubric)) or UI ([AST-677](https://linear.app/astralcareermatch/issue/AST-677/artifacts-ui-prefilter-rubric-task-rename-update-criteria-prompts-to)).
+* Does **not** deploy to production — Susan pastes manually after approval.
+
+## PROPOSED importance explainer
+
+**Copy/paste source:** [`docs/consult/craft-rubric-importance-explainer-proposed.txt`](<https://github.com/susansomerset/astral/blob/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste/docs/consult/craft-rubric-importance-explainer-proposed.txt>)
+
+Paste into **Manage Tasks** → `user_prompt` for all six `craft_*_rubric` tasks, immediately **before** `{$RESPONSE_SCHEMA}`. Identical text on every task.
+
+## Vector importance (1–10)
+
+Each criterion you return is a scoring **vector**. Assign every vector an integer `importance` from **1** (lowest priority) to **10** (highest priority). You **must** return `importance` on **every** criterion in your JSON — do not omit it or leave priority implicit.
+
+Spread importance meaningfully when vectors differ in how much they should move the consult score. Avoid assigning **5** to every vector when priorities clearly differ.
+
+### Weight multipliers (importance → score contribution)
+
+Importance scales each vector's contribution to the overall consult score:
+
+* 1 → 30% of baseline
+* 2 → 49%
+* 3 → 68%
+* 4 → 87%
+* 5 → 106% (baseline)
+* 6 → 125%
+* 7 → 144%
+* 8 → 163%
+* 9 → 182%
+* 10 → 200%
+
+These match the runtime table in `ASTRAL_CONFIG["consult_importance"]` ([AST-358](https://linear.app/astralcareermatch/issue/AST-358/replace-per-vector-grade-scores-with-universal-grade-values-per-vector) / [AST-429](https://linear.app/astralcareermatch/issue/AST-429/replace-per-vector-grade-scores-with-universal-grade-values-per-vector)).
+
+### How importance combines with grades and confidence at scoring time
+
+At runtime each vector receives a letter grade (**A–D**, plus **F** and **X**) and a **confidence** integer **1–5**. Consult scoring combines all three:
+
+* **Counted vectors** contribute: `(equal base share among counted vectors) × (grade density) × (importance multiplier) × (confidence multiplier)`.
+* **Grade density** uses universal letter values (A highest, D lowest) times the confidence multiplier (1 → 0%, 2 → 25%, 3 → 50%, 4 → 75%, 5 → 100% of grade value).
+* **F** with confidence **2–5** is a **dealbreaker** — the rubric fails immediately regardless of other vectors.
+* **X** (cannot evaluate) and **confidence 1** vectors are **excluded** from the scored numerator (they do not add points; remaining vectors share the base).
+* The summed contribution is normalized to a **0–10** consult score and compared to the stage pass threshold.
+
+Return `importance` as an integer field **1–10** alongside `label` and `content` on each criterion object.
+
+### Comments
+
+#### radia — 2026-06-15T21:29:34.523Z
+### Plan fidelity (Stage 1)
+
+**Solid:** `ab6c83e9` adds **only** `docs/consult/craft-rubric-importance-explainer-proposed.txt` — 3-line `#` paste guide + shared explainer for all six `craft_*_rubric` tasks; no `AST-678_VECTOR_IMPORTANCE` marker per plan decision.
+
+**Solid:** Linear **AST-686** description includes **`## PROPOSED importance explainer`**, GitHub link to file, and inline prose matching file body (excluding `#` guide lines) — satisfies ticket AC #2.
+
+### Config fidelity
+
+Weight multiplier table (30%…200%) matches `ASTRAL_CONFIG["consult_importance"]["multipliers"]` in `src/utils/config.py` (0.30…2.00). Read-only reference in prose — no config edits.
+
+### Boundaries
+
+- `code(AST-686)` — no `src/` paths.
+- `rg '678|ast678|_apply_ast678|database.py' docs/consult/` — no matches.
+- No migrations, TASK_CONFIG, or UI changes.
+
+### Betty manifest
+
+**Solid:** `bec76850` — docs-only audit manifest in test-bible README; no pytest required per plan.
+
+### Cross-ticket (advisory)
+
+Publish ref @ `c928f95d` includes merged sibling work (**AST-685** revert, **AST-687**/**AST-688** tests) from epic rollup — not AST-686 scope; no conflict.
+
+---
+
+**Verdict:** Clean — no **fix-now** / **discuss**.
+
+**Doc:** [`docs/features/consult/ast-686-uat-proposed-importance-explainer-text-for-manual-paste.md`](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste/docs/features/consult/ast-686-uat-proposed-importance-explainer-text-for-manual-paste.md) — Radia review section @ `c928f95d`.
+
+#### betty — 2026-06-15T21:27:54.821Z
+## QA test manifest (AST-686)
+
+**Publish ref:** `origin/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste` @ `317d1141` (`merge-tests(AST-686): origin/tests bec76850`)
+
+**Betty commit:** `bec76850` — minimal **`docs/test-bible/README.md`** manifest block only (docs-only ticket; no pytest).
+
+**Bible shasum on publish ref:**
+- `docs/test-bible/README.md` → `2f1b2d8307f0a00854155c0605729404febcaf67fa99514780920a70fac8b5b7`
+
+**Betty preflight (done):**
+- `docs/consult/craft-rubric-importance-explainer-proposed.txt` present @ `ab6c83e9`
+- Multiplier table 30%…200% matches `ASTRAL_CONFIG["consult_importance"]["multipliers"]`
+- `rg '678|ast678|_apply_ast678|database\.py' docs/consult/` — clean
+- `code(AST-686)` commits touch docs only (no `src/`)
+
+### Manifest (test-child)
+
+1. **Artifact audit (required):** Open **`docs/consult/craft-rubric-importance-explainer-proposed.txt`** on publish ref; confirm paste guide + shared explainer prose; multiplier literals match config.
+
+2. **Scope gate (required):**
+
+```bash
+rg '678|ast678|_apply_ast678|database\.py' docs/consult/
+```
+
+Expect **no matches**.
+
+3. **Product gate (required):**
+
+```bash
+git show ab6c83e9 --stat
+```
+
+Expect **only** `docs/consult/craft-rubric-importance-explainer-proposed.txt`.
+
+4. **Linear audit (required):** Description **`## PROPOSED importance explainer`** present; body matches file (excluding three `#` guide lines).
+
+**Pass criterion:** items 1–4 complete — **no pytest** / zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### ada — 2026-06-15T21:23:56.079Z
+Plan: [`docs/features/consult/ast-686-uat-proposed-importance-explainer-text-for-manual-paste.md`](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-686-uat-proposed-importance-explainer-text-for-manual-paste/docs/features/consult/ast-686-uat-proposed-importance-explainer-text-for-manual-paste.md)
+
+**Self-assessment**
+- **Scope:** `minor` — one new `docs/consult/*.txt` + Linear description append; no `src/`.
+- **Conf:** `high` — prose from AST-678 plan; multipliers match live `consult_importance` config.
+- **Risk:** `low` — docs-only delivery; Susan approves before manual Manage Tasks paste.
+
+**Stage 1 (engineer):** Create `docs/consult/craft-rubric-importance-explainer-proposed.txt` with shared explainer + paste guide; append **`## PROPOSED importance explainer`** to this ticket (inline text + file link).
+
+**QA manifest (Betty):** File exists; no `src/` on sub; Linear PROPOSED block matches file.
+
+---
+
 # AST-686 — UAT: Proposed importance explainer text for manual paste
 
 **Linear:** [AST-686 — UAT: Proposed importance explainer text for manual paste](https://linear.app/astralcareermatch/issue/AST-686/uat-proposed-importance-explainer-text-for-manual-paste-update)  

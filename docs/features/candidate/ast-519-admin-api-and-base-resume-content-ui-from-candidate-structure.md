@@ -1,3 +1,161 @@
+<!-- linear-archive: AST-519 archived 2026-06-15 -->
+
+## Linear archive (AST-519)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-519/admin-api-and-base-resume-content-ui-from-candidate-structure  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-477 — Candidate Resume Structure  
+**Blocked by / blocks / related:** parent: AST-477; related: AST-518
+
+### Description
+
+## What this implements
+
+Expose per-candidate resume structure via admin/candidate API (`src/ui/api/`) and drive **Base Resume Content** UI: one tab per **enabled** section in catalog order, fields keyed by section ids from the candidate’s structure (not global `DATA_SHAPES["base_resume_structure"]` alone). Editor loads/saves `base_resume` content consistent with structure. No orphan keys in the editor when structure and content disagree.
+
+## Acceptance criteria
+
+2. Base Resume Content shows one tab per enabled section for that candidate, in defined order.
+3. When job-level `resume_content` exists, its keys are a subset of the same section ids; builder/UI do not show orphan keys (UI portion — coordinate with [AST-518](https://linear.app/astralcareermatch/issue/AST-518/resume-builder-and-job-artifact-keys-from-candidate-structure) for builder).
+4. A second candidate with a different section catalog does not affect the first.
+
+## Boundaries
+
+* Does **not** implement structure persistence or `craft_resume_base` — [AST-517](https://linear.app/astralcareermatch/issue/AST-517/per-candidate-resume-structure-storage-and-craft-resume-base-candidate).
+* Does **not** own builder HTML merge — [AST-518](https://linear.app/astralcareermatch/issue/AST-518/resume-builder-and-job-artifact-keys-from-candidate-structure).
+
+## Notes for planning
+
+* `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx`, `api_candidate.py` / admin shapes endpoints.
+* plan-astral: components in `src/ui/frontend/src/` flat per ASTRAL_CODE_RULES.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-477-candidate-resume-structure`, child `sub/AST-477/<child-segment>`.
+
+### Comments
+
+#### betty — 2026-05-29T00:10:46.042Z
+**Betty — rollup bible/test fix (AST-477 sub→ftr unblock)**
+
+Published to `origin/sub/AST-477/AST-519-admin-api-and-base-resume-content-ui-from-candidate-structure` @ `e9ac1a90`.
+
+- **§7.13zl:** single epic section — rows for **AST-517**, **AST-518**, **AST-519** (extends cumulative chain from updated AST-518 sub).
+- **`test_candidate.py`:** `TestAst517ResumeStructure`, `TestAst518ResumeStructureProjection`, `TestAst519ResumeStructureUiHelpers` (518 class was missing on sub/519; restored).
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:
+```
+e1d48e1555a6605a5e3a39ddcc828d65f3ce5804
+```
+
+Status unchanged (**User Testing**). Chuckles may retry **rollup-child** AST-519 → ftr after AST-518 rollup.
+
+— Betty
+
+#### radia — 2026-05-28T23:28:16.241Z
+**Diff:** `origin/dev...origin/sub/AST-477/AST-519-admin-api-and-base-resume-content-ui-from-candidate-structure` (includes AST-517 merge)
+
+### Plan fidelity
+- `GET /api/candidates/<id>/resume_structure` registered **before** `/<id>` — returns enabled sections + accent from `resolve_resume_structure`.
+- PUT filters `base_resume` to enabled section ids, merges/normalizes `resume_structure` (including accent-only updates), drives **Base Resume Content** via `useCandidateResumeStructure` + page-owned structure fetch — matches Stages 1–3.
+- Frontend accent save targets `artifacts.resume_structure.accent_color` (not `base_resume`) — matches plan Stage 2.
+
+### ASTRAL_CODE_RULES
+- **§3.3:** `api_candidate.py` imports core only — good.
+- **§3.2 / §3.5:** Tab visibility from server-resolved structure; React renders props — no hardcoded section lists in page — good.
+- **§2.1:** Defaults via AST-517 `resolve_resume_structure` / `default_resume_structure` — not duplicate DATA_SHAPES reads in API — good.
+
+### discuss
+- **`normalize_company_search_terms_on_save` / `company_search_terms_lines` (`candidate.py` + PUT hook in `api_candidate.py`):** AST-504 scope, not in AST-519 plan — pairs with orphan tests on AST-517/518 publish refs. Confirm intentional carry-over from `dev-kath` or revert and land on AST-504 branch before prep-uat to keep AST-477 diff tight.
+- **`filter_base_resume_to_structure` vs AST-518 `filter_content_to_resume_structure`:** PUT path keeps empty-string section values; builder/tracker strip empties — minor inconsistency if orphans are empty strings vs absent keys.
+
+### advisory
+- **`ArtifactEditor` structure mode:** When `structureSections={[]}` after fetch error, user sees shape load failure — acceptable; ensure UAT covers candidate with no structure blob yet (should get defaults via API resolve).
+
+#### katherine — 2026-05-28T23:26:21.656Z
+[check-linear]
+
+**Session scope:** Parent **AST-477** / Astral Candidate — assigned **AST-519**.
+
+**§0a:** `dev-kath` @ `/Users/susan/chuckles/astral-kath`; `git fetch origin`, `merge origin/dev` — already up to date. Gate: **BEHIND=0**, `origin/dev` ancestor of **HEAD**.
+
+**§0b / §1:** `@katherine` team + Astral Candidate project search; assignee-me in session project (**AST-519**). Full thread on **AST-519** and parent **AST-477** — **0** actionable comments (Chuckles **REVISE** addressed in prior `[check-linear]` @ `422a1404`; Betty QA manifest is informational — ticket already **Tests Passed**).
+
+**Pipeline:** Inbox quiet. **AST-519** awaits **review-astral** (Radia); no engineer stage work from this pass.
+
+#### betty — 2026-05-28T23:20:25.759Z
+## QA test manifest (AST-519)
+
+**Publish ref:** `origin/sub/AST-477/AST-519-admin-api-and-base-resume-content-ui-from-candidate-structure` @ `f55fcae5`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `a655c0005dfe860a8deac067c5072677d73df565`
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers tests/component/core/test_candidate.py::TestAst517ResumeStructure tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi`
+
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`
+
+3. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx -t "structureSections"`
+
+**Coverage notes:** §6c routed page test mocks `/api/candidates`, `/api/candidates/<id>`, `/api/candidates/<id>/resume_structure`, and `/api/system/ui_config` on first paint. Accent save asserts `artifacts.resume_structure.accent_color` (not `base_resume.accent_color`). Orphan `base_resume` keys are omitted from tabs and stripped on PUT.
+
+**Blocker regression (optional smoke):** AST-517 rows in §7.13zl — item 1 includes `TestAst517ResumeStructure`.
+
+#### katherine — 2026-05-28T23:04:37.322Z
+🛑 **Build blocked (prerequisite gate)**
+
+**AST-517** is still **Plan Approved** (not Code Complete). **`origin/sub/AST-477/AST-517-per-candidate-resume-structure-storage-and-craft-resume-base`** has only `docs(AST-517): plan` — no product commits.
+
+After `git fetch`, **`resolve_resume_structure` / `normalize_resume_structure` / `artifacts.resume_structure`** are not present in `src/` on `dev-kath` or the AST-517 ref. AST-519 Stage 1 requires importing those from AST-517; building without them would duplicate persistence logic the plan forbids.
+
+**Unblock:** Ada completes **AST-517** build → **`origin/sub/AST-477/AST-517-...`** carries implementation → re-run **build-astral** on **AST-519** (merge AST-517 ref into `dev-kath` first per plan prerequisite).
+
+Status left at **Plan Approved**.
+
+#### katherine — 2026-05-28T23:02:53.264Z
+[check-linear]
+
+Addressed Chuckles **REVISE** (integration contract / blob key mismatch vs **AST-517**):
+
+- **Plan:** `docs/features/candidate/ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md`
+- **Publish ref:** `origin/sub/AST-477/AST-519-admin-api-and-base-resume-content-ui-from-candidate-structure` @ **`422a1404`**
+- **Changes:** Storage path **`artifacts.resume_structure`** everywhere (prerequisite gate, Stages 1–2, tests, accent PUT). Import AST-517 **`resolve_resume_structure()`** / **`normalize_resume_structure()`**; thin **`enabled_resume_structure_sections(resolved)`** only. Removed duplicate `resolve_resume_structure_sections` and direct `DATA_SHAPES` fallback reads. **Revisions** appendix documents this pass.
+- **§0a:** `dev-kath` merged with `origin/dev` — BEHIND **0**, ancestor check **ok**.
+
+Ticket stays **Plan Ready** for Chuckles re-validation; did not reset to **Todo** or re-run **plan-astral**.
+
+#### katherine — 2026-05-28T23:02:37.021Z
+Plan doc (revision 1): [ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md](https://github.com/susansomerset/astral/blob/sub/AST-477/AST-519-admin-api-and-base-resume-content-ui-from-candidate-structure/docs/features/candidate/ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md) — commit `422a1404` on publish ref.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — candidate API + Base Resume Content UI; thin `enabled_resume_structure_sections` formatter only; imports AST-517 resolve/normalize helpers.
+- **Conf:** `Medium` — blocked on AST-517 merge; plan now matches Ada’s `artifacts.resume_structure` blob and `resolve_resume_structure()` contract (no duplicate default logic).
+- **Risk:** `Medium` — save-time orphan strip and accent path move; legacy accent read stays in AST-517 resolve shim until regenerate.
+
+Revision 1 addresses Chuckles REVISE: `base_resume_structure` → `resume_structure` everywhere; accent PUT → `artifacts.resume_structure.accent_color`.
+
+#### chuckles — 2026-05-28T23:00:52.050Z
+**Verdict: REVISE**
+
+**[fix-now]** — Integration contract § — AST-519 plan uses `artifacts.base_resume_structure` and `GET .../resume_structure` response paths keyed to that name, but **AST-517** (approved) persists **`artifacts.resume_structure`** with `resolve_resume_structure()` / `normalize_resume_structure()`. Update the plan doc (Stages 1–2, tests, accent PUT path) to use **`resume_structure`** everywhere — same blob key, helper names from AST-517 (import/reuse, do not duplicate). API route name `resume_structure` is fine; storage must match Ada’s contract.
+
+— Chuckles
+
+#### katherine — 2026-05-28T22:59:14.008Z
+Plan doc: [ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md](https://github.com/susansomerset/astral/blob/sub/AST-477/AST-519-admin-api-and-base-resume-content-ui-from-candidate-structure/ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md) (path: `docs/features/candidate/ast-519-admin-api-and-base-resume-content-ui-from-candidate-structure.md`, commit `77a280ff` on publish ref).
+
+**Self-assessment**
+- **Scope:** `Single-Component` — candidate API + Base Resume Content UI slice only; small core filter helpers; no builder or craft persistence.
+- **Conf:** `Medium` — blocked on AST-517 blob contract; plan includes explicit prerequisite gate and DATA_SHAPES fallback so build does not guess Ada’s storage shape.
+- **Risk:** `Medium` — save-time orphan stripping and accent path move could hide legacy keys until regenerate; mitigated by structure-bound tabs and documented fallback.
+
+Prerequisite gate: merge `origin/sub/AST-477/AST-517-…` before Stage 1 and verify `artifacts.base_resume_structure` matches the integration contract in the plan.
+
+---
+
 # AST-519: Admin API and Base Resume Content UI from candidate structure
 
 **Linear:** [AST-519](https://linear.app/astralcareermatch/issue/AST-519/admin-api-and-base-resume-content-ui-from-candidate-structure) (child of [AST-477](https://linear.app/astralcareermatch/issue/AST-477/candidate-resume-structure))

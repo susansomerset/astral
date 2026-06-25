@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
 # launch.sh — Flask + Vite dev servers in macOS Terminal tabs.
 #
-#   zsh -l ~/chuckles/astral/launch.sh          # both (default)
-#   zsh -l ~/chuckles/astral/launch.sh --flask  # flask only
-#   zsh -l ~/chuckles/astral/launch.sh --vite   # vite only
+#   zsh -l ~/chuckles/astral/launch.sh          # both (default): two new tabs in this window
+#   zsh -l ~/chuckles/astral/launch.sh --flask  # flask only (this tab)
+#   zsh -l ~/chuckles/astral/launch.sh --vite   # vite only (this tab)
 #   zsh -l ~/chuckles/astral/launch.sh --windows  # separate windows instead of tabs
 #
 # Run separately from wake-up-chuck (Linear watchers / tmux chuck session).
@@ -36,13 +36,26 @@ _ensure_frontend_deps() {
   fi
 }
 
+_ensure_frontend_build() {
+  _ensure_frontend_deps
+  cd "${FRONTEND_DIR}"
+  local dist_index="dist/index.html"
+  if [[ ! -f "$dist_index" ]] \
+    || find src -type f \( -name '*.tsx' -o -name '*.ts' \) -newer "$dist_index" -print -quit | grep -q .; then
+    print -u2 "frontend dist stale or missing — running npm run build..."
+    npm run build
+  fi
+}
+
 typeset USE_TABS=1
 [[ "${1:-}" == "--windows" ]] && { USE_TABS=0; shift; }
 
 run_flask() {
   _ensure_python_deps
+  _ensure_frontend_build
   cd "${WORKDIR}/src/ui"
   print -u2 "flask-api http://localhost:5001 (Ctrl-C to stop)"
+  print -u2 "tip: vite live-reload at http://localhost:5173 — launch.sh --vite"
   exec python server.py
 }
 
@@ -71,39 +84,35 @@ end run
 APPLESCRIPT
 }
 
-_open_tab_cmd() {
-  local cmd="$1"
-  osascript - "$cmd" <<'APPLESCRIPT'
+_open_tabs_in_front_window() {
+  local flask_cmd="$(_tab_cmd --flask)"
+  local vite_cmd="$(_tab_cmd --vite)"
+  osascript - "$flask_cmd" "$vite_cmd" <<'APPLESCRIPT'
 on run argv
-  set cmd to item 1 of argv
+  set flaskCmd to item 1 of argv
+  set viteCmd to item 2 of argv
   tell application "Terminal"
+    set w to front window
+    do script flaskCmd in w
+    do script viteCmd in w
     activate
-    tell application "System Events" to keystroke "t" using command down
-    delay 0.2
-    do script cmd in selected tab of front window
   end tell
 end run
 APPLESCRIPT
 }
 
-_spawn_tab() {
-  local subcmd="$1"
-  local label="$2"
-  local cmd="$(_tab_cmd "$subcmd")"
+_launch_tabs() {
   if (( USE_TABS )); then
-    if ! _open_tab_cmd "$cmd" 2>/dev/null; then
-      print -u2 "tab spawn failed (${label}) — enable Terminal in Accessibility"
-      _open_window_cmd "$cmd"
+    if ! _open_tabs_in_front_window 2>/dev/null; then
+      print -u2 "tab spawn failed — falling back to separate windows"
+      _open_window_cmd "$(_tab_cmd --flask)"
+      _open_window_cmd "$(_tab_cmd --vite)"
     fi
   else
-    _open_window_cmd "$cmd"
+    _open_window_cmd "$(_tab_cmd --flask)"
+    _open_window_cmd "$(_tab_cmd --vite)"
   fi
-}
-
-_launch_tabs() {
-  _open_window_cmd "$(_tab_cmd --flask)"
-  _spawn_tab --vite vite
-  print -u2 "launched flask + vite in Terminal"
+  print -u2 "launched flask + vite in Terminal (two tabs in this window)"
   print -u2 "Linear watchers: zsh -l ~/.cursor/skills/wake-up-chuck.sh"
 }
 

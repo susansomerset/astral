@@ -72,6 +72,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 | §7.13* ticket blocks | `### AST-NNN` in routed component files |
 
+### AST-767 · AST-757 (boards documentation sunset)
+
+**Docs-only.** Engineer `code(AST-767)` retires active boards manifests in **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset) and decomposed **`docs/test-bible/**`**; adds **`docs/ASTRAL_CODE_RULES.md` §3.7** (revival SHAs). **`docs/features/boards/`** is historical archive only.
+
+**No new component tests.** **`test-child`:** verify docs acceptance (grep / read) — no pytest manifest. Live obligations for removal work remain sibling **AST-765** / **AST-766** manifests.
+
 
 
 ## 2. Where tests live
