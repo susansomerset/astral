@@ -202,3 +202,14 @@ No conflicts flagged.
 - `f8eebc6` — `code(AST-806): rebuild merge ticket log — include AST-788`
 
 **Manual verify:** `rebuild_merge_ticket_log.py --dev-ref origin/dev --landing-parent AST-788` → JSON includes **AST-788** in `parents` with `landing_parent: "AST-788"`.
+
+---
+
+## Resolution
+
+**Date:** 2026-06-25  
+**Radia review:** Clean — no fix-now items. Advisory on full-rebuild log snapshot (AST-794 drop / AST-799 add) accepted as expected Stage 3 behavior.
+
+**Shipped:** Venv python resolution in `record-landed-parent.sh` (AST-806 delta vs **AST-805** on `origin/dev`). Landing-parent wiring and log repair unchanged from build. §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-788-build-artifacts-chain-dispatch` after merge-log sync with dev.
+
+**Publish tip:** `origin/sub/AST-788/AST-806-uat-merge-ticket-log-missing-after-prep-uat` @ `39d09cd`
