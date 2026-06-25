@@ -307,3 +307,13 @@ No conflicts requiring `conf-!!-NONE`.
 | 5. **Done** after finish-up excluded | Stage 2 runtime filter |
 | 6. Empty filtered set → non-interactive env label | AST-691 frontend unchanged; API returns `[]` |
 | 7. Non-admin / other footer fields unchanged | Only `merge_tickets` filtering; uptime/env untouched |
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-791/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter`
+
+**Product commits:** `6d634fd` (linear client, log remove, deploy status utils helpers), `8a3ac54` (core deploy status filter, prune CLIs, log cleanup)
+
+**Note for Betty (Stage 3):** Component tests per plan Stage 3 — manifest at Code Complete.
