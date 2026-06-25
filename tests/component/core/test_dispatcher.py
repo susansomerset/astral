@@ -188,10 +188,10 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
         run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        from src.utils.config import resume_artifact_compound_state
+        from src.utils.config import BUILD_ARTIFACTS_BASE_STATE
         task = {
             "entity_type": "job",
-            "trigger_state": resume_artifact_compound_state("anticipate_scan"),
+            "trigger_state": BUILD_ARTIFACTS_BASE_STATE,
             "task_key": "anticipate_scan",
             "batch_call_mode": 0,
         }

@@ -3888,151 +3888,8 @@ class TestMergeChainContextForNextHop:
         }
 
 
-_SKIP_RESUME_CHAIN_CANDIDATE_DATA = pytest.mark.skipif(
-    "candidate_data" not in inspect.getsource(agent_mod.run_resume_artifact_chain_for_job),
-    reason="run_resume_artifact_chain_for_job does not seed candidate_data on branch",
-)
-
-
-@_SKIP_RESUME_CHAIN_CANDIDATE_DATA
-class TestRunResumeArtifactChainForJob:
-    @pytest.fixture(autouse=True)
-    def _resume_chain_substrate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """contemplate_job entry hydrates upstream hop; candidate_data re-fetches job (AST-595+)."""
-        monkeypatch.setattr(agent_mod, "_hydrate_resume_entry_chain_context", lambda jid, key: ({}, None))
-        monkeypatch.setattr(
-            "src.core.tracker._candidate_data_for_job",
-            lambda jid: {"artifacts": {"base_resume": {"professional_summary": "base"}}},
-        )
-
-    async def test_raises_when_first_task_key_missing_from_task_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(
-            agent_mod.BUILD_CONFIG,
-            "resume_artifact_chain",
-            {"first_task_key": "__not_in_task_config__"},
-        )
-        with pytest.raises(ValueError, match="first_task_key"):
-            await agent_mod.run_resume_artifact_chain_for_job("job-1")
-
-    async def test_raises_when_first_task_key_blank(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(
-            agent_mod.BUILD_CONFIG,
-            "resume_artifact_chain",
-            {"first_task_key": "  "},
-        )
-        with pytest.raises(ValueError, match="first_task_key"):
-            await agent_mod.run_resume_artifact_chain_for_job("job-1")
-
-    async def test_job_not_found_returns_error_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(database_mod, "get_job", lambda jid: None)
-        out = await agent_mod.run_resume_artifact_chain_for_job("missing-job")
-        assert out["success"] is False
-        assert "not found" in (out.get("error") or "").lower()
-
-    async def test_uses_matching_job_from_ctx_job_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            database_mod,
-            "get_job",
-            lambda jid: (_ for _ in ()).throw(AssertionError("get_job should not run")),
-        )
-        do_task = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        job = {"astral_job_id": "j1", "company": "c1"}
-        await agent_mod.run_resume_artifact_chain_for_job("j1", ctx={"job": job, "extra": 1})
-
-        do_task.assert_awaited_once()
-        call_kw = do_task.await_args.kwargs
-        assert call_kw.get("live_content") is None
-        assert call_kw["ctx"]["batch_entities"] == [job]
-        assert call_kw["ctx"]["extra"] == 1
-        assert call_kw["ctx"]["vector_labels"] == {}
-
-    async def test_prefers_job_data_when_job_key_wrong_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            database_mod,
-            "get_job",
-            lambda jid: (_ for _ in ()).throw(AssertionError("get_job should not run")),
-        )
-        do_task = AsyncMock(return_value={"success": True})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        good = {"astral_job_id": "j2", "company": None}
-        bad = {"astral_job_id": "other"}
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j2",
-            ctx={"job": bad, "job_data": good},
-        )
-        assert do_task.await_args.kwargs["ctx"]["batch_entities"] == [good]
-
-    async def test_fetches_job_when_ctx_rows_mismatch(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        fetched = {"astral_job_id": "j3", "company": None}
-        monkeypatch.setattr(database_mod, "get_job", lambda jid: fetched if jid == "j3" else None)
-        do_task = AsyncMock(return_value={"success": True})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j3",
-            ctx={"job": {"astral_job_id": "nope"}},
-        )
-        assert do_task.await_args.kwargs["ctx"]["batch_entities"] == [fetched]
-
-    async def test_respects_existing_vector_labels_in_ctx(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = {"astral_job_id": "j5", "company": None}
-        monkeypatch.setattr(
-            database_mod,
-            "get_job",
-            lambda jid: (_ for _ in ()).throw(AssertionError("no fetch")),
-        )
-        do_task = AsyncMock(return_value={"success": True})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        vl = {"V": "lbl"}
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j5",
-            ctx={"job": job, "vector_labels": vl},
-        )
-        assert do_task.await_args.kwargs["ctx"]["vector_labels"] is vl
-
-    async def test_run_resume_artifact_chain_seeds_candidate_data(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cd = {
-            "artifacts": {
-                "resume_structure": {},
-                "base_resume": {"professional_summary": "base"},
-            }
-        }
-        job = {"astral_job_id": "j-cd", "company": "co1"}
-        monkeypatch.setattr(database_mod, "get_job", lambda jid: job if jid == "j-cd" else None)
-        monkeypatch.setattr(
-            "src.core.tracker._candidate_data_for_job",
-            lambda jid: cd,
-        )
-        monkeypatch.setattr(
-            "src.core.tracker.get_company",
-            lambda c: {"candidate_id": "cand-99"},
-        )
-        do_task = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-        await agent_mod.run_resume_artifact_chain_for_job("j-cd")
-        ctx = do_task.await_args.kwargs["ctx"]
-        assert ctx["candidate_data"] == cd
-        assert ctx["astral_candidate_id"] == "cand-99"
-
-
 class TestAst597MidChainResumeHydrationAndTransitions:
-    """AST-597: agent_data caller hydration and per-hop BUILD_ARTIFACTS transitions."""
+    """AST-597 / AST-803: agent_data caller hydration; per-hop compound transitions retired."""
 
     def test_resume_artifact_parent_hop_key_first_hop_none(self) -> None:
         assert agent_mod._resume_artifact_parent_hop_key("anticipate_scan") is None
@@ -4131,116 +3988,15 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         assert ctx is None
         assert err and "No stored agent_data" in err
 
-    def test_maybe_transition_resume_hop_progress_advances_compound_state(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        calls: list[tuple[list[str], str]] = []
-
-        def _transition(ids: list[str], state: str) -> None:
-            calls.append((ids, state))
-
-        monkeypatch.setattr("src.core.tracker.transition_job_state", _transition)
-        agent_mod._maybe_transition_resume_hop_progress("anticipate_scan", "job-1")
-        assert calls == [
-            (["job-1"], cfg.resume_artifact_next_compound_state("anticipate_scan"))
-        ]
-
-    def test_maybe_transition_resume_hop_progress_skips_terminal_hop(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        transition = MagicMock()
-        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
-        agent_mod._maybe_transition_resume_hop_progress("finalize_job_resume", "job-1")
-        transition.assert_not_called()
-
     @pytest.mark.asyncio
-    async def test_run_resume_mid_chain_seeds_chain_context_from_agent_data(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = {
-            "astral_job_id": "j-mid",
-            "company": None,
-            "agent_responses": [
-                {
-                    "task_key": "advise_job_resume",
-                    "prompt_blocks": [
-                        {"type": "SYSTEM", "id": "sys-1"},
-                        {"type": "RESPONSE", "id": "resp-1"},
-                    ],
-                }
-            ],
-        }
-        cd = {"artifacts": {"resume_structure": {}, "base_resume": {}}}
-        monkeypatch.setattr(
-            "src.core.tracker._candidate_data_for_job",
-            lambda jid: cd,
-        )
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "j-mid" else None,
-        )
-        monkeypatch.setattr(
-            agent_mod,
-            "get_agent_data_for_ids",
-            MagicMock(
-                return_value={
-                    "sys-1": {"block_data": "stored sys"},
-                    "resp-1": {"block_data": "stored response"},
-                }
-            ),
-        )
-        do_task = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j-mid",
-            ctx={"job": job},
-            first_task_key="draft_job_resume",
-        )
-
-        do_task.assert_awaited_once()
-        seed = do_task.await_args.kwargs.get("chain_context") or {}
-        assert seed.get("_caller_hydration_source") == "agent_data"
-        assert seed.get("_hop_parent_task_key") == "advise_job_resume"
-        assert do_task.await_args.args[0] == "draft_job_resume"
-
-    @pytest.mark.asyncio
-    async def test_run_resume_mid_chain_hydration_failure_skips_do_task(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = {"astral_job_id": "j-fail", "company": None, "agent_responses": []}
-        cd = {"artifacts": {"resume_structure": {}, "base_resume": {}}}
-        monkeypatch.setattr("src.core.tracker._candidate_data_for_job", lambda jid: cd)
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "j-fail" else None,
-        )
-        do_task = AsyncMock()
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        out = await agent_mod.run_resume_artifact_chain_for_job(
-            "j-fail",
-            ctx={"job": job},
-            first_task_key="draft_job_resume",
-        )
-
-        assert out["success"] is False
-        assert "No stored agent_data" in (out.get("error") or "")
-        do_task.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_do_task_success_transitions_resume_hop_compound_state(
+    async def test_do_task_success_does_not_transition_compound_build_state(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        transitions: list[tuple[list[str], str]] = []
-
-        def _transition(ids: list[str], state: str) -> None:
-            transitions.append((ids, state))
-
-        monkeypatch.setattr("src.core.tracker.transition_job_state", _transition)
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -4261,9 +4017,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
             ctx={"candidate_data": {"artifacts": {}}, "batch_entities": _batch_entities("job-597")},
         )
         assert out["success"] is True
-        assert transitions == [
-            (["job-597"], cfg.resume_artifact_next_compound_state("anticipate_scan"))
-        ]
+        transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry(

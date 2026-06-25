@@ -372,6 +372,78 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-803 · AST-788
+
+**AST-803:** Flat **`BUILD_ARTIFACTS`** + **`ERROR_BUILD_ARTIFACTS`**; resume hops carry **`task_type: CHAIN`**; **`do_chain_for_job`** + **`_run_build_artifacts_chain_batch`** replace compound per-hop transitions (**AST-595/597**) and **`run_resume_artifact_chain_for_job`** / **`_try_graduate_artifact_job_to_candidate_review`** (**AST-789**). Job stays on flat **`BUILD_ARTIFACTS`** during hops; terminal **`CANDIDATE_REVIEW`** via **`_chain_graduate_to_candidate_review`**; retry hop failure releases claim; hard missing-job/candidate → **`ERROR_BUILD_ARTIFACTS`**. Legacy **`BUILD_ARTIFACTS.<hop>`** rows still readable for in-flight resume.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chain entry + helpers | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainHelpers` |
+| **`do_chain_for_job`** graduation / hard error | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainGraduation` |
+| Batch wiring + retry release | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch` |
+| Dispatch row honesty (flat + legacy trigger) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty` |
+| Flat config + CHAIN **`task_type`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch`; `TestAst479LikePassStates::test_recommended_job_states_post_synthesis_exclude_passed_like`; `TestBuildStateUiManifest::{test_ast522_recommended_manifest_sections_and_phase_columns,test_ast562_recommended_primary_actions_by_state,test_ast562_recommended_prior_states_allow_cancel_from_build}`; `TestAst520AnticipateScanTaskKey::test_build_artifacts_entry_unchanged`; `TestAst549DispatchAdminDefaults::test_contemplate_job_artifact_trigger_sort` |
+| Generate/cancel flat state | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::{test_start_artifact_build_from_recommended,test_cancel_from_mid_hop_compound_state,test_cancel_rejects_wrong_state}` |
+| Dispatcher flat trigger + legacy claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast596_resume_hop_mismatch_skips_claim}` |
+| Admin dispatch validation | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry` |
+| Jobs API generate/cancel | `src/ui/api/api_jobs.py` | `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default`; `TestAst562GenerateCancelRoutes::{test_generate_artifacts_happy_path,test_cancel_artifact_build_happy_path}` |
+| Mid-chain hydration (no per-hop state transition) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` |
+
+**AST-803** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-803 · AST-788
+
+**AST-803:** Flat **`BUILD_ARTIFACTS`** + **`ERROR_BUILD_ARTIFACTS`**; resume hops carry **`task_type: CHAIN`**; **`do_chain_for_job`** + **`_run_build_artifacts_chain_batch`** replace compound per-hop transitions (**AST-595/597**) and **`run_resume_artifact_chain_for_job`** / **`_try_graduate_artifact_job_to_candidate_review`** (**AST-789**). Job stays on flat **`BUILD_ARTIFACTS`** during hops; terminal **`CANDIDATE_REVIEW`** via **`_chain_graduate_to_candidate_review`**; retry hop failure releases claim; hard missing-job/candidate → **`ERROR_BUILD_ARTIFACTS`**. Legacy **`BUILD_ARTIFACTS.<hop>`** rows still readable for in-flight resume.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chain entry + helpers | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainHelpers` |
+| **`do_chain_for_job`** graduation / hard error | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainGraduation` |
+| Batch wiring + retry release | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch` |
+| Dispatch row honesty (flat + legacy trigger) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty` |
+| Flat config + CHAIN **`task_type`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch`; `TestAst479LikePassStates::test_recommended_job_states_post_synthesis_exclude_passed_like`; `TestBuildStateUiManifest::{test_ast522_recommended_manifest_sections_and_phase_columns,test_ast562_recommended_primary_actions_by_state,test_ast562_recommended_prior_states_allow_cancel_from_build}`; `TestAst520AnticipateScanTaskKey::test_build_artifacts_entry_unchanged`; `TestAst549DispatchAdminDefaults::test_contemplate_job_artifact_trigger_sort` |
+| Generate/cancel flat state | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::{test_start_artifact_build_from_recommended,test_cancel_from_mid_hop_compound_state,test_cancel_rejects_wrong_state}` |
+| Dispatcher flat trigger + legacy claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast596_resume_hop_mismatch_skips_claim}` |
+| Admin dispatch validation | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry` |
+| Jobs API generate/cancel | `src/ui/api/api_jobs.py` | `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default`; `TestAst562GenerateCancelRoutes::{test_generate_artifacts_happy_path,test_cancel_artifact_build_happy_path}` |
+| Mid-chain hydration (no per-hop state transition) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` |
+
+**AST-803** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
