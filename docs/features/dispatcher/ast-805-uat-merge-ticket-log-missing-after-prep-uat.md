@@ -142,3 +142,15 @@ After **AST-801** prep-uat landed **ftr** on **origin/dev**, `data/merge_ticket_
 | Out of scope | No changes to **AST-802** eligibility or deploy-status read path |
 
 No conflicts flagged.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-801/AST-805-uat-merge-ticket-log-missing-after-prep-uat`
+
+**Commits:**
+- `f52d9f3` — `code(AST-805): landing parent bypass in merge ticket log rebuild`
+- `06419e3` — `code(AST-805): wire landing-parent through record-landed-parent`
+
+**Manual verify:** `rebuild_merge_ticket_log.py --dev-ref origin/dev --landing-parent AST-801` → JSON includes **AST-801** in `parents` with `landing_parent: "AST-801"`.
