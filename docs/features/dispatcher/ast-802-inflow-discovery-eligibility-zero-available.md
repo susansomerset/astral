@@ -219,3 +219,16 @@ No conflicts requiring plan revision.
 **Outcome:** Clean — Susan UAT on **somerset** / **LIVE_PROMPTS** repro per plan.
 
 — Radia
+
+---
+
+## Resolution (Hedy)
+
+**Date:** 2026-06-25  
+**Linear:** [AST-802](https://linear.app/astralcareermatch/issue/AST-802) (**Review Posted → User Testing**)
+
+Radia review clean — **0 fix-now**, **0 discuss**, **0 advisory**. No product delta; publish tip @ `e651c45` (`docs(AST-802): Radia review — clean`).
+
+**§9a:** `origin/sub/AST-801/AST-802-inflow-discovery-eligibility-zero-available` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-801-inflow-discovery-eligibility-zero-available`**.
+
+— Hedy
