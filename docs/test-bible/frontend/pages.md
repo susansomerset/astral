@@ -663,6 +663,26 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-768** (Section/Group filter), **AST-751** (filter bar), **AST-739** (grouping sections), **AST-750** (score floor options on edit save).
 
+### AST-804 · AST-799
+
+Scheduled Actions edit modal uses **`candidate`** entries from **`GET /api/admin/dispatch_tasks/state_options`** for Input State when the row's **`entity_type`** is **`candidate`** (e.g. **`inflow_discovery`** → **LIVE_PROMPTS**). Normalizes non-array **`candidate`** payloads to `[]` alongside job/company.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-804 candidate Input State options`** describe (1 case) |
+
+Admin API validation: **`docs/test-bible/ui/api/api_admin.md`** (**AST-804**).
+
+**AST-804** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-804"
+```
+
+**Builds on:** **AST-773** (edit modal task_key), **AST-505** (**inflow_discovery** defaults).
+
 ### AST-785 · AST-754
 
 UAT: Scheduled Actions looked empty when `dispatch_task` rows existed — collapsed default sections, misleading empty copy when filters hid rows, and brittle `available_count` enrichment could break the list. **AST-785** auto-opens the first section once on load, shows filter-aware empty text when `data.length > 0` but no section matches, and toasts on failed `GET /api/admin/dispatch_tasks`. API **`list_dtasks`** omits **`DISPATCH_RETIRED_TASK_KEYS`** (parity with **`task_keys`** AST-749) and logs enrichment failures with `available_count=0` instead of 500.

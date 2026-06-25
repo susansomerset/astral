@@ -854,6 +854,92 @@ class TestAst773UpdateDispatchTaskTaskKey:
         assert "c1" in err
 
 
+# AST-804: candidate entity_type admin validation + state_options exposure.
+class TestAst804CandidateDispatchAdminValidation:
+    def test_dispatch_task_key_trigger_error_candidate_paths(self) -> None:
+        assert admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "LIVE_PROMPTS") is None
+        bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "NOT_A_CANDIDATE_STATE")
+        assert bad is not None and "inflow_discovery" in bad
+        job_bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "PASSED_JD")
+        assert job_bad is not None and "inflow_discovery" in job_bad
+        assert admin_mod._dispatch_task_key_trigger_error("grade_do", "PASSED_JD") is None
+        assert admin_mod._dispatch_task_key_trigger_error("vet_inflow_discovery", "NEW") is None
+
+    def test_state_options_includes_candidate_with_live_prompts(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers).get_json()
+        assert "candidate" in states
+        assert "LIVE_PROMPTS" in states["candidate"]
+
+    def test_create_dispatch_task_rejects_invalid_candidate_trigger_state(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "inflow_discovery",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "inflow_discovery" in resp.get_json()["error"]
+
+    def test_create_dispatch_task_candidate_entity_success(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=55)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "inflow_discovery",
+                "trigger_state": "LIVE_PROMPTS",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["task_key"] == "inflow_discovery"
+        assert save.call_args.kwargs["trigger_state"] == "LIVE_PROMPTS"
+
+    def test_update_dispatch_task_trigger_state_only_candidate_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "inflow_discovery",
+                "trigger_state": "LIVE_PROMPTS",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        ok = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"trigger_state": "NEW"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        update.assert_called_once()
+        bad = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"trigger_state": "PASSED_JD"},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert "inflow_discovery" in bad.get_json()["error"]
+
+
 # Branches: timesheet list/export with optional req_dict filters.
 class TestTimesheets:
     def test_list_and_export_timesheets(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:

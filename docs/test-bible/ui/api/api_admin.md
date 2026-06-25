@@ -246,6 +246,30 @@ Routed page auto-open + filter-empty copy: **`docs/test-bible/frontend/pages.md`
 
 ---
 
+### AST-804 · AST-799
+
+Admin **`_dispatch_task_key_trigger_error`** validates all **`ENTITY_TYPES`** members via **`dispatch_entity_state_registry`** (**`CANDIDATE_STATES`** for candidate-scoped keys such as **`inflow_discovery`**); POST create and PUT trigger_state-only updates call the helper; **`GET /api/admin/dispatch_tasks/state_options`** exposes **`candidate`**. Scheduled Actions edit modal loads **`candidate`** state options and uses them for Input State when **`entity_type === "candidate"`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validation helper + POST/PUT + state_options | `src/ui/api/api_admin.py`, `src/utils/config.py` (`dispatch_entity_state_registry`) | `tests/component/ui/api/test_api_admin.py` — **`TestAst804CandidateDispatchAdminValidation`** (5 cases) |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-804 candidate Input State options`** describe (1 case); revised normalization test includes malformed **`candidate`** payload |
+
+**AST-804** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-804"
+```
+
+**Builds on:** **AST-773** (edit modal task_key + validation helper), **AST-505** (**inflow_discovery** admin defaults).
+
+---
+
 ### AST-783 · AST-756
 
 **Repo JSON divergence API:** **`GET /api/admin/repo_json/status`** returns per-table `{ diverged, repo_relative_path }`; **`POST /api/admin/repo_json/revert/<table_key>`** restores one table from checked-in JSON (400 for invalid `table_key`).

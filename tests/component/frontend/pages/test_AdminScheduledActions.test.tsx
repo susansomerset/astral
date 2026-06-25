@@ -118,7 +118,7 @@ describe("AdminScheduledActions", () => {
         return { ok: true, json: async () => (extra?.taskKeysPayload !== undefined ? extra.taskKeysPayload : keysDefault) } as Response
       }
       if (url === "/api/admin/dispatch_tasks/state_options") {
-        const def = { job: ["NEW", "READY"], company: ["WATCH"] }
+        const def = { job: ["NEW", "READY"], company: ["WATCH"], candidate: [] }
         return { ok: true, json: async () => (extra?.stateOptionsPayload !== undefined ? extra.stateOptionsPayload : def) } as Response
       }
       if (url === "/api/admin/dispatch_tasks/score_floor_options") {
@@ -175,7 +175,7 @@ describe("AdminScheduledActions", () => {
       if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/admin/dispatch_tasks") return { ok: true, json: async () => [] } as Response
       if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => ({}) } as Response
-      if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: [], company: [] }) } as Response
+      if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => ({ job: [], company: [], candidate: [] }) } as Response
       if (url === "/api/admin/dispatch_tasks/score_floor_options") return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
     })
     renderWithProviders(<ScheduledActions />)
@@ -185,7 +185,7 @@ describe("AdminScheduledActions", () => {
   it("normalizes task_keys and state_options payloads when api returns arrays / non-arrays", async () => {
     mockApi(false, {
       taskKeysPayload: [] as unknown as Record<string, unknown>,
-      stateOptionsPayload: { job: "nope", company: 3 } as unknown as { job: string[]; company: string[] },
+      stateOptionsPayload: { job: "nope", company: 3, candidate: 7 } as unknown as { job: string[]; company: string[]; candidate: string[] },
       threadStatusOk: false,
     })
     renderWithProviders(<ScheduledActions />)
@@ -879,6 +879,57 @@ describe("AdminScheduledActions", () => {
     }, 20000)
   })
 
+  describe("AST-804 candidate Input State options", () => {
+    const inflowDiscoveryRow = {
+      ...dispatchTask,
+      id: 3,
+      task_key: "inflow_discovery",
+      entity_type: "candidate",
+      trigger_state: "LIVE_PROMPTS",
+      is_scored: false,
+      score_floor: null as number | null,
+    }
+    const inflowTaskKeys = {
+      ...taskKeysConfig,
+      inflow_discovery: {
+        entity_type: "candidate",
+        trigger_state: "LIVE_PROMPTS",
+        task_group_order: "A. Candidate",
+        task_group_name: "A. Candidate",
+        task_seq: 1,
+        task_name: "inflow_discovery",
+        is_scored: false,
+      },
+    }
+    const candidateStateOptions = {
+      job: ["NEW", "PASSED_JD"],
+      company: ["WATCH"],
+      candidate: ["LIVE_PROMPTS", "NEW"],
+    }
+
+    it("edit modal Input State lists candidate states for inflow_discovery row", async () => {
+      mockApi(false, {
+        tasks: [inflowDiscoveryRow],
+        taskKeysPayload: inflowTaskKeys,
+        stateOptionsPayload: candidateStateOptions,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      const candidatePanel = screen.getByText(/A\. Candidate \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      const expandBtn = within(candidatePanel).queryByRole("button", { name: "Expand section" })
+      if (expandBtn) await userEvent.click(expandBtn)
+      await waitFor(() => expect(within(candidatePanel).getByText("inflow_discovery")).toBeVisible())
+      await userEvent.click(within(candidatePanel).getByText("inflow_discovery"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      const inputStateSelect = within(modal).getAllByRole("combobox")[1]
+      expect(within(inputStateSelect).getByRole("option", { name: "LIVE_PROMPTS" })).toBeInTheDocument()
+      expect(within(inputStateSelect).queryByRole("option", { name: "PASSED_JD" })).not.toBeInTheDocument()
+    }, 20000)
+  })
+
   describe("AST-785 dispatch_tasks list UX", () => {
     const jobGroupKey = `${"D. Job Analysis"}\u0000${"D. Job Analysis"}`
 
@@ -910,7 +961,7 @@ describe("AdminScheduledActions", () => {
         }
         if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => ({}) } as Response
         if (url === "/api/admin/dispatch_tasks/state_options") {
-          return { ok: true, json: async () => ({ job: [], company: [] }) } as Response
+          return { ok: true, json: async () => ({ job: [], company: [], candidate: [] }) } as Response
         }
         if (url === "/api/admin/dispatch_tasks/score_floor_options") {
           return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
