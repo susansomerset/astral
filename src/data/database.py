@@ -27,8 +27,10 @@ Tables used (inventory):
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
-  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id, created_at).
+  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
+  batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
   One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
+  batch_size and completed_at capture dispatch run metadata (AST-809); created_at equals insert instant (same as capture).
   list_vector_feedback — filtered join to rubric_vector for Admin exploration (AST-725).
   aggregate_vector_feedback_by_vector — per-current-vector counts and value distributions (AST-725).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
@@ -3108,6 +3110,8 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
                 feedback_type TEXT NOT NULL,
                 value TEXT NOT NULL,
                 agent_data_id TEXT,
+                batch_size INTEGER,
+                completed_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP NOT NULL
             )
         """)
@@ -3122,6 +3126,12 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
             "ON vector_feedback (candidate_id, task_key)"
         )
         conn.commit()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(vector_feedback)").fetchall()}
+    if "batch_size" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN batch_size INTEGER")
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN completed_at TIMESTAMP")
+    conn.commit()
     _vector_feedback_schema_ensured = True
 
 
@@ -3183,11 +3193,15 @@ def insert_vector_feedback_rows(
     candidate_id: str,
     batch_id: str,
     task_key: str,
+    batch_size: int,
+    completed_at: Optional[str] = None,
     agent_data_id: Optional[str] = None,
 ) -> None:
-    """Insert one row per feedback type per parsed vector (AST-724)."""
-    if not vector_rows:
+    """Insert one row per feedback type per parsed vector (AST-724 / AST-809 batch metadata)."""
+    if not vector_rows or not (batch_id or "").strip():
         return
+    ts = completed_at or _utc_now()
+    bs = int(batch_size) if batch_size and batch_size > 0 else 1
 
     def _with_conn() -> None:
         conn = _get_connection()
@@ -3209,8 +3223,8 @@ def insert_vector_feedback_rows(
                         """INSERT INTO vector_feedback
                            (vector_feedback_id, rubric_vector_uuid, candidate_id,
                             batch_id, task_key, feedback_type, value,
-                            agent_data_id, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            agent_data_id, batch_size, completed_at, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             str(uuid.uuid4()),
                             rubric_uuid,
@@ -3220,7 +3234,9 @@ def insert_vector_feedback_rows(
                             feedback_type,
                             value,
                             agent_data_id,
-                            _utc_now(),
+                            bs,
+                            ts,
+                            ts,
                         ),
                     )
             conn.commit()
@@ -3288,10 +3304,11 @@ def list_vector_feedback(
                 params.append(f"{date_to}T23:59:59")
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
-                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.task_key,
-                           vf.feedback_type, vf.value, vf.agent_data_id, vf.created_at,
-                           vf.rubric_vector_uuid, rv.code AS vector_code,
-                           rv.label AS vector_label, rv.current AS rubric_current
+                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.batch_size,
+                           vf.completed_at, vf.task_key, vf.feedback_type, vf.value,
+                           vf.agent_data_id, vf.created_at, vf.rubric_vector_uuid,
+                           rv.code AS vector_code, rv.label AS vector_label,
+                           rv.current AS rubric_current
                     FROM vector_feedback vf
                     LEFT JOIN rubric_vector rv ON vf.rubric_vector_uuid = rv.rubric_vector_uuid
                     {where}
