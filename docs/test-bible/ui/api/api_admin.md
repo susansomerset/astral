@@ -287,3 +287,14 @@ Core compare/revert: **`docs/test-bible/core/repo_admin_json.md`**. UI banner: *
   tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi \
   -q
 ```
+
+---
+
+### AST-809 · AST-378 (UAT fix)
+
+**`_VECTOR_FEEDBACK_COLUMNS`** exposes **`batch_size`** and **`completed_at`**; list query returns both fields.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| req_dict column keys + row fields | `src/ui/api/api_admin.py` | `TestAst809VectorFeedbackBatchMetadata::test_list_returns_batch_metadata_fields` |
+| Column registry (with AST-725) | `src/ui/api/api_admin.py` | `TestAst725VectorFeedback::test_list_vector_feedback_and_req_dict` |

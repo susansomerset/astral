@@ -1927,6 +1927,8 @@ class TestAst725VectorFeedback:
         body = shaped.get_json()
         assert body["rows"][0]["vector_feedback_id"] == "vf-1"
         assert any(c["key"] == "value_label" for c in body["columns"])
+        col_keys = {c["key"] for c in body["columns"]}
+        assert {"batch_size", "completed_at"}.issubset(col_keys)
 
     def test_summary_requires_candidate_and_owner_task_key(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         missing = admin_client.get("/api/admin/vector_feedback/summary", headers=auth_headers)
@@ -1952,6 +1954,24 @@ class TestAst725VectorFeedback:
         assert body["rows"][0]["code"] == "G1"
         keys = admin_client.get("/api/admin/vector_feedback/task_keys", headers=auth_headers).get_json()
         assert "grade_get" in keys
+
+
+class TestAst809VectorFeedbackBatchMetadata:
+    def test_list_returns_batch_metadata_fields(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "vector_feedback_id": "vf-809",
+            "candidate_id": "c1",
+            "batch_id": "batch-809",
+            "batch_size": 6,
+            "completed_at": "2026-06-25 12:00:00",
+            "task_key": "grade_get",
+            "feedback_type": "relevance",
+            "value": "A",
+        }
+        monkeypatch.setattr(admin_mod, "list_vector_feedback", lambda **kwargs: [row])
+        body = admin_client.get("/api/admin/vector_feedback?req_dict=1", headers=auth_headers).get_json()
+        assert body["rows"][0]["batch_size"] == 6
+        assert body["rows"][0]["completed_at"] == "2026-06-25 12:00:00"
 
 
 class TestAst783RepoJsonApi:

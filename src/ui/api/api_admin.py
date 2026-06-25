@@ -635,6 +635,8 @@ _VECTOR_FEEDBACK_COLUMNS = [
     {"key": "candidate_id", "label": "Candidate", "type": "str"},
     {"key": "task_key", "label": "Task", "type": "str"},
     {"key": "batch_id", "label": "Batch", "type": "str"},
+    {"key": "batch_size", "label": "Batch size", "type": "int"},
+    {"key": "completed_at", "label": "Completed", "type": "datetime"},
     {"key": "vector_code", "label": "Vector", "type": "str"},
     {"key": "vector_label", "label": "Label", "type": "str"},
     {"key": "feedback_type", "label": "Type", "type": "str"},
