@@ -747,3 +747,22 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
   -t "AST-783"
 ```
+
+---
+
+### AST-808 · AST-378 (UAT fix)
+
+Assessment column + expandable criterion on **Admin Vector Feedback**; **FEEDBACK** batch modal hydrates compact **`vector_reviews`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assessment column on page | `src/ui/frontend/src/pages/AdminVectorFeedback.tsx` | `test_AdminVectorFeedback.test.tsx` |
+| Hydrated FEEDBACK table in modal | `src/ui/frontend/src/components/BatchAgentDataModal.tsx` | `test_BatchAgentDataModal.test.tsx` (AST-808 hydrated case) |
+
+Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminVectorFeedback.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```

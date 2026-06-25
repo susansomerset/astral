@@ -104,3 +104,13 @@ Capture hook: **`docs/test-bible/core/agent.md`**. Admin API columns: **`docs/te
   tests/component/ui/api/test_api_admin.py::TestAst809VectorFeedbackBatchMetadata \
   -q
 ```
+
+---
+
+### AST-808 · AST-378 (UAT fix)
+
+**`list_vector_feedback`** returns **`vector_content`** and **`vector_importance`** from joined **`rubric_vector`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Content + importance on list rows | `src/data/database.py` | `TestAst808ListVectorFeedbackContent` |

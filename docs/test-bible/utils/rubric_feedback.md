@@ -21,3 +21,15 @@ Pure lenient parse helpers for **`agent_performance.vector_reviews`** compact st
 ```
 
 Config gate **`is_rubric_backed_task`** + **`prompt_suffix`**: **`docs/test-bible/utils/config.md`** (**AST-724**).
+
+---
+
+### AST-808 · AST-378 (UAT fix)
+
+**`hydrate_vector_review_strings`** decodes compact review lines for Admin display (partial lists OK).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Rubric lookup hydration | `src/utils/rubric_feedback.py` | `TestAst808HydrateVectorReviewStrings` |
+
+Admin API + page: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**.

@@ -446,3 +446,27 @@ class TestAst809VectorFeedbackBatchMetadata:
         assert all(r["batch_size"] == 4 for r in rows)
         assert all(r["completed_at"] == completed for r in rows)
         assert all(r["created_at"] == completed for r in rows)
+
+
+class TestAst808ListVectorFeedbackContent:
+    def test_list_includes_vector_content_and_importance(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1 label", "content": "Criterion text\nA = one", "importance": 7}],
+        )
+        uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        db.insert_vector_feedback_rows(
+            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            candidate_id="cand-1",
+            batch_id="batch-808",
+            task_key="grade_get",
+            batch_size=1,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-808")
+        assert len(rows) == 3
+        assert rows[0]["vector_content"] == "Criterion text\nA = one"
+        assert rows[0]["vector_importance"] == 7
+        assert rows[0]["vector_label"] == "G1 label"
