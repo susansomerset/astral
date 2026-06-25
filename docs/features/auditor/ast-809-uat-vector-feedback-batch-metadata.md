@@ -199,3 +199,17 @@ Susan UAT 2026-06-25: **vector_feedback** rows must carry **batch execution meta
 | §3.5 Naming | `completed_at` matches `dispatch_ledger` convention |
 
 No unresolved rule conflicts.
+
+---
+
+## Review (Radia)
+
+_Pending review after build._
+
+---
+
+## Build (Ada)
+
+**Publish ref:** `origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata`
+
+**Commits:** `f9a01f6` (schema + insert + list query), `0d48bfc` (capture hook), `5316f88` (admin columns)
