@@ -31,7 +31,7 @@ Tables used (inventory):
   batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
   One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
   batch_size and completed_at capture dispatch run metadata (AST-809); created_at equals insert instant (same as capture).
-  list_vector_feedback — filtered join to rubric_vector for Admin exploration (AST-725).
+  list_vector_feedback — filtered join to rubric_vector for Admin exploration; includes content/importance hydration (AST-808).
   aggregate_vector_feedback_by_vector — per-current-vector counts and value distributions (AST-725).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
   status ACTIVE|BUILT, transcript JSON, prompt_snapshot JSON, last_ready_to_build INTEGER, built_at TIMESTAMP,
@@ -3308,6 +3308,7 @@ def list_vector_feedback(
                            vf.completed_at, vf.task_key, vf.feedback_type, vf.value,
                            vf.agent_data_id, vf.created_at, vf.rubric_vector_uuid,
                            rv.code AS vector_code, rv.label AS vector_label,
+                           rv.content AS vector_content, rv.importance AS vector_importance,
                            rv.current AS rubric_current
                     FROM vector_feedback vf
                     LEFT JOIN rubric_vector rv ON vf.rubric_vector_uuid = rv.rubric_vector_uuid
