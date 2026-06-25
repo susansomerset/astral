@@ -166,3 +166,19 @@ Execute stages **1 → 4** in order. One commit per stage on epic worktree, then
 | §3.5 naming | Existing helper names extended, no new task keys |
 
 No conflicts requiring plan revision.
+
+---
+
+## Build Review (Hedy)
+
+**Publish ref:** `origin/sub/AST-801/AST-802-inflow-discovery-eligibility-zero-available`
+
+| Stage | Summary |
+|-------|---------|
+| 1 | `reconcile_company_search_terms_from_artifact` in `database.py`; migration sweep delegates per candidate |
+| 2 | `ensure_company_search_terms_table_synced` in `candidate.py`; table reads + eligibility count reconcile before stale check |
+| 3 | `describe_candidate_inflow_discovery_eligibility`; dispatcher `debug_detail` reason on `inflow_discovery` skip |
+
+**QA (Betty):** Component tests per Stage 4 table — artifact-only terms → eligible after reconcile; PUT sync; dispatcher debug reason line.
+
+**Manual UAT:** Repro **somerset** / **LIVE_PROMPTS** — Scheduled Actions **Available > 0** after reload; manual **Run** executes discovery; **debug=True** skip shows `eligibility:` reason when still zero.

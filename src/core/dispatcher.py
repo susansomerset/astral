@@ -612,6 +612,12 @@ async def _run_dispatch_loop(
                     logger.debug_detail(
                         f"available={available} effective_min={effective_min} is_auto={is_auto}"
                     )
+                    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+                        _eligible, reason = database.describe_candidate_inflow_discovery_eligibility(
+                            task.get("candidate_id") or ""
+                        )
+                        if reason:
+                            logger.debug_detail(reason)
                 else:
                     logger.debug_detail(
                         f"loop stop: remaining below min_count available={available} "

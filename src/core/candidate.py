@@ -220,8 +220,26 @@ def company_search_terms_lines(candidate_id: str) -> list[str]:
     return company_search_terms_lines_for_candidate(candidate_id)
 
 
+def ensure_company_search_terms_table_synced(candidate_id: str) -> None:
+    """Reconcile legacy artifact blob into table; strip blob after import (AST-802)."""
+    inserted = database.reconcile_company_search_terms_from_artifact(candidate_id)
+    if inserted <= 0:
+        return
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        return
+    cd = candidate.get("candidate_data") or {}
+    arts = cd.get("artifacts") or {}
+    if not isinstance(arts, dict) or "company_search_terms" not in arts:
+        return
+    updated_arts = dict(arts)
+    del updated_arts["company_search_terms"]
+    save_candidate_data(candidate_id, {"artifacts": updated_arts}, replace=False)
+
+
 def company_search_terms_lines_for_candidate(candidate_id: str) -> list[str]:
     """Table-backed search term lines (AST-524)."""
+    ensure_company_search_terms_table_synced(candidate_id)
     return [row["search_term"] for row in database.list_company_search_terms(candidate_id)]
 
 

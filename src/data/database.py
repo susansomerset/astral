@@ -2903,50 +2903,66 @@ def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
     _company_search_terms_schema_ensured = True
 
 
+def reconcile_company_search_terms_from_artifact(candidate_id: str) -> int:
+    """Import legacy artifact search terms when table has no rows for this candidate (AST-802)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return 0
+    cid = str(candidate_id).strip()
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_company_search_terms_table(conn)
+            count_row = conn.execute(
+                "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                (cid,),
+            ).fetchone()
+            if count_row and int(count_row[0]) > 0:
+                return 0
+            cand = get_candidate(cid)
+            if not cand:
+                return 0
+            arts = (cand.get("candidate_data") or {}).get("artifacts") or {}
+            raw = arts.get("company_search_terms")
+            if not isinstance(raw, str) or not raw.strip():
+                return 0
+            lines = _search_term_lines_from_string(raw)
+            if not lines:
+                return 0
+            now = _utc_now()
+            seen: set[str] = set()
+            inserted = 0
+            for term in lines:
+                if term in seen:
+                    continue
+                seen.add(term)
+                conn.execute(
+                    """INSERT INTO company_search_terms
+                       (candidate_id, search_term, last_scan_at, created_at, updated_at)
+                       VALUES (?, ?, NULL, ?, ?)""",
+                    (cid, term, now, now),
+                )
+                inserted += 1
+            if inserted:
+                conn.commit()
+            return inserted
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def _migrate_company_search_terms_from_artifacts(conn: sqlite3.Connection) -> None:
     """Import legacy artifacts.company_search_terms strings when table has no rows for candidate."""
+    global _company_search_terms_migration_swept
+    # Reconcile opens its own connections and re-enters _ensure — mark swept before loop.
+    _company_search_terms_migration_swept = True
     _ensure_candidate_schema(conn)
-    rows = conn.execute(
-        "SELECT astral_candidate_id, candidate_data FROM candidate"
-    ).fetchall()
-    now = _utc_now()
+    rows = conn.execute("SELECT astral_candidate_id FROM candidate").fetchall()
     for row in rows:
         cid = row[0]
-        if not cid or not str(cid).strip():
-            continue
-        raw_cd = row[1]
-        if not raw_cd:
-            continue
-        try:
-            cd = json.loads(raw_cd) if isinstance(raw_cd, str) else raw_cd
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if not isinstance(cd, dict):
-            continue
-        arts = cd.get("artifacts") or {}
-        raw = arts.get("company_search_terms")
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        count_row = conn.execute(
-            "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
-            (cid,),
-        ).fetchone()
-        if count_row and int(count_row[0]) > 0:
-            continue
-        lines = _search_term_lines_from_string(raw)
-        if not lines:
-            continue
-        seen: set[str] = set()
-        for term in lines:
-            if term in seen:
-                continue
-            seen.add(term)
-            conn.execute(
-                """INSERT INTO company_search_terms
-                   (candidate_id, search_term, last_scan_at, created_at, updated_at)
-                   VALUES (?, ?, NULL, ?, ?)""",
-                (cid, term, now, now),
-            )
+        if cid and str(cid).strip():
+            reconcile_company_search_terms_from_artifact(str(cid).strip())
     conn.commit()
 
 
@@ -6017,6 +6033,34 @@ def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
+def describe_candidate_inflow_discovery_eligibility(candidate_id: str) -> tuple[int, str]:
+    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802)."""
+    from src.core.candidate import ensure_company_search_terms_table_synced
+
+    if not candidate_id or not str(candidate_id).strip():
+        return 0, "eligibility: missing candidate_id"
+    cid = str(candidate_id).strip()
+    ensure_company_search_terms_table_synced(cid)
+    cand = get_candidate(cid)
+    if not cand:
+        return 0, "eligibility: candidate not found"
+    trigger = INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
+    state = (cand.get("state") or "").strip()
+    if state != trigger:
+        return 0, f"eligibility: candidate state {state!r} != {trigger!r}"
+    scan_h = float(INFLOW_CONFIG["discovery"]["scan_interval_hours"])
+    total = len(list_company_search_terms(cid))
+    if total == 0:
+        return 0, "eligibility: company_search_terms table empty"
+    stale = count_stale_company_search_terms(cid, scan_h)
+    if stale == 0:
+        return (
+            0,
+            f"eligibility: {total} table row(s) but 0 stale (scan_interval_hours={scan_h})",
+        )
+    return 1, ""
+
+
 def count_candidate_inflow_discovery_eligible(
     candidate_id: str,
     freq_hrs: float,
@@ -6024,18 +6068,8 @@ def count_candidate_inflow_discovery_eligible(
 ) -> int:
     """inflow_discovery when LIVE_PROMPTS and ≥1 stale company_search_terms row (AST-525)."""
     del freq_hrs, last_run_at  # unused — per-term last_scan_at, not dispatch_task.last_run_at
-    if not candidate_id or not str(candidate_id).strip():
-        return 0
-    cand = get_candidate(candidate_id)
-    if not cand:
-        return 0
-    trigger = INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if (cand.get("state") or "").strip() != trigger:
-        return 0
-    scan_h = float(INFLOW_CONFIG["discovery"]["scan_interval_hours"])
-    if count_stale_company_search_terms(candidate_id, scan_h) > 0:
-        return 1
-    return 0
+    eligible, _reason = describe_candidate_inflow_discovery_eligibility(candidate_id)
+    return eligible
 
 
 
