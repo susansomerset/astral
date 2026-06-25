@@ -182,3 +182,40 @@ No conflicts requiring plan revision.
 **QA (Betty):** Component tests per Stage 4 table — artifact-only terms → eligible after reconcile; PUT sync; dispatcher debug reason line.
 
 **Manual UAT:** Repro **somerset** / **LIVE_PROMPTS** — Scheduled Actions **Available > 0** after reload; manual **Run** executes discovery; **debug=True** skip shows `eligibility:` reason when still zero.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-801/AST-802-inflow-discovery-eligibility-zero-available` @ `473cffe`  
+**Product commits:** `16d9c36` reconcile + eligibility + dispatcher debug · `473cffe` strip-after-reconcile fix  
+**Tests:** Betty manifest @ `002e891` / `merge-tests` @ `1d5b42c`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Stage 1 — reconcile | `reconcile_company_search_terms_from_artifact` shares insert shape with migration; `COUNT(*) > 0` guard prevents duplicates; startup sweep delegates per candidate. |
+| Stage 2 — sync | `ensure_company_search_terms_table_synced` on table reads + via `describe`; lazy `database → candidate` import avoids load-time cycle (§3.3). |
+| Stage 3 — debug | `describe_candidate_inflow_discovery_eligibility` returns structured `eligibility:` reasons; dispatcher emits extra `debug_detail` only when `debug=True`, `run_count==0`, and `task_key=inflow_discovery` (§1.5.1). |
+| Config / batch | `INFLOW_CONFIG` for trigger state, scan interval, task key — no inline magic numbers; stale-term SQL unchanged (§2.4). |
+| Scope | No vet/resolve company paths touched; `apply_company_search_terms_save` unchanged. |
+| Tests + bible | Stage 4 scenarios covered — artifact-only → eligible, blob strip, dispatch-task count, wrong-state reason, PUT sync, dispatcher debug substring. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — Susan UAT on **somerset** / **LIVE_PROMPTS** repro per plan.
+
+— Radia
