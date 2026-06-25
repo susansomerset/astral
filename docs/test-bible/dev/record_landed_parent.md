@@ -75,3 +75,29 @@ Prep-uat **`record-landed-parent.sh`** invokes **`scripts/rebuild_merge_ticket_l
 ```
 
 **Pass criterion:** pytest green on items 1–6 + AST-800 regression in **`test_record_landed_parent.py`** — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-806
+
+**UAT fix:** Prep-uat **`record-landed-parent.sh`** used bare **`python3`**, so rebuild failed with missing **`dotenv`** and **`data/merge_ticket_log.json`** never landed on **dev** (e.g. **AST-788** absent from deploy env tooltip). Resolve **`${ASTRAL_PYTHON:-$REPO_ROOT/.venv/bin/python}`**; **BLOCKED** when not executable. **`--landing-parent`** wiring unchanged (**AST-805**).
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Venv python resolution + no bare `python3 "$REBUILD"` | `scripts/git/record-landed-parent.sh` | **`TestRecordLandedParentShell::test_record_landed_parent_resolves_venv_python`** |
+| 2 | Missing `.venv/bin/python` → **BLOCKED** (AST-806) | same | **`TestRecordLandedParent::test_record_landed_parent_missing_venv_python_blocks`** |
+| 3 | **`ASTRAL_PYTHON`** override runs rebuild | same | **`TestRecordLandedParent::test_record_landed_parent_honors_astral_python_override`** |
+| 4 | Missing rebuild CLI still **BLOCKED** after venv gate | same | **`TestRecordLandedParent::test_record_landed_parent_missing_rebuild_script_blocks`** |
+
+**Regression (required):** **AST-805** landing-parent union + **AST-800** rebuild wiring tests in same module remain green.
+
+**AST-806** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + AST-805/AST-800 regression — not zero-arg harness / branch-lock gate.
