@@ -1076,6 +1076,34 @@ class TestRunDispatchLoop:
         assert accumulated["total_processed"] == 1
 
 
+class TestAst802InflowDiscoveryDebug:
+    @pytest.mark.asyncio
+    async def test_skip_emits_eligibility_reason_when_debug_true(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c802", state="NEW", candidate_data={})
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        run = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 802,
+            "task_key": "inflow_discovery",
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c802",
+            "auto_mode": 1,
+            "min_count": 1,
+            "debug": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-802", accumulated, None)
+        run.assert_not_awaited()
+        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("eligibility:" in d for d in details)
+
+
 class TestTaskThreadTarget:
     def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         loop = MagicMock()

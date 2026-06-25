@@ -92,3 +92,19 @@ Equivalent harness:
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7** and monolith **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset).
+
+### AST-802 · AST-801
+
+**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration with **`debug=True`**, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug_detail`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
+
+| Behavior | Sources | Manifest tests |
+| --- | --- | --- |
+| Skip debug reason line | `src/core/dispatcher.py`, `src/data/database.py` | **`TestAst802InflowDiscoveryDebug::test_skip_emits_eligibility_reason_when_debug_true`** |
+
+**AST-802** narrowed pytest (with data-layer items — see **`data/database/dispatch_tasks.md`**):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_dispatcher.py::TestAst802InflowDiscoveryDebug \
+  -q
+```

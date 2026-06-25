@@ -225,6 +225,28 @@ class TestCandidateRoutes:
         assert resp.status_code == 400
         assert "non-empty search term" in resp.get_json()["error"]
 
+    def test_put_company_search_terms_populates_table_without_persisting_blob(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c802", state="LIVE_PROMPTS", candidate_data={})
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        resp = candidate_client.put(
+            "/api/candidates/c802/data",
+            json={"artifacts": {"company_search_terms": "one\n two"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        rows = db.list_company_search_terms("c802")
+        assert [r["search_term"] for r in rows] == ["one", "two"]
+        cand = db.get_candidate("c802")
+        arts = (cand.get("candidate_data") or {}).get("artifacts") or {}
+        assert "company_search_terms" not in arts
+
     def test_update_handles_errors(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock(side_effect=RuntimeError("bad")))
         resp = candidate_client.put("/api/candidates/cand-1/data", json={"note": "x"}, headers=auth_headers)
