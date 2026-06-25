@@ -8,6 +8,7 @@ Required environment variables (set in Railway / .env):
   ASTRAL_ENCRYPTION_KEY — Encryption key for candidate API keys at rest
   ASTRAL_ALLOWED_IPS    — Comma-separated list of allowed IP addresses for UI access
   ANTHROPIC_API_KEY     — Fallback Anthropic API key (candidates carry their own)
+  LINEAR_API_KEY        — Linear GraphQL (admin deploy footer UAT ticket tooltip — AST-792)
 
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
@@ -1733,6 +1734,7 @@ TRACKER_CONFIG = {
 # ---------------------------------------------------------------------------
 MERGE_TICKET_LOG_CONFIG = {
     "log_path": _PROJECT_ROOT / "data" / "merge_ticket_log.json",
+    "uat_state_name": "User Testing",
 }
 
 # Repo-owned admin tables — checked-in JSON applied at startup (AST-782).
