@@ -82,6 +82,57 @@ class TestAst525InflowDiscoveryEligible:
         assert db.count_eligible_for_dispatch_task(task) == 1
 
 
+class TestAst802InflowDiscoveryEligible:
+    """AST-802: legacy artifact blob reconciles into table for inflow_discovery eligibility."""
+
+    def test_eligible_after_artifact_only_reconcile(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c802",
+            state="LIVE_PROMPTS",
+            candidate_data={"artifacts": {"company_search_terms": "fintech\nsaas"}},
+        )
+        assert db.count_candidate_inflow_discovery_eligible("c802", 168.0, None) == 1
+        rows = db.list_company_search_terms("c802")
+        assert len(rows) == 2
+        assert {r["search_term"] for r in rows} == {"fintech", "saas"}
+
+    def test_reconcile_strips_legacy_artifact_blob(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c802",
+            state="LIVE_PROMPTS",
+            candidate_data={"artifacts": {"company_search_terms": "term1", "other": "keep"}},
+        )
+        db.count_candidate_inflow_discovery_eligible("c802", 168.0, None)
+        cand = db.get_candidate("c802")
+        arts = (cand.get("candidate_data") or {}).get("artifacts") or {}
+        assert "company_search_terms" not in arts
+        assert arts.get("other") == "keep"
+
+    def test_count_eligible_for_dispatch_task_after_artifact_reconcile(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c802",
+            state="LIVE_PROMPTS",
+            candidate_data={"artifacts": {"company_search_terms": "alpha"}},
+        )
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c802",
+            "task_key": "inflow_discovery",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+
+    def test_describe_eligibility_reason_wrong_state(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c802", state="NEW", candidate_data={})
+        eligible, reason = db.describe_candidate_inflow_discovery_eligibility("c802")
+        assert eligible == 0
+        assert "eligibility:" in reason
+        assert "LIVE_PROMPTS" in reason
+
 
 class TestAst506InflowResolveEligible:
     """AST-506: company NEW without website eligibility for inflow_resolve_website."""

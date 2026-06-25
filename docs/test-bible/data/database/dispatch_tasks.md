@@ -99,3 +99,27 @@ UAT: **`GET /api/admin/dispatch_tasks`** returned **500** when legacy `dispatch_
   tests/component/ui/api/test_api_admin.py::TestAst781ListDtasksRetiredEntityType \
   -q
 ```
+
+### AST-802 · AST-801
+
+**AST-802:** Reconcile legacy **`artifacts.company_search_terms`** into **`company_search_terms`** table at eligibility/read time; strip blob after import; **`describe_candidate_inflow_discovery_eligibility`** + dispatcher **`debug_detail`** reason when **`inflow_discovery`** skips with **`available < min_count`** and **`debug=True`**.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Artifact-only terms → eligible after reconcile | `src/data/database.py`, `src/core/candidate.py` | **`TestAst802InflowDiscoveryEligible::test_eligible_after_artifact_only_reconcile`** |
+| 2 | Reconcile strips legacy blob, keeps other artifact keys | same | **`::test_reconcile_strips_legacy_artifact_blob`** |
+| 3 | **`count_eligible_for_dispatch_task`** candidate path after reconcile | `src/data/database.py` | **`::test_count_eligible_for_dispatch_task_after_artifact_reconcile`** |
+| 4 | **`describe_candidate_inflow_discovery_eligibility`** reason string | `src/data/database.py` | **`::test_describe_eligibility_reason_wrong_state`** |
+
+**Regression (required):** existing **AST-525** eligibility tests remain green.
+
+**AST-802** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest items 1–4 + AST-525 regression — not zero-arg harness / branch-lock gate.

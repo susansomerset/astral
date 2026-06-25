@@ -105,6 +105,18 @@ def seeded_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture
+def sqlite_in_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Fresh astral.db per test — same contract as tests/component/data/conftest.py."""
+    monkeypatch.setenv("ASTRAL_DB_DIR", str(tmp_path))
+    from src.data import database
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "astral.db")
+    for flag in _DB_SCHEMA_FLAGS:
+        setattr(database, flag, False)
+    return database
+
+
+@pytest.fixture
 def system_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[FlaskClient]:
     monkeypatch.setattr("src.core.candidate.get_candidate", lambda candidate_id: {"state": "LIVE_PROMPTS"})
     app = Flask(__name__)
