@@ -314,3 +314,15 @@ No conflicts requiring `!!-NONE`.
 - **AST-796** (merged on ftr): schedulable/retired catalogs and admin rejection — this ticket does not re-edit those frozensets except qualify trigger default and alias removal.
 - **Betty** owns test renames (**`scrape_jd_batch` → `fetch_jd_batch`**, inline qualify manifest) — engineer verify-only per plan.
 - **`dispatch_ledger`** historical **`scrape_jd`** / **`validate_title`** strings are not backfilled (parent boundary).
+
+## Review stub (build)
+
+| Field | Value |
+|-------|-------|
+| Build date | 2026-06-25 |
+| Publish ref | `origin/sub/AST-794/ast-797-runtime-routing-db-migration-inline-validate-title` @ `0461cf7` |
+| Commits | `ab9cbf4` database migration · `01b1c49` config · `af00bbd` gazer rename · `0461cf7` consult/tracker/admin/dispatcher runtime |
+
+**Built:** All four plan stages — idempotent dispatch migration; config qualify @ **NEW** + alias removal; **`fetch_jd_batch`**; inline **`validate_title_batch`** in **`qualify_job_listings`**; **`fetch_jd`** routing cutover.
+
+**QA note:** Betty manifest for migration tests, **`fetch_jd`** routing, inline qualify, gazer/tracker renames — verify-only per plan.
