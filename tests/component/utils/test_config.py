@@ -316,7 +316,7 @@ class TestAst479LikePassStates:
         assert states[0] == "RECOMMENDED"
         assert states[-1] == "CANDIDATE_REVIEW"
         assert "PASSED_LIKE" not in states
-        assert all(s.startswith("BUILD_ARTIFACTS.") for s in states[1:-1])
+        assert states[1:-1] == [cfg.BUILD_ARTIFACTS_BASE_STATE]
 
 
 class TestAst309CoverLetterTaskConfig:
@@ -407,7 +407,7 @@ class TestAst520AnticipateScanTaskKey:
         assert "anticipate_scan" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
         assert (
             cfg.dispatch_task_admin_defaults("contemplate_job")["trigger_state"]
-            == cfg.resume_artifact_compound_state("contemplate_job")
+            == cfg.BUILD_ARTIFACTS_BASE_STATE
         )
 
 
@@ -422,7 +422,7 @@ class TestBuildStateUiManifest:
         rec = manifest["jobs"]["recommended"]
         assert [row["state"] for row in rec["sections"]] == [
             "RECOMMENDED",
-            *cfg.all_resume_artifact_compound_states(),
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             "CANDIDATE_REVIEW",
         ]
         assert [col["field"] for col in rec["phase_score_columns"]] == [
@@ -437,14 +437,14 @@ class TestBuildStateUiManifest:
         actions = manifest["jobs"]["recommended"]["primary_actions_by_state"]
         assert actions["RECOMMENDED"][0]["action_key"] == "generate_artifacts"
         assert actions["RECOMMENDED"][0]["path_suffix"] == "generate_artifacts"
-        for cs in cfg.all_resume_artifact_compound_states():
-            assert actions[cs][0]["action_key"] == "cancel_build"
-            assert actions[cs][0]["path_suffix"] == "cancel_artifact_build"
+        cancel = actions[cfg.BUILD_ARTIFACTS_BASE_STATE][0]
+        assert cancel["action_key"] == "cancel_build"
+        assert cancel["path_suffix"] == "cancel_artifact_build"
 
     def test_ast562_recommended_prior_states_allow_cancel_from_build(self) -> None:
         priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"]
-        for cs in cfg.all_resume_artifact_compound_states():
-            assert cs in priors
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
+        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
         manifest = cfg.build_state_ui_manifest()
@@ -619,12 +619,12 @@ class TestAst549DispatchAdminDefaults:
 
     def test_contemplate_job_artifact_trigger_sort(self) -> None:
         d = cfg.dispatch_task_admin_defaults("contemplate_job")
-        assert d["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
+        assert d["trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
         assert d["sort_by"] == "state_changed_at"
 
 
-class TestAst595CompoundBuildArtifactsHopStates:
-    """AST-595: compound BUILD_ARTIFACTS.<task_key> registry and dispatch trigger alignment."""
+class TestAst803FlatBuildArtifactsChainDispatch:
+    """AST-803: flat BUILD_ARTIFACTS + CHAIN task_type; legacy compound helpers for in-flight rows."""
 
     HOPS = (
         "anticipate_scan",
@@ -635,48 +635,40 @@ class TestAst595CompoundBuildArtifactsHopStates:
         "finalize_job_resume",
     )
 
-    def test_flat_build_artifacts_removed_from_job_states(self) -> None:
-        assert "BUILD_ARTIFACTS" not in cfg.JOB_STATES
+    def test_flat_build_artifacts_registered_in_job_states(self) -> None:
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in cfg.JOB_STATES
+        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in cfg.JOB_STATES
+        assert cfg.JOB_STATES[cfg.BUILD_ARTIFACTS_BASE_STATE]["prior_states"] == ["RECOMMENDED"]
 
-    def test_compound_states_registered_with_prior_chain(self) -> None:
-        for i, tk in enumerate(self.HOPS):
-            cs = cfg.resume_artifact_compound_state(tk)
-            entry = cfg.JOB_STATES[cs]
-            if i == 0:
-                assert entry["prior_states"] == ["RECOMMENDED"]
-            else:
-                prev = cfg.resume_artifact_compound_state(self.HOPS[i - 1])
-                assert entry["prior_states"] == [prev]
-
-    def test_recommended_job_states_includes_all_compound_hops(self) -> None:
+    def test_recommended_job_states_uses_flat_build_artifacts(self) -> None:
         assert cfg.RECOMMENDED_JOB_STATES == [
             "RECOMMENDED",
-            *cfg.all_resume_artifact_compound_states(),
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             "CANDIDATE_REVIEW",
         ]
 
-    def test_resume_artifact_helpers(self) -> None:
-        first = cfg.resume_artifact_first_compound_state()
-        assert first == cfg.resume_artifact_compound_state("anticipate_scan")
-        assert cfg.parse_resume_artifact_hop(first) == "anticipate_scan"
-        assert cfg.is_resume_artifact_in_progress(first) is True
-        assert cfg.is_resume_artifact_in_progress("RECOMMENDED") is False
-        assert (
-            cfg.resume_artifact_next_compound_state("anticipate_scan")
-            == cfg.resume_artifact_compound_state("contemplate_job")
-        )
-        assert cfg.resume_artifact_next_compound_state("finalize_job_resume") is None
+    def test_legacy_and_flat_build_artifacts_helpers(self) -> None:
+        legacy = cfg.resume_artifact_compound_state("anticipate_scan")
+        assert cfg.parse_resume_artifact_hop(legacy) == "anticipate_scan"
+        assert cfg.is_build_artifacts_in_progress(cfg.BUILD_ARTIFACTS_BASE_STATE) is True
+        assert cfg.is_build_artifacts_in_progress(legacy) is True
+        assert cfg.is_build_artifacts_in_progress("RECOMMENDED") is False
+        assert cfg.legacy_build_artifacts_hop(legacy) == "anticipate_scan"
 
-    def test_dispatch_trigger_state_per_resume_hop(self) -> None:
+    def test_dispatch_trigger_state_flat_for_resume_hops(self) -> None:
         from src.utils.config import _dispatch_trigger_state_for_task_key
 
         for tk in self.HOPS:
-            assert _dispatch_trigger_state_for_task_key(tk) == cfg.resume_artifact_compound_state(tk)
+            assert _dispatch_trigger_state_for_task_key(tk) == cfg.BUILD_ARTIFACTS_BASE_STATE
 
-    def test_build_failed_prior_states_are_compound_only(self) -> None:
-        assert cfg.JOB_STATES["BUILD_FAILED"]["prior_states"] == list(
-            cfg.all_resume_artifact_compound_states()
-        )
+    def test_resume_hops_carry_chain_task_type(self) -> None:
+        for tk in self.HOPS:
+            assert cfg.TASK_CONFIG[tk]["task_type"] == "CHAIN"
+            assert cfg.TASK_CONFIG[tk]["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
+
+    def test_build_failed_prior_includes_flat_build_artifacts(self) -> None:
+        priors = cfg.JOB_STATES["BUILD_FAILED"]["prior_states"]
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
 # AST-586 — dispatch claim score_floor vs task grading metadata (parent AST-547).

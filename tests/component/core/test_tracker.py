@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.core import tracker as tracker_mod
+from src.utils import config as cfg
 
 
 # Branches: invalid company, batch_id, raw_job_listings; duplicate vs new ingest.
@@ -600,14 +601,11 @@ class TestAst562ArtifactBuildTransitions:
             conn.close()
 
     def test_start_artifact_build_from_recommended(self, seeded_db) -> None:
-        from src.utils.config import resume_artifact_first_compound_state
-
         db = seeded_db
         db.save_company("acme", state="IMPORTED")
         db.save_job("job-562", company="acme", state="RECOMMENDED", job_data={"artifacts": {}})
-        first = resume_artifact_first_compound_state()
-        assert tracker_mod.start_artifact_build("job-562") == first
-        assert db.get_job("job-562")["state"] == first
+        assert tracker_mod.start_artifact_build("job-562") == cfg.BUILD_ARTIFACTS_BASE_STATE
+        assert db.get_job("job-562")["state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
 
     def test_start_artifact_build_rejects_wrong_state(self, seeded_db) -> None:
         db = seeded_db
@@ -702,7 +700,7 @@ class TestAst562ArtifactBuildTransitions:
         db = seeded_db
         db.save_company("acme", state="IMPORTED")
         db.save_job("job-562", company="acme", state="RECOMMENDED", job_data={})
-        with pytest.raises(ValueError, match="cancel only from BUILD_ARTIFACTS in-progress hop states"):
+        with pytest.raises(ValueError, match="cancel only from BUILD_ARTIFACTS in-progress states"):
             tracker_mod.cancel_artifact_build("job-562")
 
 

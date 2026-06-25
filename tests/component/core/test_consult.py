@@ -363,7 +363,7 @@ class TestRunConsultTask:
         cover = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
         entry = AsyncMock()
         monkeypatch.setattr(consult_mod, "_run_craft_job_cover_letter_batch", cover)
-        monkeypatch.setattr(consult_mod, "_run_job_artifact_entry_batch", entry)
+        monkeypatch.setattr(consult_mod, "_run_build_artifacts_chain_batch", entry)
         out = await consult_mod.run_consult_task(
             "job",
             "CANDIDATE_REVIEW",
@@ -459,59 +459,59 @@ class TestAst369CoverLetterDispatch:
 @_SKIP_AST552_RESUME_BODY
 class TestAst371ResumeArtifactDispatch:
     @pytest.mark.asyncio
-    async def test_routes_build_artifacts_to_artifact_entry_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_routes_build_artifacts_to_chain_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         batch = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
-        monkeypatch.setattr(consult_mod, "_run_job_artifact_entry_batch", batch)
-        compound = cfg.resume_artifact_compound_state("contemplate_job")
+        monkeypatch.setattr(consult_mod, "_run_build_artifacts_chain_batch", batch)
         out = await consult_mod.run_consult_task(
             "job",
-            compound,
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             [{"astral_job_id": "job-1"}],
             "batch-1",
             {},
             dispatch_task_key="contemplate_job",
         )
         assert out["total_passed"] == 1
-        batch.assert_awaited_once_with("batch-1", [{"astral_job_id": "job-1"}], {}, False, "contemplate_job")
-
-    @pytest.mark.asyncio
-    async def test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        chain = AsyncMock(return_value={"success": True})
-        cover = AsyncMock()
-        transition = MagicMock()
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
-        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
-        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
-        monkeypatch.setattr(
-            consult_mod.tracker,
-            "get_job",
-            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
-        )
-        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
-        out = await consult_mod._run_job_artifact_entry_batch(
+        batch.assert_awaited_once_with(
             "batch-1",
             [{"astral_job_id": "job-1"}],
             {},
             False,
             "contemplate_job",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+
+    @pytest.mark.asyncio
+    async def test_chain_batch_delegates_to_do_chain_for_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        chain = AsyncMock(return_value={"success": True})
+        monkeypatch.setattr(consult_mod, "do_chain_for_job", chain)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        out = await consult_mod._run_build_artifacts_chain_batch(
+            "batch-1",
+            [{"astral_job_id": "job-1"}],
+            {},
+            False,
+            "contemplate_job",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
         assert out["total_passed"] == 1
         chain.assert_awaited_once()
-        assert chain.await_args.kwargs["first_task_key"] == "contemplate_job"
-        transition.assert_called_once_with(["job-1"], "CANDIDATE_REVIEW")
-        cover.assert_awaited_once()
+        assert chain.await_args.kwargs["dispatch_task_key"] == "contemplate_job"
 
     @pytest.mark.asyncio
-    async def test_artifact_entry_batch_errors_skip_cover_letter(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        chain = AsyncMock(return_value={"success": False})
-        cover = AsyncMock()
+    async def test_chain_batch_retry_failure_releases_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         released: list[str] = []
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
-        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr(consult_mod, "do_chain_for_job", AsyncMock(return_value={"success": False, "error": "hop failed"}))
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
         monkeypatch.setattr(
             consult_mod.tracker,
             "release_job_dispatch_claim",
@@ -522,30 +522,33 @@ class TestAst371ResumeArtifactDispatch:
             "clear_job_artifact_resume_content",
             MagicMock(side_effect=AssertionError("must not wipe resume on hop failure")),
         )
-        out = await consult_mod._run_job_artifact_entry_batch(
+        out = await consult_mod._run_build_artifacts_chain_batch(
             "batch-1",
             [{"astral_job_id": "job-1"}],
             {},
             False,
             "contemplate_job",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
         assert out["total_errors"] == 1
         assert out["total_passed"] == 0
         transition.assert_not_called()
         assert released == ["job-1"]
-        cover.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_artifact_entry_batch_empty_persist_releases_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        chain = AsyncMock(return_value={"success": True})
-        cover = AsyncMock()
-        transition = MagicMock()
+    async def test_chain_batch_empty_persist_releases_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
         released: list[str] = []
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
-        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
-        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
-        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: {"astral_job_id": aid, "job_data": {}})
-        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: False)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_chain_for_job",
+            AsyncMock(return_value={"success": False, "error": "persist_gate_failed"}),
+        )
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", MagicMock())
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE, "job_data": {}},
+        )
         monkeypatch.setattr(
             consult_mod.tracker,
             "release_job_dispatch_claim",
@@ -556,121 +559,147 @@ class TestAst371ResumeArtifactDispatch:
             "clear_job_artifact_resume_content",
             MagicMock(side_effect=AssertionError("must not wipe resume on persist gate failure")),
         )
-        out = await consult_mod._run_job_artifact_entry_batch(
+        out = await consult_mod._run_build_artifacts_chain_batch(
             "batch-1",
             [{"astral_job_id": "job-1"}],
             {},
             False,
             "contemplate_job",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
         assert out["total_errors"] == 1
         assert out["total_passed"] == 0
-        transition.assert_not_called()
         assert released == ["job-1"]
-        cover.assert_not_awaited()
 
 
 @_SKIP_AST552_RESUME_BODY
-class TestAst789TerminalGraduation:
-    """AST-789 — batch exit promotes to CANDIDATE_REVIEW via _try_graduate_artifact_job_to_candidate_review."""
+class TestAst803ChainGraduation:
+    """AST-803 — do_chain_for_job graduates to CANDIDATE_REVIEW after successful do_task."""
 
     @pytest.mark.asyncio
-    async def test_artifact_entry_batch_graduates_after_finalize_hop_entry(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        chain = AsyncMock(return_value={"success": True})
-        cover = AsyncMock()
+    async def test_do_chain_graduates_after_successful_do_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
-        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr("src.core.consult.do_task", AsyncMock(return_value={"success": True}))
+        monkeypatch.setattr("src.core.agent._resume_artifact_parent_hop_key", lambda tk: None)
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+            lambda aid: {
+                "astral_job_id": aid,
+                "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}},
+            },
         )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
         monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
-        out = await consult_mod._run_job_artifact_entry_batch(
-            "batch-789",
-            [{"astral_job_id": "job-x"}],
-            {},
-            False,
-            "finalize_job_resume",
+        out = await consult_mod.do_chain_for_job(
+            "job-x",
+            batch_id="batch-803",
+            ctx={},
+            debug=False,
+            dispatch_task_key="finalize_job_resume",
+            input_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
-        assert out["total_passed"] == 1
-        chain.assert_awaited_once()
-        assert chain.await_args.kwargs["first_task_key"] == "finalize_job_resume"
+        assert out["success"] is True
         transition.assert_called_once_with(["job-x"], "CANDIDATE_REVIEW")
-        cover.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_artifact_entry_batch_graduates_on_anticipate_scan_first_hop(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        chain = AsyncMock(return_value={"success": True})
-        cover = AsyncMock()
+    async def test_do_chain_graduates_on_anticipate_scan_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
-        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr("src.core.consult.do_task", AsyncMock(return_value={"success": True}))
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+            lambda aid: {
+                "astral_job_id": aid,
+                "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}},
+            },
         )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
         monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
-        out = await consult_mod._run_job_artifact_entry_batch(
-            "batch-789",
-            [{"astral_job_id": "job-scan"}],
-            {},
-            False,
-            "anticipate_scan",
+        out = await consult_mod.do_chain_for_job(
+            "job-scan",
+            batch_id="batch-803",
+            ctx={},
+            debug=False,
+            dispatch_task_key="anticipate_scan",
+            input_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
-        assert out["total_passed"] == 1
+        assert out["success"] is True
         transition.assert_called_once_with(["job-scan"], "CANDIDATE_REVIEW")
-        cover.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_artifact_entry_batch_transition_failure_releases_claim(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        chain = AsyncMock(return_value={"success": True})
-        cover = AsyncMock()
+    async def test_chain_batch_transition_failure_releases_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
         released: list[str] = []
         transition = MagicMock(side_effect=ValueError("invalid transition"))
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
-        monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
+        monkeypatch.setattr("src.core.consult.do_task", AsyncMock(return_value={"success": True}))
+        monkeypatch.setattr("src.core.agent._resume_artifact_parent_hop_key", lambda tk: None)
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
+            lambda aid: {
+                "astral_job_id": aid,
+                "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}},
+            },
         )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
         monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
         monkeypatch.setattr(
             consult_mod.tracker,
             "release_job_dispatch_claim",
             lambda aid: released.append(aid),
         )
-        out = await consult_mod._run_job_artifact_entry_batch(
+        out = await consult_mod._run_build_artifacts_chain_batch(
             "batch-789",
             [{"astral_job_id": "job-fail"}],
             {},
             False,
             "contemplate_job",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
         assert out["total_errors"] == 1
         assert out["total_passed"] == 0
         transition.assert_called_once_with(["job-fail"], "CANDIDATE_REVIEW")
         assert released == ["job-fail"]
-        cover.assert_not_awaited()
 
-    def test_try_graduate_uses_fresh_persist_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.asyncio
+    async def test_do_chain_hard_failure_transitions_error_build_artifacts(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(
+            "src.core.consult.do_task",
+            AsyncMock(return_value={"success": False, "error": "Missing candidate_data for job job-hard"}),
+        )
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        out = await consult_mod.do_chain_for_job(
+            "job-hard",
+            batch_id="batch-hard",
+            ctx={},
+            debug=False,
+            dispatch_task_key="anticipate_scan",
+            input_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert out["success"] is False
+        transition.assert_called_once_with(["job-hard"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+
+    def test_chain_graduate_uses_fresh_persist_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         persist_calls: list[tuple[str, object]] = []
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda aid: {"astral_job_id": aid, "state": "BUILD_ARTIFACTS.finalize_job_resume"},
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
         )
         monkeypatch.setattr(
             consult_mod.tracker,
@@ -678,10 +707,38 @@ class TestAst789TerminalGraduation:
             lambda aid, row=None: persist_calls.append((aid, row)) or True,
         )
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", MagicMock())
-        ok, reason = consult_mod._try_graduate_artifact_job_to_candidate_review("job-fresh")
+        ok, reason = consult_mod._chain_graduate_to_candidate_review("job-fresh")
         assert ok is True
         assert reason == "ok"
         assert persist_calls == [("job-fresh", None)]
+
+
+@_SKIP_AST552_RESUME_BODY
+class TestAst803ChainHelpers:
+    def test_chain_entry_picks_hop_without_incoming_run_next(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hops = list(cfg.resume_artifact_hop_task_keys())
+        rows = [{"task_key": tk} for tk in hops]
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid, **kw: rows,
+        )
+        run_next_targets = set(hops[1:])
+        monkeypatch.setattr(consult_mod, "_chain_run_next_targets", lambda keys: run_next_targets)
+        assert consult_mod._build_artifacts_chain_entry_task_key("c1") == hops[0]
+
+    def test_legacy_compound_job_state_resolves_start_key(self) -> None:
+        legacy = cfg.resume_artifact_compound_state("draft_job_resume")
+        job = {"state": legacy}
+        start = consult_mod._resolve_chain_start_task_key(
+            job, dispatch_task_key="draft_job_resume", candidate_id="c1",
+        )
+        assert start == "draft_job_resume"
+
+    def test_chain_failure_mode_classifies_hard_errors(self) -> None:
+        assert consult_mod._chain_failure_mode({"error": "Job not found: x"}, "tk") == "hard"
+        assert consult_mod._chain_failure_mode({"error": "Missing candidate_data for job x"}, "tk") == "hard"
+        assert consult_mod._chain_failure_mode({"error": "LLM timeout"}, "tk") == "retry"
 
 
 @_SKIP_AST552_RESUME_BODY
@@ -707,32 +764,24 @@ class TestAst534DispatchTaskKeyHonesty:
         assert out["total_passed"] == 1
 
     @pytest.mark.asyncio
-    async def test_anticipate_scan_entry_skips_contemplate_job_and_cover_letter(
+    async def test_anticipate_scan_entry_routes_chain_batch_not_cover_letter(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        chain = AsyncMock(return_value={"success": True})
+        batch = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
         cover = AsyncMock()
-        monkeypatch.setattr("src.core.agent.run_resume_artifact_chain_for_job", chain)
+        monkeypatch.setattr(consult_mod, "_run_build_artifacts_chain_batch", batch)
         monkeypatch.setattr(consult_mod, "_run_cover_letter_for_job", cover)
-        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", MagicMock())
-        monkeypatch.setattr(
-            consult_mod.tracker,
-            "get_job",
-            lambda aid: {"astral_job_id": aid, "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}}},
-        )
-        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
-        compound = cfg.resume_artifact_compound_state("anticipate_scan")
         out = await consult_mod.run_consult_task(
             "job",
-            compound,
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             [{"astral_job_id": "job-534"}],
             "batch-534",
             {},
             dispatch_task_key="anticipate_scan",
         )
         assert out["total_passed"] == 1
-        chain.assert_awaited_once()
-        assert chain.await_args.kwargs["first_task_key"] == "anticipate_scan"
+        batch.assert_awaited_once()
+        assert batch.await_args.args[4] == "anticipate_scan"
         cover.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -740,11 +789,10 @@ class TestAst534DispatchTaskKeyHonesty:
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         entry = AsyncMock()
-        monkeypatch.setattr(consult_mod, "_run_job_artifact_entry_batch", entry)
-        compound = cfg.resume_artifact_compound_state("anticipate_scan")
+        monkeypatch.setattr(consult_mod, "_run_build_artifacts_chain_batch", entry)
         await consult_mod.run_consult_task(
             "job",
-            compound,
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             [{"astral_job_id": "job-534"}],
             "batch-534",
             {},
@@ -754,11 +802,11 @@ class TestAst534DispatchTaskKeyHonesty:
         assert entry.await_args.args[4] == "anticipate_scan"
 
     @pytest.mark.asyncio
-    async def test_mid_chain_compound_trigger_claims_matching_entry(
+    async def test_legacy_compound_trigger_claims_matching_entry(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         entry = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
-        monkeypatch.setattr(consult_mod, "_run_job_artifact_entry_batch", entry)
+        monkeypatch.setattr(consult_mod, "_run_build_artifacts_chain_batch", entry)
         compound = cfg.resume_artifact_compound_state("draft_job_resume")
         out = await consult_mod.run_consult_task(
             "job",
@@ -774,18 +822,24 @@ class TestAst534DispatchTaskKeyHonesty:
 
     @pytest.mark.asyncio
     async def test_dispatch_row_mismatch_skips_artifact_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        entry = AsyncMock()
-        monkeypatch.setattr(consult_mod, "_run_job_artifact_entry_batch", entry)
+        chain = AsyncMock()
+        monkeypatch.setattr(consult_mod, "do_chain_for_job", chain)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
         out = await consult_mod.run_consult_task(
             "job",
-            "BUILD_ARTIFACTS.anticipate_scan",
+            cfg.resume_artifact_compound_state("anticipate_scan"),
             [{"astral_job_id": "job-bad"}],
             "batch-bad",
             {},
             dispatch_task_key="draft_job_resume",
         )
-        assert out == {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
-        entry.assert_not_awaited()
+        assert out["total_passed"] == 0
+        assert out["total_errors"] == 0
+        chain.assert_not_awaited()
 
 
 @_SKIP_AST552_RESUME_BODY
