@@ -1,4 +1,4 @@
-"""AST-683 / AST-693 / AST-800: record-landed-parent helper + prep-uat wiring."""
+"""AST-683 / AST-693 / AST-800 / AST-805 / AST-806: record-landed-parent helper + prep-uat wiring."""
 
 from __future__ import annotations
 
@@ -52,7 +52,23 @@ def _copy_tree(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def _mini_repo(tmp_path: Path, *, with_rebuild: bool = True) -> Path:
+def _ensure_venv_python(repo: Path) -> Path:
+    venv_python = repo / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True, exist_ok=True)
+    venv_python.write_text(
+        f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
+        encoding="utf-8",
+    )
+    venv_python.chmod(0o755)
+    return venv_python
+
+
+def _mini_repo(
+    tmp_path: Path,
+    *,
+    with_rebuild: bool = True,
+    with_venv: bool = True,
+) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     for rel in (
@@ -78,6 +94,8 @@ def _mini_repo(tmp_path: Path, *, with_rebuild: bool = True) -> Path:
     (repo / "scripts/git/record-landed-parent.sh").chmod(0o755)
     if with_rebuild:
         (repo / "scripts/rebuild_merge_ticket_log.py").chmod(0o755)
+    if with_venv:
+        _ensure_venv_python(repo)
 
     real_git = shutil.which("git") or "/usr/bin/git"
     subprocess.run(
@@ -118,23 +136,26 @@ def _mini_repo(tmp_path: Path, *, with_rebuild: bool = True) -> Path:
     return repo
 
 
-def _run_record(repo: Path, parent_id: str = "AST-999") -> subprocess.CompletedProcess[str]:
+def _run_record(
+    repo: Path,
+    parent_id: str = "AST-999",
+    *,
+    astral_python: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     fake_bin = repo.parent / "bin"
     fake_bin.mkdir(exist_ok=True)
     fake_git = fake_bin / "git"
     fake_git.write_text(_FAKE_GIT, encoding="utf-8")
     fake_git.chmod(0o755)
-    fake_python = fake_bin / "python3"
-    fake_python.write_text(
-        f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
-        encoding="utf-8",
-    )
-    fake_python.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["REAL_GIT"] = shutil.which("git") or "/usr/bin/git"
     env["ASTRAL_DB_DIR"] = str(repo / "data")
     env["PYTHONUNBUFFERED"] = "1"
+    if astral_python is not None:
+        env["ASTRAL_PYTHON"] = astral_python
+    elif "ASTRAL_PYTHON" in env:
+        del env["ASTRAL_PYTHON"]
     return subprocess.run(
         ["bash", str(repo / "scripts/git/record-landed-parent.sh"), str(repo), parent_id],
         cwd=repo,
@@ -155,6 +176,15 @@ class TestRecordLandedParentShell:
     def test_record_landed_parent_passes_landing_parent_flag(self) -> None:
         text = RECORD_SCRIPT.read_text(encoding="utf-8")
         assert '--landing-parent "$PARENT_ID"' in text
+
+    def test_record_landed_parent_resolves_venv_python(self) -> None:
+        text = RECORD_SCRIPT.read_text(encoding="utf-8")
+        assert "ASTRAL_PYTHON" in text
+        assert ".venv/bin/python" in text
+        assert '"$PYTHON" "$REBUILD"' in text
+        assert 'python3 "$REBUILD"' not in text
+        assert "repo venv python missing" in text
+        assert "AST-806" in text
 
 
 class TestRecordLandedParent:
@@ -185,6 +215,26 @@ class TestRecordLandedParent:
         assert result.returncode != 0
         assert "BLOCKED" in result.stderr
         assert "rebuild script missing" in result.stderr
+
+    def test_record_landed_parent_missing_venv_python_blocks(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, with_venv=False)
+        result = _run_record(repo)
+        assert result.returncode != 0
+        assert "BLOCKED" in result.stderr
+        assert "venv python missing" in result.stderr
+        assert "AST-806" in result.stderr
+
+    def test_record_landed_parent_honors_astral_python_override(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, with_venv=False)
+        override = tmp_path / "override-python"
+        override.write_text(
+            f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n',
+            encoding="utf-8",
+        )
+        override.chmod(0o755)
+        result = _run_record(repo, astral_python=str(override))
+        assert result.returncode == 0, result.stderr
+        assert "RESULT: record-landed-parent status=ok parent=AST-999" in result.stdout
 
 
 class TestMergeParentShell:
