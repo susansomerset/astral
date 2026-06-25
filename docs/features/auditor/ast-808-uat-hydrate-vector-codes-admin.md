@@ -220,8 +220,36 @@ AST-725 joins **`rubric_vector`** for **`code`** + **`label`** only — **`conte
 
 No conflicts requiring `conf-!!-NONE`.
 
-## Review (build)
+## Review (Radia)
 
-- **commit:** `3503af3`
-- **branch:** `origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin`
-- **stages:** data SELECT content/importance; hydrate helper + rubric_lookup/hydrate_reviews routes; AdminVectorFeedback assessment columns; BatchAgentDataModal FEEDBACK hydration table
+**Diff:** `origin/dev...origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin` (code tip `fc98dec`)  
+**Reviewed:** 2026-06-18  
+**Note:** Branch includes sibling **AST-809** resolve (batch metadata columns) merged on ftr; AST-808 review scoped to hydration/display Stages 1–3.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | `list_vector_feedback` joins `vector_content` + `vector_importance`; `hydrate_vector_review_strings` with partial-list tolerance; `_enrich_vector_feedback_row` adds `vector_assessment_header`; `rubric_lookup` + `hydrate_reviews` routes with `@require_admin`. |
+| Admin UI | Detail table: Code + Assessment header + expandable Criterion; batch metadata columns from AST-809 resolve; passes `candidateId` to modal. |
+| FEEDBACK modal | Parses `vector_reviews` JSON array; fetches dispatch ledger for context; POST hydrate → read-only table; raw JSON fallback when hydration unavailable. |
+| §3.3 layers | ui → data/utils; utils helper imports config only; no capture/parse rule changes. |
+| UAT root cause | Opaque compact codes addressed without changing AST-724 capture semantics. |
+| Tests / bible | Betty manifest covers list SELECT fields, hydrate helper, admin API enrichment/lookup/hydrate, AdminVectorFeedback assessment columns, BatchAgentDataModal FEEDBACK table. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | `hydrate_reviews` / prefilter | `list_rubric_vectors` lookup is DB-only — embedded **RC** on `prefilter_company` won't hydrate criterion text for RC compact lines (same family as AST-724 prefilter discuss). Parsed rows still show codes + R/C/V labels. |
+| advisory | `_resolve_rubric_owner_task_key` | When caller passes a **craft** key as `owner_task_key` explicitly (not `task_key`), no remap to consumer owner — lookup may return empty. Modal path uses run `task_key` → mapped correctly. |
+| advisory | Diff baseline | AST-809 batch-metadata commits included in `origin/dev...` three-dot diff until ftr lands on dev. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| UAT | Susan re-check Vector Feedback detail (assessment header + expandable criterion) and FEEDBACK tab on an unparseable run. |
+| follow-up | Optional: document prefilter embedded-RC hydration gap or merge embedded criteria into rubric_lookup for `prefilter_company`. |
+
+**Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
