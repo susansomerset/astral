@@ -219,3 +219,9 @@ AST-725 joins **`rubric_vector`** for **`code`** + **`label`** only — **`conte
 | §3.5 naming | `hydrate_vector_review_strings`, `rubric_lookup`, `hydrate_reviews` |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+- **commit:** `3503af3`
+- **branch:** `origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin`
+- **stages:** data SELECT content/importance; hydrate helper + rubric_lookup/hydrate_reviews routes; AdminVectorFeedback assessment columns; BatchAgentDataModal FEEDBACK hydration table
