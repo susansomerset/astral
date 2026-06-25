@@ -1,4 +1,4 @@
-"""AST-683 / AST-693 / AST-800 / AST-805 / AST-806: record-landed-parent helper + prep-uat wiring."""
+"""AST-683 / AST-693 / AST-800 / AST-805 / AST-806 / AST-807: record-landed-parent helper + prep-uat wiring."""
 
 from __future__ import annotations
 
@@ -177,14 +177,14 @@ class TestRecordLandedParentShell:
         text = RECORD_SCRIPT.read_text(encoding="utf-8")
         assert '--landing-parent "$PARENT_ID"' in text
 
-    def test_record_landed_parent_resolves_venv_python(self) -> None:
+    def test_record_landed_parent_uses_venv_python(self) -> None:
         text = RECORD_SCRIPT.read_text(encoding="utf-8")
         assert "ASTRAL_PYTHON" in text
         assert ".venv/bin/python" in text
         assert '"$PYTHON" "$REBUILD"' in text
         assert 'python3 "$REBUILD"' not in text
-        assert "repo venv python missing" in text
-        assert "AST-806" in text
+        assert "Python not found at" in text
+        assert "setup_dev.sh" in text
 
 
 class TestRecordLandedParent:
@@ -216,13 +216,13 @@ class TestRecordLandedParent:
         assert "BLOCKED" in result.stderr
         assert "rebuild script missing" in result.stderr
 
-    def test_record_landed_parent_missing_venv_python_blocks(self, tmp_path: Path) -> None:
+    def test_record_landed_parent_blocks_without_venv(self, tmp_path: Path) -> None:
         repo = _mini_repo(tmp_path, with_venv=False)
         result = _run_record(repo)
         assert result.returncode != 0
         assert "BLOCKED" in result.stderr
-        assert "venv python missing" in result.stderr
-        assert "AST-806" in result.stderr
+        assert "Python not found at" in result.stderr
+        assert "setup_dev.sh" in result.stderr
 
     def test_record_landed_parent_honors_astral_python_override(self, tmp_path: Path) -> None:
         repo = _mini_repo(tmp_path, with_venv=False)
