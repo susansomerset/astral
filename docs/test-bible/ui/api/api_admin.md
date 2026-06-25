@@ -149,6 +149,25 @@ Config helpers: **`docs/test-bible/utils/config.md`** (**AST-747**). **AST-748**
 
 Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
 
+### AST-796 · AST-794
+
+**`fetch_jd`** schedulable @ **`PASSED_JOBLIST`**; **`scrape_jd`**, **`validate_title`**, **`gaze_board`** in **`DISPATCH_RETIRED_TASK_KEYS`** — filtered from **`task_keys`** and rejected on **`POST /api/admin/dispatch_tasks`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retirement filter + POST guard | `src/ui/api/api_admin.py` (unchanged; config-driven) | `TestAst796FetchJdRetiredDispatchKeys` |
+
+Config catalog: **`docs/test-bible/utils/config.md`** (**AST-796**).
+
+**AST-796** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover \
+  tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys \
+  -q
+```
+
 ### AST-773 · AST-763
 
 `PUT /api/admin/dispatch_tasks/<id>` whitelists `task_key` on update; `_dispatch_task_key_trigger_error` validates schedulable keys against `JOB_STATES` / `COMPANY_STATES` and resume-hop compound states; derives catalog columns via `dispatch_task_admin_defaults`; blocks edits on AUTO rows except `auto_mode` toggle; 409 UNIQUE cites attempted `(candidate_id, task_key, trigger_state)`.

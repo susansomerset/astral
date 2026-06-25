@@ -513,6 +513,26 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-796 · AST-794
+
+**Scope:** **`GAZER_CONFIG`** rename **`scrape_jd` → `fetch_jd`** (+ transitional read alias); **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`DISPATCH_RETIRED_TASK_KEYS`** cutover; extended **`dispatch_task_key_retired_message`**. Runtime gazer/consult routing deferred **AST-797**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schedulable + retired catalogs | `src/utils/config.py` | `TestAst796FetchJdSchedulableCutover` |
+| Admin POST + **`task_keys`** | `src/ui/api/api_admin.py` | `TestAst796FetchJdRetiredDispatchKeys` |
+
+**AST-796** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover \
+  tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys \
+  -q
+```
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

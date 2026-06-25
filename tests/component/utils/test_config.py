@@ -558,6 +558,37 @@ class TestAst471DispatchConfigHelpers:
         assert got == frozenset({"OK", "BAD", "KEEP"})
 
 
+class TestAst796FetchJdSchedulableCutover:
+    """AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired."""
+
+    def test_fetch_jd_schedulable_defaults(self) -> None:
+        assert "fetch_jd" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "scrape_jd" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "validate_title" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "gaze_board" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        fd = cfg.dispatch_task_admin_defaults("fetch_jd")
+        assert fd == {
+            "entity_type": "job",
+            "trigger_state": "PASSED_JOBLIST",
+            "sort_by": "updated_at",
+            "batch_call_mode": 0,
+        }
+
+    def test_gazer_config_fetch_jd_with_scrape_jd_alias(self) -> None:
+        assert cfg.GAZER_CONFIG["fetch_jd"]["pass_state"] == "JD_READY"
+        assert cfg.GAZER_CONFIG["scrape_jd"] is cfg.GAZER_CONFIG["fetch_jd"]
+
+    def test_retired_dispatch_keys_rejected(self) -> None:
+        assert cfg.dispatch_task_key_retired_message("scrape_jd") == (
+            "task_key 'scrape_jd' is retired; use 'fetch_jd'"
+        )
+        assert "inline" in cfg.dispatch_task_key_retired_message("validate_title")
+        assert "decommissioned" in cfg.dispatch_task_key_retired_message("gaze_board")
+        for tk in ("scrape_jd", "validate_title", "gaze_board"):
+            with pytest.raises(KeyError, match="retired"):
+                cfg.dispatch_task_admin_defaults(tk)
+
+
 class TestAst549DispatchAdminDefaults:
     """AST-549: config-built dispatch_task admin defaults; no parallel seed dicts."""
 

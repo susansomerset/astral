@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -12,6 +15,11 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 })
 
 const mockedApi = vi.mocked(api)
+
+const appCssPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../src/ui/frontend/src/App.css",
+)
 
 describe("AdminDeployFooter", () => {
   beforeEach(() => {
@@ -173,7 +181,11 @@ describe("AdminDeployFooter", () => {
     renderWithProviders(<AdminDeployFooter />)
     await waitFor(() => expect(screen.getByText("staging")).toBeInTheDocument())
     const envLabel = screen.getByText("staging")
+    expect(envLabel).toHaveClass("nav-deploy-env")
     expect(envLabel).not.toHaveClass("nav-deploy-env-interactive")
+    const appCss = readFileSync(appCssPath, "utf-8")
+    expect(appCss).toMatch(/\.nav-deploy-env\s*\{[^}]*cursor:\s*default/)
+    expect(appCss).toMatch(/\.nav-deploy-env\s*\{[^}]*user-select:\s*none/)
     expect(envLabel).not.toHaveAttribute("title")
     expect(screen.queryByRole("tooltip", { name: "Recent merge tickets" })).not.toBeInTheDocument()
   })
