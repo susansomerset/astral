@@ -1061,9 +1061,13 @@ def _capture_rubric_vector_feedback(
     perf: Any,
     debug: bool,
     prompt_blocks: List[Dict[str, str]],
+    batch_size: int,
+    completed_at: Optional[str] = None,
 ) -> None:
     """Lenient vector_reviews capture on SUCCESS — parse failures never fail the run (AST-724)."""
     if _agent_performance_status(perf) != "success":
+        return
+    if not (batch_id or "").strip():
         return
     from src.core.candidate import rubric_criteria_for_task
 
@@ -1111,6 +1115,8 @@ def _capture_rubric_vector_feedback(
             candidate_id=candidate_id,
             batch_id=batch_id,
             task_key=task_key,
+            batch_size=batch_size,
+            completed_at=completed_at,
         )
     except Exception:
         logger.debug("insert_vector_feedback_rows failed", exc_info=True)
@@ -2141,6 +2147,8 @@ async def do_task(
                     perf=_perf,
                     debug=debug,
                     prompt_blocks=prompt_blocks,
+                    batch_size=batch_size,
+                    completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
     if _should_store and raw_text:
