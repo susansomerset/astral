@@ -207,3 +207,11 @@ Stage 2: `AdminScheduledActions` loads **candidate** state options and uses them
 **Counts:** 0 fix-now · 0 discuss · 0 advisory
 
 **Outcome:** Clean — Katherine may proceed with `resolve-child` (§9a dry-run).
+
+---
+
+## Resolution (2026-06-25)
+
+Radia review had **zero fix-now / discuss / advisory** items — no product changes in resolve pass. Betty manifest green (pytest 5/5, Vitest 1/1). §9a dry-run: publish ref merges cleanly into **`origin/dev`** and **`origin/ftr/AST-799-dispatch-task-entity-type-validation`**.
+
+**Publish tip:** `origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation` @ `6d8691b`
