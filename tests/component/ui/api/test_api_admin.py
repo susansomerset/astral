@@ -575,6 +575,77 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
+# AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired on admin paths.
+class TestAst796FetchJdRetiredDispatchKeys:
+    def test_dispatch_task_keys_includes_fetch_jd_excludes_retired(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "fetch_jd" in keys
+        assert keys["fetch_jd"]["entity_type"] == "job"
+        assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
+        for retired in ("scrape_jd", "validate_title", "gaze_board"):
+            assert retired not in keys
+
+    def test_create_dispatch_task_rejects_retired_scrape_jd(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "scrape_jd",
+                "trigger_state": "PASSED_JOBLIST",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "fetch_jd" in err
+
+    def test_create_dispatch_task_rejects_retired_validate_title(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "validate_title",
+                "trigger_state": "NEW",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "inline" in err
+
+    def test_create_dispatch_task_rejects_retired_gaze_board(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "gaze_board",
+                "trigger_state": "ACTIVE",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "retired" in err
+        assert "decommissioned" in err
+
+
 # AST-781: legacy board_search entity_type rows do not 500 list_dtasks enrichment.
 class TestAst781ListDtasksRetiredEntityType:
     def test_list_dtasks_legacy_board_search_row_returns_zero_available_count(
