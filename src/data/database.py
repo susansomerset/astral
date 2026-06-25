@@ -5699,6 +5699,69 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             (grade_key, retired_key),
         )
     conn.commit()
+    # AST-794 / AST-797: retire scrape_jd / validate_title / gaze_board dispatch rows.
+    _SCRAPE_TO_FETCH_DISPATCH_KEYS = (("scrape_jd", "fetch_jd"),)
+    for retired_key, canonical_key in _SCRAPE_TO_FETCH_DISPATCH_KEYS:
+        conn.execute(
+            """
+            DELETE FROM dispatch_task AS d
+            WHERE d.task_key = ?
+              AND EXISTS (
+                SELECT 1 FROM dispatch_task AS g
+                WHERE g.candidate_id = d.candidate_id
+                  AND g.task_key = ?
+                  AND g.trigger_state = d.trigger_state
+              )
+            """,
+            (retired_key, canonical_key),
+        )
+        conn.execute(
+            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
+            (canonical_key, retired_key),
+        )
+    conn.commit()
+
+    for purge_key in ("validate_title", "gaze_board"):
+        conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
+    conn.commit()
+
+    # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
+    # split into explicit NEW + VALID_TITLE_RETRY rows.
+    qualify_retry_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'
+        """
+    ).fetchall()
+    for r in qualify_retry_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'qualify_job_listings', ?, 'VALID_TITLE_RETRY', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'qualify_job_listings'
+                  AND trigger_state = 'VALID_TITLE_RETRY'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'NEW' "
+        "WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'"
+    )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 
