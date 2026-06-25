@@ -18,7 +18,7 @@ Config sections:
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state progression
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
-  GAZER_CONFIG    — gazer batch steps (validate_title, scrape_jd, gaze)
+  GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
   TRACKER_CONFIG  — tracker-specific (ingest, jd processing)
   NAV_CONFIG      — UI navigation structure
@@ -925,9 +925,9 @@ INFLOW_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# GAZER_CONFIG: gazer-batch steps (validate_title, scrape_jd, gaze). Mirrors orchestration for
-# gazer-owned paths until gazer.py reads this block directly (AST-467). ROSTER_CONFIG["gaze"]
-# duplicates error_state intentionally — semantic twin must stay literal-identical here.
+# GAZER_CONFIG: gazer-batch steps (validate_title inline-only until AST-797, fetch_jd, gaze).
+# Mirrors orchestration for gazer-owned paths until gazer.py reads this block directly (AST-467).
+# ROSTER_CONFIG["gaze"] duplicates error_state intentionally — semantic twin must stay literal-identical here.
 # ---------------------------------------------------------------------------
 GAZER_CONFIG = {
     "validate_title": {
@@ -935,7 +935,7 @@ GAZER_CONFIG = {
         "pass_state": "VALID_TITLE",
         "fail_state": "INVALID_TITLE",
     },
-    "scrape_jd": {
+    "fetch_jd": {
         "fallback_batch_size": 10,
         "pass_state": "JD_READY",
         "fail_state": "JD_SCRAPE_FAIL",
@@ -962,6 +962,9 @@ GAZER_CONFIG = {
         "error_state": "ERROR_GAZE",
     },
 }
+
+# AST-797 removes after gazer/consult read fetch_jd.
+GAZER_CONFIG["scrape_jd"] = GAZER_CONFIG["fetch_jd"]
 
 
 # Rubric artifact keys validated on candidate save (trailing grade table + grade_descriptions).
@@ -1266,6 +1269,7 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
 
 DISPATCH_RETIRED_TASK_KEYS = frozenset({
     "consult_do", "consult_get", "consult_like",
+    "scrape_jd", "validate_title", "gaze_board",
 })
 
 # task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
@@ -1273,7 +1277,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze",
     "inflow_discovery", "inflow_resolve_website", "vet_inflow_discovery",
-    "validate_title", "qualify_job_listings", "scrape_jd", "evaluate_jd",
+    "qualify_job_listings", "fetch_jd", "evaluate_jd",
     "grade_do", "grade_get", "grade_like", "analysis_upshot",
     "contemplate_job", "draft_cover_letter",
 })
@@ -1310,11 +1314,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
     if task_key == "vet_inflow_discovery":
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
-    if task_key == "validate_title":
-        return "NEW"
     if task_key == "qualify_job_listings":
         return "VALID_TITLE"
-    if task_key == "scrape_jd":
+    if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
     if task_key == "fetch_job_pages":
         states = GAZER_CONFIG["fetch_job_pages"].get("fetch_job_pages_trigger_states") or ["PREFILTER_PASSED"]
@@ -1357,7 +1359,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "validate_title", "scrape_jd", "qualify_job_listings", "evaluate_jd",
+        "fetch_jd", "qualify_job_listings", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
@@ -1395,6 +1397,16 @@ _RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS = {
     "consult_do": "grade_do",
     "consult_get": "grade_get",
     "consult_like": "grade_like",
+    "scrape_jd": "fetch_jd",
+}
+
+_RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES = {
+    "validate_title": (
+        "task_key 'validate_title' is retired; title screening runs inline before qualify_job_listings"
+    ),
+    "gaze_board": (
+        "task_key 'gaze_board' is retired; boards are decommissioned"
+    ),
 }
 
 
@@ -1403,7 +1415,10 @@ def dispatch_task_key_retired_message(task_key: str) -> Optional[str]:
     tk = (task_key or "").strip()
     if tk not in DISPATCH_RETIRED_TASK_KEYS:
         return None
-    return f"task_key {tk!r} is retired; use {_RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS[tk]!r}"
+    replacement = _RETIRED_DISPATCH_TASK_KEY_REPLACEMENTS.get(tk)
+    if replacement is not None:
+        return f"task_key {tk!r} is retired; use {replacement!r}"
+    return _RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES[tk]
 
 
 def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
