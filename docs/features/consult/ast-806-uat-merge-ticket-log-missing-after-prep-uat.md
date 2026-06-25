@@ -189,3 +189,16 @@ After **AST-788** prep-uat landed **ftr** on **origin/dev**, Susan restarted fro
 | Out of scope | No **AST-803** consult/dispatcher changes |
 
 No conflicts flagged.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-788/AST-806-uat-merge-ticket-log-missing-after-prep-uat`
+
+**Commits:**
+- `b303c82` — `code(AST-806): venv python for prep-uat merge ticket log rebuild`
+- `d82c412` — `code(AST-806): landing-parent bypass and record-landed-parent wiring`
+- `f8eebc6` — `code(AST-806): rebuild merge ticket log — include AST-788`
+
+**Manual verify:** `rebuild_merge_ticket_log.py --dev-ref origin/dev --landing-parent AST-788` → JSON includes **AST-788** in `parents` with `landing_parent: "AST-788"`.
