@@ -1047,21 +1047,18 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         return str(wc)
 
     if entity_type == "job":
-        # batch mode: qualify_job_listings / validate_title assemble raw listings in one block
-        if task_key in ("qualify_job_listings", "validate_title"):
+        # batch mode: qualify_job_listings assembles raw listings in one block
+        if task_key == "qualify_job_listings":
             ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
             raw_htmls, astral_ids = [], []
             for jid in ids:
                 job = database.get_job(jid)
                 if job:
                     raw_listing = (job.get("job_data") or {}).get("raw_job_listing", "")
-                    if task_key == "qualify_job_listings":
-                        # Match the real assemble() in consult.py — include job_site from company
-                        company = database.get_company(job.get("company", ""))
-                        job_site = (company or {}).get("job_site", "") or ""
-                        raw_htmls.append(f"job_site: {job_site}\nraw_job_listing: {raw_listing}")
-                    else:
-                        raw_htmls.append(raw_listing)
+                    # Match the real assemble() in consult.py — include job_site from company
+                    company = database.get_company(job.get("company", ""))
+                    job_site = (company or {}).get("job_site", "") or ""
+                    raw_htmls.append(f"job_site: {job_site}\nraw_job_listing: {raw_listing}")
                     astral_ids.append(jid)
             return (
                 "JOB LISTINGS:\n" + "\n".join(f"{i:03d}: {item}" for i, item in enumerate(raw_htmls))

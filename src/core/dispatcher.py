@@ -157,7 +157,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     batch_call_mode=1 consult (job rows): qualifying + jd + scored DO/GET/LIKE consult may claim the full backlog (≤ eligible count),
     sized into chunk_width ``batch_size`` API calls — chunk 0 cache-warm sequential, remainder parallel (AST-502).
     Other batch_call_mode=1 runners: single consult pass for all claimed rows.
-    batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, scrape_jd, …)."""
+    batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, fetch_jd, …)."""
     if not check_internet_reachable():
         if debug:
             logger.set_debug_flag(True)

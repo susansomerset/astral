@@ -405,16 +405,16 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     if key != jd_key:
         return None
     # Self-heal: belt-and-suspenders before any agent call sees a missing JD.
-    # Delegates to scrape_jd_batch (single job) so prune rules live in one place.
+    # Delegates to fetch_jd_batch (single job) so prune rules live in one place.
     astral_job_id = job.get("astral_job_id", "")
-    logger.warning(f"[{astral_job_id}] coat-check self-heal: JD missing, invoking scrape_jd_batch")
+    logger.warning(f"[{astral_job_id}] coat-check self-heal: JD missing, invoking fetch_jd_batch")
     try:
-        from src.core.gazer import scrape_jd_batch
-        await scrape_jd_batch(str(uuid.uuid4()), [job])
+        from src.core.gazer import fetch_jd_batch
+        await fetch_jd_batch(str(uuid.uuid4()), [job])
     except Exception as e:
-        logger.warning(f"get_job_data: scrape_jd_batch self-heal failed for {astral_job_id}: {e}")
+        logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
-    # job["job_data"] was written back by scrape_jd_batch if successful
+    # job["job_data"] was written back by fetch_jd_batch if successful
     return job["job_data"].get(jd_key)
 
 

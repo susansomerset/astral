@@ -49,10 +49,10 @@ def _consult_job_identifier(job: Dict[str, Any]) -> str:
 # input_state → TASK_CONFIG orchestration lookup key (grade_* for scored consult hops).
 # Legacy map — not used for dispatch routing (AST-534). Tests pass dispatch_task_key explicitly.
 _INPUT_STATE_TO_TASK = {
-    "NEW":                "validate_title",
+    "NEW":                "qualify_job_listings",
     "VALID_TITLE":        "qualify_job_listings",
     "VALID_TITLE_RETRY":  "qualify_job_listings",
-    "PASSED_JOBLIST":     "scrape_jd",
+    "PASSED_JOBLIST":     "fetch_jd",
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
     "PASSED_JD":          "grade_do",
@@ -1226,8 +1226,33 @@ async def qualify_job_listings(
     otherwise one ``do_task`` for the claimed slice — never per-job ``_warm_then_gather`` fan-out from dispatch.
     AST-501: each chunk invokes one `_run_batch_consult` / one `do_task` for that slice's ``jobs`` list.
     """
+    claimed_total = len(jobs)
     task_key = "qualify_job_listings"
     cfg = _consult_orchestration(task_key)
+
+    title_screen_failed = 0
+    if any((j.get("state") or "") == "NEW" for j in jobs):
+        from src.core.gazer import validate_title_batch
+
+        new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
+        tr = await validate_title_batch(batch_id, new_jobs, ctx or {}, debug=debug)
+        title_screen_failed = int(tr.get("failed", 0))
+        for j in jobs:
+            if (j.get("state") or "") == "NEW":
+                fresh = tracker.get_job(j["astral_job_id"])
+                if fresh:
+                    j["state"] = fresh.get("state")
+    ai_jobs = [
+        j for j in jobs
+        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY")
+    ]
+    if not ai_jobs:
+        return {
+            "passed": 0,
+            "failed": title_screen_failed,
+            "total": claimed_total,
+        }
+    jobs = ai_jobs
 
     # AST-350: same as evaluate_jd_batch — numeric score for latest_score / dispatch sort (informational).
     rubric_list = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
@@ -1321,6 +1346,10 @@ async def qualify_job_listings(
     result = await _run_batch_consult(
         task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
     )
+    if title_screen_failed:
+        result = dict(result)
+        result["failed"] = int(result.get("failed", 0)) + title_screen_failed
+        result["total"] = claimed_total
     return result
 
 
@@ -1833,12 +1862,9 @@ async def run_consult_task(
         )
         return zero
 
-    if task_key == "validate_title":
-        from src.core.gazer import validate_title_batch
-        r = await validate_title_batch(batch_id, entities, ctx, debug=debug)
-    elif task_key == "scrape_jd":
-        from src.core.gazer import scrape_jd_batch
-        r = await scrape_jd_batch(batch_id, entities, debug=debug)
+    if task_key == "fetch_jd":
+        from src.core.gazer import fetch_jd_batch
+        r = await fetch_jd_batch(batch_id, entities, debug=debug)
     elif task_key == "qualify_job_listings":
         r = await qualify_job_listings(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
