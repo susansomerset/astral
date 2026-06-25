@@ -127,3 +127,30 @@ No unresolved conflicts.
 | 1 | `05b4374` | `_apply_agent_task_repo_json_rows_exact` — revert/startup writes file uuid + updated_at |
 
 **Hand-verify:** post-revert `agent_task.diverged` false; double-revert smoke green.
+
+## Radia review (2026-06-25) — FIX-UAT
+
+**Ref:** `origin/dev...origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `03e435e`
+
+### What's solid
+
+- **Root cause + fix aligned:** `apply_agent_task_repo_json_startup` now calls `_apply_agent_task_repo_json_rows_exact` — upserts by `task_key_uuid` with **verbatim** file columns (including `updated_at`), avoiding `_save_agent_task_on_connection` minting new UUID/timestamp. `apply_agent_task_copy_upsert` unchanged for Manage Tasks Copy Output (AST-790 grouping path preserved there).
+- **Scope gate:** `code(AST-793)` @ `05b4374` product delta is **`src/data/database.py` only** (+ plan stub in same commit).
+- **§1.3 DRY / §3.3:** reuses historical Copy Output upsert pattern in-file; data-layer only; no compare/UI changes.
+- **Tests:** `TestAst793AgentTaskRevertDivergence` locks divergence clear after revert, UUID preservation, and double-revert smoke — matches plan verify script.
+
+### Issues
+
+| Severity | Location | Finding |
+| --- | --- | --- |
+| **advisory** | Branch diff vs `origin/dev` | Includes sibling **AST-792** deploy_status/linear/merge_ticket_log bible+test rollup from merge-tests — AST-793 product footprint stays in `database.py`. |
+| **advisory** | Repo vs Copy Output paths | Grouping for repo JSON now comes from exact row write (all columns), not AST-790's `apply_agent_task_copy_upsert` forward — correct for repo-wins; Copy Output paste still uses AST-790 path. |
+
+No **fix-now** items.
+
+### Recommended actions
+
+| Priority | Action |
+| --- | --- |
+| resolve-child | None — merge when parent UAT lane clears. |
+| Post-merge UAT | Manage Tasks **Revert to file** → banner clears without page reload. |
