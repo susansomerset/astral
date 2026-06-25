@@ -15,13 +15,15 @@ grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_co
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 from src.core import tracker
 from src.core.agent import do_task
 from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
+    BUILD_ARTIFACTS_BASE_STATE,
+    ERROR_BUILD_ARTIFACTS_STATE,
     JOB_ARTIFACT_ENTRY_TASK_KEYS,
     JOB_STATES,
     ASTRAL_CONFIG,
@@ -32,7 +34,8 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     grade_value,
     importance_multiplier,
-    resume_artifact_compound_state,
+    is_build_artifacts_in_progress,
+    legacy_build_artifacts_hop,
     resume_artifact_hop_task_keys,
 )
 from src.utils.formatting import enumerate_array
@@ -1630,33 +1633,114 @@ async def _run_cover_letter_for_job(
 _JOB_ARTIFACT_ENTRY_KEYS = JOB_ARTIFACT_ENTRY_TASK_KEYS
 
 
-def _resume_artifact_dispatch_row_ok(entry_task_key: str, input_state: str) -> bool:
-    tk = (entry_task_key or "").strip()
-    if tk not in resume_artifact_hop_task_keys():
-        return True
-    expected = resume_artifact_compound_state(tk)
-    got = (input_state or "").strip()
-    if got != expected:
+def _artifact_entry_hop_failed(aid: str) -> None:
+    tracker.release_job_dispatch_claim(aid)
+
+
+def _chain_run_next_targets(task_keys: Iterable[str]) -> set[str]:
+    from src.data.database import get_agent_task
+
+    targets: set[str] = set()
+    for tk in task_keys:
+        row = get_agent_task(tk) or {}
+        nxt = (row.get("run_next") or "").strip()
+        if nxt:
+            targets.add(nxt)
+    return targets
+
+
+def _build_artifacts_chain_entry_task_key(candidate_id: str) -> str:
+    rows = tracker.list_dispatch_tasks_for_candidate(
+        candidate_id, trigger_state=BUILD_ARTIFACTS_BASE_STATE,
+    )
+    keys = [
+        (row.get("task_key") or "").strip()
+        for row in rows
+        if (row.get("task_key") or "").strip() in resume_artifact_hop_task_keys()
+    ]
+    if not keys:
+        fallback = resume_artifact_hop_task_keys()[0]
         logger.warning(
-            "artifact entry: task_key=%s expects trigger_state=%s got %s",
+            "chain entry: no BUILD_ARTIFACTS dispatch rows for candidate=%s; fallback=%s",
+            candidate_id,
+            fallback,
+        )
+        return fallback
+    run_next_targets = _chain_run_next_targets(keys)
+    candidates = [k for k in keys if k not in run_next_targets]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise ValueError(
+            f"ambiguous BUILD_ARTIFACTS chain entry candidates: {candidates!r}"
+        )
+    fallback = resume_artifact_hop_task_keys()[0]
+    logger.warning(
+        "chain entry: no hop without incoming run_next for candidate=%s; fallback=%s",
+        candidate_id,
+        fallback,
+    )
+    return fallback
+
+
+def _resolve_chain_start_task_key(
+    job: Dict[str, Any],
+    *,
+    dispatch_task_key: str,
+    candidate_id: str,
+) -> Optional[str]:
+    tk = (dispatch_task_key or "").strip()
+    if tk not in resume_artifact_hop_task_keys():
+        return None
+    job_state = (job.get("state") or "").strip()
+    legacy_hop = legacy_build_artifacts_hop(job_state)
+    if legacy_hop:
+        return legacy_hop if tk == legacy_hop else None
+    if job_state == BUILD_ARTIFACTS_BASE_STATE:
+        return tk
+    return None
+
+
+def _chain_dispatch_row_ok(
+    job: Dict[str, Any],
+    dispatch_task_key: str,
+    input_state: str,
+    candidate_id: str,
+) -> bool:
+    ts = (input_state or "").strip()
+    tk = (dispatch_task_key or "").strip()
+    legacy_trigger = legacy_build_artifacts_hop(ts)
+    if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_trigger != tk:
+        logger.warning(
+            "artifact chain: task_key=%s expects trigger_state=%s got %s",
             tk,
-            expected,
-            got,
+            BUILD_ARTIFACTS_BASE_STATE,
+            ts,
+        )
+        return False
+    start = _resolve_chain_start_task_key(job, dispatch_task_key=tk, candidate_id=candidate_id)
+    if not start:
+        logger.warning(
+            "artifact chain: dispatch row mismatch task_key=%s job_state=%s",
+            tk,
+            (job.get("state") or "").strip(),
         )
         return False
     return True
 
 
-def _artifact_entry_hop_failed(aid: str) -> None:
-    tracker.release_job_dispatch_claim(aid)
+def _chain_failure_mode(result: Dict[str, Any], task_key: str) -> Literal["retry", "hard"]:
+    err = str(result.get("error") or "")
+    if "Job not found" in err or "Missing candidate_data" in err:
+        return "hard"
+    return "retry"
 
 
-def _try_graduate_artifact_job_to_candidate_review(
+def _chain_graduate_to_candidate_review(
     astral_job_id: str,
     *,
     debug: bool = False,
 ) -> Tuple[bool, str]:
-    """Terminal batch exit: persist gate + CANDIDATE_REVIEW (AST-789 / AST-552)."""
     row = tracker.get_job(astral_job_id)
     if not row:
         return False, "job_not_found"
@@ -1666,7 +1750,7 @@ def _try_graduate_artifact_job_to_candidate_review(
     if debug:
         dbg = get_logger(__name__, debug_flag=True)
         dbg.debug_index(
-            func="_try_graduate_artifact_job_to_candidate_review",
+            func="_chain_graduate_to_candidate_review",
             index=1,
             total=1,
             identifier=astral_job_id,
@@ -1686,43 +1770,119 @@ def _try_graduate_artifact_job_to_candidate_review(
     return True, "ok"
 
 
-async def _run_job_artifact_entry_batch(
+async def do_chain_for_job(
+    astral_job_id: str,
+    *,
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]],
+    debug: bool,
+    dispatch_task_key: str,
+    input_state: str,
+) -> Dict[str, Any]:
+    """AST-803: run BUILD_ARTIFACTS CHAIN via do_task + run_next; graduate on success."""
+    from src.core import agent as agent_mod
+
+    job = tracker.get_job(astral_job_id)
+    if not job or not is_build_artifacts_in_progress(job.get("state") or ""):
+        return {"success": False, "error": "job_not_in_build_artifacts"}
+
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    if not candidate_id:
+        company_key = job.get("company")
+        if isinstance(company_key, str) and company_key.strip():
+            co = tracker.get_company(company_key.strip())
+            if co and co.get("candidate_id"):
+                candidate_id = str(co["candidate_id"])
+
+    start_key = _resolve_chain_start_task_key(
+        job, dispatch_task_key=dispatch_task_key, candidate_id=candidate_id,
+    )
+    if not start_key:
+        return {"success": False, "error": "dispatch_row_mismatch"}
+
+    base = dict(ctx or {})
+    cd = tracker._candidate_data_for_job(astral_job_id)
+    if not cd:
+        return {"success": False, "error": f"Missing candidate_data for job {astral_job_id}"}
+
+    task_ctx: Dict[str, Any] = {
+        **base,
+        "batch_entities": [job],
+        "batch_size": 1,
+        "job": job,
+        "candidate_data": cd,
+    }
+    if candidate_id:
+        task_ctx["astral_candidate_id"] = candidate_id
+    if "vector_labels" not in task_ctx:
+        task_ctx["vector_labels"] = {}
+
+    seed_chain: Optional[Dict[str, str]] = None
+    parent = agent_mod._resume_artifact_parent_hop_key(start_key)
+    if parent:
+        hydrated, err = agent_mod._hydrate_caller_chain_context(
+            "job", astral_job_id, start_key, parent, None,
+        )
+        if err:
+            return {"success": False, "error": err}
+        seed_chain = agent_mod._merge_hydrated_caller_context(None, hydrated)
+
+    result = await do_task(
+        start_key,
+        index=astral_job_id,
+        ctx=task_ctx,
+        debug=debug,
+        chain_context=seed_chain,
+    )
+    if not result.get("success"):
+        if _chain_failure_mode(result, start_key) == "hard":
+            try:
+                tracker.transition_job_state([astral_job_id], ERROR_BUILD_ARTIFACTS_STATE)
+            except ValueError as exc:
+                logger.warning("[%s] ERROR_BUILD_ARTIFACTS transition failed: %s", astral_job_id, exc)
+        return result
+
+    ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
+    if not ok:
+        logger.warning(
+            "[%s] terminal graduation failed reason=%s entry_task_key=%s",
+            astral_job_id,
+            reason,
+            dispatch_task_key,
+        )
+        return {"success": False, "error": reason}
+    return {"success": True}
+
+
+async def _run_build_artifacts_chain_batch(
     batch_id: str,
     entities: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]],
     debug: bool,
     entry_task_key: str,
+    input_state: str,
 ) -> Dict[str, int]:
-    """Run one Phase E artifact hop per job starting at entry_task_key (dispatch row task_key)."""
-    from src.core.agent import run_resume_artifact_chain_for_job
-
+    """Run BUILD_ARTIFACTS CHAIN for each job (AST-803)."""
     passed = errors = 0
-    base_ctx = dict(ctx or {})
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "").strip()
     for job in entities:
         aid = job["astral_job_id"]
-        chain_ctx = {**base_ctx, "job": job, "batch_entities": [job], "batch_size": 1}
-        r = await run_resume_artifact_chain_for_job(
-            aid, chain_ctx, debug=debug, first_task_key=entry_task_key,
+        row = tracker.get_job(aid) or job
+        if not _chain_dispatch_row_ok(row, entry_task_key, input_state, candidate_id):
+            continue
+        r = await do_chain_for_job(
+            aid,
+            batch_id=batch_id,
+            ctx=ctx,
+            debug=debug,
+            dispatch_task_key=entry_task_key,
+            input_state=input_state,
         )
         if not r.get("success"):
             _artifact_entry_hop_failed(aid)
             errors += 1
             continue
-        ok, reason = _try_graduate_artifact_job_to_candidate_review(aid, debug=debug)
-        if not ok:
-            logger.warning(
-                "[%s] terminal graduation failed reason=%s entry_task_key=%s",
-                aid,
-                reason,
-                entry_task_key,
-            )
-            _artifact_entry_hop_failed(aid)
-            errors += 1
-            continue
-        row = tracker.get_job(aid) or job
         passed += 1
-        if entry_task_key == "contemplate_job":
-            await _run_cover_letter_for_job(aid, row, base_ctx, debug)
     return {
         "total_processed": len(entities),
         "total_passed": passed,
@@ -1893,9 +2053,9 @@ async def run_consult_task(
     elif task_key == "draft_cover_letter":
         return await _run_craft_job_cover_letter_batch(batch_id, entities, ctx, debug)
     elif task_key in _JOB_ARTIFACT_ENTRY_KEYS:
-        if not _resume_artifact_dispatch_row_ok(task_key, input_state):
-            return zero
-        return await _run_job_artifact_entry_batch(batch_id, entities, ctx, debug, task_key)
+        return await _run_build_artifacts_chain_batch(
+            batch_id, entities, ctx, debug, task_key, input_state,
+        )
     else:
         logger.warning("run_consult_task: unhandled task_key=%s for input_state=%s", task_key, input_state)
         return zero
