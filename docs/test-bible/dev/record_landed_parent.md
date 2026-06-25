@@ -47,3 +47,31 @@ Prep-uat **`record-landed-parent.sh`** invokes **`scripts/rebuild_merge_ticket_l
   tests/component/scripts/test_record_landed_parent.py \
   -q
 ```
+
+---
+
+### AST-805 · AST-801
+
+**UAT fix:** Prep-uat **`record-landed-parent.sh`** runs rebuild **before** Linear parent moves to **User Testing**, so the landing parent was omitted from **`fetch_user_testing_parent_ids()`**. **`--landing-parent AST-NNN`** unions the landing id with the Linear UAT set; ftr-on-dev and **`recorded_at`** gates unchanged (**AST-800**).
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Union landing parent not in mocked Linear UAT set | `scripts/rebuild_merge_ticket_log.py` | **`TestRebuildMergeTicketLogLandingParent::test_collect_entries_unions_landing_parent_not_in_linear_uat`** |
+| 2 | Landing parent still requires ftr-on-dev | same | **`::test_collect_entries_skips_landing_parent_without_ftr_on_dev`** |
+| 3 | Blank `--landing-parent` ignored | same | **`::test_collect_entries_ignores_blank_landing_parent`** |
+| 4 | stdout JSON includes **`landing_parent`** | same | **`::test_main_json_summary_includes_landing_parent`** |
+| 5 | Shell passes **`--landing-parent "$PARENT_ID"`** | `scripts/git/record-landed-parent.sh` | **`TestRecordLandedParentShell::test_record_landed_parent_passes_landing_parent_flag`** |
+| 6 | Temp-repo integration stub receives flag | same + rebuild stub | **`TestRecordLandedParent::test_record_landed_parent_rebuilds_and_commits`** |
+
+**Regression (required):** **AST-800** rebuild wiring tests in same module remain green.
+
+**AST-805** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–6 + AST-800 regression in **`test_record_landed_parent.py`** — not zero-arg harness / branch-lock gate.

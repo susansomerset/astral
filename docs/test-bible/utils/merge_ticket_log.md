@@ -41,7 +41,7 @@ Log **remove** + **rewrite** for lifecycle / prune CLIs (`remove_merge_ticket_lo
 
 ### AST-800
 
-Public **`rebuild_merge_ticket_log(entries)`** alias for prep-uat full log rewrite (`scripts/rebuild_merge_ticket_log.py`). Runtime deploy status reads log only (no per-poll Linear filter).
+Public **`rebuild_merge_ticket_log(entries)`** alias for prep-uat full log rewrite (`scripts/rebuild_merge_ticket_log.py`). Runtime deploy status reads log only (no per-poll Linear filter). **AST-805:** rebuild CLI accepts **`--landing-parent AST-NNN`** to union the prep-uat landing parent before Linear **User Testing** filter — see **`dev/record_landed_parent.md` AST-805**.
 
 **Manifest pytest gate (AST-681 utils-only):**
 

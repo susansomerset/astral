@@ -29,16 +29,21 @@ exec "$REAL_GIT" "$@"
 """
 
 _REBUILD_STUB = """#!/usr/bin/env python3
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.utils.merge_ticket_log import rebuild_merge_ticket_log
 
+parent = "AST-999"
+if "--landing-parent" in sys.argv:
+    parent = sys.argv[sys.argv.index("--landing-parent") + 1]
+
 rebuild_merge_ticket_log(
-    [{"ticket_id": "AST-999", "recorded_at": "2026-06-25T00:00:00+00:00"}]
+    [{"ticket_id": parent, "recorded_at": "2026-06-25T00:00:00+00:00"}]
 )
-print('{"count": 1, "parents": ["AST-999"]}')
+print(json.dumps({"count": 1, "parents": [parent], "landing_parent": parent.upper()}))
 """
 
 
@@ -147,6 +152,10 @@ class TestRecordLandedParentShell:
         assert "append_merge_ticket_log.py" not in text
         assert "rebuild merge ticket log" in text
 
+    def test_record_landed_parent_passes_landing_parent_flag(self) -> None:
+        text = RECORD_SCRIPT.read_text(encoding="utf-8")
+        assert '--landing-parent "$PARENT_ID"' in text
+
 
 class TestRecordLandedParent:
     def test_record_landed_parent_rebuilds_and_commits(self, tmp_path: Path) -> None:
@@ -159,6 +168,7 @@ class TestRecordLandedParent:
         assert len(log) == 1
         assert log[0]["ticket_id"] == "AST-999"
         assert "recorded_at" in log[0]
+        assert '"landing_parent": "AST-999"' in result.stdout
 
         log_result = subprocess.run(
             ["git", "log", "-1", "--oneline"],
