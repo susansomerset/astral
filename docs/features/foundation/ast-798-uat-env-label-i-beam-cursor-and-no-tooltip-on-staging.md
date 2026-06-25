@@ -219,3 +219,13 @@ No conflicts requiring `conf-!!-NONE`.
 | None required for resolve | — |
 | Optional: swap CSS file assertion for `getComputedStyle(envLabel).cursor === 'default'` | Engineer |
 | Manual: confirm Railway staging has one of the three Linear env vars (plan § Manual verify) | Susan |
+
+---
+
+## Resolution (2026-06-25)
+
+**Publish ref:** `origin/sub/AST-791/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging` @ `2306d71` (Radia `docs(AST-798): Radia review — clean`)
+
+Radia review clean — no fix-now or discuss items. No product code changes. Advisory CSS source-contract test left as Betty shipped. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-791-list-of-uat-issues-in-environment-tooltip-is-not-updating`.
+
+**Outcome:** Linear key env precedence + static env default cursor ready for Susan staging UAT (Railway must expose at least one rollcall Linear env var for tooltip content).
