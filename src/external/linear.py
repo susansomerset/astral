@@ -10,8 +10,17 @@ import urllib.request
 
 LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
 _TEAM_KEY = "AST"
+_LINEAR_KEY_ENVS = ("LINEAR_API_KEY", "LINEAR_KEY_CHUCKLES", "LINEAR_KEY_CURSOR")
 
 __all__ = ["LinearApiError", "fetch_parent_issue_states"]
+
+
+def _resolve_linear_api_key() -> str:
+    for name in _LINEAR_KEY_ENVS:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    raise LinearApiError("Linear API key not configured")
 
 _TICKET_ID_RE = re.compile(r"^AST-(\d+)$")
 
@@ -34,7 +43,7 @@ def _graphql(query: str, variables: dict | None = None) -> dict:
         LINEAR_GRAPHQL_URL,
         data=payload,
         headers={
-            "Authorization": os.environ["LINEAR_API_KEY"],
+            "Authorization": _resolve_linear_api_key(),
             "Content-Type": "application/json",
         },
         method="POST",
