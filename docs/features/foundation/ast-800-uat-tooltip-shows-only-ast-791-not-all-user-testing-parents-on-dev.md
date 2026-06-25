@@ -256,3 +256,13 @@ AST-792 runtime Linear filter on every admin poll is **replaced** by prep-uat **
 | None required for resolve | — |
 | After merge: run prep-uat / manual `rebuild_merge_ticket_log.py` on dev so log reflects all UAT parents on integration line | Chuckles / Susan |
 | Optional: add mocked-git component test for rebuild CLI | Betty / engineer |
+
+---
+
+## Resolution (2026-06-25)
+
+**Publish ref:** `origin/sub/AST-791/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev` @ `680a822` (Radia `docs(AST-800): Radia review — clean`)
+
+Radia review clean — no fix-now or discuss items. No product code changes. Advisory prep-uat refresh semantics and rebuild CLI test coverage deferred per review. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-791-list-of-uat-issues-in-environment-tooltip-is-not-updating`.
+
+**Outcome:** Prep-uat full merge ticket log rebuild (all User Testing parents with ftr on dev) + log-only deploy-status read ready for Susan UAT; next prep-uat land on dev refreshes tooltip list for all qualifying parents.
