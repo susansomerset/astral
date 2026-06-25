@@ -73,3 +73,27 @@ class TestAppendMergeTicketLog:
         assert entries[1]["ticket_id"] == "AST-700"
         assert entries[1]["recorded_at"] >= first["recorded_at"]
         assert second["recorded_at"] == entries[1]["recorded_at"]
+
+
+class TestRemoveMergeTicketLog:
+    def test_remove_existing_entry(self, log_path: Path) -> None:
+        mtl.append_merge_ticket_log("AST-100")
+        mtl.append_merge_ticket_log("AST-200")
+        assert mtl.remove_merge_ticket_log("AST-100") is True
+        entries = mtl.read_merge_ticket_log()
+        assert len(entries) == 1
+        assert entries[0]["ticket_id"] == "AST-200"
+
+    def test_remove_missing_returns_false(self, log_path: Path) -> None:
+        mtl.append_merge_ticket_log("AST-100")
+        assert mtl.remove_merge_ticket_log("AST-999") is False
+        assert len(mtl.read_merge_ticket_log()) == 1
+
+
+class TestRewriteMergeTicketLog:
+    def test_rewrite_merge_ticket_log(self, log_path: Path) -> None:
+        replacement = [
+            {"ticket_id": "AST-500", "recorded_at": "2026-06-01T00:00:00+00:00"},
+        ]
+        mtl.rewrite_merge_ticket_log(replacement)
+        assert mtl.read_merge_ticket_log() == replacement
