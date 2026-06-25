@@ -515,7 +515,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-796 · AST-794
 
-**Scope:** **`GAZER_CONFIG`** rename **`scrape_jd` → `fetch_jd`** (+ transitional read alias); **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`DISPATCH_RETIRED_TASK_KEYS`** cutover; extended **`dispatch_task_key_retired_message`**. Runtime gazer/consult routing deferred **AST-797**.
+**Scope:** **`GAZER_CONFIG`** rename **`scrape_jd` → `fetch_jd`** (+ transitional read alias removed in **AST-797**); **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`DISPATCH_RETIRED_TASK_KEYS`** cutover; extended **`dispatch_task_key_retired_message`**. Runtime routing: **AST-797**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -530,6 +530,18 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys \
   -q
 ```
+
+---
+
+### AST-797 · AST-794
+
+**Runtime config:** remove **`GAZER_CONFIG["scrape_jd"]`** alias; **`dispatch_task_admin_defaults("qualify_job_listings")`** → **`trigger_state=NEW`**; primary NEW row claims **NEW** only (**VALID_TITLE_RETRY** companion seeded by migration).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Qualify @ NEW + alias removal | `src/utils/config.py` | `TestAst797ConfigRuntimeCutover`; revised **`TestAst549DispatchAdminDefaults::test_qualify_job_listings_batch_call_mode_and_sort`**; revised **`TestAst796FetchJdSchedulableCutover::test_gazer_config_fetch_jd_without_transitional_alias`** |
+
+**AST-797** narrowed run: see **`docs/test-bible/core/consult.md`** (**AST-797**).
 
 ---
 

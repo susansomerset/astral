@@ -1501,7 +1501,8 @@ class TestApiAdminBranchGaps:
             lambda job_id: {"astral_job_id": job_id, "job_data": {"raw_job_listing": "raw"}, "company": "acme"},
         )
         monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: {"job_site": "site"})
-        assert admin_mod._build_adhoc_live_content("validate_title", "", ["j1"]) != ""
+        assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["j1"]) != ""
+        assert admin_mod._build_adhoc_live_content("validate_title", "", ["j1"]) == ""
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["missing"]) == ""
         monkeypatch.setitem(admin_mod.TASK_CONFIG, "evaluate_jd", {**admin_mod.TASK_CONFIG["evaluate_jd"], "requires_company": True})

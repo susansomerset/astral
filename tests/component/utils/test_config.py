@@ -574,9 +574,10 @@ class TestAst796FetchJdSchedulableCutover:
             "batch_call_mode": 0,
         }
 
-    def test_gazer_config_fetch_jd_with_scrape_jd_alias(self) -> None:
+    def test_gazer_config_fetch_jd_without_transitional_alias(self) -> None:
+        """AST-797 removed AST-796 read alias — runtime uses fetch_jd only."""
         assert cfg.GAZER_CONFIG["fetch_jd"]["pass_state"] == "JD_READY"
-        assert cfg.GAZER_CONFIG["scrape_jd"] is cfg.GAZER_CONFIG["fetch_jd"]
+        assert "scrape_jd" not in cfg.GAZER_CONFIG
 
     def test_retired_dispatch_keys_rejected(self) -> None:
         assert cfg.dispatch_task_key_retired_message("scrape_jd") == (
@@ -589,6 +590,19 @@ class TestAst796FetchJdSchedulableCutover:
                 cfg.dispatch_task_admin_defaults(tk)
 
 
+class TestAst797ConfigRuntimeCutover:
+    """AST-797: qualify @ NEW; no GAZER_CONFIG scrape_jd alias."""
+
+    def test_qualify_job_listings_defaults_trigger_new(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("qualify_job_listings")
+        assert d["trigger_state"] == "NEW"
+        assert d["entity_type"] == "job"
+        assert d["batch_call_mode"] == 1
+
+    def test_dispatch_claim_states_new_primary_only(self) -> None:
+        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW"]
+
+
 class TestAst549DispatchAdminDefaults:
     """AST-549: config-built dispatch_task admin defaults; no parallel seed dicts."""
 
@@ -599,7 +613,7 @@ class TestAst549DispatchAdminDefaults:
     def test_qualify_job_listings_batch_call_mode_and_sort(self) -> None:
         d = cfg.dispatch_task_admin_defaults("qualify_job_listings")
         assert d["entity_type"] == "job"
-        assert d["trigger_state"] == "VALID_TITLE"
+        assert d["trigger_state"] == "NEW"
         assert d["sort_by"] == "updated_at"
         assert d["batch_call_mode"] == 1
 

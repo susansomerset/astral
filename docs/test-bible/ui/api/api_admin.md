@@ -159,6 +159,16 @@ Routed page grouping: **`docs/test-bible/frontend/pages.md`** (**AST-749**).
 
 Config catalog: **`docs/test-bible/utils/config.md`** (**AST-796**).
 
+### AST-797 · AST-794
+
+Runtime: **`fetch_jd_batch`** routing; **`validate_title`** adhoc preview removed; qualify inline validate via consult (**AST-797**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Adhoc preview | `src/ui/api/api_admin.py` | `TestAdhocHelpers::test_trigger_state_helpers` — **`validate_title`** returns empty; **`qualify_job_listings`** still builds batch content |
+
+Consult + migration: **`docs/test-bible/core/consult.md`** (**AST-797**).
+
 **AST-796** narrowed pytest:
 
 ```bash
