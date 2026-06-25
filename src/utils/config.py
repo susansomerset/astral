@@ -925,7 +925,7 @@ INFLOW_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# GAZER_CONFIG: gazer-batch steps (validate_title inline-only until AST-797, fetch_jd, gaze).
+# GAZER_CONFIG: gazer-batch steps (validate_title inline-only qualify pre-step; fetch_jd; gaze).
 # Mirrors orchestration for gazer-owned paths until gazer.py reads this block directly (AST-467).
 # ROSTER_CONFIG["gaze"] duplicates error_state intentionally — semantic twin must stay literal-identical here.
 # ---------------------------------------------------------------------------
@@ -962,9 +962,6 @@ GAZER_CONFIG = {
         "error_state": "ERROR_GAZE",
     },
 }
-
-# AST-797 removes after gazer/consult read fetch_jd.
-GAZER_CONFIG["scrape_jd"] = GAZER_CONFIG["fetch_jd"]
 
 
 # Rubric artifact keys validated on candidate save (trailing grade table + grade_descriptions).
@@ -1315,7 +1312,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "vet_inflow_discovery":
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
-        return "VALID_TITLE"
+        return "NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
     if task_key == "fetch_job_pages":
