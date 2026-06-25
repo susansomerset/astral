@@ -4835,6 +4835,7 @@ class TestAst724VectorFeedbackCapture:
             perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
+            batch_size=1,
         )
         conn = db._get_connection()
         try:
@@ -4866,6 +4867,7 @@ class TestAst724VectorFeedbackCapture:
             perf={"status": "success", "vector_reviews": ["not-valid"]},
             debug=False,
             prompt_blocks=prompt_blocks,
+            batch_size=1,
         )
         assert len(prompt_blocks) == 1
         assert prompt_blocks[0]["type"] == "FEEDBACK"
@@ -4891,7 +4893,63 @@ class TestAst724VectorFeedbackCapture:
             perf={"status": "failure", "vector_reviews": ["G1RACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
+            batch_size=1,
         )
         assert prompt_blocks == []
         rows = db.get_agent_data_by_batch("batch-724-fail", block_type="FEEDBACK")
         assert rows == []
+
+
+class TestAst809VectorFeedbackBatchMetadata:
+    """AST-809: batch_id, batch_size, and completed_at on vector_feedback rows."""
+
+    def test_capture_skips_insert_when_batch_id_missing(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=5,
+        )
+        assert prompt_blocks == []
+
+    def test_capture_persists_batch_metadata_on_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        completed = "2026-06-25 14:30:00"
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-809-meta",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=[],
+            batch_size=7,
+            completed_at=completed,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-809-meta")
+        assert len(rows) == 3
+        assert all(r["batch_id"] == "batch-809-meta" for r in rows)
+        assert all(r["batch_size"] == 7 for r in rows)
+        assert all(r["completed_at"] == completed for r in rows)

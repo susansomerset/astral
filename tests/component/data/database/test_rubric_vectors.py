@@ -309,6 +309,7 @@ class TestAst724VectorFeedbackRows:
             candidate_id="cand-1",
             batch_id="batch-724",
             task_key="grade_get",
+            batch_size=1,
         )
         conn = db._get_connection()
         try:
@@ -349,6 +350,7 @@ class TestAst725ListVectorFeedback:
             candidate_id="cand-1",
             batch_id=batch_id,
             task_key=task_key,
+            batch_size=1,
         )
         return uuid
 
@@ -390,6 +392,7 @@ class TestAst725AggregateVectorFeedback:
             candidate_id="cand-1",
             batch_id="batch-725-sum",
             task_key="grade_get",
+            batch_size=1,
         )
         summary = db.aggregate_vector_feedback_by_vector("cand-1", "grade_get")
         assert len(summary) == 2
@@ -400,3 +403,46 @@ class TestAst725AggregateVectorFeedback:
         assert "A:" in g1["relevance_dist"]
         assert g2["feedback_row_count"] == 0
         assert g2["batch_count"] == 0
+
+class TestAst809VectorFeedbackBatchMetadata:
+    def test_insert_requires_batch_id(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        db.insert_vector_feedback_rows(
+            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            candidate_id="cand-1",
+            batch_id="",
+            task_key="grade_get",
+            batch_size=3,
+        )
+        assert db.list_vector_feedback(candidate_id="cand-1") == []
+
+    def test_insert_persists_batch_size_and_completed_at(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        uuid = db.list_rubric_vectors("cand-1", "grade_get")[0]["rubric_vector_uuid"]
+        completed = "2026-06-25 10:00:00"
+        db.insert_vector_feedback_rows(
+            [{"rubric_vector_uuid": uuid, "code": "G1", "relevance": "A", "clarity": "O", "verdict": "K"}],
+            candidate_id="cand-1",
+            batch_id="batch-809",
+            task_key="grade_get",
+            batch_size=4,
+            completed_at=completed,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-809")
+        assert len(rows) == 3
+        assert all(r["batch_size"] == 4 for r in rows)
+        assert all(r["completed_at"] == completed for r in rows)
+        assert all(r["created_at"] == completed for r in rows)
