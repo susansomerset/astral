@@ -253,3 +253,14 @@ No conflicts requiring `conf-!!-NONE`.
 | follow-up | Optional: document prefilter embedded-RC hydration gap or merge embedded criteria into rubric_lookup for `prefilter_company`. |
 
 **Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
+
+## Resolution
+
+**Date:** 2026-06-18  
+**Radia review:** clean — no fix-now or discuss items; advisory only (prefilter embedded RC hydration, explicit craft `owner_task_key`).
+
+**Product changes:** none — implementation from build (`bfa3795` code tip) + Betty tests (`fc98dec`) already satisfied review.
+
+**§9a dry-run:** `origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin` merges cleanly into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
+
+**Publish ref:** `origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin` @ `7b0757c` (includes Radia review doc).
