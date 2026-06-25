@@ -168,3 +168,42 @@ Stage 1: `dispatch_entity_state_registry` in config; `_dispatch_task_key_trigger
 Stage 2: `AdminScheduledActions` loads **candidate** state options and uses them in Input State when `entity_type === "candidate"`.
 
 **Betty / qa-child:** Manifest in plan QA table — `test_api_admin.py` candidate validation + PUT success; `test_AdminScheduledActions.test.tsx` candidate state_options normalization.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation` @ `8108fc1`  
+**Product commits:** `2309bd5` config + api_admin · `6358a7b` AdminScheduledActions  
+**Tests:** `d80f757` (Betty manifest on `origin/tests`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Stage 1 — config helper | `dispatch_entity_state_registry` maps job/company/candidate to state registries; KeyError path preserves unsupported-entity_type message shape. |
+| Stage 1 — admin validation | `_dispatch_task_key_trigger_error` uses ENTITY_TYPES + registry lookup; **inflow_discovery** + **LIVE_PROMPTS** passes; invalid candidate state rejected; **resume_artifact_hop_task_keys** guard unchanged. |
+| POST / PUT coverage | `create_dtask` validates before save; `update_dtask` `elif trigger_state`-only branch closes the gap when task_key is omitted. |
+| state_options | `candidate` key exposes **CANDIDATE_STATES** keys (incl. **LIVE_PROMPTS**). |
+| Stage 2 — UI | `stateOptions.candidate` loaded/normalized; `inputStateOptions` useMemo selects candidate states when `entity_type === "candidate"`. |
+| §1.3 / §1.4 / §2.1 | DRY registry helper; no hardcoded state lists; config-driven validation via `dispatch_task_admin_defaults`. |
+| §3.3 | `api_admin` imports config symbols only; no layer violations. |
+| §3.2 UI config-driven | Input State options from API payload, not duplicated in React. |
+| Plan Self-Assessment | Scope Single-Component matches diff; no sibling bleed (dispatcher/eligibility out of scope). |
+| Tests + bible | `TestAst804CandidateDispatchAdminValidation` (5 cases) + frontend describe; bible rows in `api_admin.md` / `pages.md`. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — Katherine may proceed with `resolve-child` (§9a dry-run).
