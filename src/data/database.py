@@ -705,12 +705,45 @@ def apply_agent_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str,
         conn.execute("DELETE FROM agent")
 
 
+def _apply_agent_task_repo_json_rows_exact(
+    conn: sqlite3.Connection, rows: list[dict[str, Any]],
+) -> None:
+    """Write repo JSON rows verbatim (AST-793) — preserves task_key_uuid and updated_at."""
+    columns_ordered = table_columns(conn, "agent_task")
+    qt = _sql_quote_ident("agent_task")
+    cols_join = ",".join(_sql_quote_ident(c) for c in columns_ordered)
+    placeholders = ",".join("?" * len(columns_ordered))
+    uuid_col = _sql_quote_ident("task_key_uuid")
+
+    for ri, row in enumerate(rows, start=1):
+        uuid_raw = row.get("task_key_uuid")
+        if uuid_raw is None or not str(uuid_raw).strip():
+            raise ValueError(f"agent_task repo JSON row {ri}: missing task_key_uuid")
+        uuid_pk = uuid_raw if isinstance(uuid_raw, str) else str(uuid_raw)
+
+        existing = conn.execute(
+            f"SELECT {cols_join} FROM {qt} WHERE {uuid_col} = ?", (uuid_pk,),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                f"INSERT INTO {qt} ({cols_join}) VALUES ({placeholders})",
+                tuple(row[c] for c in columns_ordered),
+            )
+        else:
+            set_parts = [_sql_quote_ident(c) + " = ?" for c in columns_ordered if c != "task_key_uuid"]
+            vals_up = tuple(row[c] for c in columns_ordered if c != "task_key_uuid") + (uuid_pk,)
+            conn.execute(
+                f"UPDATE {qt} SET {', '.join(set_parts)} WHERE {uuid_col} = ?",
+                vals_up,
+            )
+
+
 def apply_agent_task_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
-    """Retire all current agent_task rows, then import repo JSON via Copy Output semantics."""
+    """Retire all current agent_task rows, then apply repo JSON with exact file field values."""
     _ensure_agent_task_schema(conn)
     _validate_agent_task_repo_json_rows(conn, rows)
     conn.execute("UPDATE agent_task SET current = 0 WHERE current = 1")
-    apply_agent_task_copy_upsert(conn, rows)
+    _apply_agent_task_repo_json_rows_exact(conn, rows)
 
 
 def apply_config_table_upsert(

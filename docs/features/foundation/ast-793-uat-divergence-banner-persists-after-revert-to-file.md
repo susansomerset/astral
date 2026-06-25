@@ -117,3 +117,13 @@ No unresolved conflicts.
 - **AST-783** added divergence compare + revert UI; agent revert path already clears banner (uses `apply_agent_repo_json_startup` which preserves file fields).
 - **AST-786/787** seeded repo JSON — not this ticket.
 - **AST-790** grouping import — out of scope per bug boundaries.
+
+## Build review stub
+
+**Built:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `<pending>`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `<pending>` | `_apply_agent_task_repo_json_rows_exact` — revert/startup writes file uuid + updated_at |
+
+**Hand-verify:** post-revert `agent_task.diverged` false; double-revert smoke green.
