@@ -236,3 +236,14 @@ Focused UAT fix diff (10 files) — sibling epic commits already on `origin/ftr`
 | UAT | Re-run Susan scenario: dispatch rubric task → Admin Vector Feedback shows batch id, size, and completed timestamp on new rows. |
 
 **Verdict:** One fix-now (Admin UI columns). Backend/capture path approve; resolve then UAT.
+
+---
+
+## Resolution (Ada)
+
+**Date:** 2026-06-25  
+**Driven by:** Radia review fix-now — `AdminVectorFeedback.tsx` hardcoded `detailColumns`.
+
+**Changes:** Added **`batch_size`** (int) and **`completed_at`** (datetime) to `FeedbackRow` and `detailColumns` immediately after **`batch_id`**, mirroring `_VECTOR_FEEDBACK_COLUMNS`.
+
+**Publish:** `resolve(AST-809)` on `origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata`.

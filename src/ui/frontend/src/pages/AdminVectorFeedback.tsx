@@ -31,6 +31,8 @@ interface FeedbackRow {
   vector_feedback_id: string
   candidate_id: string | null
   batch_id: string | null
+  batch_size: number | null
+  completed_at: string | null
   task_key: string | null
   feedback_type: string | null
   value: string | null
@@ -194,6 +196,8 @@ export default function AdminVectorFeedback() {
         )
       },
     },
+    { key: "batch_size", label: "Batch size", type: "int" },
+    { key: "completed_at", label: "Completed", type: "datetime" },
     { key: "vector_code", label: "Vector", type: "str" },
     { key: "vector_label", label: "Label", type: "str" },
     { key: "feedback_type", label: "Type", type: "str" },
