@@ -317,3 +317,36 @@ No conflicts requiring `conf-!!-NONE`.
 **Product commits:** `6d634fd` (linear client, log remove, deploy status utils helpers), `8a3ac54` (core deploy status filter, prune CLIs, log cleanup)
 
 **Note for Betty (Stage 3):** Component tests per plan Stage 3 — manifest at Code Complete.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-791/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter` @ `eb71bc4`  
+**Product commits:** `6d634fd`, `8a3ac54`, `7e14cbc` (tests)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (Stages 1–3) | Linear client, log remove/rewrite, utils pure helpers, core orchestrator, api_system import swap, prune/remove CLIs, env.example, one-time log prune, and Betty manifest tests all match the binding plan. |
+| Layer compliance (§3.3) | `ui` → `core.deploy_status`; core orchestrates `external.linear` + utils; utils has no external import; `external/linear.py` is stdlib-only with no logging. |
+| Fail-closed (AC 2, 4–5) | Non-empty log + Linear failure or missing key → `merge_tickets: []`; uptime/env untouched. |
+| Config (§1.4, §2.1) | `uat_state_name` in `MERGE_TICKET_LOG_CONFIG`; team key `_TEAM_KEY` constant in external module. |
+| DRY / atomic writes | `_write_entries` shared by append, remove, rewrite; temp-file replace preserved. |
+| Scope boundaries | No AdminDeployFooter, Chuckles skill, or child-id/title changes. Diff vs `origin/dev` is AST-792 product + tests only (sibling test manifests via `merge-tests` are expected). |
+| Self-Assessment | Stated `scope-Single-Component` / `Medium` conf matches diff footprint; no `conf-!!-NONE`. |
+| Tests | Manifest gate files cover Linear client, log remove/rewrite, utils helpers, core payload integration, and API route monkeypatch path. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | `src/external/linear.py` `_graphql` | `urlopen` can raise `URLError` / timeout and `json.loads` can raise `JSONDecodeError` outside the `HTTPError → LinearApiError` path. Core catches `(LinearApiError, KeyError, ValueError)` per plan, so these would 500 the route instead of fail-closed `merge_tickets: []`. Low likelihood; optional hardening if Susan wants strict fail-closed on all network/parse faults. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None required for resolve | — |
+| Optional: wrap `URLError`, timeout, and `JSONDecodeError` as `LinearApiError` (or broaden core except) | Engineer, if Susan wants belt-and-suspenders fail-closed |
