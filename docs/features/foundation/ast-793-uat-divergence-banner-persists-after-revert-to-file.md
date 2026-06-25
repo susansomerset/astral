@@ -154,3 +154,13 @@ No **fix-now** items.
 | --- | --- |
 | resolve-child | None — merge when parent UAT lane clears. |
 | Post-merge UAT | Manage Tasks **Revert to file** → banner clears without page reload. |
+
+## Resolution (2026-06-25)
+
+**Radia review:** clean — no **fix-now** items.
+
+**Product changes:** none — resolve pass is doc-only. Exact repo JSON apply shipped in `code(AST-793)` @ `05b4374`.
+
+**§9a dry-run:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task`.
+
+**Publish tip at resolve:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `2f2041b`.
