@@ -146,3 +146,40 @@ No conflicts requiring plan revision.
 **Built:** Stage 1 — **`GAZER_CONFIG`** **`fetch_jd`** + transitional **`scrape_jd`** read alias; **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`DISPATCH_RETIRED_TASK_KEYS`** cutover; **`dispatch_task_key_retired_message`** extended for **`scrape_jd`**, **`validate_title`**, **`gaze_board`**.
 
 **QA note:** Betty manifest for **`fetch_jd`** schedulable defaults, retired-key POST rejection, **`task_keys`** includes **`fetch_jd`** — verify-only per plan.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-794/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys` @ `17f5bce`  
+**Product commit:** `37b1af3` (`src/utils/config.py` only)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan Stage 1 (all 12 steps) | **`GAZER_CONFIG["fetch_jd"]`** carries prior **`scrape_jd`** literals; transitional **`GAZER_CONFIG["scrape_jd"]`** alias; header + section comments updated. |
+| Schedulable / retired catalogs | **`fetch_jd`** ∈ **`DISPATCH_SCHEDULABLE_TASK_KEYS`** @ **`PASSED_JOBLIST`**; **`scrape_jd`**, **`validate_title`**, **`gaze_board`** ∈ **`DISPATCH_RETIRED_TASK_KEYS`** and excluded from schedulable set. |
+| Retirement messaging | **`dispatch_task_key_retired_message`** extended per AST-748 pattern — replacement for **`scrape_jd`**, static messages for **`validate_title`** / **`gaze_board`**; **`dispatch_task_admin_defaults`** raises **`KeyError(retired)`** before schedulable check. |
+| Trigger / entity helpers | **`_dispatch_trigger_state_for_task_key`** / **`_dispatch_entity_type_for_task_key`** updated; retired branches removed. |
+| Scope boundary | No **`gazer.py`**, **`consult.py`**, **`database.py`**, or **`api_admin.py`** product changes — matches plan and Self-Assessment **`Single-Component`**. |
+| §1.3 / §1.4 / §2.1 | DRY extension of existing retirement helpers; frozenset catalogs remain config-driven. |
+| Tests + bible | **`TestAst796FetchJdSchedulableCutover`**, **`TestAst796FetchJdRetiredDispatchKeys`**; manifest rows in **`docs/test-bible/utils/config.md`** and **`docs/test-bible/ui/api/api_admin.md`**. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — ready for **`resolve-child`** / epic rollup with **AST-797** for runtime cutover.
+
+— Radia
