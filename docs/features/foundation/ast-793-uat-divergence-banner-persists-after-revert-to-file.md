@@ -163,4 +163,4 @@ No **fix-now** items.
 
 **§9a dry-run:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` merges cleanly into `origin/dev` and `origin/ftr/AST-756-repo-json-agent-agent-task`.
 
-**Publish tip at resolve:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `2f2041b`.
+**Publish tip at resolve:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `84e33e9`.
