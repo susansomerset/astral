@@ -1,4 +1,4 @@
-"""AST-683 / AST-693: record-landed-parent helper + merge-parent / prep-uat wiring."""
+"""AST-683 / AST-693 / AST-800: record-landed-parent helper + prep-uat wiring."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 RECORD_SCRIPT = REPO_ROOT / "scripts/git/record-landed-parent.sh"
 MERGE_PARENT_SH = REPO_ROOT / "scripts/git/merge-parent.sh"
 PREP_UAT_LAND_SH = REPO_ROOT / "scripts/git/prep-uat-land.sh"
-APPEND_SCRIPT = REPO_ROOT / "scripts/append_merge_ticket_log.py"
+REBUILD_SCRIPT = REPO_ROOT / "scripts/rebuild_merge_ticket_log.py"
 
 _FAKE_GIT = """#!/usr/bin/env bash
 set -euo pipefail
@@ -28,13 +28,26 @@ done
 exec "$REAL_GIT" "$@"
 """
 
+_REBUILD_STUB = """#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.utils.merge_ticket_log import rebuild_merge_ticket_log
+
+rebuild_merge_ticket_log(
+    [{"ticket_id": "AST-999", "recorded_at": "2026-06-25T00:00:00+00:00"}]
+)
+print('{"count": 1, "parents": ["AST-999"]}')
+"""
+
 
 def _copy_tree(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
 
-def _mini_repo(tmp_path: Path, *, with_append: bool = True) -> Path:
+def _mini_repo(tmp_path: Path, *, with_rebuild: bool = True) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     for rel in (
@@ -49,15 +62,17 @@ def _mini_repo(tmp_path: Path, *, with_append: bool = True) -> Path:
     (repo / "src/utils/config.py").write_text(
         f'"""Minimal config stub for AST-683 shell tests."""\n'
         f"from pathlib import Path\n\n"
-        f'MERGE_TICKET_LOG_CONFIG = {{"log_path": Path(r"{log_path}")}}\n',
+        f'MERGE_TICKET_LOG_CONFIG = {{"log_path": Path(r"{log_path}"), "uat_state_name": "User Testing"}}\n',
         encoding="utf-8",
     )
-    if with_append:
-        _copy_tree(APPEND_SCRIPT, repo / "scripts/append_merge_ticket_log.py")
+    if with_rebuild:
+        rebuild_path = repo / "scripts/rebuild_merge_ticket_log.py"
+        rebuild_path.parent.mkdir(parents=True, exist_ok=True)
+        rebuild_path.write_text(_REBUILD_STUB, encoding="utf-8")
     log_path.write_text("[]\n", encoding="utf-8")
     (repo / "scripts/git/record-landed-parent.sh").chmod(0o755)
-    if with_append:
-        (repo / "scripts/append_merge_ticket_log.py").chmod(0o755)
+    if with_rebuild:
+        (repo / "scripts/rebuild_merge_ticket_log.py").chmod(0o755)
 
     real_git = shutil.which("git") or "/usr/bin/git"
     subprocess.run(
@@ -125,8 +140,16 @@ def _run_record(repo: Path, parent_id: str = "AST-999") -> subprocess.CompletedP
     )
 
 
+class TestRecordLandedParentShell:
+    def test_record_landed_parent_wires_rebuild_not_append(self) -> None:
+        text = RECORD_SCRIPT.read_text(encoding="utf-8")
+        assert "rebuild_merge_ticket_log.py" in text
+        assert "append_merge_ticket_log.py" not in text
+        assert "rebuild merge ticket log" in text
+
+
 class TestRecordLandedParent:
-    def test_record_landed_parent_appends_and_commits(self, tmp_path: Path) -> None:
+    def test_record_landed_parent_rebuilds_and_commits(self, tmp_path: Path) -> None:
         repo = _mini_repo(tmp_path)
         result = _run_record(repo, "AST-999")
         assert result.returncode == 0, result.stderr
@@ -144,14 +167,14 @@ class TestRecordLandedParent:
             text=True,
             check=True,
         )
-        assert "prep-uat(AST-999)" in log_result.stdout
+        assert "rebuild merge ticket log" in log_result.stdout
 
-    def test_record_landed_parent_missing_append_script_blocks(self, tmp_path: Path) -> None:
-        repo = _mini_repo(tmp_path, with_append=False)
+    def test_record_landed_parent_missing_rebuild_script_blocks(self, tmp_path: Path) -> None:
+        repo = _mini_repo(tmp_path, with_rebuild=False)
         result = _run_record(repo)
         assert result.returncode != 0
         assert "BLOCKED" in result.stderr
-        assert "append script missing" in result.stderr
+        assert "rebuild script missing" in result.stderr
 
 
 class TestMergeParentShell:

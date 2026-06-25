@@ -44,3 +44,24 @@ Linear API key env precedence for deploy-status GraphQL (`_LINEAR_KEY_ENVS`: `LI
 ```bash
 .venv/bin/python -m pytest tests/component/external/test_linear.py -q
 ```
+
+---
+
+### AST-800
+
+Top-level parent epic ids in **User Testing** via paginated GraphQL (`fetch_user_testing_parent_ids`). Used by `scripts/rebuild_merge_ticket_log.py` at prep-uat land — not runtime deploy-status poll (AST-800).
+
+| Behavior | Tests |
+| --- | --- |
+| Returns sorted parent identifiers | `TestFetchUserTestingParentIds::test_fetch_user_testing_parent_ids_returns_sorted_parents` |
+| Paginates when `hasNextPage` | `TestFetchUserTestingParentIds::test_fetch_user_testing_parent_ids_paginates` |
+
+**Manifest pytest gate (AST-800 — full ticket):**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/external/test_linear.py \
+  tests/component/core/test_deploy_status.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```

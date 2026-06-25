@@ -26,11 +26,24 @@ After successful **`prep-uat-land.sh`** ftr land push, **`record-landed-parent.s
 | `merge-parent.sh` does not invoke helper | `TestMergeParentShell::test_merge_parent_shell_does_not_record_merge_ticket_log` |
 | Same ticket id → timestamp update, no duplicate | `TestAppendMergeTicketLog::test_append_same_id_updates_timestamp_no_duplicate` |
 
+---
+
+### AST-800
+
+Prep-uat **`record-landed-parent.sh`** invokes **`scripts/rebuild_merge_ticket_log.py`** (full log rebuild) — replaces append-only path (AST-683). See **`dev/record_landed_parent.md`**.
+
+| Behavior | Tests |
+| --- | --- |
+| Shell wires rebuild, not append | `TestRecordLandedParentShell::test_record_landed_parent_wires_rebuild_not_append` |
+| Rebuild stub + commit in temp repo | `TestRecordLandedParent::test_record_landed_parent_rebuilds_and_commits` |
+| Missing rebuild CLI → `BLOCKED` | `TestRecordLandedParent::test_record_landed_parent_missing_rebuild_script_blocks` |
+
 **Manifest pytest gate:**
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/component/utils/test_merge_ticket_log.py \
+  tests/component/external/test_linear.py \
+  tests/component/core/test_deploy_status.py \
   tests/component/scripts/test_record_landed_parent.py \
   -q
 ```
