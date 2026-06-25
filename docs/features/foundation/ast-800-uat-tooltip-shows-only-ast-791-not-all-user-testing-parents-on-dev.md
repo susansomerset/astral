@@ -222,3 +222,37 @@ AST-792 runtime Linear filter on every admin poll is **replaced** by prep-uat **
 **Product commits:** `dab4f20` (Linear UAT parent query, rebuild CLI, log rewrite alias), `b5dfa9b` (record-landed-parent rebuild wiring, log-only deploy status, env.example)
 
 **Note for Betty (Stage 3):** Component tests per plan Stage 3 — manifest at Code Complete.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-791/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev` @ `3bf7ec1`  
+**Product commits:** `dab4f20`, `b5dfa9b`, `74d0bf2` (tests)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (Stages 1–2) | `fetch_user_testing_parent_ids()` with pagination + `parent: { null: true }`; `rebuild_merge_ticket_log.py` (Linear + git ftr-on-dev gate + timestamp heuristics); `record-landed-parent.sh` rebuild wiring; core log-only read path (AST-792 runtime filter removed per Susan decision). |
+| Susan semantics | Full prep-uat rebuild replaces append-only log; runtime poll reads rebuilt file — matches parent comment superseding AST-792 per-poll filter. |
+| Layer compliance (§3.3) | external takes `uat_state_name` arg (no config import); core → utils only; scripts may import all layers. |
+| Ftr-on-dev gate | `ls-remote` + `merge-base --is-ancestor` + skip when no matching ftr — matches plan. |
+| Scope boundaries | No frontend/CSS changes; `src/` diff scoped to linear, core deploy_status, merge_ticket_log alias, scripts. |
+| Tests | Linear UAT-parent query (+ pagination), deploy_status log-read tests, record-landed-parent rebuild wiring per Betty manifest. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | Runtime / prep-uat | Tooltip list refreshes on **prep-uat rebuild**, not every 30s poll — parent AC 4 deferred to next prep-uat (documented plan decision). Staging won't show all UAT parents until next `record-landed-parent` rebuild runs on dev. |
+| **advisory** | `scripts/rebuild_merge_ticket_log.py` | Git subprocess / ftr-matching logic has no dedicated component test (plan manifest omits); covered only indirectly via shell stub in `test_record_landed_parent.py`. |
+| **advisory** | `_ftr_refs_for_parent` | `git ls-remote` once per parent id (plan-conformant step 3.2); could cache per rebuild if latency becomes an issue. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None required for resolve | — |
+| After merge: run prep-uat / manual `rebuild_merge_ticket_log.py` on dev so log reflects all UAT parents on integration line | Chuckles / Susan |
+| Optional: add mocked-git component test for rebuild CLI | Betty / engineer |
