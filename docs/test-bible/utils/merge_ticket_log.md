@@ -25,6 +25,18 @@ Prep-uat records parent ids in `data/merge_ticket_log.json`; sole writer is `app
 | Distinct ids accumulate | `TestAppendMergeTicketLog::test_append_never_truncates` |
 | Same id → update timestamp, no duplicate | `TestAppendMergeTicketLog::test_append_same_id_updates_timestamp_no_duplicate` |
 
+---
+
+### AST-792
+
+Log **remove** + **rewrite** for lifecycle / prune CLIs (`remove_merge_ticket_log`, `rewrite_merge_ticket_log`).
+
+| Behavior | Tests |
+| --- | --- |
+| Remove existing row | `TestRemoveMergeTicketLog::test_remove_existing_entry` |
+| Missing id → `False`, no mutation | `TestRemoveMergeTicketLog::test_remove_missing_returns_false` |
+| Atomic rewrite | `TestRewriteMergeTicketLog::test_rewrite_merge_ticket_log` |
+
 **Manifest pytest gate (AST-681):**
 
 ```bash
