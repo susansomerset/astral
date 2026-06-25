@@ -137,3 +137,12 @@ No conflicts requiring plan revision.
 - **`consult.py`** state→task map and **`run_consult_task`** branches still use **`scrape_jd`** / **`validate_title`** strings until **AST-797**.
 - **`gazer.py`** reads **`GAZER_CONFIG["scrape_jd"]`** via transitional alias; **AST-797** removes alias and renames batch entrypoints.
 - **`dispatch_task`** DB rows with **`task_key='scrape_jd'`** migrate in **AST-797**; this ticket does not touch **`database.py`**.
+
+## Review stub (build)
+
+**Publish ref:** `origin/sub/AST-794/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys`  
+**Product tip:** `37b1af3`
+
+**Built:** Stage 1 — **`GAZER_CONFIG`** **`fetch_jd`** + transitional **`scrape_jd`** read alias; **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`DISPATCH_RETIRED_TASK_KEYS`** cutover; **`dispatch_task_key_retired_message`** extended for **`scrape_jd`**, **`validate_title`**, **`gaze_board`**.
+
+**QA note:** Betty manifest for **`fetch_jd`** schedulable defaults, retired-key POST rejection, **`task_keys`** includes **`fetch_jd`** — verify-only per plan.
