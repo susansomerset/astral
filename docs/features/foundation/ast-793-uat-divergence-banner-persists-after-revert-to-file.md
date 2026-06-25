@@ -120,10 +120,10 @@ No unresolved conflicts.
 
 ## Build review stub
 
-**Built:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `<pending>`
+**Built:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `05b4374`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | `<pending>` | `_apply_agent_task_repo_json_rows_exact` — revert/startup writes file uuid + updated_at |
+| 1 | `05b4374` | `_apply_agent_task_repo_json_rows_exact` — revert/startup writes file uuid + updated_at |
 
 **Hand-verify:** post-revert `agent_task.diverged` false; double-revert smoke green.
