@@ -10,7 +10,7 @@ if [ ! -f "$REBUILD" ]; then
   echo "BLOCKED: rebuild script missing at ${REBUILD} — AST-800 must be on dev before record (AST-683)" >&2
   exit 1
 fi
-python3 "$REBUILD"
+python3 "$REBUILD" --landing-parent "$PARENT_ID"
 git -C "$MAIN" add data/merge_ticket_log.json
 if git -C "$MAIN" diff --cached --quiet; then
   echo "BLOCKED: merge ticket log unchanged after rebuild for ${PARENT_ID}" >&2
