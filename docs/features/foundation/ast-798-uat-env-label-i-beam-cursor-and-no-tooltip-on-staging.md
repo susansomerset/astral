@@ -187,3 +187,35 @@ No conflicts requiring `conf-!!-NONE`.
 **Product commits:** `b4cb30e` (Linear API key env precedence), `1ed038b` (default cursor CSS + env.example)
 
 **Note for Betty (Stage 3):** Component tests per plan Stage 3 — manifest at Code Complete.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-791/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging` @ `ce78bfa`  
+**Product commits:** `b4cb30e`, `1ed038b`, `ca81fd0` (tests)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity (Stages 1–2) | `_resolve_linear_api_key()` with rollcall env precedence; `_graphql` uses helper; missing all keys → `LinearApiError("Linear API key not configured")` (core fail-closed path unchanged). CSS `cursor: default; user-select: none` on `.nav-deploy-env`; interactive class untouched. |
+| Root-cause fix | Replaces hard `os.environ["LINEAR_API_KEY"]` (KeyError) with team-standard env names so staging can use `LINEAR_KEY_CHUCKLES` / `LINEAR_KEY_CURSOR` without weakening AST-792 UAT filter. |
+| Layer compliance (§3.3) | external stdlib-only; CSS-only ui change; no core/component logic edits. |
+| Scope boundaries | `src/` diff is `linear.py` + `App.css` + `env.example` only. AST-796 test/bible rows arrived via `merge-tests` (no sibling product on this ref). |
+| Self-Assessment | Stated `scope-minor` / `high` conf matches footprint. |
+| Tests | `TestResolveLinearApiKey` (3 cases) + AdminDeployFooter static-env assertions per Betty manifest. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | `test_AdminDeployFooter.test.tsx` | Plan Stage 3 asked for computed `cursor` style on the env span; test asserts **App.css source** contains `cursor: default` / `user-select: none` instead of `getComputedStyle`. Contract coverage is adequate; slightly weaker than plan wording. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None required for resolve | — |
+| Optional: swap CSS file assertion for `getComputedStyle(envLabel).cursor === 'default'` | Engineer |
+| Manual: confirm Railway staging has one of the three Linear env vars (plan § Manual verify) | Susan |
