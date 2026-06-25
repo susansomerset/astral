@@ -393,3 +393,84 @@ class TestAst787AgentRepoJsonSeed:
             assert grace["content"]
         finally:
             conn.close()
+
+class TestAst793AgentTaskRevertDivergence:
+    """AST-793 UAT: revert clears agent_task divergence via exact repo JSON apply."""
+
+    @pytest.fixture(autouse=True)
+    def _no_run_next_graph(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.data import database as database_mod
+
+        monkeypatch.setattr(database_mod, "_validate_run_next", lambda _c, _k, _rn: None)
+
+    def _seed_agent_task_from_repo(self, db) -> dict[str, object]:
+        rows = repo_json_mod.load_repo_admin_json_file("agent_task")
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            db.apply_agent_task_repo_json_startup(conn, rows)
+            conn.commit()
+        finally:
+            conn.close()
+        return {row["task_key"]: row for row in rows}
+
+    def test_revert_clears_agent_task_divergence_after_db_edit(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_agent_task_from_repo(db)
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE agent_task SET task_name = task_name || ' uat-edit' "
+                "WHERE task_key = 'prefilter_company' AND current = 1",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        assert repo_json_mod.get_repo_admin_json_divergence_status()["agent_task"]["diverged"] is True
+        repo_json_mod.revert_repo_admin_json_table("agent_task")
+        assert repo_json_mod.get_repo_admin_json_divergence_status()["agent_task"]["diverged"] is False
+
+    def test_revert_preserves_repo_task_key_uuid(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        file_by_key = self._seed_agent_task_from_repo(db)
+        expected_uuid = file_by_key["prefilter_company"]["task_key_uuid"]
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE agent_task SET task_name = task_name || ' uat-edit' "
+                "WHERE task_key = 'prefilter_company' AND current = 1",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        repo_json_mod.revert_repo_admin_json_table("agent_task")
+
+        conn = db._get_connection()
+        try:
+            got = conn.execute(
+                "SELECT task_key_uuid FROM agent_task WHERE task_key = ? AND current = 1",
+                ("prefilter_company",),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert got == expected_uuid
+
+    def test_double_revert_agent_task_stays_not_diverged(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_agent_task_from_repo(db)
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE agent_task SET user_prompt = user_prompt || ' x' "
+                "WHERE task_key = 'anticipate_scan' AND current = 1",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        repo_json_mod.revert_repo_admin_json_table("agent_task")
+        repo_json_mod.revert_repo_admin_json_table("agent_task")
+        assert repo_json_mod.get_repo_admin_json_divergence_status()["agent_task"]["diverged"] is False
+

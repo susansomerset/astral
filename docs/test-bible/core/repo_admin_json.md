@@ -41,3 +41,25 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
 **Grouping on revert/startup (AST-790):** import forwards four grouping columns — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-790**).
+
+---
+
+### AST-793 · AST-756 (UAT bug)
+
+**Product fix:** `apply_agent_task_repo_json_startup` writes repo JSON rows verbatim (including **`task_key_uuid`** and **`updated_at`**) via **`_apply_agent_task_repo_json_rows_exact`** so post-revert **`get_repo_admin_json_divergence_status`** clears **`agent_task.diverged`**. **`src/data/database.py` only** — compare/UI unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Revert clears divergence | `src/core/repo_admin_json.py`, `src/data/database.py` | `tests/component/core/test_repo_admin_json.py::TestAst793AgentTaskRevertDivergence::test_revert_clears_agent_task_divergence_after_db_edit` |
+| Preserves file UUID | `src/data/database.py` | `TestAst793AgentTaskRevertDivergence::test_revert_preserves_repo_task_key_uuid` |
+| Idempotent double revert | same | `TestAst793AgentTaskRevertDivergence::test_double_revert_agent_task_stays_not_diverged` |
+
+**AST-793** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst793AgentTaskRevertDivergence \
+  -q
+```
+
+**test-child scope gate (required):** `git show 05b4374 --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-793-uat-divergence-banner-persists-after-revert-to-file.md` (no `data/admin/**`).
