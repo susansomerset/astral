@@ -298,3 +298,25 @@ Core compare/revert: **`docs/test-bible/core/repo_admin_json.md`**. UI banner: *
 | --- | --- | --- |
 | req_dict column keys + row fields | `src/ui/api/api_admin.py` | `TestAst809VectorFeedbackBatchMetadata::test_list_returns_batch_metadata_fields` |
 | Column registry (with AST-725) | `src/ui/api/api_admin.py` | `TestAst725VectorFeedback::test_list_vector_feedback_and_req_dict` |
+
+---
+
+### AST-808 · AST-378 (UAT fix)
+
+Assessment enrichment, **`/vector_feedback/rubric_lookup`**, and **`POST /vector_feedback/hydrate_reviews`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assessment header + column defs | `src/ui/api/api_admin.py` | `TestAst808VectorFeedbackHydration::test_list_enriches_assessment_header_and_columns` |
+| Rubric lookup map | `src/ui/api/api_admin.py` | `TestAst808VectorFeedbackHydration::test_rubric_lookup_returns_code_map` |
+| Hydrate reviews POST | `src/ui/api/api_admin.py` | `TestAst808VectorFeedbackHydration::test_hydrate_reviews_endpoint` |
+
+**AST-808** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_feedback.py::TestAst808HydrateVectorReviewStrings \
+  tests/component/data/database/test_rubric_vectors.py::TestAst808ListVectorFeedbackContent \
+  tests/component/ui/api/test_api_admin.py::TestAst808VectorFeedbackHydration \
+  -q
+```

@@ -1974,6 +1974,67 @@ class TestAst809VectorFeedbackBatchMetadata:
         assert body["rows"][0]["completed_at"] == "2026-06-25 12:00:00"
 
 
+class TestAst808VectorFeedbackHydration:
+    def test_list_enriches_assessment_header_and_columns(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "vector_feedback_id": "vf-808",
+            "candidate_id": "c1",
+            "batch_id": "b1",
+            "task_key": "grade_get",
+            "vector_code": "G1",
+            "vector_label": "Grade fit",
+            "vector_content": "Criterion body",
+            "vector_importance": 8,
+            "feedback_type": "relevance",
+            "value": "A",
+        }
+        monkeypatch.setattr(admin_mod, "list_vector_feedback", lambda **kwargs: [row])
+        body = admin_client.get("/api/admin/vector_feedback?req_dict=1", headers=auth_headers).get_json()
+        enriched = body["rows"][0]
+        assert enriched["vector_assessment_header"] == "8 - Grade fit (G1)"
+        assert enriched["vector_content"] == "Criterion body"
+        col_keys = {c["key"] for c in body["columns"]}
+        assert {"vector_assessment_header", "vector_content"}.issubset(col_keys)
+
+    def test_rubric_lookup_returns_code_map(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_rubric_vectors",
+            lambda cid, owner, current_only=True: [
+                {"code": "G1", "label": "Grade fit", "content": "Body", "importance": 5},
+            ],
+        )
+        body = admin_client.get(
+            "/api/admin/vector_feedback/rubric_lookup?candidate_id=c1&owner_task_key=grade_get",
+            headers=auth_headers,
+        ).get_json()
+        assert body["G1"]["label"] == "Grade fit"
+        assert body["G1"]["content"] == "Body"
+
+    def test_hydrate_reviews_endpoint(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "_rubric_lookup_by_code",
+            lambda cid, owner: {
+                "G1": {"label": "Grade fit", "content": "Criterion body", "importance": 5},
+            },
+        )
+        resp = admin_client.post(
+            "/api/admin/vector_feedback/hydrate_reviews",
+            json={
+                "candidate_id": "c1",
+                "owner_task_key": "grade_get",
+                "vector_reviews": ["G1RACOVK"],
+            },
+            headers=auth_headers,
+        )
+        rows = resp.get_json()["rows"]
+        assert len(rows) == 1
+        assert rows[0]["code"] == "G1"
+        assert rows[0]["label"] == "Grade fit"
+        assert "Criterion body" in rows[0]["content"]
+
+
 class TestAst783RepoJsonApi:
     def test_repo_json_status_returns_divergence_map(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
