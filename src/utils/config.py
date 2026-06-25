@@ -91,6 +91,21 @@ _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Optional TASK_CONFIG.task_type: CRAFT | RUBRIC | CHAT | CHAIN (schema-only except CHAIN in consult).
+TASK_TYPES = frozenset({"CRAFT", "RUBRIC", "CHAT", "CHAIN"})
+BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
+ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
+LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
+RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
+_RESUME_ARTIFACT_HOP_TASK_KEYS = (
+    "anticipate_scan",
+    "contemplate_job",
+    "advise_job_resume",
+    "draft_job_resume",
+    "check_job_resume",
+    "finalize_job_resume",
+)
+
 # ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
 # task_prompt, cached_blocks, uncached_blocks) now lives in the agent_task
@@ -517,6 +532,8 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "contemplate_job": {
         "response_schema": {
@@ -527,6 +544,8 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "advise_job_resume": {
         "response_schema": {
@@ -537,6 +556,8 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     # Structure-keyed resume draft hop (AST-551 / AST-594); section bodies validated at runtime.
     "draft_job_resume": {
@@ -550,6 +571,8 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "check_job_resume": {
         "response_schema": {
@@ -560,6 +583,8 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "finalize_job_resume": {
         "response_schema": {
@@ -576,6 +601,8 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "task_type": "CHAIN",
+        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "draft_cover_letter": {
         "nocache_prompt": (
@@ -1051,42 +1078,16 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     },
 )
 
-# AST-595: resume artifact chain hop order (canonical copy also in BUILD_CONFIG['resume_artifact_chain']).
-RESUME_ARTIFACT_COMPOUND_PREFIX = "BUILD_ARTIFACTS."
-_RESUME_ARTIFACT_HOP_TASK_KEYS = (
-    "anticipate_scan",
-    "contemplate_job",
-    "advise_job_resume",
-    "draft_job_resume",
-    "check_job_resume",
-    "finalize_job_resume",
-)
+# AST-803: legacy BUILD_ARTIFACTS.<hop> names for in-flight rows (mid-chain resume until flattened).
+def _legacy_build_artifacts_compound_state_for_hop(task_key: str) -> str:
+    return f"{LEGACY_BUILD_ARTIFACTS_PREFIX}{task_key}"
 
 
-def _resume_artifact_compound_state_for_hop(task_key: str) -> str:
-    return f"{RESUME_ARTIFACT_COMPOUND_PREFIX}{task_key}"
+def _legacy_build_artifacts_compound_state_names() -> tuple[str, ...]:
+    return tuple(_legacy_build_artifacts_compound_state_for_hop(tk) for tk in _RESUME_ARTIFACT_HOP_TASK_KEYS)
 
 
-def _all_resume_artifact_compound_state_names() -> tuple[str, ...]:
-    return tuple(_resume_artifact_compound_state_for_hop(tk) for tk in _RESUME_ARTIFACT_HOP_TASK_KEYS)
-
-
-def _resume_artifact_compound_job_states() -> Dict[str, Dict[str, Any]]:
-    out: Dict[str, Dict[str, Any]] = {}
-    keys = _RESUME_ARTIFACT_HOP_TASK_KEYS
-    for i, tk in enumerate(keys):
-        cs = _resume_artifact_compound_state_for_hop(tk)
-        out[cs] = {
-            "prior_states": (
-                ["RECOMMENDED"]
-                if i == 0
-                else [_resume_artifact_compound_state_for_hop(keys[i - 1])]
-            ),
-        }
-    return out
-
-
-_ALL_RESUME_ARTIFACT_COMPOUND_STATES = _all_resume_artifact_compound_state_names()
+_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES = _legacy_build_artifacts_compound_state_names()
 
 # ---------------------------------------------------------------------------
 # JOB_STATES: job state registry.
@@ -1124,12 +1125,13 @@ JOB_STATES = {
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES]},
-    **_resume_artifact_compound_job_states(),
-    "BUILD_FAILED":           {"prior_states": list(_ALL_RESUME_ARTIFACT_COMPOUND_STATES)},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
+    ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     # AST-311/312: return-to-review from skipped and post-outcome states
-    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
-    "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "RECOMMENDED"]},
+    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
+    "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
@@ -1137,11 +1139,11 @@ JOB_STATES = {
     "FAILED_TECHNICAL_LIKE":  {"prior_states": ["PASSED_GET"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
-    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "RECOMMENDED"]},
+    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
 }
 
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
-RECOMMENDED_JOB_STATES = ["RECOMMENDED", *_ALL_RESUME_ARTIFACT_COMPOUND_STATES, "CANDIDATE_REVIEW"]
+RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
 
 JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
@@ -1165,10 +1167,9 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
             "path_suffix": "generate_artifacts",
         },
     ],
-    **{
-        cs: [_JOBS_RECOMMENDED_CANCEL_BUILD_ACTION]
-        for cs in _ALL_RESUME_ARTIFACT_COMPOUND_STATES
-    },
+    BUILD_ARTIFACTS_BASE_STATE: [
+        _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION,
+    ],
     "CANDIDATE_REVIEW": [
         {
             "action_key": "apply",
@@ -1277,6 +1278,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "qualify_job_listings", "fetch_jd", "evaluate_jd",
     "grade_do", "grade_get", "grade_like", "analysis_upshot",
     "contemplate_job", "draft_cover_letter",
+    *_RESUME_ARTIFACT_HOP_TASK_KEYS,
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
@@ -1331,7 +1333,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
     if task_key in resume_artifact_hop_task_keys():
-        return resume_artifact_compound_state(task_key)
+        return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
         return "CANDIDATE_REVIEW"
     if task_key not in DISPATCH_SCHEDULABLE_TASK_KEYS:
@@ -1368,8 +1370,8 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
     if entity_type == "job":
         if trigger_state in PASSED_SCORE_GATED_STATES:
             return "latest_score"
-        if trigger_state in ("BUILD_ARTIFACTS", "CANDIDATE_REVIEW") or trigger_state.startswith(
-            RESUME_ARTIFACT_COMPOUND_PREFIX
+        if trigger_state in (BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW") or (
+            isinstance(trigger_state, str) and trigger_state.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
         ):
             return "state_changed_at"
         if trigger_state not in JOB_STATES:
@@ -1515,10 +1517,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
 
 JOBS_RECOMMENDED_UI_SECTIONS = [
     {"state": "RECOMMENDED", "label": "Recommended"},
-    *[
-        {"state": cs, "label": "In Progress"}
-        for cs in _ALL_RESUME_ARTIFACT_COMPOUND_STATES
-    ],
+    {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "In Progress"},
     {"state": "CANDIDATE_REVIEW", "label": "Ready"},
 ]
 
@@ -2941,7 +2940,7 @@ BUILD_CONFIG = {
     },
 }
 
-# AST-595: compound BUILD_ARTIFACTS.<task_key> helpers (hop order from BUILD_CONFIG).
+# AST-803: BUILD_ARTIFACTS chain helpers (hop order from BUILD_CONFIG).
 def resume_artifact_hop_task_keys() -> tuple[str, ...]:
     chain = BUILD_CONFIG.get("resume_artifact_chain") or {}
     keys = chain.get("hop_task_keys")
@@ -2951,43 +2950,47 @@ def resume_artifact_hop_task_keys() -> tuple[str, ...]:
 
 
 def resume_artifact_compound_state(task_key: str) -> str:
-    return f"{RESUME_ARTIFACT_COMPOUND_PREFIX}{task_key}"
+    """Legacy compound label BUILD_ARTIFACTS.<hop> — in-flight rows only."""
+    return _legacy_build_artifacts_compound_state_for_hop(task_key)
 
 
-def resume_artifact_first_compound_state() -> str:
-    return resume_artifact_compound_state(resume_artifact_hop_task_keys()[0])
-
-
-def resume_artifact_next_compound_state(task_key: str) -> str | None:
-    keys = resume_artifact_hop_task_keys()
-    try:
-        idx = keys.index(task_key)
-    except ValueError:
-        return None
-    if idx + 1 >= len(keys):
-        return None
-    return resume_artifact_compound_state(keys[idx + 1])
-
-
-def parse_resume_artifact_hop(state: str) -> str | None:
+def legacy_build_artifacts_hop(state: str) -> str | None:
     st = state or ""
-    if not st.startswith(RESUME_ARTIFACT_COMPOUND_PREFIX):
+    if not st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX):
         return None
-    return st[len(RESUME_ARTIFACT_COMPOUND_PREFIX):]
+    hop = st[len(LEGACY_BUILD_ARTIFACTS_PREFIX):]
+    return hop if hop in resume_artifact_hop_task_keys() else None
 
 
-def is_resume_artifact_in_progress(state: str) -> bool:
-    return (state or "").startswith(RESUME_ARTIFACT_COMPOUND_PREFIX)
+parse_resume_artifact_hop = legacy_build_artifacts_hop
+
+
+def is_build_artifacts_in_progress(state: str) -> bool:
+    st = (state or "").strip()
+    if st in (BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE):
+        return True
+    return st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
+
+
+is_resume_artifact_in_progress = is_build_artifacts_in_progress
+
+
+def build_artifacts_claim_states() -> tuple[str, ...]:
+    return (BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES)
 
 
 def all_resume_artifact_compound_states() -> tuple[str, ...]:
-    return tuple(resume_artifact_compound_state(tk) for tk in resume_artifact_hop_task_keys())
+    return _LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES
 
 
 _RAH = resume_artifact_hop_task_keys()
 assert len(_RAH) >= 1
 assert all(tk in TASK_CONFIG for tk in _RAH)
 assert all((TASK_CONFIG[tk] or {}).get("entity_type") == "job" for tk in _RAH)
+for _tk, _tc in TASK_CONFIG.items():
+    _tt = (_tc or {}).get("task_type")
+    if _tt is not None:
+        assert _tt in TASK_TYPES, f"TASK_CONFIG[{_tk!r}].task_type invalid: {_tt!r}"
 
 # Per-candidate resume section catalog (AST-517); persistence on artifacts.resume_structure.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
