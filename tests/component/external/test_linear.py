@@ -7,7 +7,7 @@ import json
 import pytest
 
 from src.external import linear as linear_mod
-from src.external.linear import LinearApiError, fetch_parent_issue_states
+from src.external.linear import LinearApiError, fetch_parent_issue_states, fetch_user_testing_parent_ids
 
 
 class _FakeResponse:
@@ -93,3 +93,63 @@ class TestResolveLinearApiKey:
             monkeypatch.delenv(name, raising=False)
         with pytest.raises(LinearApiError, match="not configured"):
             fetch_parent_issue_states(["AST-791"])
+
+
+class TestFetchUserTestingParentIds:
+    def test_fetch_user_testing_parent_ids_returns_sorted_parents(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_graphql(
+            monkeypatch,
+            {
+                "data": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {"identifier": "AST-791"},
+                            {"identifier": "AST-650"},
+                        ],
+                    }
+                }
+            },
+        )
+        assert fetch_user_testing_parent_ids("User Testing") == [
+            "AST-650",
+            "AST-791",
+        ]
+
+    def test_fetch_user_testing_parent_ids_paginates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LINEAR_API_KEY", "test-linear-key")
+        pages = [
+            {
+                "data": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                        "nodes": [{"identifier": "AST-100"}],
+                    }
+                }
+            },
+            {
+                "data": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [{"identifier": "AST-200"}],
+                    }
+                }
+            },
+        ]
+        calls: list[dict | None] = []
+
+        def _urlopen(req, timeout=60):
+            body = json.loads(req.data.decode("utf-8"))
+            calls.append(body.get("variables"))
+            return _FakeResponse(json.dumps(pages[len(calls) - 1]))
+
+        monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+        assert fetch_user_testing_parent_ids("User Testing") == [
+            "AST-100",
+            "AST-200",
+        ]
+        assert calls[1]["after"] == "cursor-1"

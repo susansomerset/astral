@@ -37,7 +37,13 @@ Log **remove** + **rewrite** for lifecycle / prune CLIs (`remove_merge_ticket_lo
 | Missing id → `False`, no mutation | `TestRemoveMergeTicketLog::test_remove_missing_returns_false` |
 | Atomic rewrite | `TestRewriteMergeTicketLog::test_rewrite_merge_ticket_log` |
 
-**Manifest pytest gate (AST-681):**
+---
+
+### AST-800
+
+Public **`rebuild_merge_ticket_log(entries)`** alias for prep-uat full log rewrite (`scripts/rebuild_merge_ticket_log.py`). Runtime deploy status reads log only (no per-poll Linear filter).
+
+**Manifest pytest gate (AST-681 utils-only):**
 
 ```bash
 .venv/bin/python -m pytest tests/component/utils/test_merge_ticket_log.py -q

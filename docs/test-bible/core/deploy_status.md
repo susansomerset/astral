@@ -12,16 +12,20 @@
 
 ### AST-792
 
-Core `get_deploy_status_payload()` — base utils fields + `merge_tickets` filtered to **User Testing** via Linear at request time; fail closed (`merge_tickets: []`) on Linear errors. `api_system` imports this module (not utils).
+**Superseded at runtime by AST-800:** prep-uat **full log rebuild** + log-only read replaced per-poll Linear filter. Historical AST-792 filter tests removed; see **AST-800**.
+
+---
+
+### AST-800
+
+Log-only `get_deploy_status_payload()` — base utils fields + `merge_tickets` from `read_merge_ticket_log()` most-recent-first; **no** runtime Linear API on admin poll.
 
 | Behavior | Tests |
 | --- | --- |
-| UAT-only ids, most recent first | `TestCoreGetDeployStatusPayload::test_payload_includes_filtered_merge_tickets_most_recent_first` |
+| Log entries, most recent first | `TestCoreGetDeployStatusPayload::test_payload_merge_tickets_from_log_most_recent_first` |
 | Empty log → `[]` | `TestCoreGetDeployStatusPayload::test_payload_empty_merge_tickets_when_log_empty` |
-| Linear failure → `[]` | `TestCoreGetDeployStatusPayload::test_payload_empty_merge_tickets_on_linear_failure` |
-| Excludes Done / non-UAT | `TestCoreGetDeployStatusPayload::test_payload_excludes_done_parents` |
 
-**Manifest pytest gate (AST-792 — partial; see utils + external bible files):**
+**Manifest pytest gate (AST-800 — partial; see external + dev bible files):**
 
 ```bash
 .venv/bin/python -m pytest tests/component/core/test_deploy_status.py -q
