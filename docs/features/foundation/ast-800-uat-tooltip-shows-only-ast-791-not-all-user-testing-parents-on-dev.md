@@ -212,3 +212,13 @@ No conflicts requiring `conf-!!-NONE`.
 ## Parent plan delta (AST-792 superseded in part)
 
 AST-792 runtime Linear filter on every admin poll is **replaced** by prep-uat **full log rebuild** + log-only read. AST-792 remove/prune utilities remain for maintenance; `prune_merge_ticket_log.py` is not wired to prep-uat.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-791/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev`
+
+**Product commits:** `dab4f20` (Linear UAT parent query, rebuild CLI, log rewrite alias), `b5dfa9b` (record-landed-parent rebuild wiring, log-only deploy status, env.example)
+
+**Note for Betty (Stage 3):** Component tests per plan Stage 3 — manifest at Code Complete.
