@@ -183,3 +183,13 @@ No conflicts requiring plan revision.
 **Outcome:** Clean — ready for **`resolve-child`** / epic rollup with **AST-797** for runtime cutover.
 
 — Radia
+
+## Resolution (2026-06-25)
+
+**Review:** Radia @ `b68b592` — 0 fix-now · 0 discuss · 0 advisory (clean).
+
+**Product changes:** None — Stage 1 delivered as reviewed (`37b1af3`).
+
+**Verification:** Betty manifest green on publish tip (`TestAst796FetchJdSchedulableCutover`, `TestAst796FetchJdRetiredDispatchKeys`). §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-794-task-config-key-cutover`.
+
+**Handoff:** Runtime routing, DB migration, and inline `validate_title` wiring remain **AST-797**.
