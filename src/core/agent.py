@@ -48,7 +48,6 @@ from src.utils.config import (
     ENTITY_TYPES,
     get_task_keys,
     resume_artifact_hop_task_keys,
-    resume_artifact_next_compound_state,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
     is_rubric_backed_task,
@@ -809,26 +808,6 @@ def _hydrate_resume_entry_chain_context(
     )
 
 
-def _maybe_transition_resume_hop_progress(task_key: str, astral_job_id: Optional[str]) -> None:
-    if not astral_job_id or task_key not in resume_artifact_hop_task_keys():
-        return
-    next_compound = resume_artifact_next_compound_state(task_key)
-    if not next_compound:
-        return
-    from src.core import tracker
-
-    try:
-        tracker.transition_job_state([astral_job_id], next_compound)
-    except ValueError as exc:
-        logger.warning(
-            "resume hop transition failed job=%s from_hop=%s to=%s: %s",
-            astral_job_id,
-            task_key,
-            next_compound,
-            exc,
-        )
-
-
 def _resume_hop_debug_index(task_key: str, *, debug: bool) -> None:
     if not debug or task_key not in resume_artifact_hop_task_keys():
         return
@@ -1342,105 +1321,6 @@ def _store_agent_response(
 # do_task — primary orchestration entry point
 # ---------------------------------------------------------------------------
 
-async def run_resume_artifact_chain_for_job(
-    astral_job_id: str,
-    ctx: Optional[Dict[str, Any]] = None,
-    *,
-    debug: bool = False,
-    store_agent_data: bool = True,
-    first_task_key: Optional[str] = None,
-) -> Dict[str, Any]:
-    """AST-300 / AST-370: start the resume artifact do_task chain for one job; further hops use run_next.
-
-    First hop key: ``first_task_key`` when provided (dispatch row wins, AST-534); else
-    ``BUILD_CONFIG['resume_artifact_chain']['first_task_key']``. Prefer a job row already
-    in ``ctx['job']`` or ``ctx['job_data']`` (matching ``astral_job_id``) so job-scoped
-    tokens (``{$VISIBLE_JD}``, etc.) resolve without re-fetching the row.
-    Phase E prompts carry JD via system tokens — no runtime live/nocache block.
-    """
-    from src.core import tracker
-
-    chain_cfg = BUILD_CONFIG.get("resume_artifact_chain") or {}
-    entry_key = (first_task_key or "").strip() or (chain_cfg.get("first_task_key") or "").strip()
-    if not entry_key or entry_key not in TASK_CONFIG:
-        raise ValueError(
-            "BUILD_CONFIG['resume_artifact_chain']['first_task_key'] must name a TASK_CONFIG key; "
-            f"got {entry_key!r}"
-        )
-
-    base = dict(ctx) if ctx else {}
-    job: Optional[Dict[str, Any]] = None
-    for k in ("job", "job_data"):
-        row = base.get(k)
-        if isinstance(row, dict) and row.get("astral_job_id") == astral_job_id:
-            job = dict(row)
-            break
-    if job is None:
-        fetched = tracker.get_job(astral_job_id)
-        if not fetched:
-            return {
-                "success": False,
-                "error": f"Job not found: {astral_job_id}",
-                "api_response": None,
-                "parsed_response": None,
-                "timesheet": {},
-            }
-        job = dict(fetched)
-
-    cd = tracker._candidate_data_for_job(astral_job_id)
-    company_key = job.get("company")
-    company = None
-    if isinstance(company_key, str) and company_key.strip():
-        company = tracker.get_company(company_key.strip())
-    candidate_id = company.get("candidate_id") if company else None
-    if not cd:
-        detail = f" (candidate_id={candidate_id})" if candidate_id else ""
-        return {
-            "success": False,
-            "error": f"Missing candidate_data for job {astral_job_id}{detail}",
-            "api_response": None,
-            "parsed_response": None,
-            "timesheet": {},
-        }
-
-    task_ctx: Dict[str, Any] = {
-        **base,
-        "batch_entities": [job],
-        "batch_size": 1,
-        "job": job,
-        "candidate_data": cd,
-    }
-    if candidate_id:
-        task_ctx["astral_candidate_id"] = str(candidate_id)
-    if "vector_labels" not in task_ctx:
-        task_ctx["vector_labels"] = {}
-
-    seed_chain: Optional[Dict[str, str]] = None
-    parent = _resume_artifact_parent_hop_key(entry_key)
-    if parent:
-        hydrated, err = _hydrate_caller_chain_context(
-            "job", astral_job_id, entry_key, parent, None
-        )
-        if err:
-            return {
-                "success": False,
-                "error": err,
-                "api_response": None,
-                "parsed_response": None,
-                "timesheet": {},
-            }
-        seed_chain = _merge_hydrated_caller_context(None, hydrated)
-
-    return await do_task(
-        entry_key,
-        index=astral_job_id,
-        ctx=task_ctx,
-        debug=debug,
-        store_agent_data=store_agent_data,
-        chain_context=seed_chain,
-    )
-
-
 async def run_cover_letter_artifact_chain_for_job(
     astral_job_id: str,
     ctx: Optional[Dict[str, Any]] = None,
@@ -1451,7 +1331,7 @@ async def run_cover_letter_artifact_chain_for_job(
     """AST-301 / AST-368: start the cover-letter do_task chain for one job; further hops use run_next.
 
     First hop key: ``BUILD_CONFIG['cover_letter_artifact_chain']['first_task_key']``. Same ctx/job
-    resolution as ``run_resume_artifact_chain_for_job`` so chain tokens (AST-304) and
+    resolution as ``do_chain_for_job`` so chain tokens (AST-304) and
     ``{$WRITING_PREFERENCES}`` / ``{$COVER_LETTER_SIGNATURE}`` resolve on each hop via shared
     ``do_task`` chain_context merge (AST-370).
     """
@@ -2291,9 +2171,6 @@ async def do_task(
             logger.debug("append_agent_response failed", exc_info=True)
 
     _store_agent_response(task_config, task_key, index, parsed, parsed, result)
-
-    if result.get("success") and entity_type == "job" and index:
-        _maybe_transition_resume_hop_progress(task_key, index)
 
     planned_next = (agent_task_row.get("run_next") or "").strip()
     effective_next = planned_next
