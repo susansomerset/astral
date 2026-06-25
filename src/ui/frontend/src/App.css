@@ -223,6 +223,8 @@ body {
 .nav-deploy-env {
   color: var(--text-secondary);
   text-transform: lowercase;
+  cursor: default;
+  user-select: none;
 }
 .nav-deploy-env-wrap {
   position: relative;
