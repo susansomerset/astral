@@ -384,3 +384,36 @@ No unresolved conflicts with ASTRAL_CODE_RULES.
 **Built:** `origin/sub/AST-788/AST-803-build-artifacts-chain-dispatch` (pending publish)
 
 Stages 1–7: flat `BUILD_ARTIFACTS` + `ERROR_BUILD_ARTIFACTS`, `task_type: CHAIN` on resume hops, removed AST-789/597 compound progression, `do_chain_for_job` + `_run_build_artifacts_chain_batch`, dispatcher/admin flat trigger validation. Component tests deferred to Betty per build-child test-tree ban.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-788/AST-803-build-artifacts-chain-dispatch` (15 files; product + Betty tests on tip `92bc89b`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Config / state machine | Flat `BUILD_ARTIFACTS` + `ERROR_BUILD_ARTIFACTS`; `task_type: CHAIN` on resume hops; legacy compound helpers retained for in-flight rows (§2.6 / §1.4). |
+| Agent | Compound hop transitions and `run_resume_artifact_chain_for_job` removed; `do_task` internal `run_next` recursion is the correct chain walker. |
+| Tracker / dispatcher / admin | Flat generate/cancel; `build_artifacts_claim_states()` on claim; flat + legacy trigger validation. |
+| Consult routing | `_run_build_artifacts_chain_batch` per-job mismatch skip (AST-596); cover-letter side effect removed from `contemplate_job` entry; terminal graduation via `_chain_graduate_to_candidate_review` with persist gate. |
+| Tests | `TestAst803ChainGraduation`, helpers, AST-534 routing, config flattening — manifest-aligned. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `src/core/consult.py` `do_chain_for_job` ~1805–1806 | Early `Missing candidate_data` return skips `_chain_failure_mode` — job stays on `BUILD_ARTIFACTS` with no `ERROR_BUILD_ARTIFACTS` transition. Plan Stage 5.6 / AC hard path requires `ERROR_BUILD_ARTIFACTS` for missing candidate data (same as post-`do_task` path at ~1837–1842). |
+| **discuss** | `src/core/consult.py` `_build_artifacts_chain_entry_task_key` vs `_resolve_chain_start_task_key` | Entry-discovery helper is implemented + tested but never called from `_resolve_chain_start_task_key` (plan Stage 5.4). Current flat path always returns `dispatch_task_key` when `job_state == BUILD_ARTIFACTS` — OK for AST-534 row honesty if dispatch rows are always hop-specific; confirm whether discovery is still required or delete dead path. |
+| **discuss** | `src/core/consult.py` `_build_artifacts_chain_entry_task_key` ~1673–1681 | Second warning fallback (all hops have incoming `run_next` → first hop in config) is not in plan; silent wrong-entry risk on misconfigured dispatch graph. |
+| **discuss** | Plan Stage 5.3 | `_chain_last_successful_hop` specified but not implemented — defer or add if mid-chain resume needs `agent_responses` walk beyond caller hydration. |
+
+### Recommended actions
+
+| # | Action |
+|---|--------|
+| 1 | In `do_chain_for_job`, route pre-`do_task` `Missing candidate_data` (and optionally `job_not_found` if desired) through hard failure → `tracker.transition_job_state(..., ERROR_BUILD_ARTIFACTS_STATE)`. |
+| 2 | Wire or remove `_build_artifacts_chain_entry_task_key`; if kept, drop unplanned fallback-to-first-hop or raise per plan stop rule. |
+| 3 | Resolve `_chain_last_successful_hop` deferral in thread or implement. |
