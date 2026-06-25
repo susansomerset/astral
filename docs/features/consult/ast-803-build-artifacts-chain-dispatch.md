@@ -428,4 +428,4 @@ Stages 1–7: flat `BUILD_ARTIFACTS` + `ERROR_BUILD_ARTIFACTS`, `task_type: CHAI
 
 **discuss (accepted, no product change):** `_build_artifacts_chain_entry_task_key` remains helper-only — flat `BUILD_ARTIFACTS` + AST-534 dispatch row honesty uses explicit `dispatch_task_key`; entry discovery reserved for future generic chain rows. `_chain_last_successful_hop` deferred — mid-chain resume uses caller hydration + legacy compound state parse.
 
-**§9a dry-run:** pending after resolve publish.
+**§9a dry-run:** clean on `origin/dev` and `origin/ftr/AST-788-build-artifacts-chain-dispatch` @ `2d0b0a4`.
