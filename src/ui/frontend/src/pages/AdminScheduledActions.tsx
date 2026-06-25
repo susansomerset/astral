@@ -265,7 +265,7 @@ export default function ScheduledActions() {
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
   const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
-  const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[] }>({ job: [], company: [] })
+  const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[]; candidate: string[] }>({ job: [], company: [], candidate: [] })
   const [openSection, setOpenSection] = useState<string | null>(null)
   const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -317,6 +317,16 @@ export default function ScheduledActions() {
     () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
     [],
   )
+  const inputStateOptions = useMemo(
+    () => (
+      form.entity_type === "company"
+        ? stateOptions.company
+        : form.entity_type === "candidate"
+          ? stateOptions.candidate
+          : stateOptions.job
+    ),
+    [form.entity_type, stateOptions],
+  )
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -337,6 +347,7 @@ export default function ScheduledActions() {
         setStateOptions({
           job: Array.isArray(states?.job) ? states.job : [],
           company: Array.isArray(states?.company) ? states.company : [],
+          candidate: Array.isArray(states?.candidate) ? states.candidate : [],
         })
       }
     } finally {
@@ -842,7 +853,7 @@ export default function ScheduledActions() {
                 <span className="modal-detail-label">Input State</span>
                 <select value={form.trigger_state} onChange={e => setForm({ ...form, trigger_state: e.target.value })}>
                   <option value="">Select…</option>
-                  {(form.entity_type === "company" ? stateOptions.company : stateOptions.job).map(s => (
+                  {(inputStateOptions).map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
