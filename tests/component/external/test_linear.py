@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from io import BytesIO
 
 import pytest
 
+from src.external import linear as linear_mod
 from src.external.linear import LinearApiError, fetch_parent_issue_states
 
 
@@ -69,3 +69,27 @@ class TestFetchParentIssueStates:
         _mock_graphql(monkeypatch, {"errors": [{"message": "bad query"}]})
         with pytest.raises(LinearApiError):
             fetch_parent_issue_states(["AST-100"])
+
+
+class TestResolveLinearApiKey:
+    def test_resolve_linear_api_key_prefers_linear_api_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LINEAR_API_KEY", "primary-key")
+        monkeypatch.setenv("LINEAR_KEY_CHUCKLES", "chuckles-key")
+        assert linear_mod._resolve_linear_api_key() == "primary-key"
+
+    def test_resolve_linear_api_key_falls_back_to_chuckles_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+        monkeypatch.setenv("LINEAR_KEY_CHUCKLES", "chuckles-key")
+        assert linear_mod._resolve_linear_api_key() == "chuckles-key"
+
+    def test_fetch_raises_linear_api_error_when_no_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in linear_mod._LINEAR_KEY_ENVS:
+            monkeypatch.delenv(name, raising=False)
+        with pytest.raises(LinearApiError, match="not configured"):
+            fetch_parent_issue_states(["AST-791"])

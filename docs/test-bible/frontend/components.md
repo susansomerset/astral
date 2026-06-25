@@ -203,6 +203,16 @@ cd src/ui/frontend && npm run test:component -- \
 | **AST-682** | AST-675 child: env label native `title` lists up to **20** `merge_tickets` — **superseded by AST-691** (hover tooltip); manifest rows below retained for historical pytest names only | `AdminDeployFooter.tsx` | *(see **AST-691**)* |
 | **AST-690** | AST-675 UAT bug: click-to-toggle popup on env label — **superseded by AST-691** (hover tooltip + pointer cursor); historical pytest names only | `AdminDeployFooter.tsx`, `App.css` | *(see **AST-691**)* |
 | **AST-691** | AST-675 UAT fix: replace AST-690 click popup with **500ms hover** tooltip on env label when `merge_tickets` non-empty — up to **20** plain lines (`ticket_id` + `fmtTime(recorded_at)`), most recent first; `span` + `nav-deploy-env-interactive` (`cursor: pointer`) when interactive; static span when empty/missing; wrapper hover keeps tooltip open; no `title`; no backend/API changes | `AdminDeployFooter.tsx`, `App.css` | **`test_AdminDeployFooter.test.tsx`** — **`test_shows_merge_ticket_tooltip_after_500ms_hover_on_env_wrap_when_merge_tickets_present`**; **`test_hides_merge_ticket_tooltip_before_500ms_hover_and_on_mouse_leave`**; **`test_renders_static_environment_span_when_merge_tickets_empty_or_missing`**; **`test_caps_merge_ticket_tooltip_at_20_lines`**; existing env/uptime/error tests unchanged. **`test_NavigationShell.test.tsx`** unchanged (non-admin gate) |
+| **AST-798** | UAT FIX: static env label (empty `merge_tickets`) uses **default** cursor — `.nav-deploy-env { cursor: default; user-select: none; }`; interactive class unchanged. Linear key env precedence in `external/linear.py` (rollcall names) — see **`external/linear.md` AST-798** | `App.css`, `src/external/linear.py`, `env.example` | **`test_AdminDeployFooter.test.tsx`** — extend **`test_renders_static_environment_span_when_merge_tickets_empty_or_missing`**: `nav-deploy-env` class, **App.css source contract** (`cursor: default`, `user-select: none` on `.nav-deploy-env`), no interactive class. **`tests/component/external/test_linear.py::TestResolveLinearApiKey`** (3 tests) |
+
+**AST-798** narrowed run:
+
+```bash
+.venv/bin/python -m pytest tests/component/external/test_linear.py -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx
+```
 
 **AST-691** narrowed run:
 
