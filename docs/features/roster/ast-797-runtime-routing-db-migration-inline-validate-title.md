@@ -364,3 +364,13 @@ No conflicts requiring `!!-NONE`.
 **Outcome:** Clean — ship with **AST-796** on epic rollup; do not isolate to **`dev`** without sibling runtime (plan Risk: HIGH).
 
 — Radia
+
+## Resolution (2026-06-25)
+
+**Review:** Radia @ `49c06c6` — 0 fix-now · 0 discuss · 0 advisory (clean).
+
+**Product changes:** None — all four build stages delivered as reviewed (`0461cf7` product tip).
+
+**Verification:** Betty manifest green on publish tip @ `1a14ea5` (24 passed). §9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-794-task-config-key-cutover`.
+
+**Handoff:** Epic rollup with **AST-796** on `ftr/*`; Susan UAT via parent **AST-794** after **prep-uat**.
