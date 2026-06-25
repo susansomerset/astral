@@ -154,3 +154,39 @@ No conflicts flagged.
 - `06419e3` — `code(AST-805): wire landing-parent through record-landed-parent`
 
 **Manual verify:** `rebuild_merge_ticket_log.py --dev-ref origin/dev --landing-parent AST-801` → JSON includes **AST-801** in `parents` with `landing_parent: "AST-801"`.
+
+---
+
+## Radia review (2026-06-25)
+
+**Diff:** `origin/dev...origin/sub/AST-801/AST-805-uat-merge-ticket-log-missing-after-prep-uat` @ `7ae3670`  
+**Product commits:** `f52d9f3` rebuild CLI · `06419e3` record-landed-parent wire  
+**Tests:** Betty manifest @ `1cc4dde` / `merge-tests` @ `7ae3670`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Root-cause fix | `--landing-parent` unions prep-uat landing id with Linear UAT set; bypasses **User Testing** filter only for that one id at land time. |
+| AST-800 preserved | ftr-on-dev gate (`_resolve_ftr_ref`), `recorded_at` resolution, full-log rewrite, sort-by-`recorded_at` unchanged. |
+| Wiring | `record-landed-parent.sh` passes `--landing-parent "$PARENT_ID"`; stdout JSON includes `landing_parent` for forensics. |
+| Scope | Scripts only — no `deploy_status`, Linear fetch, or **AST-802** eligibility touched. |
+| Tests + bible | Union/skip-blank/ftr gate/summary JSON + shell flag guard + integration stub; bible rows in `record_landed_parent.md` and `merge_ticket_log.md`. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — next prep-uat land should include landing parent in deploy-env tooltip.
+
+— Radia
