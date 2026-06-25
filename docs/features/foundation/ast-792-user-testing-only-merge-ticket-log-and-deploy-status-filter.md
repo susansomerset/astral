@@ -350,3 +350,13 @@ No conflicts requiring `conf-!!-NONE`.
 |--------|-------|
 | None required for resolve | — |
 | Optional: wrap `URLError`, timeout, and `JSONDecodeError` as `LinearApiError` (or broaden core except) | Engineer, if Susan wants belt-and-suspenders fail-closed |
+
+---
+
+## Resolution (2026-06-25)
+
+**Publish ref:** `origin/sub/AST-791/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter` @ `4cc5015` (Radia `docs(AST-792): Radia review — clean`)
+
+Radia review clean — no fix-now or discuss items. No product code changes. Advisory `URLError`/`JSONDecodeError` hardening deferred (optional per review). §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-791-list-of-uat-issues-in-environment-tooltip-is-not-updating`.
+
+**Outcome:** User Testing–only merge ticket log filter, core deploy-status orchestration, prune/remove CLIs, and one-time log cleanup ready for Susan UAT on staging (requires `LINEAR_API_KEY` on deploy).
