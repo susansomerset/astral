@@ -417,3 +417,15 @@ Stages 1–7: flat `BUILD_ARTIFACTS` + `ERROR_BUILD_ARTIFACTS`, `task_type: CHAI
 | 1 | In `do_chain_for_job`, route pre-`do_task` `Missing candidate_data` (and optionally `job_not_found` if desired) through hard failure → `tracker.transition_job_state(..., ERROR_BUILD_ARTIFACTS_STATE)`. |
 | 2 | Wire or remove `_build_artifacts_chain_entry_task_key`; if kept, drop unplanned fallback-to-first-hop or raise per plan stop rule. |
 | 3 | Resolve `_chain_last_successful_hop` deferral in thread or implement. |
+
+---
+
+## Resolution
+
+**Resolved:** 2026-06-25 (Hedy)
+
+**fix-now:** Pre-`do_task` `Missing candidate_data` in `do_chain_for_job` now routes through `_chain_fail_result` → `_chain_failure_mode` → `ERROR_BUILD_ARTIFACTS` (same as post-`do_task` hard path). Extracted `_chain_fail_result` to DRY hop-failure handling.
+
+**discuss (accepted, no product change):** `_build_artifacts_chain_entry_task_key` remains helper-only — flat `BUILD_ARTIFACTS` + AST-534 dispatch row honesty uses explicit `dispatch_task_key`; entry discovery reserved for future generic chain rows. `_chain_last_successful_hop` deferred — mid-chain resume uses caller hydration + legacy compound state parse.
+
+**§9a dry-run:** pending after resolve publish.

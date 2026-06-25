@@ -1736,6 +1736,22 @@ def _chain_failure_mode(result: Dict[str, Any], task_key: str) -> Literal["retry
     return "retry"
 
 
+def _chain_fail_result(
+    astral_job_id: str,
+    error: str,
+    *,
+    task_key: str = "",
+) -> Dict[str, Any]:
+    """Hard failures transition to ERROR_BUILD_ARTIFACTS; retryable stay on BUILD_ARTIFACTS."""
+    result: Dict[str, Any] = {"success": False, "error": error}
+    if _chain_failure_mode(result, task_key) == "hard":
+        try:
+            tracker.transition_job_state([astral_job_id], ERROR_BUILD_ARTIFACTS_STATE)
+        except ValueError as exc:
+            logger.warning("[%s] ERROR_BUILD_ARTIFACTS transition failed: %s", astral_job_id, exc)
+    return result
+
+
 def _chain_graduate_to_candidate_review(
     astral_job_id: str,
     *,
@@ -1803,7 +1819,11 @@ async def do_chain_for_job(
     base = dict(ctx or {})
     cd = tracker._candidate_data_for_job(astral_job_id)
     if not cd:
-        return {"success": False, "error": f"Missing candidate_data for job {astral_job_id}"}
+        return _chain_fail_result(
+            astral_job_id,
+            f"Missing candidate_data for job {astral_job_id}",
+            task_key=start_key,
+        )
 
     task_ctx: Dict[str, Any] = {
         **base,
@@ -1835,12 +1855,11 @@ async def do_chain_for_job(
         chain_context=seed_chain,
     )
     if not result.get("success"):
-        if _chain_failure_mode(result, start_key) == "hard":
-            try:
-                tracker.transition_job_state([astral_job_id], ERROR_BUILD_ARTIFACTS_STATE)
-            except ValueError as exc:
-                logger.warning("[%s] ERROR_BUILD_ARTIFACTS transition failed: %s", astral_job_id, exc)
-        return result
+        return _chain_fail_result(
+            astral_job_id,
+            str(result.get("error") or "chain hop failed"),
+            task_key=start_key,
+        )
 
     ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
     if not ok:
