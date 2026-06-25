@@ -23,12 +23,12 @@
 
 ### AST-466 · AST-467 · AST-468 · AST-376
 
-Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title`, `scrape_jd`, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
+Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title` inline-only, **`fetch_jd`**, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
-| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). |
+| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`fetch_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). |
 | Dispatch resolution helpers (**AST-468**) | `src/core/dispatcher.py`, `src/data/database.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_admin.py` |
 
 Sibling **AST-468** dispatch helpers documented in **§7.13x**.
@@ -314,6 +314,36 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 ```
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness until siblings integrated.
+
+---
+
+### AST-797 · AST-794
+
+Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`**; **`validate_title_batch`** inline inside **`qualify_job_listings`** for **NEW** jobs; **`validate_title`** / **`scrape_jd`** retired from **`run_consult_task`**; qualify primary dispatch @ **NEW** with **VALID_TITLE_RETRY** companion row (migration).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inline title screen + routing | `src/core/consult.py` | `TestAst797QualifyInlineValidateTitle`; `TestRunConsultTaskRoutes::test_routes_fetch_jd_batch`; `TestRunConsultTask::test_validate_title_dispatch_key_unhandled_returns_zero` |
+| DB migration | `src/data/database.py` | `TestAst797DispatchKeyCutoverMigration` |
+| Config qualify @ NEW | `src/utils/config.py` | `TestAst797ConfigRuntimeCutover` |
+| Gazer rename | `src/core/gazer.py` | `TestFetchJdBatch` (+ debug path classes) |
+| Tracker coat-check | `src/core/tracker.py` | existing self-heal tests (monkeypatch **`fetch_jd_batch`**) |
+| Dispatcher claim @ NEW | `src/core/dispatcher.py` | `TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states`; `test_qualify_valid_title_claim_without_score_floor` |
+| Admin adhoc | `src/ui/api/api_admin.py` | `TestAdhocHelpers::test_trigger_state_helpers` |
+
+**AST-797** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst797DispatchKeyCutoverMigration \
+  tests/component/utils/test_config.py::TestAst797ConfigRuntimeCutover \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_jd_batch \
+  tests/component/core/test_gazer.py::TestFetchJdBatch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers \
+  -q
+```
 
 ---
 

@@ -93,7 +93,7 @@ class TestGetJobData:
     async def test_self_heals_short_job_description(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job: Dict[str, Any] = {"astral_job_id": "job-1", "job_data": {"job_description": "short"}}
         scrape = AsyncMock()
-        monkeypatch.setattr("src.core.gazer.scrape_jd_batch", scrape)
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
 
         await tracker_mod.get_job_data(job, "job_description")
 
@@ -102,14 +102,14 @@ class TestGetJobData:
     @pytest.mark.asyncio
     async def test_self_heal_failure_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job: Dict[str, Any] = {"astral_job_id": "job-2", "job_data": {}}
-        monkeypatch.setattr("src.core.gazer.scrape_jd_batch", AsyncMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", AsyncMock(side_effect=RuntimeError("boom")))
 
         assert await tracker_mod.get_job_data(job, "job_description") is None
 
     @pytest.mark.asyncio
     async def test_initializes_non_dict_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job: Dict[str, Any] = {"job_data": None}
-        monkeypatch.setattr("src.core.gazer.scrape_jd_batch", AsyncMock())
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", AsyncMock())
 
         await tracker_mod.get_job_data(job, "job_description")
 

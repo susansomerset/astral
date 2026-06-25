@@ -64,6 +64,24 @@ Prior board integration retired (**AST-765** product, **AST-766** schema); activ
   -q
 ```
 
+### AST-797 · AST-794
+
+Idempotent **`_ensure_dispatch_task_schema`** migration: **`scrape_jd` → `fetch_jd`** (DELETE-before-UPDATE collision); purge **`validate_title`** / **`gaze_board`**; **`qualify_job_listings`/`VALID_TITLE` → `NEW`** + seed **`VALID_TITLE_RETRY`** companion.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Migration cutover | `src/data/database.py` | `TestAst797DispatchKeyCutoverMigration` |
+
+**AST-797** narrowed pytest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst797DispatchKeyCutoverMigration \
+  -q
+```
+
+Consult runtime: **`docs/test-bible/core/consult.md`** (**AST-797**).
+
 ### AST-781 · AST-763
 
 UAT: **`GET /api/admin/dispatch_tasks`** returned **500** when legacy `dispatch_task` rows still had `entity_type='board_search'` (boards sunset **AST-766** left DB rows). **`count_eligible_for_dispatch_task`** returns **`0`** when `entity_type not in ENTITY_TYPES` — list loads; legacy rows show **Available = 0**.

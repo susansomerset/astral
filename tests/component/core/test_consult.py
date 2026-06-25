@@ -290,7 +290,7 @@ class TestPrepLiveContent:
 class TestRunConsultTask:
     @pytest.mark.asyncio
     async def test_returns_zero_for_empty_entities(self) -> None:
-        out = await consult_mod.run_consult_task("job", "NEW", [], "batch-1", {}, dispatch_task_key="validate_title")
+        out = await consult_mod.run_consult_task("job", "NEW", [], "batch-1", {}, dispatch_task_key="qualify_job_listings")
         assert out["total_processed"] == 0
 
     @pytest.mark.asyncio
@@ -307,16 +307,16 @@ class TestRunConsultTask:
 
 
     @pytest.mark.asyncio
-    async def test_routes_validate_title_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "src.core.gazer.validate_title_batch",
-            AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1}),
-        )
+    async def test_validate_title_dispatch_key_unhandled_returns_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-797: validate_title retired from run_consult_task — inline in qualify only."""
+        vt = AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1})
+        monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
         out = await consult_mod.run_consult_task(
             "job", "NEW", [{"astral_job_id": "job-1"}, {"astral_job_id": "job-2"}], "batch-1", {},
             dispatch_task_key="validate_title",
         )
-        assert out == {"total_processed": 2, "total_passed": 1, "total_failed": 1, "total_errors": 0}
+        assert out["total_processed"] == 0
+        vt.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_normalizes_render_verdict_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1617,14 +1617,14 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
 
 class TestRunConsultTaskRoutes:
     @pytest.mark.asyncio
-    async def test_routes_scrape_jd_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_routes_fetch_jd_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "src.core.gazer.scrape_jd_batch",
+            "src.core.gazer.fetch_jd_batch",
             AsyncMock(return_value={"total": 1, "passed": 1, "failed": 0}),
         )
         out = await consult_mod.run_consult_task(
             "job", "PASSED_JOBLIST", [{"astral_job_id": "job-1"}], "batch-1", {},
-            dispatch_task_key="scrape_jd",
+            dispatch_task_key="fetch_jd",
         )
         assert out["total_passed"] == 1
 
@@ -1738,6 +1738,44 @@ class TestRunConsultTaskRoutes:
             dispatch_task_key="not_a_real_task",
         )
         assert out["total_processed"] == 0
+
+
+class TestAst797QualifyInlineValidateTitle:
+    @pytest.mark.asyncio
+    async def test_qualify_runs_inline_validate_for_new_jobs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        vt = AsyncMock(return_value={"failed": 0, "passed": 1, "total": 1})
+        monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "VALID_TITLE"},
+        )
+        batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
+        jobs = [{"astral_job_id": "job-1", "state": "NEW", "job_data": {"raw_job_listing": "x"}}]
+        out = await consult_mod.qualify_job_listings("batch-797", jobs, {}, debug=False)
+        vt.assert_awaited_once()
+        batch.assert_awaited_once()
+        assert out["passed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_qualify_returns_early_when_inline_title_screen_fails_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        vt = AsyncMock(return_value={"failed": 2, "passed": 0, "total": 2})
+        monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "INVALID_TITLE"},
+        )
+        batch = AsyncMock()
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
+        jobs = [
+            {"astral_job_id": "job-1", "state": "NEW", "job_data": {}},
+            {"astral_job_id": "job-2", "state": "NEW", "job_data": {}},
+        ]
+        out = await consult_mod.qualify_job_listings("batch-797b", jobs, {}, debug=False)
+        batch.assert_not_awaited()
+        assert out == {"passed": 0, "failed": 2, "total": 2}
 
 
 class TestAnalysisUpshotPrepAndBatch480:

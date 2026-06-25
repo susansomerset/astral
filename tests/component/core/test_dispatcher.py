@@ -378,7 +378,7 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
         task = {
             "entity_type": "job",
-            "trigger_state": "VALID_TITLE",
+            "trigger_state": "NEW",
             "task_key": "qualify_job_listings",
             "batch_call_mode": 1,
             "batch_size": 10,
@@ -398,13 +398,13 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
         task = {
             "entity_type": "job",
-            "trigger_state": "VALID_TITLE",
+            "trigger_state": "NEW",
             "task_key": "qualify_job_listings",
             "batch_call_mode": 1,
             "batch_size": 10,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert claim.call_args.kwargs["states"] == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+        assert claim.call_args.kwargs["states"] == ["NEW"]
 
     @pytest.mark.asyncio
     async def test_ast641_retry_only_job_trigger_single_claim_state(

@@ -563,6 +563,138 @@ class TestAst748ConsultToGradeDispatchMigration:
         finally:
             conn.close()
 
+
+
+class TestAst797DispatchKeyCutoverMigration:
+    """AST-797: scrape_jd→fetch_jd rename, purge retired keys, qualify VALID_TITLE split."""
+
+    def _insert_legacy_dispatch_row(
+        self, conn, candidate_id: str, task_key: str, trigger_state: str,
+        batch_size: int = 1, freq_hrs: float = 0, auto_mode: int = 0,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, trigger_state, min_count, auto_mode,
+                batch_size, freq_hrs, entity_type, sort_by, batch_call_mode
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, 'job', 'updated_at', 0)
+            """,
+            (candidate_id, task_key, trigger_state, auto_mode, batch_size, freq_hrs),
+        )
+        conn.commit()
+
+    def test_scrape_jd_row_renames_to_fetch_jd(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_legacy_dispatch_row(
+                conn, "c797", "scrape_jd", "PASSED_JOBLIST", batch_size=5, freq_hrs=2.0, auto_mode=1,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            row = conn.execute(
+                "SELECT task_key, batch_size, freq_hrs, auto_mode FROM dispatch_task "
+                "WHERE candidate_id = ? AND trigger_state = 'PASSED_JOBLIST'",
+                ("c797",),
+            ).fetchone()
+            assert row[0] == "fetch_jd"
+            assert row[1] == 5
+            assert row[2] == 2.0
+            assert row[3] == 1
+        finally:
+            conn.close()
+
+    def test_scrape_jd_deleted_when_fetch_jd_triple_exists(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("c797b", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST", batch_size=3)
+        conn = db._get_connection()
+        try:
+            self._insert_legacy_dispatch_row(
+                conn, "c797b", "scrape_jd", "PASSED_JOBLIST", batch_size=99,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'fetch_jd'",
+                ("c797b",),
+            ).fetchone()[0]
+            row = conn.execute(
+                "SELECT batch_size FROM dispatch_task WHERE candidate_id = ? AND task_key = 'fetch_jd'",
+                ("c797b",),
+            ).fetchone()
+            assert n == 1
+            assert row[0] == 3
+        finally:
+            conn.close()
+
+    def test_purges_validate_title_and_gaze_board_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_legacy_dispatch_row(conn, "c797c", "validate_title", "NEW")
+            self._insert_legacy_dispatch_row(conn, "c797c", "gaze_board", "ACTIVE")
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE task_key IN ('validate_title','gaze_board')",
+            ).fetchone()[0]
+            assert n == 0
+        finally:
+            conn.close()
+
+    def test_qualify_valid_title_splits_to_new_and_retry_companion(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_legacy_dispatch_row(
+                conn, "c797d", "qualify_job_listings", "VALID_TITLE", batch_size=7, freq_hrs=3.0,
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            primary = conn.execute(
+                "SELECT trigger_state, batch_size, freq_hrs FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'qualify_job_listings' AND trigger_state = 'NEW'",
+                ("c797d",),
+            ).fetchone()
+            retry = conn.execute(
+                "SELECT trigger_state, batch_size, freq_hrs FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE_RETRY'",
+                ("c797d",),
+            ).fetchone()
+            assert primary[0] == "NEW"
+            assert primary[1] == 7
+            assert primary[2] == 3.0
+            assert retry[0] == "VALID_TITLE_RETRY"
+            assert retry[1] == 7
+            assert retry[2] == 3.0
+        finally:
+            conn.close()
+
+    def test_no_legacy_task_keys_remain(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_legacy_dispatch_row(conn, "c797e", "scrape_jd", "PASSED_JOBLIST")
+            self._insert_legacy_dispatch_row(conn, "c797e", "validate_title", "NEW")
+            self._insert_legacy_dispatch_row(conn, "c797e", "qualify_job_listings", "VALID_TITLE")
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE task_key IN ('scrape_jd','validate_title','gaze_board')",
+            ).fetchone()[0]
+            assert n == 0
+        finally:
+            conn.close()
+
+
 class TestAst766BoardSchemaSunset:
     """AST-766: board_search tables/column removed from database.py."""
 

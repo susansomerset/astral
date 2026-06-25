@@ -363,12 +363,12 @@ class TestFetchJobPagesBatch:
         )
 
 
-class TestScrapeJdBatch:
+class TestFetchJdBatch:
     @pytest.mark.asyncio
     async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
         with pytest.raises(ConnectionError, match="no internet connectivity"):
-            await gazer_mod.scrape_jd_batch("batch-1", [])
+            await gazer_mod.fetch_jd_batch("batch-1", [])
 
     @pytest.mark.asyncio
     async def test_handles_missing_link_and_scrape_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -380,7 +380,7 @@ class TestScrapeJdBatch:
             {"astral_job_id": "job-1", "job_link": ""},
             {"astral_job_id": "job-2", "job_link": "https://example.com/j", "job_title": "Role"},
         ]
-        out = await gazer_mod.scrape_jd_batch("batch-1", jobs)
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs)
         assert out == {"passed": 0, "failed": 2, "total": 2}
         assert transition.call_count == 2
 
@@ -397,7 +397,7 @@ class TestScrapeJdBatch:
             {"astral_job_id": "job-3", "job_link": "https://example.com/a", "job_title": "A"},
             {"astral_job_id": "job-4", "job_link": "https://example.com/b", "job_title": "B", "job_data": None},
         ]
-        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=True)
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, debug=True)
         assert out == {"passed": 1, "failed": 1, "total": 2}
         save.assert_called()
         assert jobs[1]["job_data"]["job_description"].startswith("role summary")
@@ -412,7 +412,7 @@ class TestScrapeJdBatch:
             {"astral_job_id": "job-5", "job_link": "https://example.com/c"},
             {"astral_job_id": "job-6", "job_link": "https://example.com/d", "job_title": "Role"},
         ]
-        out = await gazer_mod.scrape_jd_batch("batch-1", jobs)
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs)
         assert out["failed"] == 2
 
     @pytest.mark.asyncio
@@ -424,7 +424,7 @@ class TestScrapeJdBatch:
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="ok"))
         monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
         job = {"astral_job_id": "job-7", "job_link": "https://example.com/z", "job_title": "Role", "job_data": {"note": "keep"}}
-        out = await gazer_mod.scrape_jd_batch("batch-1", [job], debug=False)
+        out = await gazer_mod.fetch_jd_batch("batch-1", [job], debug=False)
         assert out == {"passed": 1, "failed": 0, "total": 1}
         assert job["job_data"]["note"] == "keep"
 
@@ -440,7 +440,7 @@ class TestScrapeJdBatch:
         raw_jd = "role summary\n\n\n\n" + ("detail " * 120)
         monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=raw_jd))
         job = {"astral_job_id": "job-9", "job_link": "https://example.com/j", "job_title": "Role"}
-        out = await gazer_mod.scrape_jd_batch("batch-1", [job])
+        out = await gazer_mod.fetch_jd_batch("batch-1", [job])
         assert out == {"passed": 1, "failed": 0, "total": 1}
         saved = job["job_data"]["job_description"]
         assert "\n\n\n" not in saved
@@ -591,14 +591,14 @@ class TestLogListingDedupeTrace:
         assert any("omitted from dedupe trace" in m for m in messages)
 
 
-class TestScrapeJdBatchDebugPaths:
+class TestFetchJdBatchDebugPaths:
     @pytest.mark.asyncio
     async def test_failure_paths_with_debug_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         monkeypatch.setattr(gazer_mod, "transition_job_state", MagicMock())
         monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
         jobs = [{"astral_job_id": "job-1", "job_link": ""}]
-        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=True)
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, debug=True)
         assert out["failed"] == 1
 
     @pytest.mark.asyncio
@@ -620,7 +620,7 @@ class TestScrapeJdBatchDebugPaths:
             {"astral_job_id": "j3", "job_link": "https://example.com/c", "job_title": "C"},
             {"astral_job_id": "j4", "job_link": "https://example.com/d", "job_title": "D"},
         ]
-        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=True)
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, debug=True)
         assert out["failed"] == 4
 
 
@@ -817,7 +817,7 @@ class TestProcessGazerBatchDebugBranchCoverage:
         assert outcomes[0]["status"] == "failure"
 
 
-class TestScrapeJdBatchDebugBranchCoverage:
+class TestFetchJdBatchDebugBranchCoverage:
     @pytest.mark.asyncio
     async def test_classified_failure_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
@@ -826,7 +826,7 @@ class TestScrapeJdBatchDebugBranchCoverage:
         monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
         monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
         jobs = [{"astral_job_id": "job-3", "job_link": "https://example.com/a", "job_title": "A"}]
-        out = await gazer_mod.scrape_jd_batch("batch-1", jobs, debug=False)
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, debug=False)
         assert out["failed"] == 1
 
 
