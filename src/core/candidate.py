@@ -222,19 +222,22 @@ def company_search_terms_lines(candidate_id: str) -> list[str]:
 
 def ensure_company_search_terms_table_synced(candidate_id: str) -> None:
     """Reconcile legacy artifact blob into table; strip blob after import (AST-802)."""
-    inserted = database.reconcile_company_search_terms_from_artifact(candidate_id)
-    if inserted <= 0:
-        return
+    database.reconcile_company_search_terms_from_artifact(candidate_id)
     candidate = get_candidate(candidate_id)
     if not candidate:
         return
-    cd = candidate.get("candidate_data") or {}
-    arts = cd.get("artifacts") or {}
+    cd = copy.deepcopy(candidate.get("candidate_data") or {})
+    arts = cd.get("artifacts")
     if not isinstance(arts, dict) or "company_search_terms" not in arts:
+        return
+    # Migration may import via nested reconcile in the same call stack — strip when table is authoritative.
+    if not database.list_company_search_terms(candidate_id):
         return
     updated_arts = dict(arts)
     del updated_arts["company_search_terms"]
-    save_candidate_data(candidate_id, {"artifacts": updated_arts}, replace=False)
+    cd["artifacts"] = updated_arts
+    # replace=True — deep-merge cannot delete nested artifact keys (AST-802).
+    save_candidate_data(candidate_id, cd, replace=True)
 
 
 def company_search_terms_lines_for_candidate(candidate_id: str) -> list[str]:
