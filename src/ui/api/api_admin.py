@@ -49,6 +49,9 @@ from src.utils.config import (
     TASK_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
+    CANDIDATE_STATES,
+    ENTITY_TYPES,
+    dispatch_entity_state_registry,
     ADMIN_CONFIG,
     admin_hidden_dispatch_task_keys,
     CHARS_PER_TOKEN,
@@ -869,6 +872,7 @@ def dispatch_task_state_options():
     return jsonify({
         "job": list(JOB_STATES.keys()),
         "company": list(COMPANY_STATES.keys()),
+        "candidate": list(CANDIDATE_STATES.keys()),
     })
 
 
@@ -890,6 +894,9 @@ def create_dtask():
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
         if err:
             return jsonify({"error": err}), 400
+    tk_err = _dispatch_task_key_trigger_error(data.get("task_key", ""), data.get("trigger_state"))
+    if tk_err:
+        return jsonify({"error": tk_err}), 400
     try:
         task_id = save_dispatch_task(
             candidate_id=data["candidate_id"],
@@ -928,14 +935,14 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     if not ts:
         return "trigger_state is required"
     et = defaults["entity_type"]
-    if et == "job":
-        if ts not in JOB_STATES:
-            return f"task_key {tk!r} (job) is not valid for trigger_state {ts!r}"
-    elif et == "company":
-        if ts not in COMPANY_STATES:
-            return f"task_key {tk!r} (company) is not valid for trigger_state {ts!r}"
-    else:
+    if et not in ENTITY_TYPES:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
+    try:
+        registry = dispatch_entity_state_registry(et)
+    except KeyError:
+        return f"task_key {tk!r} has unsupported entity_type {et!r}"
+    if ts not in registry:
+        return f"task_key {tk!r} ({et}) is not valid for trigger_state {ts!r}"
     if tk in resume_artifact_hop_task_keys():
         if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_build_artifacts_hop(ts) != tk:
             return f"task_key {tk!r} requires trigger_state {BUILD_ARTIFACTS_BASE_STATE!r} (got {ts!r})"
@@ -966,6 +973,10 @@ def update_dtask(task_id):
         updates["entity_type"] = defaults["entity_type"]
         updates["sort_by"] = defaults["sort_by"]
         updates["batch_call_mode"] = defaults["batch_call_mode"]
+    elif "trigger_state" in data:
+        tk_err = _dispatch_task_key_trigger_error(row.get("task_key", ""), data.get("trigger_state"))
+        if tk_err:
+            return jsonify({"error": tk_err}), 400
     trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
     for k in allowed:

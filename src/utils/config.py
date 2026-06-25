@@ -1420,6 +1420,18 @@ def dispatch_task_key_retired_message(task_key: str) -> Optional[str]:
     return _RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES[tk]
 
 
+def dispatch_entity_state_registry(entity_type: str) -> Dict[str, Any]:
+    """Return the state registry for a dispatch entity_type (ENTITY_TYPES members only)."""
+    registries: Dict[str, Dict[str, Any]] = {
+        "job": JOB_STATES,
+        "company": COMPANY_STATES,
+        "candidate": CANDIDATE_STATES,
+    }
+    if entity_type not in registries:
+        raise KeyError(f"unknown dispatch entity_type: {entity_type!r}")
+    return registries[entity_type]
+
+
 def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
     """Admin + DB insert defaults for dispatch_task columns. Raises KeyError if task_key is not schedulable."""
     tk = (task_key or "").strip()
