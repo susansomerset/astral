@@ -177,3 +177,13 @@ No conflicts requiring `conf-!!-NONE`.
 ## Revisions
 
 *(none — initial FIX-UAT plan)*
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-791/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging`
+
+**Product commits:** `b4cb30e` (Linear API key env precedence), `1ed038b` (default cursor CSS + env.example)
+
+**Note for Betty (Stage 3):** Component tests per plan Stage 3 — manifest at Code Complete.
