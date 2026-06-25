@@ -154,3 +154,14 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. Data layer: **`do
 ```
 
 **Note:** Candidate entities lack `state_history` batch anchoring today — hydration falls back to latest successful parent ref per `task_key` (documented in plan Stage 1).
+
+---
+
+### AST-809 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** requires truthy **`batch_id`** before insert; passes **`batch_size`** and **`completed_at`** into **`insert_vector_feedback_rows`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip when batch_id missing | `src/core/agent.py` | `TestAst809VectorFeedbackBatchMetadata::test_capture_skips_insert_when_batch_id_missing` |
+| Metadata on SUCCESS capture | `src/core/agent.py` | `TestAst809VectorFeedbackBatchMetadata::test_capture_persists_batch_metadata_on_rows` |

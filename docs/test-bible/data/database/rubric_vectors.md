@@ -83,3 +83,24 @@ Parse helpers + agent capture: **`docs/test-bible/utils/rubric_feedback.md`**, *
 | Per-vector distributions | `src/data/database.py` | `TestAst725AggregateVectorFeedback::test_per_vector_distributions_and_zero_feedback_vectors` |
 
 Admin API + page: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+### AST-809 · AST-378 (UAT fix)
+
+**`vector_feedback`** rows persist **`batch_size`** and **`completed_at`** with **`batch_id`**; insert skipped when **`batch_id`** falsy. Builds on **AST-724** capture + **AST-725** list.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Insert skips empty batch_id | `src/data/database.py` | `TestAst809VectorFeedbackBatchMetadata::test_insert_requires_batch_id` |
+| batch_size + completed_at on rows | `src/data/database.py` | `TestAst809VectorFeedbackBatchMetadata::test_insert_persists_batch_size_and_completed_at` |
+
+Capture hook: **`docs/test-bible/core/agent.md`**. Admin API columns: **`docs/test-bible/ui/api/api_admin.md`**.
+
+**AST-809** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_rubric_vectors.py::TestAst809VectorFeedbackBatchMetadata \
+  tests/component/core/test_agent.py::TestAst809VectorFeedbackBatchMetadata \
+  tests/component/ui/api/test_api_admin.py::TestAst809VectorFeedbackBatchMetadata \
+  -q
+```
