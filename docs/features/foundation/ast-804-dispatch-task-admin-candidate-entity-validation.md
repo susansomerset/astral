@@ -156,3 +156,15 @@ Scheduled Actions save/update rejects candidate-scoped dispatch rows because `_d
 | Layer boundaries | UI API + config helper only; no data/core changes |
 
 No conflicts.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation` @ `6358a7b`
+
+Stage 1: `dispatch_entity_state_registry` in config; `_dispatch_task_key_trigger_error` validates all **ENTITY_TYPES** members via **CANDIDATE_STATES**; POST create + PUT trigger_state-only validation; `state_options` includes **candidate**.
+
+Stage 2: `AdminScheduledActions` loads **candidate** state options and uses them in Input State when `entity_type === "candidate"`.
+
+**Betty / qa-child:** Manifest in plan QA table — `test_api_admin.py` candidate validation + PUT success; `test_AdminScheduledActions.test.tsx` candidate state_options normalization.
