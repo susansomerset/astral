@@ -4033,6 +4033,10 @@ class TestAst505InflowDiscovery:
     def test_normalize_company_url_strips_www(self) -> None:
         assert roster_mod._normalize_company_url_for_dedupe("https://www.Acme.com/jobs/") == "https://acme.com/jobs"
 
+    def test_normalize_company_url_malformed_ipv6_returns_empty(self) -> None:
+        assert roster_mod._normalize_company_url_for_dedupe("http://[::1") == ""
+        assert roster_mod._normalize_company_url_for_dedupe("https://[invalid-ipv6]/path") == ""
+
     def test_ingest_creates_new_without_website(self, seeded_db) -> None:
         db = seeded_db
         db.save_candidate(
