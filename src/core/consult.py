@@ -1993,7 +1993,7 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
-        if task_key == "prefilter":
+        if task_key in ("prefilter", "prefilter_company"):
             r = await roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug)
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
