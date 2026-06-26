@@ -113,6 +113,7 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
   const [ledger, setLedger] = useState<LedgerRow | null>(null)
   const [hydratedRows, setHydratedRows] = useState<HydratedReviewRow[] | null>(null)
   const [hydrateLoading, setHydrateLoading] = useState(false)
+  const [resolvedCandidateId, setResolvedCandidateId] = useState("")
 
   useEffect(() => {
     if (!batchId) return
@@ -122,6 +123,7 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
     setTimesheetRows([])
     setLedger(null)
     setHydratedRows(null)
+    setResolvedCandidateId(candidateId?.trim() || "")
     Promise.all([
       api(`/api/agent_data/${encodeURIComponent(batchId)}`).then(r => r.json()),
       api(`/api/admin/timesheets?batch_id=${encodeURIComponent(batchId)}`).then(r => r.json()),
@@ -136,7 +138,12 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
       const present = BLOCK_TYPE_ORDER.filter(t => b.some(x => x.block_type === t))
       setActiveType(present[0] ?? b[0]?.block_type ?? "")
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [batchId])
+  }, [batchId, candidateId])
+
+  useEffect(() => {
+    const fromLedger = (ledger?.candidate_id || "").trim()
+    if (fromLedger) setResolvedCandidateId(prev => prev || fromLedger)
+  }, [ledger])
 
   const feedbackBlocks = useMemo(
     () => blocks.filter(b => b.block_type === "FEEDBACK"),
@@ -148,11 +155,16 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
     [feedbackBlocks],
   )
 
-  const hydrateCandidateId = (candidateId || ledger?.candidate_id || "").trim()
+  const hydrateCandidateId = resolvedCandidateId.trim()
   const hydrateTaskKey = (feedbackBlocks[0]?.task_key || ledger?.task_key || "").trim()
+  const hydrateOwnerTaskKey = hydrateTaskKey
 
   useEffect(() => {
-    if (activeType !== "FEEDBACK" || !feedbackReviews || !hydrateCandidateId || !hydrateTaskKey) {
+    if (activeType !== "FEEDBACK" || !feedbackReviews || !hydrateCandidateId) {
+      setHydratedRows(null)
+      return
+    }
+    if (!hydrateOwnerTaskKey && !hydrateTaskKey) {
       setHydratedRows(null)
       return
     }
@@ -162,6 +174,7 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         candidate_id: hydrateCandidateId,
+        owner_task_key: hydrateOwnerTaskKey,
         task_key: hydrateTaskKey,
         vector_reviews: feedbackReviews,
       }),
@@ -173,7 +186,7 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
       })
       .catch(() => setHydratedRows(null))
       .finally(() => setHydrateLoading(false))
-  }, [activeType, feedbackReviews, hydrateCandidateId, hydrateTaskKey])
+  }, [activeType, feedbackReviews, hydrateCandidateId, hydrateOwnerTaskKey, hydrateTaskKey])
 
   const byType: Record<string, AgentDataBlock[]> = {}
   for (const b of blocks) {
