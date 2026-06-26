@@ -2036,11 +2036,17 @@ def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
     return "\n\n".join(sections)
 
 
+def _assembled_has_embedded_nav_links(assembled_content: str) -> bool:
+    return "--- NAV LINKS ---" in (assembled_content or "")
+
+
 def _build_select_job_page_live_content(assembled_content: str, pjl_nav_links: str) -> str:
-    """Append global PJL nav enumeration for select_job_page agent live content (AST-759)."""
+    """Build select_job_page agent live content; dedupe global nav when per-page nav present (AST-826)."""
     nav = (pjl_nav_links or "").strip()
     assembled = assembled_content or ""
     if not nav:
+        return assembled
+    if _assembled_has_embedded_nav_links(assembled):
         return assembled
     if nav in assembled:
         return assembled
