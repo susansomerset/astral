@@ -194,8 +194,11 @@ def _normalize_company_url_for_dedupe(url: str) -> str:
     u = (url or "").strip()
     if not u:
         return ""
-    n = normalize_url(u)
-    parsed = urlparse(n)
+    try:
+        n = normalize_url(u)
+        parsed = urlparse(n)
+    except ValueError:
+        return ""
     netloc = parsed.netloc or ""
     if netloc.startswith("www."):
         netloc = netloc[4:]
