@@ -444,6 +444,34 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-817 · AST-815
+
+**AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.
+
+**Manifest focus (existing coverage — no new tests):**
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Company vet consult → **`run_company_task`** (not discovery batch) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | **`vet_inflow_discovery_company`** outcomes + routing (**AST-776** regression) | `src/core/roster.py` | `::TestAst776VetInflowDiscoveryCompany` |
+| 3 | Discovery batch no inline vet (**AST-775** regression) | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors` |
+| 4 | Config company entity (**AST-776** regression) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task` |
+
+**AST-817** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
