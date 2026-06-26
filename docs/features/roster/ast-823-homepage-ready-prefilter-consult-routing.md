@@ -198,3 +198,17 @@ This ticket restores **AST-702** wiring: **`dispatch_task_key=prefilter`** (and 
 | §3.5 naming | Dispatch key stays **`prefilter`**; agent task stays **`prefilter_company`** — migration renames mis-keyed dispatch rows only |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing` @ `2105ed4`
+
+**Built:** Stage 2 — consult routes `dispatch_task_key` in `("prefilter", "prefilter_company")` to `prefilter_company_batch`. Stage 3 — idempotent `dispatch_task` migration retargets legacy `prefilter_company` rows and stale `batch_call_mode` / `trigger_state` on company prefilter rows.
+
+**Product commits:** `5c1937d` (Stage 2 — consult routing), `2105ed4` (Stage 3 — dispatch migration)
+
+**Stage 1 investigation:** AST-702 `prefilter` branch present on branch tip; `run_company_task` has no HOMEPAGE_READY handler (expected fallthrough bug). Dispatcher company `batch_call_mode=1` path calls `run_consult_task` once — no exclusion guard found.
+
+**Betty follow-on (non-blocking):** recommend `TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key` with `dispatch_task_key='prefilter_company'` if not already on manifest.
