@@ -3910,24 +3910,29 @@ def update_company_search_term_last_scan_at(candidate_id: str, search_term: str)
     _run_with_retry(_inner)
 
 
-def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> int:
-    """Count terms with NULL or stale last_scan_at (AST-525 consumer)."""
+def count_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> int:
+    """Count stale terms for inflow_discovery (AST-525/814); freq_hrs<=0 means all table rows."""
     if not candidate_id or not str(candidate_id).strip():
-        return 0
-    if scan_interval_hours <= 0:
         return 0
 
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            row = conn.execute(
-                """SELECT COUNT(*) FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchone()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                    (candidate_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT COUNT(*) FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
+                    (candidate_id, str(fh)),
+                ).fetchone()
             return int(row[0]) if row else 0
         finally:
             conn.close()
@@ -3935,25 +3940,32 @@ def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: flo
     return _run_with_retry(_with_conn)
 
 
-def list_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> List[str]:
-    """Stale term strings for inflow_discovery (AST-525); ordered search_term ASC."""
+def list_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> List[str]:
+    """Stale term strings for inflow_discovery (AST-525/814); ordered search_term ASC."""
     if not candidate_id or not str(candidate_id).strip():
-        return []
-    if scan_interval_hours <= 0:
         return []
 
     def _with_conn() -> List[str]:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            rows = conn.execute(
-                """SELECT search_term FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))
-                   ORDER BY search_term ASC""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchall()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                       ORDER BY search_term ASC""",
+                    (candidate_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))
+                       ORDER BY search_term ASC""",
+                    (candidate_id, str(fh)),
+                ).fetchall()
             return [r[0] for r in rows]
         finally:
             conn.close()
@@ -6051,13 +6063,14 @@ def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
-def describe_candidate_inflow_discovery_eligibility(candidate_id: str) -> tuple[int, str]:
-    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802)."""
+def describe_candidate_inflow_discovery_eligibility(candidate_id: str, freq_hrs: float) -> tuple[int, str]:
+    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802/814)."""
     from src.core.candidate import ensure_company_search_terms_table_synced
 
     if not candidate_id or not str(candidate_id).strip():
         return 0, "eligibility: missing candidate_id"
     cid = str(candidate_id).strip()
+    fh = float(freq_hrs or 0)
     ensure_company_search_terms_table_synced(cid)
     cand = get_candidate(cid)
     if not cand:
@@ -6066,15 +6079,14 @@ def describe_candidate_inflow_discovery_eligibility(candidate_id: str) -> tuple[
     state = (cand.get("state") or "").strip()
     if state != trigger:
         return 0, f"eligibility: candidate state {state!r} != {trigger!r}"
-    scan_h = float(INFLOW_CONFIG["discovery"]["scan_interval_hours"])
     total = len(list_company_search_terms(cid))
     if total == 0:
         return 0, "eligibility: company_search_terms table empty"
-    stale = count_stale_company_search_terms(cid, scan_h)
+    stale = count_stale_company_search_terms(cid, fh)
     if stale == 0:
         return (
             0,
-            f"eligibility: {total} table row(s) but 0 stale (scan_interval_hours={scan_h})",
+            f"eligibility: {total} table row(s) but 0 stale (freq_hrs={fh})",
         )
     return 1, ""
 
@@ -6085,8 +6097,10 @@ def count_candidate_inflow_discovery_eligible(
     last_run_at: Optional[str],
 ) -> int:
     """inflow_discovery when LIVE_PROMPTS and ≥1 stale company_search_terms row (AST-525)."""
-    del freq_hrs, last_run_at  # unused — per-term last_scan_at, not dispatch_task.last_run_at
-    eligible, _reason = describe_candidate_inflow_discovery_eligibility(candidate_id)
+    del last_run_at  # per-term last_scan_at, not dispatch_task.last_run_at
+    eligible, _reason = describe_candidate_inflow_discovery_eligibility(
+        candidate_id, float(freq_hrs or 0)
+    )
     return eligible
 
 
@@ -6120,7 +6134,9 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(candidate_id, 0, None)
+        return count_candidate_inflow_discovery_eligible(
+            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+        )
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)
