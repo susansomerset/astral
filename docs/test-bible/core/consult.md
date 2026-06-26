@@ -472,6 +472,38 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-823 · AST-821
+
+**AST-823 (UAT bug):** **`run_consult_task`** company branch routes **`dispatch_task_key`** in **`("prefilter", "prefilter_company")`** to **`prefilter_company_batch`** — legacy mis-keyed dispatch rows no longer fall through to **`run_company_task`** on **HOMEPAGE_READY**. Idempotent **`dispatch_task`** migration retargets **`prefilter_company`** agent-key rows and stale **`batch_call_mode` / `trigger_state`** on company prefilter rows (**AST-703** DELETE-before-UPDATE order preserved).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`prefilter`** batch routing (regression) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` |
+| Legacy **`prefilter_company`** dispatch key | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key` |
+| Batch runner unchanged | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch` |
+| Dispatcher union claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states` |
+| Migration retarget | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration` |
+
+**Broken / obsolete (Betty revision):** **`TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts`** — batch runner loads rubric via **`rubric_criteria_for_task(astral_candidate_id, …)`**; test stubs lookup with embedded **RC** + sets **`astral_candidate_id`** in ctx.
+
+Regression: **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMigrationUniqueCollision`** (**AST-702** / **AST-703**).
+
+**AST-823** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
