@@ -207,3 +207,19 @@ Three independent gaps explain Susan's repro:
 | §1.5.1 debug | Per-vector headers + hydrated detail lines |
 
 No unresolved rule conflicts.
+
+---
+
+## Build (Ada)
+
+**Branch:** `origin/sub/AST-378/AST-816-uat-compact-vector-reviews-hydrate-evaluate-jd`  
+**Code tip:** `702a68c`  
+**Stages:** 0 spike (local — `empty_expected` on dev DB without evaluate_jd rubric rows); 1 utils diagnostic parse; 2 capture + debug hydration; 3 React candidate_id wiring.
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `347f42e` | `normalize_vector_reviews_raw`, `parse_vector_reviews_diagnostic`, `format_hydrated_review_debug_line` |
+| 2 | `8caf591` | Capture uses UUID map for expected codes; diagnostic debug + hydrated lines |
+| 3 | `702a68c` | Performance Monitor + Vector Feedback pass `candidate_id`; modal resolves ledger/prop |
+
+**Review stub:** Pending Radia (`review-child`).
