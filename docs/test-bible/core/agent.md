@@ -186,3 +186,25 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. Data layer: **`do
 ```
 
 Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal ledger **`candidate_id`**: **`docs/test-bible/frontend/pages.md`**.
+
+---
+
+### AST-820 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** and **`do_task`** emit debug-only pipeline trace + explicit skip reasons when **`debug=True`** (empty **`batch_id`**, empty rubric UUID map, missing owner/candidate).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Early-return skip debug | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_skip_empty_batch_id`, `test_debug_skip_empty_expected_codes` |
+| Pipeline trace on capture | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_emits_pipeline_trace_on_capture_start` |
+| `do_task` skip when no candidate | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_do_task_debug_skip_when_candidate_id_missing` |
+
+**AST-820** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace \
+  -q
+```
+
+Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.

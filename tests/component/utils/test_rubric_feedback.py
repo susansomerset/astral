@@ -149,3 +149,47 @@ class TestAst816FormatHydratedReviewDebugLine:
         assert line.startswith("CLR Culture fit — R/Aligned C/OK V/Keep — ")
         assert line.endswith("…")
         assert len(line) < 200
+
+
+class TestAst820VectorReviewsPipelineTrace:
+    """AST-820: pure pipeline trace lines for debug_detail (no logging side effects)."""
+
+    def test_success_path_emits_normalize_diagnostic_and_hydrate_steps(self) -> None:
+        lines = rf_mod.vector_reviews_pipeline_trace(
+            raw_reviews=["G1RACOVK"],
+            expected_codes=frozenset({"G1"}),
+            code_to_uuid={"G1": "uuid-1"},
+            rubric_by_code={"G1": {"label": "Grade fit", "content": "Criterion body", "importance": 8}},
+            candidate_id="cand-1",
+            owner_task_key="grade_get",
+        )
+        joined = "\n".join(lines)
+        assert "vector_reviews trace candidate=cand-1 owner=grade_get" in joined
+        assert "raw type=list" in joined
+        assert "normalize -> 1 lines" in joined
+        assert "expected_codes=['G1'] count=1" in joined
+        assert "line[0] G1RACOVK parse=ok code=G1" in joined
+        assert "diagnostic reason=ok" in joined
+        assert "hydrate rows=1" in joined
+        assert "G1 Grade fit" in joined
+
+    def test_bad_input_shows_normalize_failure_reason(self) -> None:
+        lines = rf_mod.vector_reviews_pipeline_trace(
+            raw_reviews=None,
+            expected_codes=frozenset({"G1"}),
+            code_to_uuid={"G1": "uuid-1"},
+            rubric_by_code={},
+        )
+        assert any("normalize -> None (reason=missing)" in line for line in lines)
+
+    def test_truncates_long_raw_repr(self) -> None:
+        long_list = ["G1RACOVK"] + ["X" * 200]
+        lines = rf_mod.vector_reviews_pipeline_trace(
+            raw_reviews=long_list,
+            expected_codes=frozenset({"G1"}),
+            code_to_uuid={"G1": "uuid-1"},
+            rubric_by_code={"G1": {"label": "G1", "content": "", "importance": 1}},
+        )
+        raw_line = next(line for line in lines if line.startswith("raw type="))
+        assert raw_line.endswith("…")
+        assert len(raw_line) <= 140
