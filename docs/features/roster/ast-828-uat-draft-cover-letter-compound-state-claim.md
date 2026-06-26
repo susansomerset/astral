@@ -140,7 +140,7 @@ No conflicts requiring plan revision.
 
 ## Review
 
-**Diff:** `origin/dev...origin/sub/AST-752/AST-828-draft-cover-letter-compound-state-claim` @ `f7dac44`
+**Diff:** `origin/ftr/AST-752-agent-data-caller-content...origin/sub/AST-752/AST-828-draft-cover-letter-compound-state-claim` @ `aa6b161` (republished linear sub-log)
 
 | Area | Notes |
 |------|-------|
@@ -148,4 +148,4 @@ No conflicts requiring plan revision.
 | Boundaries | `transition_job_state` / `initialize_job` unchanged; no dispatcher or agent changes |
 | Verify | Compound `BUILD_ARTIFACTS.finalize_job_resume` claims without ValueError; `BUILD_ARTIFACTS.not_a_hop` still rejected |
 
-Awaiting Radia **review-child** / Betty **qa-child** manifest.
+Betty manifest green @ `8f4ec67`. Awaiting Radia **review-child**.
