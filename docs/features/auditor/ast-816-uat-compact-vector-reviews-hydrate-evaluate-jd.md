@@ -223,3 +223,40 @@ No unresolved rule conflicts.
 | 3 | `702a68c` | Performance Monitor + Vector Feedback pass `candidate_id`; modal resolves ledger/prop |
 
 **Review stub:** Pending Radia (`review-child`).
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-816-uat-compact-vector-reviews-hydrate-evaluate-jd` (code tip `a34f4db`)  
+**Reviewed:** 2026-06-18
+
+Focused UAT fix diff (12 files) — sibling AST-378 epic commits appear in three-dot diff until `ftr` lands on `dev`; this review is AST-816 only.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 delivered: `normalize_vector_reviews_raw`, `parse_vector_reviews_diagnostic`, `format_hydrated_review_debug_line`; capture normalization + diagnostic debug; React `candidate_id` wiring on Performance Monitor, Vector Feedback, and modal ledger resolution. |
+| Root-cause fix | JSON-string `vector_reviews` envelope now normalizes before strict parse — `TestAst816VectorFeedbackCapture.test_json_string_vector_reviews_persists_rows` confirms `insert_vector_feedback_rows` runs for Susan-style payload. |
+| Capture | `expected_codes` from UUID map keys (equivalent to criteria∩UUID for table-backed rubrics); strict equality unchanged; lenient FEEDBACK fallback on failure. |
+| Debug (§1.5.1) | Failure path emits `reason=` / `missing=` / `extra=` / `expected=` plus partial hydrated lines per parseable compact string; success path emits per-vector `debug_index` + `format_hydrated_review_debug_line`. Gated on `debug=True`. |
+| UI | `resolvedCandidateId` from prop or ledger; hydrate POST includes `owner_task_key`; Performance Monitor and Vector Feedback pass row `candidate_id` into modal. |
+| Tests | Utils diagnostic + evaluate_jd-style seven-code parse; agent JSON-string persist + debug diagnostic; BatchAgentDataModal ledger `candidate_id` hydrate (manifest green). |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| **discuss** | `BatchAgentDataModal.tsx` | `hydrateOwnerTaskKey = hydrateTaskKey` sends both fields as the FEEDBACK block's consumer `task_key`. For `evaluate_jd` this is correct; for craft rubric tasks the API skips `rubric_owner_task_key()` mapping when `owner_task_key` is set — hydration may miss owner rubric. Acceptable for this ticket's scope; note if craft FEEDBACK inspection is needed later. |
+| advisory | `_rubric_by_code_lookup` (`agent.py`) vs `_rubric_lookup_by_code` (`api_admin.py`) | Same uppercased-code map — minor DRY overlap with AST-808 admin path (not blocking). |
+| advisory | Stage 0 spike | Build notes `empty_expected` on dev DB without evaluate_jd rubric rows; prod UAT likely hit JSON-string coercion and/or missing `candidate_id` on modal open — both fixed here. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | None required — approve for User Testing. |
+| UAT | Re-run Susan `evaluate_jd` SUCCESS: debug shows hydrated vector lines; FEEDBACK tab and Admin Vector Feedback hydrate compact codes; `vector_feedback` rows persist when rubric count matches. |
+
+**Verdict:** Clean — approve for User Testing.
