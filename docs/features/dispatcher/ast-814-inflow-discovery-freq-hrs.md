@@ -194,3 +194,19 @@ Execute stages **1 → 4** in order. One commit per stage on epic worktree, then
 | §3.5 naming | **`inflow_discovery_freq_hrs`** on ctx matches dispatch column semantics |
 
 No conflicts requiring plan revision.
+
+---
+
+## Build Review (Hedy)
+
+**Publish ref:** `origin/sub/AST-813/AST-814-inflow-discovery-freq-hrs` @ `7aa989b`
+
+| Stage | Summary |
+|-------|---------|
+| 1 | `count_stale`/`list_stale` use `freq_hrs`; `<= 0` returns all table rows; eligibility/describe wired to dispatch row |
+| 2 | Removed `scan_interval_hours` and `dispatch_freq_hrs` from `INFLOW_CONFIG["discovery"]` |
+| 3 | Dispatcher injects `ctx["inflow_discovery_freq_hrs"]`; debug describe passes row `freq_hrs`; roster batch reads ctx |
+
+**QA (Betty):** Component tests per Stage 4 table — `freq_hrs=0` with fresh terms eligible; `freq_hrs=168` cadence; dispatcher debug cites `freq_hrs=`; config literal tests updated.
+
+**Manual UAT:** Repro **somerset** / **LIVE_PROMPTS** / `freq_hrs=0` — Scheduled Actions **Available ≥ 1**, manual **Run** does not skip for `0 stale (scan_interval_hours=168)`.
