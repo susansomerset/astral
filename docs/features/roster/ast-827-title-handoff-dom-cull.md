@@ -260,3 +260,9 @@ No conflicts requiring escalation.
 - Execute stages 1→5 in order; one commit per stage on epic worktree; publish each to `origin/sub/AST-824/AST-827-title-handoff-dom-cull` before the next stage.
 - Do not edit `tests/` or `docs/test-bible/**` — Betty owns test manifest in **qa-child**.
 - If medicarerights live repro still fails after Stage 4 with `cull_outcome=culled` and both titles in `dom_joined`, stop and comment on **AST-824** with execution-history snippet — do not change AST-689 readiness waits without Susan.
+
+---
+
+## Review stub (build-child)
+
+**Built:** `code(AST-827)` on `origin/sub/AST-824/AST-827-title-handoff-dom-cull` — shared `_culled_dom_for_parse` / title normalization, select finalize debug, parse dispatch coverage gate, `find_job_containers` Phase 2b sibling anchors, JOBS_FOUND chain parity.

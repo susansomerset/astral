@@ -94,12 +94,54 @@ def make_locate_parse_resolver(dom_map: Dict[int, str], visible_map: Dict[int, s
         dom_full = (dom_map.get(sp_int) or "").strip()
         if not dom_full:
             return ("", (visible_map.get(sp_int) or "").strip())
-        containers = find_job_containers(dom_full, titles)
-        culled = "\n".join(containers) if containers else ""
+        dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_full, titles)
         vis = (visible_map.get(sp_int) or "").strip()
-        return (culled, vis)
+        if cull_outcome == "cull_miss" or not dom_joined.strip():
+            return ("", vis)
+        return (dom_joined, vis)
 
     return resolve_run_next_live
+
+
+def _normalize_job_titles(raw: Any) -> List[str]:
+    """Strip blanks; preserve order from select/company_data."""
+    if not isinstance(raw, list):
+        return []
+    return [str(t).strip() for t in raw if str(t).strip()]
+
+
+def _dom_text_covers_titles(dom_html: str, job_titles: List[str]) -> bool:
+    blob = (dom_html or "").lower()
+    return all(t.lower() in blob for t in job_titles if t.strip())
+
+
+def _culled_dom_for_parse(
+    dom_html: str, job_titles: List[str]
+) -> Tuple[str, List[str], str]:
+    """Returns (dom_joined, containers, outcome_label).
+    outcome_label: no_titles | full_dom | culled | cull_miss."""
+    titles = _normalize_job_titles(job_titles)
+    if not titles:
+        return ("", [], "no_titles")
+    if len(titles) < 2:
+        dom = (dom_html or "").strip()
+        if not dom:
+            return ("", [], "cull_miss")
+        containers = find_job_containers(dom, titles)
+        joined = "\n".join(containers).strip() if containers else ""
+        if not joined:
+            return ("", containers or [], "cull_miss")
+        return (joined, containers, "full_dom")
+    containers = find_job_containers(dom_html or "", titles)
+    dom_joined = "\n".join(containers).strip()
+    if not dom_joined:
+        return ("", containers, "cull_miss")
+    if _dom_text_covers_titles(dom_joined, titles):
+        return (dom_joined, containers, "culled")
+    # find_job_containers fallback [dom_html] may not cover all titles on partial rescrape
+    if _dom_text_covers_titles(dom_html or "", titles):
+        return ((dom_html or "").strip(), containers, "full_dom")
+    return ("", containers, "cull_miss")
 
 
 def _strip_company_data_keys(short_name: str, keys: Tuple[str, ...]) -> None:  # pragma: no cover
@@ -1179,12 +1221,13 @@ async def run_parse_job_list_dispatch(
             short_name, company_website, "", input_state,
             notes="missing selected_pjl_url", response_type="PARSE_DISPATCH_MISSING_URL",
         )
-    job_titles = cdata.get("job_titles") or []
+    job_titles = _normalize_job_titles(cdata.get("job_titles"))
     if not job_titles:
         return _save_parse_dispatch_failure(
             short_name, company_website, list_url, input_state,
             notes="missing job_titles", response_type="PARSE_DISPATCH_MISSING_TITLES",
         )
+    cull_outcome = ""
     if debug:
         log = logger
         log.set_debug_flag(True)
@@ -1202,13 +1245,22 @@ async def run_parse_job_list_dispatch(
                 short_name, company_website, list_url, input_state,
                 notes="empty dom after reload", response_type="PARSE_DISPATCH_EMPTY_DOM",
             )
-        containers = find_job_containers(dom_html, job_titles)
-        if not containers:
+        pre_cull_chars = len(dom_html or "")
+        dom_joined, containers, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+        post_cull_chars = len(dom_joined or "")
+        if debug:
+            log = logger
+            log.set_debug_flag(True)
+            log.debug_detail(
+                f"titles={len(job_titles)} pre_cull_chars={pre_cull_chars} "
+                f"post_cull_chars={post_cull_chars} containers={len(containers)} "
+                f"cull_outcome={cull_outcome!r}"
+            )
+        if cull_outcome == "cull_miss" or not dom_joined.strip():
             return _save_parse_dispatch_failure(
                 short_name, company_website, list_url, input_state,
                 notes="containers not found for titles", response_type="PARSE_DISPATCH_NO_CONTAINERS",
             )
-        dom_joined = "\n".join(containers)
         parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
         container = (parsed.get("job_container") or "").strip()
         job_tag = (parsed.get("job_tag") or "").strip()
@@ -1232,7 +1284,10 @@ async def run_parse_job_list_dispatch(
     if debug:
         log = logger
         log.set_debug_flag(True)
-        log.debug_detail(f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}")
+        log.debug_detail(
+            f"response_type={result.get('response_type')!r} -> state={result.get('state')!r} "
+            f"cull={cull_outcome!r}"
+        )
     return result
 
 
@@ -2446,11 +2501,22 @@ async def _finalize_joblist_identified(
     """AST-720: JOBLIST_TITLES on PJL_READY path — no parse, job_site column unset."""
     _ = ctx
     sel_cfg = ROSTER_CONFIG["select_job_page"]
-    job_titles = select_parsed.get("job_titles", [])
+    job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {
         "job_titles": job_titles,
         sel_cfg["selected_pjl_url_key"]: job_site_url,
     })
+    if debug:
+        log = logger
+        log.set_debug_flag(True)
+        log.debug_index(
+            func="roster._finalize_joblist_identified",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"titles={len(job_titles)} url={job_site_url}",
+        )
+        log.debug_detail(f"titles={job_titles!r}")
     vis_save = ""
     if selected_page is not None:
         try:
@@ -2492,7 +2558,7 @@ async def _finalize_joblist_titles_after_chain(
     ctx: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:  # pragma: no cover — parse_job_list chained path §7.12
     """AST-469: parse_job_list already ran via run_next; validate and persist like legacy _check_parse_results."""
-    job_titles = select_parsed.get("job_titles", [])
+    job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {"job_titles": job_titles})
     parsed = chain_res.get("parsed_response") or {}
     dom_html = page_dom_map.get(selected_page, "") if selected_page is not None else ""
@@ -2501,15 +2567,14 @@ async def _finalize_joblist_titles_after_chain(
                            state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
         return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-    containers = find_job_containers(dom_html, job_titles)
-    if not containers:
+    dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+    if cull_outcome == "cull_miss" or not dom_joined.strip():
         if debug:
             logger.test(f"[find_job_page] DOM did not contain job titles — possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
                            state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
         return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
     full_dom_html = dom_html
-    dom_joined = "\n".join(containers)
 
     container = (parsed.get("job_container") or "").strip()
     job_tag = (parsed.get("job_tag") or "").strip()
@@ -2558,7 +2623,7 @@ async def _finalize_joblist_titles_select_only(
     visible_map: Dict[int, str],
 ) -> Dict[str, Any]:  # pragma: no cover — select-only PJL fallback §7.12
     """AST-469: run_next suppressed (empty culled DOM) — validate with legacy _fetch_parse_job_list path."""
-    job_titles = select_parsed.get("job_titles", [])
+    job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {"job_titles": job_titles})
     if debug:
         logger.test(f"[find_job_page] JOBLIST_TITLES (no chain): {len(job_titles)} titles, job_site={job_site_url}")
@@ -2569,15 +2634,14 @@ async def _finalize_joblist_titles_select_only(
                            state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
         return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-    containers = find_job_containers(dom_html, job_titles)
-    if not containers:
+    dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+    if cull_outcome == "cull_miss" or not dom_joined.strip():
         if debug:
             logger.test(f"[find_job_page] DOM did not contain job titles — possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
                            state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
         return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
     full_dom_html = dom_html
-    dom_joined = "\n".join(containers)
 
     parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
 
