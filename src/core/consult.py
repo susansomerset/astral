@@ -2006,23 +2006,6 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
-        if task_key == "vet_inflow_discovery":
-            cand_id = _candidate_id_from_ctx(ctx)
-            if not cand_id:
-                cand_id = str((entities[0] or {}).get("candidate_id") or "").strip()
-            if not cand_id:
-                logger.warning(
-                    "run_consult_task: vet_inflow_discovery missing candidate_id in ctx and entity"
-                )
-                return zero
-            # Lazy import — avoids consult ↔ candidate cycle at module load (cf. agent.py).
-            from src.core.candidate import get_candidate
-            candidate = get_candidate(cand_id) or {}
-            if not candidate.get("astral_candidate_id"):
-                candidate = {**candidate, "astral_candidate_id": cand_id}
-            return await roster.run_inflow_discovery_batch(
-                candidate, batch_id, ctx, debug,
-            )
         return await roster.run_company_task(
             input_state, entities[0], batch_id, ctx, debug,
             dispatch_task_key=dispatch_task_key,

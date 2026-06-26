@@ -117,3 +117,16 @@ tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_c
 tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
 tests/component/core/test_roster.py::TestAst775SplitInflowDiscovery
 ```
+
+## Build review stub
+
+**Publish ref:** `origin/sub/AST-815/AST-817-vet-inflow-company-routing`
+
+**Built:** Removed stale `vet_inflow_discovery` early-return in `consult.run_consult_task` company branch; company vet dispatch now falls through to `run_company_task` → `vet_inflow_discovery_company` (AST-776). Candidate `inflow_discovery` path unchanged.
+
+**Manual UAT (Susan):**
+- `vet_inflow_discovery` Run with `available ≥ 1` → company vet logs, not `no stale search terms`
+- `inflow_discovery` still records NEW hits (no inline vet)
+- `inflow_resolve_website` still targets NEW without blurb only
+- `debug=True` vet run → Style D blurb headers, not CSE traces
+
