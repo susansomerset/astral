@@ -132,3 +132,34 @@ tests/component/core/test_roster.py::TestAst775SplitInflowDiscovery
 - `inflow_resolve_website` still targets NEW without blurb only
 - `debug=True` vet run → Style D blurb headers, not CSE traces
 
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-815/AST-817-vet-inflow-company-routing` @ `c48bbbe` (product: `f4281fd`)
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 delivered exactly: deleted the stale `vet_inflow_discovery` early-return in `run_consult_task` company branch; no replacement branch added. `rg vet_inflow_discovery src/core/consult.py` → zero matches on publish tip. |
+| Routing | Company vet falls through to `roster.run_company_task(..., dispatch_task_key=dispatch_task_key)` → `vet_inflow_discovery_company` (AST-776). Candidate branch still calls `run_inflow_discovery_batch` only. |
+| §1.3 DRY | No duplicate vet logic in consult — delegates to roster unchanged. |
+| §2.6 state machine | Transitions remain in `vet_inflow_discovery_company`; consult is routing-only. |
+| §3.3 imports | Removed lazy `get_candidate` import with deleted block; no new imports. |
+| Self-Assessment | Scope `minor` matches footprint (17 lines removed, one file). Conf `high` justified — existing `TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` locks the fix. |
+| Tests / bible | Betty manifest + `merge-tests` on publish tip; test-bible AST-817 rows document narrowed run. |
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **Advisory** | Full three-dot diff vs `origin/dev` includes AST-815 sibling rollup (config, roster, admin JSON, etc.) — expected while parent epic is unlanded; AST-817 product commit (`f4281fd`) is scoped to `consult.py` only. |
+| **Advisory** | Susan UAT checklist in plan remains the gate for confirming runtime logs (`vet_inflow_discovery_company` / blurb vet, not `no stale search terms`). |
+
+**Verdict:** Clean — `resolve-child` may proceed with no Radia fix-now items.
+
