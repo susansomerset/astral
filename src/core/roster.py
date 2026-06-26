@@ -592,8 +592,8 @@ async def run_inflow_discovery_batch(
     cfg = INFLOW_CONFIG["discovery"]
     log = logger
     log.set_debug_flag(debug)
-    scan_h = float(cfg["scan_interval_hours"])
-    terms = list_stale_company_search_terms(candidate_id, scan_h)
+    freq_hrs = float((ctx or {}).get("inflow_discovery_freq_hrs") or 0)
+    terms = list_stale_company_search_terms(candidate_id, freq_hrs)
     term_total = len(terms)
     if not terms:
         if debug:
