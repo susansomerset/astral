@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-594 archived 2026-06-23 -->
+
+## Linear archive (AST-594)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-594/draft-job-resume-schema-alignment-and-validation-surfacing-draft-job  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-592 — draft_job_resume dispatch job failed  
+**Blocked by / blocks / related:** parent: AST-592
+
+### Description
+
+## What this implements
+
+Align the `draft_job_resume` artifact-hop response contract with structure-keyed resume content per **AST-551**: remove legacy graded-consult requirements (`grades`, vectors, `grade_like` context), accept optional candidate-catalog section keys only, reject invented section headers, normalize nested/wrapped JSON like **AST-536**, and surface specific validation errors on the hop Execution History row and in backend logs when validation still fails.
+
+## Acceptance criteria
+
+1. Re-running dispatch batch `draft_job_resume-80308ccb-087e-4100-af38-937ea9c75e01` (or an equivalent manual **Run** on `draft_job_resume` for the same job with the same prompt) succeeds when the model returns resume-section JSON like the payload in the original brief — no `Missing required field 'grades'` error.
+2. `TASK_CONFIG` for `draft_job_resume` no longer requires `grades` or other consult-only graded fields; validation accepts payloads with only candidate-catalog section keys (all optional per Susan); unknown section keys fail with an explicit error.
+3. On intentional validation failure (deliberately malformed test payload or invented section key), Execution History for that hop shows failed status and the exact validation message; backend logs include the same message at ERROR for the hop.
+4. A successful `draft_job_resume` hop in a full resume chain still passes `{$CALLER_*}` content to `check_job_resume` per existing `run_next` wiring; no regression on **AST-530** hop logging.
+5. Component tests cover at least: valid structure-keyed resume payload accepted; legacy grades-only requirement removed; unknown section key rejected; validation failure message is observable.
+
+## Boundaries
+
+* Does not rewrite Manage Tasks prompts for `draft_job_resume` (**AST-313**).
+* Does not change consult-path graded tasks.
+* Does not fix unrelated **AST-300** UAT items unless same root cause.
+
+## Notes for planning
+
+Primary files: `src/utils/config.py` (`draft_job_resume` TASK_CONFIG), `src/core/agent.py` validation/normalization. Precedent: **AST-536** on `craft_resume_base`. Susan (2026-06-06): all section fields optional; keys must match candidate structure catalog.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/ast-592-draft-job-resume-dispatch-job-failed`, child `sub/AST-592/<child-segment>`.
+
+### Comments
+
+#### radia — 2026-06-06T09:36:54.154Z
+## [review-astral] AST-594
+
+**Diff:** `origin/dev...origin/sub/AST-592/ast-594-draft-job-resume-schema-alignment` (8 files, +529 / −93)  
+**Review doc:** `docs/features/artifacts/ast-594-draft-job-resume-schema-alignment-and-validation-surfacing.md` (Radia section appended; published @ `c40385b2`)
+
+### What's solid
+
+- **Plan fidelity (AC 1–4):** `TASK_CONFIG["draft_job_resume"]` is metadata-only with `resume_section_payload: True`; runtime catalog validation via `normalize_draft_job_resume_agent_payload` / `validate_draft_job_resume_payload` reuses **AST-536** flatten/coerce helpers. Hop failures use `_validation_failure_audit_body` + `flush_log_buffer` when `log_batch_id` is set — matches validation surfacing AC.
+- **§1.3 DRY / §2.1 config:** Single catalog path through `resolve_resume_structure` / `enabled_resume_section_ids`; graded consult fields explicitly rejected.
+- **§3.3 imports:** Lazy `candidate` imports in `do_task` mirror `craft_resume_base` (plan-documented).
+- **Regression guard:** `task_key != "draft_job_resume"` on vector validation; `agent_payload` unwrap after success unchanged for **AST-530** chain.
+- **Tests:** Bible §7.13zv manifest covered — config schema, candidate helpers, `do_task` accept/reject/`Validation failed:` RESPONSE prefix.
+
+### fix-now
+
+None.
+
+### discuss
+
+- **`src/core/agent.py`** — catalog validation runs only when `task_config.get("resume_section_payload") and cd`. Falsy `candidate_data` (`{}`) skips the whitelist entirely. Plan says validate when candidate_data is non-empty; production dispatch loads candidate via tracker (Susan's batch should be fine). Confirm ad-hoc/preview without candidate_data is intentionally unvalidated, or fail closed when `requires_candidate_key`.
+
+### advisory
+
+- **`tests/component/core/test_agent.py`** — `_draft_job_resume_ctx()` name is misleading when reused for `evaluate_jd` tests.
+- **`src/core/agent.py`** — confidence/grade failure RESPONSE blocks still use `_audit_response_body`; schema/catalog paths now use `_validation_failure_audit_body` (broader improvement, out of AST-594 scope).
+
+**Verdict:** No fix-now. Ready for **resolve-astral** once discuss item is acknowledged (or accepted as intentional).
+
+#### betty — 2026-06-06T05:26:07.576Z
+**Tests Ready** — manifest for `test-astral`
+
+**Publish ref:** `origin/sub/AST-592/ast-594-draft-job-resume-schema-alignment` @ `8ded1308`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `ed50ff3811a48a4994f3ab10f5d45c6b8631f593` (§7.13zv)
+
+**Manifest (run in order):**
+
+1. `tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema` — metadata-only `draft_job_resume` TASK_CONFIG; no `grades`/vectors; `resume_section_payload: True`
+2. `tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload` — accept subset keys, reject unknown key / `grades`, normalize nested `content` + `resume_structure`
+3. `tests/component/core/test_agent.py` — `-k "draft_job_resume"` — acceptance, unknown section key, disallowed `grades`, RESPONSE body includes `Validation failed:` prefix
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_agent.py -k "draft_job_resume"
+```
+
+**QA notes:** Revised obsolete vector/grade agent tests that referenced removed `TASK_CONFIG["draft_job_resume"]["vectors"]`; added `_patch_strict_batch_anthropic` on new agent paths (default provider would return unrelated payloads).
+
+#### ada — 2026-06-06T05:20:37.446Z
+Plan doc: [ast-594-draft-job-resume-schema-alignment-and-validation-surfacing.md](https://github.com/susansomerset/astral/blob/sub/AST-592/ast-594-draft-job-resume-schema-alignment/docs/features/artifacts/ast-594-draft-job-resume-schema-alignment-and-validation-surfacing.md)
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — `config.py` one task entry, `candidate.py` normalize/validate helpers, targeted `agent.py` validation paths, component tests only.
+- **Conf:** `conf-high` — Reuses **craft_resume_base** / **AST-536** flattening and **AST-551** catalog patterns; work is rewiring `draft_job_resume` off stale **AST-450** graded stubs.
+- **Risk:** `risk-Medium` — Bad catalog validation or breaking `{$CALLER_*}` unwrap would block the resume chain mid-UAT; consult graded tasks must stay untouched.
+
+**Stages (summary):** (1) Remove `grades`/vectors/`grade_like` from `TASK_CONFIG["draft_job_resume"]`; (2) `normalize_draft_job_resume_agent_payload` + `validate_draft_job_resume_payload` against enabled catalog ids (all optional, unknown keys rejected); (3) Wire `do_task`, fix validation-failure audit body + `flush_log_buffer` on hop rows; (4) Susan UAT on parent batch.
+
+Publish: `origin/sub/AST-592/ast-594-draft-job-resume-schema-alignment` @ `45828d13`.
+
+---
+
 # AST-594 — draft_job_resume schema alignment and validation surfacing
 
 **Linear:** [AST-594](https://linear.app/astralcareermatch/issue/AST-594/draft-job-resume-schema-alignment-and-validation-surfacing-draft-job)  

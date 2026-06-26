@@ -1,3 +1,97 @@
+<!-- linear-archive: AST-644 archived 2026-06-23 -->
+
+## Linear archive (AST-644)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-644/uat-craft-resume-base-fails-model-omits-resume-structure  
+**Status at archive:** Done  
+**Project:** Astral Interface (inherited from AST-601)  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-601 — Rebuild 519 (git casualty)  
+**Blocked by / blocks / related:** parent: AST-601
+
+### Description
+
+## What failed
+
+UI **Generate** for candidate `karfo` runs `craft_resume_base`. After ~138s LLM call, validation fails:
+
+```
+ERROR src.core.agent: do_task validation failed. task_key='craft_resume_base' error=Missing required field 'resume_structure'
+ERROR src.core.candidate: artifact generation failed task_key='craft_resume_base' ...
+```
+
+UI shows: `Validation failed: Missing required field 'resume_structure'`
+
+The model returned `agent_performance.status: success` but `agent_payload` **has no** `resume_structure` **key** — only content fields (`candidate_name`, `professional_summary`, `experience`, etc.).
+
+## Expected
+
+`craft_resume_base` completes successfully and persists `artifacts.resume_structure` + `artifacts.base_resume` so Base Resume Content UI can load per-candidate tabs.
+
+When the model omits `resume_structure`, the pipeline should still succeed (e.g. default structure per `split_craft_resume_base_payload` / `default_resume_structure()`), not hard-fail schema validation.
+
+## Repro
+
+1. Log in as admin; open candidate **karfo** (or any candidate with resume text to parse).
+2. Trigger **Generate** / `craft_resume_base` from the candidate UI.
+3. Wait for LLM completion.
+4. Observe validation error — no `resume_structure` persisted.
+
+## Parent AC (quoted inline)
+
+> **Prerequisite on dev:** AST-517 per-candidate `artifacts.resume_structure` storage and `resolve_resume_structure()` (Done — verify present before implementation).
+
+> Authenticated `GET` for a candidate's resume structure returns enabled sections in catalog order with labels and accent color (or null when absent).
+
+## Boundaries
+
+* This bug does **not** change: Base Resume Content UI tabs/API (AST-616 scope), global `DATA_SHAPES`, or AST-517 storage schema.
+* Fix belongs in `craft_resume_base` normalization/validation path (`normalize_craft_resume_base_agent_payload`, schema handling, or prompt) — not a UI rebuild.
+
+### Comments
+
+#### betty — 2026-06-14T20:48:18.816Z
+## QA test manifest (AST-644)
+
+**Publish:** `origin/sub/AST-601/AST-644-craft-resume-base-missing-structure` @ `470a5646` (`merge-tests(AST-644): origin/tests a192a5e7`)
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `7931108fa5e255577933bce460baa01d04cae006056e3ede63cd6bac94a87065`
+
+### 1. Existing coverage (bible-backed)
+
+1. **`tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_split_uses_default_when_structure_missing`** — split path default (unchanged; documents parity with normalize fix)
+
+### 2. New this pass
+
+2. **`test_normalize_injects_default_when_resume_structure_missing`** — UAT repro envelope (content fields only); assert default **`resume_structure`** + **`_validate_response_schema`** passes
+3. **`test_normalize_injects_default_when_resume_structure_sections_empty`** — empty **`sections`** → default injected + schema passes
+4. **`test_normalize_preserves_valid_custom_resume_structure`** — guard: valid custom catalog not overwritten
+
+### 3. Gaps
+
+None — **§7.13zzp** narrowed run covers bug scope only (no UI / API).
+
+### Narrowed run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure
+```
+
+#### ada — 2026-06-14T20:45:48.946Z
+Plan doc: [ast-644-uat-craft-resume-base-fails-model-omits-resume-structure.md](https://github.com/susansomerset/astral/blob/sub/AST-601/AST-644-craft-resume-base-missing-structure/docs/features/interface/ast-644-uat-craft-resume-base-fails-model-omits-resume-structure.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — extend `normalize_craft_resume_base_agent_payload` in `candidate.py` only; component tests in Betty manifest.
+- **Conf:** high — UAT repro matches code path (schema validation before split); AST-517 split already defaults; fix mirrors that at normalize time.
+- **Risk:** Medium — craft_resume_base gates artifact generation; injection guard must not overwrite valid model structure.
+
+**Summary:** When the model omits `resume_structure`, inject `default_resume_structure()` in normalize (before `_validate_response_schema`) so the pipeline succeeds and `parse_candidate_resume` persists structure + content as AST-517 intended.
+
+---
+
 # AST-644 — UAT: craft_resume_base fails — model omits resume_structure
 
 **Linear:** [AST-644 — UAT: craft_resume_base fails — model omits resume_structure](https://linear.app/astralcareermatch/issue/AST-644/uat-craft-resume-base-fails-model-omits-resume-structure)  

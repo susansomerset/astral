@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import CollapsiblePanel from "../components/CollapsiblePanel"
 import Modal from "../components/Modal"
+import RepoJsonDivergenceBanner from "../components/RepoJsonDivergenceBanner"
 import { TabBar } from "../components/TabbedTextArea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
@@ -151,6 +152,7 @@ export default function TaskPrompts() {
   const [toast, setToast]   = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
   const [openSection, setOpenSection] = useState<string | null>(null)
+  const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
   const [agentIds, setAgentIds]     = useState<string[]>([])
   const [tokenList, setTokenList]   = useState<string[]>([])
@@ -332,6 +334,7 @@ export default function TaskPrompts() {
         setEditOpen(false)
         setEditTask(null)
         setToast({ text: `Task "${editTask.task_key}" updated`, variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
@@ -366,6 +369,12 @@ export default function TaskPrompts() {
       <div className="list-page-header">
         <h1 className="list-page-title">Manage Tasks</h1>
       </div>
+
+      <RepoJsonDivergenceBanner
+        tableKey="agent_task"
+        refreshToken={repoJsonRefresh}
+        onReverted={() => { setRepoJsonRefresh(n => n + 1); loadAll() }}
+      />
 
       {loading ? (
         <div className="list-page-status">Loading...</div>

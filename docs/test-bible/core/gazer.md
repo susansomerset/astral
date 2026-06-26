@@ -12,7 +12,7 @@
 
 ### AST-622 · AST-544
 
-**AST-544 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/gazer.py`** — company gaze (`process_gazer_batch`), job-list dedupe trace (`raw_job_listing_is_duplicate` read-only), JD scrape / title-validation batches (`scrape_jd_batch`, `validate_title_batch`), and board gaze (`process_gaze_board_batch`); retire hand-rolled **`[DEBUG]`** / noise **`_log.debug`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **`debug=False`** must stay unchanged — existing gazer behavior tests + branch lock are the gate.
+**AST-544 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/gazer.py`** — company gaze (`process_gazer_batch`), job-list dedupe trace (`raw_job_listing_is_duplicate` read-only), JD scrape / title-validation batches (`fetch_jd_batch`, `validate_title_batch`); retire hand-rolled **`[DEBUG]`** / noise **`_log.debug`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **`debug=False`** must stay unchanged — existing gazer behavior tests + branch lock are the gate.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -34,10 +34,9 @@ Equivalent harness:
 
 | Touched path | Existing / extended tests |
 | --- | --- |
-| `scrape_jd_batch` outcome paths (missing link, scrape error, empty/short JD, classify fail, pass) | **`TestScrapeJdBatch`**, **`TestScrapeJdBatchDebugPaths`**, **`TestScrapeJdBatchDebugBranchCoverage`** |
+| `fetch_jd_batch` outcome paths (missing link, scrape error, empty/short JD, classify fail, pass) | **`TestFetchJdBatch`**, **`TestFetchJdBatchDebugPaths`**, **`TestFetchJdBatchDebugBranchCoverage`** |
 | `validate_title_batch` pass/fail + batch summary | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
 | `process_gazer_batch` scrape/parse/ingest + dedupe trace | **`TestProcessGazerBatch`**, **`TestProcessGazerBatchDebugPaths`**, **`TestProcessGazerBatchDebugBranchCoverage`**, **`TestLogListingDedupeTrace`** |
-| `process_gaze_board_batch` success/failure rows | **`TestProcessGazeBoardBatch`**, **`TestProcessGazeBoardBatchDebugPaths`** |
 | Identifier helpers | **`TestGazerIdentifierHelpers`** |
 | `debug=False` unchanged | All **`debug=False`** rows above; full-file branch lock |
 
@@ -95,7 +94,7 @@ Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`d
 
 ### AST-701 · AST-700
 
-**AST-701:** **`fetch_website_batch`** mirrors **`scrape_jd_batch`** — scrape homepage visible text + **`nav_links`** for **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`** companies; pass **`HOMEPAGE_READY`**, fail **`CANNOT_READ_WEBSITE`** with **`prefilter_company_notes`**. Shared **`scrape_company_homepage_content`** helper in roster (**`prefilter_company`** refactor unchanged observable outcomes). Consult routes **`dispatch_task_key=fetch_website`** before **`run_company_task`**. Config: **`HOMEPAGE_READY`**, **`GAZER_CONFIG["fetch_website"]`**, **`homepage_text`** company_data key, dispatch registry. Database: **`_RETRY_TASK_SEED`** companion **`WEBSITE_FOUND_RETRY`** row.
+**AST-701:** **`fetch_website_batch`** mirrors **`fetch_jd_batch`** — scrape homepage visible text + **`nav_links`** for **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`** companies; pass **`HOMEPAGE_READY`**, fail **`CANNOT_READ_WEBSITE`** with **`prefilter_company_notes`**. Shared **`scrape_company_homepage_content`** helper in roster (**`prefilter_company`** refactor unchanged observable outcomes). Consult routes **`dispatch_task_key=fetch_website`** before **`run_company_task`**. Config: **`HOMEPAGE_READY`**, **`GAZER_CONFIG["fetch_website"]`**, **`homepage_text`** company_data key, dispatch registry. Database: **`_RETRY_TASK_SEED`** companion **`WEBSITE_FOUND_RETRY`** row.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -122,7 +121,21 @@ Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`d
 
 ### AST-713 · AST-710
 
-**Collapse consecutive blank lines** in gazer JD visible-text save — **`scrape_jd_batch`** (**`job_description`**) calls **`collapse_consecutive_blank_lines`** immediately after scrape, before empty-text gating / persist. Homepage normalize moved to **`scrape_company_homepage_content`** per **AST-715**. **`nav_links`** and **`_prune_jd`** unchanged.
+**Collapse consecutive blank lines** in gazer JD visible-text save — **`fetch_jd_batch`** (**`job_description`**) calls **`collapse_consecutive_blank_lines`** immediately after scrape, before empty-text gating / persist. Homepage normalize moved to **`scrape_company_homepage_content`** per **AST-715**. **`nav_links`** and **`_prune_jd`** unchanged.
+
+---
+
+### AST-797 · AST-794
+
+**`scrape_jd_batch` → `fetch_jd_batch`** — reads **`GAZER_CONFIG["fetch_jd"]`**; no backward-compat alias. Consult/tracker call **`fetch_jd_batch`** only (**AST-797**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| JD batch rename + outcomes | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchJdBatch` (+ debug classes) |
+| Consult routing | `src/core/consult.py` | `TestRunConsultTaskRoutes::test_routes_fetch_jd_batch` |
+| Tracker self-heal | `src/core/tracker.py` | coat-check tests monkeypatch **`fetch_jd_batch`** |
+
+Consult inline validate: **`docs/test-bible/core/consult.md`** (**AST-797**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -161,3 +174,9 @@ Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`d
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-765 · AST-757 (SUNSET — documentation)
+
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

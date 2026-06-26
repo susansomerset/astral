@@ -41,6 +41,18 @@ Deploy-ref pin, then harness on Railway test service:
 
 `verify_integration_deploy_ref.sh` compares `git rev-parse origin/dev` to `RAILWAY_GIT_COMMIT_SHA` inside the linked test project. `run_railway_integration_tests.sh` runs `./scripts/testing/run_integration_tests.sh` via `railway run` and writes a timestamped log under `debug/integration-operator/`.
 
+## Post-deploy gate (AST-818)
+
+After **astral-test** redeploys **origin/dev**, run the automated gate (GitHub commit status + Linear on failure):
+
+```bash
+./scripts/testing/watch_post_deploy_integration.sh
+# or single shot:
+./scripts/testing/post_deploy_integration_gate.sh
+```
+
+Full contract, env vars, and cron example: [POST_DEPLOY_GATE.md](./POST_DEPLOY_GATE.md).
+
 ## Failure triage
 
 On **non-zero exit** from either script:

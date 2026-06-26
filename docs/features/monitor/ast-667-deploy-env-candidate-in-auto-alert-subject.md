@@ -1,3 +1,150 @@
+<!-- linear-archive: AST-667 archived 2026-06-23 -->
+
+## Linear archive (AST-667)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-667/deploy-env-and-candidate-last-name-in-auto-alert-subject-include  
+**Status at archive:** Done  
+**Project:** Astral Monitor  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-660 — Include ASTRAL_DEPLOY_ENV in email alert header  
+**Blocked by / blocks / related:** parent: AST-660
+
+### Description
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: child `sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject`. Created at **dispatch-parent**.
+
+## What this implements
+
+Replace the hardcoded `[Astral]` prefix on AUTO dispatch error alert email subjects with the deploy environment label from `ASTRAL_DEPLOY_ENV` and the owning candidate's profile last name, formatted as `[{deploy_label}/{last_name}]`. Wire the dispatcher to pass candidate context into `auto_run_error` so monitor can resolve the label. Reuse existing deploy-env resolution semantics (AST-646 / AST-651).
+
+## Acceptance criteria
+
+1. With `ASTRAL_DEPLOY_ENV=local`, an AUTO error alert subject begins with `[local/{LastName}]` for the owning candidate, followed by the existing `{task_key} {final_status}: …` summary and batch id suffix.
+2. With `ASTRAL_DEPLOY_ENV=eu-west`, subject prefix is `[eu-west/{LastName}]` (raw deploy label, case preserved).
+3. With `ASTRAL_DEPLOY_ENV` unset or whitespace-only, deploy label in the bracket is `Astral`; candidate last name suffix still applies when resolvable.
+4. Candidate last name appears for AUTO errors across entity types (job, company, board_search, candidate) by resolving the owning candidate for the run.
+5. Email body content and alert trigger conditions (AUTO mode, `total_errors > 0`) are unchanged from AST-344.
+6. Monitor component tests cover deploy-label prefix, candidate last name suffix, and fallback when deploy env or last name is unavailable.
+
+## Boundaries
+
+* AUTO error alert subject line only — no body, recipient, or trigger changes.
+* No UI or new alert types.
+* Sibling scope: none (single child epic).
+
+## Notes for planning
+
+* Primary touch: monitor subject formatting; dispatcher call site passes `candidate_id` (and entity context if needed for last-name resolution).
+* Reuse deploy env helper from `deploy_status.py` — do not duplicate allowlist logic.
+* Last name from `candidate_data.profile.last` per candidate data model.
+
+### Comments
+
+#### radia — 2026-06-15T06:34:45.677Z
+**Review** — `origin/dev...origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject` @ `e528330e` (includes doc commit).
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### What's solid
+- **Plan fidelity:** Stages 1–3 match diff — `get_deploy_label()`, monitor subject helpers + `candidate_id` param, dispatcher wires `candidate_id` in `_dispatch_one` finally block; gmail/body/trigger guards unchanged.
+- **AC 1–6:** `TestAutoRunErrorSubjectPrefix` covers `local`/`eu-west`/unset/whitespace deploy labels, last-name suffix and omit paths; dispatcher test asserts `auto_run_error` arg[4]; legacy alert test isolates host env with `delenv`.
+- **§1.3 DRY:** Single env read via `_resolve_environment()` wrapper.
+- **§3.3 layers:** `core` → `utils.deploy_status` + existing `data.database`; no UI/external violations.
+
+### advisory
+- `_resolve_candidate_last_name` uses `or {}` on optional profile fields — bounded omission of `/LastName` when data missing; fine for non-raising alert formatting.
+
+**Doc:** `docs/features/monitor/ast-667-deploy-env-candidate-in-auto-alert-subject.md` § Review updated on publish ref.
+
+#### betty — 2026-06-15T06:25:08.889Z
+[check-linear]
+
+**[qa-handoff] cleared.** `TestAutoRunError::test_sends_alert_with_log_body` now `monkeypatch.delenv("ASTRAL_DEPLOY_ENV")` before the alert call so `[Astral]` fallback is isolated from host env (epic worktree `local` was the failure Hedy saw).
+
+**Republish:** `origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject` @ `b7784856` (`merge-tests(AST-667): origin/tests 5b657ff8`). Manifest unchanged; same narrowed run as prior QA comment.
+
+**Assignee → Hedy** for `test-child`.
+
+#### hedy — 2026-06-15T06:19:21.165Z
+[qa-handoff]
+
+**Command:** `./scripts/testing/run_component_tests.sh tests/component/core/test_monitor.py tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures tests/component/utils/test_deploy_status.py::TestGetDeployLabel`
+
+**Result:** 15 passed, 1 failed — `TestAutoRunError::test_sends_alert_with_log_body`
+
+**Failure:** Subject is `[local] qualify_job_listings failure: …` but the test still asserts `startswith("[Astral] …")`. Epic worktree has `ASTRAL_DEPLOY_ENV=local` in the process env; product behavior is correct per AC.
+
+**Why test/manifest, not product:** Manifest item 1 claims `test_sends_alert_with_log_body` was updated for deploy-label brackets, but line 41 still hardcodes `[Astral]` with no `monkeypatch.delenv("ASTRAL_DEPLOY_ENV")`. The new `TestAutoRunErrorSubjectPrefix` cases pass; only this legacy assertion is stale.
+
+**Ask:** Patch `test_sends_alert_with_log_body` to `delenv` deploy env (or assert `[{get_deploy_label()}]` / bracket prefix without hardcoding Astral) so it is isolated from host env. Republish manifest + reassign @Hedy.
+
+@Betty White
+
+#### betty — 2026-06-15T06:17:54.443Z
+## QA test manifest (AST-667)
+
+**Publish:** `origin/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject` @ `d4f1c08f`  
+**Tests commit:** `origin/tests` @ `d2f5acf9` (`merge-tests(AST-667): origin/tests d2f5acf9`)
+
+### Existing coverage revised
+
+1. **`tests/component/core/test_monitor.py::TestAutoRunError::test_sends_alert_with_log_body`** — subject prefix updated from hardcoded `[Astral]` to deploy-label bracket (default `Astral` when env unset).
+
+### New / expanded tests
+
+2. **`tests/component/core/test_monitor.py::TestAutoRunErrorSubjectPrefix`** — deploy label + candidate last name (AC 1–3, 6):
+   - `test_local_env_with_candidate_last_name`
+   - `test_eu_west_preserves_case`
+   - `test_unset_env_falls_back_to_astral_without_last_name`
+   - `test_unset_env_with_candidate_last_name`
+   - `test_whitespace_env_falls_back_to_astral`
+   - `test_missing_candidate_last_name_omits_suffix`
+   - `test_missing_candidate_row_omits_suffix`
+
+3. **`tests/component/utils/test_deploy_status.py::TestGetDeployLabel`** — `get_deploy_label()` wraps `_resolve_environment()` with `Astral` fallback.
+
+4. **`tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures`** — asserts `candidate_id` is passed as 5th positional arg to `auto_run_error` (AC 4).
+
+### Run command (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_monitor.py \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures \
+  tests/component/utils/test_deploy_status.py::TestGetDeployLabel
+```
+
+**Pass criterion:** all manifest lines green (pytest-only; no zero-arg `LOCKED_AT_100` gate on this narrowed run).
+
+### Test bible (on publish ref)
+
+| Path | sha256 |
+| --- | --- |
+| `docs/test-bible/core/monitor.md` | `2f3cf3cc472cf5b0f1ad9abe6f37a9dd1d6a1285fb24fb6a26572718d6a83f30` |
+| `docs/test-bible/utils/deploy_status.md` | `ed55ab990e4ef50a7d24b1f71052e35df7bf46350bf1eea68e79d8ceae5ae58f` |
+
+— Betty
+
+#### hedy — 2026-06-15T06:08:25.775Z
+Plan: [ast-667-deploy-env-candidate-in-auto-alert-subject.md](https://github.com/susansomerset/astral/blob/sub/AST-660/AST-667-deploy-env-candidate-in-auto-alert-subject/docs/features/monitor/ast-667-deploy-env-candidate-in-auto-alert-subject.md)
+
+Three stages: (1) public `get_deploy_label()` in `deploy_status.py` reusing `_resolve_environment()` with `Astral` fallback; (2) monitor subject helpers + `candidate_id` on `auto_run_error`; (3) dispatcher passes task `candidate_id`. Betty manifests monitor/dispatcher component tests for deploy prefix, last-name suffix, and fallbacks.
+
+**Self-Assessment**
+- **Scope:** `scope-Single-Component` — `deploy_status.py`, `monitor.py`, `dispatcher.py` only; no trigger/body/UI changes.
+- **Conf:** `conf-high` — existing deploy-env and `profile.last` paths; literal `[Astral]` swap at one call site.
+- **Risk:** `risk-low` — subject-line triage only; monitor never-raises contract preserved.
+
+---
+
 # AST-667 — Deploy env and candidate last name in AUTO alert subject
 
 **Linear:** [AST-667 — Deploy env and candidate last name in AUTO alert subject (Include ASTRAL_DEPLOY_ENV in email alert header)](https://linear.app/astralcareermatch/issue/AST-667/deploy-env-and-candidate-last-name-in-auto-alert-subject-include)

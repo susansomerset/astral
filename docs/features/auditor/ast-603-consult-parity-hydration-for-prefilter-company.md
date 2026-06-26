@@ -1,3 +1,119 @@
+<!-- linear-archive: AST-603 archived 2026-06-23 -->
+
+## Linear archive (AST-603)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-603/consult-parity-hydration-for-prefilter-company-prefilter-company  
+**Status at archive:** Done  
+**Project:** Astral Auditor  
+**Assignee:** hedy  
+**Priority / estimate:** Urgent / —  
+**Parent:** AST-602 — Prefilter Company Failing  
+**Blocked by / blocks / related:** parent: AST-602
+
+### Description
+
+## What this implements
+
+Restore **prefilter_company** by routing model responses through the same consult rubric decode → hydrate → verdict path used for encoded rubric tasks. **prefilter_company** is a rubric-type prompt; roster must consume **hydrated grades** (vector, grade, confidence, reason) and optional link indices — not re-parse raw **agent_payload** pipe/JSON variants. Preserve **AST-507** semantics: dealbreaker **F** (confidence ≥ 2) → fail; otherwise pass; persist `prefilter_score` via the rubric quantification model on pass; persist notes and link fields; transition inflow companies to **PREFILTER_PASSED** / **PREFILTER_FAILED** (legacy → **TO_WATCH** / **IGNORE**). Coat-check manual prefilter uses the same path.
+
+## Acceptance criteria
+
+1. Re-run dispatch prefilter (or fixture replay of each **agent_payload** shape in parent Original brief): **zero** companies stuck in **PREFILTER_UNKNOWN** solely because of decode/hydration errors when **agent_performance.status** is **success**.
+2. Each successful run produces **hydrated grades** (vector + grade + confidence + reason) consistent with consult rubric processing before roster applies pass/fail and score.
+3. Companies reach **PREFILTER_PASSED**, **PREFILTER_FAILED**, **TO_WATCH**, or **IGNORE** per inflow vs legacy path — not parse exceptions surfaced as **PREFILTER_UNKNOWN**.
+4. `prefilter_score` is computed and persisted on pass using the rubric quantification model (same as **AST-507** / consult score rendering).
+5. **possible_job_links** and **culture_links_to_explore** persist when present in the decoded response; empty lists when absent.
+6. Betty's **prefilter_company** / **AST-507** manifest tests pass; new tests cover at least one repro category using the consult hydration path.
+
+## Boundaries
+
+* Does **not** change rubric vector definitions, pass thresholds, or dealbreaker rules from **AST-507**.
+* Does **not** alter **AST-508** locate/parse dispatch beyond reading persisted prefilter fields.
+* Does **not** add a second, prefilter-only decode matrix alongside consult.
+* Does **not** fix website scrape timeouts — those remain **CANNOT_READ_WEBSITE** behavior.
+
+## Notes for planning
+
+* Primary files: `src/core/roster.py` (`prefilter_company`), shared agent/consult decode-hydrate path (`src/core/agent.py`, `src/core/consult.py`), `src/utils/config.py` **TASK_CONFIG** for **prefilter_company**.
+* Reuse **AST-351** / **AST-500** hydration — do not invent parallel parse logic.
+* Susan confirmed **prefilter_score** must persist on pass (parent comment 2026-06-10).
+
+## Git branch (authoritative)
+
+Per `orientation-astral` **§ Branch law**: parent `ftr/ast-602-prefilter-company-failing`, child `sub/AST-602/AST-603-consult-parity-prefilter-hydration`. Created at **dispatch-linear**.
+
+### Comments
+
+#### radia — 2026-06-11T23:55:14.218Z
+## Radia review — `origin/dev...origin/sub/AST-602/AST-603-consult-parity-prefilter-hydration`
+
+**Doc:** `docs/features/auditor/ast-603-consult-parity-hydration-for-prefilter-company.md` (Radia review section)
+
+### fix-now
+None.
+
+### discuss
+1. **`consult._job_from_rubric_json` / `_job_from_letter_pipe`** — sparse model output (fewer grades than rubric criteria) fails via `_render_pass_fail`, not **PREFILTER_UNKNOWN**. Confirm fail-over-unknown is intended for partial JSON/pipe payloads.
+2. **Letter-pipe default `confidence: 3`** — plan decision; **F** at default 3 still dealbreakers. Flag for **AST-602** UAT if production letter-only responses historically carried explicit confidence digits.
+
+### advisory
+- **`_parse_link_index_field`** — silently skips non-int tokens in link fields (tolerant parsing; may drop bad indices without error).
+- **`agent` ↔ `consult` lazy imports** — cycle break; no per-import comment (matches existing consult pattern).
+- **`_fetch_prefilter_notes`** — hydration `ValueError` → `return None` on coat-check path only; main `prefilter_company` routes hydration failure to **PREFILTER_UNKNOWN**.
+
+### What's solid (summary)
+Shared `_normalize_rubric_task_response` + gated `do_task` ordering fix; roster hydration/persistence; `grades_encoded_prefilter_links`; **AST-507** semantics preserved. Betty manifest §7.13zw: **13/13** green on `dev-hedy`.
+
+**Verdict:** Ready for **resolve-astral** after discuss items acknowledged.
+
+#### betty — 2026-06-11T23:52:23.652Z
+## QA test manifest (AST-603)
+
+**Publish:** `origin/sub/AST-602/AST-603-consult-parity-prefilter-hydration` @ `dd36107e`  
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `1ef2ff3a9a61a29fa6209036a415dfb131cee6417d5a2d44ffa656ec23814d1a` — see **§7.13zw**
+
+### 1. Existing coverage (bible-backed — regression)
+
+- **§7.13zh / AST-507:** `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig`
+- **§7.13zh / AST-507:** `tests/component/core/test_roster.py::{TestPrefilterCompany::test_pass_and_fail_grades_persist_data,TestAst507EncodedPrefilter,TestRunCompanyTask::test_prefilter_pass_and_fail}`
+
+### 2. Broken / revised tests (AST-603 product change)
+
+- `TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` — output type now **`grades_encoded_prefilter_links`**
+- `_prefilter_rubric_ctx` fixture — added **F** grade descriptions (hydration now mandatory in `prefilter_company`)
+
+### 3. New tests (consult-parity repro categories)
+
+- `tests/component/core/test_agent.py::TestAst603RubricNormalize` — karbon dict envelope, letter-pipe (`firstignite`), berry JSON string, lovable encoded + JOB/CULT tails, link index parser
+- `tests/component/core/test_roster.py::TestAst603ConsultParityHydration` — dict-envelope hydration + link persistence; **AST-507** `prefilter_score` regression on inflow pass
+
+### Run command
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize \
+  tests/component/core/test_roster.py::TestAst603ConsultParityHydration \
+  tests/component/core/test_roster.py::TestAst507EncodedPrefilter \
+  tests/component/core/test_roster.py::TestPrefilterCompany::test_pass_and_fail_grades_persist_data \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig
+```
+
+— Betty
+
+#### hedy — 2026-06-11T23:45:53.152Z
+Plan: [`docs/features/auditor/ast-603-consult-parity-hydration-for-prefilter-company.md`](https://github.com/susansomerset/astral/blob/sub/AST-602/AST-603-consult-parity-prefilter-hydration/docs/features/auditor/ast-603-consult-parity-hydration-for-prefilter-company.md) @ `96aeb543`
+
+**Scope:** `Single-Component` — Shared `_normalize_rubric_task_response` in `consult.py`, `do_task` pre-decode validation skip for rubric encoded tasks, roster hydration via `_hydrate_grade_reasons_from_rubric`; no dispatcher/UI.
+
+**Conf:** `Medium` — Reuses established consult decode/hydrate patterns, but six AST-602 repro payload families need alias-tolerant normalization in one shared path.
+
+**Risk:** `Medium` — `do_task` ordering change touches all rubric encoded tasks (gated on `rubric_artifact`); letter-pipe default confidence affects pass/fail edge cases.
+
+Three stages: (1) shared normalizer + agent pipeline, (2) roster hydration + link persistence, (3) `grades_encoded_prefilter_links` output type + component tests.
+
+---
+
 # Consult-parity hydration for prefilter_company (Prefilter Company Failing)
 
 **Linear:** [AST-603](https://linear.app/astralcareermatch/issue/AST-603/consult-parity-hydration-for-prefilter-company-prefilter-company)  

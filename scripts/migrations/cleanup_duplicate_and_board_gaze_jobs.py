@@ -39,9 +39,8 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.database import _ensure_job_schema, _get_connection, _run_with_retry
-from src.utils.config import BOARDS_CONFIG
 
-_BOARD_PREFIX = BOARDS_CONFIG["ingest"]["placeholder_company_prefix"]
+_BOARD_PREFIX = "__board__"
 _BOARD_LIKE = f"{_BOARD_PREFIX}%"
 
 _COUNT_KEYS = (

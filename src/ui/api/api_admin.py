@@ -18,10 +18,12 @@ from src.data.database import (
     apply_config_table_upsert,
     list_vector_feedback,
     aggregate_vector_feedback_by_vector,
+    list_rubric_vectors,
 )
 
 from src.core.consult import list_timesheets
 from src.utils.deploy_status import ui_llm_debug
+from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
@@ -30,6 +32,10 @@ from src.core.dispatcher import (
 )
 from src.core.candidate import preview_task_prompt
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
+from src.core.repo_admin_json import (
+    get_repo_admin_json_divergence_status,
+    revert_repo_admin_json_table,
+)
 from src.utils.config import (
     ASTRAL_CONFIG,
     AGENT_CONFIG,
@@ -44,16 +50,23 @@ from src.utils.config import (
     TASK_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
+    CANDIDATE_STATES,
+    ENTITY_TYPES,
+    dispatch_entity_state_registry,
     ADMIN_CONFIG,
     admin_hidden_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_SCHEDULABLE_TASK_KEYS,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
+    dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     get_task_keys,
     dispatch_claim_uses_score_floor,
+    BUILD_ARTIFACTS_BASE_STATE,
+    legacy_build_artifacts_hop,
+    resume_artifact_hop_task_keys,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -61,7 +74,9 @@ from src.utils.config import (
     validate_allowed_brain_setting,
     RUBRIC_FEEDBACK_CONFIG,
     rubric_owner_task_key_choices,
+    rubric_owner_task_key,
 )
+from src.utils.rubric_feedback import hydrate_vector_review_strings
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
@@ -79,6 +94,7 @@ def get_dispatch_task_by_key(task_key: str):
 
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +279,31 @@ def delete_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' is assigned to {task_count} task(s) — unassign first"}), 409
     database.delete_agent(agent_id)
     return jsonify({"deleted": agent_id})
+
+
+# ---------------------------------------------------------------------------
+# Repo admin JSON divergence (AST-783)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/repo_json/status")
+@require_admin
+def repo_json_status():
+    try:
+        return jsonify(get_repo_admin_json_divergence_status())
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@admin_bp.route("/repo_json/revert/<table_key>", methods=["POST"])
+@require_admin
+def repo_json_revert(table_key: str):
+    if table_key not in ("agent", "agent_task"):
+        return jsonify({"error": "table_key must be agent or agent_task"}), 400
+    try:
+        count = revert_repo_admin_json_table(table_key)
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "table_key": table_key, "row_count": count})
 
 
 # ---------------------------------------------------------------------------
@@ -598,8 +639,12 @@ _VECTOR_FEEDBACK_COLUMNS = [
     {"key": "candidate_id", "label": "Candidate", "type": "str"},
     {"key": "task_key", "label": "Task", "type": "str"},
     {"key": "batch_id", "label": "Batch", "type": "str"},
-    {"key": "vector_code", "label": "Vector", "type": "str"},
+    {"key": "batch_size", "label": "Batch size", "type": "int"},
+    {"key": "completed_at", "label": "Completed", "type": "datetime"},
+    {"key": "vector_code", "label": "Code", "type": "str"},
     {"key": "vector_label", "label": "Label", "type": "str"},
+    {"key": "vector_assessment_header", "label": "Assessment", "type": "str"},
+    {"key": "vector_content", "label": "Criterion", "type": "str"},
     {"key": "feedback_type", "label": "Type", "type": "str"},
     {"key": "value", "label": "Value", "type": "str"},
     {"key": "value_label", "label": "Value label", "type": "str"},
@@ -630,11 +675,52 @@ def _vector_feedback_filters() -> dict:
     return out
 
 
+def _vector_assessment_header(importance: Any, label: Any, code: Any) -> str:
+    imp = importance if isinstance(importance, int) and 1 <= importance <= 10 else 5
+    lab = (str(label or "").strip()) or "??"
+    cd = (str(code or "").strip())
+    return f"{imp} - {lab} ({cd})" if cd else f"{imp} - {lab}"
+
+
+def _resolve_rubric_owner_task_key(
+    owner_task_key: Optional[str] = None,
+    task_key: Optional[str] = None,
+) -> Optional[str]:
+    owner = (owner_task_key or "").strip()
+    if owner:
+        return owner
+    tk = (task_key or "").strip()
+    if not tk:
+        return None
+    mapped = rubric_owner_task_key(tk)
+    return mapped or tk
+
+
+def _rubric_lookup_by_code(candidate_id: str, owner_task_key: str) -> Dict[str, Dict[str, Any]]:
+    rows = list_rubric_vectors(candidate_id, owner_task_key, current_only=True)
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        code = str(row.get("code") or "").strip().upper()
+        if not code:
+            continue
+        out[code] = {
+            "label": row.get("label") or "",
+            "content": row.get("content") or "",
+            "importance": row.get("importance"),
+        }
+    return out
+
+
 def _enrich_vector_feedback_row(row: dict) -> dict:
     out = dict(row)
     out["value_label"] = _feedback_value_label(str(out.get("value") or ""))
     ft = str(out.get("feedback_type") or "")
     out["feedback_type_label"] = _feedback_type_label(ft)
+    out["vector_assessment_header"] = _vector_assessment_header(
+        out.get("vector_importance"),
+        out.get("vector_label"),
+        out.get("vector_code"),
+    )
     return out
 
 
@@ -664,6 +750,36 @@ def list_vector_feedback_summary():
 @require_admin
 def list_vector_feedback_task_keys():
     return jsonify(list(rubric_owner_task_key_choices()))
+
+
+@admin_bp.route("/vector_feedback/rubric_lookup")
+@require_admin
+def vector_feedback_rubric_lookup():
+    candidate_id = (request.args.get("candidate_id") or "").strip()
+    owner_task_key = _resolve_rubric_owner_task_key(
+        request.args.get("owner_task_key"),
+        request.args.get("task_key"),
+    )
+    if not candidate_id or not owner_task_key:
+        return jsonify({"error": "candidate_id and owner_task_key required"}), 400
+    return jsonify(_rubric_lookup_by_code(candidate_id, owner_task_key))
+
+
+@admin_bp.route("/vector_feedback/hydrate_reviews", methods=["POST"])
+@require_admin
+def vector_feedback_hydrate_reviews():
+    data = request.get_json(silent=True) or {}
+    candidate_id = str(data.get("candidate_id") or "").strip()
+    owner_task_key = _resolve_rubric_owner_task_key(
+        data.get("owner_task_key"),
+        data.get("task_key"),
+    )
+    vector_reviews = data.get("vector_reviews")
+    if not candidate_id or not owner_task_key:
+        return jsonify({"error": "candidate_id and owner_task_key required"}), 400
+    rubric_by_code = _rubric_lookup_by_code(candidate_id, owner_task_key)
+    rows = hydrate_vector_review_strings(vector_reviews, rubric_by_code)
+    return jsonify({"rows": rows})
 
 
 # ---------------------------------------------------------------------------
@@ -729,6 +845,7 @@ _DISPATCH_TASK_COLUMNS = [
 @require_admin
 def list_dtasks():
     rows = list_dispatch_tasks()
+    rows = [r for r in rows if r.get("task_key") not in DISPATCH_RETIRED_TASK_KEYS]
     # Enrich each row with live available entity count
     for row in rows:
         is_scored = dispatch_claim_uses_score_floor(row.get("trigger_state"))
@@ -740,7 +857,18 @@ def list_dtasks():
         et = row.get("entity_type")
         ts = row.get("trigger_state")
         cid = row.get("candidate_id", "")
-        row["available_count"] = database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
+        try:
+            row["available_count"] = (
+                database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
+            )
+        except Exception as exc:
+            logger.warning(
+                "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
+                row.get("id"),
+                row.get("task_key"),
+                exc,
+            )
+            row["available_count"] = 0
     hidden = admin_hidden_dispatch_task_keys()
     rows = [r for r in rows if r.get("task_key") not in hidden]
     if request.args.get("req_dict"):
@@ -762,8 +890,10 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions form defaults: schedulable keys use dispatch_task_admin_defaults;
-    grouping fields from agent_task row for the dispatch task_key (AST-736 — no alias map)."""
+    grouping fields from agent_task via dispatch_task_grouping_catalog_key; entity/trigger
+    keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
+    grouping_key = dispatch_task_grouping_catalog_key(task_key)
     cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
@@ -776,7 +906,7 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
         "is_scored": dispatch_task_key_is_scored(task_key),
-        **_catalog_task_grouping_meta(catalog_key),
+        **_catalog_task_grouping_meta(grouping_key),
     }
 
 
@@ -823,6 +953,7 @@ def dispatch_task_state_options():
     return jsonify({
         "job": list(JOB_STATES.keys()),
         "company": list(COMPANY_STATES.keys()),
+        "candidate": list(CANDIDATE_STATES.keys()),
     })
 
 
@@ -844,6 +975,9 @@ def create_dtask():
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
         if err:
             return jsonify({"error": err}), 400
+    tk_err = _dispatch_task_key_trigger_error(data.get("task_key", ""), data.get("trigger_state"))
+    if tk_err:
+        return jsonify({"error": tk_err}), 400
     try:
         task_id = save_dispatch_task(
             candidate_id=data["candidate_id"],
@@ -867,17 +1001,67 @@ def create_dtask():
     return jsonify({"id": task_id}), 201
 
 
+def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -> str | None:
+    tk = (task_key or "").strip()
+    if not tk:
+        return "task_key is required"
+    retired = dispatch_task_key_retired_message(tk)
+    if retired:
+        return retired
+    try:
+        defaults = dispatch_task_admin_defaults(tk)
+    except KeyError:
+        return f"Unknown or non-schedulable task_key: {tk!r}"
+    ts = (trigger_state or "").strip()
+    if not ts:
+        return "trigger_state is required"
+    et = defaults["entity_type"]
+    if et not in ENTITY_TYPES:
+        return f"task_key {tk!r} has unsupported entity_type {et!r}"
+    try:
+        registry = dispatch_entity_state_registry(et)
+    except KeyError:
+        return f"task_key {tk!r} has unsupported entity_type {et!r}"
+    if ts not in registry:
+        return f"task_key {tk!r} ({et}) is not valid for trigger_state {ts!r}"
+    if tk in resume_artifact_hop_task_keys():
+        if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_build_artifacts_hop(ts) != tk:
+            return f"task_key {tk!r} requires trigger_state {BUILD_ARTIFACTS_BASE_STATE!r} (got {ts!r})"
+    return None
+
+
 @admin_bp.route("/dispatch_tasks/<int:task_id>", methods=["PUT"])
 @require_admin
 def update_dtask(task_id):
     data = request.get_json(force=True)
-    allowed = {"min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor", "trigger_state"}
     row = database.get_dispatch_task(task_id)
-    trigger_state = data.get("trigger_state", (row or {}).get("trigger_state"))
+    if not row:
+        return jsonify({"error": f"Dispatch task not found: {task_id}"}), 404
+    if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
+        return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
+    allowed = {
+        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs",
+        "max_runs", "score_floor", "trigger_state", "task_key",
+    }
+    updates: Dict[str, Any] = {}
+    if "task_key" in data:
+        effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
+        tk_err = _dispatch_task_key_trigger_error(data["task_key"], effective_trigger_state)
+        if tk_err:
+            return jsonify({"error": tk_err}), 400
+        defaults = dispatch_task_admin_defaults((data["task_key"] or "").strip())
+        updates["task_key"] = (data["task_key"] or "").strip()
+        updates["entity_type"] = defaults["entity_type"]
+        updates["sort_by"] = defaults["sort_by"]
+        updates["batch_call_mode"] = defaults["batch_call_mode"]
+    elif "trigger_state" in data:
+        tk_err = _dispatch_task_key_trigger_error(row.get("task_key", ""), data.get("trigger_state"))
+        if tk_err:
+            return jsonify({"error": tk_err}), 400
+    trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
-    updates = {}
     for k in allowed:
-        if k in data:
+        if k in data and k != "task_key":
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
             elif k in ("auto_mode", "debug", "skip_cache"):
@@ -891,7 +1075,7 @@ def update_dtask(task_id):
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
     if updates.get("auto_mode") == 1:
-        cid = (row or {}).get("candidate_id")
+        cid = row.get("candidate_id")
         err = _candidate_dispatch_api_key_error(cid)
         if err:
             return jsonify({"error": err}), 400
@@ -899,9 +1083,9 @@ def update_dtask(task_id):
         update_dispatch_task(task_id, **updates)
     except Exception as e:
         if "UNIQUE" in str(e):
-            cid = (row or {}).get("candidate_id", "")
-            tk = (row or {}).get("task_key", "")
-            ts = updates.get("trigger_state", (row or {}).get("trigger_state", ""))
+            cid = row.get("candidate_id", "")
+            tk = updates.get("task_key", row.get("task_key", ""))
+            ts = updates.get("trigger_state", row.get("trigger_state", ""))
             return jsonify({
                 "error": (
                     f"Dispatch row already exists for candidate '{cid}', "
@@ -955,21 +1139,18 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         return str(wc)
 
     if entity_type == "job":
-        # batch mode: qualify_job_listings / validate_title assemble raw listings in one block
-        if task_key in ("qualify_job_listings", "validate_title"):
+        # batch mode: qualify_job_listings assembles raw listings in one block
+        if task_key == "qualify_job_listings":
             ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
             raw_htmls, astral_ids = [], []
             for jid in ids:
                 job = database.get_job(jid)
                 if job:
                     raw_listing = (job.get("job_data") or {}).get("raw_job_listing", "")
-                    if task_key == "qualify_job_listings":
-                        # Match the real assemble() in consult.py — include job_site from company
-                        company = database.get_company(job.get("company", ""))
-                        job_site = (company or {}).get("job_site", "") or ""
-                        raw_htmls.append(f"job_site: {job_site}\nraw_job_listing: {raw_listing}")
-                    else:
-                        raw_htmls.append(raw_listing)
+                    # Match the real assemble() in consult.py — include job_site from company
+                    company = database.get_company(job.get("company", ""))
+                    job_site = (company or {}).get("job_site", "") or ""
+                    raw_htmls.append(f"job_site: {job_site}\nraw_job_listing: {raw_listing}")
                     astral_ids.append(jid)
             return (
                 "JOB LISTINGS:\n" + "\n".join(f"{i:03d}: {item}" for i, item in enumerate(raw_htmls))

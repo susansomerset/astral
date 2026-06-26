@@ -33,7 +33,9 @@ from src.utils.config import (
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
     dispatch_task_key_is_scored,
-    resume_artifact_compound_state,
+    BUILD_ARTIFACTS_BASE_STATE,
+    build_artifacts_claim_states,
+    legacy_build_artifacts_hop,
     resume_artifact_hop_task_keys,
 )
 from src.utils.network import check_internet_reachable
@@ -48,8 +50,6 @@ def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
         return str(row.get("astral_job_id") or row.get("company") or "?")
     if entity_type == "company":
         return str(row.get("short_name") or row.get("company") or "?")
-    if entity_type == "board_search":
-        return str(row.get("board_search_id") or row.get("board_key") or "?")
     if entity_type == "candidate":
         return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
     return str(row.get("id") or "?")
@@ -159,7 +159,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     batch_call_mode=1 consult (job rows): qualifying + jd + scored DO/GET/LIKE consult may claim the full backlog (≤ eligible count),
     sized into chunk_width ``batch_size`` API calls — chunk 0 cache-warm sequential, remainder parallel (AST-502).
     Other batch_call_mode=1 runners: single consult pass for all claimed rows.
-    batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, scrape_jd, …)."""
+    batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, fetch_jd, …)."""
     if not check_internet_reachable():
         if debug:
             logger.set_debug_flag(True)
@@ -195,8 +195,10 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     dispatch_task_key = (task.get("task_key") or "").strip()
     s               = dict(_SUMMARY_ZERO)
     if entity_type == "job" and dispatch_task_key in resume_artifact_hop_task_keys():
-        expected = resume_artifact_compound_state(dispatch_task_key)
-        if (input_state or "").strip() != expected:
+        ts = (input_state or "").strip()
+        legacy_ok = legacy_build_artifacts_hop(ts) == dispatch_task_key
+        flat_ok = ts == BUILD_ARTIFACTS_BASE_STATE
+        if not flat_ok and not legacy_ok:
             if debug:
                 logger.set_debug_flag(True)
                 logger.debug_index(
@@ -206,12 +208,12 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     identifier=dispatch_task_key,
                     outcome="skipped — trigger_state mismatch",
                 )
-                logger.debug_detail(f"expected={expected!r} got={input_state!r}")
+                logger.debug_detail(f"expected={BUILD_ARTIFACTS_BASE_STATE!r} or legacy hop got {ts!r}")
             _sched_log.warning(
-                "dispatch row mismatch: task_key=%s expects trigger_state=%s got %s — skipping claim",
+                "dispatch row mismatch: task_key=%s expects trigger_state=%s or legacy hop got %s — skipping claim",
                 dispatch_task_key,
-                expected,
-                input_state,
+                BUILD_ARTIFACTS_BASE_STATE,
+                ts,
             )
             return dict(_SUMMARY_ZERO)
     if debug:
@@ -219,25 +221,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
 
     claim_cap = None
     claim_states: Optional[List[str]] = None
-    if entity_type == "board_search":
-        from src.data.database import claim_board_search_batch, clear_board_search_batch
-        from src.utils.config import BOARDS_CONFIG
-
-        gaze_cfg = BOARDS_CONFIG.get("gaze_board") or {}
-        batch_limit = limit if limit is not None else int(gaze_cfg.get("batch_size", 5))
-        freq = float(task.get("freq_hrs") or 0)
-        cfg_iv = gaze_cfg.get("scan_interval_hours")
-        default_scan_iv = float(cfg_iv) if cfg_iv is not None else 24.0
-        eff_scan = freq if freq > 0 else default_scan_iv
-        sort_bs = (task.get("sort_by") or "").strip() or None
-        entities = claim_board_search_batch(
-            bid,
-            batch_limit,
-            candidate_id=candidate_id,
-            scan_interval_hours=eff_scan,
-            sort_by=sort_bs,
-        )
-    elif entity_type == "candidate":
+    if entity_type == "candidate":
         entities = [ctx] if ctx else []
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
@@ -251,6 +235,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 )
             claim_cap = database.count_eligible_for_dispatch_task(task)
         claim_states = dispatch_claim_states(input_state, "job")
+        if (input_state or "").strip() == BUILD_ARTIFACTS_BASE_STATE:
+            claim_states = list(build_artifacts_claim_states())
         bid, entities = get_new_job_batch(
             input_state,
             limit=limit,
@@ -395,9 +381,6 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     finally:
         if entity_type == "job":
             clear_job_batch(bid)
-        elif entity_type == "board_search":
-            from src.data.database import clear_board_search_batch
-            clear_board_search_batch(bid)
         elif entity_type == "candidate":
             pass
         else:
@@ -500,6 +483,8 @@ async def _dispatch_one(task: Dict) -> None:
     ctx = dict(ctx)
     if task.get("skip_cache"):
         ctx["skip_cache"] = True
+    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+        ctx["inflow_discovery_freq_hrs"] = float(task.get("freq_hrs") or 0)
 
     entity_batch_id = f"{task_key}-{uuid.uuid4()}"
     has_run_next_chain = bool(_current_agent_task_run_next(task_key))
@@ -635,6 +620,13 @@ async def _run_dispatch_loop(
                     logger.debug_detail(
                         f"available={available} effective_min={effective_min} is_auto={is_auto}"
                     )
+                    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+                        _eligible, reason = database.describe_candidate_inflow_discovery_eligibility(
+                            task.get("candidate_id") or "",
+                            float(task.get("freq_hrs") or 0),
+                        )
+                        if reason:
+                            logger.debug_detail(reason)
                 else:
                     logger.debug_detail(
                         f"loop stop: remaining below min_count available={available} "

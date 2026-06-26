@@ -557,6 +557,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+---
+
 ### AST-828 · AST-752 (UAT bug)
 
 **`is_valid_job_batch_claim_state`:** true for **`JOB_STATES`** keys and legacy **`BUILD_ARTIFACTS.<hop>`** via **`legacy_build_artifacts_hop`** — batch claim boundary only; does not expand **`JOB_STATES`** registry.

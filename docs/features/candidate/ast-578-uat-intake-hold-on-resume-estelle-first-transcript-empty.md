@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-578 archived 2026-06-23 -->
+
+## Linear archive (AST-578)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-578/uat-intake-hold-on-resume-estelle-first-transcript-empty-active  
+**Status at archive:** Done  
+**Project:** Astral Candidate (inherited from AST-539)  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539
+
+### Description
+
+## Repro (Susan UAT AST-539 @ `5b96f9db`)
+
+1. Reopen Intake when active session exists — no hold message; blank thread if transcript empty.
+2. First visible chat bubble is synthetic RESUME user payload, not Estelle intro.
+
+## Expected
+
+* Hold copy while loading / re-initiating when active session lacks assistant message.
+* Thread display hides `user` + `mode=initiate_candidate` entries; Estelle `assistant_message` is first visible bubble.
+
+## Files
+
+* `src/ui/frontend/src/components/IntakeChatModal.tsx`
+* `tests/component/frontend/pages/test_CandidateIntake.test.tsx`
+
+Parent: AST-539. Feature child AST-559 stays User Testing — fix via Bug workflow.
+
+### Comments
+
+#### radia — 2026-06-05T19:18:46.663Z
+**Review** (`origin/dev...origin/sub/AST-539/AST-578-uat-intake-hold-on-resume-estelle-first-transcript-empty` @ `b3f3d2f2`; product delta `cc691b93` + `b3f3d2f2`)
+
+**No fix-now.** Plan stages 1–2 delivered: `isHiddenTranscriptEntry`, filtered `transcriptToMessages`, `showHold = !activeLoaded || starting || (hasSession && messages.length === 0)`; Vitest regressions for hidden RESUME row, hold on empty/assistant-less resume, hold clears when assistant exists. §3.3 clean for AST-578 delta (frontend-only).
+
+**Advisory:** Three-dot diff vs `origin/dev` includes rolled-up AST-558/559/539 parent + prep-uat harness; ticket `scope-minor` still matches AST-578 commits. `INTAKE_HOLD_COPY` inline UX string — not a §3.2 state-list violation.
+
+**Doc:** [ast-578 plan + review](https://github.com/susansomerset/astral/blob/sub/AST-539/AST-578-uat-intake-hold-on-resume-estelle-first-transcript-empty/docs/features/candidate/ast-578-uat-intake-hold-on-resume-estelle-first-transcript-empty.md) @ `18afd1f6`
+
+Katherine: `resolve-astral` — no code fixes required.
+
+#### betty — 2026-06-05T19:10:07.715Z
+**Status handoff:** Betty QA complete — please move to **Tests Ready** (assignee **Katherine**) if still **Code Complete**. MCP `save_issue` state update failed in this session.
+
+**Ready for `test-astral`** on `origin/sub/AST-539/AST-578-uat-intake-hold-on-resume-estelle-first-transcript-empty` @ `b3f3d2f2`.
+
+#### betty — 2026-06-05T19:09:12.140Z
+**Manifest** (`origin/sub/AST-539/AST-578-uat-intake-hold-on-resume-estelle-first-transcript-empty` @ `b3f3d2f2`)
+
+1. `cd src/ui/frontend && npx tsc -b --noEmit`
+2. `cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx`
+
+**Coverage (§7.13zr AST-578 row):** `IntakeChatModal` — hides `user` + `mode=initiate_candidate` transcript rows; shows `INTAKE_HOLD_COPY` while loading / when active session has no visible assistant message; hold clears once assistant bubble exists (`resumes active session` regression).
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `e5995ccb62dbc378119b109c9c5f6181dd2b14e59646cec8626e630ee763b350`
+
+**Regression (optional, same epic):** §7.13zr **AST-558** pytest narrowed run if intake API touched in same pass.
+
+#### katherine — 2026-06-05T19:05:38.001Z
+Plan: [`docs/features/candidate/ast-578-uat-intake-hold-on-resume-estelle-first-transcript-empty.md`](https://github.com/susansomerset/astral/blob/sub/AST-539/AST-578-uat-intake-hold-on-resume-estelle-first-transcript-empty/docs/features/candidate/ast-578-uat-intake-hold-on-resume-estelle-first-transcript-empty.md) on `origin/sub/AST-539/AST-578-uat-intake-hold-on-resume-estelle-first-transcript-empty` @ `817a8378`.
+
+Two-stage minimal UAT fix: (1) filter `user` + `mode=initiate_candidate` from thread display and broaden `showHold` to cover `!activeLoaded`, `starting`, or active session with zero visible assistant rows; (2) three Vitest regressions + tighten resume test. No backend changes.
+
+**Self-assessment**
+- **Scope:** `minor` — `IntakeChatModal.tsx` + existing page test file only.
+- **Conf:** `high` — repro matches unfiltered `transcriptToMessages` and `showHold = starting && messages.length === 0` in shipped AST-559 code.
+- **Risk:** `low` — display-only; API and composer paths untouched.
+
+---
+
 # UAT: Intake hold on resume, Estelle-first transcript, empty active session
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-578/uat-intake-hold-on-resume-estelle-first-transcript-empty-active  

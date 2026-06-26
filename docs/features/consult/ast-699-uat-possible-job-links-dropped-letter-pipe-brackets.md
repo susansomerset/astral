@@ -1,3 +1,89 @@
+<!-- linear-archive: AST-699 archived 2026-06-23 -->
+
+## Linear archive (AST-699)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-699/uat-possible-job-links-dropped-from-letter-pipe-bracket-tails  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-696 — Prefilter output with links  
+**Blocked by / blocks / related:** parent: AST-696
+
+### Description
+
+## What failed
+
+Prefilter runs show **culture_links_to_explore** populated but `possible_job_links` **always** `[]` in the parsed/hydrated job row, even when the raw model response clearly includes a job link index (often a **single-element bracket array** such as `[35]` or `[40]`).
+
+Example (endorlabs): raw `agent_payload` = `A|B|A|[35]|[22,34,39,52,53]` but parsed output has `possible_job_links: []` and culture indices present.
+
+## Expected
+
+Letter-pipe and compact encoded prefilter payloads map the **first link_set tail after grade segments** to `possible_job_links` and the **second tail** to `culture_links_to_explore`. Single-element bracket arrays like `[35]` must parse to `[35]` on `possible_job_links`, not be dropped or mis-assigned to culture.
+
+## Repro
+
+1. Run prefilter batch with **debug=True** on companies in **WEBSITE_FOUND** (e.g. growtherapy, endorlabs, dataiku from Susan's 2026-06-16 batch).
+2. Inspect debug log raw `agent_payload` lines — confirm pattern `A|B|A|[N]|[[culture indices]]` (or similar).
+3. Inspect parsed job JSON in execution history — observe `possible_job_links: []` while culture list is populated.
+4. Confirm `company_data.possible_job_links` stays empty after pass/watch.
+
+## Parent AC (quoted inline)
+
+> 2. A model response `000|RCA3|MPB3|USA3|[59,60]|[51,46,53]` (matching live rubric vector count) decodes to `possible_job_links == [59, 60]` and `culture_links_to_explore == [51, 46, 53]`.
+
+> 5. On prefilter pass (inflow or legacy watch path), `company_data` persisted after a successful run includes the parsed link lists when the model supplied them; UAT on a company with enumerated nav links shows non-empty `possible_job_links` when the model returns bracket tails.
+
+## Boundaries
+
+* Does **not** change rubric vector definitions, debug logging (AST-698), or prefilter pass/fail scoring.
+* Does **not** redesign model prompt — fix parse/hydration only.
+* **AST-603** alternate shapes (`JOB:`/`CULT:`, dict JSON) must not regress.
+
+### Comments
+
+#### betty — 2026-06-16T04:23:34.085Z
+1. **New (AST-699):**
+   - `tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix::test_position_prefixed_letter_pipe_bracket_tails`
+   - `tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix::test_bare_letter_pipe_bracket_tails`
+   - `tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix::test_should_decode_as_encoded_line_routing`
+
+2. **Regression (existing — unchanged paths):**
+   - `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails` (encoded `000|RCA3|…`)
+   - `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_letter_pipe_parses_grades_and_link_indices` (numeric letter-pipe tails)
+   - `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode` (full encoded decode suite)
+
+3. **Narrowed run:**
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst699LetterPipePositionPrefix \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails \
+  tests/component/core/test_agent.py::TestAst603RubricNormalize::test_letter_pipe_parses_grades_and_link_indices \
+  -q
+```
+
+**Publish:** `origin/sub/AST-696/AST-699-uat-possible-job-links-dropped-letter-pipe-brackets` @ `0585915` (`merge-tests(AST-699): origin/tests d8ee2a3`)
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/core/consult.md`: de6e9f9c1f99332cfad426f1686d7bf46ce428e1be566043f356c90193589b75
+
+— Betty
+
+#### ada — 2026-06-16T04:21:19.890Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-696/AST-699-uat-possible-job-links-dropped-letter-pipe-brackets/docs/features/consult/ast-699-uat-possible-job-links-dropped-letter-pipe-brackets.md
+
+Root cause reproduced: `0|A|B|A|[35]|[22,34,39,52,53]` misroutes to `_decode_payload` (leading `digits|` matches `_ENCODED_LINE_RE`) so letter grades become meta and `[35]` lands in culture while `possible_job_links` stays empty. Bare `A|B|A|[35]|…` already works via `_job_from_letter_pipe`.
+
+Fix: add `_should_decode_as_encoded_line` (checks for `_GRADE_SEG` segments like `RCA3`) and only call `_decode_payload` when true; otherwise fall through to `_job_from_letter_pipe` which strips `0|` and parses bracket tails.
+
+**Scope:** minor — one helper + one conditional in `consult.py`.
+**Conf:** high — routing-only fix; letter-pipe parser already correct.
+**Risk:** low — encoded `000|RCA3|…` path unchanged.
+
+---
+
 # UAT: possible_job_links dropped from letter-pipe bracket tails
 
 **Linear:** [AST-699](https://linear.app/astralcareermatch/issue/AST-699/uat-possible-job-links-dropped-from-letter-pipe-bracket-tails)  

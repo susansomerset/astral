@@ -101,6 +101,7 @@ export default function PerformanceMonitor() {
   const [logCache, setLogCache] = useState<Record<string, LogEntry[]>>({})
   const [skipChecks, setSkipChecks] = useState(true)
   const [agentDataBatchId, setAgentDataBatchId] = useState<string | null>(null)
+  const [agentDataCandidateId, setAgentDataCandidateId] = useState<string | null>(null)
   const userSetDateFrom = useRef(false)
   const userSetDateTo = useRef(false)
   const initialCandidateDefaultApplied = useRef(false)
@@ -385,7 +386,10 @@ export default function PerformanceMonitor() {
                         <div className="dispatch-expand-header">
                           <button
                             className="dispatch-batch-link"
-                            onClick={() => setAgentDataBatchId(row.batch_id)}
+                            onClick={() => {
+                              setAgentDataBatchId(row.batch_id)
+                              setAgentDataCandidateId(row.candidate_id || null)
+                            }}
                             title="View agent data for this batch"
                           >
                             {row.batch_id}
@@ -404,7 +408,11 @@ export default function PerformanceMonitor() {
 
       <BatchAgentDataModal
         batchId={agentDataBatchId}
-        onClose={() => setAgentDataBatchId(null)}
+        candidateId={agentDataCandidateId || undefined}
+        onClose={() => {
+          setAgentDataBatchId(null)
+          setAgentDataCandidateId(null)
+        }}
       />
     </div>
   )

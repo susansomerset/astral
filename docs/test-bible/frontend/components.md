@@ -198,11 +198,21 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-646** | `GET /api/deploy_status` (`@require_admin`); `deploy_status.py` payload builder; `AdminDeployFooter` + admin gate in `NavigationShell` | `src/utils/deploy_status.py`, `src/ui/api/api_system.py`, `src/ui/frontend/src/components/{AdminDeployFooter,NavigationShell}.tsx` | `tests/component/utils/test_deploy_status.py`; `tests/component/ui/api/test_api_system.py::TestDeployStatus`; `tests/component/frontend/components/test_AdminDeployFooter.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx` (admin footer visible; non-admin absent) |
 | **AST-651** | UAT: drop `DEPLOY_STATUS_CONFIG` allowlist — `_resolve_environment()` returns stripped raw `ASTRAL_DEPLOY_ENV`; whitespace-only omits label | `src/utils/deploy_status.py`, `src/utils/config.py`, `env.example` | **`tests/component/utils/test_deploy_status.py::TestResolveEnvironment`** — **`test_non_allowlisted_value_returns_raw`** (`eu-west`), **`test_whitespace_only_returns_none`**; keep **`test_valid_local`**, **`test_unset_returns_none`**, payload tests unchanged. No UI/API test edits (mocks unchanged). |
-| **AST-653** | UAT: on `ASTRAL_DEPLOY_ENV=local`, UI-initiated LLM paths auto-enable debug via `is_local_deploy_env()` / `ui_llm_debug()`; non-local unchanged | `src/utils/deploy_status.py`, `src/ui/api/{api_intake,api_admin,api_candidate,api_boards}.py`, `src/core/{dispatcher,candidate,boards}.py` | **`tests/component/utils/test_deploy_status.py::TestLocalDeployDebug`** — local/staging/unset OR semantics for `is_local_deploy_env` and `ui_llm_debug`; existing **`TestResolveEnvironment`** + payload tests unchanged. No log-string golden tests (AST-538 gating only). |
+| **AST-653** | UAT: on `ASTRAL_DEPLOY_ENV=local`, UI-initiated LLM paths auto-enable debug via `is_local_deploy_env()` / `ui_llm_debug()`; non-local unchanged | `src/utils/deploy_status.py`, `src/ui/api/{api_intake,api_admin,api_candidate}.py`, `src/core/{dispatcher,candidate}.py` | **`tests/component/utils/test_deploy_status.py::TestLocalDeployDebug`** — local/staging/unset OR semantics for `is_local_deploy_env` and `ui_llm_debug`; existing **`TestResolveEnvironment`** + payload tests unchanged. No log-string golden tests (AST-538 gating only). |
 | **AST-679** | AST-658: drop commit tip from deploy status API + admin footer — env (when set) and uptime only; no git subprocess | `src/utils/deploy_status.py`, `AdminDeployFooter.tsx`, `App.css` | **`TestGetDeployStatusPayload`** — renamed **`test_includes_uptime_without_environment`**; drop `_git_head_info` mocks/assertions. **`TestDeployStatus`** — expected JSON without commit keys. **`test_AdminDeployFooter.test.tsx`** — env + uptime only; no commit text/tooltip. **`test_NavigationShell.test.tsx`** — deploy_status mocks without commit fields |
 | **AST-682** | AST-675 child: env label native `title` lists up to **20** `merge_tickets` — **superseded by AST-691** (hover tooltip); manifest rows below retained for historical pytest names only | `AdminDeployFooter.tsx` | *(see **AST-691**)* |
 | **AST-690** | AST-675 UAT bug: click-to-toggle popup on env label — **superseded by AST-691** (hover tooltip + pointer cursor); historical pytest names only | `AdminDeployFooter.tsx`, `App.css` | *(see **AST-691**)* |
 | **AST-691** | AST-675 UAT fix: replace AST-690 click popup with **500ms hover** tooltip on env label when `merge_tickets` non-empty — up to **20** plain lines (`ticket_id` + `fmtTime(recorded_at)`), most recent first; `span` + `nav-deploy-env-interactive` (`cursor: pointer`) when interactive; static span when empty/missing; wrapper hover keeps tooltip open; no `title`; no backend/API changes | `AdminDeployFooter.tsx`, `App.css` | **`test_AdminDeployFooter.test.tsx`** — **`test_shows_merge_ticket_tooltip_after_500ms_hover_on_env_wrap_when_merge_tickets_present`**; **`test_hides_merge_ticket_tooltip_before_500ms_hover_and_on_mouse_leave`**; **`test_renders_static_environment_span_when_merge_tickets_empty_or_missing`**; **`test_caps_merge_ticket_tooltip_at_20_lines`**; existing env/uptime/error tests unchanged. **`test_NavigationShell.test.tsx`** unchanged (non-admin gate) |
+| **AST-798** | UAT FIX: static env label (empty `merge_tickets`) uses **default** cursor — `.nav-deploy-env { cursor: default; user-select: none; }`; interactive class unchanged. Linear key env precedence in `external/linear.py` (rollcall names) — see **`external/linear.md` AST-798** | `App.css`, `src/external/linear.py`, `env.example` | **`test_AdminDeployFooter.test.tsx`** — extend **`test_renders_static_environment_span_when_merge_tickets_empty_or_missing`**: `nav-deploy-env` class, **App.css source contract** (`cursor: default`, `user-select: none` on `.nav-deploy-env`), no interactive class. **`tests/component/external/test_linear.py::TestResolveLinearApiKey`** (3 tests) |
+
+**AST-798** narrowed run:
+
+```bash
+.venv/bin/python -m pytest tests/component/external/test_linear.py -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx
+```
 
 **AST-691** narrowed run:
 
@@ -299,3 +309,31 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
 ```
+
+---
+
+### AST-779 · AST-770
+
+**Error toast diagnostics:** **`Toast.tsx`** — error variant defaults to **15s** dismiss, **click-to-copy** multi-line diagnostic bundle (route + optional candidate id from context; optional **`diagnostics`** from **`ApiError`**). Success/info unchanged (~3s, non-interactive). Helpers in **`toastDiagnostics.ts`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Toast UX + copy bundle | `src/ui/frontend/src/components/Toast.tsx`, `src/ui/frontend/src/lib/toastDiagnostics.ts`, `App.css` | `tests/component/frontend/components/test_Toast.test.tsx` — **AST-779** describe (15s error dismiss, 3s success, click-copy + copied feedback, `.toast-error-clickable` hint) |
+| Representative ApiError wiring | `AdminAgentPrompts.tsx`, `CandidateProfile.tsx` | Existing page tests cover error toast text paths; **no new page manifest** — Toast auto-context satisfies AC 3–4 for pages passing `{ text, variant: "error" }` only |
+
+**AST-779** narrowed run (Vitest only):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx
+```
+
+---
+
+### AST-783 · AST-756
+
+**`RepoJsonDivergenceBanner`:** fetches **`/api/admin/repo_json/status`**, shows gold warning when `diverged`, **Revert to file** via **`useUserConfirm`** danger dialog → **`POST /api/admin/repo_json/revert/<tableKey>`**; refetches on `refreshToken` prop from parent pages.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` |

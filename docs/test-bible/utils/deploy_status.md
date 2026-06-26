@@ -7,6 +7,7 @@
 | Source | Test file | Branch lock |
 | --- | --- | --- |
 | `src/utils/deploy_status.py` | `tests/component/utils/test_deploy_status.py` | no |
+| `src/core/deploy_status.py` | `tests/component/core/test_deploy_status.py` | no |
 
 ---
 
@@ -34,20 +35,32 @@
 
 ### AST-681
 
-**`merge_tickets` on `get_deploy_status_payload()`** — full stored history, most recent first; always present (empty list when log empty). Read-only via `read_merge_ticket_log`; append covered in `merge_ticket_log.md`.
+**Historical:** pre-AST-792, utils `get_deploy_status_payload()` assembled `merge_tickets`. **AST-792** moved full payload + Linear filter to **`src/core/deploy_status.py`**; utils returns uptime/env only. Pure helpers `merge_tickets_recent_first` / `filter_merge_tickets_by_state` remain in utils.
+
+| Behavior | Tests (current) |
+| --- | --- |
+| API route includes key | `TestDeployStatus::test_admin_returns_payload`, `test_admin_omits_environment_when_unset` in `test_api_system.py` |
+
+---
+
+### AST-792
+
+**Utils layer:** base payload (no `merge_tickets` key); pure filter/order helpers. **Core + API + Linear** — see `core/deploy_status.md`, `external/linear.md`, `ui/api/api_system.md`.
 
 | Behavior | Tests |
 | --- | --- |
-| Reversed order for API | `TestGetDeployStatusPayload::test_merge_tickets_most_recent_first` |
-| Empty log → `[]` | `TestGetDeployStatusPayload::test_merge_tickets_empty_when_log_empty` |
-| API route includes key | `TestDeployStatus::test_admin_returns_payload`, `test_admin_omits_environment_when_unset` in `test_api_system.py` |
+| Base payload uptime/env only | `TestGetDeployStatusPayload::test_includes_uptime_without_environment`, `test_includes_environment_when_set` |
+| Recent-first helper | `TestMergeTicketHelpers::test_merge_tickets_recent_first` |
+| UAT state filter helper | `TestMergeTicketHelpers::test_filter_merge_tickets_by_state_keeps_uat_only` |
 
-**Manifest pytest gate (AST-681 — run with merge_ticket_log + API):**
+**Manifest pytest gate (AST-792 — full ticket):**
 
 ```bash
 .venv/bin/python -m pytest \
+  tests/component/external/test_linear.py \
   tests/component/utils/test_merge_ticket_log.py \
   tests/component/utils/test_deploy_status.py \
+  tests/component/core/test_deploy_status.py \
   tests/component/ui/api/test_api_system.py::TestDeployStatus \
   -q
 ```

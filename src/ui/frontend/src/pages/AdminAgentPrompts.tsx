@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import ListPage from "../components/ListPage"
 import Modal from "../components/Modal"
+import RepoJsonDivergenceBanner from "../components/RepoJsonDivergenceBanner"
 import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
+import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Column } from "../components/ListPage"
 
 /** Rows from GET /api/admin/agents/brain_settings (config-backed tiers). */
@@ -93,6 +95,7 @@ export default function AgentPrompts() {
   const [previewText, setPreviewText] = useState("")
   const [previewCandidateId, setPreviewCandidateId] = useState("")
   const [previewSource, setPreviewSource] = useState<"edit" | "add">("edit")
+  const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
   const loadAll = useCallback(() => {
     setLoading(true)
@@ -135,7 +138,10 @@ export default function AgentPrompts() {
   }
 
   function openEdit(agent: Agent) {
-    api(`/api/admin/agents/${agent.agent_id}`).then(r => r.json()).then(full => {
+    api(`/api/admin/agents/${agent.agent_id}`).then(async r => {
+      if (!r.ok) await readApiError(r, `/api/admin/agents/${agent.agent_id}`, "GET")
+      return r.json()
+    }).then(full => {
       setEditAgent(full)
       setEditContent(full.content || "")
       setEditBrainSetting(
@@ -144,7 +150,7 @@ export default function AgentPrompts() {
       setEditTemp(full.temperature != null ? String(full.temperature) : "")
       setEditMaxTok(full.max_tokens != null ? String(full.max_tokens) : "")
       setEditOpen(true)
-    }).catch(e => setToast({ text: e.message, variant: "error" }))
+    }).catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
   }
 
   function handleEditSave() {
@@ -161,16 +167,17 @@ export default function AgentPrompts() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Update failed") })
+      .then(async r => {
+        if (!r.ok) await readApiError(r, `/api/admin/agents/${editAgent.agent_id}`, "PUT")
         return r.json()
       })
       .then(() => {
         setEditOpen(false); setEditAgent(null)
         setToast({ text: "Agent updated", variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
-      .catch(e => setToast({ text: e.message, variant: "error" }))
+      .catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
   }
 
   function handleAddSave() {
@@ -189,8 +196,8 @@ export default function AgentPrompts() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Create failed") })
+      .then(async r => {
+        if (!r.ok) await readApiError(r, "/api/admin/agents", "POST")
         return r.json()
       })
       .then(() => {
@@ -198,24 +205,26 @@ export default function AgentPrompts() {
         setAddBrainSetting(brainSettings[0]?.brain_setting || "")
         setAddTemp(""); setAddMaxTok("")
         setToast({ text: `Agent "${id}" created`, variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
-      .catch(e => setToast({ text: e.message, variant: "error" }))
+      .catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
   }
 
   function handleDeleteConfirm() {
     if (!deleteTarget) return
     api(`/api/admin/agents/${deleteTarget.agent_id}`, { method: "DELETE" })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Delete failed") })
+      .then(async r => {
+        if (!r.ok) await readApiError(r, `/api/admin/agents/${deleteTarget.agent_id}`, "DELETE")
         return r.json()
       })
       .then(() => {
         setDeleteTarget(null)
         setToast({ text: `Agent "${deleteTarget.agent_id}" deleted`, variant: "success" })
+        setRepoJsonRefresh(n => n + 1)
         loadAll()
       })
-      .catch(e => { setDeleteTarget(null); setToast({ text: e.message, variant: "error" }) })
+      .catch(e => { setDeleteTarget(null); setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }) })
   }
 
   function handlePreview(source: "edit" | "add") {
@@ -227,8 +236,8 @@ export default function AgentPrompts() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content, candidate_id: selectedId || undefined }),
     })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Preview failed") })
+      .then(async r => {
+        if (!r.ok) await readApiError(r, "/api/admin/agents/preview", "POST")
         return r.json()
       })
       .then(data => {
@@ -236,7 +245,7 @@ export default function AgentPrompts() {
         setPreviewCandidateId(data.candidate_id || "")
         setPreviewOpen(true)
       })
-      .catch(e => setToast({ text: e.message, variant: "error" }))
+      .catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
       .finally(() => setPreviewLoading(false))
   }
 
@@ -254,6 +263,11 @@ export default function AgentPrompts() {
 
   return (
     <>
+      <RepoJsonDivergenceBanner
+        tableKey="agent"
+        refreshToken={repoJsonRefresh}
+        onReverted={() => { setRepoJsonRefresh(n => n + 1); loadAll() }}
+      />
       <ListPage<Agent>
         title="Manage Agents"
         columns={LIST_COLUMNS}

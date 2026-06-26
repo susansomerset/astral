@@ -23,18 +23,17 @@
 
 ### AST-466 · AST-467 · AST-468 · AST-376
 
-Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title`, `scrape_jd`, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
+Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title` inline-only, **`fetch_jd`**, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`**, board registry layout | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestBoardRegistryAst457`**, **`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
-| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). **`TestProcessGazeBoardBatch`** is **`§7.13q`** / boards spine (**`process_gaze_board_batch`**) — if that symbol is absent on your tip, rerun gazer narrowly with **`pytest tests/component/core/test_gazer.py -k 'not ProcessGazeBoardBatch'`** alongside consult before asserting full-file green. |
+| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
+| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `grade_*` dispatch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`fetch_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). |
 | Dispatch resolution helpers (**AST-468**) | `src/core/dispatcher.py`, `src/data/database.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_admin.py` |
-| Board-sourced pipeline still sees same states | `src/core/tracker.py`, consult + gazer | `tests/component/core/test_board_sourced_qualify_evaluate.py` |
 
 Sibling **AST-468** dispatch helpers documented in **§7.13x**.
 
-Manifest default ( **`test-astral`** on publish tip — consult/config scope; avoids unrelated **`origin/dev`** board integration gaps): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
+Manifest default ( **`test-astral`** on publish tip — consult/config scope): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
 
 **Harness:** `./scripts/testing/run_component_tests.sh` with trailing paths forwards them to **`pytest`** (narrow selection + same **`--cov=src`** / JSON report wiring). **`check_per_file_coverage.py`** (**`LOCKED_AT_100`**) runs **only** with zero args (full **`tests/component`** selection); narrowed manifest calls skip that gate because branch rows are incomplete for untouched locked modules.
 
@@ -316,3 +315,211 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness until siblings integrated.
 
+---
+
+### AST-797 · AST-794
+
+Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`**; **`validate_title_batch`** inline inside **`qualify_job_listings`** for **NEW** jobs; **`validate_title`** / **`scrape_jd`** retired from **`run_consult_task`**; qualify primary dispatch @ **NEW** with **VALID_TITLE_RETRY** companion row (migration).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inline title screen + routing | `src/core/consult.py` | `TestAst797QualifyInlineValidateTitle`; `TestRunConsultTaskRoutes::test_routes_fetch_jd_batch`; `TestRunConsultTask::test_validate_title_dispatch_key_unhandled_returns_zero` |
+| DB migration | `src/data/database.py` | `TestAst797DispatchKeyCutoverMigration` |
+| Config qualify @ NEW | `src/utils/config.py` | `TestAst797ConfigRuntimeCutover` |
+| Gazer rename | `src/core/gazer.py` | `TestFetchJdBatch` (+ debug path classes) |
+| Tracker coat-check | `src/core/tracker.py` | existing self-heal tests (monkeypatch **`fetch_jd_batch`**) |
+| Dispatcher claim @ NEW | `src/core/dispatcher.py` | `TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states`; `test_qualify_valid_title_claim_without_score_floor` |
+| Admin adhoc | `src/ui/api/api_admin.py` | `TestAdhocHelpers::test_trigger_state_helpers` |
+
+**AST-797** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst797DispatchKeyCutoverMigration \
+  tests/component/utils/test_config.py::TestAst797ConfigRuntimeCutover \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_jd_batch \
+  tests/component/core/test_gazer.py::TestFetchJdBatch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers \
+  -q
+```
+
+---
+
+### AST-789 · AST-788
+
+**AST-788 (parent):** BUILD_ARTIFACTS compound substates do not auto-graduate per hop — terminal batch exit in **`consult._run_job_artifact_entry_batch`** promotes to **`CANDIDATE_REVIEW`** after persist gate passes. **AST-789** extracts **`_try_graduate_artifact_job_to_candidate_review`** (fresh DB persist read via **`job_has_persisted_resume_body(..., None)`**, structured failure reasons, AST-538 Style D debug); wires batch loop; graduation stays in **`consult.py`** only (not **`agent.py`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Terminal graduation helper + batch wiring | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst789TerminalGraduation` |
+| Full-chain / first-hop regression | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::{test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job,test_artifact_entry_batch_empty_persist_releases_claim}`; `TestAst789TerminalGraduation::test_artifact_entry_batch_graduates_on_anticipate_scan_first_hop` |
+| Persist / transition failure paths | `src/core/consult.py` | `TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_empty_persist_releases_claim`; `TestAst789TerminalGraduation::test_artifact_entry_batch_transition_failure_releases_claim` |
+| AST-597 per-hop regression (unchanged) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` |
+
+**AST-789** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst789TerminalGraduation \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-803 · AST-788
+
+**AST-803:** Flat **`BUILD_ARTIFACTS`** + **`ERROR_BUILD_ARTIFACTS`**; resume hops carry **`task_type: CHAIN`**; **`do_chain_for_job`** + **`_run_build_artifacts_chain_batch`** replace compound per-hop transitions (**AST-595/597**) and **`run_resume_artifact_chain_for_job`** / **`_try_graduate_artifact_job_to_candidate_review`** (**AST-789**). Job stays on flat **`BUILD_ARTIFACTS`** during hops; terminal **`CANDIDATE_REVIEW`** via **`_chain_graduate_to_candidate_review`**; retry hop failure releases claim; hard missing-job/candidate → **`ERROR_BUILD_ARTIFACTS`**. Legacy **`BUILD_ARTIFACTS.<hop>`** rows still readable for in-flight resume.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chain entry + helpers | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainHelpers` |
+| **`do_chain_for_job`** graduation / hard error | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainGraduation` |
+| Batch wiring + retry release | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch` |
+| Dispatch row honesty (flat + legacy trigger) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty` |
+| Flat config + CHAIN **`task_type`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch`; `TestAst479LikePassStates::test_recommended_job_states_post_synthesis_exclude_passed_like`; `TestBuildStateUiManifest::{test_ast522_recommended_manifest_sections_and_phase_columns,test_ast562_recommended_primary_actions_by_state,test_ast562_recommended_prior_states_allow_cancel_from_build}`; `TestAst520AnticipateScanTaskKey::test_build_artifacts_entry_unchanged`; `TestAst549DispatchAdminDefaults::test_contemplate_job_artifact_trigger_sort` |
+| Generate/cancel flat state | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::{test_start_artifact_build_from_recommended,test_cancel_from_mid_hop_compound_state,test_cancel_rejects_wrong_state}` |
+| Dispatcher flat trigger + legacy claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast596_resume_hop_mismatch_skips_claim}` |
+| Admin dispatch validation | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry` |
+| Jobs API generate/cancel | `src/ui/api/api_jobs.py` | `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default`; `TestAst562GenerateCancelRoutes::{test_generate_artifacts_happy_path,test_cancel_artifact_build_happy_path}` |
+| Mid-chain hydration (no per-hop state transition) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` |
+
+**AST-803** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-803 · AST-788
+
+**AST-803:** Flat **`BUILD_ARTIFACTS`** + **`ERROR_BUILD_ARTIFACTS`**; resume hops carry **`task_type: CHAIN`**; **`do_chain_for_job`** + **`_run_build_artifacts_chain_batch`** replace compound per-hop transitions (**AST-595/597**) and **`run_resume_artifact_chain_for_job`** / **`_try_graduate_artifact_job_to_candidate_review`** (**AST-789**). Job stays on flat **`BUILD_ARTIFACTS`** during hops; terminal **`CANDIDATE_REVIEW`** via **`_chain_graduate_to_candidate_review`**; retry hop failure releases claim; hard missing-job/candidate → **`ERROR_BUILD_ARTIFACTS`**. Legacy **`BUILD_ARTIFACTS.<hop>`** rows still readable for in-flight resume.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chain entry + helpers | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainHelpers` |
+| **`do_chain_for_job`** graduation / hard error | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainGraduation` |
+| Batch wiring + retry release | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch` |
+| Dispatch row honesty (flat + legacy trigger) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty` |
+| Flat config + CHAIN **`task_type`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch`; `TestAst479LikePassStates::test_recommended_job_states_post_synthesis_exclude_passed_like`; `TestBuildStateUiManifest::{test_ast522_recommended_manifest_sections_and_phase_columns,test_ast562_recommended_primary_actions_by_state,test_ast562_recommended_prior_states_allow_cancel_from_build}`; `TestAst520AnticipateScanTaskKey::test_build_artifacts_entry_unchanged`; `TestAst549DispatchAdminDefaults::test_contemplate_job_artifact_trigger_sort` |
+| Generate/cancel flat state | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::{test_start_artifact_build_from_recommended,test_cancel_from_mid_hop_compound_state,test_cancel_rejects_wrong_state}` |
+| Dispatcher flat trigger + legacy claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast596_resume_hop_mismatch_skips_claim}` |
+| Admin dispatch validation | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_dispatch_task_keys_includes_task_config_registry` |
+| Jobs API generate/cancel | `src/ui/api/api_jobs.py` | `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default`; `TestAst562GenerateCancelRoutes::{test_generate_artifacts_happy_path,test_cancel_artifact_build_happy_path}` |
+| Mid-chain hydration (no per-hop state transition) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` |
+
+**AST-803** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-817 · AST-815
+
+**AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.
+
+**Manifest focus (existing coverage — no new tests):**
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Company vet consult → **`run_company_task`** (not discovery batch) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | **`vet_inflow_discovery_company`** outcomes + routing (**AST-776** regression) | `src/core/roster.py` | `::TestAst776VetInflowDiscoveryCompany` |
+| 3 | Discovery batch no inline vet (**AST-775** regression) | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors` |
+| 4 | Config company entity (**AST-776** regression) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task` |
+
+**AST-817** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-822 · AST-815 (UAT bug)
+
+**AST-822 (UAT bug):** Company **`vet_inflow_discovery`** consult guard routes to **`vet_inflow_discovery_company_batch`** (full claimed entity list) before **`run_company_task`** fallback — replaces **AST-817**/`819` **`run_company_task`** consult path for dispatch batching.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Consult vet → batch runner (not discovery batch / not per-entity warm) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | Batch assembly + **`hit_index`** decode | `src/core/roster.py` | `::TestAst822VetInflowDiscoveryBatch` |
+| 3 | Single-company wrapper (**AST-776** regression) | `src/core/roster.py` | `::TestAst776VetInflowDiscoveryCompany` |
+
+**Regression note:** **AST-817** manifest consult line updated in **AST-822** — batch mock replaces **`run_company_task`** expectation.
+
+---
+
+### AST-823 · AST-821
+
+**AST-823 (UAT bug):** **`run_consult_task`** company branch routes **`dispatch_task_key`** in **`("prefilter", "prefilter_company")`** to **`prefilter_company_batch`** — legacy mis-keyed dispatch rows no longer fall through to **`run_company_task`** on **HOMEPAGE_READY**. Idempotent **`dispatch_task`** migration retargets **`prefilter_company`** agent-key rows and stale **`batch_call_mode` / `trigger_state`** on company prefilter rows (**AST-703** DELETE-before-UPDATE order preserved).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`prefilter`** batch routing (regression) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` |
+| Legacy **`prefilter_company`** dispatch key | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key` |
+| Batch runner unchanged | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch` |
+| Dispatcher union claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states` |
+| Migration retarget | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration` |
+
+**Broken / obsolete (Betty revision):** **`TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts`** — batch runner loads rubric via **`rubric_criteria_for_task(astral_candidate_id, …)`**; test stubs lookup with embedded **RC** + sets **`astral_candidate_id`** in ctx.
+
+Regression: **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMigrationUniqueCollision`** (**AST-702** / **AST-703**).
+
+**AST-823** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-765 · AST-757 (SUNSET — documentation)
+
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

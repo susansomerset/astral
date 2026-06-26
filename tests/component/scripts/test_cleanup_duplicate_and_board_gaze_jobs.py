@@ -37,6 +37,9 @@ def job_db() -> Iterator[tuple[sqlite3.Connection, str]]:
     conn = sqlite3.connect(db_uri, uri=True)
     db_mod._job_schema_ensured = False
     db_mod._ensure_job_schema(conn)
+    # AST-732 unique index blocks duplicate fixture rows required for dedupe migration tests.
+    conn.execute("DROP INDEX IF EXISTS idx_job_identity_unique")
+    conn.commit()
     yield conn, db_uri
     conn.close()
 
@@ -63,13 +66,16 @@ def _insert_job(
 
 
 def _patch_db(monkeypatch: pytest.MonkeyPatch, db_uri: str) -> None:
-    db_mod._job_schema_ensured = False
-
     def _get_connection() -> sqlite3.Connection:
         return sqlite3.connect(db_uri, uri=True)
 
+    def _ensure_job_schema_skip(conn: sqlite3.Connection) -> None:
+        # job_db fixture already ensured columns; unique index dropped so duplicates can exist.
+        pass
+
     monkeypatch.setattr(_mod, "_run_with_retry", lambda fn: fn())
     monkeypatch.setattr(_mod, "_get_connection", _get_connection)
+    monkeypatch.setattr(_mod, "_ensure_job_schema", _ensure_job_schema_skip)
 
 
 class TestFindDuplicateIdentityGroups:
@@ -196,73 +202,6 @@ class TestDeleteJobsByAstralJobIds:
         assert [r[0] for r in rows] == ["keep-me"]
 
 
-class TestBoardGazeCleanup:
-    def test_dry_run_no_delete(
-        self,
-        job_db: tuple[sqlite3.Connection, str],
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        job_conn, db_uri = job_db
-        _insert_job(
-            job_conn,
-            astral_job_id="board-1",
-            company=f"{_BOARD_PREFIX}indeed",
-            job_title="Role",
-            company_job_id="1",
-        )
-        _patch_db(monkeypatch, db_uri)
-        counts = {k: 0 for k in _mod._COUNT_KEYS}
-
-        _mod.run_board_gaze_cleanup(dry_run=True, counts=counts)
-
-        assert counts["board_jobs_scanned"] == 1
-        assert counts["board_jobs_deleted"] == 1
-        assert job_conn.execute("SELECT COUNT(*) FROM job").fetchone()[0] == 1
-        assert "DRY RUN" in capsys.readouterr().out
-
-    def test_live_deletes_board_rows(
-        self, job_db: tuple[sqlite3.Connection, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job_conn, db_uri = job_db
-        _insert_job(
-            job_conn,
-            astral_job_id="board-1",
-            company=f"{_BOARD_PREFIX}indeed",
-            job_title="Role",
-            company_job_id="1",
-        )
-        _insert_job(
-            job_conn,
-            astral_job_id="real-1",
-            company="acme",
-            job_title="Role",
-            company_job_id="1",
-        )
-        _patch_db(monkeypatch, db_uri)
-        counts = {k: 0 for k in _mod._COUNT_KEYS}
-
-        _mod.run_board_gaze_cleanup(dry_run=False, counts=counts)
-
-        assert counts["board_jobs_deleted"] == 1
-        rows = job_conn.execute("SELECT astral_job_id FROM job").fetchall()
-        assert [r[0] for r in rows] == ["real-1"]
-
-    def test_no_board_rows_message(
-        self,
-        job_db: tuple[sqlite3.Connection, str],
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        job_conn, db_uri = job_db
-        _patch_db(monkeypatch, db_uri)
-        counts = {k: 0 for k in _mod._COUNT_KEYS}
-
-        _mod.run_board_gaze_cleanup(dry_run=False, counts=counts)
-
-        assert counts["board_jobs_scanned"] == 0
-        assert "no placeholder-company jobs found" in capsys.readouterr().out
-
 
 class TestIdentityDedupe:
     def test_dry_run_keeps_all_rows(
@@ -364,17 +303,10 @@ class TestIdentityDedupe:
 
 
 class TestRunCleanup:
-    def test_phase_order_and_skip_flags(
+    def test_dedupe_phase_with_skip_board(
         self, job_db: tuple[sqlite3.Connection, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         job_conn, db_uri = job_db
-        _insert_job(
-            job_conn,
-            astral_job_id="board-1",
-            company=f"{_BOARD_PREFIX}indeed",
-            job_title="Role",
-            company_job_id="1",
-        )
         _insert_job(
             job_conn,
             astral_job_id="dup-old",
@@ -393,31 +325,15 @@ class TestRunCleanup:
         )
         _patch_db(monkeypatch, db_uri)
 
-        full = _mod.run_cleanup(
+        result = _mod.run_cleanup(
             dry_run=False,
             skip_dedupe=False,
-            skip_board=False,
+            skip_board=True,
             company_filter=None,
         )
-        assert full["board_jobs_deleted"] == 1
-        assert full["dedupe_deleted"] == 1
+        assert result["board_jobs_deleted"] == 0
+        assert result["dedupe_deleted"] == 1
         assert job_conn.execute("SELECT astral_job_id FROM job").fetchone()[0] == "dup-old"
-
-        _insert_job(
-            job_conn,
-            astral_job_id="board-only",
-            company=f"{_BOARD_PREFIX}other",
-            job_title="Role",
-            company_job_id="2",
-        )
-        board_only = _mod.run_cleanup(
-            dry_run=False,
-            skip_dedupe=True,
-            skip_board=False,
-            company_filter=None,
-        )
-        assert board_only["board_jobs_deleted"] == 1
-        assert board_only["dedupe_deleted"] == 0
 
     def test_dry_run_banner_and_summary(
         self,

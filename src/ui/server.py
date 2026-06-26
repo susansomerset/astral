@@ -15,7 +15,7 @@ _repo_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_repo_root))
 sys.path.insert(0, str(_repo_root / "src"))
 
-from flask import Flask, send_from_directory
+from flask import Flask, request, send_from_directory
 
 from src.core.auth_bootstrap import wire_stytch_token_authenticator
 
@@ -46,11 +46,18 @@ app.register_blueprint(companies_bp)
 from ui.api.api_jobs import jobs_bp  # noqa: E402
 app.register_blueprint(jobs_bp)
 
-from ui.api.api_boards import boards_bp  # noqa: E402
-app.register_blueprint(boards_bp)
-
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
+
+from ui.api_errors import server_error_from_exception  # noqa: E402
+
+
+@app.errorhandler(Exception)
+def _api_uncaught_exception(exc: Exception):
+    if not request.path.startswith("/api/"):
+        raise exc
+    return server_error_from_exception(exc)
+
 
 # --- Runtime bootstrap (validation → agent_task sync → scheduler) ---
 from src.core.bootstrap import bootstrap_runtime  # noqa: E402

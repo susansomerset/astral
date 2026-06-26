@@ -5,6 +5,7 @@ Contains business logic for company roster management and job page discovery.
 """
 
 import asyncio
+import hashlib
 import json
 import re
 import uuid
@@ -93,12 +94,54 @@ def make_locate_parse_resolver(dom_map: Dict[int, str], visible_map: Dict[int, s
         dom_full = (dom_map.get(sp_int) or "").strip()
         if not dom_full:
             return ("", (visible_map.get(sp_int) or "").strip())
-        containers = find_job_containers(dom_full, titles)
-        culled = "\n".join(containers) if containers else ""
+        dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_full, titles)
         vis = (visible_map.get(sp_int) or "").strip()
-        return (culled, vis)
+        if cull_outcome == "cull_miss" or not dom_joined.strip():
+            return ("", vis)
+        return (dom_joined, vis)
 
     return resolve_run_next_live
+
+
+def _normalize_job_titles(raw: Any) -> List[str]:
+    """Strip blanks; preserve order from select/company_data."""
+    if not isinstance(raw, list):
+        return []
+    return [str(t).strip() for t in raw if str(t).strip()]
+
+
+def _dom_text_covers_titles(dom_html: str, job_titles: List[str]) -> bool:
+    blob = (dom_html or "").lower()
+    return all(t.lower() in blob for t in job_titles if t.strip())
+
+
+def _culled_dom_for_parse(
+    dom_html: str, job_titles: List[str]
+) -> Tuple[str, List[str], str]:
+    """Returns (dom_joined, containers, outcome_label).
+    outcome_label: no_titles | full_dom | culled | cull_miss."""
+    titles = _normalize_job_titles(job_titles)
+    if not titles:
+        return ("", [], "no_titles")
+    if len(titles) < 2:
+        dom = (dom_html or "").strip()
+        if not dom:
+            return ("", [], "cull_miss")
+        containers = find_job_containers(dom, titles)
+        joined = "\n".join(containers).strip() if containers else ""
+        if not joined:
+            return ("", containers or [], "cull_miss")
+        return (joined, containers, "full_dom")
+    containers = find_job_containers(dom_html or "", titles)
+    dom_joined = "\n".join(containers).strip()
+    if not dom_joined:
+        return ("", containers, "cull_miss")
+    if _dom_text_covers_titles(dom_joined, titles):
+        return (dom_joined, containers, "culled")
+    # find_job_containers fallback [dom_html] may not cover all titles on partial rescrape
+    if _dom_text_covers_titles(dom_html or "", titles):
+        return ((dom_html or "").strip(), containers, "full_dom")
+    return ("", containers, "cull_miss")
 
 
 def _strip_company_data_keys(short_name: str, keys: Tuple[str, ...]) -> None:  # pragma: no cover
@@ -193,8 +236,11 @@ def _normalize_company_url_for_dedupe(url: str) -> str:
     u = (url or "").strip()
     if not u:
         return ""
-    n = normalize_url(u)
-    parsed = urlparse(n)
+    try:
+        n = normalize_url(u)
+        parsed = urlparse(n)
+    except ValueError:
+        return ""
     netloc = parsed.netloc or ""
     if netloc.startswith("www."):
         netloc = netloc[4:]
@@ -203,6 +249,81 @@ def _normalize_company_url_for_dedupe(url: str) -> str:
     if parsed.query:
         out += f"?{parsed.query}"
     return out
+
+
+def _slug_from_discovery_url(url: str) -> str:
+    """Mechanical company slug from a CSE hit URL (hostname-based)."""
+    norm = _normalize_company_url_for_dedupe(url)
+    if not norm:
+        return f"inflow_{hashlib.sha256((url or '').encode()).hexdigest()[:12]}"
+    netloc = urlparse(norm).netloc or ""
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    slug = netloc.lower().replace(".", "_")
+    slug = re.sub(r"[^a-z0-9_]", "", slug)
+    if slug:
+        return slug
+    return f"inflow_{hashlib.sha256(norm.encode()).hexdigest()[:12]}"
+
+
+def _discovery_blurb_line(hit: dict, *, index: int = 0) -> str:
+    title = hit.get("title") or ""
+    hit_url = hit.get("url") or ""
+    snippet = (hit.get("snippet") or "")[:500]
+    return f"{index:03d}|{title}|{hit_url}|{snippet}"
+
+
+def _renumber_vet_blurb_line(blurb: str, batch_index: int) -> str:
+    parts = blurb.split("|", 3)
+    if len(parts) >= 4:
+        return f"{batch_index:03d}|{parts[1]}|{parts[2]}|{parts[3]}"
+    return f"{batch_index:03d}|{blurb}"
+
+
+def _apply_vet_inflow_result_row(
+    short_name: str,
+    row: dict,
+    cfg: Dict[str, Any],
+    log: Any,
+    debug: bool,
+    *,
+    index: int,
+    total: int,
+) -> Dict[str, Any]:
+    action = (row.get("action") or "").strip().lower()
+    if action in ("ignore", "reject"):
+        transition_company_state(short_name, cfg["fail_state"])
+        outcome = f"recorded {cfg['fail_state']}"
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=index,
+                total=total,
+                identifier=short_name,
+                outcome=outcome,
+            )
+            log.debug_detail(f"action={action!r}")
+        return {"success": True, "state": cfg["fail_state"], "error": None}
+    if action not in ("slug", "accept"):
+        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
+        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"action={action!r} missing website")
+        return {"success": False, "state": None, "error": "missing website on pass action"}
+    update_company(short_name, company_website=website)
+    transition_company_state(short_name, cfg["pass_state"])
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=index,
+            total=total,
+            identifier=short_name,
+            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+        )
+        log.debug_detail(f"action={action!r} website={website!r}")
+    return {"success": True, "state": cfg["pass_state"], "error": None}
 
 
 def _candidate_company_urls(candidate_id: str) -> Set[str]:
@@ -215,7 +336,61 @@ def _candidate_company_urls(candidate_id: str) -> Set[str]:
             norm = _normalize_company_url_for_dedupe(raw)
             if norm:
                 urls.add(norm)
+        data = row.get("company_data") or {}
+        if not isinstance(data, dict):
+            continue
+        notes = (data.get("inflow_discovery_notes") or "").strip()
+        if notes:
+            norm = _normalize_company_url_for_dedupe(notes)
+            if norm:
+                urls.add(norm)
+        blurb = (data.get("inflow_discovery_blurb") or "").strip()
+        if blurb:
+            parts = blurb.split("|", 3)
+            if len(parts) >= 3 and (parts[2] or "").strip():
+                norm = _normalize_company_url_for_dedupe(parts[2])
+                if norm:
+                    urls.add(norm)
     return urls
+
+
+def record_inflow_discovery_hit(candidate_id: str, hit: dict, *, index: int = 0) -> Tuple[bool, str]:
+    """Record one CSE hit as a NEW company row with discovery blurb stored."""
+    url = (hit.get("url") or "").strip()
+    if not url:
+        return False, "skipped empty url"
+    norm = _normalize_company_url_for_dedupe(url)
+    if not norm or norm in _candidate_company_urls(candidate_id):
+        return False, f"skipped duplicate url {url!r}"
+    slug = _slug_from_discovery_url(url)
+    if not slug or not _INFLOW_SLUG_RE.match(slug):
+        return False, f"invalid slug from url {url!r}"
+    resolved_slug: Optional[str] = None
+    for candidate_slug in [slug] + [f"{slug}_{n}" for n in range(2, 10)]:
+        existing = get_company(candidate_slug)
+        if not existing:
+            resolved_slug = candidate_slug
+            break
+        if (existing.get("candidate_id") or "") == candidate_id:
+            return False, f"duplicate slug {candidate_slug!r}"
+    if not resolved_slug:
+        return False, f"slug collision for {url!r}"
+    slug = resolved_slug
+    save_company(
+        short_name=slug,
+        state="NEW",
+        company_website="",
+        candidate_id=candidate_id,
+        company_name=slug,
+    )
+    save_company_data(
+        slug,
+        {
+            "inflow_discovery_blurb": _discovery_blurb_line(hit, index=index),
+            "inflow_discovery_notes": url,
+        },
+    )
+    return True, f"recorded NEW slug={slug}"
 
 
 def _ingest_failure_reason(
@@ -276,6 +451,167 @@ def ingest_new_companies(
         if note_url:
             save_company_data(slug, {"inflow_discovery_notes": note_url})
     return True
+
+
+async def vet_inflow_discovery_company(
+    short_name: str,
+    entity: Dict[str, Any],
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Company dispatch: vet stored discovery blurb → WEBSITE_FOUND | VET_FAILED (AST-776)."""
+    del batch_id  # company batch_id is on entity row; do_task uses log_batch_id from dispatcher
+    cfg = INFLOW_CONFIG["vet"]
+    log = logger
+    log.set_debug_flag(debug)
+    blurb = ((entity.get("company_data") or {}).get(cfg["blurb_data_key"]) or "").strip()
+    if not blurb:
+        logger.warning("[%s] vet_inflow_discovery_company: missing inflow_discovery_blurb", short_name)
+        return {"success": False, "state": None, "error": "missing inflow_discovery_blurb"}
+    live_content = f"Discovery hit (index|title|url|snippet)\n{blurb}"
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome="vet vet_inflow_discovery 1 blurb",
+        )
+        log.debug_detail_block(live_content)
+    api_result = await do_task(
+        task_key=cfg["task_key"],
+        live_content=live_content,
+        index=short_name,
+        ctx=ctx,
+        debug=debug,
+    )
+    if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="vet task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
+        return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
+    parsed = api_result.get("parsed_response") or {}
+    rows = parsed.get("results")
+    row: Optional[dict] = None
+    if isinstance(rows, list):
+        for r in rows:
+            if isinstance(r, dict):
+                row = r
+                break
+    if not row:
+        if debug:
+            log.debug_detail("vet parsed_response missing results list")
+        return {"success": False, "state": None, "error": "missing results"}
+    return _apply_vet_inflow_result_row(
+        short_name, row, cfg, log, debug, index=1, total=1,
+    )
+
+
+async def vet_inflow_discovery_company_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Batch company vet: one do_task, hit_index decode → WEBSITE_FOUND | VET_FAILED (AST-822)."""
+    cfg = INFLOW_CONFIG["vet"]
+    log = logger
+    log.set_debug_flag(debug)
+    blurb_key = cfg["blurb_data_key"]
+    ready: List[Dict[str, Any]] = []
+    not_ready: List[Dict[str, Any]] = []
+    for company in companies:
+        blurb = ((company.get("company_data") or {}).get(blurb_key) or "").strip()
+        if blurb:
+            ready.append(company)
+        else:
+            not_ready.append(company)
+    for company in not_ready:
+        sn = company.get("short_name") or "?"
+        logger.warning("[%s] vet_inflow_discovery_company_batch: missing inflow_discovery_blurb", sn)
+    total = len(companies)
+    if not ready:
+        return {"passed": 0, "failed": 0, "skipped": 0, "total": total}
+    short_names = [c.get("short_name") or "?" for c in ready]
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start n={len(ready)}",
+        )
+        log.debug_detail(f"batch_id={batch_id} short_names={short_names}")
+    ready_blurbs = [
+        ((c.get("company_data") or {}).get(blurb_key) or "").strip() for c in ready
+    ]
+    header = (
+        "Discovery hit (index|title|url|snippet)"
+        if len(ready) == 1
+        else "Discovery hits (index|title|url|snippet)"
+    )
+    body = "\n".join(_renumber_vet_blurb_line(b, i) for i, b in enumerate(ready_blurbs))
+    live_content = f"{header}\n{body}"
+    if debug:
+        log.debug_detail_block(live_content)
+    api_result = await do_task(
+        task_key=cfg["task_key"],
+        live_content=live_content,
+        index=f"vet_inflow_discovery_batch_{batch_id}",
+        ctx={**(ctx or {}), "batch_entities": ready, "batch_size": len(ready)},
+        debug=debug,
+    )
+    if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company_batch",
+                index=1,
+                total=1,
+                identifier=batch_id,
+                outcome="vet task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
+        return {"passed": 0, "failed": 0, "skipped": 0, "total": total}
+    parsed = api_result.get("parsed_response") or {}
+    rows = parsed.get("results")
+    index_by_hit: Dict[int, dict] = {}
+    if isinstance(rows, list):
+        for r in rows:
+            if isinstance(r, dict):
+                hi = r.get("hit_index")
+                if isinstance(hi, int):
+                    index_by_hit[hi] = r
+    passed = failed = errors = 0
+    errors += len(not_ready)
+    for i, company in enumerate(ready):
+        short_name = company.get("short_name") or "?"
+        row = index_by_hit.get(i)
+        if not row:
+            logger.warning(
+                "[%s] vet_inflow_discovery_company_batch: missing results row hit_index=%s",
+                short_name, i,
+            )
+            errors += 1
+            continue
+        r = _apply_vet_inflow_result_row(
+            short_name, row, cfg, log, debug, index=i + 1, total=len(ready),
+        )
+        if r.get("error"):
+            errors += 1
+        elif r.get("state") == cfg["pass_state"]:
+            passed += 1
+        elif r.get("state") == cfg["fail_state"]:
+            failed += 1
+        else:
+            errors += 1
+    return {"passed": passed, "failed": failed, "skipped": 0, "total": total}
 
 
 async def resolve_company_website(
@@ -417,14 +753,14 @@ async def run_inflow_discovery_batch(
     ctx: Optional[Dict[str, Any]],
     debug: bool,
 ) -> Dict[str, Any]:
-    """Phase 1: CSE per stale table term, vet hits, ingest accepted slugs (AST-525)."""
+    """Phase 1: CSE per stale table term, record deduped hits as NEW (AST-775)."""
     zero = {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     candidate_id = (candidate.get("astral_candidate_id") or candidate.get("candidate_id") or "").strip()
     cfg = INFLOW_CONFIG["discovery"]
     log = logger
     log.set_debug_flag(debug)
-    scan_h = float(cfg["scan_interval_hours"])
-    terms = list_stale_company_search_terms(candidate_id, scan_h)
+    freq_hrs = float((ctx or {}).get("inflow_discovery_freq_hrs") or 0)
+    terms = list_stale_company_search_terms(candidate_id, freq_hrs)
     term_total = len(terms)
     if not terms:
         if debug:
@@ -492,125 +828,42 @@ async def run_inflow_discovery_batch(
                 index=1,
                 total=1,
                 identifier=candidate_id,
-                outcome="no deduped hits after CSE — vet skipped",
+                outcome="no deduped hits — nothing to record",
             )
             log.debug_detail(
                 f"terms_searched={term_total} errors={errors} deduped_hits=0"
             )
         return {**zero, "total_errors": errors}
-    lines = ["Discovery hits (index|title|url|snippet)"]
-    for i, hit in enumerate(all_hits):
-        snip = (hit.get("snippet") or "")[:500]
-        lines.append(f"{i:03d}|{hit.get('title', '')}|{hit.get('url', '')}|{snip}")
-    live_content = "\n".join(lines)
-    if debug:
-        log.debug_index(
-            func="roster.run_inflow_discovery_batch",
-            index=1,
-            total=1,
-            identifier=candidate_id,
-            outcome=f"vet {cfg['vet_task_key']} {len(all_hits)} deduped hit(s)",
-        )
-        log.debug_detail_block(live_content)
-    task_ctx = ctx or candidate
-    api_result = await do_task(
-        task_key=cfg["vet_task_key"],
-        live_content=live_content,
-        index=candidate_id,
-        ctx=task_ctx,
-        debug=debug,
-    )
-    if not api_result.get("success"):
-        if debug:
-            log.debug_index(
-                func="roster.run_inflow_discovery_batch",
-                index=1,
-                total=1,
-                identifier=candidate_id,
-                outcome="vet task failed",
-            )
-        logger.error("run_inflow_discovery_batch: vet task failed for %s", candidate_id)
-        return {**zero, "total_errors": max(1, errors + 1)}
-    parsed = api_result.get("parsed_response") or {}
-    rows = parsed.get("results")
-    if not isinstance(rows, list):
-        if debug:
-            log.debug_detail("vet parsed_response missing results list")
-        return {**zero, "total_errors": max(1, errors + 1)}
-    ingested = 0
+    hit_total = len(all_hits)
+    recorded = 0
     skipped = 0
-    dict_rows = [r for r in rows if isinstance(r, dict)]
-    row_total = len(dict_rows)
-    row_i = 0
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        row_i += 1
-        fail_reason = None
-        action = (row.get("action") or "").strip().lower()
-        slug = (row.get("short_name") or "").strip()
-        site = (row.get("website") or "").strip() or None
-        hi_raw = row.get("hit_index")
-        try:
-            hi = int(hi_raw)
-            provenance = all_hits[hi] if 0 <= hi < len(all_hits) else None
-        except (TypeError, ValueError):
-            provenance = None
-            hi = hi_raw
-        if action == "ignore":
-            outcome = "ignored"
-        elif action != "slug":
-            logger.warning("run_inflow_discovery_batch: unknown action %r", row.get("action"))
-            outcome = "skipped unknown action"
-        elif not slug:
-            outcome = "skipped empty slug"
-        else:
-            if ingest_new_companies(candidate_id, slug, site, source_hit=provenance):
-                outcome = (
-                    f"recorded state={'WEBSITE_FOUND' if site else 'NEW'} website={site or ''}"
-                )
-            else:
-                fail_reason = _ingest_failure_reason(candidate_id, slug, site)
-                outcome = (
-                    f"not recorded — {fail_reason}"
-                    if fail_reason
-                    else "not recorded (unknown)"
-                )
+    for hit_i, hit in enumerate(all_hits):
+        ok, outcome = record_inflow_discovery_hit(candidate_id, hit, index=hit_i)
+        hit_url = (hit.get("url") or "").strip()
+        identifier = _normalize_company_url_for_dedupe(hit_url) or hit_url or f"hit_{hit_i}"
         if debug:
             log.debug_index(
                 func="roster.run_inflow_discovery_batch",
-                index=row_i,
-                total=row_total,
-                identifier=slug or f"hit_index={hi}",
+                index=hit_i + 1,
+                total=hit_total,
+                identifier=identifier,
                 outcome=outcome,
             )
-            if fail_reason:
-                log.debug_detail(f"ingest failed: {fail_reason}")
             log.debug_detail(
-                f"action={action!r} hit_index={row.get('hit_index')!r} website={site!r}"
+                f"title={hit.get('title', '')!r} url={hit_url!r}"
             )
-        if action == "ignore":
-            skipped += 1
-            continue
-        if action != "slug":
-            skipped += 1
-            continue
-        if not slug:
-            skipped += 1
-            continue
-        if outcome.startswith("recorded"):
-            ingested += 1
+        if ok:
+            recorded += 1
         else:
             skipped += 1
     if debug:
         log.debug_detail(
-            f"batch summary total_processed=1 total_passed={ingested} "
-            f"total_failed={skipped} total_errors={errors} terms={term_total} "
-            f"deduped_hits={len(all_hits)}"
+            f"batch summary terms_searched={term_total} deduped_hits={hit_total} "
+            f"recorded={recorded} skipped={skipped} errors={errors}"
         )
     return {
         "total_processed": 1,
-        "total_passed": ingested,
+        "total_passed": recorded,
         "total_failed": skipped,
         "total_errors": errors,
     }
@@ -634,10 +887,30 @@ async def run_company_task(
 
     try:
         if input_state == "NEW":
-            r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
+            tk = (dispatch_task_key or "").strip()
+            if tk == INFLOW_CONFIG["vet"]["task_key"]:
+                r = await vet_inflow_discovery_company(
+                    short_name, entity, batch_id, ctx=ctx, debug=debug,
+                )
+            elif tk == INFLOW_CONFIG["resolve"]["task_key"]:
+                r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
+            else:
+                logger.warning(
+                    "run_company_task: NEW requires dispatch_task_key %r or %r for %s",
+                    INFLOW_CONFIG["vet"]["task_key"],
+                    INFLOW_CONFIG["resolve"]["task_key"],
+                    short_name,
+                )
+                return {**zero, "total_errors": 1}
             if r.get("error"):
                 return {**zero, "total_errors": 1}
-            if r.get("state") in ("WEBSITE_FOUND", "NO_WEBSITE"):
+            terminal_ok = (
+                INFLOW_CONFIG["vet"]["pass_state"],
+                INFLOW_CONFIG["vet"]["fail_state"],
+                "WEBSITE_FOUND",
+                "NO_WEBSITE",
+            )
+            if r.get("state") in terminal_ok:
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
@@ -948,12 +1221,13 @@ async def run_parse_job_list_dispatch(
             short_name, company_website, "", input_state,
             notes="missing selected_pjl_url", response_type="PARSE_DISPATCH_MISSING_URL",
         )
-    job_titles = cdata.get("job_titles") or []
+    job_titles = _normalize_job_titles(cdata.get("job_titles"))
     if not job_titles:
         return _save_parse_dispatch_failure(
             short_name, company_website, list_url, input_state,
             notes="missing job_titles", response_type="PARSE_DISPATCH_MISSING_TITLES",
         )
+    cull_outcome = ""
     if debug:
         log = logger
         log.set_debug_flag(True)
@@ -971,13 +1245,22 @@ async def run_parse_job_list_dispatch(
                 short_name, company_website, list_url, input_state,
                 notes="empty dom after reload", response_type="PARSE_DISPATCH_EMPTY_DOM",
             )
-        containers = find_job_containers(dom_html, job_titles)
-        if not containers:
+        pre_cull_chars = len(dom_html or "")
+        dom_joined, containers, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+        post_cull_chars = len(dom_joined or "")
+        if debug:
+            log = logger
+            log.set_debug_flag(True)
+            log.debug_detail(
+                f"titles={len(job_titles)} pre_cull_chars={pre_cull_chars} "
+                f"post_cull_chars={post_cull_chars} containers={len(containers)} "
+                f"cull_outcome={cull_outcome!r}"
+            )
+        if cull_outcome == "cull_miss" or not dom_joined.strip():
             return _save_parse_dispatch_failure(
                 short_name, company_website, list_url, input_state,
                 notes="containers not found for titles", response_type="PARSE_DISPATCH_NO_CONTAINERS",
             )
-        dom_joined = "\n".join(containers)
         parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
         container = (parsed.get("job_container") or "").strip()
         job_tag = (parsed.get("job_tag") or "").strip()
@@ -1001,7 +1284,10 @@ async def run_parse_job_list_dispatch(
     if debug:
         log = logger
         log.set_debug_flag(True)
-        log.debug_detail(f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}")
+        log.debug_detail(
+            f"response_type={result.get('response_type')!r} -> state={result.get('state')!r} "
+            f"cull={cull_outcome!r}"
+        )
     return result
 
 
@@ -2036,11 +2322,17 @@ def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
     return "\n\n".join(sections)
 
 
+def _assembled_has_embedded_nav_links(assembled_content: str) -> bool:
+    return "--- NAV LINKS ---" in (assembled_content or "")
+
+
 def _build_select_job_page_live_content(assembled_content: str, pjl_nav_links: str) -> str:
-    """Append global PJL nav enumeration for select_job_page agent live content (AST-759)."""
+    """Build select_job_page agent live content; dedupe global nav when per-page nav present (AST-826)."""
     nav = (pjl_nav_links or "").strip()
     assembled = assembled_content or ""
     if not nav:
+        return assembled
+    if _assembled_has_embedded_nav_links(assembled):
         return assembled
     if nav in assembled:
         return assembled
@@ -2215,11 +2507,22 @@ async def _finalize_joblist_identified(
     """AST-720: JOBLIST_TITLES on PJL_READY path — no parse, job_site column unset."""
     _ = ctx
     sel_cfg = ROSTER_CONFIG["select_job_page"]
-    job_titles = select_parsed.get("job_titles", [])
+    job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {
         "job_titles": job_titles,
         sel_cfg["selected_pjl_url_key"]: job_site_url,
     })
+    if debug:
+        log = logger
+        log.set_debug_flag(True)
+        log.debug_index(
+            func="roster._finalize_joblist_identified",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"titles={len(job_titles)} url={job_site_url}",
+        )
+        log.debug_detail(f"titles={job_titles!r}")
     vis_save = ""
     if selected_page is not None:
         try:
@@ -2261,7 +2564,7 @@ async def _finalize_joblist_titles_after_chain(
     ctx: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:  # pragma: no cover — parse_job_list chained path §7.12
     """AST-469: parse_job_list already ran via run_next; validate and persist like legacy _check_parse_results."""
-    job_titles = select_parsed.get("job_titles", [])
+    job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {"job_titles": job_titles})
     parsed = chain_res.get("parsed_response") or {}
     dom_html = page_dom_map.get(selected_page, "") if selected_page is not None else ""
@@ -2270,15 +2573,14 @@ async def _finalize_joblist_titles_after_chain(
                            state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
         return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-    containers = find_job_containers(dom_html, job_titles)
-    if not containers:
+    dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+    if cull_outcome == "cull_miss" or not dom_joined.strip():
         if debug:
             logger.test(f"[find_job_page] DOM did not contain job titles — possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
                            state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
         return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
     full_dom_html = dom_html
-    dom_joined = "\n".join(containers)
 
     container = (parsed.get("job_container") or "").strip()
     job_tag = (parsed.get("job_tag") or "").strip()
@@ -2327,7 +2629,7 @@ async def _finalize_joblist_titles_select_only(
     visible_map: Dict[int, str],
 ) -> Dict[str, Any]:  # pragma: no cover — select-only PJL fallback §7.12
     """AST-469: run_next suppressed (empty culled DOM) — validate with legacy _fetch_parse_job_list path."""
-    job_titles = select_parsed.get("job_titles", [])
+    job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {"job_titles": job_titles})
     if debug:
         logger.test(f"[find_job_page] JOBLIST_TITLES (no chain): {len(job_titles)} titles, job_site={job_site_url}")
@@ -2338,15 +2640,14 @@ async def _finalize_joblist_titles_select_only(
                            state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
         return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-    containers = find_job_containers(dom_html, job_titles)
-    if not containers:
+    dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+    if cull_outcome == "cull_miss" or not dom_joined.strip():
         if debug:
             logger.test(f"[find_job_page] DOM did not contain job titles — possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
                            state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
         return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
     full_dom_html = dom_html
-    dom_joined = "\n".join(containers)
 
     parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
 

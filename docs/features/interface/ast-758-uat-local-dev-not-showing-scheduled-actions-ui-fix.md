@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-758 archived 2026-06-23 -->
+
+## Linear archive (AST-758)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-758/uat-local-dev-branch-not-showing-scheduled-actions-ui-fix-remove  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-744 — Remove column gap in scheduled_actions  
+**Blocked by / blocks / related:** parent: AST-744
+
+### Description
+
+## What failed
+
+Susan cannot see the AST-746 scheduled-actions column-gap fix when running the app on her local **dev** branch during UAT (parent comment 2026-06-23).
+
+## Expected
+
+After prep-uat landed the epic on `origin/dev`, pulling local dev and running the app should show **Scheduled Actions** with corrected frozen-column layout: no whitespace gap between Candidate and Task; Entity must not overlay State.
+
+## Repro
+
+1. On local `astral` worktree: `git fetch origin && git checkout dev && git pull origin dev`
+2. Start local dev (`./launch.sh` or project-standard local run)
+3. Open Admin → Scheduled Actions; expand a phase section with rows
+4. Compare column layout to the fix described in AST-746
+
+## Parent AC (quoted inline)
+
+> There is a gap of whitespace between the Candidate and Task columns, and task and entity are shifted to the right, overlaying (and blocking) the State column value.
+
+## Boundaries
+
+* Does **not** reopen AST-746 product scope unless investigation proves the merge on `dev` is wrong or the UI fix regressed.
+* Does **not** change sibling feature children already at User Testing without cause.
+
+### Comments
+
+#### radia — 2026-06-23T19:22:03.264Z
+### Review (`origin/dev`…`origin/sub/AST-744/AST-758-uat-local-dev-not-showing-scheduled-actions-ui-fix`)
+
+**Tip:** `06337d8` (includes doc commit) · product tip `d440264`
+
+**Plan fidelity:** Stage 1 landing confirmed — AST-746 fix already on `origin/dev` (empty diff vs AST-746 publish ref; `predecessorsReady` + conditional mount present). Stages 2–3 delivered: `_ensure_frontend_build` on `launch.sh --flask` only; `_warn_stale_frontend_dist` in `server.py` `__main__` only (gunicorn/Railway silent). No `AdminScheduledActions.tsx` changes — correct scope boundary.
+
+**Code rules:** §3.3 clean (pathlib/sys only in server.py). `print(..., file=sys.stderr)` in debug startup is plan-specified local-dev operator signal — acceptable. §1.3: launch auto-build + server warning are complementary paths.
+
+**Tests:** `TestLaunchFrontendBuild` (stale vs fresh dist) and `TestWarnStaleFrontendDist` (missing/stale/fresh stderr) match Betty manifests.
+
+**fix-now:** none
+
+**discuss:** optional — `TestWarnStaleFrontendDist` mutates `ui.server._FRONTEND_SRC` / `_DIST` without restore; safe while class is last in module; consider `monkeypatch` teardown if more server tests follow.
+
+**advisory:** Susan Stage 4 manual UAT still required — `git pull` → `zsh launch.sh --flask` without manual `npm run build` → `:5001` Scheduled Actions shows AST-746 column layout.
+
+**Doc:** [ast-758-uat-local-dev-not-showing-scheduled-actions-ui-fix.md](https://github.com/susansomerset/astral/blob/06337d8/docs/features/interface/ast-758-uat-local-dev-not-showing-scheduled-actions-ui-fix.md) § Review (Radia)
+
+**Handoff:** Katherine → **resolve-child** (no code changes from review).
+
+#### betty — 2026-06-23T19:20:15.358Z
+## QA test manifest (AST-758)
+
+**Publish:** `origin/sub/AST-744/AST-758-uat-local-dev-not-showing-scheduled-actions-ui-fix` @ `d440264` (`merge-tests(AST-758): origin/tests b86a91b`)
+
+### 1. New coverage
+1. **`TestLaunchFrontendBuild`** — `launch.sh --flask` runs `npm run build` when `dist/index.html` missing or older than `frontend/src/**/*.{ts,tsx}`; skips build when dist is fresh; does not affect `--vite` path (**AST-614** regression unchanged).
+2. **`TestWarnStaleFrontendDist`** — `server.py` `_warn_stale_frontend_dist()` stderr when dist missing or older than source; silent when fresh (import-time silent for gunicorn).
+
+### 2. Manual UAT (Susan — primary pass criterion)
+On local `dev` after `git pull`, run `zsh launch.sh --flask` **without** manual `npm run build`; open `:5001` → Scheduled Actions → expand phase section → confirm AST-746 layout (no Candidate/Task gap; Entity does not overlay State).
+
+**Run (test-child):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_server.py::TestWarnStaleFrontendDist \
+  tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendBuild \
+  -q
+```
+
+**Note:** `TestLaunchFrontendBuild` skips when `zsh` absent; server warning tests always run.
+
+**Pass criterion:** pytest green on manifest + Susan manual Stage 4 UAT.
+
+**Bible shasums on publish ref:**
+- `docs/test-bible/dev/launch_frontend_deps.md` — see publish tip
+- `docs/test-bible/ui/server.md` — see publish tip
+
+**No AST-746 product changes** — Stage 1 confirmed fix already on `origin/dev`.
+
+#### katherine — 2026-06-23T19:16:51.779Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-744/AST-758-uat-local-dev-not-showing-scheduled-actions-ui-fix/docs/features/interface/ast-758-uat-local-dev-not-showing-scheduled-actions-ui-fix.md
+
+**Self-assessment**
+- **Scope:** `minor` — `launch.sh` auto-rebuild + `server.py` stale-dist warning; no AST-746 product revert.
+- **Conf:** `high` — `origin/dev` already has AST-746 TSX (empty diff vs sub746); stale gitignored `dist/` on Flask :5001 explains Susan repro.
+- **Risk:** `low` — rebuild only when dist missing/stale on `--flask`; gunicorn/Railway unchanged.
+
+**Root cause (for validate-plan):** Flask serves `frontend/dist/` (not updated by `git pull`); Vite :5173 serves live source. Susan UAT on :5001 after pull sees pre-fix bundle.
+
+---
+
 # AST-758 — UAT: local dev branch not showing scheduled actions UI fix
 
 **Linear:** [AST-758 — UAT: local dev branch not showing scheduled actions UI fix (Remove column gap in scheduled_actions)](https://linear.app/astralcareermatch/issue/AST-758/uat-local-dev-branch-not-showing-scheduled-actions-ui-fix-remove-column)  

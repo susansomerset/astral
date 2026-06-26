@@ -152,6 +152,24 @@ class TestFindJobContainers:
         dom = "<div>unrelated</div>"
         assert fmt.find_job_containers(dom, ["Missing A", "Missing B"]) == [dom]
 
+    def test_sibling_anchor_links_two_titles(self) -> None:
+        """AST-827: medicarerights-style flat job-link rows — one anchor per title."""
+        dom = (
+            '<div class="careers-list">'
+            '<a href="https://example.com/job-a">Client Services Associate: Bilingual Spanish and English</a>'
+            '<a href="https://example.com/job-b">Policy Analyst</a>'
+            '</div>'
+        )
+        titles = [
+            "Client Services Associate: Bilingual Spanish and English",
+            "Policy Analyst",
+        ]
+        out = fmt.find_job_containers(dom, titles)
+        joined = "\n".join(out)
+        assert "Client Services Associate" in joined
+        assert "Policy Analyst" in joined
+        assert joined.count("<a ") >= 2
+
 
 # Branches: invalid input; missing key; closed string; truncated payload; fence stripping.
 class TestHealAgentPayloadEnvelope:

@@ -1,3 +1,96 @@
+<!-- linear-archive: AST-620 archived 2026-06-23 -->
+
+## Linear archive (AST-620)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-620/external-llm-wrapper-debug-instrumentation-debug-logging-backfill  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-546 — Debug logging backfill: external LLM wrappers  
+**Blocked by / blocks / related:** parent: AST-546
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **external LLM wrapper** modules (`src/external/anthropic.py`, `src/external/deepseek.py`, and shared call paths): model, task key, timing, token counts, and truncated response preview when `debug=True`. Use the shared truncation helper for raw LLM text (50-line / 15+omit+15 rule).
+
+## Acceptance criteria
+
+1. Debug LLM call logs task context + truncated response preview under `|` lines.
+2. Existing INFO timing lines unchanged when `debug=False`.
+
+## Boundaries
+
+* Does **not** instrument agent, dispatcher, consult, roster, gazer, or builder modules — sibling backfill tickets.
+* Does **not** change API parameters, retry logic, or cost calculation.
+* Does **not** log secrets or full prompts at INFO when `debug=False`.
+* Does **not** add Betty log-string tests; Radia enforces instrumentation on review.
+
+## Notes for planning
+
+* Shared debug helper from **AST-538** (`src/utils/logging.py`).
+* Index header + `|` detail line format per Code Rules §1.5.
+* Primary files: `src/external/anthropic.py`, `src/external/deepseek.py`.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-546-debug-logging-backfill-external-llm-wrappers`, child `sub/AST-546/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T04:44:51.233Z
+**Review** — `origin/dev...origin/sub/AST-546/AST-620-external-llm-wrapper-debug` @ `e5ddaccd`
+
+**Plan fidelity:** Stages 1–3 match plan — `_emit_llm_call_debug` in `anthropic.py`, both `send_to_*` wrappers on success + inner/outer API error paths; zero `[DEBUG]` in `src/external/{anthropic,deepseek}.py`.
+
+**§1.5.1 (fix-now):** None. `debug=True` gating correct; Style D `index 1/1`; `|` detail lines; `debug_detail_block` for response preview; `log_llm_batch_summary` untouched.
+
+**§3 layer:** External-only; deepseek → anthropic helper import matches existing `extract_api_response_text` pattern.
+
+**Scope:** No API/retry/cost/sibling-module creep. `ASTRAL_TEST_BIBLE.md` §7.13zzh arrived via `merge-tests` (Betty manifest), not engineer bible edit.
+
+**Advisory (not blocking):**
+- Parse-failure path (API OK, parse/schema fail) still has no contract debug when `debug=True` — pre-change parity; optional follow-up if raw preview on parse errors is wanted.
+- `_emit_llm_call_debug` uses its own `get_logger(..., debug_flag=True)` while call sites also `set_debug_flag(True)` — redundant but correct.
+
+**Doc:** [plan review section](https://github.com/susansomerset/astral/blob/sub/AST-546/AST-620-external-llm-wrapper-debug/docs/features/foundation/ast-620-external-llm-wrapper-debug-instrumentation.md#review-radia--ast-620)
+
+No fix-now / discuss — Ada may proceed `resolve-child`.
+
+#### betty — 2026-06-14T04:42:17.326Z
+**QA manifest (§7.13zzh)** — bible-backed existing coverage only; no new tests, no log-string assertions.
+
+1. **`tests/component/external/test_anthropic.py`** (full file) — `send_to_anthropic` success (`debug=True` in **`TestSendToAnthropic::test_text_json_and_python_success`**), API failure, invalid format
+2. **`tests/component/external/test_deepseek.py`** — **`TestSendToDeepseekTimesheetMapping::test_record_timesheet_kwargs_match_deepseek_buckets`**, **`TestDeepseekParseApiResponse`**
+3. **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** — **§7.13zt** contract regression
+
+**Narrowed run:**
+
+```bash
+.venv/bin/python -m pytest tests/component/external/test_anthropic.py tests/component/external/test_deepseek.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+**Publish:** `origin/sub/AST-546/AST-620-external-llm-wrapper-debug` @ **`da1e7c89`** (`merge-tests(AST-620): origin/tests f80659fb`)
+
+**Bible shasum** on publish ref: `96068f45240adad0eaf46c896ca42a2e3de92f26ff9dfb0add9d7ded9968ea8b`
+
+— Betty
+
+#### ada — 2026-06-14T04:33:04.016Z
+Plan doc: [ast-620-external-llm-wrapper-debug-instrumentation.md](https://github.com/susansomerset/astral/blob/sub/AST-546/AST-620-external-llm-wrapper-debug/docs/features/foundation/ast-620-external-llm-wrapper-debug-instrumentation.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — `anthropic.py` + `deepseek.py` only; shared `_emit_llm_call_debug` helper, no core/data/config.
+- **Conf:** high — AST-554 contract and sibling backfill plans define the exact emission API; AC is narrow (debug-gated index + `|` detail + truncated response preview).
+- **Risk:** Medium — all LLM I/O passes through these wrappers, but changes are debug-only with `log_llm_batch_summary` and production INFO paths left untouched.
+
+Three stages: shared emitter → `send_to_anthropic` success/error → `send_to_deepseek` mirror. Retires all `[DEBUG]` hand-rolls in both files.
+
+---
+
 # AST-620 — External LLM wrapper debug instrumentation (Debug logging backfill: external LLM wrappers)
 
 - **Linear (this ticket):** [AST-620](https://linear.app/astralcareermatch/issue/AST-620/external-llm-wrapper-debug-instrumentation-debug-logging-backfill)

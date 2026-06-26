@@ -1,3 +1,97 @@
+<!-- linear-archive: AST-691 archived 2026-06-23 -->
+
+## Linear archive (AST-691)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-691/uat-env-label-hover-tooltip-pointer-cursor-05s-delay  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-675 — Create a ticket log in utils  
+**Blocked by / blocks / related:** parent: AST-675
+
+### Description
+
+## What failed
+
+After AST-690 (click popup), staging still fails Susan's UAT: the deploy footer environment label shows an **I-beam (text) cursor** instead of a pointer, and Susan does not get a reliable hover tooltip. The click-popup interaction is not what she wants.
+
+## Expected
+
+* **Cursor:** `pointer` (hand) on the environment label when merge tickets exist — never I-beam/text cursor.
+* **Interaction:** **Hover** tooltip (not click-to-toggle). Tooltip appears after **0.5 seconds** of hover on the environment label.
+* **Content:** Up to **20** lines, most recent first, one ticket per line.
+* **Exact line format** (each line, no prefix bullets):
+
+```
+AST-675 6/15/26, 1:23:45 PM
+AST-646 6/14/26, 3:45:12 PM
+```
+
+Pattern: `{TICKET_ID} {fmtTime(recorded_at)}` — ticket id, space, locale datetime from existing `fmtTime` (en-US, admin timezone). Empty/missing `merge_tickets` → no tooltip, static env label, default cursor.
+
+## Repro
+
+1. Log in as admin on staging with `ASTRAL_DEPLOY_ENV` set (e.g. `dev`) and at least one entry in merge ticket log.
+2. Open left nav deploy footer; hover the environment label.
+3. **Observed:** I-beam cursor; click popup from AST-690 — not a 0.5s hover tooltip.
+4. **Expected:** pointer cursor; after 0.5s hover, tooltip shows lines like `AST-675 6/15/26, 1:23:45 PM` (up to 20).
+
+## Parent AC (quoted inline)
+
+> 4. With `ASTRAL_DEPLOY_ENV` set and admin session, hovering the environment label shows up to **20** ticket lines (id + timestamp), most recent first, separated by line breaks.
+
+## Boundaries
+
+* Does not change merge log, append tool, finish-up, deploy-status API, or non-admin nav.
+* Replaces AST-690 click-popup UX with hover-delay tooltip + pointer cursor only.
+
+### Comments
+
+#### betty — 2026-06-16T00:34:09.897Z
+## QA test manifest (AST-691)
+
+**Publish ref:** `origin/sub/AST-675/ast-691-uat-env-label-hover-tooltip-pointer-cursor-05s-delay` @ `66d35ac` (`merge-tests(AST-691): origin/tests 081a83c3`)
+
+**Bible shasum:** `docs/test-bible/frontend/components.md` → `e6f6873d108f4efbb7a8e200fa70ffdfb6ecb5e8fc9e3dec050e4d80d85527b9`
+
+### 1. Broken / obsolete (revised this pass)
+Replaced AST-690 click-popup tests with hover-delay tooltip coverage in `tests/component/frontend/components/test_AdminDeployFooter.test.tsx`:
+- `test_shows_merge_ticket_tooltip_after_500ms_hover_on_env_wrap_when_merge_tickets_present`
+- `test_hides_merge_ticket_tooltip_before_500ms_hover_and_on_mouse_leave`
+- `test_renders_static_environment_span_when_merge_tickets_empty_or_missing` (no `nav-deploy-env-interactive`, no tooltip)
+- `test_caps_merge_ticket_tooltip_at_20_lines`
+
+### 2. Existing coverage (unchanged)
+- `test_AdminDeployFooter.test.tsx` — env + uptime success, env omitted, deploy_status error
+- `test_NavigationShell.test.tsx` — admin footer visible; non-admin absent
+
+### 3. Run gate (test-child)
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+— Betty
+
+#### katherine — 2026-06-15T20:45:30.860Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-675/ast-691-uat-env-label-hover-tooltip-pointer-cursor-05s-delay/docs/features/foundation/ast-691-uat-env-label-hover-tooltip-pointer-cursor-05s-delay.md
+
+**Self-assessment**
+
+- **Scope:** `Single-Component` — replaces AST-690 click popup in `AdminDeployFooter.tsx` + `App.css` only; no API/utils changes.
+- **Conf:** `high` — standard 500ms hover timer on env wrap; reuses `mergeTicketDisplayLines` / `fmtTime`; span + `cursor: pointer` instead of button.
+- **Risk:** `low` — admin deploy footer only; failure modes are wrong tooltip text or hover UX, not auth or dispatch.
+
+**Approach:** Remove click-toggle popup; show positioned tooltip after `MERGE_TICKET_HOVER_DELAY_MS = 500` on wrapper hover; plain div lines (no bullets); static span when `merge_tickets` empty.
+
+---
+
 # UAT: env label hover tooltip pointer cursor 0.5s delay
 
 **Linear:** [AST-691 — UAT: env label hover tooltip pointer cursor 0.5s delay](https://linear.app/astralcareermatch/issue/AST-691/uat-env-label-hover-tooltip-pointer-cursor-05s-delay)

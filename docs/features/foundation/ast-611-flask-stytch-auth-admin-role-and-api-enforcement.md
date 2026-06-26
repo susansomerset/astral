@@ -1,3 +1,140 @@
+<!-- linear-archive: AST-611 archived 2026-06-23 -->
+
+## Linear archive (AST-611)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-611/flask-stytch-auth-admin-role-and-api-enforcement-use-stytch-for-user  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-609 — Use stytch for user authentication  
+**Blocked by / blocks / related:** parent: AST-609; blocks: AST-612
+
+### Description
+
+## What this implements
+
+Replace the IP-allowlist + Auth0 stub in `src/ui/auth.py` with real Stytch validation via `src/utils/auth.py`. Add `@require_admin` for admin-only API routes. Extend `/api/me` (and related system endpoints) to expose `is_admin`. Enforce server-side: non-admin users cannot change selected candidate via API; admin routes under `/api/admin/*` return 403 for non-admin.
+
+## Acceptance criteria
+
+* `@require_auth` validates Stytch session/JWT; sets `g.user` with `user_id`, `name`, `is_admin`.
+* `@require_admin` guards all `/api/admin/*` endpoints and any candidate-selection mutation endpoints.
+* Susan's login resolves as admin; other authenticated users are non-admin by default.
+* IP allowlist removed or demoted to optional dev-only fallback (document behavior in plan).
+* Component tests updated for auth/admin enforcement (extend existing `tests/component/ui/test_auth.py` patterns).
+
+## Boundaries
+
+* Does **not** implement Stytch SDK wrapper — blocked on **AST-610**.
+* Does **not** build React login UI — sibling **AST-612** (may consume `/api/me` contract defined here).
+
+## Notes for planning
+
+* Flask integration domain (Hedy): `server.py`, blueprints, `api_system.py`, `api_admin.py`, `api_candidate.py`.
+* Coordinate `g.user` shape with **AST-610** utils return type.
+* NAV_CONFIG admin sections may still be filtered client-side in **AST-612** — server must enforce regardless.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-609-use-stytch-for-user-authentication`, child `sub/AST-609/AST-611-flask-stytch-auth-and-admin`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-12T22:50:21.114Z
+**Review @ `1b186aa4`** — `origin/dev...origin/sub/AST-609/AST-611-flask-stytch-auth-and-admin`
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### Advisory
+- **`docs/ASTRAL_CODE_RULES.md` §2.9`** still describes the Auth0 stub; update when AST-609 lands on `origin/dev` (optional doc pass noted in plan).
+- Three-dot diff vs `origin/dev` includes **AST-610** files (stacked dependency not on dev yet). AST-611 commits only touch `auth_bootstrap.py`, `auth.py`, `server.py`, `api_admin.py`, `api_candidate.py`, `api_system.py`.
+
+### Sign-off
+| Check | Result |
+|-------|--------|
+| Plan Stages 1–3 | Delivered |
+| §3.3 — ui→core/utils; Stytch via `wire_stytch_token_authenticator()` | Pass |
+| §2.9 — `g.user` `{user_id, name, is_admin}` | Pass |
+| `@require_admin` on admin Bearer routes (39); `@require_ip` on 3 data/script routes | Pass |
+| Candidate create/delete admin-only; PUT blocks non-admin `state`/`api_key` | Pass |
+| `/api/nav_config` Admin group filtered for non-admin | Pass |
+| SPA IP gate removed from `serve_react` | Pass |
+| Betty manifest (`TestRequireAuth`, `TestRequireAdmin`, integration smokes) | Pass |
+
+Doc commit: `docs/features/foundation/ast-611-flask-stytch-auth-admin-role-and-api-enforcement.md` — Review (Radia) section.
+
+#### betty — 2026-06-12T22:47:49.007Z
+## QA test manifest (AST-611)
+
+**Publish:** `origin/sub/AST-609/AST-611-flask-stytch-auth-and-admin` @ `1b186aa4`  
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `5be5ce616f5569c5d5c8c5cb64880e671cec658ea965416e3e32b05f11bbf584`
+
+### Broken / revised (AST-394 IP-on-`@require_auth` era)
+
+1. `tests/component/ui/test_auth.py` — replaced `TestAuthDecorators` IP-on-secure-route cases with `TestRequireAuth` / `TestRequireAdmin` (Stytch Bearer via mock authenticator).
+2. `tests/component/ui/test_server.py` — SPA no longer IP-gated (`test_serves_index_when_ip_allowlist_restricted`).
+3. `tests/component/ui/conftest.py` — autouse mock `register_token_authenticator`; `auth_headers` = admin (`test-token`), `non_admin_headers` for 403 paths.
+
+### Manifest (`test-child` run in order)
+
+1. `tests/component/ui/test_auth.py::TestRequireAuth`
+2. `tests/component/ui/test_auth.py::TestRequireAdmin`
+3. `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_requires_bearer`
+4. `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_non_admin_includes_is_admin_false`
+5. `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`
+6. `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state`
+7. `tests/component/ui/test_server.py::TestServeReact::test_serves_index_when_ip_allowlist_restricted`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_auth.py::TestRequireAuth \
+  tests/component/ui/test_auth.py::TestRequireAdmin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_requires_bearer \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_non_admin_includes_is_admin_false \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
+  tests/component/ui/test_server.py::TestServeReact::test_serves_index_when_ip_allowlist_restricted
+```
+
+### Note for `test-child`
+
+`api_candidate.update_candidate_data` references `resolve_resume_structure` / related helpers without imports on the publish ref — existing `test_update_merges_data_state_and_api_key` stubs those names on `candidate_mod` (`raising=False`). If product adds proper imports, stubs remain harmless.
+
+#### hedy — 2026-06-12T22:43:06.907Z
+**Code Complete** @ `origin/sub/AST-609/AST-611-flask-stytch-auth-and-admin` tip `c4fec002`
+
+- `wire_stytch_token_authenticator()` at Flask startup via `src/core/auth_bootstrap.py`
+- `@require_auth` → Stytch JWT via `validate_bearer_token`; `g.user` = `{user_id, name, is_admin}`
+- `@require_admin` on all `/api/admin/*` Bearer routes (39 routes); `@require_ip` unchanged on 3 script routes
+- Candidate create/delete + state/api_key PUT → admin only; `/api/nav_config` drops Admin group for non-admins
+- SPA serves without IP gate; `ASTRAL_ALLOWED_IPS` applies to `@require_ip` only
+
+**Betty:** extend `tests/component/ui/test_auth.py` per plan QA spec (`TestRequireAuth`, `TestRequireAdmin`).
+
+#### hedy — 2026-06-12T22:41:35.111Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-609/AST-611-flask-stytch-auth-and-admin/docs/features/foundation/ast-611-flask-stytch-auth-admin-role-and-api-enforcement.md
+
+**Self-assessment**
+
+- **Scope:** `scope-MAJOR-CHANGE` — Rewrites auth decorators, adds `src/core/auth_bootstrap.py`, swaps ~42 admin routes to `@require_admin`, and adds candidate + nav enforcement.
+- **Conf:** `conf-Medium` — AST-610 registry contract is clear; IP cutover and systematic route replacement need careful execution.
+- **Risk:** `risk-HIGH` — Auth wiring errors would 401 everyone or leak admin routes.
+
+**Key decisions in plan**
+
+1. Stytch wiring via `core/auth_bootstrap.py` (ui never imports `external`).
+2. `@require_auth` = Bearer JWT only; IP allowlist limited to `@require_ip` script routes.
+3. SPA serves without IP gate; candidate "selection" enforced via admin-only create/delete/state/api_key (no localStorage API).
+4. `/api/nav_config` drops Admin group for non-admins server-side.
+
+---
+
 # AST-611 — Flask Stytch auth, admin role, and API enforcement (Use stytch for user authentication)
 
 - **Linear (this ticket):** [AST-611](https://linear.app/astralcareermatch/issue/AST-611/flask-stytch-auth-admin-role-and-api-enforcement-use-stytch-for-user)

@@ -223,6 +223,8 @@ body {
 .nav-deploy-env {
   color: var(--text-secondary);
   text-transform: lowercase;
+  cursor: default;
+  user-select: none;
 }
 .nav-deploy-env-wrap {
   position: relative;
@@ -1652,6 +1654,20 @@ input.side-tab-heading-editable:focus {
 .toast-error   { background: var(--danger); }
 .toast-info    { background: var(--bg-elevated); border: 1px solid var(--border); }
 
+.toast-error-clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.toast-error-clickable:hover {
+  filter: brightness(1.08);
+}
+.toast-copy-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 /* === 12. Agent Timesheets === */
 
 .admin-filters {
@@ -1886,6 +1902,31 @@ input.side-tab-heading-editable:focus {
   flex: 1;
   min-height: 0;
   resize: none;
+}
+
+.batch-feedback-hydrated {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.batch-feedback-hydrated-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.batch-feedback-hydrated-table th,
+.batch-feedback-hydrated-table td {
+  border: 1px solid var(--border-color, #ccc);
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.batch-feedback-hydrated-table th {
+  background: var(--surface-muted, #f5f5f5);
+  font-weight: 600;
 }
 
 /* ============================================================

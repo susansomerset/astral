@@ -31,6 +31,8 @@ interface FeedbackRow {
   vector_feedback_id: string
   candidate_id: string | null
   batch_id: string | null
+  batch_size: number | null
+  completed_at: string | null
   task_key: string | null
   feedback_type: string | null
   value: string | null
@@ -39,6 +41,9 @@ interface FeedbackRow {
   created_at: string | null
   vector_code: string | null
   vector_label: string | null
+  vector_content?: string | null
+  vector_importance?: number | null
+  vector_assessment_header?: string | null
   [key: string]: unknown
 }
 
@@ -84,6 +89,7 @@ export default function AdminVectorFeedback() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [taskKeys, setTaskKeys] = useState<string[]>([])
   const [agentDataBatchId, setAgentDataBatchId] = useState<string | null>(null)
+  const [agentDataCandidateId, setAgentDataCandidateId] = useState<string | null>(null)
   const initialCandidateDefaultApplied = useRef(false)
 
   const setCandidateParam = useCallback((next: AdminCandidateFilterValue) => {
@@ -186,7 +192,11 @@ export default function AdminVectorFeedback() {
           <button
             type="button"
             className="dispatch-batch-link"
-            onClick={e => { e.stopPropagation(); setAgentDataBatchId(id) }}
+            onClick={e => {
+              e.stopPropagation()
+              setAgentDataBatchId(id)
+              setAgentDataCandidateId(String(row.candidate_id || filters.candidate_id || "") || null)
+            }}
             title="View agent data for this batch"
           >
             {id}
@@ -194,8 +204,11 @@ export default function AdminVectorFeedback() {
         )
       },
     },
-    { key: "vector_code", label: "Vector", type: "str" },
-    { key: "vector_label", label: "Label", type: "str" },
+    { key: "batch_size", label: "Batch size", type: "int" },
+    { key: "completed_at", label: "Completed", type: "datetime" },
+    { key: "vector_code", label: "Code", type: "str" },
+    { key: "vector_assessment_header", label: "Assessment", type: "str" },
+    { key: "vector_content", label: "Criterion", type: "str", expandable: true },
     { key: "feedback_type", label: "Type", type: "str" },
     { key: "value", label: "Value", type: "str" },
     { key: "value_label", label: "Value label", type: "str" },
@@ -283,7 +296,11 @@ export default function AdminVectorFeedback() {
 
       <BatchAgentDataModal
         batchId={agentDataBatchId}
-        onClose={() => setAgentDataBatchId(null)}
+        candidateId={agentDataCandidateId || filters.candidate_id || undefined}
+        onClose={() => {
+          setAgentDataBatchId(null)
+          setAgentDataCandidateId(null)
+        }}
       />
     </div>
   )

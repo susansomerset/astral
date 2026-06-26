@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `src/data/database.py` | `tests/component/data/test_database.py`; clusters under `tests/component/data/database/` | pending |
 
-**AST-524:** `company_search_terms` table cluster — `tests/component/data/database/test_company_search_terms.py` (sync, migration, `last_scan_at` preservation; no branch lock on `database.py`).
+**AST-524:** `company_search_terms` table cluster — **`freq_hrs<=0`** stale semantics (**AST-814**) — `tests/component/data/database/test_company_search_terms.py` (sync, migration, `last_scan_at` preservation; no branch lock on `database.py`).
 
 **AST-723:** `sync_rubric_vectors_from_criteria` + AST-723 token migration — extends `test_rubric_vectors.py` (**AST-722** cluster).
 
@@ -31,27 +31,9 @@ Seven prompt segments on `agent_task`: `system_prompt`; **`cache_prompt`** as An
 
 ---
 
-### AST-482 · AST-379
+### AST-482 · AST-379 (historical — SUNSET AST-757)
 
-Mirror company **`WATCH` / `gaze`**: nullable **`board_search.last_scan_at`**, **`BOARDS_CONFIG["gaze_board"]["scan_interval_hours"]`** (default **24**), staleness **`AND`** in **`claim_board_search_batch`** matches **`count_eligible_for_dispatch_task`** ( **`freq_hrs` override** when **> 0**). **`dispatch_task`** seed **`sort_by`** **`last_scan_at`** (+ migration **`updated_at` → `last_scan_at`** for legacy rows). **`update_board_search_last_scan_at`** bumps **only success path** after **`run_board_search_gaze`** in **`process_gaze_board_batch`** (no bump on **`except`**). Dispatcher passes **`scan_interval_hours`** + **`sort_by`** into **`claim_board_search_batch`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Claim staleness **`NULL`** / stale / fresh + **`count_eligible`** parity + **`freq_hrs`** tightening | `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchLastScanCadenceAst482`**) |
-| Success bump vs failure silent | `src/core/gazer.py` | `tests/component/core/test_gazer.py` (**`TestProcessGazeBoardBatch`**) |
-| **`_run_unified`** board_search **`scan_interval_hours`** / **`sort_by`** kwargs | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py` (**`TestRunUnified`**) |
-| **`BOARDS_CONFIG["gaze_board"]["scan_interval_hours"]`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst471DispatchConfigHelpers::test_gaze_board_boards_config_scan_interval_hours`**) |
-
-Narrow (**`test-astral`** **AST-482** tip):
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_board_search_integration.py::TestBoardSearchLastScanCadenceAst482 \
-  tests/component/core/test_gazer.py::TestProcessGazeBoardBatch \
-  tests/component/core/test_dispatcher.py::TestRunUnified::test_claims_board_search_batch_and_clears \
-  tests/component/core/test_dispatcher.py::TestRunUnified::test_board_search_claim_passes_freq_and_sort_kw \
-  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_gaze_board_boards_config_scan_interval_hours
-```
+**RETIRED (AST-757):** Board search **`last_scan_at`** cadence removed with boards channel. No active manifest. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
 
 ---
 
@@ -133,3 +115,7 @@ Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backf
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
 ```
+
+### AST-766 · AST-757
+
+**Sunset `board_search` schema** — see `docs/test-bible/data/database/dispatch_tasks.md` § AST-766.

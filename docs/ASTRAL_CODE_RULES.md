@@ -479,6 +479,25 @@ The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside
 
 **Do not** create a top-level **`artifacts/`** directory. That name is reserved for the **Astral Artifacts** program and **`docs/features/artifacts/`** (production markdown plans only). Spike scripts must default **`--out`** / **`--out-dir`** to **`debug/spikes/<issue-id>/…`**, not `artifacts/…` or `docs/…`.
 
+### 3.7 Sunset — Astral Boards (AST-757)
+
+The **Astral Boards** channel is **removed** from production. Roster cultivation via Google CSE and company/job dispatch replaced the boards ingest + gaze workflow. Epic siblings **AST-765** (product removal) and **AST-766** (schema drop) deleted board modules, API routes, tables, and board-only tests; **AST-767** retires active test-bible manifests.
+
+| Label | SHA | Notes |
+|-------|-----|-------|
+| Pre-removal `dev` tip at dispatch | `8d9b01e5e75ace9c04c32711488430503075e0c3` | Last boards-capable tree before AST-757 removal |
+| First removal commit | `e8fe8143f7b0b73a703238af1c31a39252b65992` | `code(AST-765): delete boards modules and unregister API` — equivalent `f64c3c0` on AST-765 republish line |
+
+**Revival hints:**
+
+- `git diff 8d9b01e5..e8fe814` — start of product removal
+- `git show 8d9b01e5:<path>` — last known contents of removed board files (e.g. `src/core/boards.py`, `src/ui/api/api_boards.py`)
+
+**Archive pointers:**
+
+- Design history: **`docs/features/boards/`**
+- No active component-test obligations for boards — see monolith **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset) and decomposed **`docs/test-bible/**`** sunset stubs
+
 ---
 
 ## 4. Branching and Project Management

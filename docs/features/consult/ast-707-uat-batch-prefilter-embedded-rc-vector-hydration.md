@@ -1,3 +1,158 @@
+<!-- linear-archive: AST-707 archived 2026-06-23 -->
+
+## Linear archive (AST-707)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-707/uat-batch-prefilter-hydration-fails-on-embedded-rc-vector  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-700 — prefilter as batch process  
+**Blocked by / blocks / related:** parent: AST-700; related: AST-700
+
+### Description
+
+## What failed
+
+Batch **prefilter** on **HOMEPAGE_READY** companies: LLM returns valid encoded payload with **RC** grades (e.g. `000|RCD3|MPB3|USA3|...`), but grade-reason hydration errors `No rubric criterion matching vector 'RC'`. All companies transition to **WEBSITE_FOUND_RETRY**; batch summary shows `total_errors=10`.
+
+Susan fixed candidate **company_prefilter** rubric for MP/US vectors; **RC** (Reality Check) is an embedded rubric vector in [**config.py**](<http://config.py>) that applies on every call regardless of candidate artifact.
+
+## Expected
+
+Hydration resolves **RC** (and other embedded/global rubric vectors defined in [**config.py**](<http://config.py>)) before failing on candidate artifact criteria. Batch prefilter completes with per-company pass/fail outcomes per today's prefilter semantics.
+
+## Repro
+
+1. Ensure candidate **company_prefilter** artifact has MP/US (and other non-embedded) vector codes configured.
+2. Run dispatch **prefilter** batch on 10 **HOMEPAGE_READY** companies.
+3. Observe LLM success + encoded lines containing **RC** grades.
+4. Observe `grade reason hydration failed: No rubric criterion matching vector 'RC'` and all companies → **WEBSITE_FOUND_RETRY**.
+
+## Parent AC (quoted inline)
+
+> 3. Multiple companies in **HOMEPAGE_READY** can be claimed in one dispatch batch and evaluated in a **single** agent call; each company receives an independent pass/fail outcome and state transition matching today's prefilter semantics.
+
+## Boundaries
+
+* This bug does **not** change: fetch_website scrape phase, dispatch_tasks migration (AST-703), or encoded link decode contract.
+* Add embedded vector registry in [**config.py**](<http://config.py>) (importance, code, title, rubric options) and extend hydration lookup to consult it — do not require Susan to duplicate RC in every candidate artifact.
+
+### Comments
+
+#### hedy — 2026-06-16T19:10:34.377Z
+## Radia review (FIX-UAT retroactive) — `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration`
+
+**Git:** publish ref ≡ `origin/dev` @ `e2ac4afb` (`merge-tests`); product diff **`eb5a38b1..c4a25ee1`** (`config.py` + `consult.py`).
+
+### Plan fidelity
+
+| Stage | Verdict |
+|-------|---------|
+| 1 — `EMBEDDED_COMPANY_PREFILTER_CRITERIA` in `config.py` | ✓ RC row with code, label, importance 8, content, A–F `grade_descriptions` |
+| 2 — merge in `_rubric_criteria_from_cd`; code-aware `_lookup_rubric_reason_for_grade` + `_importance_for_label` | ✓ embedded prepends artifact; dedupe by code; label **or** code match |
+| 3 — Betty batch regression | ✓ manifest + `TestAst707EmbeddedRcBatchHydration` on `origin/tests` @ `bc6469de` |
+
+Self-assessment (**Single-Component**, **high** conf, **Medium** risk) matches the diff footprint. Boundaries respected — no roster/dispatch/decode contract changes.
+
+### ASTRAL_CODE_RULES
+
+| Check | Result |
+|-------|--------|
+| §1.3 DRY / §2.1 config | ✓ single registry + one merge site |
+| §2.4 batch / §2.6 transitions | ✓ criteria source only; no claim/clear or state-machine edits |
+| §3.3 layer | ✓ core → utils only |
+| B1 lazy import (`consult.py` ~117) | **Advisory:** function-scoped `EMBEDDED_*` import could move to the existing top-level `config` import block — not blocking |
+| D2 silent failure / E1 print / §5f debug | N/A — untouched |
+
+### Code quality
+
+Focused UAT fix: addresses root cause (artifact-only rubric list + label-only lookup when decode emits raw `"RC"`). Merge order (embedded wins on duplicate code) matches plan decision.
+
+**fix-now:** none
+
+**discuss:** none
+
+**Advisory:** Stage 1 plan asked for Manage Tasks RC prose when available; shipped literals match plan fallback — fine for UAT; optional follow-up to sync copy from live prompt DB.
+
+**Status:** left at **User Testing** (FIX-UAT fast path — retroactive sign-off only; no `Review Posted` regression).
+
+— Radia
+
+#### betty — 2026-06-16T19:08:22.722Z
+Bible shasum correction (`origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration` @ `e2ac4afb`):
+
+- `docs/test-bible/core/consult.md`: `932a247341537d5638138be65e85e0bd9edb7e6b`
+- `docs/test-bible/core/roster.md`: `a3903e98718e45ca67acbc326c5ea0075c8ad977`
+- `docs/test-bible/utils/config.md`: `e2187edce09d88f4fba2051c19bbb37a3ef2e895`
+
+— Betty
+
+#### betty — 2026-06-16T19:07:51.673Z
+## QA test manifest (AST-707)
+
+**Publish ref:** `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration` @ `e2ac4afb` (`merge-tests(AST-707): origin/tests bc6469de`)
+
+### 1. Existing coverage (bible-backed)
+
+| # | Area | Run |
+|---|------|-----|
+| 1 | **AST-603** prefilter hydration baseline | `tests/component/core/test_roster.py::TestAst603ConsultParityHydration` |
+| 2 | **AST-702** batch runner smoke | `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts` |
+
+### 2. New / revised tests (this pass)
+
+| # | Area | Run |
+|---|------|-----|
+| 3 | Embedded **RC** registry | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
+| 4 | **`_rubric_criteria_from_cd`** prepends embedded **RC**; dedupes artifact **RC** | `tests/component/core/test_consult.py::TestRubricHelpers::test_merges_embedded_rc_for_company_prefilter` |
+| 5 | Hydration by **code** when artifact omits **RC** | `tests/component/core/test_consult.py::TestRubricHelpers::test_hydrates_rc_by_code_without_artifact_row` |
+| 6 | **`_lookup_rubric_reason_for_grade`** code match | `tests/component/core/test_consult.py::TestRubricLookup::test_matches_criterion_by_code` |
+| 7 | **`_importance_for_label`** code match | `tests/component/core/test_consult.py::TestImportanceForLabelBranches::test_importance_matches_by_code` |
+| 8 | Batch prefilter UAT repro — artifact **MP/US** only, post-decode **Reality Check** grades, no mass **WEBSITE_FOUND_RETRY** | `tests/component/core/test_roster.py::TestAst707EmbeddedRcBatchHydration::test_batch_prefilter_hydrates_embedded_rc_when_missing_from_artifact` |
+
+### 3. Narrowed run (manifest)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig \
+  tests/component/core/test_consult.py::TestRubricHelpers::test_merges_embedded_rc_for_company_prefilter \
+  tests/component/core/test_consult.py::TestRubricHelpers::test_hydrates_rc_by_code_without_artifact_row \
+  tests/component/core/test_consult.py::TestRubricLookup::test_matches_criterion_by_code \
+  tests/component/core/test_consult.py::TestImportanceForLabelBranches::test_importance_matches_by_code \
+  tests/component/core/test_roster.py::TestAst707EmbeddedRcBatchHydration::test_batch_prefilter_hydrates_embedded_rc_when_missing_from_artifact
+```
+
+### Bible shasum (`origin/sub/…` @ `e2ac4afb`)
+
+- `docs/test-bible/core/consult.md`: `932a247341537d5638138be65e85e0bd9edb7e6b`
+- `docs/test-bible/core/roster.md`: `a3903e98718e45ca67acbc326c5ea0075c8ad977`
+- `docs/test-bible/utils/config.md`: `e2187edce09d88f4fba2051c19bbb37a3ef2e895`
+
+— Betty
+
+#### hedy — 2026-06-16T19:03:31.894Z
+**Plan doc:** [`docs/features/consult/ast-707-uat-batch-prefilter-embedded-rc-vector-hydration.md`](https://github.com/susansomerset/astral/blob/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration/docs/features/consult/ast-707-uat-batch-prefilter-embedded-rc-vector-hydration.md) @ `e5451597`
+
+**Self-assessment**
+- **Scope:** Single-Component — `config.py` embedded RC registry + `consult.py` merge in `_rubric_criteria_from_cd` and label/code-aware hydration lookup; roster inherits existing helper calls.
+- **Conf:** high — UAT error names missing `RC`; root cause is artifact-only rubric list + label-only `_lookup_rubric_reason_for_grade` when decode emits raw code.
+- **Risk:** Medium — prefilter hydration and `_render_score` on every company batch; wrong merge still mass-retries, but localized and REPL/UAT verifiable.
+
+**Stages:** (1) `EMBEDDED_COMPANY_PREFILTER_CRITERIA` with full A–F grade rows; (2) merge + code-aware lookup; (3) Betty batch regression when artifact lacks RC.
+
+#### hedy — 2026-06-16T19:01:56.986Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration/docs/features/consult/ast-707-uat-batch-prefilter-embedded-rc-vector-hydration.md
+
+**Scope:** Single-Component — config embedded RC registry, consult merge/lookup helpers, roster prefilter rubric wiring.
+
+**Conf:** high — UAT names failing vector RC; batch hydration uses artifact-only criteria and label-only lookup; Susan direction is explicit.
+
+**Risk:** Medium — prefilter hydration/scoring hot path; wrong merge still mass-retries batches, but localized and manually verifiable.
+
+---
+
 # UAT: batch prefilter hydration fails on embedded RC vector
 
 **Linear:** [AST-707](https://linear.app/astralcareermatch/issue/AST-707/uat-batch-prefilter-hydration-fails-on-embedded-rc-vector)  
