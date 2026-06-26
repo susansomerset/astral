@@ -5718,6 +5718,20 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
         "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
     )
+    # AST-823: legacy prefilter dispatch row retarget (agent key on dispatch row, stale batch mode).
+    conn.execute(
+        "UPDATE dispatch_task SET task_key = 'prefilter', trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE entity_type = 'company' AND task_key = 'prefilter_company'"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND entity_type = 'company' "
+        "AND trigger_state IN ('WEBSITE_FOUND', 'WEBSITE_FOUND_RETRY')"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND entity_type = 'company' AND batch_call_mode = 0"
+    )
     conn.commit()
     # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
     _CONSULT_TO_GRADE_DISPATCH_KEYS = (
