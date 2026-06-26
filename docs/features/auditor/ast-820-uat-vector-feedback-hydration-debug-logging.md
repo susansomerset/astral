@@ -158,3 +158,18 @@ Susan cannot tell whether AST-816 code paths execute on staging because:
 | §3.5 naming | `vector_reviews_pipeline_trace` |
 
 No unresolved rule conflicts.
+
+---
+
+## Build (Ada)
+
+**Branch:** `origin/sub/AST-378/AST-820-uat-vector-feedback-hydration-debug-logging`  
+**Code tip:** `b2713b2`  
+**Stages:** 1 utils trace; 2 capture early-return + pipeline debug + do_task skip log.
+
+| Stage | Summary |
+|-------|---------|
+| 1 | `vector_reviews_pipeline_trace`, `_normalize_failure_reason`, `_trace_repr_truncated` |
+| 2 | Capture skip/start trace; `insert_vector_feedback_rows` debug; do_task missing owner/cid skip |
+
+**Review stub:** Pending Radia (`review-child`).
