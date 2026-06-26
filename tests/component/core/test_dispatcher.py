@@ -1104,6 +1104,38 @@ class TestAst802InflowDiscoveryDebug:
         assert any("eligibility:" in d for d in details)
 
 
+class TestAst814InflowDiscoveryDebug:
+    @pytest.mark.asyncio
+    async def test_skip_cites_freq_hrs_when_all_terms_fresh(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c814", ["term"])
+        db.update_company_search_term_last_scan_at("c814", "term")
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        run = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 814,
+            "task_key": "inflow_discovery",
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c814",
+            "auto_mode": 1,
+            "min_count": 1,
+            "freq_hrs": 168,
+            "debug": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-814", accumulated, None)
+        run.assert_not_awaited()
+        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("freq_hrs=168" in d for d in details)
+        assert not any("scan_interval_hours" in d for d in details)
+
+
 class TestTaskThreadTarget:
     def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         loop = MagicMock()

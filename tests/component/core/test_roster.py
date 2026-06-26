@@ -4096,7 +4096,7 @@ class TestAst505InflowDiscovery:
         out = await roster_mod.run_inflow_discovery_batch(
             {"astral_candidate_id": "c1", "candidate_data": {}},
             "batch-1",
-            {},
+            {"inflow_discovery_freq_hrs": 168.0},
             False,
         )
         assert out["total_errors"] == 0
@@ -4158,8 +4158,31 @@ class TestAst505InflowDiscovery:
             AsyncMock(return_value={"success": True, "parsed_response": {"results": []}}),
         )
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
-        await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
+        await roster_mod.run_inflow_discovery_batch(
+            cand, "b", {"inflow_discovery_freq_hrs": 168.0}, False
+        )
         assert searched == ["stale"]
+
+    @pytest.mark.asyncio
+    async def test_run_batch_freq_hrs_zero_searches_fresh_terms(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c814", ["fresh"])
+        db.update_company_search_term_last_scan_at("c814", "fresh")
+        searched: list[str] = []
+
+        def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
+            searched.append(query)
+            return []
+
+        monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
+        cand = {"astral_candidate_id": "c814", "candidate_data": {}}
+        await roster_mod.run_inflow_discovery_batch(
+            cand, "b", {"inflow_discovery_freq_hrs": 0}, False
+        )
+        assert searched == ["fresh"]
 
     @pytest.mark.asyncio
     async def test_consult_routes_candidate_entity(self, monkeypatch: pytest.MonkeyPatch) -> None:

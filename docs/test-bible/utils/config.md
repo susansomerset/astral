@@ -96,6 +96,18 @@ Narrow (**`test-astral`** **AST-483** tip):
 
 ---
 
+### AST-814 · AST-813
+
+**AST-814:** Remove **`scan_interval_hours`** / **`dispatch_freq_hrs`** from **`INFLOW_CONFIG["discovery"]`**; cadence is **`dispatch_task.freq_hrs`** only.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Discovery config has no scan interval literals | `src/utils/config.py` | **`TestAst525InflowDiscoveryConfig::test_discovery_config_has_no_scan_interval_literals`** |
+| 2 | **`test_inflow_config_discovery_literals`** omits removed keys | same | **`TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals`** |
+
+**Broken / obsolete:** **`TestAst525InflowDiscoveryConfig::test_scan_interval_hours_literal`** removed.
+
+
 ### AST-776 · AST-754
 
 **AST-776:** **`INFLOW_CONFIG["vet"]`** block; **`vet_inflow_discovery`** schedulable as company/**`NEW`**; **`_dispatch_trigger_state_for_task_key`** vet branch; eligibility counters **`count_company_new_pending_inflow_vet`** / narrowed **`count_company_new_without_website`**. Roster vet execution: **`docs/test-bible/core/roster.md`** (**AST-776**).

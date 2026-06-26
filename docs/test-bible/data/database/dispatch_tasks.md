@@ -123,3 +123,28 @@ UAT: **`GET /api/admin/dispatch_tasks`** returned **500** when legacy `dispatch_
 ```
 
 **Pass criterion:** pytest green on manifest items 1–4 + AST-525 regression — not zero-arg harness / branch-lock gate.
+
+### AST-814 · AST-813
+
+**AST-814:** **`dispatch_task.freq_hrs`** is the sole inflow_discovery staleness interval — **`freq_hrs <= 0`** treats every **`company_search_terms`** row as stale/eligible; **`describe_candidate_inflow_discovery_eligibility`** reason cites **`freq_hrs=`**, not config **`scan_interval_hours`**.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`freq_hrs=0`**, all fresh → eligible **1**; stale helpers return all table rows | `src/data/database.py` | **`TestAst814InflowDiscoveryFreqHrs::test_freq_hrs_zero_eligible_and_lists_all_fresh_terms`** |
+| 2 | **`freq_hrs=168`**, all fresh → eligible **0**; reason contains **`freq_hrs=168`** | same | **`::test_freq_hrs_168_all_fresh_not_eligible`** |
+| 3 | **`count_eligible_for_dispatch_task`** with row **`freq_hrs: 0`** vs explicit **168** on helper | same | **`::test_dispatch_task_freq_zero_overrides_fresh_exclusion`** |
+
+**Broken / obsolete (Betty revision):** **`TestAst524CompanySearchTermsTable`** — **`freq_hrs=0`** now returns all rows (not zero stale).
+
+**AST-814** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst814InflowDiscoveryFreqHrs \
+  tests/component/data/database/test_company_search_terms.py::TestAst524CompanySearchTermsTable \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest items 1–3 + AST-525/802 regression — not zero-arg harness / branch-lock gate.
+
+

@@ -93,6 +93,17 @@ Equivalent harness:
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7** and monolith **`docs/ASTRAL_TEST_BIBLE.md`** §7.13 boards (sunset).
 
+
+### AST-814 · AST-813
+
+**AST-814:** Inject **`ctx["inflow_discovery_freq_hrs"]`** from dispatch row before consult; debug skip cites row **`freq_hrs`** in eligibility detail.
+
+| Behavior | Sources | Manifest tests |
+| --- | --- | --- |
+| Debug skip cites **`freq_hrs=`** when all terms fresh | `src/core/dispatcher.py`, `src/data/database.py` | **`TestAst814InflowDiscoveryDebug::test_skip_cites_freq_hrs_when_all_terms_fresh`** |
+
+**Builds on:** **AST-802** eligibility debug path.
+
 ### AST-802 · AST-801
 
 **AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration with **`debug=True`**, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug_detail`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
