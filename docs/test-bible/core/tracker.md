@@ -10,16 +10,9 @@
 
 ---
 
-### AST-419 · AST-379
+### AST-419 · AST-379 (historical — SUNSET AST-757)
 
-Board jobs ingested via **`ingest_board_listings`** (placeholder **`__board__{board_key}`** company, **`board_search_id`**, state **`NEW`**) must reach **`validate_title` → `qualify_job_listings` → `scrape_jd` → `evaluate_jd`** through normal **`claim_job_batch` / `get_new_job_batch`** dispatch — no state-machine bypass. Uses real SQLite (**`seeded_db`**); consult/scrape agent calls mocked.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Board ingest → **`NEW`** + placeholder company | `src/core/tracker.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`TestBoardSourcedQualifyEvaluateAst419::test_board_ingest_starts_in_new_with_board_search_id`**) |
-| Full qualify/evaluate dispatch chain for board jobs | `src/core/tracker.py`, `src/core/gazer.py`, `src/core/consult.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`test_board_job_reaches_qualify_and_evaluate_dispatch`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core/test_board_sourced_qualify_evaluate.py`.
+**RETIRED (AST-757):** Board-sourced qualify/evaluate pipeline removed with boards channel. No active manifest. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
 
 ---
 
@@ -101,5 +94,55 @@ See **`docs/test-bible/data/database/jobs.md`** for index + **`save_job`** bounc
 .venv/bin/python -m pytest \
   tests/component/core/test_tracker.py::TestAst733InitializeJobCollision \
   tests/component/core/test_tracker.py::TestInitializeJob \
+  -q
+```
+
+---
+
+### AST-765 · AST-757 (SUNSET — documentation)
+
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+---
+
+### AST-828 · AST-752 (UAT bug)
+
+**`get_new_job_batch`** accepts legacy compound holding states **`BUILD_ARTIFACTS.<hop>`** at claim validation only — **`is_valid_job_batch_claim_state`** in config; **`transition_job_state`** still uses flat **`JOB_STATES`** registry. Fixes **`draft_cover_letter`** dispatch rows targeting **`BUILD_ARTIFACTS.finalize_job_resume`** without **`ValueError`** before claim.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Claim-state helper | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
+| Batch claim API | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestBatchApi::{test_compound_build_artifacts_hop_claimable_without_value_error,test_invalid_compound_suffix_still_rejects,test_states_list_accepts_legacy_compound_hop}` |
+
+**AST-828** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation \
+  tests/component/core/test_tracker.py::TestBatchApi::test_compound_build_artifacts_hop_claimable_without_value_error \
+  tests/component/core/test_tracker.py::TestBatchApi::test_invalid_compound_suffix_still_rejects \
+  tests/component/core/test_tracker.py::TestBatchApi::test_states_list_accepts_legacy_compound_hop \
+  -q
+```
+
+---
+
+### AST-828 · AST-752 (UAT bug)
+
+**`get_new_job_batch`** accepts legacy compound holding states **`BUILD_ARTIFACTS.<hop>`** at claim validation only — **`is_valid_job_batch_claim_state`** in config; **`transition_job_state`** still uses flat **`JOB_STATES`** registry. Fixes **`draft_cover_letter`** dispatch rows targeting **`BUILD_ARTIFACTS.finalize_job_resume`** without **`ValueError`** before claim.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Claim-state helper | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
+| Batch claim API | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestBatchApi::{test_compound_build_artifacts_hop_claimable_without_value_error,test_invalid_compound_suffix_still_rejects,test_states_list_accepts_legacy_compound_hop}` |
+
+**AST-828** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation \
+  tests/component/core/test_tracker.py::TestBatchApi::test_compound_build_artifacts_hop_claimable_without_value_error \
+  tests/component/core/test_tracker.py::TestBatchApi::test_invalid_compound_suffix_still_rejects \
+  tests/component/core/test_tracker.py::TestBatchApi::test_states_list_accepts_legacy_compound_hop \
   -q
 ```

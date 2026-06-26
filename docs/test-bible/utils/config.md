@@ -86,6 +86,52 @@ Narrow (**`test-astral`** **AST-483** tip):
 
 ---
 
+### AST-775 · AST-754
+
+**AST-775:** Register **`VET_FAILED`** in **`COMPANY_STATES`** and **`("NEW", "VET_FAILED")`** in **`company_state_transitions`** — vet dispatch wiring is **AST-776**. Discovery batch record-only path: **`docs/test-bible/core/roster.md`** (**AST-775**).
+
+| Area | Manifest tests |
+| --- | --- |
+| **`VET_FAILED`** state + transition | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition` |
+
+---
+
+### AST-814 · AST-813
+
+**AST-814:** Remove **`scan_interval_hours`** / **`dispatch_freq_hrs`** from **`INFLOW_CONFIG["discovery"]`**; cadence is **`dispatch_task.freq_hrs`** only.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Discovery config has no scan interval literals | `src/utils/config.py` | **`TestAst525InflowDiscoveryConfig::test_discovery_config_has_no_scan_interval_literals`** |
+| 2 | **`test_inflow_config_discovery_literals`** omits removed keys | same | **`TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals`** |
+
+**Broken / obsolete:** **`TestAst525InflowDiscoveryConfig::test_scan_interval_hours_literal`** removed.
+
+
+### AST-776 · AST-754
+
+**AST-776:** **`INFLOW_CONFIG["vet"]`** block; **`vet_inflow_discovery`** schedulable as company/**`NEW`**; **`_dispatch_trigger_state_for_task_key`** vet branch; eligibility counters **`count_company_new_pending_inflow_vet`** / narrowed **`count_company_new_without_website`**. Roster vet execution: **`docs/test-bible/core/roster.md`** (**AST-776**).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`INFLOW_CONFIG["vet"]`** literals + admin defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals`; `::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults` |
+| 2 | Eligibility split vet vs resolve | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible` |
+
+**AST-776** narrowed run (config + database slice):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-504 · AST-505 · AST-506 · AST-490
 
 Phase 0: newline-delimited **`artifacts.company_search_terms`**, **`craft_company_search_terms`** (on-demand generate only — no **`dispatch_tasks`** row), Artifacts page + save normalization. Phase 1 (**AST-505**): weekly **`inflow_discovery`** candidate dispatch, Google CSE per term, **`vet_inflow_discovery`**, **`ingest_new_companies`** with candidate-scoped URL dedupe, **`NEW`** / **`WEBSITE_FOUND`** company states. Phase 2 (**AST-506**): **`inflow_resolve_website`** company dispatch for **`NEW`** rows with empty **`company_website`**; CSE resolution (20 results, no date restrict) + **`find_company_website`** → **`WEBSITE_FOUND`** or **`NO_WEBSITE`**.
@@ -454,4 +500,85 @@ Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry; adds explicit `JO
   -q
 ```
 
+### AST-750 · AST-743
 
+**`DISPATCH_SCORE_FLOOR_VALUES`** (0.0–10.0 in 0.5 steps) and **`dispatch_score_floor_option_labels()`** are the single source of truth for the admin Edit Dispatch Task **Score Floor** `<select>`. **`GET /api/admin/dispatch_tasks/score_floor_options`** exposes the label list; **`AdminScheduledActions.tsx`** fetches options on load and persists **0.00** via `Number.isFinite` save coercion (not `parseFloat(...) || 1`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog tuple + label helper | `src/utils/config.py` | `TestAst750DispatchScoreFloorCatalog` (`test_config.py`) |
+| Admin metadata endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (score_floor_options assertion) |
+| Scheduled Actions modal (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-750: edit save sends score_floor 0 when 0.00 selected`** |
+
+**AST-750** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-750"
+```
+
+
+---
+
+### AST-796 · AST-794
+
+**Scope:** **`GAZER_CONFIG`** rename **`scrape_jd` → `fetch_jd`** (+ transitional read alias removed in **AST-797**); **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`DISPATCH_RETIRED_TASK_KEYS`** cutover; extended **`dispatch_task_key_retired_message`**. Runtime routing: **AST-797**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schedulable + retired catalogs | `src/utils/config.py` | `TestAst796FetchJdSchedulableCutover` |
+| Admin POST + **`task_keys`** | `src/ui/api/api_admin.py` | `TestAst796FetchJdRetiredDispatchKeys` |
+
+**AST-796** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover \
+  tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys \
+  -q
+```
+
+---
+
+### AST-797 · AST-794
+
+**Runtime config:** remove **`GAZER_CONFIG["scrape_jd"]`** alias; **`dispatch_task_admin_defaults("qualify_job_listings")`** → **`trigger_state=NEW`**; primary NEW row claims **NEW** only (**VALID_TITLE_RETRY** companion seeded by migration).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Qualify @ NEW + alias removal | `src/utils/config.py` | `TestAst797ConfigRuntimeCutover`; revised **`TestAst549DispatchAdminDefaults::test_qualify_job_listings_batch_call_mode_and_sort`**; revised **`TestAst796FetchJdSchedulableCutover::test_gazer_config_fetch_jd_without_transitional_alias`** |
+
+**AST-797** narrowed run: see **`docs/test-bible/core/consult.md`** (**AST-797**).
+
+---
+
+### AST-828 · AST-752 (UAT bug)
+
+**`is_valid_job_batch_claim_state`:** true for **`JOB_STATES`** keys and legacy **`BUILD_ARTIFACTS.<hop>`** via **`legacy_build_artifacts_hop`** — batch claim boundary only; does not expand **`JOB_STATES`** registry.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper true/false cases | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
+
+Tracker batch API manifest: **`docs/test-bible/core/tracker.md`** (**AST-828**).
+
+---
+
+### AST-765 · AST-757 (SUNSET — documentation)
+
+**RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+---
+
+### AST-782 · AST-756
+
+**`REPO_ADMIN_JSON_CONFIG`:** repo-relative paths under `data/admin/`, agent export column list (excludes legacy `model_code`), fixed apply order **agent → agent_task**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Path helpers + table key order | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig` |
