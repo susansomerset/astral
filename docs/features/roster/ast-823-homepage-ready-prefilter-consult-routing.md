@@ -203,12 +203,28 @@ No conflicts requiring plan revision.
 
 ## Review
 
-**Diff:** `origin/dev...origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing` @ `2105ed4`
+**Diff:** `origin/dev...origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing` @ `823de9a`
 
-**Built:** Stage 2 — consult routes `dispatch_task_key` in `("prefilter", "prefilter_company")` to `prefilter_company_batch`. Stage 3 — idempotent `dispatch_task` migration retargets legacy `prefilter_company` rows and stale `batch_call_mode` / `trigger_state` on company prefilter rows.
+### What's solid
 
-**Product commits:** `5c1937d` (Stage 2 — consult routing), `2105ed4` (Stage 3 — dispatch migration)
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Single-component scope held — consult routing widen + idempotent dispatch migration only; no rubric/decode/scrape/dispatcher changes |
+| Stage 2 | `run_consult_task` company branch routes `dispatch_task_key in ("prefilter", "prefilter_company")` to `prefilter_company_batch` with unchanged `skipped` error math |
+| Stage 3 | AST-823 UPDATEs append after existing AST-702/703 DELETE+retarget; `batch_call_mode=0` fix on company `prefilter` rows addresses Susan's stale-DB repro |
+| §2.4 / §2.6 | Batch routing-only; state transitions remain in roster batch helpers |
+| §3.3 | No new imports or layer bends; existing lazy `roster` import in consult unchanged |
+| Tests | Betty manifest covers legacy dispatch key (`test_routes_prefilter_company_batch_legacy_dispatch_key`) and migration (`TestAst823PrefilterDispatchMigration`) |
 
-**Stage 1 investigation:** AST-702 `prefilter` branch present on branch tip; `run_company_task` has no HOMEPAGE_READY handler (expected fallthrough bug). Dispatcher company `batch_call_mode=1` path calls `run_consult_task` once — no exclusion guard found.
+### Issues
 
-**Betty follow-on (non-blocking):** recommend `TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key` with `dispatch_task_key='prefilter_company'` if not already on manifest.
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now items |
+
+### Recommended actions
+
+| Severity | Location | Action |
+|----------|----------|--------|
+| **discuss** | `src/data/database.py` AST-823 migration | If a candidate has **both** an already-correct `(prefilter, HOMEPAGE_READY)` row **and** a legacy `(prefilter_company, …)` row, the agent-key UPDATE can hit the triple-unique constraint. Susan's UAT repro likely has only the mis-keyed row; if schema ensure ever errors on migrate, delete the duplicate `prefilter_company` row (or drop the stale companion before UPDATE) per AST-703 collision precedent. |
+| **advisory** | `docs/features/roster/ast-823-homepage-ready-prefilter-consult-routing.md` | Engineer review stub noted Betty follow-on for legacy-key test — delivered on manifest tip; no further test gap. |
