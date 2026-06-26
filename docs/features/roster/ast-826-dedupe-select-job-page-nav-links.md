@@ -87,3 +87,10 @@
 | §3.3 imports | roster-only change |
 
 No unresolved conflicts.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-753/AST-826-dedupe-select-job-page-nav-links`  
+**Product commits:** `2ff200b` (Stage 1 — dedupe select_job_page live content nav)
