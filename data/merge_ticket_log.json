@@ -16,10 +16,6 @@
     "recorded_at": "2026-06-25T17:13:17Z"
   },
   {
-    "ticket_id": "AST-754",
-    "recorded_at": "2026-06-25T17:32:14Z"
-  },
-  {
     "ticket_id": "AST-813",
     "recorded_at": "2026-06-26T02:43:33Z"
   },
@@ -28,11 +24,11 @@
     "recorded_at": "2026-06-26T02:55:14Z"
   },
   {
-    "ticket_id": "AST-815",
-    "recorded_at": "2026-06-26T03:00:45Z"
-  },
-  {
     "ticket_id": "AST-378",
     "recorded_at": "2026-06-26T03:22:36Z"
+  },
+  {
+    "ticket_id": "AST-815",
+    "recorded_at": "2026-06-26T03:23:29Z"
   }
 ]

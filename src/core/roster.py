@@ -231,6 +231,59 @@ def _discovery_blurb_line(hit: dict, *, index: int = 0) -> str:
     return f"{index:03d}|{title}|{hit_url}|{snippet}"
 
 
+def _renumber_vet_blurb_line(blurb: str, batch_index: int) -> str:
+    parts = blurb.split("|", 3)
+    if len(parts) >= 4:
+        return f"{batch_index:03d}|{parts[1]}|{parts[2]}|{parts[3]}"
+    return f"{batch_index:03d}|{blurb}"
+
+
+def _apply_vet_inflow_result_row(
+    short_name: str,
+    row: dict,
+    cfg: Dict[str, Any],
+    log: Any,
+    debug: bool,
+    *,
+    index: int,
+    total: int,
+) -> Dict[str, Any]:
+    action = (row.get("action") or "").strip().lower()
+    if action in ("ignore", "reject"):
+        transition_company_state(short_name, cfg["fail_state"])
+        outcome = f"recorded {cfg['fail_state']}"
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=index,
+                total=total,
+                identifier=short_name,
+                outcome=outcome,
+            )
+            log.debug_detail(f"action={action!r}")
+        return {"success": True, "state": cfg["fail_state"], "error": None}
+    if action not in ("slug", "accept"):
+        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
+        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"action={action!r} missing website")
+        return {"success": False, "state": None, "error": "missing website on pass action"}
+    update_company(short_name, company_website=website)
+    transition_company_state(short_name, cfg["pass_state"])
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=index,
+            total=total,
+            identifier=short_name,
+            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+        )
+        log.debug_detail(f"action={action!r} website={website!r}")
+    return {"success": True, "state": cfg["pass_state"], "error": None}
+
+
 def _candidate_company_urls(candidate_id: str) -> Set[str]:
     urls: Set[str] = set()
     for row in list_companies(candidate_id=candidate_id):
@@ -414,40 +467,109 @@ async def vet_inflow_discovery_company(
         if debug:
             log.debug_detail("vet parsed_response missing results list")
         return {"success": False, "state": None, "error": "missing results"}
-    action = (row.get("action") or "").strip().lower()
-    if action in ("ignore", "reject"):
-        transition_company_state(short_name, cfg["fail_state"])
-        outcome = f"recorded {cfg['fail_state']}"
-        if debug:
-            log.debug_index(
-                func="roster.vet_inflow_discovery_company",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome=outcome,
-            )
-            log.debug_detail(f"action={action!r}")
-        return {"success": True, "state": cfg["fail_state"], "error": None}
-    if action not in ("slug", "accept"):
-        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
-        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
-    website = (row.get("website") or "").strip()
-    if not website:
-        if debug:
-            log.debug_detail(f"action={action!r} missing website")
-        return {"success": False, "state": None, "error": "missing website on pass action"}
-    update_company(short_name, company_website=website)
-    transition_company_state(short_name, cfg["pass_state"])
+    return _apply_vet_inflow_result_row(
+        short_name, row, cfg, log, debug, index=1, total=1,
+    )
+
+
+async def vet_inflow_discovery_company_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Batch company vet: one do_task, hit_index decode → WEBSITE_FOUND | VET_FAILED (AST-822)."""
+    cfg = INFLOW_CONFIG["vet"]
+    log = logger
+    log.set_debug_flag(debug)
+    blurb_key = cfg["blurb_data_key"]
+    ready: List[Dict[str, Any]] = []
+    not_ready: List[Dict[str, Any]] = []
+    for company in companies:
+        blurb = ((company.get("company_data") or {}).get(blurb_key) or "").strip()
+        if blurb:
+            ready.append(company)
+        else:
+            not_ready.append(company)
+    for company in not_ready:
+        sn = company.get("short_name") or "?"
+        logger.warning("[%s] vet_inflow_discovery_company_batch: missing inflow_discovery_blurb", sn)
+    total = len(companies)
+    if not ready:
+        return {"passed": 0, "failed": 0, "skipped": 0, "total": total}
+    short_names = [c.get("short_name") or "?" for c in ready]
     if debug:
         log.debug_index(
-            func="roster.vet_inflow_discovery_company",
+            func="roster.vet_inflow_discovery_company_batch",
             index=1,
             total=1,
-            identifier=short_name,
-            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+            identifier=batch_id,
+            outcome=f"batch start n={len(ready)}",
         )
-        log.debug_detail(f"action={action!r} website={website!r}")
-    return {"success": True, "state": cfg["pass_state"], "error": None}
+        log.debug_detail(f"batch_id={batch_id} short_names={short_names}")
+    ready_blurbs = [
+        ((c.get("company_data") or {}).get(blurb_key) or "").strip() for c in ready
+    ]
+    header = (
+        "Discovery hit (index|title|url|snippet)"
+        if len(ready) == 1
+        else "Discovery hits (index|title|url|snippet)"
+    )
+    body = "\n".join(_renumber_vet_blurb_line(b, i) for i, b in enumerate(ready_blurbs))
+    live_content = f"{header}\n{body}"
+    if debug:
+        log.debug_detail_block(live_content)
+    api_result = await do_task(
+        task_key=cfg["task_key"],
+        live_content=live_content,
+        index=f"vet_inflow_discovery_batch_{batch_id}",
+        ctx={**(ctx or {}), "batch_entities": ready, "batch_size": len(ready)},
+        debug=debug,
+    )
+    if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company_batch",
+                index=1,
+                total=1,
+                identifier=batch_id,
+                outcome="vet task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
+        return {"passed": 0, "failed": 0, "skipped": 0, "total": total}
+    parsed = api_result.get("parsed_response") or {}
+    rows = parsed.get("results")
+    index_by_hit: Dict[int, dict] = {}
+    if isinstance(rows, list):
+        for r in rows:
+            if isinstance(r, dict):
+                hi = r.get("hit_index")
+                if isinstance(hi, int):
+                    index_by_hit[hi] = r
+    passed = failed = errors = 0
+    errors += len(not_ready)
+    for i, company in enumerate(ready):
+        short_name = company.get("short_name") or "?"
+        row = index_by_hit.get(i)
+        if not row:
+            logger.warning(
+                "[%s] vet_inflow_discovery_company_batch: missing results row hit_index=%s",
+                short_name, i,
+            )
+            errors += 1
+            continue
+        r = _apply_vet_inflow_result_row(
+            short_name, row, cfg, log, debug, index=i + 1, total=len(ready),
+        )
+        if r.get("error"):
+            errors += 1
+        elif r.get("state") == cfg["pass_state"]:
+            passed += 1
+        elif r.get("state") == cfg["fail_state"]:
+            failed += 1
+        else:
+            errors += 1
+    return {"passed": passed, "failed": failed, "skipped": 0, "total": total}
 
 
 async def resolve_company_website(

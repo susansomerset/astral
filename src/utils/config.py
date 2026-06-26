@@ -1281,7 +1281,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like",
+    "grade_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({

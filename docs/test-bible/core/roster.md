@@ -508,3 +508,29 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-822 · AST-815 (UAT bug)
+
+**AST-822 (UAT bug):** **`vet_inflow_discovery`** company dispatch batches eligible **NEW** rows — **`batch_call_mode=1`**, **`vet_inflow_discovery_company_batch`** assembles **`000|…` / `001|…` / `002|…`** live content, one **`do_task`**, **`hit_index`** decode per company. Consult routes **`dispatch_task_key=vet_inflow_discovery`** to batch runner (**AST-776** single-company wrapper unchanged for legacy **`run_company_task`** path).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Single-company vet wrapper (**AST-776** regression) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` |
+| 2 | Blurb renumber + multi-hit batch decode | `src/core/roster.py` | `::TestAst822VetInflowDiscoveryBatch` |
+| 3 | Consult company vet → batch runner | `src/core/consult.py` | `::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 4 | Dispatch **`batch_call_mode=1`** default | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults` |
+
+**AST-822** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

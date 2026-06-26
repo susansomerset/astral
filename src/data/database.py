@@ -4392,6 +4392,39 @@ Use the standard two-key JSON envelope. In `agent_payload`, return:
 """
 
 
+_AST822_VET_INFLOW_BATCH_MARKER = "MULTI-HIT VET BATCH (AST-822)"
+
+_AST822_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
+## MULTI-HIT VET BATCH (AST-822)
+
+You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
+
+`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
+
+## Mechanical scope only
+
+Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
+news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
+
+## Response
+
+Use the standard two-key JSON envelope. In `agent_payload`, return one `results` object per input line:
+
+```json
+{"results": [
+  {"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"},
+  {"hit_index": 1, "action": "slug"|"ignore", "website": "…"}
+]}
+```
+
+- `hit_index` must match the input line index (`000` → 0, `001` → 1, …).
+- `action: "ignore"` — wrong page type; omit website or leave empty.
+- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
+"""
+
+
 def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
     """AST-776: seed mechanical-only vet_inflow_discovery prompt for company dispatch on NEW."""
     marker = _AST776_VET_INFLOW_MECHANICAL_MARKER
@@ -4416,6 +4449,48 @@ def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection
         if fcw and (fcw[0] or "").strip():
             agent_id = fcw[0]
     new_up = _AST776_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
+
+def _apply_ast822_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-822: widen vet_inflow_discovery prompt for multi-hit batch decode."""
+    marker = _AST822_VET_INFLOW_BATCH_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST822_VET_INFLOW_USER_PROMPT_SEED.strip()
     _save_agent_task_on_connection(
         conn,
         "vet_inflow_discovery",
@@ -4588,6 +4663,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
+    _apply_ast822_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5744,6 +5820,9 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "UPDATE dispatch_task SET batch_call_mode = 1 "
         "WHERE task_key = 'prefilter' AND entity_type = 'company' AND batch_call_mode = 0"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET batch_call_mode = 1 WHERE task_key = 'vet_inflow_discovery'"
     )
     conn.commit()
     # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
