@@ -143,3 +143,17 @@ No conflicts flagged.
 tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
 tests/component/core/test_roster.py -k "normalize_company_url"
 ```
+
+## Build review stub
+
+**Publish ref:** `origin/sub/AST-815/AST-819-uat-vet-inflow-routing-ipv6-dedupe`
+
+**Built:** `_normalize_company_url_for_dedupe` catches `ValueError` on malformed IPv6 URLs (returns `""`). AST-817 consult routing verified on branch base — no consult change.
+
+**Test-child (Hedy):** Betty manifest green @ `9a130a6` — 3 passed, no product fixes.
+
+**Susan UAT:**
+- `vet_inflow_discovery` Run → company vet logs, not CSE stale-term loop
+- No scheduler crash from `Invalid IPv6 URL`
+- Pass → WEBSITE_FOUND or reject → VET_FAILED
+
