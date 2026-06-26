@@ -139,3 +139,15 @@ Update **`docs/test-bible/dev/record_landed_parent.md`** AST-811 row when Betty 
 | §3.5 Naming | `_first_ftr_land_on_dev`, `_grep_land_timestamp` follow existing `_resolve_*` private script helpers. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Build review stub
+
+**Built:** `origin/sub/AST-810/AST-811-per-parent-merge-ticket-timestamp-resolution` @ `989f94b`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `989f94b` | `_resolve_recorded_at` ftr land greps + merge-intro walk; `_commit_timestamp` for per-sha ISO times |
+
+**Hand-verify:** rebuild smoke — AST-716 / AST-752 / AST-753 resolve to three distinct `recorded_at` values on `origin/dev`.
