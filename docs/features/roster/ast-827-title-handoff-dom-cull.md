@@ -266,3 +266,38 @@ No conflicts requiring escalation.
 ## Review stub (build-child)
 
 **Built:** `code(AST-827)` on `origin/sub/AST-824/AST-827-title-handoff-dom-cull` — shared `_culled_dom_for_parse` / title normalization, select finalize debug, parse dispatch coverage gate, `find_job_containers` Phase 2b sibling anchors, JOBS_FOUND chain parity.
+
+---
+
+## Radia review (2026-06-26)
+
+**Diff:** `origin/dev...origin/sub/AST-824/AST-827-title-handoff-dom-cull` (`fe754bb`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–5: `_normalize_job_titles` at finalize + parse load; shared `_culled_dom_for_parse` with post-cull `_dom_text_covers_titles` gate; `make_locate_parse_resolver`, `run_parse_job_list_dispatch`, and JOBS_FOUND finalize paths all route through the helper; Phase 2b sibling-anchor cull in `find_job_containers`. |
+| State machine (§2.6) | No new transitions — `PARSE_DISPATCH_NO_CONTAINERS` / `JOBLIST_IDENTIFIED_RETRY` / `CANNOT_PARSE_JOB_SITE` / `NO_JOBLIST` reuse existing branches. |
+| DRY (§1.3) | Three duplicated cull call sites collapsed; orchestration vs formatting split matches plan (coverage in roster, best-effort containers in utils). |
+| Debug (§1.5.1) | New emission gated on `debug=True`; `debug_index` on select finalize and parse dispatch entry; `debug_detail` for title list, pre/post cull sizes, terminal `cull=` on success path. |
+| Layering (§3.3) | Helpers stay in `roster.py` / `formatting.py`; no UI or external imports. |
+| Tests / bible | Betty manifest (`TestAst827TitleHandoffDomCull`, formatting sibling-anchor case) matches plan AC matrix; AST-469/721 regression classes listed in bible narrowed run. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | `run_parse_job_list_dispatch` ~1234–1290 | Plan Stage 3 asked for `cull={cull_outcome}` on the **debug_index** outcome string; implementation adds `cull=` only on terminal **debug_detail**. Index header still shows url/titles/state only — operators scanning headers miss cull outcome without scrolling detail. |
+| **discuss** | Plan Self-Assessment | Conf **Medium** — medicarerights live DOM may still need parent **AST-824** UAT even when component repro is green. Not a code defect; confirm on staging before closing parent. |
+| **advisory** | `_culled_dom_for_parse` ~126–134 | Single-title path runs `find_job_containers` (plan stub showed raw full DOM). Matches pre-ticket parse dispatch behavior and is safer than blind full-DOM pass — intentional improvement, not regression. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child`. |
+| discuss | Parent UAT on medicarerights (or equivalent two-title sibling-anchor listing) after merge to staging. |
+| advisory | Optional: append `cull={cull_outcome}` to parse dispatch `debug_index` outcome when touching debug again. |
+
+**Publish tip:** `fe754bb` (product `703fd35` + tests `0a2890d` + merge-tests `fe754bb`)
