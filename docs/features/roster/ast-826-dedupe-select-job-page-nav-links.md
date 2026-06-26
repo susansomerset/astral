@@ -94,3 +94,28 @@ No unresolved conflicts.
 
 **Publish ref:** `origin/sub/AST-753/AST-826-dedupe-select-job-page-nav-links`  
 **Product commits:** `2ff200b` (Stage 1 — dedupe select_job_page live content nav)
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-753/AST-826-dedupe-select-job-page-nav-links` @ `aabee46` (product: `2ff200b`)
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 exact: `_assembled_has_embedded_nav_links` marker guard; `_build_select_job_page_live_content` skips global `=== NAV LINKS ===` when `--- NAV LINKS ---` present; retains global append + exact-substring idempotency when no embedded marker; `run_select_job_page_dispatch` wiring unchanged (`nav_links=` still passed separately for TRY_LINKS). |
+| UAT root cause | Correctly targets AST-759 interaction (per-page assembly + global append) without touching scrape, persistence, or routing. |
+| Rules | roster-only; no layer/import/state-machine changes. |
+| Tests | Betty manifest: `TestAst826DedupeSelectJobPageNav` (helper both paths); `TestAst720PjlReadySelectDispatch` split into embedded-dedupe vs global-append dispatch cases. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Marker `--- NAV LINKS ---` must stay aligned with `_assemble_pjl_content` output — acceptable today because both live in `roster.py`; consider a module-level constant only if the section header ever changes. |
+
+**Verdict:** Clean — `resolve-child` may proceed.
