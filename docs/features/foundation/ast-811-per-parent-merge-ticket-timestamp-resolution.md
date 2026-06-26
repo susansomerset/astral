@@ -151,3 +151,42 @@ No conflicts requiring plan revision.
 | 1 | `989f94b` | `_resolve_recorded_at` ftr land greps + merge-intro walk; `_commit_timestamp` for per-sha ISO times |
 
 **Hand-verify:** rebuild smoke — AST-716 / AST-752 / AST-753 resolve to three distinct `recorded_at` values on `origin/dev`.
+
+---
+
+## Radia review (2026-06-26)
+
+**Diff:** `origin/dev...origin/sub/AST-810/AST-811-per-parent-merge-ticket-timestamp-resolution` @ `bf9e88d`  
+**Product commit:** `989f94b` (`scripts/rebuild_merge_ticket_log.py`)  
+**Tests:** `79120c6` (Betty manifest on `origin/tests`; merged via `merge-tests`)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Grep chain | `_resolve_recorded_at` preserves prep-uat → merge-parent → finish-up order; adds ftr land greps before walk; **removed** dev-HEAD `git log dev ftr -1` fallback. |
+| Walk fallback | `_first_ftr_land_on_dev` walks `merge-base..dev` oldest-first; `_commit_timestamp` isolates per-sha ISO lookup; merge commits require ftr tip **not** on first parent before stopping (avoids false land on unrelated merges). |
+| Plan scope | Single script change; `_collect_entries`, CLI, utils read path untouched per plan. |
+| §1.3 DRY | `_grep_land_timestamp` thin wrapper over `_git_log_timestamp`; helpers colocated with existing `_resolve_*` pattern. |
+| §3.3 | Script imports `src.external.linear` + `src.utils` only — no layer violations. |
+| Self-Assessment | Scope `Single-Component` matches product diff; Conf `high` supported by live smoke. |
+| Smoke (origin/dev) | AST-716 `2026-06-18T02:08:22Z`, AST-752 `2026-06-23T20:17:09Z`, AST-753 `2026-06-23T19:35:12Z` — three distinct values. |
+| Tests + bible | `TestRebuildMergeTicketLogTimestampResolution` (4 cases) + AST-805 regression; 8/8 pytest green; bible AST-811 rows in `record_landed_parent.md`. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — Hedy may proceed with `resolve-child` (§9a dry-run).
+
+**Advisory (non-blocking):** `_first_ftr_land_on_dev` merge-stop rule is stricter than the plan prose (skips merge commits where ftr tip is already ancestor of the first parent). Live smoke and mocked tests pass; behavior is an improvement, not a regression.
