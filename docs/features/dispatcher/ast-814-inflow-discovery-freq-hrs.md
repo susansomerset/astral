@@ -249,3 +249,16 @@ No conflicts requiring plan revision.
 **Outcome:** Clean — Susan UAT on parent **AST-813** (`somerset` / `freq_hrs=0` repro).
 
 — Radia
+
+---
+
+## Resolution (Hedy)
+
+**Date:** 2026-06-26  
+**Linear:** [AST-814](https://linear.app/astralcareermatch/issue/AST-814) (**Review Posted → User Testing**)
+
+Radia review clean — **0 fix-now**, **0 discuss**, **0 advisory**. No product delta; publish tip @ `8ef14b1` (`docs(AST-814): Radia review — clean`).
+
+**§9a:** `origin/sub/AST-813/AST-814-inflow-discovery-freq-hrs` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-813-inflow-discovery-freq-hrs`**.
+
+— Hedy
