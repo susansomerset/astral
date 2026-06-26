@@ -190,3 +190,13 @@ No conflicts requiring plan revision.
 **Outcome:** Clean — Hedy may proceed with `resolve-child` (§9a dry-run).
 
 **Advisory (non-blocking):** `_first_ftr_land_on_dev` merge-stop rule is stricter than the plan prose (skips merge commits where ftr tip is already ancestor of the first parent). Live smoke and mocked tests pass; behavior is an improvement, not a regression.
+
+---
+
+## Resolution (2026-06-26)
+
+**Publish ref:** `origin/sub/AST-810/AST-811-per-parent-merge-ticket-timestamp-resolution` @ `0e58a27` (Radia `docs(AST-811): Radia review — clean`)
+
+Radia review clean — 0 fix-now, 0 discuss, 0 advisory. No product code changes beyond `code(AST-811)` @ `989f94b`. §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-810-timestamps-for-issues-merged-do-not-differentiate-across-branch-merges`.
+
+**Outcome:** Per-parent `recorded_at` resolution in `rebuild_merge_ticket_log.py` ready for sibling merge and prep-uat rebuild on dev.
