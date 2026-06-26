@@ -2964,6 +2964,19 @@ def parse_resume_artifact_hop(state: str) -> str | None:
     return st[len(RESUME_ARTIFACT_COMPOUND_PREFIX):]
 
 
+def is_valid_job_batch_claim_state(state: str) -> bool:
+    """True for JOB_STATES keys and legacy BUILD_ARTIFACTS.<hop> holding states (batch claim only)."""
+    s = (state or "").strip()
+    if not s:
+        return False
+    if s in JOB_STATES:
+        return True
+    hop = parse_resume_artifact_hop(s)
+    if hop is None:
+        return False
+    return hop in resume_artifact_hop_task_keys()
+
+
 def is_resume_artifact_in_progress(state: str) -> bool:
     return (state or "").startswith(RESUME_ARTIFACT_COMPOUND_PREFIX)
 
