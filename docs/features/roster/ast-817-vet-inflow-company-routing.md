@@ -124,6 +124,8 @@ tests/component/core/test_roster.py::TestAst775SplitInflowDiscovery
 
 **Built:** Removed stale `vet_inflow_discovery` early-return in `consult.run_consult_task` company branch; company vet dispatch now falls through to `run_company_task` → `vet_inflow_discovery_company` (AST-776). Candidate `inflow_discovery` path unchanged.
 
+**Test-child (Hedy):** Betty manifest green — 9 passed, no product fixes.
+
 **Manual UAT (Susan):**
 - `vet_inflow_discovery` Run with `available ≥ 1` → company vet logs, not `no stale search terms`
 - `inflow_discovery` still records NEW hits (no inline vet)
