@@ -119,3 +119,14 @@ None (**fix-now**).
 | **Advisory** | Marker `--- NAV LINKS ---` must stay aligned with `_assemble_pjl_content` output — acceptable today because both live in `roster.py`; consider a module-level constant only if the section header ever changes. |
 
 **Verdict:** Clean — `resolve-child` may proceed.
+
+---
+
+## Resolution (Hedy)
+
+**Date:** 2026-06-26  
+**Review ref:** Radia @ `21aa550` — **fix-now:** none
+
+No product changes required. Presentation dedupe shipped in `2ff200b`; Betty manifest green on publish ref @ `aabee46`. §9a dry-run into `origin/dev` clean; ftr merge-tree clean (no file conflicts).
+
+**Verdict:** Ready for **User Testing** — Susan re-run Mitratech careers repro: **select_job_page** live content should show nav links once (per-page `--- NAV LINKS ---` only, no trailing global block).
