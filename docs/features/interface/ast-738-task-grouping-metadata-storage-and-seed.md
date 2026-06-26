@@ -1,3 +1,140 @@
+<!-- linear-archive: AST-738 archived 2026-06-23 -->
+
+## Linear archive (AST-738)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-738/task-grouping-metadata-storage-and-seed-organizing-tasks  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-734 — Organizing Tasks  
+**Blocked by / blocks / related:** parent: AST-734; blocks: AST-740; blocks: AST-739
+
+### Description
+
+## What this implements
+
+Persist four global-per-`task_key` grouping fields on agent task records: `task_group_order`, `task_group_name`, `task_seq`, and `task_name`. Run a one-time deploy migration that copies organized config `phase` / `seq` into the new columns wherever they exist today, derives initial `task_group_name` from `phase`, maps `task_group_order` from existing group ordering, and uses `task_key` as initial `task_name` where no separate name exists. Admin APIs read and write these fields on Manage Tasks save/load paths; list/enrich endpoints return them for UI consumers.
+
+## Acceptance criteria
+
+1. Deploy seed copies existing config `phase` / `seq` into the new DB fields for all catalog tasks that had them; initial `task_name` populated where appropriate.
+2. Every catalog task key appears on Manage Tasks with stored `task_group_order`, `task_group_name`, `task_seq`, and `task_name`.
+3. Manage Tasks edit modal exposes all four fields; saving persists them; reopening the modal shows saved values.
+4. Invalid or inconsistent group data can be saved without server-side rejection (Susan verifies manually).
+
+## Boundaries
+
+* Does not build Manage Tasks or Scheduled Actions React layout — sibling Katherine ticket.
+* Does not remove `phase` / `seq` from TASK_CONFIG — sibling Ada ticket after UI migration.
+* Does not add validation beyond basic type/presence needed to save.
+* Does not change dispatch execution, scheduler, or prompt content.
+
+## Notes for planning
+
+* Values are global per `task_key`, never candidate-specific.
+* Seed must run before config keys are removed; migration reads config `phase`/`seq` once at deploy.
+* `save_agent_task` / `get_agent_task` / list paths in data layer; `api_admin.py` task GET/PUT and `_enrich_tasks` must surface all four fields from DB only (not config) after this ticket lands.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-734-organizing-tasks`, child `sub/AST-734/<child-id>-task-grouping-metadata-storage-and-seed`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T22:36:34.255Z
+**Review correction (§5d boundaries)**
+
+Re-checked `origin/dev...origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ `273e906`.
+
+The prior review comment stated no frontend / no `_dispatch_task_key_form_meta` changes. That was inaccurate for the three-dot diff: this branch also carries **`code(AST-739)`** commits (`d9dbdb6`, `487e0a2`, `736c306`) — `AdminTaskPrompts.tsx`, `AdminScheduledActions.tsx`, and `_catalog_task_grouping_meta` / `dispatch_task_keys` DB reads.
+
+**AST-738 scope itself** (database seed/save, Manage Tasks GET/PUT/`_enrich_tasks`) still matches plan and has no fix-now blockers.
+
+**discuss:** Epic-worktree branch contamination — AST-739 UI/dispatch work landed on the AST-738 publish ref. `@Chuckles` / `@Susan`: OK to leave for merge-child rollup, or should Hedy revert AST-739 commits from `sub/AST-734/AST-738-*` before `resolve-child`? Separate publish ref `origin/sub/AST-734/AST-739-*` exists with its own test manifest.
+
+No status change; correction only.
+
+#### radia — 2026-06-18T22:34:46.089Z
+**Review** — `origin/dev...origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ `273e9066` (includes doc commit)
+
+### Plan fidelity
+Stages 1–3 delivered: four `agent_task` columns, idempotent seed (`backfill_task_grouping_metadata` + `_apply_ast738_*`), data-layer read/write with metadata-only in-place updates, admin GET/PUT/`_enrich_tasks` sourcing grouping from DB with backward-compat `phase`/`seq`. Boundaries respected — no frontend, no config key removal, no dispatch form meta changes.
+
+### Rubric (ASTRAL_CODE_RULES)
+- **§1.3 DRY:** `seed_values_for_task_key` shared by migration, `sync_agent_tasks`, and insert path — matches plan.
+- **§2.1 / §3.3:** Runtime API reads DB; lazy `_task_grouping_seed_helpers()` import documented in plan (acceptable exception chain).
+- **§2.6 / versioning:** `content_changed` excludes grouping-only edits; prompt versioning copies grouping forward — critical plan Risk item handled correctly (`test_grouping_only_edit_keeps_version_uuid`, `test_segment_edit_copies_grouping_forward`).
+- **Layer (B2):** `api_admin` changes stay on `database` facade — no new UI→data violations.
+
+### fix-now
+None.
+
+### discuss
+- **Seed guard edge case:** Guard skips when *any* `current=1` row has non-empty `task_group_name`. If an operator cleared **every** row’s name to `''`, the next `_ensure_agent_task_schema` would re-seed from `TASK_CONFIG`. AC allows invalid saves — @susan OK with that reset behavior, or tighten guard in a follow-up?
+
+### advisory
+- Sibling plan doc `ast-740-remove-phase-and-seq-from-task-config.md` on this branch — doc-only, no code smuggle.
+- Stray `# placeholder removed = "qualify_job_listings"` in `test_agent_tasks.py` — optional cosmetic cleanup in resolve.
+
+**Doc:** [combined plan + review table](docs/features/interface/ast-738-task-grouping-metadata-storage-and-seed.md#review-radia)
+
+**Handoff:** Proceed to `resolve-child` — no blockers.
+
+#### betty — 2026-06-18T22:27:16.104Z
+## QA test manifest (AST-738)
+
+**Publish:** `origin/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed` @ `e07e751` (`merge-tests(AST-738): origin/tests aa7a342`)
+
+### 1. New coverage
+1. **Data layer — grouping columns + seed** (`TestAst738TaskGroupingMetadata`): `seed_values_for_task_key` from `TASK_CONFIG`; new-row defaults; metadata-only grouping edit keeps version UUID; segment edit copies grouping forward; `list_candidate_tasks` columns; backfill global guard when `task_group_name` already set.
+2. **Admin API — Manage Tasks paths** (`TestAst738TaskGroupingApi`): `_grouping_from_agent_task_row` backward-compat `phase`/`seq`; GET surfaces DB grouping; PUT forwards four fields; invalid `task_seq` → 400.
+
+### 2. Broken / revised tests
+1. **`TestTaskRoutes::test_preview_task_and_get_update`** — `phase`/`seq` now come from DB grouping fields on the mocked `get_agent_task` row, not `TASK_CONFIG` overlay.
+
+### 3. Existing coverage (unchanged)
+- **`TestAst454SevenSegmentPersistence`** / **`TestSaveAgentTask`** — segment versioning baseline still applies; AST-738 extends metadata-only path to grouping kwargs.
+- **`/dispatch_tasks/task_keys`** — still config-derived (**AST-739** scope); not in this manifest.
+
+### Run (test-child)
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst738TaskGroupingMetadata \
+  tests/component/ui/api/test_api_admin.py::TestAst738TaskGroupingApi \
+  tests/component/ui/api/test_api_admin.py::TestTaskRoutes::test_preview_task_and_get_update \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Bible shasum (`origin/sub/...`)
+- `docs/test-bible/data/database/agent_tasks.md` `fe5a4bd526b9b3bdd06daa4d8c550c897bd92fe55f01e1cb7972c1b81741e8bd`
+- `docs/test-bible/ui/api/api_admin.md` `8faa64011b69801e486de1ef1400e94f546dba1b0d065a49b36e65ef5e62cb9b`
+
+#### hedy — 2026-06-18T22:16:12.215Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed/docs/features/interface/ast-738-task-grouping-metadata-storage-and-seed.md
+
+**Scope:** `Single-Component` — `agent_task` storage, one migration script, Manage Tasks admin API only; no frontend or config cleanup.
+
+**Conf:** `high` — reuses existing column migration, metadata-only save (run_next pattern), and admin enrichment; seed mapping from config is fully specified.
+
+**Risk:** `Medium` — incorrect prompt versioning could drop grouping metadata on prompt edits; global seed guard must not clobber operator edits after first deploy.
+
+#### hedy — 2026-06-18T22:15:49.796Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-734/AST-738-task-grouping-metadata-storage-and-seed/docs/features/interface/ast-738-task-grouping-metadata-storage-and-seed.md
+
+**Scope:** `Single-Component` — `database.py` + `api_admin.py` only; four `agent_task` columns, one-time TASK_CONFIG seed, metadata save without prompt versioning, Manage Tasks API read/write with backward-compat `phase`/`seq` from DB.
+
+**Conf:** `high` — mirrors existing `_apply_ast*` migrations and agent_task metadata-only update pattern; AST-568 documents the UI paths being swapped in AST-739.
+
+**Risk:** `Medium` — wrong versioning on metadata-only save would drop operator grouping data; admin-only blast radius, no dispatch execution change.
+
+React modal/list (AC #3–#5 UI) and `/dispatch_tasks/task_keys` DB reads are **AST-739**; config `phase`/`seq` removal is **AST-740**.
+
+---
+
 # Task grouping metadata storage and seed (Organizing Tasks)
 
 **Linear:** [AST-738](https://linear.app/astralcareermatch/issue/AST-738/task-grouping-metadata-storage-and-seed-organizing-tasks)  

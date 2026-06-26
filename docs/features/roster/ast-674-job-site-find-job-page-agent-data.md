@@ -1,3 +1,124 @@
+<!-- linear-archive: AST-674 archived 2026-06-23 -->
+
+## Linear archive (AST-674)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-674/job-site-aware-find-job-page-and-dispatch-agent-data-inspection-find  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-669 — find_job_page job doesn't display the agent content  
+**Blocked by / blocks / related:** parent: AST-669; related: AST-671; related: AST-528
+
+### Description
+
+## What this implements
+
+Fix **find_job_page** dispatch so companies at **TO_WATCH** with a verified **job_site** (distinct from **company_website**) follow the known-careers-URL locate path instead of instant **NO_JOBLIST** when **possible job links** (PJL) from prefilter are empty. Ensure roster LLM steps invoked by that path (**select_job_page**, chained **parse_job_list**) persist **agent_data** under the dispatch **batch_id** so Execution History agent-data inspection shows prompt and response — not an empty modal.
+
+## Acceptance criteria
+
+1. On staging, re-run **find_job_page** for komodohealth (or equivalent company at **TO_WATCH** with a verified **job_site** distinct from **company_website** and 0 PJLs): the run does **not** instantly land **NO_JOBLIST** solely because PJLs are empty when **job_site** is usable.
+2. When that run invokes roster LLM steps, Execution History agent-data inspection for the batch shows readable **TASK** and **RESPONSE** (and related prompt block types).
+3. Agent-data rows use the batch_id on the Execution History row Susan clicked.
+4. If no LLM call is genuinely correct after the job-site path is evaluated, Susan can determine that from execution logs and history without a misleading empty modal that looks like a persistence failure.
+5. Other dispatch task types and ad-hoc workbench history rows still show agent data as before.
+
+## Boundaries
+
+* Does **not** fix **job_site** field overwritten with **company_website** on failure paths — sibling [AST-673](https://linear.app/astralcareermatch/issue/AST-673/preserve-job-site-on-find-job-page-failure-companyjob-site-is) under [AST-671](https://linear.app/astralcareermatch/issue/AST-671/companyjob-site-is-overwritten-with-companycompany-website); coordinate if both touch the same `_save_company` paths.
+* Does **not** include [AST-666](https://linear.app/astralcareermatch/issue/AST-666/find-job-page-is-well-and-truly-borked).
+* Does **not** add company-modal agent-story tabs.
+* Does **not** invent synthetic agent-data blocks.
+
+## Notes for planning
+
+* Reference behavior: **JOBS_FOUND** / **job_site** scrape path ([AST-469](https://linear.app/astralcareermatch/issue/AST-469)).
+* Per-hop Execution History ([AST-528](https://linear.app/astralcareermatch/issue/AST-528)) — batch_id on ledger rows must match **agent_data** lookup.
+* Primary layer: `src/core/roster.py`; verify dispatch **ctx** passes **batch_id** into **do_task** for **select_job_page**.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-669-find-job-page-job-doesnt-display-the-agent-content`, child `sub/AST-669/AST-674-job-site-find-job-page-agent-data`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-15T18:44:10.274Z
+**Review** — `origin/dev...origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data` (incl. `cd270ad5` doc)
+
+**Verdict:** Clean — no **fix-now** items.
+
+### Solid (plan fidelity + rules)
+
+- **Stage 1:** `_is_verified_job_site_distinct` reuses `_normalize_company_url_for_dedupe`; `find_job_page` redirects only when stored **job_site** ≠ **company_website** (AC #1). §1.3 DRY, §2.6 routing-only.
+- **Stage 2:** Both no-LLM **NO_JOBLIST** exits emit INFO `reason=no_pjl_or_nav` / `all_pjl_scrapes_failed` with counts (AC #4). §1.5 production INFO only — no debug-contract noise.
+- **Stage 3 audit:** `dispatcher._dispatch_one` already `log_batch_id.set(entity_batch_id)` before `run_company_task`; no roster guard needed. `TestFindJobPageAst674::test_find_assembled_select_job_page_uses_entity_log_batch_id` locks AC #2–#3.
+- **Tests:** `TestJobSiteDistinct674` + `TestFindJobPageAst674` cover AC 1–4 per bible manifest.
+
+### Advisory
+
+- Sub tip also carries **AST-676** / **AST-679** test-bible commits from `origin/tests` merge (`a0e02d28`, `d997407b`) — tests/docs only, no AST-674 product scope creep.
+- Helper placed immediately above `find_job_page` (plan line hint said after `_job_site_for_persist`) — better locality; no action.
+
+**Doc:** `docs/features/roster/ast-674-job-site-find-job-page-agent-data.md` § Radia review
+
+**resolve-child** may proceed.
+
+#### betty — 2026-06-15T18:41:03.249Z
+## QA test manifest (AST-674)
+
+**Publish ref:** `origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data` @ `75dad248`  
+**Tests commit:** `da53a7b2` on `origin/tests`  
+**Bible:** `docs/test-bible/core/roster.md` shasum `87614e3ddd9f39b805a0b03b0ad408e6a62dcae14006d4b2526b7dd160af9fbd`
+
+### Existing coverage (unchanged)
+
+- **AST-673** persistence + coarse redirect: `TestFindJobPageAst673`, `TestJobSiteForPersist673`, `TestJobsFoundProcessJobSite469` — still required; AST-674 tightens redirect predicate only.
+- **AC #5** (other dispatch paths): existing `tests/component/core/test_agent.py` **`do_task`** / **AST-531** hop-ledger tests — no new roster smoke.
+
+### New / revised (this pass)
+
+1. **`TestJobSiteDistinct674::test_is_verified_job_site_distinct`** — helper: distinct vs equal vs empty URLs (normalization).
+2. **`TestFindJobPageAst674::test_distinct_job_site_delegates_before_empty_pjl_exit`** — AC #1: 0 PJLs + distinct **job_site** → **`jobs_found_process_job_site`**, not PJL **NO_JOBLIST**.
+3. **`TestFindJobPageAst674::test_equal_job_site_falls_through_to_pjl_path`** — AC #1 (neg): **job_site** == **company_website** → PJL path; **`jobs_found_process_job_site`** not called.
+4. **`TestFindJobPageAst674::test_find_assembled_select_job_page_uses_entity_log_batch_id`** — AC #2–3: **`select_job_page`** **`do_task`** sees entity **`log_batch_id`** + dispatcher **`ctx`** keys.
+5. **`TestFindJobPageAst674::test_no_pjl_emits_no_llm_log`** — AC #4: INFO log `NO_JOBLIST without LLM — reason=no_pjl_or_nav`.
+6. **`TestFindJobPageAst674::test_all_pjl_scrapes_failed_emits_no_llm_log`** — AC #4: INFO log `reason=all_pjl_scrapes_failed`.
+
+### Run (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestJobSiteDistinct674 \
+  tests/component/core/test_roster.py::TestFindJobPageAst674
+```
+
+**Pass criterion:** pytest green on narrowed args (no zero-arg **`LOCKED_AT_100`** gate required for this manifest).
+
+### Stage 3 audit note
+
+Plan Stage 3 confirmed **`dispatcher._dispatch_one`** already sets **`log_batch_id.set(entity_batch_id)`** before **`run_company_task`** for **`find_job_page`** — no roster guard added; manifest item #4 locks the contract via **`_find_job_page_from_assembled`** + **`log_batch_id`** monkeypatch.
+
+— Betty
+
+#### hedy — 2026-06-15T18:18:02.082Z
+Plan: [`docs/features/roster/ast-674-job-site-find-job-page-agent-data.md`](https://github.com/susansomerset/astral/blob/sub/AST-669/AST-674-job-site-find-job-page-agent-data/docs/features/roster/ast-674-job-site-find-job-page-agent-data.md) on `origin/sub/AST-669/AST-674-job-site-find-job-page-agent-data` @ `b500b6f6`.
+
+**Scope:** `scope-Single-Component` — `roster.py` entry gate + no-LLM logging; optional `log_batch_id` guard only if audit finds a gap.
+
+**Conf:** `conf-high` — AST-469 stored-URL chain and AST-531 agent_data plumbing already on ftr; this ticket adds Susan's distinct-URL predicate and documents batch_id contract.
+
+**Risk:** `risk-Medium` — locate/parse is production-critical; predicate uses existing `_normalize_company_url_for_dedupe`; Betty manifest locks AC cases.
+
+**Approach (4 stages):**
+1. `_is_verified_job_site_distinct` — redirect to `jobs_found_process_job_site` only when job_site ≠ company_website (tightens AST-673 coarse `if pre_job_site`).
+2. INFO logs on NO_JOBLIST exits that skip LLM (`reason=no_pjl_or_nav` / `all_pjl_scrapes_failed`) for AC #4.
+3. Read-only agent_data batch_id audit; conditional `log_batch_id` restore from `ctx.entity_batch_id` only if dispatcher ledger gap found.
+4. Betty manifest for distinct redirect, homepage-equal fallback, and batch_id threading.
+
+---
+
 # AST-674 — Job_site-aware find_job_page and dispatch agent-data inspection
 
 **Linear:** [AST-674 — Job_site-aware find_job_page and dispatch agent-data inspection](https://linear.app/astralcareermatch/issue/AST-674/job-site-aware-find-job-page-and-dispatch-agent-data-inspection-find)

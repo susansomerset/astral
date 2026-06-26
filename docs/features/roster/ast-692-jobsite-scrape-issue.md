@@ -1,3 +1,101 @@
+<!-- linear-archive: AST-692 archived 2026-06-23 -->
+
+## Linear archive (AST-692)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-692/jobsite-scrape-issue-response-and-terminal-roster-flow-job-site-scrape  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-684 — Job Site scrape is too fast?  
+**Blocked by / blocks / related:** parent: AST-684
+
+### Description
+
+## What this implements
+
+Extend **select_job_page** with response type **JOBSITE_SCRAPE_ISSUE** for incomplete careers-list scrapes (shell-only text after bounded readiness wait). When Grace returns **JOBSITE_SCRAPE_ISSUE**, transition the company to **JOBSITE_SCRAPE_ISSUE** state and **do not** invoke downstream **parse_job_list** or further AI analysis on that run. Structured payload fields for Execution History inspection.
+
+## Acceptance criteria
+
+3. When listings never render within configured bounds (or scraped text is shell-only), **select_job_page** returns **JOBSITE_SCRAPE_ISSUE** — not **JOBLIST_TITLES** with fabricated titles — and the company lands in **JOBSITE_SCRAPE_ISSUE** state with **no** downstream **parse_job_list** hop on that run.
+4. Susan can verify fix via Execution History on a staging **select_job_page** batch: **no_cache** page sections contain the job titles visible in the browser for the repro case, or **JOBSITE_SCRAPE_ISSUE** with a clear agent report when they do not.
+
+## Boundaries
+
+* Does **not** implement Playwright readiness waits — sibling AST-689 (blocked upstream).
+* Does **not** change **select_job_page** prompt prose beyond what Susan authors in Manage Tasks.
+* Does **not** fix AST-666 hang class or gazer-only paths unless wired into roster discovery.
+
+## Notes for planning
+
+* Hot files: `src/utils/config.py` (COMPANY_STATES, TASK_CONFIG), `src/core/roster.py`, `src/core/tracker.py`.
+* Depends on AST-689 readiness gate feeding honest scrape text.
+* Follow ASTRAL_CODE_RULES state machine and batch patterns.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-684-job-site-scrape-is-too-fast`, child `sub/AST-684/<child-id>-jobsite-scrape-issue`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-16T00:49:09.435Z
+**Diff:** `origin/dev...origin/sub/AST-684/AST-692-jobsite-scrape-issue` @ `98011ad`
+**Doc:** `docs/features/roster/ast-692-jobsite-scrape-issue.md` (Radia review section)
+
+**Verdict:** Clean — no **fix-now** or **discuss**.
+
+### Plan fidelity
+- Stage 1: `JOBSITE_SCRAPE_ISSUE` state, three inbound transitions, `select_job_page` schema fields, `ROSTER_CONFIG` scrape_issue_state + company_data_keys.
+- Stage 2: `_check_parse_results` terminal branch (after JOBLIST_NO_JOBS); `_save_company` persists summary/evidence; `job_list_visible` stripped; `_PERSIST_PAGE_OPTION_URL_STATES` includes new terminal state.
+- `_find_job_page_from_assembled` routes non-JOBLIST_TITLES to `_check_parse_results` — no premature branch added.
+- `agent.py` unchanged; AST-469 parse_job_list suppression verified + Betty agent test.
+
+### Advisory
+- E2E staging repro waits on Susan's Manage Tasks prompt + AST-689 ftr rollup — expected per plan prerequisite.
+- Sub tip includes AST-689 test commits from `origin/tests` merge; product commits stay scoped.
+
+**resolve-child** may proceed.
+
+#### betty — 2026-06-16T00:46:35.499Z
+## QA test manifest (AST-692)
+
+**Publish ref:** `origin/sub/AST-684/AST-692-jobsite-scrape-issue` @ `13d7d1e`
+**Tests SHA:** `7271e5f`
+
+1. `tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue::test_check_parse_results_jobsite_scrape_issue` — terminal **JOBSITE_SCRAPE_ISSUE** state + persisted summary/evidence
+2. `tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue::test_find_job_page_from_assembled_jobsite_scrape_issue_no_chain` — **`_check_parse_results`** path, not **`_finalize_joblist_titles_after_chain`**
+3. `tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue::test_unknown_response_type_still_no_joblist` — unknown types remain **NO_JOBLIST**
+4. `tests/component/core/test_agent.py::TestAst692JobsiteScrapeIssueAgent::test_select_job_page_suppresses_parse_chain_for_jobsite_scrape_issue` — **parse_job_list** chain suppressed (AST-469 guard)
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue \
+  tests/component/core/test_agent.py::TestAst692JobsiteScrapeIssueAgent
+```
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/core/roster.md` → `7f3910f79eaf60a4847bdc33f6420d6a0de849fc`
+
+— Betty
+
+#### ada — 2026-06-16T00:43:17.037Z
+Plan: `docs/features/roster/ast-692-jobsite-scrape-issue.md`
+https://github.com/susansomerset/astral/blob/sub/AST-684/AST-692-jobsite-scrape-issue/docs/features/roster/ast-692-jobsite-scrape-issue.md
+
+**Scope:** Single-Component — `config.py` state/schema + `roster.py` `_check_parse_results` terminal branch; mirrors **JOBLIST_NO_JOBS** pattern.
+
+**Conf:** high — AST-469 already suppresses `parse_job_list` for non-**JOBLIST_TITLES**; this ticket adds config + persistence only.
+
+**Risk:** Medium — wrong fallback could still route shell-only pages to **NO_JOBLIST** if Grace returns an unexpected type; mitigated by explicit **JOBSITE_SCRAPE_ISSUE** branch and Susan's prompt update (out of engineer scope).
+
+Prerequisite: end-to-end staging repro needs AST-689 on `origin/ftr` after merge-child; AST-692 does not import readiness code.
+
+---
+
 # AST-692 — JOBSITE_SCRAPE_ISSUE response and terminal roster flow (Job Site scrape is too fast?)
 
 **Linear:** [AST-692 — JOBSITE_SCRAPE_ISSUE response and terminal roster flow (Job Site scrape is too fast?)](https://linear.app/astralcareermatch/issue/AST-692/jobsite-scrape-issue-response-and-terminal-roster-flow-job-site-scrape)

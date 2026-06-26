@@ -40,6 +40,18 @@
 
 ---
 
+### AST-814 · AST-813
+
+**AST-814:** **`run_inflow_discovery_batch`** reads **`ctx["inflow_discovery_freq_hrs"]`** (from dispatcher), not config **168**.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`freq_hrs=0`** in ctx searches fresh table terms | `src/core/roster.py` | **`TestAst505InflowDiscovery::test_run_batch_freq_hrs_zero_searches_fresh_terms`** |
+
+**Broken / obsolete (Betty revision):** **`test_run_batch_no_stale_terms_returns_zero_errors`** and **`test_run_batch_searches_only_stale_terms`** pass **`inflow_discovery_freq_hrs: 168`** in ctx (empty ctx defaults **`freq_hrs` to 0** = all rows stale).
+
+---
+
 ### AST-621 · AST-542
 
 **AST-542 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/roster.py`** inflow paths — **`run_inflow_discovery_batch`** / **`vet_inflow_discovery`** baseline from **AST-557** on **`ftr/`**; this child adds **`resolve_company_website`** contract debug, **`_ingest_failure_reason`** ` | ` detail under vet-row headers, and empty-dedupe skip header. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only. **`debug=False`** must stay unchanged — existing inflow behavior tests are the gate.
@@ -408,14 +420,15 @@ Consult merge + config registry: **`docs/test-bible/core/consult.md`** · **`doc
 | --- | --- | --- |
 | Dual-row migration idempotency | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision` |
 
-Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases).
+Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases). **AST-823** adds **`TestAst823PrefilterDispatchMigration`** — see **`docs/test-bible/core/consult.md`** (**AST-823**).
 
 **AST-703** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
-  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration
 ```
 
 **Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
@@ -452,3 +465,97 @@ Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md
 | Backfill normalizer (drop empty key, dedupe stats) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill` |
 
 Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md`** (**AST-727**).
+
+---
+
+### AST-775 · AST-754
+
+**AST-775 (child):** Split **`run_inflow_discovery_batch`** — CSE + URL dedupe records each hit as **`NEW`** via **`record_inflow_discovery_hit`** (mechanical hostname slug, **`inflow_discovery_blurb`** + **`inflow_discovery_notes`**); **no** inline **`do_task(vet_inflow_discovery)`**. Zero deduped hits is success (nothing to record). Registers **`VET_FAILED`** terminal state + **`(NEW, VET_FAILED)`** transition for sibling **AST-776** vet dispatch.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`VET_FAILED`** state + transition from **`NEW`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition` |
+| 2 | Mechanical slug + blurb/notes persist on **`NEW`** row | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_slug_from_discovery_url_hostname`; `::test_record_hit_creates_new_with_blurb_and_notes`; `::test_discovery_blurb_line_truncates_snippet` |
+| 3 | Expanded URL dedupe (**notes**, **blurb** pipe URL) + slug suffix collision | `src/core/roster.py` | `::TestAst775InflowDiscoveryRecordNew::test_record_hit_skips_duplicate_url_via_notes`; `::test_record_hit_skips_duplicate_url_via_blurb`; `::test_record_hit_slug_collision_suffix_other_candidate` |
+| 4 | Batch records hits; zero deduped hits not an error | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_run_batch_happy_path`; `::TestAst775InflowDiscoveryRecordNew::test_run_batch_no_deduped_hits_is_success`; `::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`; `::test_run_batch_searches_only_stale_terms`; `::test_run_batch_no_stale_terms_returns_zero_errors`; `::test_consult_routes_candidate_entity` |
+
+**Broken / obsolete (Betty revision):** **`TestAst505InflowDiscovery::test_run_batch_happy_path`** — removed **`do_task`** / vet ingest mocks; asserts mechanical **`co_example`** **`NEW`** record (**AST-775**).
+
+---
+
+### AST-776 · AST-754
+
+**AST-776 (child):** Schedulable **`vet_inflow_discovery`** company dispatch on **`NEW`** — read **`inflow_discovery_blurb`**, **`do_task(vet_inflow_discovery)`** under company **`batch_id`**, pass → **`WEBSITE_FOUND`** + **`company_website`**, reject → **`VET_FAILED`**. **`run_company_task`** routes **`dispatch_task_key`** vet vs **`inflow_resolve_website`** on **`NEW`**. Eligibility split: blurb rows vet-only; legacy **`NEW`** without blurb → Phase 2 resolve. Local **`agent_task`** mechanical prompt migration (**AST-776**).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`INFLOW_CONFIG["vet"]`** + schedulable company/**`NEW`** defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals`; `::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults` |
+| 2 | Vet eligibility vs resolve on blurb | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible` |
+| 3 | **`vet_inflow_discovery_company`** outcomes + **`run_company_task`** routing | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` |
+| 4 | Consult company vet → **`run_company_task`** (not discovery batch) | `src/core/consult.py` | `::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+
+**Broken / obsolete (Betty revision):** **`TestAst774VetInflowDiscoveryDispatch`** removed — **AST-776** routes vet to **`vet_inflow_discovery_company`**, not **`run_inflow_discovery_batch`**.
+
+**AST-776** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-819 · AST-815 (UAT bug)
+
+**AST-819 (UAT bug):** Harden **`_normalize_company_url_for_dedupe`** — catch **`ValueError`** from malformed bracketed IPv6 / bad URLs, return `""` so discovery ingest and blurb pipe collection skip instead of crashing the batch. **AST-817** consult routing verified on branch (no product change this ticket). Susan repro: company **`vet_inflow_discovery`** crashed on **`Invalid IPv6 URL`** after mis-route into **`run_inflow_discovery_batch`**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Consult company vet → **`run_company_task`** (**AST-817** regression) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | Malformed IPv6 / bad URL dedupe safe | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty` |
+| 3 | Valid URL dedupe unchanged | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_normalize_company_url_strips_www` |
+
+**AST-819** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_strips_www \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-822 · AST-815 (UAT bug)
+
+**AST-822 (UAT bug):** **`vet_inflow_discovery`** company dispatch batches eligible **NEW** rows — **`batch_call_mode=1`**, **`vet_inflow_discovery_company_batch`** assembles **`000|…` / `001|…` / `002|…`** live content, one **`do_task`**, **`hit_index`** decode per company. Consult routes **`dispatch_task_key=vet_inflow_discovery`** to batch runner (**AST-776** single-company wrapper unchanged for legacy **`run_company_task`** path).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Single-company vet wrapper (**AST-776** regression) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` |
+| 2 | Blurb renumber + multi-hit batch decode | `src/core/roster.py` | `::TestAst822VetInflowDiscoveryBatch` |
+| 3 | Consult company vet → batch runner | `src/core/consult.py` | `::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 4 | Dispatch **`batch_call_mode=1`** default | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults` |
+
+**AST-822** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

@@ -1,3 +1,118 @@
+<!-- linear-archive: AST-701 archived 2026-06-23 -->
+
+## Linear archive (AST-701)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-701/fetch-website-scrape-phase-and-homepage-ready-state-prefilter-as-batch  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-700 — prefilter as batch process  
+**Blocked by / blocks / related:** parent: AST-700; blocks: AST-702
+
+### Description
+
+## What this implements
+
+Phase 1 of the two-phase company prefilter pipeline: a **fetch_website** dispatch task that claims companies in **WEBSITE_FOUND** and **WEBSITE_FOUND_RETRY**, scrapes homepage visible text and **nav_links**, persists prepared content in **company_data**, and transitions successful rows to a new **HOMEPAGE_READY** holding state. Scrape failures use today's **CANNOT_READ_WEBSITE** semantics with notes persisted. Redirect detection normalizes **company_website**.
+
+## Acceptance criteria
+
+1. A company in **WEBSITE_FOUND** with a valid **company_website**, when claimed by **fetch_website**, ends in **HOMEPAGE_READY** with homepage content persisted in **company_data** (and redirect normalized if the site moved).
+2. A company whose homepage cannot be scraped ends in **CANNOT_READ_WEBSITE** with notes persisted — same observable behavior as today's prefilter scrape failure.
+3. With **debug=True** on a dispatch batch, Susan can trace each company's scrape step via distinct index headers and substantive detail lines — not batch summaries alone.
+
+## Boundaries
+
+* Does **not** implement batch prefilter agent evaluation — sibling **AST-702**.
+* Does **not** change **prefilter_company** rubric, prompt, or decode contract.
+* Does **not** remove the monolithic single-company prefilter path — **AST-702** owns cutover.
+
+## Notes for planning
+
+* Mirror **scrape_jd_batch** / **GAZER_CONFIG** patterns for company-side scrape batching.
+* **nav_links** extraction is in scope (Susan confirmed).
+* New **HOMEPAGE_READY** state + transitions in **COMPANY_STATES** / **ASTRAL_CONFIG**.
+* **dispatch_tasks** seed row for **fetch_website**; config mirror in **ROSTER_CONFIG** / **GAZER_CONFIG** as appropriate.
+* Primary files: [**gazer.py**](<http://gazer.py>), [**roster.py**](<http://roster.py>), [**config.py**](<http://config.py>), [**database.py**](<http://database.py>), [**dispatcher.py**](<http://dispatcher.py>).
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-700-prefilter-as-batch-process**, child **sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state**.
+
+### Comments
+
+#### radia — 2026-06-16T05:13:55.164Z
+### Plan fidelity
+
+All five stages match the combined plan: `HOMEPAGE_READY` + transitions + `GAZER_CONFIG["fetch_website"]` + dispatch registry; `scrape_company_homepage_content` with `prefilter_company` refactor (same fail paths); `fetch_website_batch` (connectivity gate, semaphore=3, config-driven pass/fail states); consult routes `fetch_website` before `run_company_task`; `_RETRY_TASK_SEED` companion row. AST-702 scope not smuggled.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 / §2.1 / §2.6 / §2.8:** Config-driven states; DRY scrape helper; core owns transitions; `homepage_text` explicit storage only.
+- **§2.4:** Normalized batch counts returned through consult.
+- **§1.5.1:** Debug gated on `debug=True`; per-company `index N/M` headers + `debug_detail` metadata + batch summary — consistent with `scrape_jd_batch`.
+- **§5a:** Lazy import in `consult.py` matches existing `scrape_jd_batch` routing pattern. No layer violations, silent failures, or hardcoded state sets in new paths.
+
+### Issues
+
+**fix-now:** none  
+**discuss:** none
+
+### Advisory
+
+- Plan Stage 3 mentions truncated homepage preview in `debug_detail`; code logs char counts + URLs only — same as `scrape_jd_batch` success path. Optional UAT polish, not blocking.
+- Ops: do not run `auto_mode=1` on both `prefilter` and `fetch_website` until AST-702 cutover (plan decision).
+
+**Doc:** `docs/features/consult/ast-701-fetch-website-scrape-phase-and-homepage-ready-state.md` @ `bcc5630` on `origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state`.
+
+#### betty — 2026-06-16T05:08:34.214Z
+## QA test manifest (AST-701)
+
+**Publish ref:** `origin/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state` @ `cb6cc37`
+
+1. **`fetch_website_batch`** connectivity abort, missing `company_website`, scrape error, success persist (`homepage_text` + `nav_links`) — `tests/component/core/test_gazer.py::TestFetchWebsiteBatch`
+
+2. **`run_consult_task`** routes `dispatch_task_key=fetch_website` to gazer batch — `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch`
+
+3. **`scrape_company_homepage_content`** scrape error, redirect canonical URL, empty text, non-fatal nav failure — `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent`
+
+4. Config: `HOMEPAGE_READY`, `GAZER_CONFIG["fetch_website"]`, dispatch registry, `homepage_text` key — `tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig`
+
+5. Dispatch retry seed clones `fetch_website` → `WEBSITE_FOUND_RETRY` on schema backfill — `tests/component/data/database/test_dispatch_tasks.py::TestAst701FetchWebsiteRetrySeed`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst701FetchWebsiteRetrySeed
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/consult.md` e6281cf12a5eef6a2320b8095a225615bec4ee847ce77cd4f5d7b5a3f32ba33a
+- `docs/test-bible/core/gazer.md` 898066845985996c2f2ad591ae8b4900625d44f73228944dfa9eafcb1c38b3bb
+- `docs/test-bible/core/roster.md` 82b80b8b5bf78ff65d30e8ae18c6961cf91a3bed249fb5662dfe00d3eae7dff6
+- `docs/test-bible/utils/config.md` d460d3b2bb6e64640bd30b1e0e99bdc7cffa9c14aa3232c4c594c7f56d6b1521
+
+— Betty
+
+#### chuckles — 2026-06-16T04:57:27.186Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-700/AST-701-fetch-website-scrape-phase-and-homepage-ready-state/docs/features/consult/ast-701-fetch-website-scrape-phase-and-homepage-ready-state.md
+
+**Self-assessment**
+- **Scope:** Single-Component — config state registry, shared roster scrape helper, gazer `fetch_website_batch`, consult routing, dispatch retry seed; scrape phase only (no agent/rubric).
+- **Conf:** Medium — mirrors `scrape_jd_batch` + existing `prefilter_company` scrape steps; operational note that `prefilter` and `fetch_website` must not both auto-run on `WEBSITE_FOUND` until AST-702 cutover.
+- **Risk:** Medium — bad scrape persistence or transitions block companies before batch prefilter but do not touch grades or job consult pipelines.
+
+---
+
 # fetch_website scrape phase and HOMEPAGE_READY state (prefilter as batch process)
 
 **Linear:** [AST-701](https://linear.app/astralcareermatch/issue/AST-701/fetch-website-scrape-phase-and-homepage-ready-state-prefilter-as-batch-process)  

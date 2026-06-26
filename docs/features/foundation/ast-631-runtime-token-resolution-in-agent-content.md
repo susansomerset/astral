@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-631 archived 2026-06-23 -->
+
+## Linear archive (AST-631)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-631/runtime-token-resolution-in-agent-content-support-tokens-in-agent  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-574 — Support tokens in Agent prompts  
+**Blocked by / blocks / related:** parent: AST-574; blocks: AST-632
+
+### Description
+
+## What this implements
+
+Wire existing `TOKEN_SOURCES` / `resolve_tokens` into agent `content` whenever it becomes part of an assembled prompt — as the direct system block or as the injected body behind `{$SELECTED_AGENT}`. After substitution, every `{$TOKEN}` in the agent body resolves using the same call context as task prompt segments (candidate, config, output-type, job-scoped tokens). Production `do_task`, chain hops, Manage Tasks preview, and other admin preview paths that resolve task prompts must apply the same agent-body token rules.
+
+## Acceptance criteria
+
+1. An agent whose `content` is `Hi, you're Grace. You're helping {$FIRST_NAME} find a great role.` resolves `{$FIRST_NAME}` to the active candidate's first name in a production `do_task` call when that agent content is the direct system block.
+2. Same agent content with a task `system_prompt` of `{$SELECTED_AGENT}` resolves `{$FIRST_NAME}` identically — the model never receives a literal `{$FIRST_NAME}` substring from the agent body on either path.
+3. Manage Tasks preview for a task using `{$SELECTED_AGENT}` shows the same resolved agent-body text as production for the preview candidate.
+4. Agent prompts that contain no merge tokens behave unchanged across all call paths.
+
+## Boundaries
+
+* No new tokens — uses existing registry only.
+* No chain tokens in agent rows (`{$CALLER_*}` / `{$SELECTED_AGENT}` not expected in agent `content`).
+* No nested agent indirection.
+* Frontend Manage Agents UI and candidate-scoped preview in Manage Agents — sibling **Katherine** ticket.
+* Task-only prompt field behavior beyond agent-body resolution stays unchanged.
+
+## Notes for planning
+
+Primary files: `src/core/agent.py` (`resolved_task_system` and `{$SELECTED_AGENT}` injection path), `src/utils/config.py` (`resolve_tokens`, `TOKEN_SOURCES`), `src/ui/api/api_admin.py` (preview endpoints). Follow AST-304 chain context patterns. Read `docs/ASTRAL_CODE_RULES.md` before planning.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/ast-574-support-tokens-in-agent-prompts`, child `sub/AST-574/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-14T18:06:30.599Z
+**Review (Radia)** — diff `origin/dev...origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` @ `b8345d3f`
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### What's solid
+- **Plan fidelity:** `resolved_agent_content` resolves agent body before `SELECTED_AGENT` injection; `_chain_context` signature + all call sites (`do_task`, `preview_prompt`, `simulated_chain_context_for_preview`, `_enrich_tasks`, `_resolve_adhoc`) match Stage 1. `_jc` moved before `_cc` in `do_task` so job-scoped agent tokens resolve in production.
+- **ACs:** Betty manifest covers direct system, `{$SELECTED_AGENT}`, Manage Tasks preview (`test_candidate.py`), and token-free unchanged paths.
+- **Rules:** §1.3 DRY (central helper, admin drops duplicate `chain_context_selected_agent`); §3.3 layer OK (`api_admin` → `core.agent` same as `resolved_task_system`). No debug-contract, silent-failure, or fallback issues in product diff.
+- **Boundaries:** No AST-632 UI, no `TOKEN_SOURCES` / DB changes. Product files: `src/core/agent.py`, `src/ui/api/api_admin.py` only.
+
+### Advisory
+- Direct-system path resolves agent `content` twice (in `_chain_context` for `SELECTED_AGENT` and again in `resolved_task_system`) — idempotent per plan; no action required.
+- `_enrich_tasks` uses `job_context=None` for token estimates — job tokens in agent body stay literal in list view only; production paths pass `_jc`.
+- Test merge on publish ref includes AST-603 rubric harness churn — Betty-owned; not blocking.
+
+Doc: `docs/features/foundation/ast-631-runtime-token-resolution-in-agent-content.md` § Review (Radia).
+
+**Recommended:** resolve-child → User Testing (no code changes).
+
+#### betty — 2026-06-14T18:03:26.214Z
+## QA test manifest (AST-631)
+
+**Publish ref:** `origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` @ `b8345d3f` (`merge-tests(AST-631): origin/tests daf9ec03`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `0f243963e5ebfa10a37d367aa72f52859634fce9` (§7.13zzm)
+
+### 1. New coverage (AST-631 — agent content tokens)
+
+1. `tests/component/core/test_agent.py::TestAst631AgentContentTokens` (full class — AC1 direct system, AC2 `{$SELECTED_AGENT}`, plain body unchanged, `preview_prompt`)
+2. `tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens` (signature + resolved `SELECTED_AGENT` body)
+3. `tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent` (AC3 Manage Tasks preview)
+
+### 2. Revised tests (substrate — evaluate_jd rubric normalize AST-603)
+
+Full **`tests/component/core/test_agent.py`** (**`LOCKED_AT_100`** `src/core/agent.py`): evaluate_jd mocks now target `consult._normalize_rubric_task_response`; resume-chain autouse stubs `_hydrate_resume_entry_chain_context`; envelope/coerce side-effect fixes for multi-call tests.
+
+### Narrowed run (Betty smoke)
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst631AgentContentTokens \
+  tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens \
+  tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent \
+  -q
+```
+
+— Betty
+
+#### ada — 2026-06-14T17:53:25.570Z
+Plan: `docs/features/foundation/ast-631-runtime-token-resolution-in-agent-content.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content/docs/features/foundation/ast-631-runtime-token-resolution-in-agent-content.md
+
+**Self-assessment**
+- **Scope — Single-Component:** `_chain_context` / `resolved_agent_content` in `agent.py` plus two admin call sites in `api_admin.py`; no config registry, DB, or frontend.
+- **Conf — high:** Localized fix reusing existing `resolve_tokens` and AST-304 chain wiring; only superseding raw `SELECTED_AGENT` for non-chain tokens in agent bodies.
+- **Risk — Medium:** All LLM calls use assembled prompts; wrong resolution affects `{$SELECTED_AGENT}` tasks, but token-free agent content must stay byte-identical.
+
+Published on `origin/sub/AST-574/AST-631-runtime-token-resolution-in-agent-content` @ `34c144fd`.
+
+---
+
 # AST-631 — Runtime token resolution in agent content (Support tokens in Agent prompts)
 
 - **Linear (this ticket):** [AST-631](https://linear.app/astralcareermatch/issue/AST-631/runtime-token-resolution-in-agent-content-support-tokens-in-agent)

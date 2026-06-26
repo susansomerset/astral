@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-651 archived 2026-06-23 -->
+
+## Linear archive (AST-651)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-651/uat-show-raw-astral-deploy-env-without-allowlist-validation  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-640 — Show environment and up time as read-only at the bottom of nav for admin view only.  
+**Blocked by / blocks / related:** parent: AST-640
+
+### Description
+
+## What failed
+
+Admin nav deploy footer omits the environment label when `ASTRAL_DEPLOY_ENV` is set to a value outside the hardcoded allowlist (`local`, `test`, `staging`, `production`). Susan deploys to regions/labels beyond that set (e.g. different continents) and expects the raw env var text to display whenever it is present.
+
+## Expected
+
+When `ASTRAL_DEPLOY_ENV` is set to any non-empty string, the admin nav footer shows that text as the environment label (no validation against a fixed option list). When unset or empty, show commit + uptime only (no environment label).
+
+## Repro
+
+1. Sign in as admin.
+2. Set `ASTRAL_DEPLOY_ENV=eu-west` (or any value not in the old allowlist) on the server and restart.
+3. Open any admin page with the left nav visible.
+4. Observe: environment label is missing even though the env var is set.
+
+## Parent AC (quoted inline)
+
+> **Environment label** — Display exactly one of: `local`, `test`, `staging`, or `production`. The label reflects the running server's deployment context, not the browser hostname alone.
+
+> Sign in as an admin on local dev → bottom of left nav shows `local`, a commit identifier, and an uptime string in the compact format above.
+
+> Sign in as an admin on Railway staging → label reads `staging` with that deploy's commit tip and uptime.
+
+(Susan UAT revision: print `ASTRAL_DEPLOY_ENV` text when available — no allowlist validation; supports continent/region-specific deploy labels.)
+
+## Boundaries
+
+* This bug does **not** change: commit short hash + tooltip, uptime formatting, admin-only gating, non-interactive footer, or API auth rules.
+* Does not add new env vars beyond existing `ASTRAL_DEPLOY_ENV`.
+
+### Comments
+
+#### radia — 2026-06-14T23:22:27.550Z
+## Radia review — `origin/dev...origin/sub/AST-640/AST-651-uat-show-raw-astral-deploy-env-without-allowlist-validation`
+
+**Diff:** 6 files (+163/−21). Core change: `_resolve_environment()` returns stripped raw `ASTRAL_DEPLOY_ENV`; `DEPLOY_STATUS_CONFIG` removed from `config.py`; `env.example` + component tests updated per manifest.
+
+### Plan fidelity
+Matches stages 1–3 and UAT repro. Dropping `.lower()` is documented in plan (preserve operator casing). Self-Assessment **scope-minor** / **conf-high** / **risk-low** fits the footprint. No sibling-scope smuggling.
+
+### Rubric (ASTRAL_CODE_RULES)
+| Check | Result |
+|-------|--------|
+| **B1 imports** | Config import removed from `deploy_status.py`; no new lazy imports |
+| **B2 layers** | Utils-only; no UI/data/external touches |
+| **D2/D3** | Empty/whitespace → `None` is intentional graceful omission per ticket |
+| **E1 / §5f** | N/A — no logging or `debug=` changes |
+| **§2.1 config** | Removing dead `DEPLOY_STATUS_CONFIG` is correct; no remaining code references |
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### advisory
+- `docs/features/interface/ast-646-deploy-status-api-and-admin-nav-footer.md` still describes the allowlist — historical; optional doc refresh when someone touches AST-646 doc, not blocking this UAT fix.
+- `TestGetDeployStatusPayload::test_includes_environment_when_set` still uses `staging`; fine for smoke coverage. End-to-end arbitrary label is covered by `test_non_allowlisted_value_returns_raw` on `_resolve_environment()`.
+
+**Handoff:** Katherine may proceed with `resolve-child` (no code changes required from review).
+
+#### betty — 2026-06-14T23:20:48.927Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-640/AST-651-uat-show-raw-astral-deploy-env-without-allowlist-validation` @ `37443bba`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `07d29aad2b47cf6a450e7a34de312c1c6b994d5cac31a96e25f0aefdc46d3d94`
+
+### 1. Revised tests (this pass — obsolete allowlist assertion)
+
+| Path | Change |
+| --- | --- |
+| `tests/component/utils/test_deploy_status.py::TestResolveEnvironment` | **`test_invalid_returns_none`** → **`test_non_allowlisted_value_returns_raw`** (`ASTRAL_DEPLOY_ENV=eu-west` → `"eu-west"`) |
+| same | **`test_whitespace_only_returns_none`** added (`"   "` → `None`) |
+
+### 2. Existing coverage (bible-backed — no edits required)
+
+| Bible § | Tests |
+| --- | --- |
+| **§7.13zzs AST-646** | `tests/component/ui/api/test_api_system.py::TestDeployStatus`; `tests/component/frontend/components/test_AdminDeployFooter.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx` |
+
+API/UI layers mock payload builder — product fix is utils-only.
+
+### 3. Narrowed run (engineer)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py::TestResolveEnvironment
+```
+
+Optional smoke (unchanged, should stay green):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+— Betty
+
+#### katherine — 2026-06-14T23:17:59.593Z
+Plan: [ast-651-uat-show-raw-astral-deploy-env-without-allowlist-validation.md](https://github.com/susansomerset/astral/blob/sub/AST-640/AST-651-uat-show-raw-astral-deploy-env-without-allowlist-validation/docs/features/interface/ast-651-uat-show-raw-astral-deploy-env-without-allowlist-validation.md)
+
+**Self-assessment**
+- **Scope:** `minor` — `_resolve_environment()` allowlist removal, delete dead `DEPLOY_STATUS_CONFIG`, `env.example` wording, one component test file.
+- **Conf:** `high` — UAT repro is the L34–35 guard in `deploy_status.py`; fix is strip-and-return with no UI/API changes.
+- **Risk:** `low` — Admin-only display label; worst case is wrong/missing env text, no auth or data impact.
+
+Three stages: (1) raw env resolution, (2) config/env.example cleanup, (3) Betty manifest tests for `eu-west` + whitespace-only.
+
+---
+
 # AST-651 — UAT: show raw ASTRAL_DEPLOY_ENV without allowlist validation
 
 **Linear:** [AST-651 — UAT: show raw ASTRAL_DEPLOY_ENV without allowlist validation](https://linear.app/astralcareermatch/issue/AST-651/uat-show-raw-astral-deploy-env-without-allowlist-validation)  

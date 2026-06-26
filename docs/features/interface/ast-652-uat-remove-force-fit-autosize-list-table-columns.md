@@ -1,3 +1,117 @@
+<!-- linear-archive: AST-652 archived 2026-06-23 -->
+
+## Linear archive (AST-652)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-652/uat-remove-force-fit-autosize-list-table-columns-table-layout-fix  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-633 — Table Layout fix  
+**Blocked by / blocks / related:** parent: AST-633
+
+### Description
+
+## What failed
+
+List tables still use `table-layout: fixed` and `width: 100%` on `.list-page-table`, forcing columns to squish to fit the viewport (“force to fit on one screen”) instead of autosizing to content and scrolling horizontally when wide.
+
+Susan UAT (2026-06-14): *“this should also TAKE OUT the 'force to fit on one screen' rule for the component, and autosize the columns.”*
+
+## Expected
+
+Shared list/table presentation (**ListPage** and pages using the same list-table markup/styles) autosizes column widths to content (natural/`auto` layout), drops the force-fit-on-one-screen rule, and relies on horizontal scroll (with existing frozen-column + sticky-header behavior) when the table is wider than the viewport.
+
+## Repro
+
+1. Open a wide **ListPage** consumer (e.g. Agent Timesheets) or **Admin Scheduled Actions** with many columns.
+2. Observe columns compressed to fit the container width rather than sizing to header/cell content.
+3. Compare to bespoke job phase tables that already use `tableLayout: "auto"`.
+
+## Parent AC (quoted inline)
+
+> **Horizontal scroll where needed:** Wide tables enable horizontal scrolling in the table body rather than squishing columns; frozen-column behavior applies whenever horizontal overflow exists.
+
+## Boundaries
+
+* This bug does **not** change: frozen-column count defaults/overrides, sticky header, 30-char truncation + tooltips, row-click detail flows, sort/filter/checkbox/column reorder/resize persistence, or backend/config keys beyond what layout CSS/JS requires.
+* Does **not** redesign Scheduled Actions % width headers beyond aligning them with autosize + scroll (coordinate with existing frozen-column sticky offsets).
+
+### Comments
+
+#### chuckles — 2026-06-15T00:50:33.813Z
+[check-linear] User Testing — resolve landed; parent [fix-uat] handoff posted (@susan re-test AST-633).
+
+#### susan — 2026-06-15T00:47:01.920Z
+@chuckles Have Katherine run resolve for this ticket, please.
+
+#### radia — 2026-06-14T23:58:14.426Z
+**Review** — `origin/dev...origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns` @ `8b2e748c` (+ doc `3159afb8`)
+
+Plan doc: `docs/features/interface/ast-652-uat-remove-force-fit-autosize-list-table-columns.md` (Review section)
+
+### Solid
+
+- Stages 1–2 match plan: `.list-page-table` default is `width: auto` + `table-layout: auto`; removed `max-width: 0`, deleted `--auto` modifier, dropped `horizontalScrollable` prop/gate.
+- Consumer cleanup: Agent Timesheets, Cost Reconciliation, job phase pages (inline auto removed), Scheduled Actions `%` widths removed (alignment-only styles kept).
+- UAT intent satisfied: force-fit removed; horizontal scroll wrapper unchanged; AST-647 freeze/truncate untouched.
+- Test: `AST-652: default list-page-table uses autosize layout` checks computed `table-layout: auto`.
+- `grep` clean — no `horizontalScrollable` / `list-page-table--auto` in `src/ui/frontend`.
+
+### advisory
+
+- UAT: column drag-resize under auto layout (pixel widths still applied from ListPage localStorage).
+- UAT: Scheduled Actions frozen sticky offsets (120px fallback carryover from AST-647) if not already verified.
+
+**Verdict:** clean — no fix-now or discuss.
+
+#### betty — 2026-06-14T23:56:26.258Z
+## QA test manifest (AST-652)
+
+**Publish ref:** `origin/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns` @ `8b2e748c` (`merge-tests(AST-652): origin/tests 150b8a39`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `961572ba212b7b10e452f93991388da50dfdf9ff` (§7.13zzt — AST-652 row added)
+
+### 1. New / revised (this pass)
+
+1. `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` — **`AST-652: default list-page-table uses autosize layout`** (`table-layout: auto`, no `--auto` class)
+2. `tests/component/frontend/components/test_ListPage.test.tsx` — removed obsolete `horizontalScrollable` prop from bulk-actions harness
+
+### 2. Regression (AST-647 unchanged — re-run with AST-652)
+
+3. `tests/component/frontend/lib/test_listTableLayout.test.ts`
+4. `tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx`
+5. `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` (frozen-column + truncate cases)
+6. `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-647: phase table freezes first three data columns`**
+7. `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults`
+
+### Narrowed run (AST-652)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx
+```
+
+### Manual (Susan UAT)
+
+Agent Timesheets + Admin Scheduled Actions with many columns — columns widen to header/content; horizontal scrollbar when needed; frozen left columns still stick.
+
+— Betty
+
+#### katherine — 2026-06-14T23:25:07.573Z
+Plan doc: [ast-652-uat-remove-force-fit-autosize-list-table-columns.md](https://github.com/susansomerset/astral/blob/sub/AST-633/AST-652-uat-remove-force-fit-autosize-columns/docs/features/interface/ast-652-uat-remove-force-fit-autosize-list-table-columns.md) @ `508809c4`
+
+**Self-assessment**
+- **Scope:** `minor` — CSS default change plus prop/class cleanup on existing list-table consumers; no new modules.
+- **Conf:** `high` — AST-647 already defined `.list-page-table--auto`; this promotes that behavior to the default and removes the opt-in gate.
+- **Risk:** `Medium` — all `.list-page-table` screens change width behavior; frozen sticky and scroll wrappers from AST-647 stay as-is.
+
+Two stages: (1) fold auto layout into base `.list-page-table` CSS, drop `max-width: 0` shrink hack; (2) remove `horizontalScrollable` prop, redundant `--auto`/inline overrides, and Scheduled Actions `%` column widths.
+
+---
+
 # AST-652 — UAT: Remove force-fit; autosize list table columns
 
 **Linear:** [AST-652 — UAT: Remove force-fit; autosize list table columns (Table Layout fix)](https://linear.app/astralcareermatch/issue/AST-652/uat-remove-force-fit-autosize-list-table-columns-table-layout-fix)  

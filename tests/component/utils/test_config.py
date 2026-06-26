@@ -17,125 +17,6 @@ class TestGetTaskKeys:
         assert keys == list(cfg.TASK_CONFIG.keys())
 
 
-def _board_entry(adopted: bool) -> dict:
-    """Minimal BOARD_CONFIG row for list_adopted_boards / get_board_entry (AST-457)."""
-    return {
-        "label": "L",
-        "entry_url": "https://boards.example/",
-        "scrape_mode": "deep_link",
-        "craft_task_key": "craft_board_search_criteria",
-        "adopted": adopted,
-    }
-
-
-class TestBoardRegistryAst457:
-    def test_list_adopted_boards_skips_non_adopted_sorts_keys(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            cfg,
-            "BOARD_CONFIG",
-            {
-                "z_skip": _board_entry(False),
-                "m_pick": _board_entry(True),
-            },
-            raising=False,
-        )
-        rows = cfg.list_adopted_boards()
-        assert rows == [
-            {
-                "board_key": "m_pick",
-                "label": "L",
-                "entry_url": "https://boards.example/",
-                "scrape_mode": "deep_link",
-                "craft_task_key": "craft_board_search_criteria",
-            },
-        ]
-
-    def test_get_board_entry_none_when_unknown_or_not_adopted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(cfg, "BOARD_CONFIG", {"x": _board_entry(False)}, raising=False)
-        assert cfg.get_board_entry("missing") is None
-        assert cfg.get_board_entry("x") is None
-
-    def test_get_board_entry_returns_copy_when_adopted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(cfg, "BOARD_CONFIG", {"b": _board_entry(True)}, raising=False)
-        out = cfg.get_board_entry("b")
-        assert out is not None
-        assert out["label"] == "L"
-        out["label"] = "mutated"
-        assert cfg.BOARD_CONFIG["b"]["label"] == "L"
-
-
-# BOARD_CONFIG adoption filter: explicit adopted:false/true and missing adopted key
-# (see list_adopted_boards / get_board_entry, src/utils/config.py ~686-708).
-class TestBoardRegistryAdoptedBranches:
-    def test_list_adopted_boards_explicit_false_missing_key_vs_true(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            cfg,
-            "BOARD_CONFIG",
-            {
-                "baa": {
-                    "label": "A",
-                    "entry_url": "https://a",
-                    "scrape_mode": "s",
-                    "craft_task_key": "k",
-                    "adopted": False,
-                },
-                # No `adopted` key → .get("adopted") is falsy → same skip path as explicit false.
-                "bbb": {"label": "B", "entry_url": "https://b", "scrape_mode": "s", "craft_task_key": "k"},
-                "zzz": {
-                    "label": "Z",
-                    "entry_url": "https://z",
-                    "scrape_mode": "s",
-                    "craft_task_key": "k",
-                    "adopted": True,
-                },
-            },
-            raising=False,
-        )
-        rows = cfg.list_adopted_boards()
-        assert [r["board_key"] for r in rows] == ["zzz"]
-
-    def test_get_board_entry_explicit_false_missing_key_unknown_vs_true(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            cfg,
-            "BOARD_CONFIG",
-            {
-                "bare": {"label": "L", "entry_url": "https://x", "scrape_mode": "s", "craft_task_key": "k"},
-                "nope": {
-                    "label": "L",
-                    "entry_url": "https://x",
-                    "scrape_mode": "s",
-                    "craft_task_key": "k",
-                    "adopted": False,
-                },
-                "yep": {
-                    "label": "L",
-                    "entry_url": "https://y",
-                    "scrape_mode": "s",
-                    "craft_task_key": "k",
-                    "adopted": True,
-                },
-            },
-            raising=False,
-        )
-        assert cfg.get_board_entry("missing_board") is None
-        assert cfg.get_board_entry("bare") is None
-        assert cfg.get_board_entry("nope") is None
-        got = cfg.get_board_entry("yep")
-        assert got is not None and got["adopted"] is True
-        got["entry_url"] = "mutated"
-        assert cfg.BOARD_CONFIG["yep"]["entry_url"] == "https://y"
-
-
 # Branches: type guard; range; configured multiplier.
 class TestImportanceMultiplier:
     def test_returns_configured_multiplier(self) -> None:
@@ -435,7 +316,7 @@ class TestAst479LikePassStates:
         assert states[0] == "RECOMMENDED"
         assert states[-1] == "CANDIDATE_REVIEW"
         assert "PASSED_LIKE" not in states
-        assert all(s.startswith("BUILD_ARTIFACTS.") for s in states[1:-1])
+        assert states[1:-1] == [cfg.BUILD_ARTIFACTS_BASE_STATE]
 
 
 class TestAst309CoverLetterTaskConfig:
@@ -526,7 +407,7 @@ class TestAst520AnticipateScanTaskKey:
         assert "anticipate_scan" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
         assert (
             cfg.dispatch_task_admin_defaults("contemplate_job")["trigger_state"]
-            == cfg.resume_artifact_compound_state("contemplate_job")
+            == cfg.BUILD_ARTIFACTS_BASE_STATE
         )
 
 
@@ -541,7 +422,7 @@ class TestBuildStateUiManifest:
         rec = manifest["jobs"]["recommended"]
         assert [row["state"] for row in rec["sections"]] == [
             "RECOMMENDED",
-            *cfg.all_resume_artifact_compound_states(),
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             "CANDIDATE_REVIEW",
         ]
         assert [col["field"] for col in rec["phase_score_columns"]] == [
@@ -556,14 +437,14 @@ class TestBuildStateUiManifest:
         actions = manifest["jobs"]["recommended"]["primary_actions_by_state"]
         assert actions["RECOMMENDED"][0]["action_key"] == "generate_artifacts"
         assert actions["RECOMMENDED"][0]["path_suffix"] == "generate_artifacts"
-        for cs in cfg.all_resume_artifact_compound_states():
-            assert actions[cs][0]["action_key"] == "cancel_build"
-            assert actions[cs][0]["path_suffix"] == "cancel_artifact_build"
+        cancel = actions[cfg.BUILD_ARTIFACTS_BASE_STATE][0]
+        assert cancel["action_key"] == "cancel_build"
+        assert cancel["path_suffix"] == "cancel_artifact_build"
 
     def test_ast562_recommended_prior_states_allow_cancel_from_build(self) -> None:
         priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"]
-        for cs in cfg.all_resume_artifact_compound_states():
-            assert cs in priors
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
+        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
         manifest = cfg.build_state_ui_manifest()
@@ -606,52 +487,41 @@ class TestImportanceMultiplierEdges:
             cfg.importance_multiplier(5)
 
 
-# Branches: AST-415 adopted board registry (list_adopted_boards / get_board_entry).
-class TestAdoptedBoardHelpers:
-    def test_list_skips_non_adopted_get_returns_copy(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(cfg, "BOARD_CONFIG", {
-            "skip_me": {"adopted": False},
-            "keep_me": {
-                "adopted": True,
-                "label": "L",
-                "entry_url": "https://e",
-                "scrape_mode": "sm",
-                "craft_task_key": "craft_x",
-                "extra": 1,
-            },
-        })
-        rows = cfg.list_adopted_boards()
-        assert rows == [{
-            "board_key": "keep_me",
-            "label": "L",
-            "entry_url": "https://e",
-            "scrape_mode": "sm",
-            "craft_task_key": "craft_x",
-        }]
-        got = cfg.get_board_entry("keep_me")
-        assert got is not None and got.pop("extra") == 1
-        assert cfg.get_board_entry("missing") is None
-        assert cfg.get_board_entry("skip_me") is None
-
-
 # Dispatch admin defaults ↔ scored-step helpers (AST-379 / AST-468; AST-549 config-only).
 class TestAst471DispatchConfigHelpers:
-    def test_gaze_board_boards_config_scan_interval_hours(self) -> None:
-        # Mirrors WATCH gaze cadence; dispatcher + count_eligible read this when freq_hrs is 0 (AST-482).
-        gb = cfg.BOARDS_CONFIG.get("gaze_board") or {}
-        assert gb.get("scan_interval_hours") == 24
 
-    def test_resolve_maps_consult_to_grade_trimmed(self) -> None:
-        assert cfg.resolve_dispatch_task_config_key("consult_do") == "grade_do"
-        assert cfg.resolve_dispatch_task_config_key("  consult_like  ") == "grade_like"
-        assert cfg.resolve_dispatch_task_config_key("gaze_board") == "gaze_board"
+    def test_resolve_dispatch_task_config_key_identity_trimmed(self) -> None:
+        assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
+        assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
 
-    def test_scored_grade_dispatch_not_board_gaze(self) -> None:
-        assert cfg.dispatch_task_key_is_scored("consult_get") is True
+    def test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company(self) -> None:
+        assert cfg.dispatch_task_grouping_catalog_key("prefilter") == "prefilter_company"
+        assert cfg.dispatch_task_grouping_catalog_key("fetch_website") == "fetch_website"
+        assert cfg.dispatch_task_grouping_catalog_key("  prefilter  ") == "prefilter_company"
+
+    def test_retired_consult_dispatch_keys_rejected(self) -> None:
+        assert cfg.dispatch_task_key_retired_message("consult_do") == (
+            "task_key 'consult_do' is retired; use 'grade_do'"
+        )
+        with pytest.raises(KeyError, match="retired"):
+            cfg.dispatch_task_admin_defaults("consult_do")
+
+    def test_grade_dispatch_schedulable_defaults(self) -> None:
+        assert "grade_do" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "consult_do" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        d = cfg.dispatch_task_admin_defaults("grade_do")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_JD"
+        assert d["batch_call_mode"] == 1
+
+    def test_scored_grade_dispatch_keys(self) -> None:
+        assert cfg.dispatch_task_key_is_scored("grade_get") is True
+        assert cfg.dispatch_task_key_is_scored("consult_get") is False
         assert cfg.dispatch_task_key_is_scored("gaze_board") is False
 
-    def test_dispatch_schedulable_keys_includes_board_gazer(self) -> None:
-        assert "gaze_board" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+    def test_dispatch_schedulable_keys_excludes_retired_consult(self) -> None:
+        assert "gaze_board" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "analysis_upshot" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
         assert "analysis_upshot" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
     def test_ast485_roster_dispatch_trio_matches_config_defaults(self) -> None:
@@ -670,7 +540,7 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.trigger_state_used_by_scored_dispatch_task("PASSED_LIKE") is True
 
     def test_active_trigger_not_scored_dispatch_row(self) -> None:
-        # ACTIVE is gaze_board hook — not TASK_CONFIG graded multi-hop.
+        # ACTIVE is board-search workflow state — not TASK_CONFIG graded multi-hop.
         assert cfg.trigger_state_used_by_scored_dispatch_task("ACTIVE") is False
 
     def test_trigger_state_guard_none_blank_whitespace_retry(self) -> None:
@@ -693,6 +563,51 @@ class TestAst471DispatchConfigHelpers:
         assert got == frozenset({"OK", "BAD", "KEEP"})
 
 
+class TestAst796FetchJdSchedulableCutover:
+    """AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired."""
+
+    def test_fetch_jd_schedulable_defaults(self) -> None:
+        assert "fetch_jd" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "scrape_jd" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "validate_title" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "gaze_board" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        fd = cfg.dispatch_task_admin_defaults("fetch_jd")
+        assert fd == {
+            "entity_type": "job",
+            "trigger_state": "PASSED_JOBLIST",
+            "sort_by": "updated_at",
+            "batch_call_mode": 0,
+        }
+
+    def test_gazer_config_fetch_jd_without_transitional_alias(self) -> None:
+        """AST-797 removed AST-796 read alias — runtime uses fetch_jd only."""
+        assert cfg.GAZER_CONFIG["fetch_jd"]["pass_state"] == "JD_READY"
+        assert "scrape_jd" not in cfg.GAZER_CONFIG
+
+    def test_retired_dispatch_keys_rejected(self) -> None:
+        assert cfg.dispatch_task_key_retired_message("scrape_jd") == (
+            "task_key 'scrape_jd' is retired; use 'fetch_jd'"
+        )
+        assert "inline" in cfg.dispatch_task_key_retired_message("validate_title")
+        assert "decommissioned" in cfg.dispatch_task_key_retired_message("gaze_board")
+        for tk in ("scrape_jd", "validate_title", "gaze_board"):
+            with pytest.raises(KeyError, match="retired"):
+                cfg.dispatch_task_admin_defaults(tk)
+
+
+class TestAst797ConfigRuntimeCutover:
+    """AST-797: qualify @ NEW; no GAZER_CONFIG scrape_jd alias."""
+
+    def test_qualify_job_listings_defaults_trigger_new(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("qualify_job_listings")
+        assert d["trigger_state"] == "NEW"
+        assert d["entity_type"] == "job"
+        assert d["batch_call_mode"] == 1
+
+    def test_dispatch_claim_states_new_primary_only(self) -> None:
+        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW"]
+
+
 class TestAst549DispatchAdminDefaults:
     """AST-549: config-built dispatch_task admin defaults; no parallel seed dicts."""
 
@@ -703,18 +618,18 @@ class TestAst549DispatchAdminDefaults:
     def test_qualify_job_listings_batch_call_mode_and_sort(self) -> None:
         d = cfg.dispatch_task_admin_defaults("qualify_job_listings")
         assert d["entity_type"] == "job"
-        assert d["trigger_state"] == "VALID_TITLE"
+        assert d["trigger_state"] == "NEW"
         assert d["sort_by"] == "updated_at"
         assert d["batch_call_mode"] == 1
 
     def test_contemplate_job_artifact_trigger_sort(self) -> None:
         d = cfg.dispatch_task_admin_defaults("contemplate_job")
-        assert d["trigger_state"] == cfg.resume_artifact_compound_state("contemplate_job")
+        assert d["trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
         assert d["sort_by"] == "state_changed_at"
 
 
-class TestAst595CompoundBuildArtifactsHopStates:
-    """AST-595: compound BUILD_ARTIFACTS.<task_key> registry and dispatch trigger alignment."""
+class TestAst803FlatBuildArtifactsChainDispatch:
+    """AST-803: flat BUILD_ARTIFACTS + CHAIN task_type; legacy compound helpers for in-flight rows."""
 
     HOPS = (
         "anticipate_scan",
@@ -725,48 +640,40 @@ class TestAst595CompoundBuildArtifactsHopStates:
         "finalize_job_resume",
     )
 
-    def test_flat_build_artifacts_removed_from_job_states(self) -> None:
-        assert "BUILD_ARTIFACTS" not in cfg.JOB_STATES
+    def test_flat_build_artifacts_registered_in_job_states(self) -> None:
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in cfg.JOB_STATES
+        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in cfg.JOB_STATES
+        assert cfg.JOB_STATES[cfg.BUILD_ARTIFACTS_BASE_STATE]["prior_states"] == ["RECOMMENDED"]
 
-    def test_compound_states_registered_with_prior_chain(self) -> None:
-        for i, tk in enumerate(self.HOPS):
-            cs = cfg.resume_artifact_compound_state(tk)
-            entry = cfg.JOB_STATES[cs]
-            if i == 0:
-                assert entry["prior_states"] == ["RECOMMENDED"]
-            else:
-                prev = cfg.resume_artifact_compound_state(self.HOPS[i - 1])
-                assert entry["prior_states"] == [prev]
-
-    def test_recommended_job_states_includes_all_compound_hops(self) -> None:
+    def test_recommended_job_states_uses_flat_build_artifacts(self) -> None:
         assert cfg.RECOMMENDED_JOB_STATES == [
             "RECOMMENDED",
-            *cfg.all_resume_artifact_compound_states(),
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
             "CANDIDATE_REVIEW",
         ]
 
-    def test_resume_artifact_helpers(self) -> None:
-        first = cfg.resume_artifact_first_compound_state()
-        assert first == cfg.resume_artifact_compound_state("anticipate_scan")
-        assert cfg.parse_resume_artifact_hop(first) == "anticipate_scan"
-        assert cfg.is_resume_artifact_in_progress(first) is True
-        assert cfg.is_resume_artifact_in_progress("RECOMMENDED") is False
-        assert (
-            cfg.resume_artifact_next_compound_state("anticipate_scan")
-            == cfg.resume_artifact_compound_state("contemplate_job")
-        )
-        assert cfg.resume_artifact_next_compound_state("finalize_job_resume") is None
+    def test_legacy_and_flat_build_artifacts_helpers(self) -> None:
+        legacy = cfg.resume_artifact_compound_state("anticipate_scan")
+        assert cfg.parse_resume_artifact_hop(legacy) == "anticipate_scan"
+        assert cfg.is_build_artifacts_in_progress(cfg.BUILD_ARTIFACTS_BASE_STATE) is True
+        assert cfg.is_build_artifacts_in_progress(legacy) is True
+        assert cfg.is_build_artifacts_in_progress("RECOMMENDED") is False
+        assert cfg.legacy_build_artifacts_hop(legacy) == "anticipate_scan"
 
-    def test_dispatch_trigger_state_per_resume_hop(self) -> None:
+    def test_dispatch_trigger_state_flat_for_resume_hops(self) -> None:
         from src.utils.config import _dispatch_trigger_state_for_task_key
 
         for tk in self.HOPS:
-            assert _dispatch_trigger_state_for_task_key(tk) == cfg.resume_artifact_compound_state(tk)
+            assert _dispatch_trigger_state_for_task_key(tk) == cfg.BUILD_ARTIFACTS_BASE_STATE
 
-    def test_build_failed_prior_states_are_compound_only(self) -> None:
-        assert cfg.JOB_STATES["BUILD_FAILED"]["prior_states"] == list(
-            cfg.all_resume_artifact_compound_states()
-        )
+    def test_resume_hops_carry_chain_task_type(self) -> None:
+        for tk in self.HOPS:
+            assert cfg.TASK_CONFIG[tk]["task_type"] == "CHAIN"
+            assert cfg.TASK_CONFIG[tk]["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
+
+    def test_build_failed_prior_includes_flat_build_artifacts(self) -> None:
+        priors = cfg.JOB_STATES["BUILD_FAILED"]["prior_states"]
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
 # AST-586 — dispatch claim score_floor vs task grading metadata (parent AST-547).
@@ -786,6 +693,24 @@ class TestAst586DispatchClaimScoreFloor:
     def test_legacy_helper_may_still_classify_valid_title_graded(self) -> None:
         # Claim helper diverges from grading metadata (AST-586); legacy helper unchanged.
         assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is True
+
+
+# AST-750 — admin score_floor dropdown catalog (parent AST-743).
+@pytest.mark.skipif(
+    not hasattr(cfg, "dispatch_score_floor_option_labels"),
+    reason="AST-750 score_floor catalog not on this branch",
+)
+class TestAst750DispatchScoreFloorCatalog:
+    def test_dispatch_score_floor_values_and_labels(self) -> None:
+        vals = cfg.DISPATCH_SCORE_FLOOR_VALUES
+        assert len(vals) == 21
+        assert vals[0] == 0.0
+        assert vals[-1] == 10.0
+        assert vals[1] - vals[0] == 0.5
+        labels = cfg.dispatch_score_floor_option_labels()
+        assert labels[0] == "0.00"
+        assert labels[-1] == "10.00"
+        assert len(labels) == 21
 
 
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
@@ -1118,10 +1043,12 @@ class TestAst504CompanySearchTermsConfig:
 
 
 class TestAst525InflowDiscoveryConfig:
-    """AST-525: per-term scan interval for inflow_discovery cadence."""
+    """AST-525/814: per-term last_scan_at cadence; interval from dispatch_task.freq_hrs (AST-814)."""
 
-    def test_scan_interval_hours_literal(self) -> None:
-        assert cfg.INFLOW_CONFIG["discovery"]["scan_interval_hours"] == 168
+    def test_discovery_config_has_no_scan_interval_literals(self) -> None:
+        d = cfg.INFLOW_CONFIG["discovery"]
+        assert "scan_interval_hours" not in d
+        assert "dispatch_freq_hrs" not in d
 
 
 class TestAst505InflowDiscoveryConfig:
@@ -1131,16 +1058,17 @@ class TestAst505InflowDiscoveryConfig:
         d = cfg.INFLOW_CONFIG["discovery"]
         assert d["max_results_per_query"] == 100
         assert d["date_restrict_days"] == 7
-        assert d["dispatch_freq_hrs"] == 168
+        assert "dispatch_freq_hrs" not in d
         assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
+        assert d["vet_dispatch_trigger_state"] == "NEW"
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]
         assert "phase" not in entry
         assert "seq" not in entry
-        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
         items = entry["response_schema"]["results"]["items_schema"]
         assert items["action"]["type"] == "str"
@@ -1151,11 +1079,31 @@ class TestAst505InflowDiscoveryConfig:
         assert ("NEW", "WEBSITE_FOUND") in transitions
         assert ("NEW", "NO_WEBSITE") in transitions
 
+    def test_vet_failed_state_and_transition(self) -> None:
+        assert "VET_FAILED" in cfg.COMPANY_STATES
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert ("NEW", "VET_FAILED") in transitions
+
+    def test_inflow_config_vet_literals(self) -> None:
+        v = cfg.INFLOW_CONFIG["vet"]
+        assert v["task_key"] == "vet_inflow_discovery"
+        assert v["dispatch_trigger_state"] == "NEW"
+        assert v["pass_state"] == "WEBSITE_FOUND"
+        assert v["fail_state"] == "VET_FAILED"
+        assert v["blurb_data_key"] == "inflow_discovery_blurb"
+
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("inflow_discovery")
         assert d["entity_type"] == "candidate"
         assert d["trigger_state"] == "LIVE_PROMPTS"
         assert "inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+
+    def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "NEW"
+        assert d["batch_call_mode"] == 1
+        assert "vet_inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
 
 class TestAst506InflowResolveConfig:
@@ -1180,11 +1128,19 @@ class TestAst506InflowResolveConfig:
 class TestAst508InflowLocateConfig:
     """AST-508: PREFILTER_PASSED locate dispatch input states and inflow score key."""
 
+    @pytest.mark.skipif(
+        "locate" not in cfg.INFLOW_CONFIG,
+        reason="AST-508 locate inflow config not on this branch",
+    )
     def test_inflow_config_locate_literals(self) -> None:
         loc = cfg.INFLOW_CONFIG["locate"]
         assert loc["dispatch_trigger_state"] == "PREFILTER_PASSED"
         assert loc["score_json_path"] == "prefilter_score"
 
+    @pytest.mark.skipif(
+        "locate" not in cfg.INFLOW_CONFIG,
+        reason="AST-508 locate inflow config not on this branch",
+    )
     def test_locate_dispatch_input_states_include_prefilter_passed(self) -> None:
         states = cfg.ROSTER_CONFIG["locate_job_page"]["dispatch_input_states"]
         assert "PREFILTER_PASSED" in states
@@ -1286,7 +1242,7 @@ class TestAst517ResumeStructureConfig:
 class TestAst676CraftRubricSchema:
     """AST-676: craft_prefilter_rubric rename + shared importance criterion schema."""
 
-    _IMPORTANCE_SPEC = {"type": "int", "required": True, "min": 1, "max": 10}
+    _IMPORTANCE_SPEC = {"type": "int", "required": True, "min": 0, "max": 10}
     _RUBRIC_TASK_KEYS = (
         "craft_prefilter_rubric",
         "craft_joblist_rubric",
@@ -1383,3 +1339,22 @@ class TestAst725RubricOwnerRunKeys:
 
     def test_prefilter_company_grades_key(self) -> None:
         assert cfg.TASK_CONFIG["prefilter_company"]["grades_key"] == "prefilter_grades"
+
+
+class TestAst782RepoAdminJsonConfig:
+    def test_table_keys_order_agent_before_agent_task(self) -> None:
+        assert cfg.get_repo_admin_json_table_keys() == ("agent", "agent_task")
+
+    def test_paths_resolve_under_project_root(self) -> None:
+        agent_path = cfg.get_repo_admin_json_path("agent")
+        task_path = cfg.get_repo_admin_json_path("agent_task")
+        assert agent_path.name == "agent.json"
+        assert task_path.name == "agent_task.json"
+        assert agent_path.parent.name == "admin"
+        assert agent_path.parent.parent.name == "data"
+        assert agent_path.is_absolute()
+        assert task_path.is_absolute()
+
+    def test_unknown_table_key_raises(self) -> None:
+        with pytest.raises(KeyError, match="unknown repo admin JSON table"):
+            cfg.get_repo_admin_json_path("__no_such_table__")

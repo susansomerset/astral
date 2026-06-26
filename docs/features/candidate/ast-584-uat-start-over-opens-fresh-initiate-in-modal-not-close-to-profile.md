@@ -1,3 +1,91 @@
+<!-- linear-archive: AST-584 archived 2026-06-23 -->
+
+## Linear archive (AST-584)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-584/uat-start-over-opens-fresh-initiate-in-modal-not-close-to-profile  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539
+
+### Description
+
+## Repro (Susan UAT AST-539 @ `b7886c0d`)
+
+**Start Over** on resume dialog closes/navigates like **Close Window** instead of staying in intake flow.
+
+## Expected
+
+1. Archive current session to `candidate_data.intakes_old` (AST-582 API).
+2. Intake **modal opens** with working/hold message.
+3. New `initiate_candidate` assembled and sent; Estelle fresh opener appears in thread.
+
+## Fix scope
+
+`CandidateIntake.tsx` Start Over handler + `IntakeChatModal` auto-start after archive. Vitest regressions.
+
+Parent: AST-539.
+
+### Comments
+
+#### betty — 2026-06-06T01:14:00.906Z
+Correction: bible shasum on publish ref is `c53cffc892f3baff8edc59b0817dcd6ed8ad0401` (not `7b787ebf…` — pre-fetch typo).
+
+#### betty — 2026-06-06T01:13:56.461Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-539/AST-584-start-over-fresh-initiate-in-modal` @ `07b22c81`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `7b787ebf27798840332b0eb7dbf2003ce74c670f` (§7.13zr **AST-584** row)
+
+### Manifest (run in order)
+
+1. **Typecheck**
+   ```bash
+   cd src/ui/frontend && npx tsc -b --noEmit
+   ```
+
+2. **Vitest — routed page + modal regressions (§6c + §7.13zr AST-584)**
+   ```bash
+   cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx
+   ```
+
+### New / updated coverage (AST-584)
+
+| # | Test | Asserts |
+| --- | --- | --- |
+| 1 | `Start Over archive failure keeps resume dialog and does not open modal` | Archive 500 → resume dialog stays; no Candidate Intake modal |
+| 2 | `Start Over treats archive 404 as success and opens fresh session` | Archive 404 + active cleared → fresh Estelle opener; no prior thread |
+| 3 | `Start Over shows hold copy while initiate runs` | `HOLD_COPY` visible during delayed session POST |
+| 4 | `IntakeChatModal freshStart ignores stale active GET and creates session` | `freshStart` + stale active mock → POST create; Prior thread absent |
+| 5 | Existing `Start Over archives then auto-starts fresh session` | Regression — archive + create + fresh transcript |
+
+### Existing bible-backed (same file — regression)
+
+- **AST-583** resume dialog: Continue / Start Over / dismiss
+- **AST-559** confirm gate, auto-start, build-once
+- **AST-578** transcript filter, hold on empty / assistant-less resume
+
+No pytest manifest — UI-only ticket.
+
+— Betty
+
+#### katherine — 2026-06-05T23:21:08.854Z
+Plan: [`docs/features/candidate/ast-584-uat-start-over-opens-fresh-initiate-in-modal-not-close-to-profile.md`](https://github.com/susansomerset/astral/blob/sub/AST-539/AST-584-start-over-fresh-initiate-in-modal/docs/features/candidate/ast-584-uat-start-over-opens-fresh-initiate-in-modal-not-close-to-profile.md) on `origin/sub/AST-539/AST-584-start-over-fresh-initiate-in-modal` @ `2bbb3e05`.
+
+**Root cause (planned fix):** `handleResumeStartOver` catch calls `goProfile()` — same navigation as overlay dismiss when archive fails or returns unexpected status. Secondary: `IntakeChatModal` `autoStart` skips `createSession` when stale `GET …/active` still returns 200 after archive.
+
+**Scope:** `Single-Component` — `CandidateIntake.tsx` error path + `freshStart`/`startOverBusy`; `IntakeChatModal.tsx` force create after archive; Vitest regressions.
+
+**Conf:** `high` — matches Susan’s repro @ `b7886c0d`; extends **AST-583** wiring with explicit failure-mode handling.
+
+**Risk:** `Medium` — must not break **Continue** resume path; guarded by `freshStartMode` only on Start Over and call-count tests.
+
+---
+
 # AST-584 — UAT: Start Over opens fresh initiate in modal (not close to Profile)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-584/uat-start-over-opens-fresh-initiate-in-modal-not-close-to-profile  

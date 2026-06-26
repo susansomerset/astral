@@ -1,3 +1,120 @@
+<!-- linear-archive: AST-636 archived 2026-06-23 -->
+
+## Linear archive (AST-636)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-636/uat-manage-agents-dollar-token-autocomplete-dropdown-missing  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-574 — Support tokens in Agent prompts  
+**Blocked by / blocks / related:** parent: AST-574
+
+### Description
+
+## What failed
+
+On **Manage Agents** (Add Agent or Edit Agent modal), typing `{$` in the System Prompt Content field does **not** show the merge-token lookup dropdown that **Manage Tasks** shows for the same trigger. Susan cannot pick tokens from the list while authoring agent persona text.
+
+## Expected
+
+Typing `{$` in Manage Agents content field opens the same style of token autocomplete list as Manage Tasks — registry merge tokens excluding chain/hop tokens (`{$CALLER_*}` and `{$SELECTED_AGENT}`). Selecting a token inserts `{$TOKEN_NAME}` at the cursor.
+
+## Repro
+
+1. Log in as admin and open **Manage Agents**.
+2. Click **Add Agent** (or edit an existing agent).
+3. Focus **System Prompt Content** and type `{$`.
+4. Observe: no token picker appears (Manage Tasks → edit a task prompt field → type `{$` shows the list).
+
+## Parent AC (quoted inline)
+
+> Manage Agents edit UI provides token autocomplete for merge tokens (excluding chain/hop tokens listed in Boundaries).
+
+## Boundaries
+
+* This bug does **not** change: runtime token resolution in production (AST-631), Manage Tasks UI, or adding new registry tokens.
+* Fix is limited to Manage Agents authoring UX (likely `TokenTextarea` wiring, token list load, or modal stacking/clipping).
+
+### Comments
+
+#### radia — 2026-06-14T18:53:31.494Z
+**Review (Radia)** — diff `origin/ftr/ast-574-support-tokens-in-agent-prompts...origin/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing` @ `151d4968`
+
+### What's solid
+
+- Stage 1–2 match plan: portaled `TokenTextarea` menu (`createPortal` → `document.body`, `position: fixed`, `zIndex: 3000` above modal stack), `menuAnchor` + scroll/resize reposition, outside-click guard includes `menuRef`; `useAgentTokenList` checks `r.ok` before parsing JSON.
+- UAT failure modes (modal `overflow` clipping + silent empty list on non-OK `/agents/meta/tokens`) fixed without backend, registry, or Manage Tasks scope creep.
+- §1.3 DRY / §3.5: shared component fix; token list still server-driven via existing meta endpoint.
+- Tests: portal under `overflow:hidden` wrapper; edit-modal `{$` autocomplete; non-OK meta → no picker.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| Advisory | `menuAnchor` vertical offset is line-count based (plan-approved); wrapped long lines may place menu at textarea left edge, not horizontal caret — better than prior clipped `top:0` menu |
+| — | Katherine: **`resolve-child`** — no code changes from this review |
+
+Doc: `docs/features/foundation/ast-636-uat-manage-agents-token-autocomplete-dropdown-missing.md` § Review (Radia)
+
+#### betty — 2026-06-14T18:51:43.387Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing` @ `151d4968` (`merge-tests(AST-636): origin/tests 8a6c3a75`)
+
+**Tests branch commit:** `8a6c3a75` (`test(AST-636): portal token menu and Manage Agents autocomplete manifest`)
+
+**Bible shasum** (`origin/sub/...`): `c70629176ee0b8be2f1c8a748839caee28335a44`
+
+### Manifest (run in order)
+
+1. **Existing coverage (bible §7.13zzm — AST-632 regression guard):**
+   - `tests/component/utils/test_config.py::TestGetManageAgentsTokens`
+   - `tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_ast632_manage_agents_token_meta_and_preview`
+
+2. **New / revised (AST-636):**
+   - `tests/component/frontend/components/test_TokenTextarea.test.tsx` — **`AST-636: portaled menu attaches to document.body above modal clipping`**
+   - `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — **`AST-636: shows token autocomplete when typing {$ in edit modal`**
+   - `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — **`AST-636: tolerates non-OK agent token meta without showing picker`**
+
+### Narrowed run (Vitest)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+Verified green on publish ref tip (14/14) with Katherine's `code(AST-636)` portal + ok-gated token fetch.
+
+### Notes
+
+- Product fix already on sub from `code(AST-636)` (portal menu + `useAgentTokenList` non-OK guard). **`test-child`** owns any remaining src fixes if manifest fails on your worktree after merge-on-checkout.
+- Full `git merge 8a6c3a75` would have pulled sibling **`tests`** branch work (AST-637 bible rows); delivery used AST-636 file delta only to keep this sub clean.
+
+— Betty
+
+#### katherine — 2026-06-14T18:37:38.340Z
+Plan doc: [ast-636-uat-manage-agents-token-autocomplete-dropdown-missing.md](https://github.com/susansomerset/astral/blob/sub/AST-574/AST-636-uat-manage-agents-token-autocomplete-dropdown-missing/docs/features/foundation/ast-636-uat-manage-agents-token-autocomplete-dropdown-missing.md)
+
+**Root cause (investigation):** AST-632 wiring is present; dropdown fails to appear when (a) `tokenList` is empty after a silent non-OK `/api/admin/agents/meta/tokens` response, or (b) the menu renders `position:absolute; top:0` inside `.modal-card` / `.modal-body` overflow containers and is clipped or scrolled off-screen in the taller Manage Agents modal.
+
+**Fix:** Stage 1 — portal `TokenTextarea` menu to `document.body` with caret-anchored `position:fixed` and `z-index: 3000`. Stage 2 — guard `useAgentTokenList` with `r.ok` check.
+
+**Self-Assessment**
+- **Scope:** `Single-Component` — primary change is shared `TokenTextarea.tsx`; one fetch guard in `AdminAgentPrompts.tsx`.
+- **Conf:** `high` — failure modes reproduced; fix follows existing `createPortal` patterns (`Modal`, `Toast`).
+- **Risk:** `Medium` — shared component used by Manage Tasks and Manage Agents; localized to menu render/outside-click only.
+
+---
+
 # AST-636 — UAT: Manage Agents {$ token autocomplete dropdown missing
 
 - **Linear (this ticket):** [AST-636](https://linear.app/astralcareermatch/issue/AST-636/uat-manage-agents-dollar-token-autocomplete-dropdown-missing)

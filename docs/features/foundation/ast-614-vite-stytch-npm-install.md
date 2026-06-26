@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-614 archived 2026-06-23 -->
+
+## Linear archive (AST-614)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-614/uat-local-vite-dev-fails-stytchreact-not-installed-use-stytch-for-user  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-609 — Use stytch for user authentication  
+**Blocked by / blocks / related:** parent: AST-609
+
+### Description
+
+## What failed
+
+Running local Vite via `launch.sh --vite` (or `npm run dev` in `src/ui/frontend/`) after pulling AST-612 changes:
+
+```
+Failed to resolve import "@stytch/react" from "src/App.tsx". Does the file exist?
+```
+
+`package.json` lists `@stytch/react` but `node_modules` was never installed locally.
+
+## Expected
+
+`launch.sh --vite` (or documented dev setup) installs frontend deps when missing; Vite dev server starts and Login page loads without import errors.
+
+## Repro
+
+1. Fresh clone or pull `dev` with AST-612 merged; skip `scripts/setup_dev.sh` / manual `npm install`.
+2. Run `zsh launch.sh --vite`.
+3. Open [http://localhost:5173](<http://localhost:5173>) — Vite errors on `@stytch/react` import.
+
+## Parent AC (quoted inline)
+
+> Unauthenticated users see login; authenticated users reach the app with valid Bearer on all API calls.
+
+## Boundaries
+
+* This bug does **not** change: Stytch login UX, redirect URLs (**AST-613**), backend auth.
+* Prefer minimal fix in `launch.sh` and/or `setup_dev.sh` — not a new install script.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-609-use-stytch-for-user-authentication`, child `sub/AST-609/AST-614-vite-stytch-npm-install`.
+
+### Comments
+
+#### radia — 2026-06-13T00:07:35.758Z
+**Diff:** `origin/dev...origin/sub/AST-609/AST-614-vite-stytch-npm-install` @ `2214ce2`
+
+### AST-614 (`launch.sh`)
+- **Plan fidelity:** `_ensure_frontend_deps` + `run_vite` hook match Stage 1 exactly; sentinel `node_modules/@stytch/react`, `npm install --include=dev`, stderr notice — aligns with `setup_dev.sh` / `build_railway.sh`.
+- **§1.3 DRY:** Acceptable — one guard in repo-root script, no shared module (plan exception).
+- **Tests:** `TestLaunchFrontendDeps` covers install-when-missing and skip-when-present via fake `npm`; assertions match stderr contract.
+- **Tabs path:** Default/`--tabs` spawns `--vite` subcommand → same guard (not only direct `--vite`).
+
+**fix-now:** none
+
+**discuss:** none
+
+### Stacked on publish ref (not AST-614 scope)
+AST-613 redirect helper + `Login.tsx` wiring + Vitest — present on same branch; no boundary smuggling into 614 shell fix.
+
+**advisory:** If a future dep is added without `@stytch/react` in tree, sentinel won't re-install until that package is missing from `node_modules/@stytch/react` — deliberate per plan.
+
+#### betty — 2026-06-13T00:06:20.660Z
+## QA test manifest
+
+1. **`tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendDeps::test_run_vite_installs_when_stytch_react_missing`** — missing `node_modules/@stytch/react` triggers install notice + `npm install --include=dev` before `npm run dev`.
+2. **`tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendDeps::test_run_vite_skips_install_when_stytch_react_present`** — healthy deps skip install path.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendDeps
+```
+
+**Publish:** `origin/sub/AST-609/AST-614-vite-stytch-npm-install` @ `2214ce2c`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `25f5dd56978e829be939e15e48d4be541d598f8d` on publish ref (§7.13zza **AST-614** row added).
+
+— Betty
+
+#### katherine — 2026-06-13T00:04:02.963Z
+Plan: [ast-614-vite-stytch-npm-install.md](https://github.com/susansomerset/astral/blob/sub/AST-609/AST-614-vite-stytch-npm-install.md)
+
+**Self-assessment**
+- **Scope:** `minor` — only `launch.sh` gets a pre-Vite `npm install` guard; no app or auth layers.
+- **Conf:** `high` — mirrors existing `npm install --include=dev` in `setup_dev.sh` / `build_railway.sh`; sentinel is the reported missing `@stytch/react` package.
+- **Risk:** `low` — guard runs only when deps are absent; production Railway build path unchanged.
+
+---
+
 # AST-614 — UAT: Local Vite dev fails — @stytch/react not installed (Use stytch for user authentication)
 
 - **Linear (this ticket):** [AST-614](https://linear.app/astralcareermatch/issue/AST-614/uat-local-vite-dev-fails-stytchreact-not-installed-use-stytch-for-user)

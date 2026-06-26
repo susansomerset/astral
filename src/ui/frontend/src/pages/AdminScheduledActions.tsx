@@ -9,6 +9,42 @@ import ListTableTruncatedCell from "../components/ListTableTruncatedCell"
 import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
 import { useListTableColumnMeasure } from "../lib/useListTableColumnMeasure"
+import Toast, { type ToastMessage } from "../components/Toast"
+import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
+
+type TaskKeyMeta = {
+  entity_type: string
+  trigger_state: string
+  task_group_order: string
+  task_group_name: string
+  task_seq: number | null
+  task_name: string
+  is_scored?: boolean
+}
+
+type DispatchFormState = {
+  candidate_id: string
+  task_key: string
+  trigger_state: string
+  freq_hrs: string
+  min_count: string
+  batch_size: string
+  max_runs: string
+  score_floor: string
+  auto_mode: boolean
+  debug: boolean
+  entity_type: string
+  is_scored: boolean
+}
+
+function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMeta | undefined): DispatchFormState {
+  return {
+    ...form,
+    task_key: key,
+    entity_type: cfg?.entity_type || "",
+    is_scored: !!cfg?.is_scored,
+  }
+}
 
 interface DispatchTask {
   id: number
@@ -61,7 +97,7 @@ interface ScheduledPhaseTableProps {
   frozenN: number
   truncateChars: number
   threadStatus: Record<number, ThreadEntry>
-  allTaskKeys: Record<string, { entity_type: string; trigger_state: string; task_group_order: string; task_group_name: string; task_seq: number | null; task_name: string; is_scored?: boolean }>
+  allTaskKeys: Record<string, TaskKeyMeta>
   toggleSort: (col: string) => void
   sortIcon: (col: string) => string
   openEdit: (row: DispatchTask) => void
@@ -95,18 +131,13 @@ function ScheduledPhaseTable({
   )
 
   function scheduledFrozenStyle(colIndex: number, base: CSSProperties = {}): CSSProperties {
-    const key = DATA_COL_KEYS_ARR[colIndex]
-    const w = mergedWidths[key]
-    const widthStyle: CSSProperties =
-      w && w > 0 ? { width: w, minWidth: w, boxSizing: "border-box" } : {}
     const left = stickyLeftPx(colIndex, mergedWidths, DATA_COL_KEYS_ARR, false, frozenN)
-    if (left == null) return { ...base, ...widthStyle }
-    // Only apply sticky offset when all prior frozen columns have measured width (avoid 120px fallback gap).
+    if (left == null) return base
     const predecessorsReady = DATA_COL_KEYS_ARR.slice(0, colIndex).every(
       (k) => (mergedWidths[k] ?? 0) > 0,
     )
-    if (!predecessorsReady) return { ...base, ...widthStyle }
-    return { ...base, ...widthStyle, left }
+    if (!predecessorsReady) return base
+    return { ...base, left }
   }
 
   return (
@@ -136,7 +167,11 @@ function ScheduledPhaseTable({
             const isRunning = thread?.running ?? false
             const isDraining = thread?.draining ?? false
             return (
-              <tr key={row.id} onClick={() => openEdit(row)} style={{ cursor: "pointer" }}>
+              <tr
+                key={row.id}
+                onClick={row.auto_mode ? undefined : () => openEdit(row)}
+                style={{ cursor: row.auto_mode ? "default" : "pointer" }}
+              >
                 <td className={0 < frozenN ? "list-table-cell-frozen" : undefined} style={scheduledFrozenStyle(0)}>
                   <ListTableTruncatedCell text={row.task_key} maxChars={truncateChars} />
                 </td>
@@ -229,9 +264,12 @@ export default function ScheduledActions() {
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
-  const [allTaskKeys, setAllTaskKeys] = useState<Record<string, { entity_type: string; trigger_state: string; task_group_order: string; task_group_name: string; task_seq: number | null; task_name: string; is_scored?: boolean }>>({})
-  const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[] }>({ job: [], company: [] })
+  const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
+  const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[]; candidate: string[] }>({ job: [], company: [], candidate: [] })
   const [openSection, setOpenSection] = useState<string | null>(null)
+  const didAutoOpenSectionRef = useRef(false)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
 
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
@@ -266,6 +304,7 @@ export default function ScheduledActions() {
   }, [loadThreadStatus])
 
   const [taskKeyFilter, setTaskKeyFilter] = useState("")
+  const [sectionGroupFilter, setSectionGroupFilter] = useState("")
   const [floorMin, setFloorMin] = useState("")
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
@@ -278,6 +317,16 @@ export default function ScheduledActions() {
     () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
     [],
   )
+  const inputStateOptions = useMemo(
+    () => (
+      form.entity_type === "company"
+        ? stateOptions.company
+        : form.entity_type === "candidate"
+          ? stateOptions.candidate
+          : stateOptions.job
+    ),
+    [form.entity_type, stateOptions],
+  )
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -288,6 +337,7 @@ export default function ScheduledActions() {
         api("/api/admin/dispatch_tasks/state_options"),
       ])
       if (tasksRes.ok) setData(await tasksRes.json())
+      else setToast({ text: `Failed to load dispatch tasks (${tasksRes.status})`, variant: "error" })
       if (keysRes.ok) {
         const keys = await keysRes.json()
         setAllTaskKeys(typeof keys === "object" && !Array.isArray(keys) ? keys : {})
@@ -297,6 +347,7 @@ export default function ScheduledActions() {
         setStateOptions({
           job: Array.isArray(states?.job) ? states.job : [],
           company: Array.isArray(states?.company) ? states.company : [],
+          candidate: Array.isArray(states?.candidate) ? states.candidate : [],
         })
       }
     } finally {
@@ -316,6 +367,18 @@ export default function ScheduledActions() {
   }, [threadStatus, data, loadData])
 
   const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
+
+  const sectionGroupOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const meta of Object.values(allTaskKeys)) {
+      const name = meta.task_group_name || "(unassigned)"
+      const key = `${meta.task_group_order || ""}\u0000${name}`
+      if (!seen.has(key)) seen.set(key, name)
+    }
+    return [...seen.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, name]) => ({ key, name }))
+  }, [allTaskKeys])
 
   const filterOptionValues = useMemo(() => ({
     freq: [...new Set(data.map(r => r.freq_hrs ?? 0))].sort((a, b) => a - b),
@@ -352,6 +415,14 @@ export default function ScheduledActions() {
   const filteredRows = useMemo(() => {
     let filtered = data
     if (candidateFilter) filtered = filtered.filter(r => r.candidate_id === candidateFilter)
+    if (sectionGroupFilter) {
+      filtered = filtered.filter(r => {
+        const meta = allTaskKeys[r.task_key]
+        const name = meta?.task_group_name || "(unassigned)"
+        const key = `${meta?.task_group_order || ""}\u0000${name}`
+        return key === sectionGroupFilter
+      })
+    }
     if (taskKeyFilter) filtered = filtered.filter(r => r.task_key === taskKeyFilter)
     if (autoFilter === "on") filtered = filtered.filter(r => !!r.auto_mode)
     if (autoFilter === "off") filtered = filtered.filter(r => !r.auto_mode)
@@ -372,7 +443,7 @@ export default function ScheduledActions() {
       })
     }
     return filtered
-  }, [data, candidateFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
+  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, DispatchTask[]> = {}
@@ -396,6 +467,12 @@ export default function ScheduledActions() {
       })
   }, [filteredRows, allTaskKeys, sortRowsWithinSection])
 
+  useEffect(() => {
+    if (didAutoOpenSectionRef.current || sections.length === 0) return
+    didAutoOpenSectionRef.current = true
+    setOpenSection(sections[0].sectionKey)
+  }, [sections])
+
   const resolvedOpenSection = useMemo(() => {
     if (sections.length === 0) return null
     if (openSection != null && sections.some(s => s.sectionKey === openSection)) return openSection
@@ -415,8 +492,11 @@ export default function ScheduledActions() {
       body: JSON.stringify({ auto_mode: !row.auto_mode }),
     })
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error || `Update failed (${res.status})`)
+      try {
+        await readApiError(res, `/api/admin/dispatch_tasks/${row.id}`, "PUT")
+      } catch (e) {
+        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Update failed (${res.status})`, variant: "error" })
+      }
       return
     }
     loadData()
@@ -435,8 +515,11 @@ export default function ScheduledActions() {
     e.stopPropagation()
     const res = await api(`/api/admin/dispatch_tasks/${row.id}/run`, { method: "POST" })
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error || `Run failed (${res.status})`)
+      try {
+        await readApiError(res, `/api/admin/dispatch_tasks/${row.id}/run`, "POST")
+      } catch (e) {
+        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Run failed (${res.status})`, variant: "error" })
+      }
       return
     }
     setTimeout(loadThreadStatus, 500)
@@ -470,6 +553,10 @@ export default function ScheduledActions() {
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
+    if (row.auto_mode) {
+      setToast({ text: "Turn AUTO mode off before editing this row", variant: "error" })
+      return
+    }
     setEditRow(row)
     const cfg = allTaskKeys[row.task_key]
     setForm({
@@ -500,6 +587,7 @@ export default function ScheduledActions() {
             freq_hrs: parseFloat(form.freq_hrs) || 0,
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
+            task_key: form.task_key,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
@@ -508,8 +596,11 @@ export default function ScheduledActions() {
           }),
         })
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          alert(err.error || `Save failed (${res.status})`)
+          try {
+            await readApiError(res, `/api/admin/dispatch_tasks/${editRow.id}`, "PUT")
+          } catch (e) {
+            setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Save failed (${res.status})`, variant: "error" })
+          }
           return
         }
       } else {
@@ -529,8 +620,11 @@ export default function ScheduledActions() {
           }),
         })
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          alert(err.error || `Save failed (${res.status})`)
+          try {
+            await readApiError(res, "/api/admin/dispatch_tasks", "POST")
+          } catch (e) {
+            setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: `Save failed (${res.status})`, variant: "error" })
+          }
           return
         }
       }
@@ -569,6 +663,15 @@ export default function ScheduledActions() {
           onChange={setCandidateFilter}
           candidates={candidates}
         />
+        <label>
+          Section/Group
+          <select value={sectionGroupFilter} onChange={e => setSectionGroupFilter(e.target.value)}>
+            <option value="">All</option>
+            {sectionGroupOptions.map(opt => (
+              <option key={opt.key} value={opt.key}>{opt.name}</option>
+            ))}
+          </select>
+        </label>
         <label>
           Task
           <select value={taskKeyFilter} onChange={e => setTaskKeyFilter(e.target.value)}>
@@ -641,7 +744,11 @@ export default function ScheduledActions() {
       {loading ? (
         <div className="list-page-status">Loading…</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No dispatch tasks configured</div>
+        <div className="list-page-status">
+          {data.length > 0
+            ? "No dispatch tasks match the current filters. Try Candidate: All or clear Section/Group and Task filters."
+            : "No dispatch tasks configured"}
+        </div>
       ) : sections.map(sec => (
         <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
           <CollapsiblePanel
@@ -711,31 +818,33 @@ export default function ScheduledActions() {
             </div>
             <div className="modal-body">
               {!editRow && (
-                <>
-                  <div className="modal-detail-row">
-                    <span className="modal-detail-label">Candidate</span>
-                    <input type="text" value={form.candidate_id || "(none selected)"} readOnly style={{ opacity: 0.7 }} />
-                  </div>
-                  <div className="modal-detail-row">
-                    <span className="modal-detail-label">Task</span>
-                    <select value={form.task_key} onChange={e => {
-                      const key = e.target.value
-                      const cfg = allTaskKeys[key]
-                      setForm({
-                        ...form,
-                        task_key: key,
-                        entity_type: cfg?.entity_type || "",
-                        trigger_state: cfg?.trigger_state || "",
-                        is_scored: !!cfg?.is_scored,
-                        score_floor: "1.00",
-                      })
-                    }}>
-                      <option value="">Select…</option>
-                      {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
-                    </select>
-                  </div>
-                </>
+                <div className="modal-detail-row">
+                  <span className="modal-detail-label">Candidate</span>
+                  <input type="text" value={form.candidate_id || "(none selected)"} readOnly style={{ opacity: 0.7 }} />
+                </div>
               )}
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Task</span>
+                <select value={form.task_key} onChange={e => {
+                  const key = e.target.value
+                  const cfg = allTaskKeys[key]
+                  if (editRow) {
+                    setForm(f => taskKeyChangePatch(f, key, cfg))
+                  } else {
+                    setForm({
+                      ...form,
+                      task_key: key,
+                      entity_type: cfg?.entity_type || "",
+                      trigger_state: cfg?.trigger_state || "",
+                      is_scored: !!cfg?.is_scored,
+                      score_floor: "1.00",
+                    })
+                  }
+                }}>
+                  <option value="">Select…</option>
+                  {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Entity Type</span>
                 <input type="text" value={form.entity_type} readOnly style={{ opacity: 0.7 }} />
@@ -744,7 +853,7 @@ export default function ScheduledActions() {
                 <span className="modal-detail-label">Input State</span>
                 <select value={form.trigger_state} onChange={e => setForm({ ...form, trigger_state: e.target.value })}>
                   <option value="">Select…</option>
-                  {(form.entity_type === "company" ? stateOptions.company : stateOptions.job).map(s => (
+                  {(inputStateOptions).map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -792,6 +901,8 @@ export default function ScheduledActions() {
           </div>
         </div>
       )}
+
+      <Toast message={toast} onDone={clearToast} />
     </div>
   )
 }

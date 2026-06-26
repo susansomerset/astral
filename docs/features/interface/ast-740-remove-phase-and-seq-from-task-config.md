@@ -1,3 +1,122 @@
+<!-- linear-archive: AST-740 archived 2026-06-23 -->
+
+## Linear archive (AST-740)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-740/remove-phase-and-seq-from-task-config-organizing-tasks  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-734 — Organizing Tasks  
+**Blocked by / blocks / related:** parent: AST-734
+
+### Description
+
+## What this implements
+
+After admin UI and APIs read grouping exclusively from persisted agent-task metadata, remove `phase` and `seq` from every TASK_CONFIG entry in [config.py](<http://config.py>). Grep and verify no runtime code path reads those keys for UI grouping, sort, or admin enrichment. Single source of truth for task organization is DB metadata edited via Manage Tasks.
+
+## Acceptance criteria
+
+8. `phase` and `seq` are removed from TASK_CONFIG; grep confirms no runtime read of those keys for UI grouping or sort.
+
+## Boundaries
+
+* Does not add new grouping fields or migration — completed by Hedy child.
+* Does not change Manage Tasks / Scheduled Actions React — completed by Katherine child.
+* Does not alter task execution, grading, dispatch orchestration, or non-UI uses of TASK_CONFIG.
+
+## Notes for planning
+
+* Run only after Katherine child merges grouping UI to DB fields; coordinate publish ref refresh with siblings.
+* Acceptance is grep-clean for `phase`/`seq` on TASK_CONFIG entries and UI/admin read paths — backend consult paths that never used phase/seq are unchanged.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-734-organizing-tasks`, child `sub/AST-734/<child-id>-remove-phase-and-seq-from-task-config`. Blocked by metadata + admin UI children.
+
+### Comments
+
+#### radia — 2026-06-18T22:39:03.891Z
+### AST-740 review
+
+**Diff:** `origin/dev...origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` @ `0a0e0c7`. Publish tip includes sibling AST-738/739 + Betty manifests; AST-740 product delta = `1fb8582`.
+
+**Plan fidelity:** Stages 1–3 satisfied — `JOB_ARTIFACT_ENTRY_TASK_KEYS` (9 keys, excludes `draft_cover_letter`); all `phase`/`seq` removed from `TASK_CONFIG`; `consult.py` imports constant at module top; `_grouping_from_agent_task_row` drops backward-compat `phase`/`seq`.
+
+**ASTRAL_CODE_RULES:** §2.1 config split clean (UI grouping out of config; hop set explicit). §3.3 layer OK (`consult` → `utils` only). Stage 3 greps: zero `cfg.get("phase")` / `cfg.get("seq")` under `src/`.
+
+**Tests:** `TestAst740RemoveConfigGrouping`, `TestAst740NoConfigPhaseSeqInApi` green on publish tip.
+
+**Doc:** `docs/features/interface/ast-740-remove-phase-and-seq-from-task-config.md` (Review section @ `0a0e0c7`).
+
+**Advisory:** `backfill_task_grouping_metadata.py` still reads config `phase`/`seq` for one-time seed — post-740 fresh catalog inserts default to `(unassigned)`; expected; Betty aligned tests.
+
+No **fix-now** or **discuss** items. Ada may proceed **`resolve-child`** (no-op) or advance per epic rollup.
+
+#### betty — 2026-06-18T22:31:34.899Z
+**Bible shasum correction** (`origin/sub/...` @ `b12ed93`):
+- `docs/test-bible/utils/config.md` `e31b6564180b46e7742164e107c486c7665d835e7c4c54ed812f4f5067c0bfc5`
+- `docs/test-bible/data/database/agent_tasks.md` `fe5a4bd526b9b3bdd06daa4d8c550c897bd92fe55f01e1cb7972c1b81741e8bd`
+- `docs/test-bible/ui/api/api_admin.md` `c3db77ba66220256f663634d4a339ef0a3576cfd1c145e2247a0038db0060cc5`
+
+#### betty — 2026-06-18T22:31:29.845Z
+## QA test manifest (AST-740)
+
+**Publish:** `origin/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config` @ `b12ed93` (`merge-tests(AST-740): origin/tests c99819b`)
+
+**Prerequisites:** **AST-738** DB grouping + **AST-739** admin UI/API on publish tip (sibling `merge-tests` on ftr rollup).
+
+### 1. New coverage
+1. **`TestAst740RemoveConfigGrouping`** — every `TASK_CONFIG` entry lacks `phase`/`seq`; `JOB_ARTIFACT_ENTRY_TASK_KEYS` frozenset matches plan (excludes `draft_cover_letter`).
+2. **`TestAst740NoConfigPhaseSeqInApi`** — Manage Tasks GET payload has grouping fields only; no backward-compat `phase`/`seq`.
+
+### 2. Broken / revised tests
+1. **`TestAst520AnticipateScanTaskKey`** — no config `phase`/`seq`; keeps print_label/trigger_state checks.
+2. **`TestAst504CompanySearchTermsConfig`**, **`TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task`** — assert keys absent, not phase labels.
+3. **`TestAst738TaskGroupingMetadata`** — seed/new-row defaults are `(unassigned)` / `ZZZ` / `999.0` when config lacks phase/seq.
+4. **`TestAst738TaskGroupingApi`** — `_grouping_from_agent_task_row` and GET task no longer emit `phase`/`seq`.
+5. **`TestTaskRoutes::test_preview_task_and_get_update`** — same (grouping fields only).
+
+### 3. Existing coverage (unchanged)
+- **AST-739** Vitest page tests — still green; no AST-740 frontend product diff.
+
+### Run (test-child)
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst740RemoveConfigGrouping \
+  tests/component/utils/test_config.py::TestAst520AnticipateScanTaskKey \
+  tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/data/database/test_agent_tasks.py::TestAst738TaskGroupingMetadata \
+  tests/component/ui/api/test_api_admin.py::TestAst740NoConfigPhaseSeqInApi \
+  tests/component/ui/api/test_api_admin.py::TestAst738TaskGroupingApi \
+  tests/component/ui/api/test_api_admin.py::TestTaskRoutes::test_preview_task_and_get_update \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Bible shasum (`origin/sub/...`)
+- `docs/test-bible/utils/config.md` `701fd26a08051d6b55f4d3d25b51874f5f2d8ddbc6b0cd3b5f9041930daffcde`
+- `docs/test-bible/data/database/agent_tasks.md` `db3c0a2aad3bc818d387b3b0a2f064c9587a6fe2496bdec49840aa546c742586`
+- `docs/test-bible/ui/api/api_admin.md` `658553beaa0139e3db05dabeedfb7128f0d3f4c19f4765f66112ae6e716b1f23`
+
+#### ada — 2026-06-18T22:15:42.607Z
+Plan: `docs/features/interface/ast-740-remove-phase-and-seq-from-task-config.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-734/AST-740-remove-phase-and-seq-from-task-config/docs/features/interface/ast-740-remove-phase-and-seq-from-task-config.md
+
+**Self-assessment**
+- **Scope:** Single-Component — `config.py` + `consult.py` only; explicit `JOB_ARTIFACT_ENTRY_TASK_KEYS` replaces phase probe; no frontend/DB/migration.
+- **Conf:** Medium — key removal is mechanical, but build is gated on AST-738/739 on ftr and frozenset must match current Phase E membership minus `draft_cover_letter`.
+- **Risk:** Medium — wrong entry-key set mis-routes artifact dispatch; config cleanup before AST-739 would break admin grouping.
+
+Pre-build gate requires sibling merges on `origin/ftr/AST-734-organizing-tasks` before any `code()` stages.
+
+---
+
 # Remove phase and seq from TASK_CONFIG (Organizing Tasks)
 
 **Linear:** [AST-740](https://linear.app/astralcareermatch/issue/AST-740/remove-phase-and-seq-from-task-config-organizing-tasks)  

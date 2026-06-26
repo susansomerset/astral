@@ -5,6 +5,7 @@ import type { TextTab } from "../components/TabbedTextArea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
+import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Section } from "../components/FormFields"
 
 interface SigImageLimits {
@@ -80,8 +81,8 @@ export default function Profile() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
     })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
+      .then(async r => {
+        if (!r.ok) await readApiError(r, `/api/candidates/${selectedId}/data`, "PUT")
         return r.json()
       })
       .then(candidate => {
@@ -93,7 +94,7 @@ export default function Profile() {
       })
       .catch(e => {
         setError(e.message)
-        setToast({ text: "Save failed", variant: "error" })
+        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: "Save failed", variant: "error" })
       })
   }
 

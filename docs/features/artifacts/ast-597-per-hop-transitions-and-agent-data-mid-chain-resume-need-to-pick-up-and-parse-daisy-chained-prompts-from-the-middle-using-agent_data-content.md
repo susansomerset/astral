@@ -1,3 +1,123 @@
+<!-- linear-archive: AST-597 archived 2026-06-23 -->
+
+## Linear archive (AST-597)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-597/per-hop-transitions-and-agent-data-mid-chain-resume-need-to-pick-up  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-593 — Need to pick up and parse daisy chained prompts from the middle using agent_data content  
+**Blocked by / blocks / related:** parent: AST-593
+
+### Description
+
+## What this implements
+
+After each successful artifact-chain `run_next` hop, transition the job to the next compound **BUILD_ARTIFACTS.<task_key>** state before continuing. When dispatch starts at a mid-chain hop, populate upstream **{$CALLER\_\*}** chain tokens from persisted **agent_data** for that job and completed hops — no LLM re-run for hops whose successful responses are already stored. With debug enabled, log Style D per hop including whether caller content was loaded from **agent_data** vs fresh LLM output.
+
+## Acceptance criteria
+
+1. After hop *N* succeeds in a resume artifact chain, the job's recorded progress reflects that *N* completed and identifies the next hop entry task — observable without re-running hop *N*.
+2. Susan can dispatch a mid-chain Scheduled Action for a job whose upstream hops already succeeded; the run completes hop *N* onward using stored upstream **agent_data** for caller tokens — upstream LLM calls from that dispatch run are zero for hops already completed in a prior successful run.
+3. With debug enabled, logs for a resumed mid-chain run include Style D index lines per hop and indicate reuse of stored caller content vs new LLM calls.
+4. Component or integration coverage demonstrates: per-hop progress after success, mid-chain entry with caller tokens from **agent_data**, failure release without duplicate batch claim, and unchanged terminal **CANDIDATE_REVIEW** transition. (agent/hydration + transition portions)
+
+## Boundaries
+
+* Does not define **JOB_STATES** compound keys — Hedy sibling (blocked).
+* Does not change Execution History UI (**AST-528**).
+* Terminal persist rules unchanged (**AST-552** / **finalize_job_resume**).
+
+## Notes for planning
+
+* **AST-531** per-hop **agent_data** rows are the reuse source.
+* **ASTRAL_CODE_RULES §1.5.1** debug contract on touched `debug=` paths.
+
+## Git branch (authoritative)
+
+Parent **ftr/AST-593-mid-chain-artifact-resume**, child **sub/AST-593/<child-id>-agent-data-mid-chain-resume**.
+
+### Comments
+
+#### radia — 2026-06-12T16:54:29.757Z
+**Review** — `origin/dev...origin/sub/AST-593/AST-597-agent-data-mid-chain-resume` (product `e8e88c30`, tests `c1c24299`)
+
+**Published review doc:** `f2c92a6e` on `origin/sub/AST-593/AST-597-agent-data-mid-chain-resume` — plan § **Radia review (2026-06-12)**
+
+### Solid
+
+- Plan Stages 1–4 in `agent.py` only: hydration helpers, mid-chain seed in `run_resume_artifact_chain_for_job`, per-hop `tracker.transition_job_state`, Style D hop index + caller detail.
+- Reuses `_chain_tokens_for_next_hop` / `get_agent_data_for_ids`; failed RESPONSE rows skipped; hydration miss returns `success: False` without LLM (AC #2).
+- `_chain_context` strips `_`-prefixed sentinels — hydration markers do not reach `{$CALLER_*}` substitution (§3.3).
+- Tests: `TestAst597MidChainResumeHydrationAndTransitions` + consult terminal regression per bible §7.13zz.
+
+### fix-now
+
+| Location | Issue |
+| --- | --- |
+| `agent.py` `_merge_chain_context_for_next_hop` + resume debug (~1815) | Mid-chain seed sets `_caller_hydration_source=agent_data`. Merge copies it into child `chain_context`, so hop 2+ in the **same** dispatch can log `caller_source=agent_data` while tokens came from live LLM — contradicts plan Stage 4. **Strip `_caller_hydration_source` when merging for `run_next`** (or clear before inner `do_task`). |
+
+### discuss
+
+| Topic | Question |
+| --- | --- |
+| `_maybe_transition_resume_hop_progress` (~1731) | Fires on any successful job `do_task` for keys in `resume_artifact_hop_task_keys()` — not gated on resume chain / `in_chain`. Confirm hop keys are never invoked outside resume artifact chain, or add a gate. |
+| Land order | Imports **AST-595** helpers (`resume_artifact_hop_task_keys`, `resume_artifact_next_compound_state`) — not on `origin/dev` yet. Rollup **595 → ftr** before this sub lands (blockedBy **AST-595**). |
+
+### advisory
+
+- `_parsed_response_from_stored_response_text`: `task_key` param unused.
+- Transition `ValueError` → warning only (per plan); validate compound `trigger_state` alignment with **AST-596** at UAT.
+
+@Ada — one **fix-now** (debug source on chained hops); resolve via `resolve-astral`. Full table in plan doc.
+
+#### betty — 2026-06-12T16:20:56.746Z
+## QA test manifest (AST-597)
+
+**Publish ref:** `origin/sub/AST-593/AST-597-agent-data-mid-chain-resume` @ `b1dc4b0c`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `d285688806b108ab9194b34701a063475691fb3c`
+
+### Run (numbered)
+
+1. `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` — hydration helpers; mid-chain `run_resume_artifact_chain_for_job` seeds `chain_context` from `agent_data`; per-hop `transition_job_state` after successful resume hop; Style D `caller_source=agent_data` on mid-chain entry
+2. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job` — regression: terminal **`CANDIDATE_REVIEW`** batch exit unchanged (**AST-552** / consult)
+
+### Narrowed command
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job
+```
+
+### Coverage map
+
+| Area | Existing / new | Notes |
+| --- | --- | --- |
+| Mid-chain caller hydration | **New** `TestAst597MidChainResumeHydrationAndTransitions` | Zero upstream LLM when resuming at `draft_job_resume` with stored `advise_job_resume` hop |
+| Per-hop compound transition | **New** (same class) | `anticipate_scan` success → `BUILD_ARTIFACTS.contemplate_job` via `tracker.transition_job_state` |
+| Hop failure release | **Sibling AST-596** | Not in this manifest — consult/dispatcher |
+| Terminal persist | **Regression** AST-371 consult batch test | Unchanged `CANDIDATE_REVIEW` path |
+
+— Betty
+
+#### ada — 2026-06-11T23:48:59.821Z
+Plan: [`docs/features/artifacts/ast-597-per-hop-transitions-and-agent-data-mid-chain-resume-need-to-pick-up-and-parse-daisy-chained-prompts-from-the-middle-using-agent_data-content.md`](https://github.com/susansomerset/astral/blob/sub/AST-593/AST-597-agent-data-mid-chain-resume/docs/features/artifacts/ast-597-per-hop-transitions-and-agent-data-mid-chain-resume-need-to-pick-up-and-parse-daisy-chained-prompts-from-the-middle-using-agent_data-content.md) @ `94c5adcc`
+
+**Self-assessment**
+- **Scope — Single-Component:** All product work in `src/core/agent.py` (hydration from `agent_responses`/`agent_data`, mid-chain entry seed, per-hop compound transition, Style D caller-source lines).
+- **Conf — Medium:** AST-531 storage + `_chain_tokens_for_next_hop` patterns exist; build gated on AST-595 helper imports; hydration must mirror `do_task` JSON unwrap.
+- **Risk — HIGH:** Bad caller hydration re-runs expensive upstream LLM or leaves empty `{$CALLER_*}`; wrong transition timing breaks AST-596 dispatch alignment.
+
+**Prerequisite:** AST-595 must land before Stage 1. AST-596 required for failure-release AC before UAT, not for Stages 1–4.
+
+**Betty (post Code Complete):** extend `tests/component/core/test_agent.py` — mid-chain entry with mocked `agent_data`, per-hop transition calls, debug `caller_source=agent_data` line; no test edits in this plan commit.
+
+---
+
 # Per-hop transitions and agent_data mid-chain resume
 
 **Linear:** [AST-597](https://linear.app/astralcareermatch/issue/AST-597/per-hop-transitions-and-agent-data-mid-chain-resume-need-to-pick-up)  

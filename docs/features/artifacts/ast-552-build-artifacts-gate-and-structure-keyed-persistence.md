@@ -1,3 +1,122 @@
+<!-- linear-archive: AST-552 archived 2026-06-23 -->
+
+## Linear archive (AST-552)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-552/build-artifacts-gate-and-structure-keyed-persistence-build-resume  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-300 — Build Resume Artifact  
+**Blocked by / blocks / related:** parent: AST-300
+
+### Description
+
+## What this implements
+
+Resume artifact batch dispatch runs only when job is **BUILD_ARTIFACTS** (explicit candidate approval after RECOMMENDED — **AST-478**). On successful chain completion, persist `job_data.artifacts.resume_content` with keys from candidate `artifacts.resume_structure`, contact/header sections as point-in-time snapshot at persist (**AST-477** Q4). Transition job to **CANDIDATE_REVIEW** on success or **BUILD_FAILED** on failure with no partial publish.
+
+## Acceptance criteria
+
+1. A job at **RECOMMENDED** does **not** start the resume chain until the candidate's explicit approval sets **BUILD_ARTIFACTS**.
+2. A BUILD_ARTIFACTS job claimed by the artifact dispatch produces a complete resume chain run (all configured hops through the terminal resume-craft task) and persists `job_data.artifacts.resume_content`.
+3. Persisted `resume_content` keys are a subset of the candidate's enabled structure section ids; contact sections present match the snapshot rules from **AST-477**.
+4. On chain failure, the job is **BUILD_FAILED** (or configured error state) and no false CANDIDATE_REVIEW draft is shown.
+
+## Boundaries
+
+Does not redefine chain hop logic (**sibling Ada ticket**). Does not build JAR editor UI (**sibling Katherine ticket**). Cover letter (**AST-301** canceled) out of scope.
+
+## Notes for planning
+
+**AST-371** Done work predates **AST-477** — gap-fill only. Reuse `persist_job_artifact_from_parsed` patterns where applicable. Dispatcher/tracker/gazer integration per Hedy domain.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent **ftr/AST-300-build-resume-artifact**, child **sub/AST-300/<child-id>-build-artifacts-gate-persistence**.
+
+### Comments
+
+#### radia — 2026-06-03T00:42:18.452Z
+**Review** — `origin/dev...origin/sub/AST-300/AST-552-build-artifacts-gate-persistence` (scoped ~653 LOC in gate/persist paths; sub tip is composite with sibling epic work).
+
+**Doc:** [ast-552 plan + review](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-552-build-artifacts-gate-persistence/docs/features/artifacts/ast-552-build-artifacts-gate-and-structure-keyed-persistence.md) @ `45ae0014`
+
+**fix-now:** none for acceptance criteria
+
+**discuss**
+- `tracker.py` — plan named `parsed_matches_job_resume_content` for persist gate; code uses `parsed_matches_resume_content_shape` (+ `agent_payload`); `parsed_matches_job_resume_content` is tested but unused in `persist_job_artifact_from_parsed`. `job_has_persisted_resume_body` enforces non-contact after persist — likely fine; align helper or drop duplicate on resolve.
+- `consult.py` `_run_job_artifact_entry_batch` — if `CANDIDATE_REVIEW` transition raises `ValueError`, job may stay **BUILD_ARTIFACTS** with `resume_content` already saved.
+- publish ref three-dot diff includes non–AST-552 files (`agent.py`, intake `config`, etc.) — resolve against this ticket’s commits, not whole sub tip blindly.
+
+**advisory**
+- `evaluate_jd_batch` `jd_score` write on same branch — confirm sibling ownership.
+- `RESUME_SECTION_CATALOG` in `build_job_token_context` — good **AST-551** alignment.
+
+**AC spot-check:** only `approve_artifacts` sets **BUILD_ARTIFACTS** from product code; batch exit → **BUILD_FAILED** + `clear_job_artifact_resume_content` or **CANDIDATE_REVIEW** per tests.
+
+#### betty — 2026-06-03T00:30:20.705Z
+**Manifest** (`origin/sub/AST-300/AST-552-build-artifacts-gate-persistence` @ `934385e0`)
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `7a2ae2adad0dd394905aa49d264b9a3b576d645c`
+
+1. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_from_recommended`
+2. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_wrong_state_returns_409`
+3. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_invalid_transition_returns_409`
+4. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_missing_job_returns_404`
+5. `tests/component/core/test_tracker.py::TestAst552BuildArtifactsGate`
+6. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job`
+7. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_errors_skip_cover_letter`
+8. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_empty_persist_build_failed`
+
+Narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_from_recommended \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_wrong_state_returns_409 \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_invalid_transition_returns_409 \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_approve_artifacts_missing_job_returns_404 \
+  tests/component/core/test_tracker.py::TestAst552BuildArtifactsGate \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_runs_chain_then_cover_letter_for_contemplate_job \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_errors_skip_cover_letter \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_empty_persist_build_failed
+```
+
+Bible §7.13zs (**AST-552**). Chain hop wiring covered by sibling **AST-551** on integration branch — not in this manifest scope.
+
+— Betty
+
+#### hedy — 2026-06-02T22:32:10.034Z
+Plan: `docs/features/artifacts/ast-552-build-artifacts-gate-and-structure-keyed-persistence.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-300/AST-552-build-artifacts-gate-persistence/docs/features/artifacts/ast-552-build-artifacts-gate-and-structure-keyed-persistence.md
+
+**Scope:** `scope-Single-Component` — `api_jobs` approve route, tracker structure-aware persist gate, consult post-batch **CANDIDATE_REVIEW** / **BUILD_FAILED** only.
+
+**Conf:** `conf-Medium` — **AST-518** / **AST-477** helpers exist; terminal JSON shape depends on **AST-551** output matching structure ids.
+
+**Risk:** `risk-HIGH` — Wrong transitions or auto-dispatch from **RECOMMENDED** violate **AST-478** and strand jobs without a valid draft.
+
+**Publish ref:** `origin/sub/AST-300/AST-552-build-artifacts-gate-persistence` @ `5ac9e4eb` (plan-only; already on ref).
+
+**UAT note:** Approve API is backend-only until **AST-553** wires JAR; curl against `POST …/approve_artifacts` from **RECOMMENDED** for gate smoke.
+
+#### hedy — 2026-06-02T22:31:20.903Z
+Plan: [ast-552-build-artifacts-gate-and-structure-keyed-persistence.md](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-552-build-artifacts-gate-persistence/docs/features/artifacts/ast-552-build-artifacts-gate-and-structure-keyed-persistence.md) (`origin/sub/AST-300/AST-552-build-artifacts-gate-persistence` @ `5ac9e4eb`).
+
+**Self-assessment**
+- **Scope — Single-Component:** `api_jobs.py` approve route, `tracker.py` structure-aware persist gate + optional rollback helper, `consult.py` post-batch **CANDIDATE_REVIEW** / **BUILD_FAILED** only.
+- **Conf — Medium:** **AST-518** / **AST-477** helpers exist; terminal JSON contract depends on **AST-551** (Ada) — plan stops if incompatible.
+- **Risk — HIGH:** Wrong transitions strand jobs in **BUILD_ARTIFACTS** or show **CANDIDATE_REVIEW** without a valid draft; auto-dispatch from **RECOMMENDED** would violate **AST-478**.
+
+**Out of scope in this plan:** chain hops (**AST-551**), JAR approve UI + draft tabs (**AST-553**). UAT approve via new API until Katherine lands UI.
+
+**Betty manifest hints (test-astral):** extend `tests/component/core/test_consult.py` (`TestAst371ResumeArtifactDispatch`), `tests/component/core/test_tracker.py` (`TestPersistJobArtifactFromParsed`, `TestAst518JobResumeArtifacts`), `tests/component/ui/api/test_api_jobs.py` (approve route).
+
+---
+
 # BUILD_ARTIFACTS gate and structure-keyed persistence (Build Resume Artifact)
 
 **Linear:** [AST-552](https://linear.app/astralcareermatch/issue/AST-552/build-artifacts-gate-and-structure-keyed-persistence-build-resume)  

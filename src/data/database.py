@@ -20,10 +20,6 @@ Tables used (inventory):
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
-- board_search — Saved board searches per candidate (board_search_id, candidate_id, board_key, label, criteria JSON NOT NULL,
-  state TEXT ACTIVE|INACTIVE|ERROR matching BOARD_SEARCH_STATES, search_mode, deeplink_url, batch_id — claim lock only §2.4;
-  nullable last_scan_at gaze cadence, not edited on user PATCH — AST-482).
-- board_search_run — Per-gaze ingest metrics (batch_id, board_search_id, new/duplicates/invalid_title counts).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
 - rubric_vector — Per-candidate rubric vector identity (rubric_vector_uuid TEXT PK, candidate_id,
@@ -31,9 +27,11 @@ Tables used (inventory):
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
-  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id, created_at).
+  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
+  batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
   One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
-  list_vector_feedback — filtered join to rubric_vector for Admin exploration (AST-725).
+  batch_size and completed_at capture dispatch run metadata (AST-809); created_at equals insert instant (same as capture).
+  list_vector_feedback — filtered join to rubric_vector for Admin exploration; includes content/importance hydration (AST-808).
   aggregate_vector_feedback_by_vector — per-current-vector counts and value distributions (AST-725).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
   status ACTIVE|BUILT, transcript JSON, prompt_snapshot JSON, last_ready_to_build INTEGER, built_at TIMESTAMP,
@@ -71,10 +69,9 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BLOCK_TYPES,
     CHARS_PER_TOKEN,
-    BOARD_SEARCH_STATES,
-    BOARDS_CONFIG,
     CANDIDATE_STATES,
     COMPANY_STATES,
+    ENTITY_TYPES,
     INFLOW_CONFIG,
     PASSED_SCORE_GATED_STATES,
     ROSTER_CONFIG,
@@ -90,6 +87,7 @@ from src.utils.config import (
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
+    REPO_ADMIN_JSON_CONFIG,
     task_keys_for_rubric_owner,
 )
 from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
@@ -97,6 +95,7 @@ from src.utils.logging import get_logger
 
 DB_PATH = ASTRAL_CONFIG["db_dir"] / "astral.db"
 _log = get_logger(__name__)
+
 
 
 def _coerce_agent_brain_setting(row: Dict[str, Any]) -> str:
@@ -164,8 +163,7 @@ _agent_schema_ensured = False
 _agent_task_schema_ensured = False
 _timesheets_schema_ensured = False
 _dispatch_task_schema_ensured = False
-_board_search_schema_ensured = False
-_board_search_run_schema_ensured = False
+_board_schema_sunset_applied = False
 _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
@@ -490,9 +488,23 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
     def _strip_seg_imp(s: Optional[str]) -> str:
         return (s if s is not None else "").strip()
 
+    def _grouping_from_copy_row(r: dict[str, Any]) -> tuple[str, str, float, str]:
+        go = "" if r["task_group_order"] is None else (
+            r["task_group_order"] if isinstance(r["task_group_order"], str) else str(r["task_group_order"])
+        )
+        gn = "" if r["task_group_name"] is None else (
+            r["task_group_name"] if isinstance(r["task_group_name"], str) else str(r["task_group_name"])
+        )
+        gs = float(r["task_seq"]) if r["task_seq"] is not None else 999.0
+        tn = "" if r["task_name"] is None else (
+            r["task_name"] if isinstance(r["task_name"], str) else str(r["task_name"])
+        )
+        return go.strip(), gn.strip(), gs, tn.strip()
+
     sel_cur = """SELECT task_key_uuid, agent_id, user_prompt, cache_prompt,
                         cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                        nocache_prompt, run_next, system_prompt
+                        nocache_prompt, run_next, system_prompt,
+                        task_group_order, task_group_name, task_seq, task_name
                  FROM agent_task WHERE task_key = ? AND current = 1"""
 
     for tk_str in sorted(task_to_row.keys()):
@@ -557,7 +569,18 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             elif new_rn != rn_db_strip:
                 skip_row = False
             else:
-                skip_row = True
+                db_go = cur_before[10] if cur_before[10] is not None else ""
+                db_gn = cur_before[11] if cur_before[11] is not None else ""
+                db_gs = float(cur_before[12]) if cur_before[12] is not None else 999.0
+                db_tn = cur_before[13] if cur_before[13] is not None else tk_str
+                file_go, file_gn, file_gs, file_tn = _grouping_from_copy_row(r)
+                grouping_changed = (
+                    file_go != (db_go.strip() if isinstance(db_go, str) else str(db_go).strip())
+                    or file_gn != (db_gn.strip() if isinstance(db_gn, str) else str(db_gn).strip())
+                    or file_gs != db_gs
+                    or file_tn != (db_tn.strip() if isinstance(db_tn, str) else str(db_tn).strip())
+                )
+                skip_row = not grouping_changed
 
         if skip_row:
             skipped += 1
@@ -577,6 +600,10 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             nocache_prompt=r["nocache_prompt"],
             run_next=r["run_next"],
             system_prompt=r["system_prompt"],
+            task_group_order=r["task_group_order"],
+            task_group_name=r["task_group_name"],
+            task_seq=r["task_seq"],
+            task_name=r["task_name"],
             import_explicit=True,
         )
         if was_absent:
@@ -585,6 +612,140 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             updated += 1
 
     return {"inserted": inserted, "updated": updated, "skipped": skipped}
+
+
+def _agent_repo_json_columns() -> tuple[str, ...]:
+    return REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
+
+
+def _validate_agent_repo_json_rows(rows: list[dict[str, Any]]) -> None:
+    cols = set(_agent_repo_json_columns())
+    for i, row in enumerate(rows, start=1):
+        if set(row.keys()) != cols:
+            raise ValueError(
+                f"agent repo JSON row {i}: keys must be {sorted(cols)} (got {sorted(row.keys())})",
+            )
+        aid = row.get("agent_id")
+        if aid is None or not str(aid).strip():
+            raise ValueError(f"agent repo JSON row {i}: agent_id required")
+        bs = row.get("brain_setting")
+        if bs is None or not str(bs).strip():
+            raise ValueError(f"agent repo JSON row {i}: brain_setting required")
+
+
+def _validate_agent_task_repo_json_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    cols = set(table_columns(conn, "agent_task"))
+    seen_task_keys: set[str] = set()
+    for i, row in enumerate(rows, start=1):
+        if set(row.keys()) != cols:
+            raise ValueError(f"agent_task repo JSON row {i}: keys must match schema")
+        if _coerce_agent_task_current_for_import(row["current"]) != 1:
+            raise ValueError(f"agent_task repo JSON row {i}: current must be 1")
+        tk_raw = row.get("task_key")
+        if tk_raw is None or not str(tk_raw).strip():
+            raise ValueError(f"agent_task repo JSON row {i}: task_key required")
+        tk_str = tk_raw if isinstance(tk_raw, str) else str(tk_raw)
+        if tk_str in seen_task_keys:
+            raise ValueError(f"agent_task repo JSON: duplicate task_key {tk_str!r}")
+        seen_task_keys.add(tk_str)
+
+
+def fetch_agent_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Current agent rows for repo JSON export (AST-782)."""
+    _ensure_agent_schema(conn)
+    cols = _agent_repo_json_columns()
+    cols_sql = ", ".join(_sql_quote_ident(c) for c in cols)
+    return [_row_to_dict(r) for r in conn.execute(
+        f"SELECT {cols_sql} FROM agent ORDER BY agent_id",
+    ).fetchall()]
+
+
+def fetch_agent_task_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Current=1 agent_task rows for repo JSON export (AST-782)."""
+    _ensure_agent_task_schema(conn)
+    return [_row_to_dict(r) for r in conn.execute(
+        "SELECT * FROM agent_task WHERE current = 1 ORDER BY task_key",
+    ).fetchall()]
+
+
+def apply_agent_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Repo-wins upsert for agent table; delete rows absent from JSON (caller commits)."""
+    _ensure_agent_schema(conn)
+    _validate_agent_repo_json_rows(rows)
+    now = _utc_now()
+    ids: List[str] = []
+    for row in rows:
+        aid = str(row["agent_id"]).strip()
+        ids.append(aid)
+        content = "" if row["content"] is None else (
+            row["content"] if isinstance(row["content"], str) else str(row["content"])
+        )
+        bs = str(row["brain_setting"]).strip()
+        validate_allowed_brain_setting(bs)
+        temp = row.get("temperature")
+        max_t = row.get("max_tokens")
+        updated = row.get("updated_at")
+        if updated is None or (isinstance(updated, str) and not str(updated).strip()):
+            updated = now
+        existing = conn.execute("SELECT agent_id FROM agent WHERE agent_id = ?", (aid,)).fetchone()
+        if existing is None:
+            conn.execute(
+                """INSERT INTO agent (agent_id, content, brain_setting, temperature, max_tokens, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (aid, content, bs, temp, max_t, updated),
+            )
+        else:
+            conn.execute(
+                """UPDATE agent SET content = ?, brain_setting = ?, temperature = ?, max_tokens = ?, updated_at = ?
+                   WHERE agent_id = ?""",
+                (content, bs, temp, max_t, updated, aid),
+            )
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM agent WHERE agent_id NOT IN ({placeholders})", ids)
+    else:
+        conn.execute("DELETE FROM agent")
+
+
+def _apply_agent_task_repo_json_rows_exact(
+    conn: sqlite3.Connection, rows: list[dict[str, Any]],
+) -> None:
+    """Write repo JSON rows verbatim (AST-793) — preserves task_key_uuid and updated_at."""
+    columns_ordered = table_columns(conn, "agent_task")
+    qt = _sql_quote_ident("agent_task")
+    cols_join = ",".join(_sql_quote_ident(c) for c in columns_ordered)
+    placeholders = ",".join("?" * len(columns_ordered))
+    uuid_col = _sql_quote_ident("task_key_uuid")
+
+    for ri, row in enumerate(rows, start=1):
+        uuid_raw = row.get("task_key_uuid")
+        if uuid_raw is None or not str(uuid_raw).strip():
+            raise ValueError(f"agent_task repo JSON row {ri}: missing task_key_uuid")
+        uuid_pk = uuid_raw if isinstance(uuid_raw, str) else str(uuid_raw)
+
+        existing = conn.execute(
+            f"SELECT {cols_join} FROM {qt} WHERE {uuid_col} = ?", (uuid_pk,),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                f"INSERT INTO {qt} ({cols_join}) VALUES ({placeholders})",
+                tuple(row[c] for c in columns_ordered),
+            )
+        else:
+            set_parts = [_sql_quote_ident(c) + " = ?" for c in columns_ordered if c != "task_key_uuid"]
+            vals_up = tuple(row[c] for c in columns_ordered if c != "task_key_uuid") + (uuid_pk,)
+            conn.execute(
+                f"UPDATE {qt} SET {', '.join(set_parts)} WHERE {uuid_col} = ?",
+                vals_up,
+            )
+
+
+def apply_agent_task_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Retire all current agent_task rows, then apply repo JSON with exact file field values."""
+    _ensure_agent_task_schema(conn)
+    _validate_agent_task_repo_json_rows(conn, rows)
+    conn.execute("UPDATE agent_task SET current = 0 WHERE current = 1")
+    _apply_agent_task_repo_json_rows_exact(conn, rows)
 
 
 def apply_config_table_upsert(
@@ -1174,6 +1335,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     global _job_schema_ensured
     if _job_schema_ensured:
         return
+    _apply_board_schema_sunset(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS job (
             astral_job_id TEXT PRIMARY KEY,
@@ -1199,7 +1361,6 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         ("job_link", "TEXT"),
         ("agent_responses", "TEXT DEFAULT '[]'"),
         ("latest_score", "REAL"),            # AST-350: latest numeric score for batch priority sorting
-        ("board_search_id", "TEXT"),
     ]:
         if col not in cols:
             try:
@@ -1353,7 +1514,6 @@ def save_job(
     state_history: Optional[List[Dict[str, Any]]] = None,
     state_changed_at: Optional[str] = None,
     latest_score: Optional[float] = None,
-    board_search_id: Optional[str] = None,
     ) -> bool:
     """Upsert a job row. Insert if new (company and state required); update provided fields if exists.
     job_data: merge=True deep-merges with existing; merge=False overwrites.
@@ -1385,10 +1545,10 @@ def save_job(
                         """INSERT INTO job (
                             astral_job_id, company, company_job_id, job_title, job_link, job_data,
                             state, state_history, batch_id, batch_created_at,
-                            board_search_id, created_at, updated_at, state_changed_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+                            created_at, updated_at, state_changed_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
                         (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
-                         state, hist_str, board_search_id, now, now, state_changed_at or now),
+                         state, hist_str, now, now, state_changed_at or now),
                     )
                 except sqlite3.IntegrityError as e:
                     if _is_job_identity_unique_violation(e):
@@ -1403,7 +1563,7 @@ def save_job(
                     ("company", company), ("state", state),
                     ("company_job_id", company_job_id), ("job_title", job_title),
                     ("job_link", job_link), ("state_changed_at", state_changed_at),
-                    ("latest_score", latest_score), ("board_search_id", board_search_id),
+                    ("latest_score", latest_score),
                 ]:
                     if val is not None:
                         sets.append(f"{col} = ?")
@@ -2649,547 +2809,64 @@ def list_candidates() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-# ---- board_search ----
-
-def _finalize_board_search_state_schema(conn: sqlite3.Connection) -> None:
-    """Drop legacy enabled + batch-status columns → single workflow `state` (AST-471)."""
-    act, inactive, err = BOARD_SEARCH_STATES
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(board_search)").fetchall()}
-    if "enabled" not in cols and "status" not in cols:
-        if "state" not in cols:
-            conn.execute(
-                "ALTER TABLE board_search ADD COLUMN state TEXT NOT NULL DEFAULT 'ACTIVE'"
-            )
-            conn.commit()
+def _apply_board_schema_sunset(conn: sqlite3.Connection) -> None:
+    """One-time AST-766: drop board tables and job.board_search_id column."""
+    global _board_schema_sunset_applied
+    if _board_schema_sunset_applied:
         return
-    if "state" not in cols:
-        conn.execute("ALTER TABLE board_search ADD COLUMN state TEXT")
-    conn.execute(
-        """UPDATE board_search SET state = CASE
-                WHEN COALESCE(enabled, 1) = 0 THEN ?
-                WHEN LOWER(TRIM(COALESCE(status, ''))) = 'error' THEN ?
-                ELSE ?
-            END""",
-        (inactive, err, act),
-    )
-    conn.execute(
-        """
-        CREATE TABLE             board_search_next (
-            board_search_id TEXT PRIMARY KEY,
-            candidate_id TEXT NOT NULL,
-            board_key TEXT NOT NULL,
-            label TEXT NOT NULL,
-            criteria TEXT NOT NULL,
-            state TEXT NOT NULL DEFAULT 'ACTIVE',
-            batch_id TEXT,
-            search_mode TEXT NOT NULL DEFAULT 'criteria',
-            deeplink_url TEXT,
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP NOT NULL,
-            last_scan_at TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO board_search_next (
-            board_search_id, candidate_id, board_key, label, criteria, state,
-            batch_id, search_mode, deeplink_url, created_at, updated_at, last_scan_at
-        )
-        SELECT
-            board_search_id, candidate_id, board_key, label, criteria, state,
-            batch_id,
-            COALESCE(NULLIF(TRIM(search_mode), ''), 'criteria'),
-            deeplink_url, created_at, updated_at, last_scan_at
-        FROM board_search
-        """
-    )
-    conn.execute("DROP TABLE board_search")
-    conn.execute("ALTER TABLE board_search_next RENAME TO board_search")
-    conn.commit()
-
-
-# update_board_search_row: omit deeplink_url column when unchanged.
-_BOARD_SEARCH_PATCH_OMIT = object()
-
-def _ensure_board_search_table(conn: sqlite3.Connection) -> None:
-    """Create board_search if missing and migrate AST-457 enabled/status → state (AST-471)."""
-    global _board_search_schema_ensured
-    if _board_search_schema_ensured:
-        return
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='board_search'"
-    )
-    if cursor.fetchone()[0] == 0:
-        conn.execute("""
-            CREATE TABLE board_search (
-                board_search_id TEXT PRIMARY KEY,
-                candidate_id TEXT NOT NULL,
-                board_key TEXT NOT NULL,
-                label TEXT NOT NULL,
-                criteria TEXT NOT NULL,
-                state TEXT NOT NULL DEFAULT 'ACTIVE',
-                batch_id TEXT,
-                search_mode TEXT NOT NULL DEFAULT 'criteria',
-                deeplink_url TEXT,
-                last_scan_at TIMESTAMP,
-                created_at TIMESTAMP NOT NULL,
-                updated_at TIMESTAMP NOT NULL
-            )
-        """)
+    conn.execute("DROP TABLE IF EXISTS board_search_run")
+    conn.execute("DROP TABLE IF EXISTS board_search")
+    job_exists = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='job'"
+    ).fetchone()[0]
+    if not job_exists:
         conn.commit()
-        _board_search_schema_ensured = True
+        _board_schema_sunset_applied = True
         return
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(board_search)").fetchall()}
-    for col, col_def in (
-        ("status", "TEXT DEFAULT 'active'"),
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(job)").fetchall()}
+    if "board_search_id" not in cols:
+        conn.commit()
+        _board_schema_sunset_applied = True
+        return
+    had_identity_idx = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+        (_JOB_IDENTITY_UNIQUE_INDEX,),
+    ).fetchone() is not None
+    _job_col_defs = [
+        ("astral_job_id", "TEXT PRIMARY KEY"),
+        ("company", "TEXT NOT NULL"),
+        ("company_job_id", "TEXT"),
+        ("job_title", "TEXT"),
+        ("job_link", "TEXT"),
+        ("job_data", "TEXT"),
+        ("state", "TEXT NOT NULL"),
+        ("state_history", "TEXT"),
         ("batch_id", "TEXT"),
-        ("enabled", "INTEGER NOT NULL DEFAULT 1"),
-        ("search_mode", "TEXT NOT NULL DEFAULT 'criteria'"),
-        ("deeplink_url", "TEXT"),
-        ("last_scan_at", "TIMESTAMP"),
-    ):
-        if col not in cols:
-            conn.execute(f"ALTER TABLE board_search ADD COLUMN {col} {col_def}")
-            conn.commit()
-    _finalize_board_search_state_schema(conn)
-    _board_search_schema_ensured = True
-
-
-def _parse_board_search_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    if row.get("criteria") and isinstance(row["criteria"], str):
-        raw = row["criteria"]
-        try:
-            row["criteria"] = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            # Fail loud: corrupt DB blob must not silently pass through as an unparseable str.
-            bid = row.get("board_search_id") or "?"
-            _log.error(
-                "board_search %s: stored criteria is not valid JSON (%s chars): %s",
-                bid,
-                len(raw),
-                exc,
-            )
-            raise ValueError(f"board_search {bid}: stored criteria is not valid JSON") from exc
-    st = str(row.get("state") or BOARD_SEARCH_STATES[0]).strip().upper()
-    row["state"] = st if st in BOARD_SEARCH_STATES else BOARD_SEARCH_STATES[0]
-    if not row.get("search_mode"):
-        row["search_mode"] = "criteria"
-    du = row.get("deeplink_url")
-    row["deeplink_url"] = None if du is None or du == "" else str(du)
-    return row
-
-
-def save_board_search_row(
-    board_search_id: str,
-    candidate_id: str,
-    board_key: str,
-    label: str,
-    criteria_json: str,
-    *,
-    state: Optional[str] = None,
-    search_mode: str = "criteria",
-    deeplink_url: Optional[str] = None,
-) -> None:
-    st = (
-        BOARD_SEARCH_STATES[0]
-        if state is None or str(state).strip() == ""
-        else str(state).strip().upper()
-    )
-    if st not in BOARD_SEARCH_STATES:
-        raise ValueError(f"invalid board_search state: {state!r}")
-
-    now = _utc_now()
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                """INSERT INTO board_search
-                   (board_search_id, candidate_id, board_key, label, criteria,
-                    state, search_mode, deeplink_url, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    board_search_id,
-                    candidate_id,
-                    board_key,
-                    label,
-                    criteria_json,
-                    st,
-                    search_mode,
-                    deeplink_url,
-                    now,
-                    now,
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
-
-
-def get_board_search_row(board_search_id: str) -> Optional[Dict[str, Any]]:
-    def _with_conn() -> Optional[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            row = conn.execute(
-                "SELECT * FROM board_search WHERE board_search_id = ?", (board_search_id,)
-            ).fetchone()
-            return _parse_board_search_row(_row_to_dict(row)) if row else None
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def list_board_search_rows(
-    candidate_id: str,
-    board_key: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    def _with_conn() -> List[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            if board_key:
-                rows = conn.execute(
-                    """SELECT * FROM board_search
-                       WHERE candidate_id = ? AND board_key = ?
-                       ORDER BY created_at""",
-                    (candidate_id, board_key),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM board_search WHERE candidate_id = ? ORDER BY created_at",
-                    (candidate_id,),
-                ).fetchall()
-            return [_parse_board_search_row(_row_to_dict(r)) for r in rows]
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def update_board_search_row(
-    board_search_id: str,
-    *,
-    label: Optional[str] = None,
-    criteria_json: Optional[str] = None,
-    state: Optional[str] = None,
-    search_mode: Optional[str] = None,
-    deeplink_url: Any = _BOARD_SEARCH_PATCH_OMIT,
-) -> None:
-    """Update board_search. Pass deeplink_url=None for SQL NULL; omit to leave unchanged."""
-
-    if (
-        label is None
-        and criteria_json is None
-        and state is None
-        and search_mode is None
-        and deeplink_url is _BOARD_SEARCH_PATCH_OMIT
-    ):
-        return
-    now = _utc_now()
-    sets: List[str] = ["updated_at = ?"]
-    params: List[Any] = [now]
-    if label is not None:
-        sets.append("label = ?")
-        params.append(label)
-    if criteria_json is not None:
-        sets.append("criteria = ?")
-        params.append(criteria_json)
-    if state is not None:
-        sets.append("state = ?")
-        params.append(state)
-    if search_mode is not None:
-        sets.append("search_mode = ?")
-        params.append(search_mode)
-    if deeplink_url is not _BOARD_SEARCH_PATCH_OMIT:
-        sets.append("deeplink_url = ?")
-        params.append(deeplink_url)
-    params.append(board_search_id)
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                f"UPDATE board_search SET {', '.join(sets)} WHERE board_search_id = ?",
-                tuple(params),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
-
-
-def update_board_search_last_scan_at(board_search_id: str) -> None:
-    """Set last_scan_at = now only; skip updated_at — scan cadence vs user edits (AST-482)."""
-    now = _utc_now()
-
-    def _inner() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                "UPDATE board_search SET last_scan_at = ? WHERE board_search_id = ?",
-                (now, board_search_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_inner)
-
-
-def claim_board_search_batch(
-    batch_id: str,
-    limit: int,
-    candidate_id: Optional[str] = None,
-    scan_interval_hours: Optional[float] = None,
-    sort_by: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """Claim board_search rows in ACTIVE with clear batch_id (§2.4 lock = batch_id only).
-
-    Mirrors set_company_batch scan gate: optional scan_interval_hours filters to NULL or stale
-    last_scan_at. sort_by whitelist → BOARD_SEARCH_BATCH_SORT_COLUMNS."""
-    act = BOARD_SEARCH_STATES[0]
-    now = _utc_now()
-
-    def _with_conn() -> List[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            where_base = "state = ? AND (batch_id IS NULL OR batch_id = '')"
-            params: List[Any] = [batch_id, now, act]
-            if candidate_id:
-                where_base += " AND candidate_id = ?"
-                params.append(candidate_id)
-            if scan_interval_hours is not None:
-                where_base += " AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))"
-                params.append(str(float(scan_interval_hours)))
-            order_clause = (
-                f"ORDER BY {sort_by} ASC NULLS FIRST"
-                if sort_by and sort_by in BOARD_SEARCH_BATCH_SORT_COLUMNS
-                else "ORDER BY rowid"
-            )
-            _limit = int(limit) if limit else 0
-            limit_clause = "LIMIT ?" if _limit > 0 else ""
-            if _limit > 0:
-                params.append(_limit)
-            cur = conn.execute(
-                f"""UPDATE board_search SET batch_id = ?, updated_at = ?
-                   WHERE rowid IN (
-                       SELECT rowid FROM board_search
-                       WHERE {where_base}
-                       {order_clause}
-                       {limit_clause}
-                   )""".strip(),
-                tuple(params),
-            )
-            if cur.rowcount == 0:
-                conn.commit()
-                return []
-            claimed = conn.execute(
-                "SELECT * FROM board_search WHERE batch_id = ? ORDER BY rowid",
-                (batch_id,),
-            ).fetchall()
-            conn.commit()
-            return [_parse_board_search_row(_row_to_dict(r)) for r in claimed]
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-def clear_board_search_batch(batch_id: str) -> int:
-    now = _utc_now()
-
-    def _with_conn() -> int:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            cur = conn.execute(
-                """UPDATE board_search SET batch_id = NULL, updated_at = ?
-                   WHERE batch_id = ?""",
-                (now, batch_id),
-            )
-            conn.commit()
-            return cur.rowcount
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def set_board_search_state(board_search_id: str, state: str) -> None:
-    st = str(state).strip().upper()
-    if st not in BOARD_SEARCH_STATES:
-        raise ValueError(f"invalid board_search state: {state!r}")
-    now = _utc_now()
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            conn.execute(
-                "UPDATE board_search SET state = ?, updated_at = ? WHERE board_search_id = ?",
-                (st, now, board_search_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
-
-
-def delete_board_search_row(board_search_id: str) -> bool:
-    def _with_conn() -> bool:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_table(conn)
-            cur = conn.execute(
-                "DELETE FROM board_search WHERE board_search_id = ?", (board_search_id,)
-            )
-            conn.commit()
-            return cur.rowcount > 0
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def board_listing_is_duplicate(candidate_id: str, board_key: str, listing_key: str) -> bool:
-    """True if this candidate already has a job with the same board listing_key on board_key."""
-    prefix = "__board__"
-    company = f"{prefix}{board_key}"
-
-    def _with_conn() -> bool:
-        conn = _get_connection()
-        try:
-            _ensure_job_schema(conn)
-            _ensure_company_candidate_fk(conn)
-            row = conn.execute(
-                """SELECT 1 FROM job j
-                   JOIN company c ON j.company = c.short_name
-                   WHERE c.candidate_id = ?
-                     AND json_extract(j.job_data, '$.board_key') = ?
-                     AND json_extract(j.job_data, '$.board_listing_key') = ?
-                   LIMIT 1""",
-                (candidate_id, board_key, listing_key),
-            ).fetchone()
-            if row:
-                return True
-            # Fallback: placeholder company row without join if candidate_id not set yet
-            row = conn.execute(
-                """SELECT 1 FROM job
-                   WHERE company = ?
-                     AND json_extract(job_data, '$.board_key') = ?
-                     AND json_extract(job_data, '$.board_listing_key') = ?
-                   LIMIT 1""",
-                (company, board_key, listing_key),
-            ).fetchone()
-            return row is not None
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def _ensure_board_search_run_table(conn: sqlite3.Connection) -> None:
-    global _board_search_run_schema_ensured
-    if _board_search_run_schema_ensured:
-        return
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='board_search_run'"
-    )
-    if cursor.fetchone()[0] == 0:
-        conn.execute("""
-            CREATE TABLE board_search_run (
-                batch_id TEXT NOT NULL,
-                board_search_id TEXT NOT NULL,
-                candidate_id TEXT NOT NULL,
-                board_key TEXT NOT NULL,
-                new INTEGER NOT NULL,
-                duplicates INTEGER NOT NULL,
-                invalid_title INTEGER NOT NULL,
-                completed_at TIMESTAMP NOT NULL,
-                status TEXT NOT NULL,
-                PRIMARY KEY (batch_id, board_search_id)
-            )
+        ("batch_created_at", "TEXT"),
+        ("created_at", "TEXT"),
+        ("updated_at", "TEXT"),
+        ("state_changed_at", "TEXT"),
+        ("agent_responses", "TEXT DEFAULT '[]'"),
+        ("latest_score", "REAL"),
+    ]
+    copy_cols = [name for name, _ in _job_col_defs if name in cols and name != "board_search_id"]
+    col_defs = ", ".join(f"{name} {typedef}" for name, typedef in _job_col_defs if name in copy_cols)
+    select_list = ", ".join(copy_cols)
+    conn.execute(f"CREATE TABLE job_next ({col_defs})")
+    conn.execute(f"INSERT INTO job_next ({select_list}) SELECT {select_list} FROM job")
+    conn.execute("DROP TABLE job")
+    conn.execute("ALTER TABLE job_next RENAME TO job")
+    if had_identity_idx:
+        conn.execute(f"""
+            CREATE UNIQUE INDEX {_JOB_IDENTITY_UNIQUE_INDEX}
+            ON job (company, job_title, company_job_id)
+            WHERE company_job_id IS NOT NULL
+              AND job_title IS NOT NULL
+              AND TRIM(company_job_id) != ''
+              AND TRIM(job_title) != ''
         """)
-        conn.commit()
-    else:
-        pk_cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(board_search_run)").fetchall()
-            if row[5]
-        }
-        if pk_cols == {"batch_id"}:
-            conn.execute("""
-                CREATE TABLE board_search_run_new (
-                    batch_id TEXT NOT NULL,
-                    board_search_id TEXT NOT NULL,
-                    candidate_id TEXT NOT NULL,
-                    board_key TEXT NOT NULL,
-                    new INTEGER NOT NULL,
-                    duplicates INTEGER NOT NULL,
-                    invalid_title INTEGER NOT NULL,
-                    completed_at TIMESTAMP NOT NULL,
-                    status TEXT NOT NULL,
-                    PRIMARY KEY (batch_id, board_search_id)
-                )
-            """)
-            conn.execute("""
-                INSERT INTO board_search_run_new
-                SELECT batch_id, board_search_id, candidate_id, board_key, new, duplicates,
-                       invalid_title, completed_at, status
-                FROM board_search_run
-            """)
-            conn.execute("DROP TABLE board_search_run")
-            conn.execute("ALTER TABLE board_search_run_new RENAME TO board_search_run")
-            conn.commit()
-    _board_search_run_schema_ensured = True
-
-
-def record_board_search_run(
-    batch_id: str,
-    board_search_id: str,
-    candidate_id: str,
-    board_key: str,
-    counts: Dict[str, int],
-    *,
-    status: str = "COMPLETED",
-) -> None:
-    now = _utc_now()
-
-    def _with_conn() -> None:
-        conn = _get_connection()
-        try:
-            _ensure_board_search_run_table(conn)
-            conn.execute(
-                """INSERT OR REPLACE INTO board_search_run
-                   (batch_id, board_search_id, candidate_id, board_key, new, duplicates,
-                    invalid_title, completed_at, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    batch_id,
-                    board_search_id,
-                    candidate_id,
-                    board_key,
-                    counts.get("new", 0),
-                    counts.get("duplicates", 0),
-                    counts.get("invalid_title", 0),
-                    now,
-                    status,
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    _run_with_retry(_with_conn)
+    conn.commit()
+    _board_schema_sunset_applied = True
 
 
 # ---- company_search_terms (AST-524) ----
@@ -3228,50 +2905,66 @@ def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
     _company_search_terms_schema_ensured = True
 
 
+def reconcile_company_search_terms_from_artifact(candidate_id: str) -> int:
+    """Import legacy artifact search terms when table has no rows for this candidate (AST-802)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return 0
+    cid = str(candidate_id).strip()
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_company_search_terms_table(conn)
+            count_row = conn.execute(
+                "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                (cid,),
+            ).fetchone()
+            if count_row and int(count_row[0]) > 0:
+                return 0
+            cand = get_candidate(cid)
+            if not cand:
+                return 0
+            arts = (cand.get("candidate_data") or {}).get("artifacts") or {}
+            raw = arts.get("company_search_terms")
+            if not isinstance(raw, str) or not raw.strip():
+                return 0
+            lines = _search_term_lines_from_string(raw)
+            if not lines:
+                return 0
+            now = _utc_now()
+            seen: set[str] = set()
+            inserted = 0
+            for term in lines:
+                if term in seen:
+                    continue
+                seen.add(term)
+                conn.execute(
+                    """INSERT INTO company_search_terms
+                       (candidate_id, search_term, last_scan_at, created_at, updated_at)
+                       VALUES (?, ?, NULL, ?, ?)""",
+                    (cid, term, now, now),
+                )
+                inserted += 1
+            if inserted:
+                conn.commit()
+            return inserted
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def _migrate_company_search_terms_from_artifacts(conn: sqlite3.Connection) -> None:
     """Import legacy artifacts.company_search_terms strings when table has no rows for candidate."""
+    global _company_search_terms_migration_swept
+    # Reconcile opens its own connections and re-enters _ensure — mark swept before loop.
+    _company_search_terms_migration_swept = True
     _ensure_candidate_schema(conn)
-    rows = conn.execute(
-        "SELECT astral_candidate_id, candidate_data FROM candidate"
-    ).fetchall()
-    now = _utc_now()
+    rows = conn.execute("SELECT astral_candidate_id FROM candidate").fetchall()
     for row in rows:
         cid = row[0]
-        if not cid or not str(cid).strip():
-            continue
-        raw_cd = row[1]
-        if not raw_cd:
-            continue
-        try:
-            cd = json.loads(raw_cd) if isinstance(raw_cd, str) else raw_cd
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if not isinstance(cd, dict):
-            continue
-        arts = cd.get("artifacts") or {}
-        raw = arts.get("company_search_terms")
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        count_row = conn.execute(
-            "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
-            (cid,),
-        ).fetchone()
-        if count_row and int(count_row[0]) > 0:
-            continue
-        lines = _search_term_lines_from_string(raw)
-        if not lines:
-            continue
-        seen: set[str] = set()
-        for term in lines:
-            if term in seen:
-                continue
-            seen.add(term)
-            conn.execute(
-                """INSERT INTO company_search_terms
-                   (candidate_id, search_term, last_scan_at, created_at, updated_at)
-                   VALUES (?, ?, NULL, ?, ?)""",
-                (cid, term, now, now),
-            )
+        if cid and str(cid).strip():
+            reconcile_company_search_terms_from_artifact(str(cid).strip())
     conn.commit()
 
 
@@ -3417,6 +3110,8 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
                 feedback_type TEXT NOT NULL,
                 value TEXT NOT NULL,
                 agent_data_id TEXT,
+                batch_size INTEGER,
+                completed_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP NOT NULL
             )
         """)
@@ -3431,6 +3126,12 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
             "ON vector_feedback (candidate_id, task_key)"
         )
         conn.commit()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(vector_feedback)").fetchall()}
+    if "batch_size" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN batch_size INTEGER")
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN completed_at TIMESTAMP")
+    conn.commit()
     _vector_feedback_schema_ensured = True
 
 
@@ -3492,11 +3193,15 @@ def insert_vector_feedback_rows(
     candidate_id: str,
     batch_id: str,
     task_key: str,
+    batch_size: int,
+    completed_at: Optional[str] = None,
     agent_data_id: Optional[str] = None,
 ) -> None:
-    """Insert one row per feedback type per parsed vector (AST-724)."""
-    if not vector_rows:
+    """Insert one row per feedback type per parsed vector (AST-724 / AST-809 batch metadata)."""
+    if not vector_rows or not (batch_id or "").strip():
         return
+    ts = completed_at or _utc_now()
+    bs = int(batch_size) if batch_size and batch_size > 0 else 1
 
     def _with_conn() -> None:
         conn = _get_connection()
@@ -3518,8 +3223,8 @@ def insert_vector_feedback_rows(
                         """INSERT INTO vector_feedback
                            (vector_feedback_id, rubric_vector_uuid, candidate_id,
                             batch_id, task_key, feedback_type, value,
-                            agent_data_id, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            agent_data_id, batch_size, completed_at, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             str(uuid.uuid4()),
                             rubric_uuid,
@@ -3529,7 +3234,9 @@ def insert_vector_feedback_rows(
                             feedback_type,
                             value,
                             agent_data_id,
-                            _utc_now(),
+                            bs,
+                            ts,
+                            ts,
                         ),
                     )
             conn.commit()
@@ -3597,10 +3304,12 @@ def list_vector_feedback(
                 params.append(f"{date_to}T23:59:59")
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
-                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.task_key,
-                           vf.feedback_type, vf.value, vf.agent_data_id, vf.created_at,
-                           vf.rubric_vector_uuid, rv.code AS vector_code,
-                           rv.label AS vector_label, rv.current AS rubric_current
+                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.batch_size,
+                           vf.completed_at, vf.task_key, vf.feedback_type, vf.value,
+                           vf.agent_data_id, vf.created_at, vf.rubric_vector_uuid,
+                           rv.code AS vector_code, rv.label AS vector_label,
+                           rv.content AS vector_content, rv.importance AS vector_importance,
+                           rv.current AS rubric_current
                     FROM vector_feedback vf
                     LEFT JOIN rubric_vector rv ON vf.rubric_vector_uuid = rv.rubric_vector_uuid
                     {where}
@@ -4201,24 +3910,29 @@ def update_company_search_term_last_scan_at(candidate_id: str, search_term: str)
     _run_with_retry(_inner)
 
 
-def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> int:
-    """Count terms with NULL or stale last_scan_at (AST-525 consumer)."""
+def count_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> int:
+    """Count stale terms for inflow_discovery (AST-525/814); freq_hrs<=0 means all table rows."""
     if not candidate_id or not str(candidate_id).strip():
-        return 0
-    if scan_interval_hours <= 0:
         return 0
 
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            row = conn.execute(
-                """SELECT COUNT(*) FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchone()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                    (candidate_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT COUNT(*) FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
+                    (candidate_id, str(fh)),
+                ).fetchone()
             return int(row[0]) if row else 0
         finally:
             conn.close()
@@ -4226,25 +3940,32 @@ def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: flo
     return _run_with_retry(_with_conn)
 
 
-def list_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> List[str]:
-    """Stale term strings for inflow_discovery (AST-525); ordered search_term ASC."""
+def list_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> List[str]:
+    """Stale term strings for inflow_discovery (AST-525/814); ordered search_term ASC."""
     if not candidate_id or not str(candidate_id).strip():
-        return []
-    if scan_interval_hours <= 0:
         return []
 
     def _with_conn() -> List[str]:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            rows = conn.execute(
-                """SELECT search_term FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))
-                   ORDER BY search_term ASC""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchall()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                       ORDER BY search_term ASC""",
+                    (candidate_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))
+                       ORDER BY search_term ASC""",
+                    (candidate_id, str(fh)),
+                ).fetchall()
             return [r[0] for r in rows]
         finally:
             conn.close()
@@ -4642,6 +4363,151 @@ def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> No
     _ast723_rubric_token_migration_applied = True
 
 
+
+_AST776_VET_INFLOW_MECHANICAL_MARKER = "MECHANICAL LINK-TYPE VET ONLY (AST-776)"
+
+_AST776_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
+
+You vet a single discovery hit for roster inflow. Live content is one pipe line:
+
+`index|title|url|snippet`
+
+## Mechanical scope only
+
+Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
+news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
+
+## Response
+
+Use the standard two-key JSON envelope. In `agent_payload`, return:
+
+```json
+{"results": [{"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"}]}
+```
+
+- `action: "ignore"` — wrong page type; omit website or leave empty.
+- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
+"""
+
+
+_AST822_VET_INFLOW_BATCH_MARKER = "MULTI-HIT VET BATCH (AST-822)"
+
+_AST822_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
+## MULTI-HIT VET BATCH (AST-822)
+
+You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
+
+`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
+
+## Mechanical scope only
+
+Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
+news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
+
+## Response
+
+Use the standard two-key JSON envelope. In `agent_payload`, return one `results` object per input line:
+
+```json
+{"results": [
+  {"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"},
+  {"hit_index": 1, "action": "slug"|"ignore", "website": "…"}
+]}
+```
+
+- `hit_index` must match the input line index (`000` → 0, `001` → 1, …).
+- `action: "ignore"` — wrong page type; omit website or leave empty.
+- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
+"""
+
+
+def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-776: seed mechanical-only vet_inflow_discovery prompt for company dispatch on NEW."""
+    marker = _AST776_VET_INFLOW_MECHANICAL_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST776_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
+
+def _apply_ast822_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-822: widen vet_inflow_discovery prompt for multi-hit batch decode."""
+    marker = _AST822_VET_INFLOW_BATCH_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST822_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
     """AST-561: version analysis_upshot user_prompt with take_jd; seed when row exists but prose empty."""
     try:
@@ -4796,6 +4662,8 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast469_select_job_page_run_next_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
+    _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
+    _apply_ast822_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5850,10 +5718,6 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "UPDATE dispatch_task SET sort_by = 'last_scan_at' WHERE task_key = 'gaze' AND sort_by = 'updated_at'"
     )
     conn.commit()
-    conn.execute(
-        "UPDATE dispatch_task SET sort_by = 'last_scan_at' WHERE task_key = 'gaze_board' AND sort_by = 'updated_at'"
-    )
-    conn.commit()
     # AST-485: legacy locate_job_page scheduled rows → find_job_page (before NO_OPENINGS find_job_page→recheck below).
     conn.execute(
         "UPDATE dispatch_task SET task_key = 'find_job_page' WHERE task_key = 'locate_job_page'"
@@ -5930,6 +5794,125 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
         "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
     )
+    # AST-823: legacy prefilter dispatch row retarget (agent key on dispatch row, stale batch mode).
+    conn.execute(
+        """
+        DELETE FROM dispatch_task AS d
+        WHERE d.entity_type = 'company'
+          AND d.task_key = 'prefilter_company'
+          AND EXISTS (
+            SELECT 1 FROM dispatch_task AS g
+            WHERE g.candidate_id = d.candidate_id
+              AND g.task_key = 'prefilter'
+              AND g.trigger_state = 'HOMEPAGE_READY'
+          )
+        """
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET task_key = 'prefilter', trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE entity_type = 'company' AND task_key = 'prefilter_company'"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND entity_type = 'company' "
+        "AND trigger_state IN ('WEBSITE_FOUND', 'WEBSITE_FOUND_RETRY')"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND entity_type = 'company' AND batch_call_mode = 0"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET batch_call_mode = 1 WHERE task_key = 'vet_inflow_discovery'"
+    )
+    conn.commit()
+    # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
+    _CONSULT_TO_GRADE_DISPATCH_KEYS = (
+        ("consult_do", "grade_do"),
+        ("consult_get", "grade_get"),
+        ("consult_like", "grade_like"),
+    )
+    for retired_key, grade_key in _CONSULT_TO_GRADE_DISPATCH_KEYS:
+        # Drop legacy row when canonical grade_* row already exists for same triple.
+        conn.execute(
+            """
+            DELETE FROM dispatch_task AS d
+            WHERE d.task_key = ?
+              AND EXISTS (
+                SELECT 1 FROM dispatch_task AS g
+                WHERE g.candidate_id = d.candidate_id
+                  AND g.task_key = ?
+                  AND g.trigger_state = d.trigger_state
+              )
+            """,
+            (retired_key, grade_key),
+        )
+        conn.execute(
+            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
+            (grade_key, retired_key),
+        )
+    conn.commit()
+    # AST-794 / AST-797: retire scrape_jd / validate_title / gaze_board dispatch rows.
+    _SCRAPE_TO_FETCH_DISPATCH_KEYS = (("scrape_jd", "fetch_jd"),)
+    for retired_key, canonical_key in _SCRAPE_TO_FETCH_DISPATCH_KEYS:
+        conn.execute(
+            """
+            DELETE FROM dispatch_task AS d
+            WHERE d.task_key = ?
+              AND EXISTS (
+                SELECT 1 FROM dispatch_task AS g
+                WHERE g.candidate_id = d.candidate_id
+                  AND g.task_key = ?
+                  AND g.trigger_state = d.trigger_state
+              )
+            """,
+            (retired_key, canonical_key),
+        )
+        conn.execute(
+            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
+            (canonical_key, retired_key),
+        )
+    conn.commit()
+
+    for purge_key in ("validate_title", "gaze_board"):
+        conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
+    conn.commit()
+
+    # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
+    # split into explicit NEW + VALID_TITLE_RETRY rows.
+    qualify_retry_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'
+        """
+    ).fetchall()
+    for r in qualify_retry_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'qualify_job_listings', ?, 'VALID_TITLE_RETRY', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'qualify_job_listings'
+                  AND trigger_state = 'VALID_TITLE_RETRY'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'NEW' "
+        "WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'"
+    )
     conn.commit()
     _dispatch_task_schema_ensured = True
 
@@ -5940,8 +5923,6 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "agent_responses": ("_agent_responses_schema_ensured",),
     "agent_task": ("_agent_task_schema_ensured",),
     "app_log": ("_app_log_schema_ensured",),
-    "board_search": ("_board_search_schema_ensured",),
-    "board_search_run": ("_board_search_run_schema_ensured",),
     "candidate": ("_candidate_schema_ensured",),
     "candidate_intake_session": ("_intake_session_schema_ensured",),
     "company": ("_company_schema_ensured", "_company_candidate_fk_ensured"),
@@ -5961,8 +5942,6 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
     "agent_responses": _ensure_agent_responses_schema,
     "agent_task": _ensure_agent_task_schema,
     "app_log": _ensure_app_log_schema,
-    "board_search": _ensure_board_search_table,
-    "board_search_run": _ensure_board_search_run_table,
     "candidate": _ensure_candidate_schema,
     "candidate_intake_session": _ensure_candidate_intake_session_table,
     "company": _ensure_company_table_for_upsert,
@@ -6077,7 +6056,11 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
         return None
 
 
-_DISPATCH_TASK_UPDATE_COLS = {"min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor"}
+_DISPATCH_TASK_UPDATE_COLS = {
+    "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
+    "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor",
+    "task_key", "sort_by", "batch_call_mode",
+}
 
 
 def update_dispatch_task(task_id: int, **kwargs) -> None:
@@ -6133,7 +6116,9 @@ def get_due_tasks() -> List[Dict[str, Any]]:
 
 
 def count_company_new_without_website(candidate_id: str) -> int:
-    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website)."""
+    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website).
+
+    Excludes discovery-path rows that carry inflow_discovery_blurb (AST-776 vet dispatch)."""
     if not candidate_id or not str(candidate_id).strip():
         return 0
 
@@ -6145,7 +6130,11 @@ def count_company_new_without_website(candidate_id: str) -> int:
                 """SELECT COUNT(*) FROM company
                    WHERE state = 'NEW' AND candidate_id = ?
                      AND (batch_id IS NULL OR batch_id = '')
-                     AND (company_website IS NULL OR TRIM(company_website) = '')""",
+                     AND (company_website IS NULL OR TRIM(company_website) = '')
+                     AND (
+                       json_extract(company_data, '$.inflow_discovery_blurb') IS NULL
+                       OR TRIM(json_extract(company_data, '$.inflow_discovery_blurb')) = ''
+                     )""",
                 (candidate_id,),
             ).fetchone()
             return int(row[0])
@@ -6155,25 +6144,70 @@ def count_company_new_without_website(candidate_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
+def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
+    """Unclaimed NEW companies with discovery blurb pending vet_inflow_discovery (AST-776)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return 0
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_company_schema(conn)
+            row = conn.execute(
+                """SELECT COUNT(*) FROM company
+                   WHERE state = 'NEW' AND candidate_id = ?
+                     AND (batch_id IS NULL OR batch_id = '')
+                     AND (company_website IS NULL OR TRIM(company_website) = '')
+                     AND json_extract(company_data, '$.inflow_discovery_blurb') IS NOT NULL
+                     AND TRIM(json_extract(company_data, '$.inflow_discovery_blurb')) != ''""",
+                (candidate_id,),
+            ).fetchone()
+            return int(row[0])
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def describe_candidate_inflow_discovery_eligibility(candidate_id: str, freq_hrs: float) -> tuple[int, str]:
+    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802/814)."""
+    from src.core.candidate import ensure_company_search_terms_table_synced
+
+    if not candidate_id or not str(candidate_id).strip():
+        return 0, "eligibility: missing candidate_id"
+    cid = str(candidate_id).strip()
+    fh = float(freq_hrs or 0)
+    ensure_company_search_terms_table_synced(cid)
+    cand = get_candidate(cid)
+    if not cand:
+        return 0, "eligibility: candidate not found"
+    trigger = INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
+    state = (cand.get("state") or "").strip()
+    if state != trigger:
+        return 0, f"eligibility: candidate state {state!r} != {trigger!r}"
+    total = len(list_company_search_terms(cid))
+    if total == 0:
+        return 0, "eligibility: company_search_terms table empty"
+    stale = count_stale_company_search_terms(cid, fh)
+    if stale == 0:
+        return (
+            0,
+            f"eligibility: {total} table row(s) but 0 stale (freq_hrs={fh})",
+        )
+    return 1, ""
+
+
 def count_candidate_inflow_discovery_eligible(
     candidate_id: str,
     freq_hrs: float,
     last_run_at: Optional[str],
 ) -> int:
     """inflow_discovery when LIVE_PROMPTS and ≥1 stale company_search_terms row (AST-525)."""
-    del freq_hrs, last_run_at  # unused — per-term last_scan_at, not dispatch_task.last_run_at
-    if not candidate_id or not str(candidate_id).strip():
-        return 0
-    cand = get_candidate(candidate_id)
-    if not cand:
-        return 0
-    trigger = INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if (cand.get("state") or "").strip() != trigger:
-        return 0
-    scan_h = float(INFLOW_CONFIG["discovery"]["scan_interval_hours"])
-    if count_stale_company_search_terms(candidate_id, scan_h) > 0:
-        return 1
-    return 0
+    del last_run_at  # per-term last_scan_at, not dispatch_task.last_run_at
+    eligible, _reason = describe_candidate_inflow_discovery_eligibility(
+        candidate_id, float(freq_hrs or 0)
+    )
+    return eligible
 
 
 
@@ -6191,12 +6225,13 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
 
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
-    For board_search gaze_board: freq_hrs when > 0, else BOARDS_CONFIG["gaze_board"]["scan_interval_hours"] — same staleness predicate as claim_board_search_batch.
     Other company states and all job states use count_entities_in_state (no per-task freq filter)."""
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
     if not entity_type or not state or not candidate_id:
+        return 0
+    if entity_type not in ENTITY_TYPES:
         return 0
     claim_states = dispatch_claim_states(state, entity_type)
     if not claim_states:
@@ -6205,8 +6240,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(candidate_id, 0, None)
+        return count_candidate_inflow_discovery_eligible(
+            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+        )
     if entity_type == "company":
+        if task_key == INFLOW_CONFIG["vet"]["task_key"]:
+            return count_company_new_pending_inflow_vet(candidate_id)
         if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
             return count_company_new_without_website(candidate_id)
         floor_raw = task.get("score_floor")
@@ -6239,33 +6278,6 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
                     conn.close()
 
             return _run_with_retry(_with_conn)
-    if entity_type == "board_search":
-        act = BOARD_SEARCH_STATES[0]
-        freq = float(task.get("freq_hrs") or 0)
-        gaze_bc = BOARDS_CONFIG.get("gaze_board") or {}
-        cfg_scan_raw = gaze_bc.get("scan_interval_hours")
-        scan_from_cfg = float(cfg_scan_raw) if cfg_scan_raw is not None else None
-        scan_h = freq if freq > 0 else scan_from_cfg
-        effective = scan_h if scan_h is not None and float(scan_h) > 0 else 24.0
-        hours = str(float(effective))
-
-        def _with_conn_bs() -> int:
-            conn = _get_connection()
-            try:
-                _ensure_board_search_table(conn)
-                row = conn.execute(
-                    """SELECT COUNT(*) FROM board_search
-                       WHERE candidate_id = ?
-                         AND state = ?
-                         AND (batch_id IS NULL OR batch_id = '')
-                         AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                    (candidate_id, act, hours),
-                ).fetchone()
-                return int(row[0])
-            finally:
-                conn.close()
-
-        return _run_with_retry(_with_conn_bs)
     if entity_type == "job" and floor is not None:
         def _with_conn() -> int:
             conn = _get_connection()

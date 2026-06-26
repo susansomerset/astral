@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-623 archived 2026-06-23 -->
+
+## Linear archive (AST-623)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-623/builder-resume-and-cover-letter-artifact-debug-instrumentation-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-545 — Debug logging backfill: builder  
+**Blocked by / blocks / related:** parent: AST-545
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **builder** / artifact HTML generation paths in `src/core/builder.py`: resume/cover letter builder entry points with the shared debug helper. Debug should show which template keys resolved and what content shaped the output — without dumping full HTML unless truncated via the 50-line / 15+omit+15 rule.
+
+## Acceptance criteria
+
+1. Debug artifact build logs section/key resolution detail.
+2. Large renders use 15+omit+15 truncation.
+3. `debug=False` unchanged.
+
+## Boundaries
+
+* No builder output shape changes.
+* Does not touch roster, consult, gazer, or external LLM wrappers (sibling backfill tickets).
+
+## Notes for planning
+
+* Use `src/utils/logging.py` — `debug_index`, `debug_detail`, `debug_detail_block`.
+* Builder is read-only renderer — pass `debug=` through public entry points where callers already supply it.
+* See **AST-538** Code Rules §1.5 for index header + `|` detail format.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-545-debug-logging-backfill-builder`, child `sub/AST-545/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T05:20:11.086Z
+**Review** — `origin/dev...origin/sub/AST-545/AST-623-builder-artifact-debug` @ `f2c79b18`
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory**
+- `src/core/builder.py`: module `_log` sets `set_debug_flag(True)` on `debug=True` but does not reset on `debug=False` — matches `gazer`/`dispatcher` siblings; all emissions gated by `if debug` / `_emit_builder_failure`, so no contract leak in this diff.
+- `_accent_source_label` re-calls `resolve_resume_structure` on debug success paths only — fine for debug-only tracing.
+
+**§1.5.1:** five public APIs + failure headers + success detail (source labels, sections, keys, truncated HTML via `debug_detail_block`); zero `[DEBUG]` literals.
+
+**Plan / boundaries:** matches combined plan stages 1–4; no API route wiring, no sibling-module scope.
+
+Doc: `docs/features/foundation/ast-623-builder-resume-and-cover-letter-artifact-debug-instrumentation.md` § Review (Radia).
+
+#### betty — 2026-06-14T05:17:39.559Z
+## QA test manifest (AST-623)
+
+**Publish ref:** `origin/sub/AST-545/AST-623-builder-artifact-debug` @ `f9e69620` (`merge-tests(AST-623): origin/tests 16fe6fbd`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `8a8d49b57facbae7d34a5d6b14fdde9f553f15e2` — see **§7.13zzj**
+
+**Classification:** instrumentation-only (AST-538 §1.5.1 backfill in `src/core/builder.py`). **No new log-string tests** per parent/plan. Extended **`test_builder.py`** for **`LOCKED_AT_100`** branch pairs on new `debug=True`/`False` gates.
+
+### Run (numbered)
+
+1. `.venv/bin/python -m pytest tests/component/core/test_builder.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q`
+
+Equivalent harness:
+
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_builder.py`
+
+### Manifest focus
+
+| Area | Tests |
+| --- | --- |
+| `build_resume_from_job` success/failure/`include_cover`/keywords | **`TestBuildResumeFromJob`**, **`TestBuildResumeFromJobDebugPaths`**, **`TestAst581ResumeCoverSplit`** |
+| `build_resume` load chain | **`TestBuildResume`**, **`TestBuildResumeDebugPaths`** |
+| `build_cover_letter` / `build_cover_letter_from_job` | **`TestAst581ResumeCoverSplit`**, **`TestBuildCoverLetterDebugPaths`**, **`TestBuildCoverLetterFromJobDebugPaths`** |
+| `build_base_resume` | **`TestBuildBaseResume`**, **`TestBuildBaseResumeDebugPaths`** |
+| Source label helpers | **`TestBuilderIdentifierHelpers`** |
+| §7.13zt contract regression | **`test_debug_logging.py`**, **`test_logging_batch.py`** |
+| `debug=False` unchanged | All pre-AST-623 rows; full-file **`LOCKED_AT_100`** on `builder.py` |
+
+#### ada — 2026-06-14T05:11:09.172Z
+Plan: [docs/features/foundation/ast-623-builder-resume-and-cover-letter-artifact-debug-instrumentation.md](https://github.com/susansomerset/astral/blob/sub/AST-545/AST-623-builder-artifact-debug/docs/features/foundation/ast-623-builder-resume-and-cover-letter-artifact-debug-instrumentation.md) @ `7690f722`
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — `builder.py` only; logging layer on five public render entry points.
+- **Conf:** `conf-high` — mirrors AST-554 contract and landed sibling backfills; builder currently has zero debug instrumentation to migrate.
+- **Risk:** `risk-low` — read-only HTML renderer; debug gating cannot change output shape or dispatch/state behavior.
+
+Four stages: module helpers + `debug=` kwarg → `build_resume_from_job`/`build_resume` → cover-letter paths → `build_base_resume`. HTML preview uses `debug_detail_block` (15+omit+15). No UI route changes.
+
+---
+
 # AST-623 — Builder resume and cover letter artifact debug instrumentation (Debug logging backfill: builder)
 
 - **Linear (this ticket):** [AST-623](https://linear.app/astralcareermatch/issue/AST-623/builder-resume-and-cover-letter-artifact-debug-instrumentation-debug)

@@ -16,3 +16,10 @@ PUT **`/api/candidates/:id/data`** calls **`apply_rubric_vectors_save`** after r
 | --- | --- | --- |
 | PUT sync + GET hydrate | `src/ui/api/api_candidate.py` | `TestAst723RubricVectorsApi` |
 
+### AST-802 · AST-801
+
+PUT **`/api/candidates/:id/data`** with **`artifacts.company_search_terms`** syncs table via **`apply_company_search_terms_save`**; blob key is not persisted (**AST-524** path unchanged; **AST-802** reconcile is eligibility-side — see **`data/database/dispatch_tasks.md`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT table sync, no blob persist | `src/ui/api/api_candidate.py` | **`TestCandidateRoutes::test_put_company_search_terms_populates_table_without_persisting_blob`** |

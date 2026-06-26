@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-689 archived 2026-06-23 -->
+
+## Linear archive (AST-689)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-689/dynamic-careers-list-scrape-readiness-job-site-scrape-is-too-fast  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-684 — Job Site scrape is too fast?  
+**Blocked by / blocks / related:** parent: AST-684; blocks: AST-692
+
+### Description
+
+## What this implements
+
+Before visible-text extraction on every roster Playwright path that feeds **select_job_page**, wait for dynamic careers-list content to render (config-driven readiness). Applies to **find_job_page** / **jobs_found_process_job_site** and any other scrape that supplies page text to **select_job_page**. Add debug logging per AST-538 contract when readiness fails or times out.
+
+## Acceptance criteria
+
+1. PagerDuty repro (`careers.pagerduty.com/jobs/search`, batch `select_job_page-54d02162-370a-4548-b166-664bc2350bbb`): scraped visible text includes job titles present in the DOM before **select_job_page** runs.
+2. Readiness gate applies to **all** roster scrapes that feed **select_job_page**, not only PagerDuty.
+3. Config-driven wait/selector (no hard-coded site list); tunable via `config.py` / env as established for roster Playwright.
+4. Debug log lines when readiness fails (per AST-538 shared helper / contract).
+5. Automated regression test covers readiness path (mock or fixture acceptable if it asserts gate behavior).
+
+## Boundaries
+
+* Does **not** define **JOBSITE_SCRAPE_ISSUE** response type or company state — sibling AST-685 (blocked downstream).
+* Does **not** change **select_job_page** prompt semantics beyond receiving complete scrape text.
+* Out of scope: AST-666 hang class; gazer-only **load_all_jobs** unless wired into roster discovery scrape path.
+
+## Notes for planning
+
+* Hot files: `src/core/roster.py`, `src/external/playwright.py`, `src/utils/config.py`.
+* **load_all_jobs** exists in gazer path; roster discovery may need analogous wait on careers search pages.
+* Follow ASTRAL_CODE_RULES layer boundaries; plan in epic worktree on `sub/AST-684/<this-ticket>`.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-684-job-site-scrape-is-too-fast`, child `sub/AST-684/<child-id>-dynamic-scrape-readiness`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-16T00:40:18.966Z
+**Diff:** `origin/dev...origin/sub/AST-684/AST-689-dynamic-scrape-readiness` @ `7e8984c`
+**Doc:** `docs/features/roster/ast-689-dynamic-careers-list-scrape-readiness-job-site-scrape-is-too-fast.md` (Radia review section)
+
+**Verdict:** Clean — no **fix-now** or **discuss**.
+
+### Plan fidelity
+- Stage 1–3 match combined plan: config block + env overrides, `wait_for_careers_list_readiness` in external (no log), single call site in `_fetch_job_links_content` before extract.
+- AST-692 boundary respected — timeout proceeds best-effort; no **JOBSITE_SCRAPE_ISSUE** state.
+- Betty manifest covers ready / timeout / integration + existing scrape-debug mock.
+
+### §5f debug
+Per-page `debug_index` + `debug_detail` when `debug=True` only; universal `index N/M`, URL identifier, outcome + readiness metrics; failure detail notes AST-692 ownership.
+
+### Advisory
+- Sub tip diff vs dev includes sibling AST-684 children; AST-689 product commits (`4cfeec0`, `676001b`, `94021d6`) stay in plan scope.
+- `except Exception: pass` on bad selector counts — plan-specified; acceptable per §5b.
+- Generic listing selectors may false-ready on nav links — tune config if staging shows false positives.
+
+#### chuckles — 2026-06-16T00:37:06.963Z
+## QA test manifest (AST-689)
+
+**Publish ref:** `origin/sub/AST-684/AST-689-dynamic-scrape-readiness` @ `e7c579c`
+**Tests SHA:** `7d915e9`
+
+1. `tests/component/core/test_roster.py::TestAst689ScrapeReadiness::test_wait_for_careers_list_readiness_ready_on_listing_hits` — readiness helper exits **ready** on listing selector hits
+2. `tests/component/core/test_roster.py::TestAst689ScrapeReadiness::test_wait_for_careers_list_readiness_timeout` — bounded wait returns **timeout** when listings never appear
+3. `tests/component/core/test_roster.py::TestAst689ScrapeReadiness::test_fetch_job_links_content_calls_readiness` — `_fetch_job_links_content` invokes readiness before `extract_visible_text`
+4. `tests/component/core/test_roster.py::TestRosterCoverageGaps::test_fetch_job_links_content_dom_new_links_and_scrape_debug` — existing PJL scrape debug test (readiness mock; fixes ~21s gate wait)
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst689ScrapeReadiness \
+  tests/component/core/test_roster.py::TestRosterCoverageGaps::test_fetch_job_links_content_dom_new_links_and_scrape_debug
+```
+
+**Broken / obsolete (fixed this pass):** `test_fetch_job_links_content_dom_new_links_and_scrape_debug` — without readiness mock, real gate waits `max_wait_ms=20000` per page.
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/core/roster.md` → `2785b3c28a5cb0541dddbb745273e9f14fff2037`
+
+— Betty
+
+#### hedy — 2026-06-16T00:31:02.396Z
+Plan doc: `https://github.com/susansomerset/astral/blob/sub/AST-684/AST-689-dynamic-scrape-readiness/docs/features/roster/ast-689-dynamic-careers-list-scrape-readiness-job-site-scrape-is-too-fast.md`
+
+**Self-assessment**
+- **Scope:** Single-Component — `config.py` scrape_readiness block, one Playwright helper, and `_fetch_job_links_content` (the single funnel for all PJL scrapes feeding select_job_page).
+- **Conf:** Medium — new readiness heuristics, but integration is one call site and load_all_jobs / AST-538 debug patterns already exist in roster.
+- **Risk:** Medium — overly long waits could slow every PJL scrape; mitigated by early exit on selector hits, 20s cap, env overrides, and Betty regression tests on gate behavior.
+
+---
+
 # AST-689 — Dynamic careers-list scrape readiness (Job Site scrape is too fast?)
 
 **Linear:** [AST-689 — Dynamic careers-list scrape readiness (Job Site scrape is too fast?)](https://linear.app/astralcareermatch/issue/AST-689/dynamic-careers-list-scrape-readiness-job-site-scrape-is-too-fast)

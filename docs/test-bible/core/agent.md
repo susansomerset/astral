@@ -124,3 +124,87 @@ Roster passthrough manifest: **`docs/test-bible/core/roster.md`** (**AST-698**).
 ```
 
 Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. Data layer: **`docs/test-bible/data/database/rubric_vectors.md`**.
+
+---
+
+### AST-769 · AST-752
+
+**General caller hydration:** `do_task` entry loads `{$CALLER_*}` from persisted `agent_data` on job / company / candidate entities (batch-anchored via `state_history` or `log_batch_id`); `run_next` child dispatch strips in-memory `CALLER_*` and re-hydrates from storage. Refactors AST-597 resume helpers onto `_hydrate_caller_chain_context` / `_hop_agent_ref_for_parent` (retires `_latest_job_hop_agent_ref`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch anchor + hop ref lookup | `src/core/agent.py` | **`TestAst769GeneralCallerHydration::test_anchor_batch_id_from_state_history_uses_current_state_row`**; **`test_hop_agent_ref_for_parent_prefers_anchor_batch_over_newer_ref`**; **`test_hop_agent_ref_for_parent_skips_failed_response_rows`** (AST-597 class) |
+| Non-caller chain keys preserved | `src/core/agent.py` | **`TestAst769GeneralCallerHydration::test_merge_hydrated_caller_context_preserves_non_caller_keys`** |
+| Roster mid-chain entry (company) | `src/core/agent.py` | **`TestAst769GeneralCallerHydration::test_do_task_parse_job_list_hydrates_caller_from_company_agent_data`** |
+| Non-roster job hop (cover letter) | `src/core/agent.py` | **`TestAst769GeneralCallerHydration::test_do_task_job_cover_letter_hydrates_from_stored_parent_hop`** |
+| Hydration miss — no LLM | `src/core/agent.py` | **`TestAst769GeneralCallerHydration::test_do_task_hydration_miss_returns_error_without_llm`** |
+| Style D debug | `src/core/agent.py` | **`TestAst769GeneralCallerHydration::test_do_task_hydrated_hop_debug_logs_agent_data`** |
+| AST-597 resume regression | `src/core/agent.py` | **`TestAst597MidChainResumeHydrationAndTransitions`** (full class) |
+| Daisy-chain regression | `src/core/agent.py` | **`TestAst469ResolveRunNextLive`**; **`TestChainContext`** |
+
+**AST-769** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst769GeneralCallerHydration \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  tests/component/core/test_agent.py::TestAst469ResolveRunNextLive \
+  tests/component/core/test_agent.py::TestChainContext \
+  -q
+```
+
+**Note:** Candidate entities lack `state_history` batch anchoring today — hydration falls back to latest successful parent ref per `task_key` (documented in plan Stage 1).
+
+---
+
+### AST-809 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** requires truthy **`batch_id`** before insert; passes **`batch_size`** and **`completed_at`** into **`insert_vector_feedback_rows`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip when batch_id missing | `src/core/agent.py` | `TestAst809VectorFeedbackBatchMetadata::test_capture_skips_insert_when_batch_id_missing` |
+| Metadata on SUCCESS capture | `src/core/agent.py` | `TestAst809VectorFeedbackBatchMetadata::test_capture_persists_batch_metadata_on_rows` |
+
+---
+
+### AST-816 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** uses UUID-backed **`expected_codes`**, **`parse_vector_reviews_diagnostic`**, JSON-string **`vector_reviews`**, and debug hydration lines on SUCCESS/failure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| JSON-string envelope capture | `src/core/agent.py` | `TestAst816VectorFeedbackCapture::test_json_string_vector_reviews_persists_rows` |
+| Debug diagnostic on parse failure | `src/core/agent.py` | `TestAst816VectorFeedbackCapture::test_debug_emits_diagnostic_on_parse_failure` |
+
+**AST-816** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst816VectorFeedbackCapture \
+  -q
+```
+
+Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal ledger **`candidate_id`**: **`docs/test-bible/frontend/pages.md`**.
+
+---
+
+### AST-820 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** and **`do_task`** emit debug-only pipeline trace + explicit skip reasons when **`debug=True`** (empty **`batch_id`**, empty rubric UUID map, missing owner/candidate).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Early-return skip debug | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_skip_empty_batch_id`, `test_debug_skip_empty_expected_codes` |
+| Pipeline trace on capture | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_emits_pipeline_trace_on_capture_start` |
+| `do_task` skip when no candidate | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_do_task_debug_skip_when_candidate_id_missing` |
+
+**AST-820** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace \
+  -q
+```
+
+Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.
