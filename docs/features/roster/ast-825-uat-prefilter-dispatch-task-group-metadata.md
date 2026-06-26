@@ -120,3 +120,31 @@ Susan opens Admin → **Scheduled Actions** (or `GET /api/admin/dispatch_tasks/t
 | §3.5 Naming | Helper name describes purpose; **`prefilter`** dispatch key preserved for execution paths. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-821/AST-825-uat-prefilter-dispatch-task-group-metadata` @ `59867a0`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Single-component scope held — admin grouping metadata only; no consult routing, dispatch execution, or roster changes |
+| Stage 2 | `dispatch_task_grouping_catalog_key` in config maps `prefilter` → `ROSTER_CONFIG["prefilter"]["task_key"]`; `_dispatch_task_key_form_meta` uses `grouping_key` only for `_catalog_task_grouping_meta` — entity/trigger/is_scored still keyed by dispatch `task_key` |
+| §2.1 | Roster dispatch→consult split resolved via config helper, not inline UI magic strings |
+| §3.3 | One new config import in `api_admin`; no new cross-layer violations |
+| Tests | Betty manifest covers config helper and `task_keys["prefilter"]` grouping (Company Roster, seq 5) with entity/trigger regression assertions |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | No fix-now items |
+
+### Recommended actions
+
+| Severity | Location | Action |
+|----------|----------|--------|
+| **advisory** | `src/utils/config.py` | Narrow `prefilter`-only map is intentional per plan (not a general alias table). If future roster dispatch keys diverge from `agent_task` keys, extend this helper rather than duplicating lookup in UI — same pattern as `_dispatch_trigger_state_for_task_key`. |
