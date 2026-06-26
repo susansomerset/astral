@@ -214,7 +214,7 @@ tests/component/utils/test_config.py -k "vet_inflow_discovery_dispatch"
 
 **Publish ref:** `origin/sub/AST-815/AST-822-uat-vet-inflow-batch-indices`
 
-**Built:** _(fill on build-child)_
+**Built:** @ `8580c9d` — `batch_call_mode=1` for `vet_inflow_discovery` (config + DB migration); AST-822 multi-hit prompt migration; `vet_inflow_discovery_company_batch` with `000/001/002` blurb renumber and `hit_index` decode; consult company branch routes vet before `run_company_task` fallback.
 
 **Test-child (Hedy):** _(fill on test-child)_
 
