@@ -1,3 +1,128 @@
+<!-- linear-archive: AST-702 archived 2026-06-23 -->
+
+## Linear archive (AST-702)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-702/batch-prefilter-evaluate-phase-prefilter-as-batch-process  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-700 — prefilter as batch process  
+**Blocked by / blocks / related:** parent: AST-700
+
+### Description
+
+## What this implements
+
+Phase 2 of the two-phase company prefilter pipeline: a batch **prefilter** dispatch task that claims companies in **HOMEPAGE_READY**, assembles many prepared companies into one agent request evaluated in series (position-indexed rows), and applies per-company outcomes using the existing **prefilter_company** rubric and encoded output contract. Replaces the monolithic scrape+evaluate path for **all** **WEBSITE_FOUND** companies (Susan confirmed full cutover). Inflow vs legacy routing, retries, and link persistence unchanged.
+
+## Acceptance criteria
+
+3. Multiple companies in **HOMEPAGE_READY** can be claimed in one dispatch batch and evaluated in a **single** agent call; each company receives an independent pass/fail outcome and state transition matching today's prefilter semantics.
+4. Inflow companies (history **NEW → WEBSITE_FOUND**) still route to **PREFILTER_PASSED** / **PREFILTER_FAILED**; manual path still routes to **TO_WATCH** / **IGNORE**.
+5. Retryable prefilter failures still land in **WEBSITE_FOUND_RETRY** (or equivalent holding state) rather than silent loss.
+6. With **debug=True** on a dispatch batch, Susan can trace each company's prefilter step via distinct index headers and substantive detail lines — not batch summaries alone.
+7. Existing single-company prefilter behavior is fully superseded by the two-phase pipeline for all companies — no ambiguous dual paths.
+
+## Boundaries
+
+* Does **not** re-implement homepage scrape — depends on **AST-701** **HOMEPAGE_READY** content.
+* Does **not** change rubric, prompt schema, or encoded decode — orchestration only.
+* Does **not** alter job-side batch consult or inflow discovery.
+
+## Notes for planning
+
+* Follow **evaluate_jd_batch** / **\_run_batch_consult** Pattern A precedent for company batching.
+* **dispatch_tasks** seed with **batch_call_mode=1**; update **ROSTER_CONFIG\["prefilter"\]** input state to **HOMEPAGE_READY**.
+* Extract/consolidate outcome application from today's **prefilter_company** for per-row **process_fn**.
+* Primary files: [**roster.py**](<http://roster.py>), [**consult.py**](<http://consult.py>), [**config.py**](<http://config.py>), [**database.py**](<http://database.py>), [**dispatcher.py**](<http://dispatcher.py>).
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-700-prefilter-as-batch-process**, child **sub/AST-700/AST-702-batch-prefilter-evaluate-phase**.
+
+### Comments
+
+#### radia — 2026-06-16T05:29:44.015Z
+### Plan fidelity
+
+All six stages match the combined plan on stacked AST-701 base: `ROSTER_CONFIG["prefilter"]["input_state"]=HOMEPAGE_READY`, `retry_state` on `HOMEPAGE_READY`, evaluate transitions, `prefilter` in `_DISPATCH_BATCH_CALL_MODE_ONE`; `_apply_prefilter_decoded_company_outcome` + `prefilter_company_batch` / `_run_batch_company_prefilter` (readiness split, one `do_task`, ID reconciliation, `pass_states` counting); consult routes `prefilter` with `skipped` in error math; monolithic `WEBSITE_FOUND`/`WEBSITE_FOUND_RETRY` dispatch removed (warning + `total_errors`); DB migration to `HOMEPAGE_READY`/`batch_call_mode=1` and `_RETRY_TASK_SEED` swap to `fetch_website`. No rubric/decode changes; AST-701 scrape path intact.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 / §2.1 / §2.6 / §2.8:** Shared outcome helper; config-driven trigger/batch mode/states; core-owned transitions; not-ready → `CANNOT_READ_WEBSITE` with notes.
+- **§2.4:** `batch_call_mode=1` full-list consult pass; normalized counts; dispatcher claims `HOMEPAGE_READY` only (no stale `WEBSITE_FOUND_RETRY` companion for prefilter).
+- **§1.5.1:** Debug gated; per-company `index N/M` + detail on batch hop — consistent with job batch scaffold.
+- **§5a:** Lazy imports match existing consult routing pattern; `append_agent_response` swallow matches `_run_batch_consult` coexistence.
+
+### Issues
+
+**fix-now:** none  
+**discuss:** none
+
+### Advisory
+
+- Diff vs `origin/dev` includes full AST-701 stack (expected before ftr→dev merge).
+- `_run_batch_company_prefilter` parallels rather than reuses `_run_batch_consult` — plan-approved; optional future DRY.
+- `TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` self-mocks the function under test (tautological) — Betty follow-on, not blocking.
+
+**Doc:** `docs/features/consult/ast-702-batch-prefilter-evaluate-phase.md` @ `f747284` on `origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase`.
+
+#### betty — 2026-06-16T05:24:23.177Z
+## QA test manifest (AST-702)
+
+**Publish ref:** `origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` @ `ba3ccc9`
+
+1. **`prefilter_company_batch`** readiness skip (no `homepage_text`), batch pass/fail counts, `do_task` envelope failure → retry transition — `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch`
+
+2. **`_prefilter_batch_fail_dest`** / **`_company_homepage_ready`** helpers — `tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers`
+
+3. Monolithic **`WEBSITE_FOUND`/`WEBSITE_FOUND_RETRY` → `prefilter_company`** dispatch removed — `tests/component/core/test_roster.py::TestRunCompanyTask::{test_website_found_monolithic_dispatch_removed,test_website_found_retry_returns_error_without_prefilter}`
+
+4. **`run_consult_task`** routes `dispatch_task_key=prefilter` with `skipped` in error accounting — `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch`
+
+5. Config: `input_state=HOMEPAGE_READY`, batch mode, evaluate transitions — `tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig`
+
+6. Dispatcher claims **`HOMEPAGE_READY`** only for prefilter batch — `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`
+
+7. Dispatch row migration + `_RETRY_TASK_SEED` omits prefilter retry — `tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration`
+
+**Broken / revised (AST-702 cutover):** `TestRunCompanyTask::test_prefilter_pass_and_fail` retired — monolithic WEBSITE_FOUND path removed; batch coverage in item 1.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch \
+  tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers \
+  tests/component/core/test_roster.py::TestRunCompanyTask::test_website_found_monolithic_dispatch_removed \
+  tests/component/core/test_roster.py::TestRunCompanyTask::test_website_found_retry_returns_error_without_prefilter \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/consult.md` 3fa842ba94184448dc70c372bd48d29386068ef790813a21d505fe7a4d39d06f
+- `docs/test-bible/core/roster.md` x
+- `docs/test-bible/utils/config.md` x
+
+— Betty
+
+#### chuckles — 2026-06-16T05:00:19.285Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-700/AST-702-batch-prefilter-evaluate-phase/docs/features/consult/ast-702-batch-prefilter-evaluate-phase.md
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — config cutover, `_run_batch_company_prefilter` / `prefilter_company_batch`, consult routing, dispatch DB migration, removal of `WEBSITE_FOUND` monolithic prefilter dispatch.
+- **Conf:** Medium — mirrors `evaluate_jd_batch` / Pattern A with company-specific batch scaffold; build depends on AST-701 (`HOMEPAGE_READY`, `homepage_text`, `fetch_website`) on `ftr` first.
+- **Risk:** HIGH — batch ID reconciliation or cutover timing could mis-route companies; scoped to company prefilter, not job consult.
+
+---
+
 # Batch prefilter evaluate phase (prefilter as batch process)
 
 **Linear:** [AST-702](https://linear.app/astralcareermatch/issue/AST-702/batch-prefilter-evaluate-phase-prefilter-as-batch-process)  

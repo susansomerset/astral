@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-714 archived 2026-06-23 -->
+
+## Linear archive (AST-714)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-714/uat-backfill-script-to-collapse-blank-lines-in-company-data-and-job  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-710 — Remove empty lines from visible text  
+**Blocked by / blocks / related:** parent: AST-710
+
+### Description
+
+## What failed
+
+Existing rows in `company_data` and `job_data` still contain runs of consecutive blank lines from scrapes saved before **AST-713** landed. New gazer saves are normalized, but Susan has no local script to clean already-persisted text blobs.
+
+## Expected
+
+A runnable local migration/backfill script applies `collapse_consecutive_blank_lines` to persisted visible-text fields in `company_data` and `job_data` (e.g. homepage text and job description keys), updates only rows that change, supports dry-run, and can target one company/job or run in batch — no staging deploy required.
+
+## Repro
+
+1. Inspect a company or job record scraped before this epic — note multiple consecutive blank lines in saved visible text.
+2. Run the backfill script locally with `--dry-run` — script reports rows that would change.
+3. Run without dry-run — re-inspect the same record; at most one blank line remains between content blocks.
+
+## Parent AC (quoted inline)
+
+> 3. Persisted job descriptions from JD scrape batches and homepage text from website fetch batches reflect normalized text, verifiable by inspecting saved records after a scrape run.
+
+## Boundaries
+
+* This bug does **not** change: gazer scrape paths (already shipped in **AST-713**), HTML extraction, or live scrape behavior.
+* Does **not** require Railway/staging — local DB only.
+* Does **not** add UI.
+* Reuse `collapse_consecutive_blank_lines` from `src/utils/formatting.py`; do not duplicate normalization logic.
+
+### Comments
+
+#### betty — 2026-06-16T20:58:10.267Z
+## QA test manifest (AST-714)
+
+**Publish ref:** `origin/sub/AST-710/AST-714-backfill-collapse-blank-lines-company-job-data` @ `166ae132` (`merge-tests(AST-714): origin/tests 6cc67861`)
+
+**Bible shasum:** `docs/test-bible/dev/backfill_collapse_blank_lines.md` → `40141224f3fdcc152dbd4e51b34ad6568c70d037`
+
+### 1. Existing coverage (bible-backed — no rerun required)
+
+| Area | Bible | Tests |
+| --- | --- | --- |
+| `collapse_consecutive_blank_lines` helper | `docs/test-bible/utils/formatting.md` (AST-713) | `tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines` |
+| Gazer save-path normalization | `docs/test-bible/core/gazer.md` (AST-713) | `TestScrapeJdBatch::test_collapses_consecutive_blank_lines_before_save`, `TestFetchWebsiteBatch::test_collapses_consecutive_blank_lines_in_homepage_text` |
+
+### 2. New tests (this ticket)
+
+| Area | Tests |
+| --- | --- |
+| `_normalize_if_changed` skip/changed | `tests/component/scripts/test_backfill_collapse_blank_lines.py::TestNormalizeIfChanged` |
+| Company backfill dry-run / save / unchanged / not found / error | `TestBackfillCompanies` |
+| Job backfill dry-run / save / unchanged / not found | `TestBackfillJobs` |
+| `--company` / `--job` / batch section selection + dry-run summary | `TestRunBackfill` |
+
+### 3. Run command
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/scripts/test_backfill_collapse_blank_lines.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines.
+
+— Betty
+
+#### hedy — 2026-06-16T20:55:08.006Z
+Plan: [`docs/features/foundation/ast-714-backfill-collapse-blank-lines-company-job-data.md`](https://github.com/susansomerset/astral/blob/sub/AST-710/AST-714-backfill-collapse-blank-lines-company-job-data/docs/features/foundation/ast-714-backfill-collapse-blank-lines-company-job-data.md) on `origin/sub/AST-710/AST-714-backfill-collapse-blank-lines-company-job-data` @ `ba2c982b`.
+
+**Self-assessment**
+- **Scope:** Single-Component — one new `scripts/migrations/backfill_collapse_blank_lines.py`; imports existing formatter + save helpers only.
+- **Conf:** high — mirrors `backfill_culture_links.py` CLI pattern; reuses shipped `collapse_consecutive_blank_lines` from AST-713.
+- **Risk:** low — merge-only writes on two gazer keys; dry-run + idempotent skip when unchanged; no state transitions.
+
+---
+
 # AST-714 — UAT: backfill script to collapse blank lines in company_data and job_data (Remove empty lines from visible text)
 
 - **Linear (this ticket):** [AST-714](https://linear.app/astralcareermatch/issue/AST-714/uat-backfill-script-to-collapse-blank-lines-in-company-data-and-job)

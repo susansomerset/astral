@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-698 archived 2026-06-23 -->
+
+## Linear archive (AST-698)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-698/uat-raw-model-response-missing-from-debug-logs-on-prefilter-runs  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-696 — Prefilter output with links  
+**Blocked by / blocks / related:** parent: AST-696
+
+### Description
+
+## What failed
+
+With **debug=True** on company prefilter runs (`prefilter_company`), execution history / app log content no longer includes the **actual raw model response body**. Susan cannot see what the model returned when troubleshooting link_set / prefilter parse issues during UAT.
+
+## Expected
+
+When **debug=True**, each prefilter (and other `do_task`) hop logs the full raw API response text under the debug contract (summary line + truncated body via `debug_detail_block`), same as other entity types — not only pass/fail metadata or parsed summaries.
+
+## Repro
+
+1. Run a company through **prefilter_company** with **debug=True** (batch or ad-hoc).
+2. Open execution history / app log for that run.
+3. Observe missing or empty raw response payload in the log stream despite debug being on.
+
+## Parent AC (quoted inline)
+
+> 5. On prefilter pass (inflow or legacy watch path), `company_data` persisted after a successful run includes the parsed link lists when the model supplied them; UAT on a company with enumerated nav links shows non-empty `possible_job_links` when the model returns bracket tails.
+
+Susan needs raw response visibility in debug logs to verify this AC during UAT.
+
+## Boundaries
+
+* This bug does **not** change: prefilter link_set decode logic, rubric vectors, pass/fail scoring, or UI layout.
+* Backend debug contract only (**AST-538**); no React debug requirements.
+
+### Comments
+
+#### betty — 2026-06-16T03:57:46.740Z
+1. **Existing coverage (bible-backed):** `tests/component/utils/test_debug_logging.py` + `tests/component/utils/test_logging_batch.py` (AST-538 contract helpers — unchanged).
+
+2. **New (AST-698):**
+   - `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_prefilter_company_forwards_debug_to_do_task`
+   - `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_run_company_task_forwards_debug_to_prefilter`
+   - `tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse::test_short_raw_response_emits_under_debug_contract`
+   - `tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse::test_encoded_payload_uses_contract_helpers_not_legacy_info`
+   - `tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse::test_debug_false_skips_raw_response_contract_lines`
+
+3. **Narrowed run:**
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst698DoTaskDebugRawResponse \
+  tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough \
+  -q
+```
+
+**Publish:** `origin/sub/AST-696/AST-698-uat-raw-response-missing-from-debug-logs-prefilter` @ `fef9612` (`merge-tests(AST-698): origin/tests 7f70c7d`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/agent.md`: e57d4bd17ce3b08a1a944bfd69420636e98a5c10da6b14e5445a36098817aafc
+- `docs/test-bible/core/roster.md`: e56cb350a56850e37de0e5040ef2120428ec318119c5ac8d356a6f890098b1e0
+
+— Betty
+
+#### ada — 2026-06-16T03:52:32.470Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-696/AST-698-uat-raw-response-missing-from-debug-logs-prefilter/docs/features/consult/ast-698-uat-raw-response-missing-from-debug-logs-prefilter.md
+
+Two root causes for missing raw response on prefilter debug runs:
+1. `run_company_task` → `prefilter_company` never forwards `debug` to `do_task`, so contract debug stays off for the LLM hop even when the batch runs with debug=True.
+2. `do_task` only emits `raw_response` contract lines when `raw_text` exceeds 50 lines — prefilter JSON envelopes are short.
+
+Fix: wire `debug` through `prefilter_company` (Stage 1); remove the 50-line gate and migrate the encoded-payload `[DEBUG] logger.info` block to `debug_detail`/`debug_detail_block` (Stage 2).
+
+**Scope:** minor — `roster.py` debug passthrough + `agent.py` debug emission only.
+**Conf:** high — localized wiring fix matching existing roster patterns and AST-538 contract.
+**Risk:** low — debug=True paths only; no decode or persist changes.
+
+---
+
 # UAT: raw model response missing from debug logs on prefilter runs
 
 **Linear:** [AST-698](https://linear.app/astralcareermatch/issue/AST-698/uat-raw-model-response-missing-from-debug-logs-on-prefilter-runs)  

@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, scrape_jd_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
 from roster for callers that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record); batch lifecycle (claim, release) is owned by CLI.
 """
@@ -116,7 +116,7 @@ def _classify_jd(text: str) -> str:
     return "ok"
 
 
-async def scrape_jd_batch(
+async def fetch_jd_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     debug: bool = False,
@@ -125,21 +125,21 @@ async def scrape_jd_batch(
     Transitions each job to JD_READY (pass) or JD_SCRAPE_FAIL (fail/short).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
-        raise ConnectionError(f"scrape_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
+        raise ConnectionError(f"fetch_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
     if debug:
         _log.set_debug_flag(True)
     cfg = TRACKER_CONFIG
     jd_key = cfg.get("job_data_keys", {}).get("job_description", "job_description")
     min_chars = cfg.get("jd_min_chars", 200)
     # Success / generic scrape-fail transitions (classified JD errors route via _JD_ERROR_STATES)
-    pass_state = GAZER_CONFIG["scrape_jd"]["pass_state"]
-    fail_state = GAZER_CONFIG["scrape_jd"]["fail_state"]
+    pass_state = GAZER_CONFIG["fetch_jd"]["pass_state"]
+    fail_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
     job_total = len(jobs)
 
     passed = failed = 0
     if debug and job_total > 0:
         _log.debug_index(
-            func="gazer.scrape_jd_batch",
+            func="gazer.fetch_jd_batch",
             index=1,
             total=1,
             identifier=batch_id,
@@ -154,7 +154,7 @@ async def scrape_jd_batch(
         if not job_link:
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -169,7 +169,7 @@ async def scrape_jd_batch(
         except Exception as e:
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -184,7 +184,7 @@ async def scrape_jd_batch(
         if not text or not text.strip():
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -199,7 +199,7 @@ async def scrape_jd_batch(
         if len(text) < min_chars:
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -215,7 +215,7 @@ async def scrape_jd_batch(
             error_state = _JD_ERROR_STATES[classification]
             if debug:
                 _log.debug_index(
-                    func="gazer.scrape_jd_batch",
+                    func="gazer.fetch_jd_batch",
                     index=job_index,
                     total=job_total,
                     identifier=_gazer_job_identifier(job),
@@ -236,7 +236,7 @@ async def scrape_jd_batch(
         transition_job_state([aid], pass_state)
         if debug:
             _log.debug_index(
-                func="gazer.scrape_jd_batch",
+                func="gazer.fetch_jd_batch",
                 index=job_index,
                 total=job_total,
                 identifier=_gazer_job_identifier(job),

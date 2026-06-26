@@ -675,7 +675,6 @@ class TestAst781ListDtasksRetiredEntityType:
         assert rows[0]["available_count"] == 0
 
 
-
 # AST-785: list_dtasks filters retired keys; enrichment errors do not 500 the list.
 class TestAst785ListDtasksRobustness:
     def test_list_dtasks_omits_retired_task_keys(

@@ -27,9 +27,11 @@ Tables used (inventory):
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
-  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id, created_at).
+  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
+  batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
   One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
-  list_vector_feedback — filtered join to rubric_vector for Admin exploration (AST-725).
+  batch_size and completed_at capture dispatch run metadata (AST-809); created_at equals insert instant (same as capture).
+  list_vector_feedback — filtered join to rubric_vector for Admin exploration; includes content/importance hydration (AST-808).
   aggregate_vector_feedback_by_vector — per-current-vector counts and value distributions (AST-725).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
   status ACTIVE|BUILT, transcript JSON, prompt_snapshot JSON, last_ready_to_build INTEGER, built_at TIMESTAMP,
@@ -69,6 +71,7 @@ from src.utils.config import (
     CHARS_PER_TOKEN,
     CANDIDATE_STATES,
     COMPANY_STATES,
+    ENTITY_TYPES,
     INFLOW_CONFIG,
     PASSED_SCORE_GATED_STATES,
     ROSTER_CONFIG,
@@ -84,6 +87,7 @@ from src.utils.config import (
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
+    REPO_ADMIN_JSON_CONFIG,
     task_keys_for_rubric_owner,
 )
 from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
@@ -484,9 +488,23 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
     def _strip_seg_imp(s: Optional[str]) -> str:
         return (s if s is not None else "").strip()
 
+    def _grouping_from_copy_row(r: dict[str, Any]) -> tuple[str, str, float, str]:
+        go = "" if r["task_group_order"] is None else (
+            r["task_group_order"] if isinstance(r["task_group_order"], str) else str(r["task_group_order"])
+        )
+        gn = "" if r["task_group_name"] is None else (
+            r["task_group_name"] if isinstance(r["task_group_name"], str) else str(r["task_group_name"])
+        )
+        gs = float(r["task_seq"]) if r["task_seq"] is not None else 999.0
+        tn = "" if r["task_name"] is None else (
+            r["task_name"] if isinstance(r["task_name"], str) else str(r["task_name"])
+        )
+        return go.strip(), gn.strip(), gs, tn.strip()
+
     sel_cur = """SELECT task_key_uuid, agent_id, user_prompt, cache_prompt,
                         cache_prompt_b, cache_prompt_c, cache_prompt_d,
-                        nocache_prompt, run_next, system_prompt
+                        nocache_prompt, run_next, system_prompt,
+                        task_group_order, task_group_name, task_seq, task_name
                  FROM agent_task WHERE task_key = ? AND current = 1"""
 
     for tk_str in sorted(task_to_row.keys()):
@@ -551,7 +569,18 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             elif new_rn != rn_db_strip:
                 skip_row = False
             else:
-                skip_row = True
+                db_go = cur_before[10] if cur_before[10] is not None else ""
+                db_gn = cur_before[11] if cur_before[11] is not None else ""
+                db_gs = float(cur_before[12]) if cur_before[12] is not None else 999.0
+                db_tn = cur_before[13] if cur_before[13] is not None else tk_str
+                file_go, file_gn, file_gs, file_tn = _grouping_from_copy_row(r)
+                grouping_changed = (
+                    file_go != (db_go.strip() if isinstance(db_go, str) else str(db_go).strip())
+                    or file_gn != (db_gn.strip() if isinstance(db_gn, str) else str(db_gn).strip())
+                    or file_gs != db_gs
+                    or file_tn != (db_tn.strip() if isinstance(db_tn, str) else str(db_tn).strip())
+                )
+                skip_row = not grouping_changed
 
         if skip_row:
             skipped += 1
@@ -571,6 +600,10 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             nocache_prompt=r["nocache_prompt"],
             run_next=r["run_next"],
             system_prompt=r["system_prompt"],
+            task_group_order=r["task_group_order"],
+            task_group_name=r["task_group_name"],
+            task_seq=r["task_seq"],
+            task_name=r["task_name"],
             import_explicit=True,
         )
         if was_absent:
@@ -579,6 +612,140 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             updated += 1
 
     return {"inserted": inserted, "updated": updated, "skipped": skipped}
+
+
+def _agent_repo_json_columns() -> tuple[str, ...]:
+    return REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
+
+
+def _validate_agent_repo_json_rows(rows: list[dict[str, Any]]) -> None:
+    cols = set(_agent_repo_json_columns())
+    for i, row in enumerate(rows, start=1):
+        if set(row.keys()) != cols:
+            raise ValueError(
+                f"agent repo JSON row {i}: keys must be {sorted(cols)} (got {sorted(row.keys())})",
+            )
+        aid = row.get("agent_id")
+        if aid is None or not str(aid).strip():
+            raise ValueError(f"agent repo JSON row {i}: agent_id required")
+        bs = row.get("brain_setting")
+        if bs is None or not str(bs).strip():
+            raise ValueError(f"agent repo JSON row {i}: brain_setting required")
+
+
+def _validate_agent_task_repo_json_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    cols = set(table_columns(conn, "agent_task"))
+    seen_task_keys: set[str] = set()
+    for i, row in enumerate(rows, start=1):
+        if set(row.keys()) != cols:
+            raise ValueError(f"agent_task repo JSON row {i}: keys must match schema")
+        if _coerce_agent_task_current_for_import(row["current"]) != 1:
+            raise ValueError(f"agent_task repo JSON row {i}: current must be 1")
+        tk_raw = row.get("task_key")
+        if tk_raw is None or not str(tk_raw).strip():
+            raise ValueError(f"agent_task repo JSON row {i}: task_key required")
+        tk_str = tk_raw if isinstance(tk_raw, str) else str(tk_raw)
+        if tk_str in seen_task_keys:
+            raise ValueError(f"agent_task repo JSON: duplicate task_key {tk_str!r}")
+        seen_task_keys.add(tk_str)
+
+
+def fetch_agent_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Current agent rows for repo JSON export (AST-782)."""
+    _ensure_agent_schema(conn)
+    cols = _agent_repo_json_columns()
+    cols_sql = ", ".join(_sql_quote_ident(c) for c in cols)
+    return [_row_to_dict(r) for r in conn.execute(
+        f"SELECT {cols_sql} FROM agent ORDER BY agent_id",
+    ).fetchall()]
+
+
+def fetch_agent_task_repo_json_export_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Current=1 agent_task rows for repo JSON export (AST-782)."""
+    _ensure_agent_task_schema(conn)
+    return [_row_to_dict(r) for r in conn.execute(
+        "SELECT * FROM agent_task WHERE current = 1 ORDER BY task_key",
+    ).fetchall()]
+
+
+def apply_agent_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Repo-wins upsert for agent table; delete rows absent from JSON (caller commits)."""
+    _ensure_agent_schema(conn)
+    _validate_agent_repo_json_rows(rows)
+    now = _utc_now()
+    ids: List[str] = []
+    for row in rows:
+        aid = str(row["agent_id"]).strip()
+        ids.append(aid)
+        content = "" if row["content"] is None else (
+            row["content"] if isinstance(row["content"], str) else str(row["content"])
+        )
+        bs = str(row["brain_setting"]).strip()
+        validate_allowed_brain_setting(bs)
+        temp = row.get("temperature")
+        max_t = row.get("max_tokens")
+        updated = row.get("updated_at")
+        if updated is None or (isinstance(updated, str) and not str(updated).strip()):
+            updated = now
+        existing = conn.execute("SELECT agent_id FROM agent WHERE agent_id = ?", (aid,)).fetchone()
+        if existing is None:
+            conn.execute(
+                """INSERT INTO agent (agent_id, content, brain_setting, temperature, max_tokens, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (aid, content, bs, temp, max_t, updated),
+            )
+        else:
+            conn.execute(
+                """UPDATE agent SET content = ?, brain_setting = ?, temperature = ?, max_tokens = ?, updated_at = ?
+                   WHERE agent_id = ?""",
+                (content, bs, temp, max_t, updated, aid),
+            )
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM agent WHERE agent_id NOT IN ({placeholders})", ids)
+    else:
+        conn.execute("DELETE FROM agent")
+
+
+def _apply_agent_task_repo_json_rows_exact(
+    conn: sqlite3.Connection, rows: list[dict[str, Any]],
+) -> None:
+    """Write repo JSON rows verbatim (AST-793) — preserves task_key_uuid and updated_at."""
+    columns_ordered = table_columns(conn, "agent_task")
+    qt = _sql_quote_ident("agent_task")
+    cols_join = ",".join(_sql_quote_ident(c) for c in columns_ordered)
+    placeholders = ",".join("?" * len(columns_ordered))
+    uuid_col = _sql_quote_ident("task_key_uuid")
+
+    for ri, row in enumerate(rows, start=1):
+        uuid_raw = row.get("task_key_uuid")
+        if uuid_raw is None or not str(uuid_raw).strip():
+            raise ValueError(f"agent_task repo JSON row {ri}: missing task_key_uuid")
+        uuid_pk = uuid_raw if isinstance(uuid_raw, str) else str(uuid_raw)
+
+        existing = conn.execute(
+            f"SELECT {cols_join} FROM {qt} WHERE {uuid_col} = ?", (uuid_pk,),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                f"INSERT INTO {qt} ({cols_join}) VALUES ({placeholders})",
+                tuple(row[c] for c in columns_ordered),
+            )
+        else:
+            set_parts = [_sql_quote_ident(c) + " = ?" for c in columns_ordered if c != "task_key_uuid"]
+            vals_up = tuple(row[c] for c in columns_ordered if c != "task_key_uuid") + (uuid_pk,)
+            conn.execute(
+                f"UPDATE {qt} SET {', '.join(set_parts)} WHERE {uuid_col} = ?",
+                vals_up,
+            )
+
+
+def apply_agent_task_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Retire all current agent_task rows, then apply repo JSON with exact file field values."""
+    _ensure_agent_task_schema(conn)
+    _validate_agent_task_repo_json_rows(conn, rows)
+    conn.execute("UPDATE agent_task SET current = 0 WHERE current = 1")
+    _apply_agent_task_repo_json_rows_exact(conn, rows)
 
 
 def apply_config_table_upsert(
@@ -2738,50 +2905,66 @@ def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
     _company_search_terms_schema_ensured = True
 
 
+def reconcile_company_search_terms_from_artifact(candidate_id: str) -> int:
+    """Import legacy artifact search terms when table has no rows for this candidate (AST-802)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return 0
+    cid = str(candidate_id).strip()
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_company_search_terms_table(conn)
+            count_row = conn.execute(
+                "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                (cid,),
+            ).fetchone()
+            if count_row and int(count_row[0]) > 0:
+                return 0
+            cand = get_candidate(cid)
+            if not cand:
+                return 0
+            arts = (cand.get("candidate_data") or {}).get("artifacts") or {}
+            raw = arts.get("company_search_terms")
+            if not isinstance(raw, str) or not raw.strip():
+                return 0
+            lines = _search_term_lines_from_string(raw)
+            if not lines:
+                return 0
+            now = _utc_now()
+            seen: set[str] = set()
+            inserted = 0
+            for term in lines:
+                if term in seen:
+                    continue
+                seen.add(term)
+                conn.execute(
+                    """INSERT INTO company_search_terms
+                       (candidate_id, search_term, last_scan_at, created_at, updated_at)
+                       VALUES (?, ?, NULL, ?, ?)""",
+                    (cid, term, now, now),
+                )
+                inserted += 1
+            if inserted:
+                conn.commit()
+            return inserted
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def _migrate_company_search_terms_from_artifacts(conn: sqlite3.Connection) -> None:
     """Import legacy artifacts.company_search_terms strings when table has no rows for candidate."""
+    global _company_search_terms_migration_swept
+    # Reconcile opens its own connections and re-enters _ensure — mark swept before loop.
+    _company_search_terms_migration_swept = True
     _ensure_candidate_schema(conn)
-    rows = conn.execute(
-        "SELECT astral_candidate_id, candidate_data FROM candidate"
-    ).fetchall()
-    now = _utc_now()
+    rows = conn.execute("SELECT astral_candidate_id FROM candidate").fetchall()
     for row in rows:
         cid = row[0]
-        if not cid or not str(cid).strip():
-            continue
-        raw_cd = row[1]
-        if not raw_cd:
-            continue
-        try:
-            cd = json.loads(raw_cd) if isinstance(raw_cd, str) else raw_cd
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if not isinstance(cd, dict):
-            continue
-        arts = cd.get("artifacts") or {}
-        raw = arts.get("company_search_terms")
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        count_row = conn.execute(
-            "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
-            (cid,),
-        ).fetchone()
-        if count_row and int(count_row[0]) > 0:
-            continue
-        lines = _search_term_lines_from_string(raw)
-        if not lines:
-            continue
-        seen: set[str] = set()
-        for term in lines:
-            if term in seen:
-                continue
-            seen.add(term)
-            conn.execute(
-                """INSERT INTO company_search_terms
-                   (candidate_id, search_term, last_scan_at, created_at, updated_at)
-                   VALUES (?, ?, NULL, ?, ?)""",
-                (cid, term, now, now),
-            )
+        if cid and str(cid).strip():
+            reconcile_company_search_terms_from_artifact(str(cid).strip())
     conn.commit()
 
 
@@ -2927,6 +3110,8 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
                 feedback_type TEXT NOT NULL,
                 value TEXT NOT NULL,
                 agent_data_id TEXT,
+                batch_size INTEGER,
+                completed_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP NOT NULL
             )
         """)
@@ -2941,6 +3126,12 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
             "ON vector_feedback (candidate_id, task_key)"
         )
         conn.commit()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(vector_feedback)").fetchall()}
+    if "batch_size" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN batch_size INTEGER")
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN completed_at TIMESTAMP")
+    conn.commit()
     _vector_feedback_schema_ensured = True
 
 
@@ -3002,11 +3193,15 @@ def insert_vector_feedback_rows(
     candidate_id: str,
     batch_id: str,
     task_key: str,
+    batch_size: int,
+    completed_at: Optional[str] = None,
     agent_data_id: Optional[str] = None,
 ) -> None:
-    """Insert one row per feedback type per parsed vector (AST-724)."""
-    if not vector_rows:
+    """Insert one row per feedback type per parsed vector (AST-724 / AST-809 batch metadata)."""
+    if not vector_rows or not (batch_id or "").strip():
         return
+    ts = completed_at or _utc_now()
+    bs = int(batch_size) if batch_size and batch_size > 0 else 1
 
     def _with_conn() -> None:
         conn = _get_connection()
@@ -3028,8 +3223,8 @@ def insert_vector_feedback_rows(
                         """INSERT INTO vector_feedback
                            (vector_feedback_id, rubric_vector_uuid, candidate_id,
                             batch_id, task_key, feedback_type, value,
-                            agent_data_id, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            agent_data_id, batch_size, completed_at, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             str(uuid.uuid4()),
                             rubric_uuid,
@@ -3039,7 +3234,9 @@ def insert_vector_feedback_rows(
                             feedback_type,
                             value,
                             agent_data_id,
-                            _utc_now(),
+                            bs,
+                            ts,
+                            ts,
                         ),
                     )
             conn.commit()
@@ -3107,10 +3304,12 @@ def list_vector_feedback(
                 params.append(f"{date_to}T23:59:59")
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
-                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.task_key,
-                           vf.feedback_type, vf.value, vf.agent_data_id, vf.created_at,
-                           vf.rubric_vector_uuid, rv.code AS vector_code,
-                           rv.label AS vector_label, rv.current AS rubric_current
+                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.batch_size,
+                           vf.completed_at, vf.task_key, vf.feedback_type, vf.value,
+                           vf.agent_data_id, vf.created_at, vf.rubric_vector_uuid,
+                           rv.code AS vector_code, rv.label AS vector_label,
+                           rv.content AS vector_content, rv.importance AS vector_importance,
+                           rv.current AS rubric_current
                     FROM vector_feedback vf
                     LEFT JOIN rubric_vector rv ON vf.rubric_vector_uuid = rv.rubric_vector_uuid
                     {where}
@@ -3711,24 +3910,29 @@ def update_company_search_term_last_scan_at(candidate_id: str, search_term: str)
     _run_with_retry(_inner)
 
 
-def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> int:
-    """Count terms with NULL or stale last_scan_at (AST-525 consumer)."""
+def count_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> int:
+    """Count stale terms for inflow_discovery (AST-525/814); freq_hrs<=0 means all table rows."""
     if not candidate_id or not str(candidate_id).strip():
-        return 0
-    if scan_interval_hours <= 0:
         return 0
 
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            row = conn.execute(
-                """SELECT COUNT(*) FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchone()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                    (candidate_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT COUNT(*) FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
+                    (candidate_id, str(fh)),
+                ).fetchone()
             return int(row[0]) if row else 0
         finally:
             conn.close()
@@ -3736,25 +3940,32 @@ def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: flo
     return _run_with_retry(_with_conn)
 
 
-def list_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> List[str]:
-    """Stale term strings for inflow_discovery (AST-525); ordered search_term ASC."""
+def list_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> List[str]:
+    """Stale term strings for inflow_discovery (AST-525/814); ordered search_term ASC."""
     if not candidate_id or not str(candidate_id).strip():
-        return []
-    if scan_interval_hours <= 0:
         return []
 
     def _with_conn() -> List[str]:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            rows = conn.execute(
-                """SELECT search_term FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))
-                   ORDER BY search_term ASC""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchall()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                       ORDER BY search_term ASC""",
+                    (candidate_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))
+                       ORDER BY search_term ASC""",
+                    (candidate_id, str(fh)),
+                ).fetchall()
             return [r[0] for r in rows]
         finally:
             conn.close()
@@ -4152,6 +4363,76 @@ def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> No
     _ast723_rubric_token_migration_applied = True
 
 
+
+_AST776_VET_INFLOW_MECHANICAL_MARKER = "MECHANICAL LINK-TYPE VET ONLY (AST-776)"
+
+_AST776_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
+
+You vet a single discovery hit for roster inflow. Live content is one pipe line:
+
+`index|title|url|snippet`
+
+## Mechanical scope only
+
+Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
+news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
+
+## Response
+
+Use the standard two-key JSON envelope. In `agent_payload`, return:
+
+```json
+{"results": [{"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"}]}
+```
+
+- `action: "ignore"` — wrong page type; omit website or leave empty.
+- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
+"""
+
+
+def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-776: seed mechanical-only vet_inflow_discovery prompt for company dispatch on NEW."""
+    marker = _AST776_VET_INFLOW_MECHANICAL_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST776_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
     """AST-561: version analysis_upshot user_prompt with take_jd; seed when row exists but prose empty."""
     try:
@@ -4306,6 +4587,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast469_select_job_page_run_next_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
+    _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5463,6 +5745,69 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             (grade_key, retired_key),
         )
     conn.commit()
+    # AST-794 / AST-797: retire scrape_jd / validate_title / gaze_board dispatch rows.
+    _SCRAPE_TO_FETCH_DISPATCH_KEYS = (("scrape_jd", "fetch_jd"),)
+    for retired_key, canonical_key in _SCRAPE_TO_FETCH_DISPATCH_KEYS:
+        conn.execute(
+            """
+            DELETE FROM dispatch_task AS d
+            WHERE d.task_key = ?
+              AND EXISTS (
+                SELECT 1 FROM dispatch_task AS g
+                WHERE g.candidate_id = d.candidate_id
+                  AND g.task_key = ?
+                  AND g.trigger_state = d.trigger_state
+              )
+            """,
+            (retired_key, canonical_key),
+        )
+        conn.execute(
+            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
+            (canonical_key, retired_key),
+        )
+    conn.commit()
+
+    for purge_key in ("validate_title", "gaze_board"):
+        conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
+    conn.commit()
+
+    # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
+    # split into explicit NEW + VALID_TITLE_RETRY rows.
+    qualify_retry_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'
+        """
+    ).fetchall()
+    for r in qualify_retry_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'qualify_job_listings', ?, 'VALID_TITLE_RETRY', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'qualify_job_listings'
+                  AND trigger_state = 'VALID_TITLE_RETRY'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'NEW' "
+        "WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'"
+    )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 
@@ -5605,7 +5950,11 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
         return None
 
 
-_DISPATCH_TASK_UPDATE_COLS = {"min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state", "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor"}
+_DISPATCH_TASK_UPDATE_COLS = {
+    "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
+    "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor",
+    "task_key", "sort_by", "batch_call_mode",
+}
 
 
 def update_dispatch_task(task_id: int, **kwargs) -> None:
@@ -5661,7 +6010,9 @@ def get_due_tasks() -> List[Dict[str, Any]]:
 
 
 def count_company_new_without_website(candidate_id: str) -> int:
-    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website)."""
+    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website).
+
+    Excludes discovery-path rows that carry inflow_discovery_blurb (AST-776 vet dispatch)."""
     if not candidate_id or not str(candidate_id).strip():
         return 0
 
@@ -5673,7 +6024,11 @@ def count_company_new_without_website(candidate_id: str) -> int:
                 """SELECT COUNT(*) FROM company
                    WHERE state = 'NEW' AND candidate_id = ?
                      AND (batch_id IS NULL OR batch_id = '')
-                     AND (company_website IS NULL OR TRIM(company_website) = '')""",
+                     AND (company_website IS NULL OR TRIM(company_website) = '')
+                     AND (
+                       json_extract(company_data, '$.inflow_discovery_blurb') IS NULL
+                       OR TRIM(json_extract(company_data, '$.inflow_discovery_blurb')) = ''
+                     )""",
                 (candidate_id,),
             ).fetchone()
             return int(row[0])
@@ -5683,25 +6038,70 @@ def count_company_new_without_website(candidate_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
+def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
+    """Unclaimed NEW companies with discovery blurb pending vet_inflow_discovery (AST-776)."""
+    if not candidate_id or not str(candidate_id).strip():
+        return 0
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_company_schema(conn)
+            row = conn.execute(
+                """SELECT COUNT(*) FROM company
+                   WHERE state = 'NEW' AND candidate_id = ?
+                     AND (batch_id IS NULL OR batch_id = '')
+                     AND (company_website IS NULL OR TRIM(company_website) = '')
+                     AND json_extract(company_data, '$.inflow_discovery_blurb') IS NOT NULL
+                     AND TRIM(json_extract(company_data, '$.inflow_discovery_blurb')) != ''""",
+                (candidate_id,),
+            ).fetchone()
+            return int(row[0])
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def describe_candidate_inflow_discovery_eligibility(candidate_id: str, freq_hrs: float) -> tuple[int, str]:
+    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802/814)."""
+    from src.core.candidate import ensure_company_search_terms_table_synced
+
+    if not candidate_id or not str(candidate_id).strip():
+        return 0, "eligibility: missing candidate_id"
+    cid = str(candidate_id).strip()
+    fh = float(freq_hrs or 0)
+    ensure_company_search_terms_table_synced(cid)
+    cand = get_candidate(cid)
+    if not cand:
+        return 0, "eligibility: candidate not found"
+    trigger = INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
+    state = (cand.get("state") or "").strip()
+    if state != trigger:
+        return 0, f"eligibility: candidate state {state!r} != {trigger!r}"
+    total = len(list_company_search_terms(cid))
+    if total == 0:
+        return 0, "eligibility: company_search_terms table empty"
+    stale = count_stale_company_search_terms(cid, fh)
+    if stale == 0:
+        return (
+            0,
+            f"eligibility: {total} table row(s) but 0 stale (freq_hrs={fh})",
+        )
+    return 1, ""
+
+
 def count_candidate_inflow_discovery_eligible(
     candidate_id: str,
     freq_hrs: float,
     last_run_at: Optional[str],
 ) -> int:
     """inflow_discovery when LIVE_PROMPTS and ≥1 stale company_search_terms row (AST-525)."""
-    del freq_hrs, last_run_at  # unused — per-term last_scan_at, not dispatch_task.last_run_at
-    if not candidate_id or not str(candidate_id).strip():
-        return 0
-    cand = get_candidate(candidate_id)
-    if not cand:
-        return 0
-    trigger = INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if (cand.get("state") or "").strip() != trigger:
-        return 0
-    scan_h = float(INFLOW_CONFIG["discovery"]["scan_interval_hours"])
-    if count_stale_company_search_terms(candidate_id, scan_h) > 0:
-        return 1
-    return 0
+    del last_run_at  # per-term last_scan_at, not dispatch_task.last_run_at
+    eligible, _reason = describe_candidate_inflow_discovery_eligibility(
+        candidate_id, float(freq_hrs or 0)
+    )
+    return eligible
 
 
 
@@ -5725,6 +6125,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     candidate_id = task.get("candidate_id")
     if not entity_type or not state or not candidate_id:
         return 0
+    if entity_type not in ENTITY_TYPES:
+        return 0
     claim_states = dispatch_claim_states(state, entity_type)
     if not claim_states:
         return 0
@@ -5732,8 +6134,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(candidate_id, 0, None)
+        return count_candidate_inflow_discovery_eligible(
+            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+        )
     if entity_type == "company":
+        if task_key == INFLOW_CONFIG["vet"]["task_key"]:
+            return count_company_new_pending_inflow_vet(candidate_id)
         if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
             return count_company_new_without_website(candidate_id)
         floor_raw = task.get("score_floor")

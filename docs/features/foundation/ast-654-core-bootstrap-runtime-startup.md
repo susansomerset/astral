@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-654 archived 2026-06-23 -->
+
+## Linear archive (AST-654)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-654/core-bootstrap-runtime-startup-corebootstrap-runtime-startup  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-383 — core/bootstrap: runtime startup orchestration from ui/server.py  
+**Blocked by / blocks / related:** parent: AST-383
+
+### Description
+
+## What this implements
+
+Move process startup out of `src/ui/server.py` into a new `src/core/bootstrap.py` entrypoint: validate runtime coupling, sync agent tasks via core→data, and start the in-process scheduler. The UI server calls core only at bootstrap (no direct `src.data` import in `server.py`).
+
+## Acceptance criteria
+
+* `src/core/bootstrap.py` exposes `bootstrap_runtime()` with ordered steps: validation → `sync_agent_tasks(get_task_keys())` → `start_scheduler()`.
+* `src/ui/server.py` calls `bootstrap_runtime()` once after blueprint registration; no `from src.data import database` or direct `start_scheduler` import.
+* Fail-fast validation before sync (minimum: task keys non-empty and aligned with dispatch contract).
+* AST-381 export/import/preview paths are **not** invoked from bootstrap.
+* `rg "from src.data|import database" src/ui/server.py` returns zero matches after implementation.
+
+## Boundaries
+
+* Does not implement AST-381 admin table export/import workflows.
+* Does not refactor `ui/api/*` data imports (AST-321 — orthogonal).
+* Optional `ASTRAL_CODE_RULES.md` startup note only if included in same PR scope.
+
+## Notes for planning
+
+* Existing plan: `docs/features/foundation/ast-383-corebootstrap-runtime-startup-orchestration-from-uiserverpy.md`
+* Core may import data per layer rules; UI must not.
+* Flask debug reloader double-start caveat — document if applicable.
+* Self-assessment: scope MAJOR-CHANGE, conf Medium, risk HIGH.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-383-corebootstrap-runtime-startup-orchestration-from-uiserverpy`, child `sub/AST-383/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-15T01:03:22.444Z
+**Review** — `origin/dev...origin/sub/AST-383/AST-654-core-bootstrap-runtime-startup` @ `f5153328` ([plan doc](https://github.com/susansomerset/astral/blob/sub/AST-383/AST-654-core-bootstrap-runtime-startup/docs/features/foundation/ast-654-core-bootstrap-runtime-startup.md#review-radia))
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### advisory
+- **`_validate_runtime_coupling` dispatch check** (`src/core/bootstrap.py`): uses `resolve_dispatch_task_config_key` + `dispatch_task_admin_defaults` fallback instead of naive `key in TASK_CONFIG` from Stage 1 plan — correct for consult/dispatch row keys; bible §7.13zzw documents the rationale. No action required.
+- **`ASTRAL_CODE_RULES.md` §3.2** still says `server.py` handles scheduler startup; optional doc tweak deferred per plan (AST-385 territory).
+
+### sign-off
+- **B2:** `rg "from src.data|import database" src/ui/server.py` — zero matches; `server.py` → `bootstrap_runtime()` only.
+- **Pipeline:** validation → `sync_agent_tasks` → `start_scheduler`; fail-fast `RuntimeError`; AST-381 not invoked.
+- **Tests:** `test_bootstrap.py` (validation branches + ordering); `conftest.server_client` stubs bootstrap before reload.
+
+**Verdict:** Clean — proceed to `resolve-child` / merge integration.
+
+#### betty — 2026-06-15T00:56:47.253Z
+## QA test manifest (AST-654)
+
+**Publish ref:** `origin/sub/AST-383/AST-654-core-bootstrap-runtime-startup` @ `7cb08d70`  
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `4912223d2b2bad0840774785121e6d350fceec25` on publish ref (**§7.13zzw**)
+
+### Run (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/ui/test_server.py
+```
+
+### Manifest
+
+1. **`tests/component/core/test_bootstrap.py`** (full file) — new: `_validate_runtime_coupling` branches (LLM env, empty task keys, orphan task key, orphan dispatch key, aligned pass); `bootstrap_runtime()` calls validation → `sync_agent_tasks(get_task_keys())` → `start_scheduler()` in order.
+2. **`tests/component/ui/test_server.py::TestServeReact`** — existing SPA/static routes; **`server_client`** now stubs **`bootstrap_runtime`** before reload (**AST-654**).
+3. **`tests/component/ui/conftest.py`** — **`server_client`** fixture change (test harness only).
+
+### Broken by this diff (fixed this pass)
+
+- **`server_client`** import failed after module-level **`bootstrap_runtime()`** — conftest stubs bootstrap before **`importlib.reload(server)`**.
+
+### test-child — product fix required before green
+
+**`bootstrap.py`** step 3d checks **`DISPATCH_SCHEDULABLE_TASK_KEYS`** membership in **`TASK_CONFIG`**, but schedulable keys are dispatch-row names (**`consult_do`**, **`prefilter`**, …) resolved via **`resolve_dispatch_task_config_key()`** into agent keys (**`grade_do`**, **`prefilter_company`**, …). Server import currently raises **`RuntimeError: dispatch schedulable key 'consult_do' missing from TASK_CONFIG`**. Align validation with **`resolve_dispatch_task_config_key`** (or equivalent) so production import succeeds; then rerun manifest above.
+
+— Betty
+
+#### hedy — 2026-06-15T00:51:58.069Z
+Plan: [`docs/features/foundation/ast-654-core-bootstrap-runtime-startup.md`](https://github.com/susansomerset/astral/blob/sub/AST-383/AST-654-core-bootstrap-runtime-startup/docs/features/foundation/ast-654-core-bootstrap-runtime-startup.md) on `origin/sub/AST-383/AST-654-core-bootstrap-runtime-startup` @ `c2b812ca`.
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — New `src/core/bootstrap.py` and Flask entrypoint startup reorder for the whole web process.
+- **Conf:** `Medium` — Straightforward facade move; validation rules are minimal but touch TASK_CONFIG + dispatch schedulable keys.
+- **Risk:** `HIGH` — Startup ordering bugs could leave scheduler unsynced or skip agent_task rows; mitigated by fail-fast validation and idempotent `start_scheduler`.
+
+Three stages: (1) `bootstrap.py` with `_validate_runtime_coupling` → sync → scheduler, (2) `server.py` calls `bootstrap_runtime()` only, (3) grep/compile verification + debug reloader note.
+
+---
+
 # AST-654 — Core bootstrap runtime startup (`core/bootstrap`: runtime startup orchestration from `ui/server.py`)
 
 - **Linear (this ticket):** [AST-654](https://linear.app/astralcareermatch/issue/AST-654/core-bootstrap-runtime-startup-corebootstrap-runtime-startup)

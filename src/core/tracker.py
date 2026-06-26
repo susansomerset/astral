@@ -18,12 +18,12 @@ from src.core import candidate as candidate_mod
 from src.data import database
 from src.utils.config import (
     BUILD_CONFIG,
+    BUILD_ARTIFACTS_BASE_STATE,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_STATES,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     TRACKER_CONFIG,
-    is_resume_artifact_in_progress,
-    resume_artifact_first_compound_state,
+    is_build_artifacts_in_progress,
     validate_value,
 )
 from src.utils.logging import get_logger
@@ -339,29 +339,53 @@ def clear_job_build_artifacts(astral_job_id: str) -> None:
 
 
 def start_artifact_build(astral_job_id: str) -> str:
-    """RECOMMENDED → BUILD_ARTIFACTS.<first_hop> via explicit UI/API only (no dispatch). AST-562 / AST-595."""
+    """RECOMMENDED → BUILD_ARTIFACTS via explicit UI/API only (no dispatch). AST-562 / AST-803."""
     job = get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
     if job.get("state") != "RECOMMENDED":
         raise ValueError("generate only from RECOMMENDED")
-    first = resume_artifact_first_compound_state()
-    transition_job_state([astral_job_id], first)
-    return first
+    transition_job_state([astral_job_id], BUILD_ARTIFACTS_BASE_STATE)
+    return BUILD_ARTIFACTS_BASE_STATE
 
 
 def cancel_artifact_build(astral_job_id: str) -> str:
-    """BUILD_ARTIFACTS.* → RECOMMENDED; clear partial artifacts and batch lock. AST-562 / AST-595."""
+    """BUILD_ARTIFACTS* → RECOMMENDED; clear partial artifacts and batch lock. AST-562 / AST-803."""
     job = get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
-    if not is_resume_artifact_in_progress(job.get("state") or ""):
-        raise ValueError("cancel only from BUILD_ARTIFACTS in-progress hop states")
+    if not is_build_artifacts_in_progress(job.get("state") or ""):
+        raise ValueError("cancel only from BUILD_ARTIFACTS in-progress states")
     clear_job_build_artifacts(astral_job_id)
     if job.get("batch_id"):
         database.clear_job_batch_lock(astral_job_id)
     transition_job_state([astral_job_id], "RECOMMENDED")
     return "RECOMMENDED"
+
+
+def list_dispatch_tasks_for_candidate(
+    candidate_id: str,
+    *,
+    trigger_state: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Dispatch rows for one candidate; optional trigger_state filter (flat or legacy compound)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        return []
+    ts = (trigger_state or "").strip() if trigger_state is not None else ""
+    out: List[Dict[str, Any]] = []
+    for row in database.list_dispatch_tasks():
+        if str(row.get("candidate_id") or "").strip() != cid:
+            continue
+        row_ts = (row.get("trigger_state") or "").strip()
+        if ts:
+            if row_ts != ts and not (
+                ts == BUILD_ARTIFACTS_BASE_STATE
+                and row_ts.startswith(f"{BUILD_ARTIFACTS_BASE_STATE}.")
+            ):
+                continue
+        out.append(dict(row))
+    return out
 
 
 def get_candidate_results(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -405,16 +429,16 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     if key != jd_key:
         return None
     # Self-heal: belt-and-suspenders before any agent call sees a missing JD.
-    # Delegates to scrape_jd_batch (single job) so prune rules live in one place.
+    # Delegates to fetch_jd_batch (single job) so prune rules live in one place.
     astral_job_id = job.get("astral_job_id", "")
-    logger.warning(f"[{astral_job_id}] coat-check self-heal: JD missing, invoking scrape_jd_batch")
+    logger.warning(f"[{astral_job_id}] coat-check self-heal: JD missing, invoking fetch_jd_batch")
     try:
-        from src.core.gazer import scrape_jd_batch
-        await scrape_jd_batch(str(uuid.uuid4()), [job])
+        from src.core.gazer import fetch_jd_batch
+        await fetch_jd_batch(str(uuid.uuid4()), [job])
     except Exception as e:
-        logger.warning(f"get_job_data: scrape_jd_batch self-heal failed for {astral_job_id}: {e}")
+        logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
-    # job["job_data"] was written back by scrape_jd_batch if successful
+    # job["job_data"] was written back by fetch_jd_batch if successful
     return job["job_data"].get(jd_key)
 
 

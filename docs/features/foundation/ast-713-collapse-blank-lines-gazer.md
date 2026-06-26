@@ -1,3 +1,131 @@
+<!-- linear-archive: AST-713 archived 2026-06-23 -->
+
+## Linear archive (AST-713)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-713/collapse-blank-lines-in-gazer-visible-text-saves-remove-empty-lines  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-710 — Remove empty lines from visible text  
+**Blocked by / blocks / related:** parent: AST-710
+
+### Description
+
+## What this implements
+
+Add a shared text normalizer that collapses consecutive blank lines to a single blank line (whitespace-only lines count as blank), and apply it on every gazer batch path that persists scraped visible page text before writing to company or job records — JD scrape batches and company homepage fetch batches.
+
+## Acceptance criteria
+
+1. Given visible text with three or more consecutive blank lines (or whitespace-only lines) between content, the normalizer produces at most one blank line between those blocks.
+2. Non-empty lines appear in the same order with unchanged content after normalization.
+3. Persisted job descriptions from JD scrape batches and homepage text from website fetch batches reflect normalized text, verifiable by inspecting saved records after a scrape run.
+4. Gazer batch behavior (pass/fail transitions, empty-text rejection) remains correct — normalization does not turn genuinely empty scrapes into non-empty saves.
+
+## Boundaries
+
+* Does not change HTML extraction, browser scraping, or JD boilerplate prune rules.
+* Does not normalize raw job listing fragments, DOM snapshots, nav link enumerations, or roster inflow prompt text outside gazer save paths.
+* Does not backfill existing database rows.
+* Sibling scope: none — this ticket covers the full parent functional scope.
+
+## Notes for planning
+
+* Helper belongs in shared formatting utilities; gazer applies it immediately after scrape and before classification/save on the visible text blob.
+* Touch `scrape_jd_batch` and `fetch_website_batch` save paths at minimum.
+* `formatting.py` must not import config (existing module constraint).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent **ftr/AST-710-remove-empty-lines-from-visible-text**, child **sub/AST-710/AST-711-collapse-blank-lines-gazer**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-16T20:47:03.859Z
+**Review** — `origin/dev...origin/sub/AST-710/AST-713-collapse-blank-lines-gazer` @ `c0e3050f`
+
+**Doc:** `docs/features/foundation/ast-713-collapse-blank-lines-gazer.md` (Radia review section)
+
+### Plan fidelity
+
+- Stages 1–3 match plan: shared `collapse_consecutive_blank_lines` in `formatting.py`; `scrape_jd_batch` normalizes after successful `get_visible_text`, before empty gate / `_prune_jd`; `fetch_website_batch` normalizes `homepage_text` only — `nav_links` unchanged.
+- AC #4 intact: all-whitespace JD scrapes still fail via `not text.strip()` after normalize.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 DRY** — single helper, two call sites; no duplicate logic in core.
+- **§2.4 / §2.6** — batch lifecycle and transitions untouched; normalize inside existing per-item handlers.
+- **§3.3** — `gazer` (core) → `formatting` (utils); no layer violations.
+
+### Tests (read-only)
+
+- `TestCollapseConsecutiveBlankLines` cases align with plan Stage 4 table.
+- Gazer integration tests assert collapsed payloads on JD and homepage save paths.
+
+### Findings
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:** `collapse_consecutive_blank_lines` non-`str` passthrough (`return text`) is defensive like sibling formatting helpers; scrape paths always pass `str`. Optional future tighten if typing is enforced at call sites.
+
+#### betty — 2026-06-16T20:43:46.873Z
+## QA test manifest (AST-713)
+
+**Publish ref:** `origin/sub/AST-710/AST-713-collapse-blank-lines-gazer` @ `554db85`
+**Tests SHA:** `20d0ca2` (`merge-tests(AST-713): origin/tests 20d0ca2`)
+
+1. **Blank-line helper (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines -q
+```
+
+2. **Gazer JD save path (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py::TestScrapeJdBatch::test_collapses_consecutive_blank_lines_before_save -q
+```
+
+3. **Gazer homepage save path (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_collapses_consecutive_blank_lines_in_homepage_text -q
+```
+
+**Pass criterion:** pytest green on all manifest lines — not zero-arg harness / branch-lock gate unless widened.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/utils/formatting.md` → `0c4ac063269b0c093367e9b77868f9c2ecd21d2d`
+- `docs/test-bible/core/gazer.md` → `ebd7f4bef1b194c4381fb2d856769cbbe174af4b`
+
+**Coverage added:**
+- `TestCollapseConsecutiveBlankLines` — plan Stage 4 case table + None/non-str branches
+- Gazer integration asserts collapse before persist on `scrape_jd_batch` and `fetch_website_batch`
+
+— Betty
+
+#### hedy — 2026-06-16T20:40:23.858Z
+Plan: [`docs/features/foundation/ast-713-collapse-blank-lines-gazer.md`](https://github.com/susansomerset/astral/blob/sub/AST-710/AST-713-collapse-blank-lines-gazer/docs/features/foundation/ast-713-collapse-blank-lines-gazer.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — one `formatting.py` helper plus two call sites in `gazer.py` (`scrape_jd_batch`, `fetch_website_batch`).
+- **Conf:** high — line-walk utility with explicit post-scrape insertion points already in the batch handlers.
+- **Risk:** low — empty-scrape rejection on the JD path still uses `text.strip()` after normalization; no state-machine or config changes.
+
+Removed duplicate plan slug (`ast-713-collapse-blank-lines-gazer-visible-text-saves.md`) from publish ref; canonical path above.
+
+#### hedy — 2026-06-16T20:39:49.505Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-710/AST-713-collapse-blank-lines-gazer/docs/features/foundation/ast-713-collapse-blank-lines-gazer-visible-text-saves.md
+
+**Scope:** Single-Component — `collapse_blank_lines` in `formatting.py` plus two call sites in `gazer.py` (`scrape_jd_batch`, `fetch_website_batch`).
+
+**Conf:** high — explicit AC and boundaries; helper is a single line-walk with fixed insert points after scrape.
+
+**Risk:** low — only affects newly persisted visible text; empty-scrape gates unchanged; parent accepts possible JD classifier drift from reduced whitespace padding.
+
+---
+
 # AST-713 — Collapse blank lines in gazer visible text saves (Remove empty lines from visible text)
 
 - **Linear (this ticket):** [AST-713](https://linear.app/astralcareermatch/issue/AST-713/collapse-blank-lines-in-gazer-visible-text-saves-remove-empty-lines)

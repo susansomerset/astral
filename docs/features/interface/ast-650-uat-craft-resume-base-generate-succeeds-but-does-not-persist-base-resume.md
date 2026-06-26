@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-650 archived 2026-06-23 -->
+
+## Linear archive (AST-650)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-650/uat-craft-resume-base-generate-succeeds-but-does-not-persist-base  
+**Status at archive:** Done  
+**Project:** Astral Interface (inherited from AST-601)  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-601 — Rebuild 519 (git casualty)  
+**Blocked by / blocks / related:** parent: AST-601
+
+### Description
+
+## What failed
+
+After **AST-644** fix, **Generate** on candidate `karfo` for `craft_resume_base` completes without validation error (ledger batch `user-craft_resume_base-5bdeb39b-ecfb-4e76-b8d5-089cbde6c8e0`, 2026-06-14 23:04:51). UI may show success, but `candidate_data.artifacts` **is still absent** — no `base_resume` or `resume_structure` persisted. Reloading **Base Resume Content** shows empty tabs; DB row has only `profile` + `context`, no artifacts blob.
+
+## Expected
+
+Successful **Generate** on **Base Resume Content** persists `artifacts.resume_structure` and `artifacts.base_resume` (same as `parse_candidate_resume` after `split_craft_resume_base_payload`). Tabs show generated section content on reload without requiring a separate manual Save for the initial generate path.
+
+## Repro
+
+1. Admin → candidate **karfo** → **Base Resume Content**.
+2. Click **Generate** (candidate in `LIVE_PROMPTS` / allowed generate state).
+3. Wait for completion (no validation error).
+4. Reload page or inspect candidate row — `candidate_data.artifacts.base_resume` still missing.
+
+## Parent AC (quoted inline)
+
+> Editor loads and saves `artifacts.base_resume` string content keyed by section ids; keys not in the candidate's structure are not shown and are not persisted (orphan keys dropped on save — self-heal, not hard error).
+
+> **Base Resume Content** shows one tab per **enabled** section for the selected candidate, in defined order; tab labels come from that candidate's structure titles.
+
+## Boundaries
+
+* Does **not** change: AST-616 tab UI wiring, global `DATA_SHAPES`, or craft_resume_base prompt/schema.
+* Fix: wire **Generate** POST persistence in `run_candidate_artifact_generation` (or equivalent) for `craft_resume_base` — reuse `split_craft_resume_base_payload` + `save_candidate` merge like `parse_candidate_resume`.
+* May still return `parsed_response` to frontend for immediate display.
+
+### Comments
+
+#### betty — 2026-06-14T23:14:08.884Z
+## QA test manifest (AST-650)
+
+**Publish:** `origin/sub/AST-601/AST-650-craft-resume-base-generate-no-persist` @ `2b7f7e2f` (`merge-tests(AST-650): origin/tests 3ae3b720`)
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `57d451eeaba1d7d79c0b44df6dc1aa683ac0391b748cd1e967260419bd644b52`
+
+### 1. Revised this pass (product change broke harness)
+
+1. **`test_returns_200_on_success`** — mock **`save_candidate`** (Generate success now persists for **`craft_resume_base`**)
+
+### 2. New regression
+
+2. **`test_persists_artifacts_on_craft_resume_base_success`** — UAT path: success → **`save_candidate`** with **`merge=True`**, **`artifacts.resume_structure`** + **`artifacts.base_resume`**
+3. **`test_does_not_persist_artifacts_on_other_task_success`** — guard: **`bootstrap_candidate_context`** success does not artifact-save
+
+### 3. Gaps
+
+None — **§7.13zzv** narrowed run only (no UI).
+
+### Narrowed run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration
+```
+
+#### ada — 2026-06-14T23:12:04.932Z
+Plan doc: [ast-650-uat-craft-resume-base-generate-succeeds-but-does-not-persist-base-resume.md](https://github.com/susansomerset/astral/blob/sub/AST-601/AST-650-craft-resume-base-generate-no-persist/docs/features/interface/ast-650-uat-craft-resume-base-generate-succeeds-but-does-not-persist-base-resume.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — add split+save on `craft_resume_base` success in `run_candidate_artifact_generation` only.
+- **Conf:** high — success path returns without save today; `parse_candidate_resume` is the working template; no UI/schema changes.
+- **Risk:** Medium — Generate is the primary Base Resume Content path; must guard `task_key` and use `merge=True`.
+
+**Summary:** Wire `split_craft_resume_base_payload` + `save_candidate` merge into UI Generate success path so reload shows persisted tabs.
+
+---
+
 # AST-650 — UAT: craft_resume_base Generate succeeds but does not persist base_resume
 
 **Linear:** [AST-650 — UAT: craft_resume_base Generate succeeds but does not persist base_resume](https://linear.app/astralcareermatch/issue/AST-650/uat-craft-resume-base-generate-succeeds-but-does-not-persist-base-resume)  

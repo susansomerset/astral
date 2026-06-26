@@ -67,6 +67,39 @@ def parse_vector_reviews(
     return [parsed_by_code[c] for c in sorted(parsed_by_code.keys())]
 
 
+def hydrate_vector_review_strings(
+    raw_reviews: Any,
+    rubric_by_code: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, str]]:
+    """Decode compact review strings into display rows (AST-808); partial lists OK."""
+    if not isinstance(raw_reviews, list):
+        return []
+    value_labels = RUBRIC_FEEDBACK_CONFIG.get("value_labels") or {}
+    rows: List[Dict[str, str]] = []
+    for line in raw_reviews:
+        if not isinstance(line, str):
+            continue
+        parsed = parse_vector_review_string(line)
+        if parsed is None:
+            continue
+        code, vals = parsed
+        rubric = rubric_by_code.get(code.upper()) or {}
+        rows.append({
+            "compact": line,
+            "code": code,
+            "label": str(rubric.get("label") or code),
+            "content": str(rubric.get("content") or ""),
+            "importance": str(rubric.get("importance") or ""),
+            "relevance": vals["relevance"],
+            "clarity": vals["clarity"],
+            "verdict": vals["verdict"],
+            "relevance_label": value_labels.get(vals["relevance"], vals["relevance"]),
+            "clarity_label": value_labels.get(vals["clarity"], vals["clarity"]),
+            "verdict_label": value_labels.get(vals["verdict"], vals["verdict"]),
+        })
+    return rows
+
+
 def format_vector_reviews_raw(perf: dict) -> str:
     """Serialize vector_reviews or whole agent_performance for FEEDBACK block storage."""
     if not isinstance(perf, dict):

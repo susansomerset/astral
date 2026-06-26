@@ -1,3 +1,156 @@
+<!-- linear-archive: AST-653 archived 2026-06-23 -->
+
+## Linear archive (AST-653)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-653/uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-640 — Show environment and up time as read-only at the bottom of nav for admin view only.  
+**Blocked by / blocks / related:** parent: AST-640
+
+### Description
+
+## What failed
+
+On a **local** deploy (`ASTRAL_DEPLOY_ENV=local`), UI-triggered AI work (e.g. Anthropic Ad Hoc **Test**, intake LLM turns, dispatch **Run**) does not emit backend debug-contract logging. Susan cannot see enough trace output for what happens to generated content during local dev UAT.
+
+## Expected
+
+When the running server's deploy environment is `local`, every **UI-initiated** AI/LLM call path treats `debug=True` automatically (same backend debug-contract lines as when debug is explicitly enabled). Non-local deploys unchanged — debug only when explicitly requested (query param / dispatch row flag).
+
+## Repro
+
+1. Run Astral locally with `ASTRAL_DEPLOY_ENV=local`; sign in as admin.
+2. Confirm nav footer shows environment `local`.
+3. Open **Admin → Anthropic Ad Hoc** (or intake chat); run **Test** without any debug toggle.
+4. Observe server logs / debug output — insufficient detail on LLM request/response handling vs explicit `debug=true`.
+
+## Parent AC (quoted inline)
+
+> **Server-sourced truth** — Environment, commit, and uptime values come from an authenticated API response; the frontend renders what the API returns and does not infer environment from the URL or build metadata alone.
+
+> **Environment label** — Display exactly one of: `local`, `test`, `staging`, or `production`. The label reflects the running server's deployment context, not the browser hostname alone.
+
+> Sign in as an admin on local dev → bottom of left nav shows `local`, a commit identifier, and an uptime string in the compact format above.
+
+(Susan UAT 2026-06-14: *"if the deploy environment is local, then all the UI generated AI calls are considered as Debug = true. We are not getting enough output on what happens to the results of the content."*)
+
+## Boundaries
+
+* Does **not** change deploy footer display, commit/uptime, or non-local debug behavior.
+* Does **not** enable debug for CLI/batch/dispatcher paths that are not UI-initiated unless they already honor dispatch-row debug.
+* Does **not** add new UI toggles — local env is the signal.
+
+### Comments
+
+#### radia — 2026-06-15T00:07:51.254Z
+**Diff:** `origin/dev`…`origin/sub/AST-640/AST-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local` @ `38a64deb`
+
+## Solid
+
+- **Plan fidelity:** Stages 1–3 match the combined plan — `is_local_deploy_env` / `ui_llm_debug` in `deploy_status.py`; intake `_debug_flag()` ORs explicit query with helper; `adhoc_test` passes `debug=ui_llm_debug()`; candidate/board generate pass `debug` through to `do_task`; dispatch **Run** uses `run_task(..., ui_initiated=True)` and `_dispatch_one` ORs `row.debug` with `(ui_initiated && local)`.
+- **Boundaries:** Scheduler tick still calls `run_task(tid)` with default `ui_initiated=False` (`dispatcher.py` ~828). `adhoc/preview` untouched (no LLM). No frontend changes.
+- **§1.5.1:** No new ungated contract emission — change only flips `debug=True` on listed UI paths when `ASTRAL_DEPLOY_ENV=local` (or explicit intake query). Existing AST-538 gating in `do_task` / providers unchanged.
+- **§3 layer:** UI → `utils.deploy_status` only; `core.dispatcher` → `is_local_deploy_env` matches existing core→utils config/logging pattern. Imports at module top.
+- **Tests:** `TestLocalDeployDebug` covers local/staging/unset and explicit OR semantics per manifest.
+
+## Advisory
+
+- **`docs/ASTRAL_TEST_BIBLE.md` §7.13zzt:** Diff also documents **AST-652** list-table autosize (sibling **AST-633** child) — likely `merge-tests` carryover, not AST-653 product scope. Harmless for this ticket; no action unless you want bible rows split by child at merge time.
+
+## fix-now
+
+None.
+
+## discuss
+
+None.
+
+**Katherine:** `resolve-child` — no code changes expected from this review.
+
+#### betty — 2026-06-15T00:02:56.043Z
+## QA test manifest (AST-653)
+
+**Publish ref:** `origin/sub/AST-640/AST-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local` @ `38a64deb` (`merge-tests(AST-653): origin/tests 94bbe18e`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `3354efe6684e4a273ea4860482377d7b84e199cb` (§7.13zzs — AST-653 row added)
+
+### Coverage classification
+
+1. **New tests (gap):** `is_local_deploy_env()` / `ui_llm_debug()` OR semantics — plan Stage 4; no log-string golden tests (AST-538 gating only).
+2. **Existing coverage (unchanged):** `TestResolveEnvironment`, `TestGetDeployStatusPayload`, AST-646/651 deploy footer tests — product change does not break them.
+3. **Broken / obsolete:** none.
+
+### Manifest (run in order)
+
+1. ```bash
+   ./scripts/testing/run_component_tests.sh \
+     tests/component/utils/test_deploy_status.py::TestLocalDeployDebug
+   ```
+
+2. Regression spot-check (unchanged AST-651 env resolution):
+
+   ```bash
+   ./scripts/testing/run_component_tests.sh \
+     tests/component/utils/test_deploy_status.py::TestResolveEnvironment
+   ```
+
+**Optional smoke (not in manifest):** API wiring for `debug=True` on local — covered indirectly by helper unit tests; manual UAT on local deploy for Ad Hoc **Test** / intake / dispatch **Run** per ticket repro.
+
+— Betty
+
+#### betty — 2026-06-15T00:02:51.418Z
+## QA test manifest (AST-653)
+
+**Classification:** Gap — new helper tests for `is_local_deploy_env()` / `ui_llm_debug()` (plan Stage 4). No log-string golden tests (AST-538 gating only). Existing candidate/board/dispatcher tests unchanged — default `debug=False` preserved on non-local paths.
+
+**Publish:** `origin/sub/AST-640/AST-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local` @ `94bbe18e` (`test(AST-653): local deploy auto-debug helpers`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `3354efe6684e4a273ea4860482377d7b84e199cb` (§7.13zzs — AST-653 row added)
+
+### Run (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py::TestLocalDeployDebug
+```
+
+### Manifest
+
+1. **`tests/component/utils/test_deploy_status.py::TestLocalDeployDebug`**
+   - `test_is_local_deploy_env_true` — `ASTRAL_DEPLOY_ENV=local` → True
+   - `test_is_local_deploy_env_case_insensitive` — `LOCAL` → True
+   - `test_is_local_deploy_env_false_for_staging` — `staging` → False
+   - `test_is_local_deploy_env_false_when_unset` — unset → False
+   - `test_ui_llm_debug_explicit_overrides_non_local` — explicit True regardless of env
+   - `test_ui_llm_debug_local_without_explicit` — local env → True without explicit flag
+   - `test_ui_llm_debug_false_non_local_no_explicit` — staging, no explicit → False
+
+2. **Regression (unchanged):** `TestResolveEnvironment`, `TestGetDeployStatusPayload`, `TestFormatUptimeSeconds` — no edits required; run if any deploy_status change surprises.
+
+**Broken/obsolete:** None identified.
+
+**Optional smoke (not in manifest):** API-level assert that `run_adhoc_workbench_test` / `do_task` receive `debug=True` on local — utils tests cover helper OR semantics; engineer may spot-check server logs on local UAT per plan Stage 4 note.
+
+— Betty
+
+#### katherine — 2026-06-14T23:58:41.402Z
+Plan published for AST-653 (UAT bug — local deploy auto-debug for UI LLM paths).
+
+**Plan doc:** [ast-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local.md](https://github.com/susansomerset/astral/blob/sub/AST-640/AST-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local/docs/features/interface/ast-653-uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local.md) @ `c19ecc63`
+
+**Approach:** Add `is_local_deploy_env()` + `ui_llm_debug()` in `deploy_status.py`; wire on intake, ad hoc Test, candidate/board Generate APIs; pass `debug` into `do_task`; dispatch **Run** only gets local OR via `run_task(..., ui_initiated=True)` — scheduler AUTO tick unchanged.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one helper pair plus thin wiring on eight known UI-initiated LLM entry points.
+- **Conf:** `high` — repro is missing `debug=True` on existing call sites; AST-538 plumbing already exists.
+- **Risk:** `low` — affects log verbosity only on local dev; non-local production behavior unchanged.
+
+---
+
 # AST-653 — UAT: auto debug=true for UI AI calls when deploy env is local
 
 **Linear:** [AST-653 — UAT: auto debug=true for UI AI calls when deploy env is local](https://linear.app/astralcareermatch/issue/AST-653/uat-auto-debugtrue-for-ui-ai-calls-when-deploy-env-is-local)  

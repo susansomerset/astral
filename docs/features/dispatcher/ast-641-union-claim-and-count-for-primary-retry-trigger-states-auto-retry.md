@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-641 archived 2026-06-23 -->
+
+## Linear archive (AST-641)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-641/union-claim-and-count-for-primary-retry-trigger-states-auto-retry  
+**Status at archive:** Done  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-630 — Auto retry  
+**Blocked by / blocks / related:** parent: AST-630; blocks: AST-642
+
+### Description
+
+## What this implements
+
+When a Scheduled Action row’s `trigger_state` is a primary job or company state (not already ending in `_RETRY`), eligible-entity counting and batch claim include entities in both that state and `trigger_state + "_RETRY"` when the suffix state exists in config. Retry-only rows continue to claim only the retry state. Existing dispatch row rules (candidate scope, sort, batch size, score-floor gating, company scan intervals) apply uniformly across the combined set.
+
+## Acceptance criteria
+
+* A Scheduled Action with `trigger_state` `VALID_TITLE` and `task_key` `qualify_job_listings` shows an **Available** count equal to eligible jobs in `VALID_TITLE` plus eligible jobs in `VALID_TITLE_RETRY` (scoped to candidate and existing floor rules).
+* Running that row claims jobs from both states in one dispatch pass (subject to `batch_size` / chunk rules).
+* The same primary + `_RETRY` union behavior works for `JD_READY` / `JD_READY_RETRY` (`evaluate_jd`) and for company prefilter (`WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY` on `prefilter`).
+* A row with `trigger_state` `VALID_TITLE_RETRY` claims only `VALID_TITLE_RETRY` jobs.
+* Rows that intentionally target only a retry state (legacy seed or manual rows) behave as today — no regression in run or count.
+
+## Boundaries
+
+* Does **not** change per-entity retry vs error routing inside batch consult — sibling ticket owns `consult.py` mixed-state batches.
+* Does **not** create or seed new `dispatch_task` rows.
+* Does **not** alter score-floor semantics for `*_RETRY` trigger rows.
+
+## Notes for planning
+
+* Config registry: `JOB_STATES`, `COMPANY_STATES` / `ROSTER_CONFIG` prefilter `retry_state`.
+* Touch paths: data claim/count, `tracker.get_new_job_batch`, company batch claim, `dispatcher._run_unified` input, `api_admin` available_count (likely via shared count helper).
+* `dispatch_claim_uses_score_floor`: primary trigger rows keep current gating; `*_RETRY` states remain non–score-gated at claim.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-630-auto-retry`, child `sub/AST-630/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### hedy — 2026-06-14T20:27:02.226Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-630/AST-641-union-claim-count` @ `378af6e4` (product); doc @ `a053a5cc`
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### advisory
+- Plan Execution contract named `test_api_admin.py`; bible §7.13zzo covers **Available** via `count_eligible_for_dispatch_task` data-layer tests instead — acceptable (admin has no separate count path).
+- `database.py`: `_state_in_sql` is defined below early claim callers; runtime-safe; reorder optional for readability only.
+
+### What's solid (rules)
+- **§2.1 / §2.4:** `dispatch_claim_states` + `_state_in_sql`; count/claim share resolved list; score floor still keyed off row `trigger_state`.
+- **§2.6 / §5d:** No consult/transition edits; AST-642 boundary held.
+- **§1.5.1:** `claim_states` in `_run_unified` `debug_detail` only when `debug=True`.
+
+Plan doc: `docs/features/dispatcher/ast-641-union-claim-and-count-for-primary-retry-trigger-states-auto-retry.md` — **Review (Radia)** section.
+
+**Verdict:** Clean — ready for `resolve-child`.
+
+#### betty — 2026-06-14T20:24:22.757Z
+## QA test manifest (Tests Ready)
+
+**Publish ref:** `origin/sub/AST-630/AST-641-union-claim-count` @ `378af6e4` (`merge-tests(AST-641): origin/tests 9a9996ec`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `f4f2e7e83f3dab62782299f4f0c5f56134d00ee8edfcdfff9fb75f5080bdc145` (§7.13zzo)
+
+Run from repo root after `git fetch origin` and checkout publish ref (merge `origin/ftr/ast-630-auto-retry` per merge-on-checkout):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst641DispatchClaimStates \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount \
+  tests/component/core/test_dispatcher.py -k ast641
+```
+
+### Manifest
+
+1. **`tests/component/utils/test_config.py::TestAst641DispatchClaimStates`** — `dispatch_claim_states` primary vs retry-only vs missing companion; job (`VALID_TITLE`, `JD_READY`) and company (`WEBSITE_FOUND`) pairs.
+2. **`tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount`**
+   - Primary `VALID_TITLE` row: `count_eligible_for_dispatch_task` sums primary + retry jobs; `claim_job_batch` with `states=` claims both.
+   - Retry-only `VALID_TITLE_RETRY` row: count single retry state only.
+   - Company `WEBSITE_FOUND` prefilter: count + `claim_company_batch` union with `WEBSITE_FOUND_RETRY`.
+   - Scored `PASSED_LIKE` primary: one `score_floor` across primary + `PASSED_LIKE_RETRY` pool (regression guard).
+3. **`tests/component/core/test_dispatcher.py`** — `test_ast641_primary_job_trigger_passes_union_claim_states`, `test_ast641_retry_only_job_trigger_single_claim_state`, `test_ast641_company_prefilter_passes_union_claim_states` — `_run_unified` passes resolved `states=` into batch helpers.
+
+**Existing coverage (no separate manifest line):** admin Available count flows through shared `count_eligible_for_dispatch_task` once data layer is fixed — no new `test_api_admin.py` cases required this ticket.
+
+**Out of scope (AST-642):** consult mixed-state routing — not asserted here.
+
+#### hedy — 2026-06-14T19:18:44.267Z
+Plan: [`docs/features/dispatcher/ast-641-union-claim-and-count-for-primary-retry-trigger-states-auto-retry.md`](https://github.com/susansomerset/astral/blob/sub/AST-630/AST-641-union-claim-count/docs/features/dispatcher/ast-641-union-claim-and-count-for-primary-retry-trigger-states-auto-retry.md)
+
+**Self-assessment**
+- **Scope:** `Single-Component` — config `dispatch_claim_states`, data-layer claim/count IN clauses, thin tracker/roster/dispatcher plumbing; no consult or UI.
+- **Conf:** `high` — extends existing batch claim/count and AST-586 score-floor split with a registry-driven state list.
+- **Risk:** `Medium` — claim/count mismatch would affect dispatch eligibility, but consult routing stays on AST-642.
+
+Three stages: (1) config helper, (2) database multi-state SQL, (3) core wrappers + dispatcher wiring. Betty covers union vs retry-only AC in component tests at Code Complete.
+
+---
+
 # Union claim and count for primary + _RETRY trigger states (Auto retry — AST-641)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-641/union-claim-and-count-for-primary-retry-trigger-states-auto-retry  

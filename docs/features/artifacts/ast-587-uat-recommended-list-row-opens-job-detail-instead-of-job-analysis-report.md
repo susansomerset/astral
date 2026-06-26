@@ -1,3 +1,131 @@
+<!-- linear-archive: AST-587 archived 2026-06-23 -->
+
+## Linear archive (AST-587)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-587/uat-recommended-list-row-opens-job-detail-instead-of-job-analysis  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** susan  
+**Priority / estimate:** None / —  
+**Parent:** —  
+**Blocked by / blocks / related:** —
+
+### Description
+
+## Bug (AST-300 UAT)
+
+Susan: land-ftr regressed Recommended list — row click opens JobDetailModal instead of JobAnalysisReportModal (AST-565).
+
+## Expected
+
+Row click on Jobs Recommended opens JobAnalysisReportModal (setReportId).
+
+## Actual
+
+Row click opens JobDetailModal (setViewingId) — regression from integration fix bee17675.
+
+## Fix
+
+Restore onClick setReportId; remove JobDetailModal from JobsRecommended if unused.
+
+## Boundaries
+
+Do not change AST-581 Preview Materials or AST-553 draft tabs.
+
+## Acceptance
+
+1. Recommended row click opens JobAnalysisReportModal.
+2. Vitest asserts report modal on row click.
+
+### Comments
+
+#### chuckles — 2026-06-16T19:27:52.894Z
+[check-linear] Done — already on origin/dev (@susan)
+
+#### betty — 2026-06-12T18:43:30.046Z
+Betty land preflight: CLEAN — AST-587 @ 87614941 already on origin/dev @ 9cf9e2e4; no ftr ref (prior land)
+
+#### susan — 2026-06-12T18:42:14.570Z
+I think this one got skipped, @chuckles.  Please wrap it up?
+
+#### katherine — 2026-06-06T01:42:00.733Z
+**FIX-UAT rollup unblock:** `origin/ftr/AST-300-build-resume-artifact` @ **`87614941`**
+
+- Merged `origin/sub/…/AST-587-…` @ `90d177fd`; conflicts resolved sub side for `JobsRecommended.tsx`, `test_JobsRecommended.test.tsx`, `ASTRAL_TEST_BIBLE.md`
+- Follow-up **`87614941`**: `CandidateJobRowActions`, `analysisUpshot`, `stateUiManifestFixture`, `page-mocks` (AST-565 deps for Skip-without-Jr + report modal Vitest)
+- Vitest: **8/8** `test_JobsRecommended.test.tsx` on resolved ftr tree
+
+#### radia — 2026-06-06T01:13:56.935Z
+**Review** (`origin/dev...origin/sub/AST-300/AST-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report`) · plan: [ast-587 doc @ d2fe5ec9](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report/docs/features/artifacts/ast-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report.md)
+
+### Solid
+- Vitest **`opens the report modal from a row click`** — **`Summary`**, **Job Summary** on **`.side-tab-list`**, negative **State History** / **Skip This Job** (would catch ftr regression).
+- Test bible §6c + AST-587 row match; AST-581 / AST-553 untouched.
+- **`JobsRecommended.tsx`** on **`origin/dev`** / publish ref: AST-565 wiring (`setReportId`, `showViewAnalysis={false}`, no **`JobDetailModal`**).
+
+### fix-now
+- **`JobsRecommended.tsx`** — **no product diff** on publish ref vs **`origin/dev`**. Susan's UAT bug is on **`origin/ftr/AST-300-build-resume-artifact`** (`setViewingId` + **`JobDetailModal`**). Three-way merge into ftr: base = correct wiring, ftr = regression, sub = file unchanged → git keeps **ftr**'s handler. **`rollup-child` of this sub tip does not satisfy AC1.** Resolve: land plan Stage 1 steps 1–5 on **`dev-kath`**, publish, re-run **`test_JobsRecommended.test.tsx`** against ftr merge.
+
+### discuss
+- Plan **Scope** lists page change; ship is test + bible only — OK if intentional; still need explicit ftr product fix (don't assume rollup).
+
+### advisory
+- Test uses **`querySelector(".side-tab-list")!`**; plan suggested **`getByText("Job Summary")`** if rail DOM shifts.
+
+**§3.3 / §3.5:** UI-only test delta — no layer violations. **§5f:** N/A.
+
+#### betty — 2026-06-05T23:27:28.734Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-300/AST-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report` @ `8659e192`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `386b662f0a437558a1057823d84aea7098ce5ac3`
+
+### 1. Existing coverage (bible-backed — §6c routed page + §7.13zs AST-587)
+
+Run from repo root after `git fetch origin && git merge origin/sub/AST-300/AST-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report`:
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+**Required cases:**
+
+1. **`opens the report modal from a row click`** — row click shows report upshot (**Summary**), **Job Summary** tab in side rail; **`State History`** and **Skip This Job** (detail modal markers) must be absent.
+2. **`shows Skip without Jr on Recommended rows (AST-565)`** — Skip present; **View Job Analysis** absent.
+3. **Regression (§7.13zm):** **`groups jobs into state sections with JD/DO/GET/LIKE phase scores`**, **`sorts by company within a section`**, skip-action tests — full file green.
+
+### 2. Broken / obsolete tests
+
+None — engineer strengthened `opens the report modal from a row click` on publish ref (`92eecc67`).
+
+### 3. Gaps
+
+None this pass.
+
+— Betty
+
+#### chuckles — 2026-06-05T23:22:23.054Z
+## Validate-plan — APPROVED
+
+Plan restores AST-565 row-click → `JobAnalysisReportModal` with minimal `JobsRecommended.tsx` diff + Vitest regression. Scope matches bug description; no config/API churn; boundaries respected.
+
+**Verdict:** APPROVED → Plan Approved.
+
+— Chuckles
+
+#### katherine — 2026-06-05T23:22:00.104Z
+Plan: [`docs/features/artifacts/ast-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report.md`](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report/docs/features/artifacts/ast-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report.md) on **`origin/sub/AST-300/AST-587-uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report`** @ `ad46347b`.
+
+**Scope:** `Single-Component` — restores **`JobsRecommended`** row click → **`JobAnalysisReportModal`** only (reverts **`ftr/AST-300`** regression that wired **`JobDetailModal`** / `setViewingId`).
+
+**Conf:** `high` — fix matches **AST-565** and **`origin/dev`**; diff is explicit in plan.
+
+**Risk:** `low` — isolated list click wiring; no API or chain changes.
+
+---
+
 # UAT: Recommended list row opens Job Detail instead of Job Analysis Report
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-587/uat-recommended-list-row-opens-job-detail-instead-of-job-analysis-report  

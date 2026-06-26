@@ -1,3 +1,91 @@
+<!-- linear-archive: AST-750 archived 2026-06-23 -->
+
+## Linear archive (AST-750)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-750/config-driven-score-floor-dropdown-for-dispatch-task-modal-add-000-to  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-743 — Add 0.00 to score floor selection list  
+**Blocked by / blocks / related:** parent: AST-743
+
+### Description
+
+## What this implements
+
+Add **0.00** to the dispatch **score floor** dropdown and make the full allowed-value list config-driven: define the catalog once in product config, expose it through the admin API, and wire the **Edit Dispatch Task** modal on Scheduled Actions to load options from that API instead of a hardcoded React array. Preserve existing scored-row gating (`dispatch_claim_uses_score_floor`), save/display parity for **0.00**, and the **1.00** default when scored and unset.
+
+## Acceptance criteria
+
+1. **0.00 in dropdown:** For a scored dispatch row, the Edit Dispatch Task modal **Score Floor** list includes **0.00** as the first option.
+2. **Config-driven:** Allowed values are defined once in `config.py`; no duplicate numeric array remains in `AdminScheduledActions.tsx` for floor options.
+3. **API-served:** The modal loads floor options from an admin API response (not client-invented constants).
+4. **Persist 0.00:** Saving **0.00** on a scored row stores **0.0** in `dispatch_task.score_floor`; reload/edit shows **0.00** selected and the list row **Floor** column shows **0.00**.
+5. **Existing range preserved:** Options from **1.00** through **10.00** in **0.50** steps remain available (plus **0.00** and **0.50** at the low end).
+6. **Unscored rows unchanged:** Rows where `is_scored` is false still hide **Score Floor** and persist `score_floor` **null**.
+
+## Boundaries
+
+* Does **not** change `dispatch_claim_uses_score_floor`, dispatcher claim math, or `pass_threshold` grading.
+* Does **not** redesign Scheduled Actions layout (**AST-735**).
+* Does **not** add score-floor pickers elsewhere beyond fixing the Edit Dispatch Task modal source of truth.
+
+## Notes for planning
+
+* Follow `ASTRAL_CODE_RULES` §1.4 / §2.1 — allowed value sets in `config.py`; admin metadata pattern like `/api/admin/dispatch_tasks/state_options`.
+* Primary files: `src/utils/config.py`, `src/ui/api/api_admin.py`, `src/ui/frontend/src/pages/AdminScheduledActions.tsx`.
+* Backend already accepts `score_floor` **0.0** on scored updates (existing component tests).
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-743-add-000-to-score-floor-selection-list`, child `sub/AST-743/AST-744-<slug>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### chuckles — 2026-06-18T22:56:56.116Z
+QA manifest by Betty.
+
+**Tests Ready manifest (test-child)**
+
+1. Config catalog — tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog
+2. Admin API — tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls
+3. Scheduled Actions — tests/component/frontend/pages/test_AdminScheduledActions.test.tsx — AST-750: edit save sends score_floor 0 when 0.00 selected
+
+Publish ref: origin/sub/AST-743/AST-750-config-driven-score-floor-dropdown @ b2181e0
+
+— Betty
+
+#### katherine — 2026-06-18T22:50:39.551Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-743/AST-750-config-driven-score-floor-dropdown/docs/features/interface/ast-750-config-driven-score-floor-dropdown.md
+
+**Self-assessment**
+- **Scope:** Single-Component — config catalog, one admin GET route, one React page; no dispatcher/DB changes.
+- **Conf:** high — mirrors `state_options` pattern; backend already accepts 0.0; plan patches frontend `parseFloat || 1` zero-save bug for AC #4.
+- **Risk:** low — admin dropdown only; claim gating untouched.
+
+Revision 1 patches Stage 3 save coercion so **0.00** persists (prior draft left `parseFloat(form.score_floor) || 1` unchanged).
+
+#### chuckles — 2026-06-18T22:50:38.793Z
+**validate-plan: APPROVED**
+
+Plan matches AST-743 definition: config catalog (0.00–10.00, step 0.50), admin API metadata endpoint, modal wired to API; boundaries preserved (no claim gating / dispatcher changes). Layer table correct (utils + ui only). Betty tests deferred per build ban.
+
+— Chuckles
+
+#### katherine — 2026-06-18T22:50:13.034Z
+Plan: [ast-750-config-driven-score-floor-dropdown.md](https://github.com/susansomerset/astral/blob/sub/AST-743/AST-750-config-driven-score-floor-dropdown/docs/features/interface/ast-750-config-driven-score-floor-dropdown.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — config tuple + helper, one admin GET route, one React page; no dispatcher/core changes.
+- **Conf:** high — mirrors `state_options` metadata pattern; backend already persists `score_floor` 0.0 on scored rows.
+- **Risk:** low — catalog mistake only affects admin dropdown labels; claim gating and save coercion unchanged.
+
+Four stages: (1) `DISPATCH_SCORE_FLOOR_VALUES` 0.0–10.0 step 0.5 in config, (2) `GET /api/admin/dispatch_tasks/score_floor_options`, (3) remove hardcoded `useMemo` in `AdminScheduledActions.tsx`, (4) Betty QA manifest notes.
+
+---
+
 # Config-driven score floor dropdown for dispatch task modal (Add 0.00 to score floor selection list)
 
 **Linear:** [AST-750](https://linear.app/astralcareermatch/issue/AST-750/config-driven-score-floor-dropdown-for-dispatch-task-modal-add-000-to)  

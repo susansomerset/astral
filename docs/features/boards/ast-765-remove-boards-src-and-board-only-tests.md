@@ -1,3 +1,254 @@
+<!-- linear-archive: AST-765 archived 2026-06-23 -->
+
+## Linear archive (AST-765)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-765/remove-boards-src-implementation-and-board-only-tests-sunset-astral  
+**Status at archive:** Done  
+**Project:** Astral Boards  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-757 — Sunset Astral Boards  
+**Blocked by / blocks / related:** parent: AST-757
+
+### Description
+
+## What this implements
+
+Delete all boards-channel product code under `src/` — `core/boards.py`, `ui/api/api_boards.py`, board-specific config blocks and helpers (`BOARD_CONFIG`, `BOARDS_CONFIG`, `gaze_board`, board entity dispatch), related paths in gazer, dispatcher, consult, tracker, playwright, admin hidden-key shims, and server route registration. Remove component tests whose sole purpose is boards behavior; update shared fixtures that exist only for boards. Company-centric gazer and roster flows must remain intact.
+
+## Acceptance criteria
+
+1. No `BOARD_CONFIG`, `BOARDS_CONFIG`, `board_search` entity dispatch, `gaze_board` task key, or `/api/boards` routes under `src/` on the publish ref.
+2. No board-specific component tests remain (default delete).
+3. Admin Scheduled Actions and nav config show no board-search or `gaze_board` entries beyond what AST-649 already removed from UI (complete backend/admin catalog cleanup).
+4. Board spike CLIs remain under `scripts/spikes/` only.
+
+## Boundaries
+
+Does not drop database schema (sibling AST-759). Does not update test bible or Code Rules sunset section (sibling AST-760). Does not remove `scripts/spikes/` board CLIs.
+
+## Notes for planning
+
+Pre-removal `dev` tip SHA at dispatch: `{PRE_DEV_SHA}` — record as first SHA in Code Rules sunset section in AST-760; this ticket's first removal commit is the second SHA. Merge `origin/dev` into epic worktree before planning.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-757-sunset-astral-boards`, child `sub/AST-757/<child-segment>`, standalone `ftr/<segment>`. Created at **dispatch-parent**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### betty — 2026-06-23T20:24:27.652Z
+[check-linear]
+
+Cleared **[qa-handoff]** after **`9d3cda8`** revert — AST-765-only manifest (no cross-ticket bleed).
+
+**Changes:** `origin/tests` @ `3a2dd2e`, sub @ `8de1a5e`
+- Excluded **`test_consult.py`** from epic manifest (ctx rubric fallbacks reverted; not boards scope)
+- `TestAst750DispatchScoreFloorCatalog` skipped when AST-750 catalog absent
+- `test_list_dispatch_tasks_and_keys` skips `score_floor_options` when route absent
+- Bible: epic manifest in `docs/test-bible/core/consult.md` § AST-765
+
+**Manifest (440 passed, 5 skipped @ sub tip):**
+```bash
+ASTRAL_PYTHON=.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_gazer.py \
+  tests/component/core/test_tracker.py \
+  tests/component/utils/test_config.py \
+  tests/component/ui/api/test_api_admin.py \
+  tests/component/external/test_playwright.py \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
+```
+
+Reassigned to Hedy — **Review Posted** for resolve re-run + §9a.
+
+— Betty
+
+#### hedy — 2026-06-23T20:22:22.409Z
+[qa-handoff]
+
+**resolve-child fix-now landed** @ `9d3cda8` — reverted cross-ticket bleed per Radia (consult ctx rubric helpers, AST-750 `config` score_floor catalog, `api_admin` `/dispatch_tasks/score_floor_options`). **Kept:** `database.py` import bridge + migration `__board__` literal.
+
+Manifest after revert: **567 passed, 27 failed**.
+
+**Failures needing test/manifest trim (not product on this sub):**
+
+1. **`tests/component/utils/test_config.py`** — `TestAst750DispatchScoreFloorCatalog` (AST-750 product reverted)
+2. **`tests/component/ui/api/test_api_admin.py`** — `TestDispatchTasks::test_list_dispatch_tasks_and_keys` hits removed `score_floor_options` route
+3. **`tests/component/core/test_consult.py`** (24) — batch consult / render_verdict / AST-513 / AST-726 paths fail without ctx rubric fallbacks (table-only AST-723); tests pass inline rubric in ctx without `astral_candidate_id` or need `_rubric_criteria_for_cfg` mocks
+
+**Command:**
+```bash
+ASTRAL_PYTHON=.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_consult.py \
+  tests/component/core/test_gazer.py \
+  tests/component/core/test_tracker.py \
+  tests/component/utils/test_config.py \
+  tests/component/ui/api/test_api_admin.py \
+  tests/component/external/test_playwright.py \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
+```
+
+@Betty White — narrow manifest / adjust consult mocks or skips for AST-765-only scope; reassign for resolve re-run + §9a.
+
+— Hedy
+
+#### radia — 2026-06-23T20:21:09.657Z
+**Diff:** `origin/dev...origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests` @ `b0d30b7` (doc commit includes full table)
+
+### fix-now
+
+- **Cross-ticket `src/` bleed** — `c35bef0` (`test(AST-765)`) adds product code outside plan scope and not on `origin/dev`: **AST-750** `DISPATCH_SCORE_FLOOR_VALUES` / `dispatch_score_floor_option_labels()` (`config.py`), `/dispatch_tasks/score_floor_options` (`api_admin.py`), and consult `_resolve_rubric_criteria` / ctx artifact fallbacks (`consult.py`). Revert from this publish ref; land via **AST-750** / owning ticket.
+
+### discuss
+
+- **`database.py` bridge** — inlined `_BOARD_SEARCH_STATES` / `_GAZE_BOARD_DEFAULT_SCAN_INTERVAL_HOURS` after config purge (required after `BOARD_*` removal; plan listed `database.py` as **AST-766**). Acceptable until schema drop; should be `code(AST-765)` + plan note, not `test()` commit. `count_eligible_for_dispatch_task` `board_search` branch is dead until AST-766.
+
+### advisory
+
+- Boards excision in `f64c3c0..c20fd52` matches plan Stages 1–3; product grep clean outside `database.py`; Betty board-only test deletion landed; `extract_raw_job_listings` retained.
+- `test(AST-765)` touched `src/` — product edits belong in `code()` commits.
+
+**Doc:** `docs/features/boards/ast-765-remove-boards-src-and-board-only-tests.md` § Radia review (2026-06-23)
+
+#### betty — 2026-06-23T20:18:38.238Z
+[check-linear]
+
+Cleared **[qa-handoff]** — test/manifest fixes on `origin/tests` @ `4d972b5`, cherry-picked to `origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests` @ `68c832c`.
+
+**Fixes:**
+1. `test_cleanup_duplicate_and_board_gaze_jobs.py` — drop `idx_job_identity_unique` in fixture; stub `_ensure_job_schema` on migration import so dedupe seeds survive AST-732 index.
+2. `test_config.py` — `TestAst676CraftRubricSchema` expects `importance.min: 0`; `TestAst508InflowLocateConfig` skipped when `locate` absent from `INFLOW_CONFIG`.
+
+**Manifest re-run (sub tip):**
+```bash
+ASTRAL_PYTHON=.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_consult.py \
+  tests/component/core/test_gazer.py \
+  tests/component/core/test_tracker.py \
+  tests/component/utils/test_config.py \
+  tests/component/ui/api/test_api_admin.py \
+  tests/component/external/test_playwright.py \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
+```
+
+Reassigned to Hedy for **test-child**.
+
+— Betty
+
+#### hedy — 2026-06-23T20:15:50.012Z
+[qa-handoff]
+
+Product fixes pushed @ `c35bef0` on `origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests`:
+- `database.py`: inline board DDL constants after AST-765 config purge
+- migration script: literal `__board__` prefix (no `BOARDS_CONFIG`)
+- `config.py`: `dispatch_score_floor_option_labels` (AST-750 route from merge-tests)
+- `consult.py`: ctx artifact fallbacks for rubric hydration (table-backed + inline tests)
+
+Manifest re-run: **586 passed, 10 failed** (boards-related modules green).
+
+**Remaining failures are test/manifest vs product gaps — not AST-765 product bugs:**
+
+1. **`tests/component/utils/test_config.py`** (3)
+   - `TestAst508InflowLocateConfig` ×2: `INFLOW_CONFIG["locate"]` and `ROSTER_CONFIG["locate_job_page"]["dispatch_input_states"]` with `PREFILTER_PASSED` — **AST-508 product not on branch** (also absent on `origin/tests` config @ 203a427).
+   - `TestAst676CraftRubricSchema`: expects `importance.min == 1`; product shared schema has `min: 0` (same on `origin/tests` config).
+
+2. **`tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py`** (7)
+   - All dedupe-path tests: `sqlite3.IntegrityError: UNIQUE constraint failed: job.company, job.job_title, job.company_job_id`
+   - Fixture inserts duplicate identity rows via `_ensure_job_schema`, which now creates `idx_job_identity_unique` (AST-732). Tests need fixture/schema setup that allows pre-migration duplicates, or manifest should narrow to board-gaze-only cases that still pass.
+
+**Command:**
+```bash
+ASTRAL_PYTHON=.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_consult.py \
+  tests/component/core/test_gazer.py \
+  tests/component/core/test_tracker.py \
+  tests/component/utils/test_config.py \
+  tests/component/ui/api/test_api_admin.py \
+  tests/component/external/test_playwright.py \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
+```
+
+@Betty White — please revise manifest or tests for the 10 failures above and reassign when ready.
+
+#### betty — 2026-06-23T20:09:22.082Z
+## QA test manifest (AST-765)
+
+**Publish:** `origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests` @ `afcdf2b` (`merge-tests(AST-765): origin/tests 203a427`)
+
+### 1. Deleted board-only tests
+- `tests/component/core/test_boards.py`
+- `tests/component/core/test_boards_gaze_ast487.py`
+- `tests/component/core/test_boards_generate_ast521.py`
+- `tests/component/core/test_board_sourced_qualify_evaluate.py`
+- `tests/component/ui/api/test_api_boards.py`
+- `tests/component/data/database/test_board_search_integration.py`
+
+### 2. Trimmed shared tests
+- `tests/component/core/test_dispatcher.py` — removed board_search claim tests
+- `tests/component/core/test_consult.py` — removed board_search routing test
+- `tests/component/core/test_gazer.py` — removed board batch test classes
+- `tests/component/core/test_tracker.py` — removed `TestIngestBoardListings`
+- `tests/component/utils/test_config.py` — removed board registry classes; `gaze_board` not schedulable
+- `tests/component/ui/api/test_api_admin.py` — removed AST-649 hide-`gaze_board` test
+- `tests/component/external/test_playwright.py` — removed `TestBoardSearchDeeplink`
+- `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py` — dedupe-only cleanup tests
+- conftest files — dropped board schema flags and `boards_client`
+
+### 3. Manifest — run on epic worktree at sub tip
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py \
+  tests/component/core/test_consult.py \
+  tests/component/core/test_gazer.py \
+  tests/component/core/test_tracker.py \
+  tests/component/utils/test_config.py \
+  tests/component/ui/api/test_api_admin.py \
+  tests/component/external/test_playwright.py \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
+```
+
+### 4. Bible shasum (`origin/sub/...` @ `afcdf2b`)
+- `docs/test-bible/core/dispatcher.md` 96f7d8fb752c15c321fad0a4c9837f0755b5c55c91737d7491aaec86813fc4e7
+- `docs/test-bible/core/gazer.md` 5881a2d194853ddf5638d7077e6a4edccb1635c3bb770b57e4d275eea854363a
+- `docs/test-bible/core/consult.md` 5fd85451d075f4b45245de662b0ae69c28a183278c8710fea5a0c5211ae5eca7
+- `docs/test-bible/core/tracker.md` 74b980681482efdbf875174fcde536c8fcbd416cd4bd043b279fe8981f7fffe7
+- `docs/test-bible/utils/config.md` 0a1316b7b0ade9eee2fc73c13de242c3d3a86581e7d9d727a0d99d9f3c850195
+- `docs/test-bible/external/playwright.md` 71a1fafc2fc03301d6dd6290ed361c94b630a71dc22607cd0fe04b7f422b167e
+- `docs/test-bible/dev/cleanup_duplicate_and_board_gaze_jobs.md` 0d4380e1222120b057f672cd1d97a3e4b80f2a8e4e2195aecff2ac83b0850868
+
+— Betty
+
+#### hedy — 2026-06-23T20:03:30.297Z
+origin/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests @ 508e245
+
+First removal SHA for AST-767 Code Rules sunset section: `f64c3c0`
+
+#### hedy — 2026-06-23T19:58:29.918Z
+Plan: docs/features/boards/ast-765-remove-boards-src-and-board-only-tests.md
+
+https://github.com/susansomerset/astral/blob/sub/AST-757/AST-765-remove-boards-src-and-board-only-tests/docs/features/boards/ast-765-remove-boards-src-and-board-only-tests.md
+
+Four stages: (1) delete boards.py / api_boards.py / url_merge.py + server unregister, (2) config purge BOARD_* + gaze_board dispatch/admin catalog, (3) excise dispatcher/consult/gazer/tracker/playwright board wiring while keeping extract_raw_job_listings for roster, (4) src/ grep + compile gate. database.py and test bible deferred to AST-766/AST-767; Betty manifest lists board-only test deletions.
+
+**Scope:** MAJOR-CHANGE — full boards channel removal across ~10 src/ files; data layer left to AST-766.
+
+**Conf:** high — mechanical excision with explicit keep-list for company gazer paths.
+
+**Risk:** Medium — missed dispatch branch or accidental deletion of extract_raw_job_listings would break non-board flows.
+
+---
+
 # Remove boards src implementation and board-only tests (Sunset Astral Boards)
 
 **Linear:** [AST-765](https://linear.app/astralcareermatch/issue/AST-765/remove-boards-src-implementation-and-board-only-tests-sunset-astral)  

@@ -5,6 +5,7 @@ Contains business logic for company roster management and job page discovery.
 """
 
 import asyncio
+import hashlib
 import json
 import re
 import uuid
@@ -205,6 +206,28 @@ def _normalize_company_url_for_dedupe(url: str) -> str:
     return out
 
 
+def _slug_from_discovery_url(url: str) -> str:
+    """Mechanical company slug from a CSE hit URL (hostname-based)."""
+    norm = _normalize_company_url_for_dedupe(url)
+    if not norm:
+        return f"inflow_{hashlib.sha256((url or '').encode()).hexdigest()[:12]}"
+    netloc = urlparse(norm).netloc or ""
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    slug = netloc.lower().replace(".", "_")
+    slug = re.sub(r"[^a-z0-9_]", "", slug)
+    if slug:
+        return slug
+    return f"inflow_{hashlib.sha256(norm.encode()).hexdigest()[:12]}"
+
+
+def _discovery_blurb_line(hit: dict, *, index: int = 0) -> str:
+    title = hit.get("title") or ""
+    hit_url = hit.get("url") or ""
+    snippet = (hit.get("snippet") or "")[:500]
+    return f"{index:03d}|{title}|{hit_url}|{snippet}"
+
+
 def _candidate_company_urls(candidate_id: str) -> Set[str]:
     urls: Set[str] = set()
     for row in list_companies(candidate_id=candidate_id):
@@ -215,7 +238,61 @@ def _candidate_company_urls(candidate_id: str) -> Set[str]:
             norm = _normalize_company_url_for_dedupe(raw)
             if norm:
                 urls.add(norm)
+        data = row.get("company_data") or {}
+        if not isinstance(data, dict):
+            continue
+        notes = (data.get("inflow_discovery_notes") or "").strip()
+        if notes:
+            norm = _normalize_company_url_for_dedupe(notes)
+            if norm:
+                urls.add(norm)
+        blurb = (data.get("inflow_discovery_blurb") or "").strip()
+        if blurb:
+            parts = blurb.split("|", 3)
+            if len(parts) >= 3 and (parts[2] or "").strip():
+                norm = _normalize_company_url_for_dedupe(parts[2])
+                if norm:
+                    urls.add(norm)
     return urls
+
+
+def record_inflow_discovery_hit(candidate_id: str, hit: dict, *, index: int = 0) -> Tuple[bool, str]:
+    """Record one CSE hit as a NEW company row with discovery blurb stored."""
+    url = (hit.get("url") or "").strip()
+    if not url:
+        return False, "skipped empty url"
+    norm = _normalize_company_url_for_dedupe(url)
+    if not norm or norm in _candidate_company_urls(candidate_id):
+        return False, f"skipped duplicate url {url!r}"
+    slug = _slug_from_discovery_url(url)
+    if not slug or not _INFLOW_SLUG_RE.match(slug):
+        return False, f"invalid slug from url {url!r}"
+    resolved_slug: Optional[str] = None
+    for candidate_slug in [slug] + [f"{slug}_{n}" for n in range(2, 10)]:
+        existing = get_company(candidate_slug)
+        if not existing:
+            resolved_slug = candidate_slug
+            break
+        if (existing.get("candidate_id") or "") == candidate_id:
+            return False, f"duplicate slug {candidate_slug!r}"
+    if not resolved_slug:
+        return False, f"slug collision for {url!r}"
+    slug = resolved_slug
+    save_company(
+        short_name=slug,
+        state="NEW",
+        company_website="",
+        candidate_id=candidate_id,
+        company_name=slug,
+    )
+    save_company_data(
+        slug,
+        {
+            "inflow_discovery_blurb": _discovery_blurb_line(hit, index=index),
+            "inflow_discovery_notes": url,
+        },
+    )
+    return True, f"recorded NEW slug={slug}"
 
 
 def _ingest_failure_reason(
@@ -276,6 +353,98 @@ def ingest_new_companies(
         if note_url:
             save_company_data(slug, {"inflow_discovery_notes": note_url})
     return True
+
+
+async def vet_inflow_discovery_company(
+    short_name: str,
+    entity: Dict[str, Any],
+    batch_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Company dispatch: vet stored discovery blurb → WEBSITE_FOUND | VET_FAILED (AST-776)."""
+    del batch_id  # company batch_id is on entity row; do_task uses log_batch_id from dispatcher
+    cfg = INFLOW_CONFIG["vet"]
+    log = logger
+    log.set_debug_flag(debug)
+    blurb = ((entity.get("company_data") or {}).get(cfg["blurb_data_key"]) or "").strip()
+    if not blurb:
+        logger.warning("[%s] vet_inflow_discovery_company: missing inflow_discovery_blurb", short_name)
+        return {"success": False, "state": None, "error": "missing inflow_discovery_blurb"}
+    live_content = f"Discovery hit (index|title|url|snippet)\n{blurb}"
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome="vet vet_inflow_discovery 1 blurb",
+        )
+        log.debug_detail_block(live_content)
+    api_result = await do_task(
+        task_key=cfg["task_key"],
+        live_content=live_content,
+        index=short_name,
+        ctx=ctx,
+        debug=debug,
+    )
+    if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="vet task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
+        return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
+    parsed = api_result.get("parsed_response") or {}
+    rows = parsed.get("results")
+    row: Optional[dict] = None
+    if isinstance(rows, list):
+        for r in rows:
+            if isinstance(r, dict):
+                row = r
+                break
+    if not row:
+        if debug:
+            log.debug_detail("vet parsed_response missing results list")
+        return {"success": False, "state": None, "error": "missing results"}
+    action = (row.get("action") or "").strip().lower()
+    if action in ("ignore", "reject"):
+        transition_company_state(short_name, cfg["fail_state"])
+        outcome = f"recorded {cfg['fail_state']}"
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome=outcome,
+            )
+            log.debug_detail(f"action={action!r}")
+        return {"success": True, "state": cfg["fail_state"], "error": None}
+    if action not in ("slug", "accept"):
+        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
+        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"action={action!r} missing website")
+        return {"success": False, "state": None, "error": "missing website on pass action"}
+    update_company(short_name, company_website=website)
+    transition_company_state(short_name, cfg["pass_state"])
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+        )
+        log.debug_detail(f"action={action!r} website={website!r}")
+    return {"success": True, "state": cfg["pass_state"], "error": None}
 
 
 async def resolve_company_website(
@@ -417,14 +586,14 @@ async def run_inflow_discovery_batch(
     ctx: Optional[Dict[str, Any]],
     debug: bool,
 ) -> Dict[str, Any]:
-    """Phase 1: CSE per stale table term, vet hits, ingest accepted slugs (AST-525)."""
+    """Phase 1: CSE per stale table term, record deduped hits as NEW (AST-775)."""
     zero = {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     candidate_id = (candidate.get("astral_candidate_id") or candidate.get("candidate_id") or "").strip()
     cfg = INFLOW_CONFIG["discovery"]
     log = logger
     log.set_debug_flag(debug)
-    scan_h = float(cfg["scan_interval_hours"])
-    terms = list_stale_company_search_terms(candidate_id, scan_h)
+    freq_hrs = float((ctx or {}).get("inflow_discovery_freq_hrs") or 0)
+    terms = list_stale_company_search_terms(candidate_id, freq_hrs)
     term_total = len(terms)
     if not terms:
         if debug:
@@ -492,125 +661,42 @@ async def run_inflow_discovery_batch(
                 index=1,
                 total=1,
                 identifier=candidate_id,
-                outcome="no deduped hits after CSE — vet skipped",
+                outcome="no deduped hits — nothing to record",
             )
             log.debug_detail(
                 f"terms_searched={term_total} errors={errors} deduped_hits=0"
             )
         return {**zero, "total_errors": errors}
-    lines = ["Discovery hits (index|title|url|snippet)"]
-    for i, hit in enumerate(all_hits):
-        snip = (hit.get("snippet") or "")[:500]
-        lines.append(f"{i:03d}|{hit.get('title', '')}|{hit.get('url', '')}|{snip}")
-    live_content = "\n".join(lines)
-    if debug:
-        log.debug_index(
-            func="roster.run_inflow_discovery_batch",
-            index=1,
-            total=1,
-            identifier=candidate_id,
-            outcome=f"vet {cfg['vet_task_key']} {len(all_hits)} deduped hit(s)",
-        )
-        log.debug_detail_block(live_content)
-    task_ctx = ctx or candidate
-    api_result = await do_task(
-        task_key=cfg["vet_task_key"],
-        live_content=live_content,
-        index=candidate_id,
-        ctx=task_ctx,
-        debug=debug,
-    )
-    if not api_result.get("success"):
-        if debug:
-            log.debug_index(
-                func="roster.run_inflow_discovery_batch",
-                index=1,
-                total=1,
-                identifier=candidate_id,
-                outcome="vet task failed",
-            )
-        logger.error("run_inflow_discovery_batch: vet task failed for %s", candidate_id)
-        return {**zero, "total_errors": max(1, errors + 1)}
-    parsed = api_result.get("parsed_response") or {}
-    rows = parsed.get("results")
-    if not isinstance(rows, list):
-        if debug:
-            log.debug_detail("vet parsed_response missing results list")
-        return {**zero, "total_errors": max(1, errors + 1)}
-    ingested = 0
+    hit_total = len(all_hits)
+    recorded = 0
     skipped = 0
-    dict_rows = [r for r in rows if isinstance(r, dict)]
-    row_total = len(dict_rows)
-    row_i = 0
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        row_i += 1
-        fail_reason = None
-        action = (row.get("action") or "").strip().lower()
-        slug = (row.get("short_name") or "").strip()
-        site = (row.get("website") or "").strip() or None
-        hi_raw = row.get("hit_index")
-        try:
-            hi = int(hi_raw)
-            provenance = all_hits[hi] if 0 <= hi < len(all_hits) else None
-        except (TypeError, ValueError):
-            provenance = None
-            hi = hi_raw
-        if action == "ignore":
-            outcome = "ignored"
-        elif action != "slug":
-            logger.warning("run_inflow_discovery_batch: unknown action %r", row.get("action"))
-            outcome = "skipped unknown action"
-        elif not slug:
-            outcome = "skipped empty slug"
-        else:
-            if ingest_new_companies(candidate_id, slug, site, source_hit=provenance):
-                outcome = (
-                    f"recorded state={'WEBSITE_FOUND' if site else 'NEW'} website={site or ''}"
-                )
-            else:
-                fail_reason = _ingest_failure_reason(candidate_id, slug, site)
-                outcome = (
-                    f"not recorded — {fail_reason}"
-                    if fail_reason
-                    else "not recorded (unknown)"
-                )
+    for hit_i, hit in enumerate(all_hits):
+        ok, outcome = record_inflow_discovery_hit(candidate_id, hit, index=hit_i)
+        hit_url = (hit.get("url") or "").strip()
+        identifier = _normalize_company_url_for_dedupe(hit_url) or hit_url or f"hit_{hit_i}"
         if debug:
             log.debug_index(
                 func="roster.run_inflow_discovery_batch",
-                index=row_i,
-                total=row_total,
-                identifier=slug or f"hit_index={hi}",
+                index=hit_i + 1,
+                total=hit_total,
+                identifier=identifier,
                 outcome=outcome,
             )
-            if fail_reason:
-                log.debug_detail(f"ingest failed: {fail_reason}")
             log.debug_detail(
-                f"action={action!r} hit_index={row.get('hit_index')!r} website={site!r}"
+                f"title={hit.get('title', '')!r} url={hit_url!r}"
             )
-        if action == "ignore":
-            skipped += 1
-            continue
-        if action != "slug":
-            skipped += 1
-            continue
-        if not slug:
-            skipped += 1
-            continue
-        if outcome.startswith("recorded"):
-            ingested += 1
+        if ok:
+            recorded += 1
         else:
             skipped += 1
     if debug:
         log.debug_detail(
-            f"batch summary total_processed=1 total_passed={ingested} "
-            f"total_failed={skipped} total_errors={errors} terms={term_total} "
-            f"deduped_hits={len(all_hits)}"
+            f"batch summary terms_searched={term_total} deduped_hits={hit_total} "
+            f"recorded={recorded} skipped={skipped} errors={errors}"
         )
     return {
         "total_processed": 1,
-        "total_passed": ingested,
+        "total_passed": recorded,
         "total_failed": skipped,
         "total_errors": errors,
     }
@@ -634,10 +720,30 @@ async def run_company_task(
 
     try:
         if input_state == "NEW":
-            r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
+            tk = (dispatch_task_key or "").strip()
+            if tk == INFLOW_CONFIG["vet"]["task_key"]:
+                r = await vet_inflow_discovery_company(
+                    short_name, entity, batch_id, ctx=ctx, debug=debug,
+                )
+            elif tk == INFLOW_CONFIG["resolve"]["task_key"]:
+                r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
+            else:
+                logger.warning(
+                    "run_company_task: NEW requires dispatch_task_key %r or %r for %s",
+                    INFLOW_CONFIG["vet"]["task_key"],
+                    INFLOW_CONFIG["resolve"]["task_key"],
+                    short_name,
+                )
+                return {**zero, "total_errors": 1}
             if r.get("error"):
                 return {**zero, "total_errors": 1}
-            if r.get("state") in ("WEBSITE_FOUND", "NO_WEBSITE"):
+            terminal_ok = (
+                INFLOW_CONFIG["vet"]["pass_state"],
+                INFLOW_CONFIG["vet"]["fail_state"],
+                "WEBSITE_FOUND",
+                "NO_WEBSITE",
+            )
+            if r.get("state") in terminal_ok:
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 

@@ -1,38 +1,34 @@
 [
   {
-    "ticket_id": "AST-640",
-    "recorded_at": "2026-06-16T01:01:26.497409+00:00"
+    "ticket_id": "AST-512",
+    "recorded_at": "2026-06-17T13:48:21-07:00"
   },
   {
-    "ticket_id": "AST-655",
-    "recorded_at": "2026-06-16T01:01:34.400341+00:00"
+    "ticket_id": "AST-716",
+    "recorded_at": "2026-06-18T02:08:22Z"
   },
   {
-    "ticket_id": "AST-675",
-    "recorded_at": "2026-06-16T01:02:30.602097+00:00"
+    "ticket_id": "AST-753",
+    "recorded_at": "2026-06-23T19:35:12Z"
   },
   {
-    "ticket_id": "AST-680",
-    "recorded_at": "2026-06-16T01:17:44.045256+00:00"
+    "ticket_id": "AST-752",
+    "recorded_at": "2026-06-23T20:17:09Z"
   },
   {
-    "ticket_id": "AST-675",
-    "recorded_at": "2026-06-16T01:18:57.348998+00:00"
+    "ticket_id": "AST-788",
+    "recorded_at": "2026-06-25T17:13:17Z"
   },
   {
-    "ticket_id": "AST-684",
-    "recorded_at": "2026-06-16T02:25:29.474593+00:00"
+    "ticket_id": "AST-754",
+    "recorded_at": "2026-06-25T17:32:14Z"
   },
   {
-    "ticket_id": "AST-694",
-    "recorded_at": "2026-06-16T02:26:50.473565+00:00"
+    "ticket_id": "AST-378",
+    "recorded_at": "2026-06-25T17:38:06Z"
   },
   {
-    "ticket_id": "AST-696",
-    "recorded_at": "2026-06-16T04:45:58.261647+00:00"
-  },
-  {
-    "ticket_id": "AST-741",
-    "recorded_at": "2026-06-23T19:06:21.545419+00:00"
+    "ticket_id": "AST-813",
+    "recorded_at": "2026-06-26T02:39:30Z"
   }
 ]

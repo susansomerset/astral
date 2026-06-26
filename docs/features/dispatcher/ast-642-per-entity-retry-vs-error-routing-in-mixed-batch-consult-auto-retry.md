@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-642 archived 2026-06-23 -->
+
+## Linear archive (AST-642)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-642/per-entity-retry-vs-error-routing-in-mixed-batch-consult-auto-retry  
+**Status at archive:** Done  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-630 — Auto retry  
+**Blocked by / blocks / related:** parent: AST-630
+
+### Description
+
+## What this implements
+
+Batch consult that processes a mixed primary + `*_RETRY` claim must route missing or invalid rows to retry vs error using **each entity’s actual current state**, not the first job’s state in the batch. Entities already in a `*_RETRY` holding state must transition to the configured error outcome on failure, not remain in retry.
+
+## Acceptance criteria
+
+* After a failed second attempt, a job in `VALID_TITLE_RETRY` transitions to the qualify error outcome (not left in `VALID_TITLE_RETRY`).
+* After a failed first attempt, a job in `VALID_TITLE` with recoverable batch failure still transitions to `VALID_TITLE_RETRY` when config provides that retry holding state.
+* Same per-entity behavior for `evaluate_jd` (`JD_READY` / `JD_READY_RETRY`) and `analysis_upshot` (`PASSED_LIKE` / `PASSED_LIKE_RETRY`) batch paths.
+* A row whose trigger is the primary state may claim a mix of primary and retry entities; routing respects each row’s state individually.
+
+## Boundaries
+
+* Does **not** implement multi-state claim/count — sibling **AST-641** lands first.
+* Does **not** add in-place duplicate API calls (AST-340).
+* Does **not** change `JOB_STATES` registry entries.
+
+## Notes for planning
+
+* Primary touch: `consult._run_batch_consult` and any shared batch error routing that derives `retry_state` from a single batch-level `input_state`.
+* `JOB_STATES[state].get("retry_state")` — `*_RETRY` states have no nested retry_state.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-630-auto-retry`, child `sub/AST-630/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-14T20:37:33.741Z
+**Review** — `origin/dev...origin/sub/AST-630/AST-642-per-entity-batch-retry` (tip `2e6f1a38`).
+
+**AST-642 product commit** (`65a52f86`, `consult.py` only): **clean — no fix-now / discuss.**
+
+- `_consult_batch_fail_dest` / `_transition_batch_consult_failures` match plan Stages 1–3; per-entity grouped transitions on envelope, hydration, missing IDs, and `bad_grades`; analysis_upshot and qualify short-title paths use the helper.
+- §2.1 / §2.6: routing from `JOB_STATES.retry_state` + task `error_state`; `PASSED_LIKE_RETRY` second failure → `FAILED_TECHNICAL` as planned.
+- §1.5.1: `batch_states` in batch-start debug; per-missing-ID `debug_index` shows entity-specific dest.
+- Betty tests in `test_consult.py` cover helper matrix + mixed qualify/evaluate_jd batches per AC.
+
+**Note:** three-dot diff from `origin/dev` also includes unmerged **AST-641** stack (database/config/dispatcher union claim) — already **Radia clean** at `a053a5cc`; not re-litigated.
+
+Doc: `docs/features/dispatcher/ast-642-per-entity-retry-vs-error-routing-in-mixed-batch-consult-auto-retry.md` (Review section).
+
+#### betty — 2026-06-14T20:35:09.402Z
+## QA test manifest (AST-642)
+
+**Publish:** `origin/sub/AST-630/AST-642-per-entity-batch-retry` @ `2e6f1a38` (`merge-tests(AST-642): origin/tests 6314d643`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `c3974055e7612415ef33645ae69b74596732344e` on publish ref (§7.13zzo AST-642 row)
+
+### Run (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry
+```
+
+### Manifest
+
+1. **New — helper unit tests:** `tests/component/core/test_consult.py::TestConsultBatchFailDest` — `_consult_batch_fail_dest` for primary→retry, retry→terminal, analysis_upshot second failure→`FAILED_TECHNICAL`
+2. **New — mixed batch routing:** `tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry`
+   - Mixed `VALID_TITLE` + `VALID_TITLE_RETRY` missing IDs → per-entity dest
+   - Mixed `bad_grades` on retry row → `ERROR_QUALIFY_JOB_LISTINGS` (not stuck in retry)
+   - Same missing-ID routing for `evaluate_jd` (`JD_READY` / `JD_READY_RETRY`)
+   - `evaluate_jd` retry `bad_grades` → `ERROR_EVALUATE_JD`
+   - `analysis_upshot`: `PASSED_LIKE` failure → `PASSED_LIKE_RETRY`; `PASSED_LIKE_RETRY` failure → `FAILED_TECHNICAL`
+   - Homogeneous all-`*_RETRY` missing → single terminal transition
+3. **Existing coverage (unchanged):** homogeneous primary missing-ID path in `TestRunBatchConsultBranches::test_batch_retries_missing_ids` — regression guard for all-primary batches
+
+### Sources under test
+
+`src/core/consult.py` — `_consult_batch_fail_dest`, `_transition_batch_consult_failures`, `_run_batch_consult`, `_run_analysis_upshot_batch`, qualify short-title path
+
+#### ada — 2026-06-14T20:30:36.006Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-630/AST-642-per-entity-batch-retry/docs/features/dispatcher/ast-642-per-entity-retry-vs-error-routing-in-mixed-batch-consult-auto-retry.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — `consult.py` only: one helper plus wiring in `_run_batch_consult`, `_run_analysis_upshot_batch`, and qualify short-title path.
+- **Conf:** `high` — AST-641 mixed claim is landed; fix replaces batch-level `jobs[0].state` with per-row `JOB_STATES.retry_state` / task `error_state` lookup.
+- **Risk:** `Medium` — wrong grouping would leave jobs in `*_RETRY` or over-route primaries to terminal error on the critical consult failure paths.
+
+Three stages: (1) `_consult_batch_fail_dest`, (2) grouped transitions in `_run_batch_consult`, (3) analysis_upshot + qualify short-title. Second-attempt `analysis_upshot` terminal: `FAILED_TECHNICAL` when entity already equals `error_state` (`PASSED_LIKE_RETRY`).
+
+---
+
 # Per-entity retry vs error routing in mixed batch consult (Auto retry — AST-642)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-642/per-entity-retry-vs-error-routing-in-mixed-batch-consult-auto-retry  

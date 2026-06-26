@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-760 archived 2026-06-23 -->
+
+## Linear archive (AST-760)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-760/uat-entity-header-overlays-state-in-scheduled-actions-table-remove  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-744 — Remove column gap in scheduled_actions  
+**Blocked by / blocks / related:** parent: AST-744
+
+### Description
+
+## What failed
+
+After AST-758 local-dev delivery fix, Susan re-tested on local dev (2026-06-23). The Scheduled Actions phase table still mis-renders frozen headers: **Entity** `th` overlays **State** `th` (State appears behind Entity). Screenshots attached on parent comment.
+
+## Expected
+
+Frozen column headers align left-to-right: Candidate, Task, Entity, State — each visible and clickable; Entity must not cover State.
+
+## Repro
+
+1. Local `dev` after pull; `zsh launch.sh --flask`
+2. Admin → Scheduled Actions
+3. Expand a phase section with rows
+4. Observe header row — State th hidden behind Entity th (see parent screenshots)
+
+## Parent AC (quoted inline)
+
+> There is a gap of whitespace between the Candidate and Task columns, and task and entity are shifted to the right, overlaying (and blocking) the State column value.
+
+## Boundaries
+
+* Does not change AST-758 [launch.sh](<http://launch.sh>) stale-dist delivery unless required for verification
+* Fix product layout/measure in Scheduled Actions table only
+
+### Comments
+
+#### radia — 2026-06-23T19:32:58.325Z
+### Review (`origin/dev`…`origin/sub/AST-744/AST-760-uat-entity-header-overlays-state-in-scheduled-actions`)
+
+**Tip:** `25a000a` (includes doc commit) · product tip `716da64`
+
+**Plan fidelity:** Stage 1 delivered — `scheduledFrozenStyle` reverted to **left-only** sticky (width/`minWidth`/`boxSizing` lock removed); AST-746 mount-on-expand, measure deps, and `predecessorsReady` gate preserved.
+
+**Code rules:** §1.3 aligns with ListPage `frozenCellStyle` (left-only) plus AST-746 predecessor gate — intentional. §3.3 UI-only — clean.
+
+**Product scope:** `AdminScheduledActions.tsx` vs `origin/dev` is an **11-line** hunk (this ticket only).
+
+**Tests:** `AST-760` asserts Entity header has no inline `width`/`minWidth`, State unfrozen with no `left`; remeasure confirms sticky `left` without width lock.
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:** Full three-dot diff also includes **AST-751** test-bible/test manifest from `merge-tests` on the ftr/735 lineage — expected rollup noise; product code for AST-760 is isolated. Susan manual UAT still required for Entity/State header visibility and click targets.
+
+**Doc:** [ast-760-uat-entity-header-overlays-state-in-scheduled-actions.md](https://github.com/susansomerset/astral/blob/25a000a/docs/features/interface/ast-760-uat-entity-header-overlays-state-in-scheduled-actions.md) § Review (Radia)
+
+**Handoff:** Katherine → **resolve-child** (no code changes from review).
+
+#### betty — 2026-06-23T19:31:06.354Z
+## QA test manifest (AST-760)
+
+**Publish:** `origin/sub/AST-744/AST-760-uat-entity-header-overlays-state-in-scheduled-actions` @ `716da64` (`merge-tests(AST-760): origin/tests 7326956`)
+
+### 1. Existing coverage (re-run)
+1. **`AST-647: phase table freezes first three data columns`** — frozen class wiring regression.
+2. **`AST-746: phase table mounts on expand; measured sticky left avoids 120px fallback gap`** — mount-on-expand + no 120px fallback (gap regression guard).
+
+### 2. New coverage
+1. **`AST-760: frozen headers use left-only sticky; Entity does not width-lock over State`** — Entity header (index 2) has no inline `width`/`minWidth` after measure; State (index 3) unfrozen with no inline `left`; measured `left` on Entity still cumulative (`160px`).
+
+### 3. Manual UAT (Susan — primary)
+Local `dev`, `zsh launch.sh --flask` → Scheduled Actions → expand phase: Candidate, Task, Entity, State headers visible and clickable; Entity must not cover State; no Candidate/Task gap; horizontal scroll frozen alignment.
+
+**Run (test-child):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-760|AST-746|AST-647"
+```
+
+**Pass criterion:** Vitest green on narrowed run + Susan manual header UAT.
+
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `5be81f983524cf5ccbabf2031921fbb3db764930` on publish ref.
+
+**Builds on:** AST-746 product fix; AST-758 delivery unchanged.
+
+#### katherine — 2026-06-23T19:29:15.209Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-744/AST-760-uat-entity-header-overlays-state-in-scheduled-actions/docs/features/interface/ast-760-uat-entity-header-overlays-state-in-scheduled-actions.md
+
+**Self-assessment**
+- **Scope:** `minor` — `scheduledFrozenStyle` in `AdminScheduledActions.tsx` only; remove AST-746 width/minWidth lock.
+- **Conf:** `high` — ListPage uses left-only sticky; Entity frozen th (`z-index: 3`) + forced `minWidth` over State th (`z-index: 2`) matches Susan overlay screenshot.
+- **Risk:** `low` — mount-on-expand + `predecessorsReady` + measured `left` retained; manual UAT catches gap regression.
+
+**Root cause (for validate-plan):** AST-746 width lock on last frozen header expands sticky box over adjacent State column; drop width lock, keep measured `left` only.
+
+---
+
 # AST-760 — UAT: Entity header overlays State in scheduled actions table
 
 **Linear:** [AST-760 — UAT: Entity header overlays State in scheduled actions table (Remove column gap in scheduled_actions)](https://linear.app/astralcareermatch/issue/AST-760/uat-entity-header-overlays-state-in-scheduled-actions-table-remove-column)  

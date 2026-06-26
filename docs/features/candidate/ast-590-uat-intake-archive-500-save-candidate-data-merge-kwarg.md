@@ -1,3 +1,72 @@
+<!-- linear-archive: AST-590 archived 2026-06-23 -->
+
+## Linear archive (AST-590)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-590/uat-intake-archive-500-save-candidate-data-merge-kwarg  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539
+
+### Description
+
+## Repro (Susan UAT AST-539)
+
+**Start Over** → `POST …/intake/sessions/active/archive` → **500**:
+
+```
+TypeError: save_candidate_data() got an unexpected keyword argument 'merge'
+```
+
+Stack: `archive_active_intake_session` → `_append_intakes_old` → `save_candidate_data(..., merge=True)`.
+
+## Expected
+
+Archive succeeds; `candidate_data.intakes_old` appended; fresh initiate can proceed (AST-584).
+
+## Fix scope
+
+`src/core/intake.py` — `save_candidate_data` API is `(candidate_id, data, replace=False)`. Remove invalid `merge=True` kwargs (\~L50, \~L234, \~L248). Regression: archive `-k archive`.
+
+## Boundaries
+
+Parent AST-539. Blocks Start Over UAT.
+
+### Comments
+
+#### betty — 2026-06-06T02:38:30.816Z
+## QA test manifest
+
+1. **`tests/component/core/test_intake.py`** — `TestIntakeArchive` (3 tests, `-k archive`): real `save_candidate_data` path — no mock; catches invalid `merge=True` kwarg regression on archive, double-archive append, and `LookupError` when no active session.
+2. **`tests/component/ui/api/test_api_intake.py`** — `test_archive_active_requires_auth`, `test_archive_active_404_when_none`, `test_archive_active_200_shape` (`-k archive`): bible-backed **AST-582** API route coverage on **`origin/ftr/ast-539-candidate-intake-chat-session`** — merge parent **`ftr`** on engineer tree before running.
+
+**Narrowed run:**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_intake.py -k archive -q
+.venv/bin/python -m pytest tests/component/ui/api/test_api_intake.py -k archive -q
+```
+
+**Publish:** `origin/sub/AST-539/AST-590-intake-archive-save-candidate-data-kwarg` @ `c0709d85`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `f804f5943d85f3b572fd836e1288346d9df91e8f` (§7.13zr **AST-590** row)
+
+— Betty
+
+#### ada — 2026-06-06T02:35:51.093Z
+Plan: [`docs/features/candidate/ast-590-uat-intake-archive-500-save-candidate-data-merge-kwarg.md`](https://github.com/susansomerset/astral/blob/sub/AST-539/AST-590-intake-archive-save-candidate-data-kwarg/docs/features/candidate/ast-590-uat-intake-archive-500-save-candidate-data-merge-kwarg.md) @ `708fc904`
+
+**Scope:** `minor` — Three invalid `merge=True` kwargs removed from `src/core/intake.py`; add `TestIntakeArchive` so archive hits real `save_candidate_data` (API tests mock core and missed the TypeError).
+
+**Conf:** `high` — Fix matches documented `save_candidate_data(candidate_id, data, replace=False)` API; root cause explicit in UAT stack trace.
+
+**Risk:** `Medium` — Archive unblocks **Start Over**; wrong merge semantics could corrupt `intakes_old`, mitigated by keeping **AST-582** read-append-write and default merge behavior.
+
+---
+
 # AST-590 — UAT: intake archive 500 — save_candidate_data merge kwarg
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-590/uat-intake-archive-500-save-candidate-data-merge-kwarg  

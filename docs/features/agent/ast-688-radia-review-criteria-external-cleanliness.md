@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-688 archived 2026-06-23 -->
+
+## Linear archive (AST-688)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-688/radia-review-criteria-for-external-layer-cleanliness-why-is  
+**Status at archive:** Done  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-680 — Why is src.external.anthropic still in the logs?  
+**Blocked by / blocks / related:** parent: AST-680
+
+### Description
+
+## What this implements
+
+Update Radia's review criteria (`review-child` skill or equivalent checklist) so Tests Passed reviews on LLM external wrapper diffs explicitly flag cross-external imports, shared helpers with hard-coded sibling module loggers, and DeepSeek-active paths that emit under the Anthropic module prefix. Provide a visible checklist item or sample review comment template operators can recognize.
+
+## Acceptance criteria
+
+5. Radia review criteria document includes explicit fix-now checks for external-layer provider attribution and cross-import hygiene on LLM wrapper diffs; a sample review comment template or checklist item is visible to the team.
+
+## Boundaries
+
+* Does not implement product code fixes — sibling AST-687 owns attribution and utils refactor.
+* Does not change review-child diff mechanics or Betty test scope.
+
+## Notes for planning
+
+* Parent bug: AST-620 landed `_emit_llm_call_debug` in [anthropic.py](<http://anthropic.py>); deepseek imports it — logs show `src.external.anthropic` for DeepSeek calls.
+* Align with AST-538 fix-now practice for inadequate debug instrumentation on touched `debug=` surfaces.
+* Doc/skill-only ticket; commits may land on product branch if checklist lives in repo docs.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-680-llm-external-log-attribution`, child `sub/AST-680/AST-688-radia-review-criteria-external-cleanliness`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T20:39:20.319Z
+### Plan fidelity (AST-688 deliverable)
+
+**Pass** — global `~/.cursor/skills/review-child/SKILL.md` contains **§5g External layer cleanliness (AST-680 / AST-688)** after §5f with full fix-now table, verification hints, grandfather/coexistence/not-fix-now, and **Sample review comment (external cleanliness)** block. **§5** intro and **§5a** Layer (B2) / Logging (E1) rows cross-ref §5g as planned.
+
+**Implementation record** in `docs/features/agent/ast-688-radia-review-criteria-external-cleanliness.md` accurately mirrors the skill changes (spot-check against live skill file).
+
+**AC #5:** Operators have explicit fix-now checks + copy-paste sample template — satisfied.
+
+**Stage 2 mental check:** Parent staging pattern (`INFO src.external.anthropic: send_to_deepseek` + `provider=deepseek` detail) correctly maps to **Provider prefix mismatch** fix-now under §5g.
+
+### Betty manifest
+
+Plan audit + AST-687 regression pytest gate documented in `docs/test-bible/README.md` § AST-688 — appropriate for doc/skill ticket (no new log-string tests per parent boundary).
+
+### discuss
+
+**Cross-ticket scope in `code(AST-688)` @ `1a6a6ea3`:** Commit bundles sibling **AST-687** product (`src/utils/llm_external.py`, anthropic/deepseek rewires, `agent.py` import) plus **AST-687** plan doc — plan explicitly forbids `src/**` in AST-688 commits. Betty documents this as intentional branch spill for regression; product attribution itself was reviewed on **AST-687** (`Review Posted`, no fix-now). Before **merge-parent**, align branch law: either drop duplicate product commits from **AST-688** tip (rebase onto doc-only) or document Susan-approved combined sub-branch — avoids double-counting AST-687 in two child diffs.
+
+### advisory
+
+- Skill file is global-only (not repo git); **Implementation record** is the correct audit trail — keep it updated if §5g wording changes during resolve.
+- §5g sample comment still references `_emit_llm_call_debug` / AST-687 fix path — intentional illustrative example of the bug pattern; no change needed.
+
+#### betty — 2026-06-15T20:31:25.824Z
+## QA test manifest (AST-688)
+
+**Publish:** `origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness` @ `2e28583d` (`merge-tests(AST-688): origin/tests f9201d8c`)
+
+**Bible shasum (on publish ref):**
+- `docs/test-bible/README.md` — `312402df848156cb324d8d0be019819dc4f6ed2c5861f88fa83600d09e1cd9be` (§ AST-688 manifest block)
+
+**No new tests** — doc/skill ticket; parent forbids Betty log-string coverage.
+
+1. **Plan audit (required):** `docs/features/agent/ast-688-radia-review-criteria-external-cleanliness.md` — **Implementation record** documents **§5g** rubric + sample comment; spot-check against `~/.cursor/skills/review-child/SKILL.md`.
+2. **Regression (required):** Publish ref carries sibling **AST-687** product from `code(AST-688)` — run **AST-687** narrowed manifest:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_llm_external.py \
+  tests/component/external/test_deepseek.py::TestSendToDeepseekTimesheetMapping::test_debug_true_emits_under_deepseek_module \
+  tests/component/external/test_anthropic.py \
+  -q
+```
+
+**Betty local:** 26 passed on item 2 before push.
+
+— Betty
+
+#### ada — 2026-06-15T20:08:11.423Z
+Plan: [docs/features/agent/ast-688-radia-review-criteria-external-cleanliness.md](https://github.com/susansomerset/astral/blob/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness/docs/features/agent/ast-688-radia-review-criteria-external-cleanliness.md) @ `eb441a67`
+
+**Scope:** `minor` — global `review-child` §5g + this plan doc only; no `src/**`.
+
+**Conf:** `high` — mirrors parent AST-680 AC #5 and ASTRAL_CODE_RULES §3.2/§3.3; follows AST-556 skill-update pattern.
+
+**Risk:** `low` — rubric-only; wrong wording affects review signal, not runtime.
+
+**Stages:** (1) Add §5g external-layer cleanliness table + sample review comment to `~/.cursor/skills/review-child/SKILL.md`, cross-refs from §5 intro and §5a Layer/Logging rows. (2) Verification + Implementation record mirror in plan on build.
+
+---
+
 # AST-688 — Radia review criteria for external layer cleanliness
 
 - **Linear (this ticket):** [AST-688](https://linear.app/astralcareermatch/issue/AST-688/radia-review-criteria-for-external-layer-cleanliness-why-is)

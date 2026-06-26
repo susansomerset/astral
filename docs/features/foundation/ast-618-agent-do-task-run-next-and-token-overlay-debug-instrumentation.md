@@ -1,3 +1,126 @@
+<!-- linear-archive: AST-618 archived 2026-06-23 -->
+
+## Linear archive (AST-618)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-618/agent-do-task-run-next-and-token-overlay-debug-instrumentation-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-541 — Debug logging backfill: agent  
+**Blocked by / blocks / related:** parent: AST-541
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **agent** paths in `src/core/agent.py` (and related token/LLM call boundaries): `do_task` entry/exit, `run_next` chain steps, token resolution branches, and long LLM payload logging via the shared truncation helper.
+
+## Acceptance criteria
+
+1. Daisy-chained task run with `debug=True` shows per-hop agent detail (task key, batch id, index) before external LLM call.
+2. Truncation helper used for responses >50 lines.
+3. `debug=False` unchanged.
+
+## Boundaries
+
+* Does **not** instrument dispatcher, consult, roster, gazer, builder, or external LLM modules — sibling backfill tickets.
+* Does **not** change agent business logic or cache semantics.
+* Does **not** add Betty log-string tests; Radia enforces instrumentation on review.
+
+## Notes for planning
+
+* Shared debug helper from **AST-538** (`src/utils/logging.py`).
+* Index header + `|` detail line format per Code Rules §1.5.
+* Primary files: `src/core/agent.py`.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-541-debug-logging-backfill-agent`, child `sub/AST-541/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### ada — 2026-06-14T04:23:52.285Z
+`origin/sub/AST-541/AST-618-agent-do-task-run-next-token-debug` @ `f04219da` · §9a clean (dev + ftr dry-run)
+
+#### betty — 2026-06-14T04:17:07.355Z
+[check-linear] Bible merge resolved on `origin/tests` @ `050e3cd5` — restored **§7.13zzc** (AST-617) and **§7.13zze** (AST-618) after `origin/dev` fast-forward dropped them; shasum `d9951c4e815cc0b03b6743dfdff5ef17d746985b`. Sub publish ref already matches (`95777cf8`); no new `merge-tests` required. Epic `git merge origin/dev` should take bible from `origin/tests` tip, not resolve manually on sub.
+
+#### radia — 2026-06-14T04:16:08.798Z
+**Review** — `origin/dev...origin/sub/AST-541/AST-618-agent-do-task-run-next-token-debug` @ `95777cf8`
+
+Plan doc: `docs/features/foundation/ast-618-agent-do-task-run-next-and-token-overlay-debug-instrumentation.md` (Radia review section appended)
+
+### fix-now
+
+1. **`src/core/agent.py` ~1337–1353 vs ~1418** — Stage 2 token-overlay `debug_detail` lines emit **before** `_do_task_debug_entry` `debug_index`. §1.5.1 expects working detail under the per-hop header for scan order. Move the token overlay block to immediately **after** `_do_task_debug_entry` (still before assembly / LLM).
+
+2. **`_do_task_debug_logger` ~440** — Defined in plan Stage 1 but never called (dead code). Remove or replace repeated `get_logger(__name__, debug_flag=True)` with it.
+
+### advisory
+
+- **`_uuid4` import bind** (~15–16, hop ledger call sites) — outside “logging only” scope; commit `9c26e613` test-isolation rationale acceptable.
+- Build stub Stage 4 label (“cache hit, early return, exception”) oversells diff; only `exit provider_failed` landed — not blocking vs parent AC.
+
+### signed off
+
+- All `[DEBUG]` hand-rolled lines retired; contract helpers used throughout.
+- `_do_task_debug_entry` generalizes AST-597 resume-hop index; fires after `batch_id`, before LLM — AC #1 met.
+- Assembly params, encoded payload, long `raw_text` truncation via `debug_detail_block`.
+- Exit paths (provider failure, terminal completion, invalid child, run_next dispatch) instrumented; hop INFO boundaries preserved.
+- `debug=False` unchanged; layer boundaries respected.
+
+#### betty — 2026-06-14T04:07:49.896Z
+## QA test manifest (AST-618)
+
+**Classification:** manifest-only — no new tests. Parent + child forbid Betty log-string tests; Radia enforces instrumentation on review.
+
+**Publish:** `origin/sub/AST-541/AST-618-agent-do-task-run-next-token-debug` @ `d2f64885` (`merge-tests(AST-618): origin/tests 08b23a76`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `d9951c4e815cc0b03b6743dfdff5ef17d746985b` on publish ref — **§7.13zze**
+
+### Run (engineer `test-child`)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py`
+
+   Equivalent narrowed pytest:
+
+   ```bash
+   .venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+   ```
+
+### Existing coverage (no new files)
+
+| Area | Tests |
+| --- | --- |
+| Full `agent.py` branch lock | `tests/component/core/test_agent.py` (entire file) |
+| §7.13zt debug helper contract | `tests/component/utils/test_debug_logging.py`, `tests/component/utils/test_logging_batch.py` |
+| `do_task` debug flag passthrough | `TestDoTask::test_debug_flag_passed_to_child` |
+| Token overlay / caller hydration | `TestAst597MidChainResumeHydrationAndTransitions::test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry` |
+| `run_next` hop INFO (unchanged §1.5.1) | `TestDoTask::test_chain_entry_log`, `TestDoTask::test_hop_boundary_log_on_run_next` |
+| Per-hop ledger | `TestAst531RunNextHopLedger` |
+| Mid-chain empty caller guard | `TestDoTask::test_mid_chain_empty_caller_skips_api` |
+
+### Broken / obsolete tests
+
+None identified for this diff — instrumentation is `debug=True`-gated; existing assertions on `caller_source` / hop INFO remain valid.
+
+### Notes
+
+- Manual UAT: daisy-chained run with `debug=True` per plan Stage 6 (Radia review gate for log format).
+- `test-child` owns green on publish tip; Betty did not gate full `test_agent.py` on `astral-tests` integration line (pre-existing substrate mismatches on unrelated classes unrelated to AST-618).
+
+#### ada — 2026-06-14T04:03:09.082Z
+Plan: [ast-618-agent-do-task-run-next-and-token-overlay-debug-instrumentation.md](https://github.com/susansomerset/astral/blob/sub/AST-541/AST-618-agent-do-task-run-next-token-debug/docs/features/foundation/ast-618-agent-do-task-run-next-and-token-overlay-debug-instrumentation.md) @ `f9c7dccd`
+
+**Self-assessment**
+- **Scope — Single-Component:** All changes confined to `src/core/agent.py` — generalized `do_task` entry/exit, token overlay detail, assembly/response truncation, and `run_next` boundary lines under existing `debug` flag.
+- **Conf — high:** AST-554 helpers and AST-597 partial resume-hop pattern are on integration line; work is generalizing three `[DEBUG]` blocks and filling batch_id/index gaps, not inventing new patterns.
+- **Risk — Medium:** `do_task` is central to every LLM call, but instrumentation is strictly `debug=True`-gated; truncation via `debug_detail_block` mitigates payload volume risk.
+
+---
+
 # AST-618 — Agent do_task, run_next, and token overlay debug instrumentation (Debug logging backfill: agent)
 
 - **Linear (this ticket):** [AST-618](https://linear.app/astralcareermatch/issue/AST-618/agent-do-task-run-next-and-token-overlay-debug-instrumentation-debug)
