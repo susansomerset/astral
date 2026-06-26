@@ -4953,3 +4953,68 @@ class TestAst809VectorFeedbackBatchMetadata:
         assert all(r["batch_id"] == "batch-809-meta" for r in rows)
         assert all(r["batch_size"] == 7 for r in rows)
         assert all(r["completed_at"] == completed for r in rows)
+
+
+class TestAst816VectorFeedbackCapture:
+    """AST-816: normalize parse, UUID-backed expected codes, debug hydration."""
+
+    def test_json_string_vector_reviews_persists_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "evaluate_jd",
+            [
+                {"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5},
+                {"code": "DOR", "label": "Domain", "content": "d\nA = one", "importance": 5},
+            ],
+        )
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-1",
+            batch_id="batch-816-json",
+            entity_type="candidate",
+            index=None,
+            perf={
+                "status": "success",
+                "vector_reviews": '["CLRRACOVK", "DORRACOVK"]',
+            },
+            debug=False,
+            prompt_blocks=[],
+            batch_size=2,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-816-json")
+        assert len(rows) == 6
+
+    def test_debug_emits_diagnostic_on_parse_failure(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "evaluate_jd",
+            [{"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-1",
+            batch_id="batch-816-diag",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["CLRRACOVK", "DORRACOVK"]},
+            debug=True,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert any(
+            token in combined
+            for token in ("reason=unknown_code", "reason=extra_codes", "reason=missing_codes")
+        )
+        assert "CLR Culture" in combined
+        assert len(prompt_blocks) == 1

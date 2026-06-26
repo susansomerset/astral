@@ -89,6 +89,7 @@ export default function AdminVectorFeedback() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [taskKeys, setTaskKeys] = useState<string[]>([])
   const [agentDataBatchId, setAgentDataBatchId] = useState<string | null>(null)
+  const [agentDataCandidateId, setAgentDataCandidateId] = useState<string | null>(null)
   const initialCandidateDefaultApplied = useRef(false)
 
   const setCandidateParam = useCallback((next: AdminCandidateFilterValue) => {
@@ -191,7 +192,11 @@ export default function AdminVectorFeedback() {
           <button
             type="button"
             className="dispatch-batch-link"
-            onClick={e => { e.stopPropagation(); setAgentDataBatchId(id) }}
+            onClick={e => {
+              e.stopPropagation()
+              setAgentDataBatchId(id)
+              setAgentDataCandidateId(String(row.candidate_id || filters.candidate_id || "") || null)
+            }}
             title="View agent data for this batch"
           >
             {id}
@@ -291,8 +296,11 @@ export default function AdminVectorFeedback() {
 
       <BatchAgentDataModal
         batchId={agentDataBatchId}
-        candidateId={filters.candidate_id || undefined}
-        onClose={() => setAgentDataBatchId(null)}
+        candidateId={agentDataCandidateId || filters.candidate_id || undefined}
+        onClose={() => {
+          setAgentDataBatchId(null)
+          setAgentDataCandidateId(null)
+        }}
       />
     </div>
   )

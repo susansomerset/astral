@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Lenient parse helpers for rubric vector_reviews envelope strings (AST-724)."""
+"""Lenient parse + diagnostic helpers for rubric vector_reviews (AST-724 / AST-816)."""
 
 from __future__ import annotations
 
@@ -32,29 +32,52 @@ def parse_vector_review_string(line: str) -> Optional[Tuple[str, Dict[str, str]]
     return code, {"relevance": rel, "clarity": cla, "verdict": ver}
 
 
-def parse_vector_reviews(
+def normalize_vector_reviews_raw(raw: Any) -> Optional[List[str]]:
+    """Coerce vector_reviews envelope value to a non-empty list of stripped strings (AST-816)."""
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return None
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(raw, list) or not raw:
+        return None
+    out: List[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            return None
+        line = item.strip()
+        if not line:
+            return None
+        out.append(line)
+    return out or None
+
+
+def parse_vector_reviews_diagnostic(
     raw_reviews: Any,
     expected_codes: frozenset[str],
     code_to_uuid: Dict[str, str],
-) -> Optional[List[Dict[str, str]]]:
-    """Return parsed vector rows or None when unparseable (lenient — caller stores raw FEEDBACK)."""
+) -> tuple[Optional[List[Dict[str, str]]], Optional[str], frozenset[str], frozenset[str]]:
+    """Return (rows, failure_reason, parsed_codes, missing_codes) — strict match vs expected (AST-816)."""
+    empty: frozenset[str] = frozenset()
     if not expected_codes:
-        return None
-    if not isinstance(raw_reviews, list) or not raw_reviews:
-        return None
+        return None, "empty_expected", empty, empty
+    raw_list = normalize_vector_reviews_raw(raw_reviews)
+    if raw_list is None:
+        return None, "not_list", empty, empty
     parsed_by_code: Dict[str, Dict[str, str]] = {}
-    for item in raw_reviews:
-        if not isinstance(item, str):
-            return None
+    for item in raw_list:
         one = parse_vector_review_string(item)
         if one is None:
-            return None
+            return None, "bad_line", frozenset(parsed_by_code.keys()), empty
         code, vals = one
         if code in parsed_by_code:
-            return None
+            return None, "duplicate_code", frozenset(parsed_by_code.keys()), empty
         uuid = code_to_uuid.get(code)
         if not uuid:
-            return None
+            return None, "unknown_code", frozenset(parsed_by_code.keys()), empty
         parsed_by_code[code] = {
             "rubric_vector_uuid": uuid,
             "code": code,
@@ -62,9 +85,24 @@ def parse_vector_reviews(
             "clarity": vals["clarity"],
             "verdict": vals["verdict"],
         }
-    if frozenset(parsed_by_code.keys()) != expected_codes:
-        return None
-    return [parsed_by_code[c] for c in sorted(parsed_by_code.keys())]
+    parsed_codes = frozenset(parsed_by_code.keys())
+    if parsed_codes != expected_codes:
+        missing = expected_codes - parsed_codes
+        if missing:
+            return None, "missing_codes", parsed_codes, missing
+        return None, "extra_codes", parsed_codes, empty
+    rows = [parsed_by_code[c] for c in sorted(parsed_by_code.keys())]
+    return rows, None, parsed_codes, empty
+
+
+def parse_vector_reviews(
+    raw_reviews: Any,
+    expected_codes: frozenset[str],
+    code_to_uuid: Dict[str, str],
+) -> Optional[List[Dict[str, str]]]:
+    """Return parsed vector rows or None when unparseable (lenient — caller stores raw FEEDBACK)."""
+    rows, _, _, _ = parse_vector_reviews_diagnostic(raw_reviews, expected_codes, code_to_uuid)
+    return rows
 
 
 def hydrate_vector_review_strings(
@@ -72,13 +110,12 @@ def hydrate_vector_review_strings(
     rubric_by_code: Dict[str, Dict[str, Any]],
 ) -> List[Dict[str, str]]:
     """Decode compact review strings into display rows (AST-808); partial lists OK."""
-    if not isinstance(raw_reviews, list):
+    raw_list = normalize_vector_reviews_raw(raw_reviews)
+    if not raw_list:
         return []
     value_labels = RUBRIC_FEEDBACK_CONFIG.get("value_labels") or {}
     rows: List[Dict[str, str]] = []
-    for line in raw_reviews:
-        if not isinstance(line, str):
-            continue
+    for line in raw_list:
         parsed = parse_vector_review_string(line)
         if parsed is None:
             continue
@@ -98,6 +135,19 @@ def hydrate_vector_review_strings(
             "verdict_label": value_labels.get(vals["verdict"], vals["verdict"]),
         })
     return rows
+
+
+def format_hydrated_review_debug_line(row: Dict[str, str]) -> str:
+    """Single-line debug summary: code, label, R/C/V labels, criterion preview (AST-816)."""
+    code = str(row.get("code") or "")
+    label = str(row.get("label") or code)
+    rel = str(row.get("relevance_label") or row.get("relevance") or "")
+    cla = str(row.get("clarity_label") or row.get("clarity") or "")
+    ver = str(row.get("verdict_label") or row.get("verdict") or "")
+    content = str(row.get("content") or "")
+    if len(content) > 80:
+        content = content[:80] + "…"
+    return f"{code} {label} — R/{rel} C/{cla} V/{ver} — {content}"
 
 
 def format_vector_reviews_raw(perf: dict) -> str:

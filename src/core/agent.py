@@ -32,6 +32,7 @@ from src.data.database import (
     store_feedback_block,
     insert_vector_feedback_rows,
     list_rubric_vector_uuid_by_code,
+    list_rubric_vectors,
 )
 from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
@@ -53,7 +54,14 @@ from src.utils.config import (
     is_rubric_backed_task,
     rubric_owner_task_key,
 )
-from src.utils.rubric_feedback import parse_vector_reviews, format_vector_reviews_raw
+from src.utils.rubric_feedback import (
+    format_hydrated_review_debug_line,
+    format_vector_reviews_raw,
+    hydrate_vector_review_strings,
+    normalize_vector_reviews_raw,
+    parse_vector_review_string,
+    parse_vector_reviews_diagnostic,
+)
 from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 
@@ -1050,6 +1058,24 @@ def _rubric_feedback_owner_and_candidate(
     return owner, (str(cid).strip() if cid else None) or None
 
 
+def _rubric_by_code_lookup(candidate_id: str, owner_task_key: str) -> Dict[str, Dict[str, Any]]:
+    """Uppercased rubric code → row dict for hydrate/debug (AST-816)."""
+    rows = list_rubric_vectors(candidate_id, owner_task_key, current_only=True)
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        code = str(row.get("code") or "").strip().upper()
+        if code:
+            out[code] = row
+    return out
+
+
+def _compact_from_parsed_row(row: Dict[str, str]) -> str:
+    return (
+        f"{row.get('code')}R{row.get('relevance')}"
+        f"C{row.get('clarity')}V{row.get('verdict')}"
+    )
+
+
 def _capture_rubric_vector_feedback(
     *,
     task_key: str,
@@ -1064,26 +1090,24 @@ def _capture_rubric_vector_feedback(
     batch_size: int,
     completed_at: Optional[str] = None,
 ) -> None:
-    """Lenient vector_reviews capture on SUCCESS — parse failures never fail the run (AST-724)."""
+    """Lenient vector_reviews capture on SUCCESS — parse failures never fail the run (AST-724 / AST-816)."""
     if _agent_performance_status(perf) != "success":
         return
     if not (batch_id or "").strip():
         return
-    from src.core.candidate import rubric_criteria_for_task
-
-    criteria = rubric_criteria_for_task(candidate_id, owner_task_key)
     code_to_uuid = list_rubric_vector_uuid_by_code(candidate_id, owner_task_key)
-    # DB-backed codes only — embedded-only vectors (e.g. prefilter RC) lack UUID rows (AST-724 discuss).
-    criteria_codes = frozenset(
-        str(c.get("code") or "").strip().upper()
-        for c in criteria
-        if isinstance(c, dict) and c.get("code")
-    )
-    expected_codes = frozenset(c for c in criteria_codes if c in code_to_uuid)
+    expected_codes = frozenset(code_to_uuid.keys()) if code_to_uuid else frozenset()
     if not expected_codes:
         return
     perf_dict = perf if isinstance(perf, dict) else {}
-    parsed_rows = parse_vector_reviews(perf_dict.get("vector_reviews"), expected_codes, code_to_uuid)
+    raw_list = normalize_vector_reviews_raw(perf_dict.get("vector_reviews"))
+    parsed_rows, failure_reason, parsed_codes, missing_codes = parse_vector_reviews_diagnostic(
+        raw_list if raw_list is not None else perf_dict.get("vector_reviews"),
+        expected_codes,
+        code_to_uuid,
+    )
+    rubric_by_code = _rubric_by_code_lookup(candidate_id, owner_task_key)
+
     if parsed_rows is None:
         try:
             fb_id = store_feedback_block(
@@ -1105,9 +1129,19 @@ def _capture_rubric_vector_feedback(
                 identifier=task_key,
                 outcome="vector feedback unparseable",
             )
+            extra = sorted(parsed_codes - expected_codes) if parsed_codes else []
             dbg.debug_detail(
-                "vector feedback unparseable — stored raw FEEDBACK block"
+                f"reason={failure_reason} missing={sorted(missing_codes)} "
+                f"extra={extra} expected={sorted(expected_codes)}"
             )
+            lines = raw_list or []
+            for line in lines:
+                parsed_one = parse_vector_review_string(line)
+                if parsed_one is None:
+                    continue
+                hydrated = hydrate_vector_review_strings([line], rubric_by_code)
+                if hydrated:
+                    dbg.debug_detail(format_hydrated_review_debug_line(hydrated[0]))
         return
     try:
         insert_vector_feedback_rows(
@@ -1125,6 +1159,8 @@ def _capture_rubric_vector_feedback(
         dbg = _do_task_debug_logger(debug)
         total = len(parsed_rows)
         for idx, row in enumerate(parsed_rows, start=1):
+            compact = _compact_from_parsed_row(row)
+            hydrated = hydrate_vector_review_strings([compact], rubric_by_code)
             dbg.debug_index(
                 func="_capture_rubric_vector_feedback",
                 index=idx,
@@ -1132,10 +1168,13 @@ def _capture_rubric_vector_feedback(
                 identifier=str(row.get("code") or task_key),
                 outcome="vector feedback recorded",
             )
-            dbg.debug_detail(
-                f"{row.get('code')} R/{row.get('relevance')} "
-                f"C/{row.get('clarity')} V/{row.get('verdict')} recorded"
-            )
+            if hydrated:
+                dbg.debug_detail(format_hydrated_review_debug_line(hydrated[0]))
+            else:
+                dbg.debug_detail(
+                    f"{row.get('code')} R/{row.get('relevance')} "
+                    f"C/{row.get('clarity')} V/{row.get('verdict')} recorded"
+                )
 
 
 def _store_response_block(
