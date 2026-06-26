@@ -165,3 +165,24 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. Data layer: **`do
 | --- | --- | --- |
 | Skip when batch_id missing | `src/core/agent.py` | `TestAst809VectorFeedbackBatchMetadata::test_capture_skips_insert_when_batch_id_missing` |
 | Metadata on SUCCESS capture | `src/core/agent.py` | `TestAst809VectorFeedbackBatchMetadata::test_capture_persists_batch_metadata_on_rows` |
+
+---
+
+### AST-816 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** uses UUID-backed **`expected_codes`**, **`parse_vector_reviews_diagnostic`**, JSON-string **`vector_reviews`**, and debug hydration lines on SUCCESS/failure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| JSON-string envelope capture | `src/core/agent.py` | `TestAst816VectorFeedbackCapture::test_json_string_vector_reviews_persists_rows` |
+| Debug diagnostic on parse failure | `src/core/agent.py` | `TestAst816VectorFeedbackCapture::test_debug_emits_diagnostic_on_parse_failure` |
+
+**AST-816** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst816VectorFeedbackCapture \
+  -q
+```
+
+Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal ledger **`candidate_id`**: **`docs/test-bible/frontend/pages.md`**.
