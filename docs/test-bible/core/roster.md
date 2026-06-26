@@ -206,6 +206,59 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-827 · AST-824
+
+**AST-827 (child):** Title list handoff on decomposed **select_job_page → parse_job_list** — `_normalize_job_titles` at finalize + parse dispatch; shared **`_culled_dom_for_parse`** with post-cull title coverage gate; **JOBS_FOUND** chain resolver parity. Sibling **AST-827** formatting Phase 2b covers medicarerights-style sibling `<a>` job rows.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Two-title list normalized and persisted on **JOBLIST_IDENTIFIED** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_finalize_joblist_identified_persists_two_titles` |
+| 2 | Parse dispatch passes multi-title culled DOM to **`_fetch_parse_job_list`** | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom` |
+| 3 | Partial cull / missing titles → **`PARSE_DISPATCH_NO_CONTAINERS`** | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_parse_dispatch_cull_miss_no_containers`; `::test_culled_dom_for_parse_cull_miss_when_titles_absent` |
+| 4 | **JOBS_FOUND** chain resolver unchanged tuple contract with multi-title cull | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_make_locate_parse_resolver_two_title_sibling_cull`; regression **`TestAst469LocateParseResolver`**, **`TestMakeLocateParseResolver469`** |
+
+Formatting sibling-anchor cull: **`docs/test-bible/utils/formatting.md`** (**AST-827**).
+
+**AST-827** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
+  tests/component/core/test_roster.py::TestAst469LocateParseResolver \
+  tests/component/core/test_roster.py::TestMakeLocateParseResolver469 \
+  tests/component/utils/test_formatting.py::TestFindJobContainers::test_sibling_anchor_links_two_titles \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-826 · AST-753
+
+**UAT dedupe:** **`_build_select_job_page_live_content`** skips trailing global **`=== NAV LINKS ===`** when assembled PJL already contains per-page **`--- NAV LINKS ---`** (AST-759 assembly); still appends global block for legacy rows with no embedded marker. **`nav_links=`** to **`_find_job_page_from_assembled`** unchanged for TRY_LINKS.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live content dedupe helper | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst826DedupeSelectJobPageNav` |
+| PJL_READY dispatch embedded vs legacy paths | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_dedupes_nav_when_per_page_embedded`, `::test_select_dispatch_appends_global_nav_when_no_embedded_per_page` |
+
+**Broken / obsolete (Betty revision):** **`TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links`** — replaced by AST-826 dedupe + legacy global-append cases (AST-759 global append no longer expected when per-page nav embedded).
+
+**AST-826** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst826DedupeSelectJobPageNav \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_dedupes_nav_when_per_page_embedded \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_appends_global_nav_when_no_embedded_per_page \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-759 · AST-753
 
 **Shared page scrape contract** — single Playwright load → collapsed visible text + enumerated nav links; **`scrape_company_homepage_content`** and **`_scrape_pjl_page`** route through **`scrape_loaded_page_contract`** / **`finalize_page_scrape_contract`**; PJL rows persist **`enumerated_nav_links`**; **`_assemble_pjl_content`** embeds per-page **`--- NAV LINKS ---`**; **`run_select_job_page_dispatch`** passes **`_build_select_job_page_live_content`** (global **`pjl_nav_links`**) into **`_find_job_page_from_assembled`**. Does not change AST-720 routing or **`fetch_job_pages_batch`** pass/fail transitions.
@@ -214,8 +267,9 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 | --- | --- | --- |
 | Contract finalize + select live content helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract` |
 | PJL merge/assemble nav persistence | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
-| PJL_READY select live content parity | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links` |
 | Homepage scrape via shared contract | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` |
+
+Select live content dedupe (UAT): **`docs/test-bible/core/roster.md`** (**AST-826**).
 
 Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AST-759**).
 
@@ -227,7 +281,6 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract \
   tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
-  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links \
   tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent \
   tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists \
   -q
