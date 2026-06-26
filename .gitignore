@@ -27,11 +27,12 @@ data/agents/__cache/
 .cursor/
 
 # Per-agent workspace brief (local only — one per worktree; never publish)
-AGENTS.md
+/AGENTS.md
 
 # Local debug / scratch — never commit. Spikes, Playwright captures, review scorecards:
 #   debug/spikes/<issue-id>/...   NOT repo-root artifacts/ (conflicts with docs/features/artifacts/)
-debug/
+debug/*
+!debug/startup_db_inventory.md
 /artifacts/
 
 # Large log files

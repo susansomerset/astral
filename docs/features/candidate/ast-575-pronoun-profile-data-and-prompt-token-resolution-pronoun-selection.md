@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-575 archived 2026-06-15 -->
+
+## Linear archive (AST-575)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-575/pronoun-profile-data-and-prompt-token-resolution-pronoun-selection  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-573 — Pronoun selection  
+**Blocked by / blocks / related:** parent: AST-573; blocks: AST-576
+
+### Description
+
+## What this implements
+
+Store pronoun preference on the candidate profile, register five prompt tokens (`{$THEY}`, `{$THEIR}`, `{$THEIRS}`, `{$THEM}`, `{$THEMSELF}`), resolve each to the correct forms per preference (or they/them default), and backfill existing candidates without a preference to they/them.
+
+## Acceptance criteria
+
+3. Candidates with no explicit preference (including pre-existing records after backfill) resolve all five tokens as **they** / **their** / **theirs** / **them** / **themselves**.
+4. With preference **she/her**, a test prompt containing all five tokens resolves to **she**, **her**, **hers**, **her**, **herself** in Manage Tasks preview and in a production **do_task** call.
+5. Each of the five preferences resolves to the correct five-form mapping in the parent definition.
+6. All five pronoun tokens appear in the token list available to prompt authors.
+
+## Boundaries
+
+Does not build Profile or Admin UI (sibling Katherine ticket). Does not collect pronouns in intake (AST-539).
+
+## Notes for planning
+
+Parent AST-573. Field `profile.pronoun_preference` with ordered options they/them, she/her, he/him, ze/zir, e/eir. TOKEN_SOURCES + resolve_tokens mapping per parent Decisions.
+
+## Git branch (authoritative)
+
+Per orientation-astral § Branch law: parent **ftr/ast-573-pronoun-selection**, child **sub/AST-573/AST-574-pronoun-profile-data-and-prompt-tokens**.
+
+### Comments
+
+#### radia — 2026-06-03T23:15:46.513Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-573/AST-575-pronoun-profile-data-and-prompt-tokens` @ `713ba55b` (product); review doc @ `57e4192b`.
+
+**Plan fidelity:** Matches `Single-Component` scope — `config.py` + migration + tests only; **AST-576** / **AST-539** boundaries clean.
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### Advisory
+- **`tests/component/utils/test_config.py` (`TestAst575PronounTokens`):** Full five-form assertion only for **she/her**; **he/him**, **ze/zir**, **e/eir** are subject-only smoke tests — matches plan Stage 4; optional extra assertions in resolve-astral.
+- **`src/data/database.py` (`_migrate_pronoun_preference_backfill`):** Full-table scan on first `_ensure_candidate_schema` per process — same pattern as `_migrate_bio_upshot_to_summary`; watch only at very large candidate counts.
+
+### Rules sign-off (§2.1 / §3)
+- **Config SoT:** `PRONOUN_PREFERENCE_*` + `PRONOUN_FORMS` in `config.py`; migration imports options/default (approved data→utils config read).
+- **Layers:** No UI; no data-layer logging; §5f N/A.
+- **Fallback (D3):** Unset/invalid → **they/them** is spec-intentional, not silent empty-token masking.
+
+**Doc:** `docs/features/candidate/ast-575-pronoun-profile-data-and-prompt-token-resolution-pronoun-selection.md` — § Review (Radia) on publish ref.
+
+Ada: **resolve-astral** when ready (no blockers from this review).
+
+#### betty — 2026-06-03T23:08:05.659Z
+**Tests Ready** — QA manifest for `test-astral` (Ada).
+
+**Publish ref:** `origin/sub/AST-573/AST-575-pronoun-profile-data-and-prompt-tokens` @ `713ba55b`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `2cb47fdc8ceba07944a0c67bd23ac946a565007072d3571ba86f4da470a37dc7`
+
+## QA test manifest
+
+1. **Existing coverage (bible §7.13zzb — new this pass):**
+   - `tests/component/utils/test_config.py::TestAst575PronounTokens` — registry (`THEY`…`THEMSELF`, `source: pronoun`), all five forms for `she/her`, default for missing/invalid preference, parametrized `he/him` / `ze/zir` / `e/eir` subject forms, `{$FIRST_NAME}` unchanged with pronoun set.
+   - `tests/component/data/database/test_candidate_migrations.py::TestAst575PronounPreferenceBackfill` — backfill sets `they/them` when missing (re-run `_ensure_candidate_schema` on existing row), skips valid `she/her`, idempotent second `_migrate_pronoun_preference_backfill`.
+
+2. **Broken / obsolete tests:** none identified for this diff.
+
+3. **Gaps / regression (optional):**
+   - `tests/component/utils/test_config.py::TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` — name/chain tokens unchanged.
+
+**Narrowed run:**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py::TestAst575PronounTokens -q
+.venv/bin/python -m pytest tests/component/data/database/test_candidate_migrations.py -q
+```
+
+**Note:** No UI tests (backend-only; **AST-576** owns Profile/Admin). Manage Tasks preview / `do_task` pronoun resolution is covered indirectly via `resolve_tokens` unit tests; full AC 4 preview path lands after **AST-576** can persist preference.
+
+— Betty
+
+#### ada — 2026-06-03T23:03:57.210Z
+`origin/sub/AST-573/AST-575-pronoun-profile-data-and-prompt-tokens` @ `5367632d` — product stages 1–3 only; plan § Stage 4 component tests (`TestAst575PronounTokens`, `test_candidate_migrations.py`) for qa-astral.
+
+#### ada — 2026-06-03T23:00:31.796Z
+Plan doc: [ast-575-pronoun-profile-data-and-prompt-token-resolution-pronoun-selection.md](https://github.com/susansomerset/astral/blob/sub/AST-573/AST-575-pronoun-profile-data-and-prompt-tokens/docs/features/candidate/ast-575-pronoun-profile-data-and-prompt-token-resolution-pronoun-selection.md)
+
+**Self-assessment**
+- **Scope:** `Single-Component` — `config.py` pronoun registry + `resolve_tokens` branch, one idempotent DB backfill, component tests only; no UI (**AST-576**).
+- **Conf:** `high` — Same `TOKEN_SOURCES` / migration patterns as existing profile tokens and `_migrate_*` helpers.
+- **Risk:** `Medium` — `resolve_tokens` is on every agent prompt; additive tokens, name tokens unchanged.
+
+Publish ref `sub/AST-573/AST-575-pronoun-profile-data-and-prompt-tokens` @ `357c6ea8`.
+
+---
+
 # Pronoun profile data and prompt token resolution (Pronoun selection)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-575/pronoun-profile-data-and-prompt-token-resolution-pronoun-selection  

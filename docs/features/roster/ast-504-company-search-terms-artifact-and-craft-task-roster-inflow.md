@@ -1,3 +1,177 @@
+<!-- linear-archive: AST-504 archived 2026-06-15 -->
+
+## Linear archive (AST-504)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-504/company-search-terms-artifact-and-craft-task-roster-inflow  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-490 — Roster inflow  
+**Blocked by / blocks / related:** parent: AST-490; blocks: AST-505
+
+### Description
+
+## What this implements
+
+Phase 0 of roster inflow: a candidate **artifact** holding line-break-delimited Google discovery search terms, a **craft** AI task to generate them from profile/context, and **Artifacts UI** to regenerate or edit directly (same pattern as other craft artifacts). Phase 0 dispatch is on-demand only.
+
+## Acceptance criteria
+
+1. Phase 0 craft task populates a candidate artifact with a non-empty line-break-delimited search-term list; user can regenerate or edit it in Artifacts UI.
+2. Phase 0 dispatch is on-demand only.
+
+## Boundaries
+
+* Does not run Google CSE or create company rows — sibling **Phase 1** ticket.
+* Does not change **IMPORTED** manual-import path.
+* **AST-497** (company surrogate PK) out of scope.
+
+## Notes for planning
+
+* Mirror existing craft artifact + ArtifactEditor patterns (e.g. company watch criteria).
+* Token/artifact keys in config per ASTRAL_CODE_RULES §2.1.
+* Parent definition: AST-490.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-490-roster-inflow`, child `sub/AST-490/<child-segment>`.
+
+### Comments
+
+#### chuckles — 2026-05-28T00:21:59.829Z
+`[rollup-child] blocked:` merge `origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task` → `origin/ftr/AST-490-roster-inflow` conflicts in:
+- `docs/ASTRAL_TEST_BIBLE.md`
+- `tests/component/utils/test_config.py`
+
+507 rolled up cleanly; 504/505/506 rollups paused. @susan — resolve on ftr (union bible + both sides' test_config sections) or say the word and I'll retry after engineer refresh.
+
+— Chuckles
+
+#### radia — 2026-05-28T00:16:41.118Z
+**Diff:** `origin/dev...origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task`
+
+### Plan fidelity (AST-504 scope)
+- Phase 0 deliverables match plan: `craft_company_search_terms` in `TASK_CONFIG`, `COMPANY_SEARCH_TERMS` token, `NAV_CONFIG` + route, `normalize_company_search_terms_on_save` / `company_search_terms_lines`, Artifacts page with generate/regenerate/autosave, API normalization on PUT.
+- No `dispatch_tasks` / scheduler seed for Phase 0 craft — correct on-demand-only boundary.
+
+### ASTRAL_CODE_RULES
+- **§3.3 / B2:** UI → core only (`api_candidate` → `candidate`); no layer violations in product diff.
+- **§2.1:** Task, token, nav keys live in `config.py` only.
+- **§2.6:** No new candidate/company states introduced.
+- **D3 (`company_search_terms_lines`):** `(candidate_data or {}).get("artifacts") or {}` returning `[]` when missing is the documented downstream contract for AST-505 eligibility — acceptable read-path default, not a silent write fallback.
+
+### Code quality
+- Normalization DRY via `_company_search_terms_lines_from_string`; PUT rejects non-string and all-blank with clear `ValueError` → 400 in API test.
+- `ArtifactsCompanySearchTerms.tsx` mirrors existing craft-artifact UX (`artifact_generate_states`, 2s autosave, regen confirm). `handleCancel` fallback to `window.location.reload()` when not in post-generate review is slightly blunt but pre-existing pattern-adjacent — **advisory** only.
+
+### Cross-ticket / harness (§5d)
+- Diff includes **test-only** updates for **AST-511** (`test_AdminManageCandidates` middle-name selectors/payload tests) and **AST-457** (`test_CandidateBoardSearches` UserPrompt flow) plus broad **ASTRAL_TEST_BIBLE** sibling rows — not AST-504 product scope. Bible §7.13zg documents this as harness tail; no product smuggling.
+- **Discuss:** Confirm parent integration order so full Vitest tail (not just narrowed AST-504 manifest) stays green before UAT — middle-name `it()` blocks expect labels/shapes from AST-511 which is not on this publish tip.
+
+### Self-Assessment
+- Stated **Single-Component** / **conf-high** / **risk-low** matches the product footprint.
+
+**Verdict:** No fix-now on AST-504 product code. Proceed to `resolve-astral` unless Susan wants sibling harness merged first.
+
+#### katherine — 2026-05-28T00:14:09.715Z
+[check-linear]
+
+- **§0b actionable thread:** Your **`[check-linear]`** @ `2026-05-28` @ **`katherine`** — acknowledged **`[qa-handoff]`** cleared on publish **`origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task`** @ **`847416e8`** (Admin middle-field selectors + BoardSearches confirm pattern).
+- **This pass:** Inbox-only — did **not** run **`test-astral`** (manifest items 1–5); that is the next stage skill when Susan/orchestrator names it.
+- **§0a:** **`dev-kath`** merged with **`origin/dev`** at pass start.
+
+#### betty — 2026-05-28T00:05:59.057Z
+[check-linear]
+
+Cleared **[qa-handoff]** (test-astral return pass):
+
+- **Publish:** `origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task` @ `847416e8` (`test(AST-504): fix harness tail — Admin middle field + BoardSearches confirm`)
+- **Tests:** `test_AdminManageCandidates.test.tsx` (AST-511 middle-name selectors); `test_CandidateBoardSearches.test.tsx` (AST-457 `UserPromptProvider` mode switch)
+- **Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `75c536fc54eca130a2322a36877313db5b4fa337` — §7.13zg harness tail note
+- **Assignee:** @katherine — re-run **`test-astral`** manifest (items 1–5); stay **Tests Ready**
+
+#### betty — 2026-05-28T00:05:56.657Z
+**Tests updated for [qa-handoff]** — `origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task` @ `847416e8`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `75c536fc54eca130a2322a36877313db5b4fa337` — §7.13zg (+ harness tail note).
+
+**Fixes (harness tail, not AST-504 product):**
+- `test_AdminManageCandidates.test.tsx` — label-based field lookup + AST-511 middle payload cases (no brittle textbox indices).
+- `test_CandidateBoardSearches.test.tsx` — restored AST-457 coverage; mode switch confirms via **`UserPromptProvider`** (**Continue**), not **`window.confirm`**.
+
+**Manifest (unchanged):**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestNormalizeCompanySearchTermsOnSave`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestCompanySearchTermsLines`
+4. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_blank_company_search_terms`
+5. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx`
+
+Verified locally: manifest item **1** pytest + full Vitest tail **224 passed**.
+
+**Admin prerequisite (Stage 5):** `craft_company_search_terms` task prompt row in Admin → Task Prompts before Generate in UAT.
+
+#### katherine — 2026-05-28T00:01:44.829Z
+[qa-handoff]
+
+@Betty White — AST-504 **product scope is green**; manifest items **1–4** fail on the harness tail, not on AST-504 assertions.
+
+**Publish ref:** `origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task` @ `e8e28e1e` (matches fetched tip).
+
+**Green (AST-504 only):**
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig \
+  tests/component/core/test_candidate.py::TestNormalizeCompanySearchTermsOnSave \
+  tests/component/core/test_candidate.py::TestCompanySearchTermsLines \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_blank_company_search_terms
+# → 10 passed
+
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx
+# → 2 passed
+```
+
+**Red — manifest items 1–4** (`./scripts/testing/run_component_tests.sh <pytest node ids>`): pytest portion passes, then `run_component_tests.sh` always runs **full** `npm run test:component:coverage` (all 68 Vitest files). Three **unrelated** failures:
+
+1. `test_AdminManageCandidates.test.tsx` — add flow uses `getAllByRole("textbox")[1]` for last name, but **AST-511** added a Middle Name field (indices shifted). Tests never reach success toast / second case times out.
+2. `test_AdminManageCandidates.test.tsx` — same root cause on validation case.
+3. `test_CandidateBoardSearches.test.tsx` **AST-457** mode-switch case — asserts `window.confirm` was called, but product uses `useUserConfirm` via `UserPromptProvider` (`renderWithProviders` wraps provider; `switchMode` calls `confirm()` from context, not `window.confirm`).
+
+**Why this is test/manifest, not product:** All §7.13zg / manifest-listed AST-504 nodes pass in isolation. Failures are stale selectors / wrong confirm mock on **other** page tests pulled in by the harness tail.
+
+**Ask:** Either update those three tests (AST-511 middle-name indices; AST-457 UserPrompt confirm mock/pattern per `test-utils.tsx` note), or document a narrowed manifest that skips full Vitest on pytest-only items (similar to §7.13z / §7.13za bible notes). Reassign me when manifest is green end-to-end.
+
+#### betty — 2026-05-27T23:52:08.497Z
+**QA manifest** — `origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task` @ `e8e28e1e`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `edd55ac5fd64f5ab827cac1b11278f98addac047` — see §7.13zg.
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestNormalizeCompanySearchTermsOnSave`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestCompanySearchTermsLines`
+4. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_blank_company_search_terms`
+5. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx`
+
+**Admin prerequisite (Stage 5):** `craft_company_search_terms` task prompt row must exist in Admin → Task Prompts before Generate works in UAT (not seeded in product code per plan).
+
+Built by Katherine.
+
+#### katherine — 2026-05-27T23:42:02.516Z
+Plan: `docs/features/roster/ast-504-company-search-terms-artifact-and-craft-task-roster-inflow.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task/docs/features/roster/ast-504-company-search-terms-artifact-and-craft-task-roster-inflow.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one artifact string key, one craft task, one Artifacts page, small core normalization; no dispatch scheduler row.
+- **Conf:** `high` — reuses existing craft generate/save and `company_prefilter` UI patterns with a plain-text payload.
+- **Risk:** `low` — main failure mode is wrong storage shape for AST-505; plan locks string + newline contract and tests normalization.
+
+Publish ref verified and merged on `dev-kath`. Plan cherry-picked to `origin/sub/AST-490/AST-504-company-search-terms-artifact-and-craft-task` (`2a4c6648`).
+
+---
+
 # AST-504 — Company search terms artifact and craft task (Roster inflow)
 
 - **Linear:** [AST-504](https://linear.app/astralcareermatch/issue/AST-504/company-search-terms-artifact-and-craft-task-roster-inflow)

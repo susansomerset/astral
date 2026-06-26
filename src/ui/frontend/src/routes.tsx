@@ -40,12 +40,12 @@ import Priorities from "./pages/CandidatePriorities"
 import DealBreakers from "./pages/CandidateDealBreakers"
 import Backstory from "./pages/CandidateBackstory"
 import WritingPreferences from "./pages/CandidateWritingPreferences"
-import BoardSearches from "./pages/CandidateBoardSearches"
 
 // --- Admin ---
 import ScheduledActions from "./pages/AdminScheduledActions"
 import PerformanceMonitor from "./pages/AdminPerformanceMonitor"
 import AgentTimesheets from "./pages/AdminAgentTimesheets"
+import VectorFeedback from "./pages/AdminVectorFeedback"
 import CostReconciliation from "./pages/AdminCostReconciliation"
 import ManageCandidates from "./pages/AdminManageCandidates"
 import AgentPrompts from "./pages/AdminAgentPrompts"
@@ -103,12 +103,12 @@ const routes: RouteObject[] = [
           { path: "candidate/deal_breakers", element: <DealBreakers /> },
           { path: "candidate/backstory", element: <Backstory /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
-          { path: "candidate/board_searches", element: <BoardSearches /> },
 
           // Admin
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },
           { path: "admin/performance_monitor", element: <AdminRoute><PerformanceMonitor /></AdminRoute> },
           { path: "admin/agent_timesheets", element: <AdminRoute><AgentTimesheets /></AdminRoute> },
+          { path: "admin/vector_feedback", element: <AdminRoute><VectorFeedback /></AdminRoute> },
           { path: "admin/cost_reconciliation", element: <AdminRoute><CostReconciliation /></AdminRoute> },
           { path: "admin/manage_candidates", element: <AdminRoute><ManageCandidates /></AdminRoute> },
           { path: "admin/agent_prompts", element: <AdminRoute><AgentPrompts /></AdminRoute> },

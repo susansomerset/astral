@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-571 archived 2026-06-15 -->
+
+## Linear archive (AST-571)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-571/admin-timesheet-cost-display-parity-timesheets-for-deepseek-are  
+**Status at archive:** Done  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-569 — Timesheets for deepseek are inaccurate  
+**Blocked by / blocks / related:** parent: AST-569
+
+### Description
+
+## What this implements
+
+After backend DeepSeek cost fix lands on the parent ftr branch, ensure Admin Agent Timesheets (UI + CSV export) and Execution History batch cost rollups display totals that match the sum of stored calc_cost\_\* fields for DeepSeek rows.
+
+## Acceptance criteria
+
+7. Admin Agent Timesheets and CSV row totals equal the sum of stored calc_cost\_\* for sampled DeepSeek rows after backfill.
+
+## Boundaries
+
+* Does not change pricing math or backfill (sibling Ada ticket).
+* Does not change Anthropic display paths except regression-safe shared helpers.
+
+## Notes for planning
+
+Likely src/ui/api/api_admin.py, src/ui/frontend/src/pages/AdminAgentTimesheets.tsx, Execution History cost aggregation if separate from timesheet list.
+
+## Git branch (authoritative)
+
+Child sub/AST-569/<child-id>-admin-timesheet-cost-display; merge origin/ftr/ast-569-timesheets-deepseek-cost on dev-kath before build.
+
+### Comments
+
+#### radia — 2026-06-03T19:24:19.435Z
+**Doc publish:** `docs/features/agent/ast-571-admin-timesheet-cost-display-parity.md` § Review (Radia) on `origin/sub/AST-569/AST-571-admin-timesheet-cost-display` @ `656db863` (cherry-pick of `66a778f2` on dev-radia).
+
+#### radia — 2026-06-03T19:23:45.816Z
+**Review** — `origin/dev...origin/sub/AST-569/AST-571-admin-timesheet-cost-display` (tip `af32280b`). AST-571-only commits after `merge(AST-570)` @ `8e959c5c`.
+
+**Solid**
+- AC 7: `sum_calc_cost_components` + API `_enrich_timesheet_row` on list/export; `timesheetCost.ts` / `rowTotalCost`; `AdminAgentTimesheets` `$ Total` + footer; `BatchAgentDataModal` uses per-row `sumCalcCostComponents` on enriched rows.
+- Execution History: `list_dispatch_ledger` + `sum_cost_by_batch` already sum four `calc_cost_*`; comment + `test_ast571_ledger_total_cost_matches_timesheet_sum` document AST-571 parity.
+- §3.3: `api_admin` adds only `utils.cost_calculator`; no new UI→data/external.
+- §5d: AST-571 slice does not add pricing/backfill beyond sibling merge base.
+
+**discuss**
+- `tests/component/core/test_dispatcher.py` — ledger test mocks `0.044939528` while `test_parent_brief_pro_row_840f7662` sums parent literals to `0.044939328` (~2e-7). Not a display bug; optional align in resolve.
+
+**Doc:** `docs/features/agent/ast-571-admin-timesheet-cost-display-parity.md` § Review (Radia) — Joan publish pending from `66a778f2`.
+
+#### betty — 2026-06-03T19:18:56.316Z
+**Tests Ready** — `origin/sub/AST-569/AST-571-admin-timesheet-cost-display` @ `af32280b`
+
+**Manifest**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_cost_calculator.py::TestSumCalcCostComponents`
+2. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestTimesheets::test_list_and_export_timesheets`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestDispatchWrappers::test_ast571_ledger_total_cost_matches_timesheet_sum`
+4. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx` — routed page (§6c): **$ Total** column, footer **Cost: $0.1000**, date blur/clear in existing test
+
+**Regression:** §7.13zza regression block (`test_cost_calculator_deepseek.py`, database + core `test_timesheets.py`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `582e2210f1ff3d5b5cb869c1a18cc6af1567ec3bd4e4b5e79de1583983557f2a` — §7.13zza added
+
+**Coverage:** `sum_calc_cost_components`, API `total_cost` enrichment + CSV column, ledger `sum_cost_by_batch` parity, page **$ Total** display.
+
+#### katherine — 2026-06-03T19:12:44.761Z
+**Plan:** [docs/features/agent/ast-571-admin-timesheet-cost-display-parity.md](https://github.com/susansomerset/astral/blob/sub/AST-569/AST-571-admin-timesheet-cost-display/docs/features/agent/ast-571-admin-timesheet-cost-display-parity.md) on `sub/AST-569/AST-571-admin-timesheet-cost-display` @ `16fb02a0`
+
+**Summary:** Single row-total formula — sum of four stored `calc_cost_*` fields. Python `sum_calc_cost_components` + API enrichment (`total_cost` on list/CSV); frontend `$ Total` column and shared `lib/timesheetCost.ts`; Execution History parity test only (dispatcher already uses `sum_cost_by_batch`). **Pre-build:** merge `origin/sub/AST-569/AST-570-deepseek-cost-math-mapping-backfill` on `dev-kath` before implementation (blockedBy).
+
+**Self-assessment**
+- **Scope:** Single-Component — admin timesheet/ledger display surfaces plus thin API enrichment; no pricing or schema.
+- **Conf:** high — formula is parent AC 7; implementation is DRY wiring and regression tests once AST-570 backfill is on the integration line.
+- **Risk:** Medium — spend display trust for admin users; Anthropic paths must stay regression-safe via shared helper tests.
+
+**Git:** `dev-kath` merged `origin/ftr/ast-569-timesheets-deepseek-cost` (bible §7.13zz); merge-clean vs `origin/dev`.
+
+---
+
 # AST-571 — Admin timesheet cost display parity
 
 **Parent:** [AST-569 — Timesheets for deepseek are inaccurate](https://linear.app/astralcareermatch/issue/AST-569/timesheets-for-deepseek-are-inaccurate)  

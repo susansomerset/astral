@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import BatchAgentDataModal from "../../../../src/ui/frontend/src/components/BatchAgentDataModal"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -143,5 +144,97 @@ describe("BatchAgentDataModal", () => {
     renderWithProviders(<BatchAgentDataModal batchId="batch-bad-type" onClose={() => {}} />)
     await waitFor(() => expect(screen.getByText(/Tokens & Cost/)).toBeInTheDocument())
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""))
+  })
+
+  it("shows FEEDBACK tab with hydrated vector review table (AST-808)", async () => {
+    mockedApi.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
+      if (url.includes("/api/admin/vector_feedback/hydrate_reviews")) {
+        return {
+          json: async () => ({
+            rows: [{
+              compact: "G1RACOVK",
+              code: "G1",
+              label: "Grade fit",
+              content: "Criterion body from rubric",
+              relevance_label: "Aligned",
+              clarity_label: "OK",
+              verdict_label: "Keep",
+            }],
+          }),
+        } as Response
+      }
+      if (url.startsWith("/api/agent_data/")) {
+        return {
+          json: async () => [{
+            agent_data_id: "fb-1",
+            block_type: "FEEDBACK",
+            block_data: '["G1RACOVK"]',
+            token_size: 1,
+            task_key: "grade_get",
+            created_at: "now",
+          }],
+        } as Response
+      }
+      if (url.includes("/api/admin/timesheets")) {
+        return { json: async () => [{ candidate_id: "c1", task_key: "grade_get" }] } as Response
+      }
+      if (url.includes("/api/admin/dispatch_ledger/")) {
+        return { json: async () => ({ candidate_id: "c1", task_key: "grade_get" }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<BatchAgentDataModal batchId="batch-fb" candidateId="c1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText("FEEDBACK")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Criterion body from rubric")).toBeInTheDocument())
+    expect(screen.getByText("Grade fit")).toBeInTheDocument()
+  })
+
+  it("hydrates FEEDBACK using ledger candidate_id when prop omitted (AST-816)", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url.includes("/api/admin/vector_feedback/hydrate_reviews")) {
+        return {
+          json: async () => ({
+            rows: [{
+              compact: "CLRRACOVK",
+              code: "CLR",
+              label: "Culture",
+              content: "From evaluate_jd rubric",
+              relevance_label: "Aligned",
+              clarity_label: "OK",
+              verdict_label: "Keep",
+            }],
+          }),
+        } as Response
+      }
+      if (url.startsWith("/api/agent_data/")) {
+        return {
+          json: async () => [{
+            agent_data_id: "fb-2",
+            block_type: "FEEDBACK",
+            block_data: '["CLRRACOVK"]',
+            token_size: 1,
+            task_key: "evaluate_jd",
+            created_at: "now",
+          }],
+        } as Response
+      }
+      if (url.includes("/api/admin/timesheets")) {
+        return { json: async () => [] } as Response
+      }
+      if (url.includes("/api/admin/dispatch_ledger/")) {
+        return { ok: true, json: async () => ({ candidate_id: "c-from-ledger", task_key: "evaluate_jd" }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<BatchAgentDataModal batchId="batch-ledger" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByText("FEEDBACK")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("From evaluate_jd rubric")).toBeInTheDocument())
+    const hydrateCall = mockedApi.mock.calls.find(
+      call => String(call[0]).includes("/api/admin/vector_feedback/hydrate_reviews"),
+    )
+    expect(hydrateCall).toBeTruthy()
+    const body = JSON.parse(String((hydrateCall![1] as RequestInit).body))
+    expect(body.candidate_id).toBe("c-from-ledger")
+    expect(body.task_key).toBe("evaluate_jd")
   })
 })

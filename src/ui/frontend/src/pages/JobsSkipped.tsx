@@ -272,7 +272,7 @@ export default function Skipped() {
               </button>
               {isExpanded && (
                 <div className="list-page-table-wrap">
-                  <table className="list-page-table" style={{ tableLayout: "auto" }}>
+                  <table className="list-page-table">
                     <thead>
                       <tr>
                         {!isFloor && <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>}

@@ -3,7 +3,7 @@ import api from "../lib/api"
 import { setFmtTimezone } from "../lib/fmt"
 import { useAuth } from "./AuthContext"
 
-interface CandidateInfo {
+export interface CandidateInfo {
   astral_candidate_id: string
   state: string
   candidate_data: Record<string, unknown>

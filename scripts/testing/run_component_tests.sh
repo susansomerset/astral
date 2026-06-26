@@ -50,6 +50,6 @@ if (("$#" == 0)) && [[ -f "$ROOT/src/ui/frontend/package.json" ]]; then
   export ASTRAL_VITEST_MAX_WORKERS="${ASTRAL_VITEST_MAX_WORKERS:-2}"
   (cd "$ROOT/src/ui/frontend" && npm install --silent && npm run test:component:coverage)
   # Frontend gate: Vitest exits 0 above. check_frontend_coverage.py enforces LOCKED_AT_100 only;
-  # that list stays empty unless Product adopts per-file branch locks (ASTRAL_TEST_BIBLE.md §6b).
+  # that list stays empty unless Product adopts per-file branch locks (docs/test-bible/README.md §6b).
   "$PYTHON" "$ROOT/scripts/testing/check_frontend_coverage.py" "$COV_DIR/frontend/coverage-summary.json" "$ROOT"
 fi

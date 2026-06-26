@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import ListPage from "../../../../src/ui/frontend/src/components/ListPage"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -20,13 +21,18 @@ describe("ListPage", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
-    mockedApi.mockResolvedValue({
-      json: async () => ({
-        column_types: {
-          currency: { align: "right", number_format: "$0.00" },
-        },
-      }),
-    } as Response)
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/system/ui_config") {
+        return {
+          json: async () => ({
+            column_types: {
+              currency: { align: "right", number_format: "$0.00" },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(`Unhandled api ${url}`)
+    })
   })
 
   it("renders loading and empty states", async () => {
@@ -54,7 +60,6 @@ describe("ListPage", () => {
         onSelectionChange={onSelectionChange}
         onRowClick={row => row.id}
         rowActions={row => <button type="button">{`act-${row.id}`}</button>}
-        horizontalScrollable
         actions={<span>toolbar</span>}
       />,
     )

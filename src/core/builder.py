@@ -24,6 +24,9 @@ from src.core import tracker as tracker_mod
 from src.data import database
 from src.utils.config import BUILD_CONFIG, RESUME_STRUCTURE_CONTACT_SECTION_IDS
 from src.utils.formatting import split_to_list
+from src.utils.logging import get_logger
+
+_log = get_logger(__name__)
 
 # Body section keys in render order (matches legacy ResumeSite layout / artifact keys).
 _RESUME_BODY_KEYS: Tuple[str, ...] = (
@@ -64,24 +67,107 @@ def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
     return raw
 
 
-def build_resume(job_id: str) -> str:
+def _builder_job_identifier(job: Dict[str, Any]) -> str:
+    """Primary debug identifier for a job row (§1.5.1 style D)."""
+    return str(job.get("astral_job_id") or job.get("job_title") or "?")
+
+
+def _resume_content_source_label(job_data: dict, candidate_data: dict) -> str:
+    """Read-only label for which blob supplies resume sections (no raises)."""
+    artifacts = (job_data or {}).get("artifacts") or {}
+    rc = artifacts.get("resume_content")
+    if _is_nonempty_resume_dict(rc):
+        return "job_data.artifacts.resume_content"
+    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+    if _is_nonempty_resume_dict(br):
+        return "candidate_data.artifacts.base_resume"
+    return "missing"
+
+
+def _cover_letter_source_label(job_data: dict, candidate_data: dict) -> Optional[str]:
+    """Read-only label for cover letter provenance, or None when no cover."""
+    artifacts = (job_data or {}).get("artifacts") or {}
+    cl = artifacts.get("cover_letter")
+    if isinstance(cl, dict) and _cover_letter_nonempty(cl):
+        return "job_data.artifacts.cover_letter"
+    sample = ((candidate_data or {}).get("context") or {}).get("sample_cover_text")
+    if isinstance(sample, str) and sample.strip():
+        return "candidate_data.context.sample_cover_text"
+    return None
+
+
+def _accent_source_label(candidate_data: dict) -> str:
+    """Read-only label for accent color resolution path."""
+    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    ac = structure.get("accent_color")
+    if isinstance(ac, str) and ac.strip():
+        return "resume_structure.accent_color"
+    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+    if isinstance(br, dict):
+        legacy = br.get("accent_color")
+        if isinstance(legacy, str) and legacy.strip():
+            return "artifacts.base_resume.accent_color"
+    return "BUILD_CONFIG.default_style"
+
+
+def _emit_builder_failure(
+    *,
+    func: str,
+    identifier: str,
+    message: str,
+    debug: bool,
+) -> None:
+    """Emit contract header for a terminal ValueError path."""
+    if not debug:
+        return
+    _log.set_debug_flag(True)
+    _log.debug_index(
+        func=func,
+        index=1,
+        total=1,
+        identifier=identifier,
+        outcome=f"error — {message}",
+    )
+
+
+def build_resume(job_id: str, *, debug: bool = False) -> str:
     """Load job + owning candidate by id, then render HTML (one DB read for job)."""
     job = tracker_mod.get_job(job_id)
     if not job:
-        raise ValueError(f"Job not found: {job_id}")
+        msg = f"Job not found: {job_id}"
+        _emit_builder_failure(
+            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     company_key = job.get("company")
     if not company_key or not isinstance(company_key, str):
-        raise ValueError("Job missing company short name")
+        msg = "Job missing company short name"
+        _emit_builder_failure(
+            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     company_row = database.get_company(company_key.strip())
     if not company_row:
-        raise ValueError(f"Company not found: {company_key!r}")
+        msg = f"Company not found: {company_key!r}"
+        _emit_builder_failure(
+            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     candidate_id = company_row.get("candidate_id")
     if not candidate_id:
-        raise ValueError(f"Company {company_key!r} has no candidate_id")
+        msg = f"Company {company_key!r} has no candidate_id"
+        _emit_builder_failure(
+            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     row = candidate_mod.get_candidate(str(candidate_id))
     if not row:
-        raise ValueError(f"Candidate not found: {candidate_id}")
-    return build_resume_from_job(job, _coerce_candidate_blob(row))
+        msg = f"Candidate not found: {candidate_id}"
+        _emit_builder_failure(
+            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
+    return build_resume_from_job(job, _coerce_candidate_blob(row), debug=debug)
 
 
 def build_resume_from_job(
@@ -89,6 +175,7 @@ def build_resume_from_job(
     candidate_data: Dict[str, Any],
     *,
     include_cover: bool = False,
+    debug: bool = False,
 ) -> str:
     """Render job-tailored resume HTML from an in-memory job row + candidate blob (no job fetch).
 
@@ -96,11 +183,23 @@ def build_resume_from_job(
     DB row from ``get_candidate`` (nested ``candidate_data`` is unwrapped).
     """
     cd = _coerce_candidate_blob(candidate_data)
+    if debug:
+        _log.set_debug_flag(True)
+    identifier = _builder_job_identifier(job)
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
     structure = candidate_mod.resolve_resume_structure(cd)
-    render = _resolve_resume_sections(job_data, cd)
+    try:
+        render = _resolve_resume_sections(job_data, cd)
+    except ValueError as exc:
+        _emit_builder_failure(
+            func="builder.build_resume_from_job",
+            identifier=identifier,
+            message=str(exc),
+            debug=debug,
+        )
+        raise
     render = candidate_mod.filter_content_to_resume_structure(render, structure)
     _apply_profile_to_render_dict(render, cd.get("profile") or {})
     style = _merge_effective_style(cd)
@@ -109,7 +208,7 @@ def build_resume_from_job(
     ordered_body = _structure_ordered_body_ids(structure)
     titles = candidate_mod.resume_section_titles(structure)
     kw = job_data.get("critical_keywords")
-    return _emit_html_document(
+    html_out = _emit_html_document(
         markers,
         style,
         include_cover=include_cover and cover is not None,
@@ -120,42 +219,107 @@ def build_resume_from_job(
         body_section_ids=ordered_body,
         body_section_titles=titles,
     )
+    if debug:
+        enabled = candidate_mod.enabled_resume_section_ids(structure)
+        content_keys = sorted(k for k, v in markers.items() if isinstance(v, str) and v.strip())
+        cover_src = _cover_letter_source_label(job_data, cd)
+        kw_count = (
+            len(split_to_list(str(kw), ","))
+            if isinstance(kw, str) and kw.strip()
+            else (len(kw) if isinstance(kw, (list, tuple)) else 0)
+        )
+        _log.debug_index(
+            func="builder.build_resume_from_job",
+            index=1,
+            total=1,
+            identifier=identifier,
+            outcome="success — resume html",
+        )
+        _log.debug_detail(f"resume_source={_resume_content_source_label(job_data, cd)!r}")
+        _log.debug_detail(f"enabled_sections={enabled!r}")
+        _log.debug_detail(f"body_section_ids={ordered_body!r}")
+        _log.debug_detail(f"render_keys={content_keys!r}")
+        _log.debug_detail(
+            f"include_cover={include_cover} cover_source={cover_src!r} "
+            f"cover_included={include_cover and cover is not None}"
+        )
+        _log.debug_detail(f"accent_source={_accent_source_label(cd)!r}")
+        _log.debug_detail(f"ats_keywords_count={kw_count}")
+        _log.debug_detail(f"html_chars={len(html_out)}")
+        _log.debug_detail("html_preview:")
+        _log.debug_detail_block(html_out)
+    return html_out
 
 
-def build_cover_letter(job_id: str) -> str:
+def build_cover_letter(job_id: str, *, debug: bool = False) -> str:
     """Load job + owning candidate by id, then render cover-letter HTML only."""
     job = tracker_mod.get_job(job_id)
     if not job:
-        raise ValueError(f"Job not found: {job_id}")
+        msg = f"Job not found: {job_id}"
+        _emit_builder_failure(
+            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     company_key = job.get("company")
     if not company_key or not isinstance(company_key, str):
-        raise ValueError("Job missing company short name")
+        msg = "Job missing company short name"
+        _emit_builder_failure(
+            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     company_row = database.get_company(company_key.strip())
     if not company_row:
-        raise ValueError(f"Company not found: {company_key!r}")
+        msg = f"Company not found: {company_key!r}"
+        _emit_builder_failure(
+            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     candidate_id = company_row.get("candidate_id")
     if not candidate_id:
-        raise ValueError(f"Company {company_key!r} has no candidate_id")
+        msg = f"Company {company_key!r} has no candidate_id"
+        _emit_builder_failure(
+            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     row = candidate_mod.get_candidate(str(candidate_id))
     if not row:
-        raise ValueError(f"Candidate not found: {candidate_id}")
-    return build_cover_letter_from_job(job, _coerce_candidate_blob(row))
+        msg = f"Candidate not found: {candidate_id}"
+        _emit_builder_failure(
+            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
+        )
+        raise ValueError(msg)
+    return build_cover_letter_from_job(job, _coerce_candidate_blob(row), debug=debug)
 
 
-def build_cover_letter_from_job(job: Dict[str, Any], candidate_data: Dict[str, Any]) -> str:
+def build_cover_letter_from_job(
+    job: Dict[str, Any],
+    candidate_data: Dict[str, Any],
+    *,
+    debug: bool = False,
+) -> str:
     """Render cover-letter HTML only from job artifacts (no resume body sections)."""
     cd = _coerce_candidate_blob(candidate_data)
+    if debug:
+        _log.set_debug_flag(True)
+    identifier = _builder_job_identifier(job)
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
     cover = _resolve_cover_letter(job_data, cd)
     if cover is None:
-        raise ValueError("No cover letter content for job")
+        msg = "No cover letter content for job"
+        _emit_builder_failure(
+            func="builder.build_cover_letter_from_job",
+            identifier=identifier,
+            message=msg,
+            debug=debug,
+        )
+        raise ValueError(msg)
     render: Dict[str, Any] = {}
     _apply_profile_to_render_dict(render, cd.get("profile") or {})
     markers = _apply_resume_text_markers(render)
     style = _merge_effective_style(cd)
-    return _emit_html_document(
+    html_out = _emit_html_document(
         markers,
         style,
         include_cover=True,
@@ -166,17 +330,52 @@ def build_cover_letter_from_job(job: Dict[str, Any], candidate_data: Dict[str, A
         body_section_ids=[],
         body_section_titles={},
     )
+    if debug:
+        cover_src = _cover_letter_source_label(job_data, cd)
+        profile = cd.get("profile") or {}
+        safe_sig = _safe_image_src(profile.get("cover_letter_signature_image"))
+        _log.debug_index(
+            func="builder.build_cover_letter_from_job",
+            index=1,
+            total=1,
+            identifier=identifier,
+            outcome="success — cover letter html",
+        )
+        _log.debug_detail(f"cover_source={cover_src!r}")
+        _log.debug_detail(
+            f"fields re_line={bool((cover.get('re_line') or '').strip())} "
+            f"body={bool((cover.get('body') or '').strip())} "
+            f"signature={bool((cover.get('signature') or '').strip())}"
+        )
+        _log.debug_detail(
+            f"signature_image={'accepted' if safe_sig else 'absent_or_rejected'}"
+        )
+        _log.debug_detail(f"html_chars={len(html_out)}")
+        _log.debug_detail("html_preview:")
+        _log.debug_detail_block(html_out)
+    return html_out
 
 
-def build_base_resume(candidate_id: str) -> str:
+def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
     """Candidate-only resume HTML from ``artifacts.base_resume`` (no job, no cover, no ATS strip)."""
+    if debug:
+        _log.set_debug_flag(True)
+    identifier = candidate_id
     row = candidate_mod.get_candidate(candidate_id)
     if not row:
-        raise ValueError(f"Candidate not found: {candidate_id}")
+        msg = f"Candidate not found: {candidate_id}"
+        _emit_builder_failure(
+            func="builder.build_base_resume", identifier=identifier, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     cd = _coerce_candidate_blob(row)
     br = (cd.get("artifacts") or {}).get("base_resume")
     if not isinstance(br, dict) or not br:
-        raise ValueError("Candidate missing artifacts.base_resume")
+        msg = "Candidate missing artifacts.base_resume"
+        _emit_builder_failure(
+            func="builder.build_base_resume", identifier=identifier, message=msg, debug=debug
+        )
+        raise ValueError(msg)
     structure = candidate_mod.resolve_resume_structure(cd)
     render = candidate_mod.filter_content_to_resume_structure(dict(br), structure)
     _apply_profile_to_render_dict(render, cd.get("profile") or {})
@@ -184,7 +383,7 @@ def build_base_resume(candidate_id: str) -> str:
     markers = _apply_resume_text_markers(render)
     ordered_body = _structure_ordered_body_ids(structure)
     titles = candidate_mod.resume_section_titles(structure)
-    return _emit_html_document(
+    html_out = _emit_html_document(
         markers,
         style,
         include_cover=False,
@@ -194,6 +393,25 @@ def build_base_resume(candidate_id: str) -> str:
         body_section_ids=ordered_body,
         body_section_titles=titles,
     )
+    if debug:
+        enabled = candidate_mod.enabled_resume_section_ids(structure)
+        content_keys = sorted(k for k, v in markers.items() if isinstance(v, str) and v.strip())
+        _log.debug_index(
+            func="builder.build_base_resume",
+            index=1,
+            total=1,
+            identifier=identifier,
+            outcome="success — base resume html",
+        )
+        _log.debug_detail("resume_source=candidate_data.artifacts.base_resume")
+        _log.debug_detail(f"enabled_sections={enabled!r}")
+        _log.debug_detail(f"body_section_ids={ordered_body!r}")
+        _log.debug_detail(f"render_keys={content_keys!r}")
+        _log.debug_detail(f"accent_source={_accent_source_label(cd)!r}")
+        _log.debug_detail(f"html_chars={len(html_out)}")
+        _log.debug_detail("html_preview:")
+        _log.debug_detail_block(html_out)
+    return html_out
 
 
 def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:

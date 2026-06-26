@@ -274,6 +274,28 @@ class TestPreviewTaskPrompt:
         )
         assert captured["chain"] == {"CALLER_RESPONSE": "hop"}
 
+    def test_preview_resolves_agent_body_when_system_is_selected_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Manage Tasks preview path mirrors production for {$SELECTED_AGENT} tasks (AST-631 AC3)."""
+        from src.core import agent as agent_mod
+
+        cd = {"profile": {"first": "Ada"}}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": cd},
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "Hi, you're Grace. You're helping {$FIRST_NAME} find a great role."},
+                {"system_prompt": "{$SELECTED_AGENT}", "user_prompt": "", "cache_prompt": "", "nocache_prompt": ""},
+            ),
+        )
+        out = candidate_mod.preview_task_prompt("craft_resume_base", candidate_id="c1")
+        assert "helping Ada find" in out["system"]
+        assert "{$FIRST_NAME}" not in out["system"]
+
     def test_chain_sim_parent_only_merges_simulated_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod.database,
@@ -479,12 +501,67 @@ class TestRunCandidateArtifactGeneration:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
         monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": {"x": 1}, "timesheet": {"y": 2}})))
         monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=1.25))
         body, status = candidate_mod.run_candidate_artifact_generation("somerset", "craft_resume_base", None)
         assert status == 200
         assert body["parsed_response"] == {"x": 1}
         assert body["timesheet"] == {"y": 2}
+
+    def test_persists_artifacts_on_craft_resume_base_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[tuple[Any, ...]] = []
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "Jobs"})
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation("karfo", "craft_resume_base", "resume text")
+        assert status == 200
+        assert body["success"] is True
+        assert len(saves) == 1
+        assert saves[0][0] == "karfo"
+        assert saves[0][1]["merge"] is True
+        artifacts = saves[0][1]["candidate_data"]["artifacts"]
+        assert "resume_structure" in artifacts
+        assert artifacts["base_resume"]["experience"] == "Jobs"
+
+    def test_does_not_persist_artifacts_on_other_task_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[tuple[Any, ...]] = []
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(
+                run=MagicMock(
+                    return_value={
+                        "success": True,
+                        "parsed_response": {"bio_summary": "x", "strengths": "y", "priorities": "z", "deal_breakers": "a", "backstory": "b"},
+                    }
+                )
+            ),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation("karfo", "bootstrap_candidate_context", "text")
+        assert status == 200
+        assert saves == []
 
 
 class TestNormalizeCompanySearchTermsOnSave:
@@ -707,6 +784,65 @@ class TestAst517ResumeStructure:
         schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
         assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
 
+    def test_normalize_injects_default_when_resume_structure_missing(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "candidate_name": "Kar Fo",
+                "candidate_title": "Engineer",
+                "candidate_contact_detail": "kar@example.com",
+                "professional_summary": "Summary",
+                "core_competencies": "Skills",
+                "experience": "Jobs",
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert "candidate_name" in ap["resume_structure"]["sections"]
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_normalize_injects_default_when_resume_structure_sections_empty(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {"sections": {}},
+                "candidate_name": "Kar Fo",
+                "candidate_title": "Engineer",
+                "candidate_contact_detail": "kar@example.com",
+                "professional_summary": "Summary",
+                "core_competencies": "Skills",
+                "experience": "Jobs",
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert "candidate_name" in ap["resume_structure"]["sections"]
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_normalize_preserves_valid_custom_resume_structure(self) -> None:
+        custom = _three_section_structure()
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": custom,
+                "candidate_name": "Ada",
+                "candidate_title": "Eng",
+                "candidate_contact_detail": "a@b.c",
+                "professional_summary": "S",
+                "core_competencies": "C",
+                "experience": "E",
+            }
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        assert parsed["agent_payload"]["resume_structure"]["sections"]["experience"]["title"] == "Custom Jobs"
+
     def test_split_promotes_nested_section_content(self) -> None:
         structure = _three_section_structure()
         sections = {
@@ -899,3 +1035,65 @@ class TestAst594DraftJobResumePayload:
         assert "candidate_contact" not in ap
         assert ap["candidate_contact_detail"] == "ada@example.com"
         assert candidate_mod.validate_draft_job_resume_payload(ap, {}) is None
+
+
+class TestAst723RubricVectorsCutover:
+    def test_apply_save_syncs_table_and_strips_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        criteria = [{"code": "CR", "label": "fit", "content": "line", "importance": 5}]
+        arts: Dict[str, Any] = {"joblist_rubric": criteria}
+        candidate_mod.apply_rubric_vectors_save("c723", arts)
+        assert "joblist_rubric" not in arts
+        assert synced == [("c723", "qualify_job_listings", criteria)]
+
+    def test_hydrate_overlays_table_backed_artifacts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "rubric_criteria_for_task",
+            lambda cid, owner: [{"code": "CR", "content": "x", "importance": 5}] if owner == "qualify_job_listings" else [],
+        )
+        cd: Dict[str, Any] = {"artifacts": {"base_resume": "keep"}}
+        candidate_mod.hydrate_rubric_artifacts_for_response("c723", cd)
+        assert cd["artifacts"]["joblist_rubric"][0]["code"] == "CR"
+        assert cd["artifacts"]["base_resume"] == "keep"
+
+    def test_prefilter_merges_embedded_rc_from_table(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("prefilter_company", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "prefilter_company",
+            [
+                {
+                    "code": "MP",
+                    "label": "Mission",
+                    "content": "Mission body",
+                    "importance": 5,
+                }
+            ],
+        )
+        rubric = candidate_mod.rubric_criteria_for_task("cand-1", "prefilter_company")
+        assert rubric[0]["code"] == "RC"
+        assert rubric[0]["label"] == "Reality Check"
+        assert any(r["code"] == "MP" for r in rubric)
+
+    def test_preview_injects_astral_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {}},
+        )
+        captured: dict = {}
+
+        def _pp(task_key: str, cd: dict, chain_context=None, job_context=None):
+            captured["cd"] = cd
+            return {"prompt": task_key}
+
+        monkeypatch.setattr(candidate_mod, "preview_prompt", _pp)
+        candidate_mod.preview_task_prompt("craft_joblist_rubric", candidate_id="c723")
+        assert captured["cd"]["_astral_candidate_id"] == "c723"

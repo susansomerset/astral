@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from flask.testing import FlaskClient
 
+from src.utils import deploy_status as ds_mod
 from ui.api import api_system as system_mod
 
 
@@ -57,6 +58,11 @@ class TestSystemAuthRoutes:
         assert palette
         assert all(isinstance(hex, str) and hex.startswith("#") for hex in palette)
 
+    def test_ui_config_includes_list_table_layout_defaults(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload.get("list_table_frozen_data_columns") == 2
+        assert payload.get("list_table_cell_truncate_chars") == 30
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200
@@ -89,6 +95,11 @@ class TestSystemAuthRoutes:
         payload = system_client.get("/api/nav_config", headers=non_admin_headers).get_json()
         assert all(group.get("label") != "Admin" for group in payload)
 
+    def test_nav_config_omits_board_searches(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
+        paths = [item.get("path") for group in payload for item in group.get("items", [])]
+        assert "/candidate/board_searches" not in paths
+
     def test_agent_data_returns_rows(self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.core.agent.get_agent_data", MagicMock(return_value=[{"id": "block-1"}]))
         resp = system_client.get("/api/agent_data/batch-1?block_type=RESPONSE&entity_id=acme", headers=auth_headers)
@@ -104,6 +115,59 @@ class TestSystemAuthRoutes:
         monkeypatch.setattr("src.core.agent.get_entity_response", MagicMock(return_value={"block_data": "{}"}))
         resp = system_client.get("/api/agent_data/batch-1/entity/acme", headers=auth_headers)
         assert resp.status_code == 200
+
+
+class TestDeployStatus:
+    def test_requires_bearer(self, system_client: FlaskClient) -> None:
+        assert system_client.get("/api/deploy_status").status_code == 401
+
+    def test_non_admin_forbidden(
+        self, system_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = system_client.get("/api/deploy_status", headers=non_admin_headers)
+        assert resp.status_code == 403
+
+    def test_admin_returns_payload(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        expected = {
+            "uptime": "5m",
+            "uptime_seconds": 300,
+            "environment": "local",
+            "merge_tickets": [],
+        }
+        monkeypatch.setattr(system_mod, "get_deploy_status_payload", lambda: expected)
+        resp = system_client.get("/api/deploy_status", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == expected
+
+    def test_admin_omits_environment_when_unset(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = {
+            "uptime": "<1m",
+            "uptime_seconds": 10,
+            "merge_tickets": [],
+        }
+        monkeypatch.setattr(system_mod, "get_deploy_status_payload", lambda: payload)
+        resp = system_client.get("/api/deploy_status", headers=auth_headers)
+        assert resp.status_code == 200
+        assert "environment" not in resp.get_json()
+
+    def test_admin_uptime_format_samples_via_payload_builder(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ds_mod, "_PROCESS_BOOT_TIME", 0.0)
+        cases = [
+            (30, "<1m"),
+            (5 * 60, "5m"),
+            (75 * 60, "1h15m"),
+            (3 * 86400 + 22 * 3600 + 7 * 60, "3d22h07m"),
+        ]
+        for seconds, expected_uptime in cases:
+            monkeypatch.setattr("time.time", lambda s=seconds: float(s))
+            payload = ds_mod.get_deploy_status_payload()
+            assert payload["uptime"] == expected_uptime
 
 
 class TestSystemNavHelpers:

@@ -1,15 +1,27 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import "../../../../src/ui/frontend/src/App.css"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import PerformanceMonitor from "../../../../src/ui/frontend/src/pages/AdminPerformanceMonitor"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
+
+/** AST-672: vitest CSS import does not apply rules in jsdom — inject product toolbar rule for placement AC. */
+function ensureDispatchLogToolbarCss() {
+  if (document.querySelector('style[data-test="dispatch-log-toolbar-ast672"]')) return
+  const style = document.createElement("style")
+  style.setAttribute("data-test", "dispatch-log-toolbar-ast672")
+  style.textContent = `.dispatch-log-toolbar { display: flex; justify-content: flex-start; margin-bottom: 6px; }`
+  document.head.appendChild(style)
+}
 
 const ledgerRow = {
   batch_id: "batch-1",
@@ -28,6 +40,24 @@ const ledgerRow = {
 const candidateFixture = [
   { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
 ]
+
+const adminCandidates = [
+  { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Ada" } },
+  { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Betty" } },
+]
+
+/** AST-634: urlPresentDisablesSync needs candidate_id on mount or RTL hangs on nav sync. */
+function withCandidateQuery(path: string): string {
+  if (path.includes("candidate_id=")) return path
+  return `${path}${path.includes("?") ? "&" : "?"}candidate_id=c1`
+}
+
+function renderPerformanceMonitor(path = "/admin/performance", opts?: Parameters<typeof renderWithProviders>[1]) {
+  return renderWithProviders(<PerformanceMonitor />, {
+    ...opts,
+    router: { initialEntries: [withCandidateQuery(path)], ...opts?.router },
+  })
+}
 
 function chainHopRowsForToday() {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
@@ -50,6 +80,10 @@ function chainHopRowsForToday() {
 }
 
 describe("AdminPerformanceMonitor", () => {
+  beforeAll(() => {
+    ensureDispatchLogToolbarCss()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
@@ -85,15 +119,17 @@ describe("AdminPerformanceMonitor", () => {
 
   it("loads ledger rows, filters, expands logs, and opens batch modal", async () => {
     mockApi()
-    renderWithProviders(<PerformanceMonitor />, {
-      router: { initialEntries: ["/admin/performance?task_key=task_a&status=COMPLETED"] },
-    })
+    renderPerformanceMonitor("/admin/performance?task_key=task_a&status=COMPLETED")
 
     await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
     const table = screen.getByRole("table")
     await userEvent.click(within(table).getByText("task_a"))
     await waitFor(() => expect(screen.getByText("failed")).toBeInTheDocument())
-    await userEvent.click(screen.getByTitle("Copy logs to clipboard"))
+    const copyBtn = screen.getByTitle("Copy logs to clipboard")
+    const toolbar = copyBtn.closest(".dispatch-log-toolbar")
+    expect(toolbar).not.toBeNull()
+    expect(getComputedStyle(toolbar!).justifyContent).toMatch(/flex-start|start/)
+    await userEvent.click(copyBtn)
     expect(navigator.clipboard.writeText).toHaveBeenCalled()
     await userEvent.click(screen.getByTitle("View agent data for this batch"))
     await waitFor(() => expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument())
@@ -117,7 +153,7 @@ describe("AdminPerformanceMonitor", () => {
       if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
       throw new Error(`unexpected ${url}`)
     })
-    renderWithProviders(<PerformanceMonitor />)
+    renderPerformanceMonitor()
     await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
     await waitFor(() => expect(ledgerUrl).toContain("date_from="))
   }, 15000)
@@ -160,7 +196,7 @@ describe("AdminPerformanceMonitor", () => {
         } as Response
       }
     })
-    renderWithProviders(<PerformanceMonitor />)
+    renderPerformanceMonitor()
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
     const table = screen.getByRole("table")
     expect(within(table).getByText("RUNNING")).toBeInTheDocument()
@@ -173,7 +209,7 @@ describe("AdminPerformanceMonitor", () => {
       if (url.startsWith("/api/admin/dispatch_ledger")) return { json: async () => [ledgerRow] } as Response
     })
 
-    renderWithProviders(<PerformanceMonitor />)
+    renderPerformanceMonitor()
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
     const table = screen.getByRole("table")
     await userEvent.click(within(table).getByText("task_a"))
@@ -195,9 +231,7 @@ describe("AdminPerformanceMonitor", () => {
       }
     })
 
-    renderWithProviders(<PerformanceMonitor />, {
-      router: { initialEntries: ["/admin/performance?date_from=2026-05-19"] },
-    })
+    renderPerformanceMonitor("/admin/performance?date_from=2026-05-19")
     await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
     const from = screen.getByLabelText("From") as HTMLInputElement
     const before = calls.length
@@ -241,7 +275,7 @@ describe("AdminPerformanceMonitor", () => {
 
     it("lists separate per-hop rows with correct task keys", async () => {
       mockChainList(chainHopRowsForToday())
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       expect(within(table).getByText("anticipate_scan")).toBeInTheDocument()
@@ -252,7 +286,7 @@ describe("AdminPerformanceMonitor", () => {
 
     it("expands hop-scoped logs per batch_id", async () => {
       mockChainList(chainHopRowsForToday())
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       await userEvent.click(within(table).getByText("anticipate_scan"))
@@ -267,7 +301,7 @@ describe("AdminPerformanceMonitor", () => {
 
     it("opens hop-scoped agent_data per batch_id", async () => {
       mockChainList(chainHopRowsForToday())
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       await userEvent.click(within(table).getByText("anticipate_scan"))
@@ -293,9 +327,7 @@ describe("AdminPerformanceMonitor", () => {
         }
         if (url === "/api/candidates") return { json: async () => candidateFixture } as Response
       })
-      renderWithProviders(<PerformanceMonitor />, {
-        router: { initialEntries: ["/admin/performance?task_key=anticipate_scan"] },
-      })
+      renderPerformanceMonitor("/admin/performance?task_key=anticipate_scan")
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       await waitFor(() => expect(calls.some(u => u.includes("task_key=anticipate_scan"))).toBe(true))
       const table = screen.getByRole("table")
@@ -318,7 +350,7 @@ describe("AdminPerformanceMonitor", () => {
         },
       ]
       mockChainList(rows)
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       expect(within(table).getByText("adhoc-evaluate_jd")).toBeInTheDocument()
@@ -344,11 +376,77 @@ describe("AdminPerformanceMonitor", () => {
         },
       ]
       mockChainList(rows)
-      renderWithProviders(<PerformanceMonitor />)
+      renderPerformanceMonitor()
       await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
       const table = screen.getByRole("table")
       const badge = within(table).getByText("FAILED")
       expect(badge).toHaveClass("dispatch-status-fail")
     }, 15000)
+  })
+
+  describe("AST-634 admin candidate filter", () => {
+    it("lists global candidates even when ledger rows omit them", async () => {
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => adminCandidates } as Response
+        }
+      })
+      renderPerformanceMonitor()
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.options.length).toBeGreaterThan(1))
+      const optionLabels = Array.from(candidateSelect.options).map(o => o.textContent)
+      expect(optionLabels).toContain("Ada")
+      expect(optionLabels).toContain("Betty")
+    }, 15000)
+
+    it("passes candidate_id from URL into ledger fetch", async () => {
+      const calls: string[] = []
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?")) calls.push(url)
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => adminCandidates } as Response
+        }
+      })
+      renderPerformanceMonitor("/admin/performance?candidate_id=c2")
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      await waitFor(() => expect(calls.some(u => u.includes("candidate_id=c2"))).toBe(true))
+    }, 15000)
+
+    it("direct candidate switch c1 to c2 refetches ledger without All intermediate step", async () => {
+      const rowC1 = { ...ledgerRow, batch_id: "b-c1", candidate_id: "c1", task_key: "task_c1" }
+      const rowC2 = { ...ledgerRow, batch_id: "b-c2", candidate_id: "c2", task_key: "task_c2" }
+      const calls: string[] = []
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?")) {
+          calls.push(url)
+          if (url.includes("candidate_id=c2")) return { json: async () => [rowC2] } as Response
+          if (url.includes("candidate_id=c1")) return { json: async () => [rowC1] } as Response
+          return { json: async () => [rowC1, rowC2] } as Response
+        }
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [rowC1] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => adminCandidates } as Response
+        }
+      })
+      localStorage.setItem("astral_selected_candidate", "c1")
+      renderPerformanceMonitor("/admin/performance?candidate_id=c1")
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("task_c1")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.options.length).toBeGreaterThan(2))
+      await userEvent.selectOptions(candidateSelect, "c2")
+      await waitFor(() => expect(calls.some(u => u.includes("candidate_id=c2"))).toBe(true))
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("task_c2")).toBeInTheDocument())
+      expect(within(screen.getByRole("table")).queryByText("task_c1")).not.toBeInTheDocument()
+      expect(candidateSelect.value).toBe("c2")
+    }, 20000)
   })
 })

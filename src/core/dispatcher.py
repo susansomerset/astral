@@ -25,21 +25,34 @@ from src.data.database import (
 
 from src.data import database
 from src.core.agent import _current_agent_task_run_next, compute_batch_cost
+from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
+    dispatch_claim_uses_score_floor,
+    dispatch_claim_states,
     dispatch_task_key_is_scored,
-    resume_artifact_compound_state,
+    BUILD_ARTIFACTS_BASE_STATE,
+    build_artifacts_claim_states,
+    legacy_build_artifacts_hop,
     resume_artifact_hop_task_keys,
-    trigger_state_used_by_scored_dispatch_task,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
 
 logger = get_logger(__name__)
 
-_INFLOW_DISCOVERY_KEY = INFLOW_CONFIG["discovery"]["task_key"]
+
+def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
+    """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
+    if entity_type == "job":
+        return str(row.get("astral_job_id") or row.get("company") or "?")
+    if entity_type == "company":
+        return str(row.get("short_name") or row.get("company") or "?")
+    if entity_type == "candidate":
+        return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
+    return str(row.get("id") or "?")
 
 
 def _task_key_scored(task_key: str) -> bool:
@@ -47,7 +60,7 @@ def _task_key_scored(task_key: str) -> bool:
 
 
 def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
-    return trigger_state_used_by_scored_dispatch_task(trigger_state)
+    return dispatch_claim_uses_score_floor(trigger_state)
 
 
 async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
@@ -125,9 +138,9 @@ _SUMMARY_ZERO: Dict[str, int] = {
 _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "qualify_job_listings",
     "evaluate_jd",
-    "consult_do",
-    "consult_get",
-    "consult_like",
+    "grade_do",
+    "grade_get",
+    "grade_like",
 })
 
 
@@ -146,8 +159,21 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     batch_call_mode=1 consult (job rows): qualifying + jd + scored DO/GET/LIKE consult may claim the full backlog (≤ eligible count),
     sized into chunk_width ``batch_size`` API calls — chunk 0 cache-warm sequential, remainder parallel (AST-502).
     Other batch_call_mode=1 runners: single consult pass for all claimed rows.
-    batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, scrape_jd, …)."""
+    batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, fetch_jd, …)."""
     if not check_internet_reachable():
+        if debug:
+            logger.set_debug_flag(True)
+            logger.debug_index(
+                func="dispatcher._run_unified",
+                index=1,
+                total=1,
+                identifier=(task.get("task_key") or "?").strip() or "?",
+                outcome="skipped — network unreachable",
+            )
+            logger.debug_detail(
+                f"entity_type={task.get('entity_type', '')!r} "
+                f"trigger_state={task.get('trigger_state', '')!r}"
+            )
         _sched_log.warning(
             "[%s/%s] dispatch skipped: network unreachable",
             task.get("task_key", "?"),
@@ -169,43 +195,38 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     dispatch_task_key = (task.get("task_key") or "").strip()
     s               = dict(_SUMMARY_ZERO)
     if entity_type == "job" and dispatch_task_key in resume_artifact_hop_task_keys():
-        expected = resume_artifact_compound_state(dispatch_task_key)
-        if (input_state or "").strip() != expected:
+        ts = (input_state or "").strip()
+        legacy_ok = legacy_build_artifacts_hop(ts) == dispatch_task_key
+        flat_ok = ts == BUILD_ARTIFACTS_BASE_STATE
+        if not flat_ok and not legacy_ok:
+            if debug:
+                logger.set_debug_flag(True)
+                logger.debug_index(
+                    func="dispatcher._run_unified",
+                    index=1,
+                    total=1,
+                    identifier=dispatch_task_key,
+                    outcome="skipped — trigger_state mismatch",
+                )
+                logger.debug_detail(f"expected={BUILD_ARTIFACTS_BASE_STATE!r} or legacy hop got {ts!r}")
             _sched_log.warning(
-                "dispatch row mismatch: task_key=%s expects trigger_state=%s got %s — skipping claim",
+                "dispatch row mismatch: task_key=%s expects trigger_state=%s or legacy hop got %s — skipping claim",
                 dispatch_task_key,
-                expected,
-                input_state,
+                BUILD_ARTIFACTS_BASE_STATE,
+                ts,
             )
             return dict(_SUMMARY_ZERO)
-    if debug and dispatch_task_key == _INFLOW_DISCOVERY_KEY:
+    if debug:
         logger.set_debug_flag(True)
 
-    if entity_type == "board_search":
-        from src.data.database import claim_board_search_batch, clear_board_search_batch
-        from src.utils.config import BOARDS_CONFIG
-
-        gaze_cfg = BOARDS_CONFIG.get("gaze_board") or {}
-        batch_limit = limit if limit is not None else int(gaze_cfg.get("batch_size", 5))
-        freq = float(task.get("freq_hrs") or 0)
-        cfg_iv = gaze_cfg.get("scan_interval_hours")
-        default_scan_iv = float(cfg_iv) if cfg_iv is not None else 24.0
-        eff_scan = freq if freq > 0 else default_scan_iv
-        sort_bs = (task.get("sort_by") or "").strip() or None
-        entities = claim_board_search_batch(
-            bid,
-            batch_limit,
-            candidate_id=candidate_id,
-            scan_interval_hours=eff_scan,
-            sort_by=sort_bs,
-        )
-    elif entity_type == "candidate":
+    claim_cap = None
+    claim_states: Optional[List[str]] = None
+    if entity_type == "candidate":
         entities = [ctx] if ctx else []
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
         floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
-        claim_cap = None
         if batch_call_mode and task_key_run in _CHUNK_EXHAUST_CONSULT_JOB_KEYS:
             if task.get("batch_size") is None:
                 raise ValueError(
@@ -213,6 +234,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     f"(task_key={task_key_run!r} id={task.get('id')})"
                 )
             claim_cap = database.count_eligible_for_dispatch_task(task)
+        claim_states = dispatch_claim_states(input_state, "job")
+        if (input_state or "").strip() == BUILD_ARTIFACTS_BASE_STATE:
+            claim_states = list(build_artifacts_claim_states())
         bid, entities = get_new_job_batch(
             input_state,
             limit=limit,
@@ -221,6 +245,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             candidate_id=candidate_id,
             batch_id=bid,
             claim_cap=claim_cap,
+            states=claim_states,
         )
     else:
         freq = float(task.get("freq_hrs") or 0)
@@ -229,6 +254,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         sort_override = (task.get("sort_by") or "").strip() or None
         resolve_key = INFLOW_CONFIG["resolve"]["task_key"]
         floor = float(task["score_floor"]) if task.get("score_floor") is not None else None
+        claim_states = dispatch_claim_states(input_state, "company")
         bid, entities = get_new_company_batch(
             input_state,
             limit=limit,
@@ -239,10 +265,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             scan_interval_hours=scan_override,
             require_empty_website=(task.get("task_key") == resolve_key),
             score_floor=floor,
+            states=claim_states,
         )
 
     if not entities:
-        if debug and dispatch_task_key == _INFLOW_DISCOVERY_KEY:
+        if debug:
             logger.debug_index(
                 func="dispatcher._run_unified",
                 index=1,
@@ -250,31 +277,38 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 identifier=f"{entity_type}/{input_state}",
                 outcome="no entities claimed",
             )
-        elif debug:
-            logger.info("[DEBUG] _run_unified[%s/%s]: no entities claimed", entity_type, input_state)
+            logger.debug_detail(
+                f"task_key={dispatch_task_key} batch_id={bid} batch_call_mode={batch_call_mode} "
+                f"dispatch batch_size={limit!r}"
+            )
         return s
 
-    if debug and dispatch_task_key == _INFLOW_DISCOVERY_KEY:
+    entity_total = len(entities)
+    if debug:
         logger.debug_index(
             func="dispatcher._run_unified",
             index=1,
             total=1,
             identifier=f"{entity_type}/{input_state}",
-            outcome=f"claimed {len(entities)} entity/entities",
+            outcome=f"claimed {entity_total} entity/entities",
         )
         logger.debug_detail(
-            f"batch_id={bid} batch_call_mode={batch_call_mode} dispatch batch_size={limit!r}"
+            f"task_key={dispatch_task_key} batch_id={bid} batch_call_mode={batch_call_mode} "
+            f"dispatch batch_size={limit!r} claim_cap={claim_cap!r}"
+            + (f" claim_states={claim_states!r}" if claim_states is not None else "")
         )
-    elif debug:
-        logger.info(
-            "[DEBUG] _run_unified[%s/%s]: claimed %d entities (batch=%s) batch_call_mode=%s dispatch batch_size=%r",
-            entity_type,
-            input_state,
-            len(entities),
-            bid,
-            batch_call_mode,
-            limit,
-        )
+        for ei, entity in enumerate(entities, start=1):
+            logger.debug_index(
+                func="dispatcher._run_unified",
+                index=ei,
+                total=entity_total,
+                identifier=_dispatch_entity_identifier(entity_type, entity),
+                outcome="claimed",
+            )
+            logger.debug_detail(
+                f"entity_type={entity_type} trigger_state={input_state} "
+                f"state={entity.get('state')!r}"
+            )
     try:
         if batch_call_mode:
             job_tk = task.get("task_key", "") if entity_type == "job" else ""
@@ -288,6 +322,20 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             if use_chunk_split:
                 chunk_sz = int(task["batch_size"])
                 chunks = [entities[i : i + chunk_sz] for i in range(0, len(entities), chunk_sz)]
+                if debug:
+                    chunk_total = len(chunks)
+                    for ci, chunk_rows in enumerate(chunks):
+                        logger.debug_index(
+                            func="dispatcher._run_unified",
+                            index=ci + 1,
+                            total=chunk_total,
+                            identifier=f"chunk task_key={dispatch_task_key}",
+                            outcome=f"consult chunk size={len(chunk_rows)}",
+                        )
+                        logger.debug_detail(
+                            f"batch_id={bid} batch_chunk_index={ci} chunk_width={chunk_sz} "
+                            f"entities_in_chunk={len(chunk_rows)}"
+                        )
 
                 async def _consult_chunk(ci: int, chunk_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
                     return await consult.run_consult_task(
@@ -328,12 +376,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             for r in results:
                 for k in s:
                     s[k] += r.get(k, 0)
+        if debug and entity_total > 0:
+            logger.debug_detail(f"batch end summary={s}")
     finally:
         if entity_type == "job":
             clear_job_batch(bid)
-        elif entity_type == "board_search":
-            from src.data.database import clear_board_search_batch
-            clear_board_search_batch(bid)
         elif entity_type == "candidate":
             pass
         else:
@@ -354,6 +401,12 @@ def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int, debug
     if len(recent) < _CIRCUIT_BREAKER_THRESHOLD:
         return
     if all(r.get("total_passed", 0) == 0 and r.get("total_failed", 0) == 0 for r in recent):
+        if debug:
+            logger.set_debug_flag(True)
+            logger.debug_detail(
+                f"circuit breaker: task_key={task_key} candidate_id={candidate_id} "
+                f"task_id={task_id} consecutive_zero_progress={_CIRCUIT_BREAKER_THRESHOLD}"
+            )
         logger.warning(
             "CIRCUIT BREAKER: %s has had %d consecutive runs with 0 passed / 0 failed — auto-disabling task %s",
             task_key, _CIRCUIT_BREAKER_THRESHOLD, task_id,
@@ -365,27 +418,22 @@ async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Run a single batch through the unified runner. Returns summary counts."""
     bid = log_batch_id.get()
     task_key = (task.get("task_key") or "").strip()
-    if debug and task_key == _INFLOW_DISCOVERY_KEY:
+    if debug:
+        logger.set_debug_flag(True)
         logger.debug_index(
             func="dispatcher._run_task",
             index=1,
             total=1,
-            identifier=task_key,
-            outcome="running",
+            identifier=task_key or "?",
+            outcome="running batch",
         )
-        logger.debug_detail(f"batch_size={task.get('batch_size')} batch_id={bid}")
-    elif debug:
-        logger.info(
-            "[DEBUG] _run_task: running '%s' batch_size=%s batch_id=%s...",
-            task.get("task_key"),
-            task.get("batch_size"),
-            bid,
+        logger.debug_detail(
+            f"batch_size={task.get('batch_size')} batch_id={bid} "
+            f"entity_type={task.get('entity_type')!r} trigger_state={task.get('trigger_state')!r}"
         )
     summary = await _run_unified(task, ctx, debug)
-    if debug and task_key == _INFLOW_DISCOVERY_KEY:
+    if debug:
         logger.debug_detail(f"runner returned summary={summary}")
-    elif debug:
-        logger.info("[DEBUG] _run_task: runner returned summary=%s", summary)
     return summary
 
 
@@ -414,17 +462,46 @@ async def _dispatch_one(task: Dict) -> None:
     candidate_id = task["candidate_id"]
     timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
     is_click = not bool(task.get("auto_mode"))
+    ui_initiated = bool(task.get("_ui_initiated"))
+    debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
+    if debug:
+        logger.set_debug_flag(True)
 
     ctx = database.get_candidate(candidate_id)
     if not ctx or not ctx.get("candidate_api_key"):
+        if debug:
+            logger.debug_index(
+                func="dispatcher._dispatch_one",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="skipped — no candidate or API key",
+            )
+            logger.debug_detail(f"candidate_id={candidate_id!r}")
         _sched_log.error("Skipping %s/%s — no candidate or API key", task_key, candidate_id)
         return
     ctx = dict(ctx)
     if task.get("skip_cache"):
         ctx["skip_cache"] = True
+    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+        ctx["inflow_discovery_freq_hrs"] = float(task.get("freq_hrs") or 0)
 
     entity_batch_id = f"{task_key}-{uuid.uuid4()}"
     has_run_next_chain = bool(_current_agent_task_run_next(task_key))
+    if debug:
+        logger.debug_index(
+            func="dispatcher._dispatch_one",
+            index=1,
+            total=1,
+            identifier=task_key,
+            outcome="task start",
+        )
+        logger.debug_detail(
+            f"candidate_id={candidate_id} available_count={task.get('available_count', 0)} "
+            f"entity_batch_id={entity_batch_id} mode={'AUTO' if not is_click else 'CLICK'} "
+            f"run_next_chain={has_run_next_chain} entity_type={task.get('entity_type')!r} "
+            f"trigger_state={task.get('trigger_state')!r}"
+        )
     ctx["entity_batch_id"] = entity_batch_id
     dispatch_ledger_id: Optional[str] = None
     task_entity_type = task.get("entity_type")
@@ -496,7 +573,9 @@ async def _dispatch_one(task: Dict) -> None:
         flush_log_buffer()
         # Alert while log_batch_id still set — monitor logs appear in the batch log view
         if dispatch_ledger_id and not is_click and accumulated.get("total_errors", 0) > 0:
-            monitor.auto_run_error(task_key, dispatch_ledger_id, accumulated, final_status)
+            monitor.auto_run_error(
+                task_key, dispatch_ledger_id, accumulated, final_status, candidate_id
+            )
         log_batch_id.set(None)
         try:
             _db_update_dispatch_task(task_id, last_run_at=_now_iso())
@@ -517,6 +596,8 @@ async def _run_dispatch_loop(
 ) -> None:
     """Inner loop: run batches until drained or max_runs hit. Mutates accumulated in place."""
     debug = bool(task.get("debug"))
+    if debug:
+        logger.set_debug_flag(True)
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     run_count = 0
@@ -527,6 +608,30 @@ async def _run_dispatch_loop(
         # min_count gate only applies to AUTO — CLICK runs regardless of queue depth
         effective_min = (task.get("min_count") or 1) if is_auto else 1
         if available < effective_min:
+            if debug:
+                if run_count == 0:
+                    logger.debug_index(
+                        func="dispatcher._run_dispatch_loop",
+                        index=1,
+                        total=1,
+                        identifier=task_key,
+                        outcome="skipped — below min_count",
+                    )
+                    logger.debug_detail(
+                        f"available={available} effective_min={effective_min} is_auto={is_auto}"
+                    )
+                    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+                        _eligible, reason = database.describe_candidate_inflow_discovery_eligibility(
+                            task.get("candidate_id") or "",
+                            float(task.get("freq_hrs") or 0),
+                        )
+                        if reason:
+                            logger.debug_detail(reason)
+                else:
+                    logger.debug_detail(
+                        f"loop stop: remaining below min_count available={available} "
+                        f"effective_min={effective_min} run_count={run_count}"
+                    )
             if run_count == 0:
                 _sched_log.info("Skipping %s: %d available (min_count=%s)",
                                 task_key, available, effective_min)
@@ -538,20 +643,47 @@ async def _run_dispatch_loop(
         with _registry_lock:
             draining = _task_registry.get(task["id"], {}).get("drain", False)
         if draining:
+            if debug:
+                logger.debug_detail(f"loop stop: drain flag set run_count={run_count}")
             _sched_log.info("[%s] drain flag set — stopping after %d run(s)", task_key, run_count)
             break
+        loop_iter = run_count + 1
+        if debug:
+            logger.debug_index(
+                func="dispatcher._run_dispatch_loop",
+                index=loop_iter,
+                total=loop_iter,
+                identifier=task_key,
+                outcome=f"loop iteration {loop_iter} starting",
+            )
+            logger.debug_detail(
+                f"available={available} effective_min={effective_min} max_runs={max_runs!r} "
+                f"draining={draining} entity_batch_id={entity_batch_id}"
+            )
         summary = await _run_task(task, ctx, debug)
         for k in accumulated:
             accumulated[k] += summary.get(k, 0)
         run_count += 1
+        if debug:
+            logger.debug_detail(
+                f"iteration {loop_iter} summary processed={summary.get('total_processed', 0)} "
+                f"passed={summary.get('total_passed', 0)} failed={summary.get('total_failed', 0)} "
+                f"errors={summary.get('total_errors', 0)} accumulated={accumulated}"
+            )
         # Update ledger mid-run so the execution history reflects live progress
         if dispatch_ledger_id:
             database.update_dispatch_ledger(dispatch_ledger_id, **accumulated)
         if summary.get("total_processed", 0) == 0:
+            if debug:
+                logger.debug_detail(f"loop stop: zero processed this iteration run_count={run_count}")
             _sched_log.info("Loop mode %s: 0 processed — stopping", task_key)
             break
         if max_runs != 0:
             if max_runs is None or run_count >= max_runs:
+                if debug:
+                    logger.debug_detail(
+                        f"loop stop: max_runs reached max_runs={max_runs!r} run_count={run_count}"
+                    )
                 break
 
 
@@ -570,7 +702,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         _sched_log.info("[%s] thread exited and cleared from registry", task.get("task_key", task_id))
 
 
-def run_task(task_id: int) -> bool:
+def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     """Spawn a daemon thread for task_id if not already running. Returns True if started."""
     with _registry_lock:
         if task_id in _task_registry:
@@ -586,6 +718,7 @@ def run_task(task_id: int) -> bool:
     ts = task.get("trigger_state")
     cid = task.get("candidate_id", "")
     task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
+    task["_ui_initiated"] = ui_initiated
 
     with _registry_lock:
         _task_registry[task_id] = {

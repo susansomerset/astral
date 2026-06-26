@@ -1,3 +1,70 @@
+<!-- linear-archive: AST-503 archived 2026-06-15 -->
+
+## Linear archive (AST-503)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-503/batch-do-get-like-consult-orchestration-high-volume-encoded-batch  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-500 — High-volume encoded batch consult: migrate all stages, cache-first exhaustion runs  
+**Blocked by / blocks / related:** parent: AST-500
+
+### Description
+
+## What this implements
+
+Migrate **consult_do**, **consult_get**, and **consult_like** from per-job **render_verdict** / warm-gather paths to the same **encoded batch consult** pattern as qualify and evaluate: assemble **N** jobs per assessment, decode multi-line responses, apply per-job outcomes. Enable **batch_call_mode** and route through `_run_batch_consult` (or equivalent) so these stages participate in high-volume exhaustion (AST-502).
+
+## Acceptance criteria
+
+* With **N > 1** eligible jobs at a DO/GET/LIKE step, one assessment per chunk with **N** encoded lines in the envelope; per-job terminal/retry states match existing rules.
+* Stages use **dispatch_task** batch_size / batch_call_mode (no hard-coded 500 default in code).
+* Works with multi-chunk parallel exhaustion from AST-502 for large backlogs.
+
+## Boundaries
+
+* Encoder/rubric semantics unchanged (AST-351 wire format).
+* Does not change qualify/evaluate (AST-501) or dispatcher chunking logic itself (AST-502).
+
+## Git branch (authoritative)
+
+`sub/AST-500/AST-503-…` under parent `ftr/AST-500-…`.
+
+### Comments
+
+#### radia — 2026-05-27T03:47:49.184Z
+**Diff:** `origin/dev...origin/sub/AST-500/AST-503-batch-do-get-like-consult-orchestration` @ `47c0db92`.
+
+- **Plan / code — OK:** `_consult_scored_dispatch_batch_encoded` mirrors evaluate-style prep filtering (missing company → `error_state` + skip, empty `_prep_live_content` with `NEED_WEBSITE_CONTENT` short-circuit retained, else `error_state`); `CONSULT {DO|GET|LIKE} ROWS` assembly + `_run_batch_consult` with `grade_*` agent task; `_apply_render_verdict_decoded_job` shares decode→grade/save/transition with refactored `render_verdict`; `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` includes `consult_*`; seed `batch_call_mode: 1` for those rows matches acceptance.
+- **Discuss (envelope parity):** AST-501 strict envelope gate is keyed to `qualify_job_listings` / `evaluate_jd` only; batch DO/GET/LIKE call `do_task` as `grade_*` — prompts were fixed in config, but coercion/validation paths may still differ from qualify/evaluate; close the gap or document deliberate deferral if Susan wants identical hard rejections.
+- **Advisory (metrics):** `run_consult_task` still maps `errors = max(0, total - passed - failed)`; merged `total` with pre-`do_task` skips can inflate `total_errors` vs actually graded rows — same pattern as `evaluate_jd_batch` not-ready handling; leave unless product wants skipped excluded from denominator.
+
+**Radia doc cherry-pick:** `ce207d079e8ff0fc39ab6ef34122f10239fa5023` — `git cherry-pick ce207d079e8ff0fc39ab6ef34122f10239fa5023`. **`## Review`** on `docs/features/consult/ast-503-batch-do-get-like-consult-orchestration.md`.
+
+#### chuckles — 2026-05-27T03:34:49.197Z
+QA test manifest (**docs/ASTRAL_TEST_BIBLE.md** §7.13zf + narrow block below):
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object tests/component/core/test_consult.py::TestRunConsultTask::test_ast503_routes_two_passed_jd_jobs_to_consult_do_batch`
+
+2. Full encoded-batch slice with siblings (optional on your tip after `ftr` merge): use the **AST-501 + AST-502** command block in §7.13zf, then add the three **AST-503** nodes above.
+
+Publish: `origin/sub/AST-500/AST-503-batch-do-get-like-consult-orchestration` @ `47c0db92`. Definitive bible on `origin/ftr/AST-500-high-volume-encoded-batch-consult-migrate-all-stages-cache-first-exhaustion-runs` @ `0ddd97c9` (sub/ftr **ASTRAL_TEST_BIBLE.md** blob match verified).
+
+— Betty
+
+#### hedy — 2026-05-27T03:03:54.169Z
+**Published plan:** [docs/features/consult/ast-503-batch-do-get-like-consult-orchestration.md](https://github.com/susansomerset/astral/blob/sub/AST-500/AST-503-batch-do-get-like-consult-orchestration/docs/features/consult/ast-503-batch-do-get-like-consult-orchestration.md)
+
+**Self-assessment (with justifications)**
+
+- **Scope — scope-Single-Component:** Consult batch wrappers + dispatcher allow-list coupling + dispatch seed toggles + tests restricted to consult_do/consult_get/consult_like—not qualify/evaluate rewrites nor AST-502 core splitter.
+- **Conf — conf-Medium:** Depends on AST-502’s multi-chunk contract and batch indices; merge order resolves most ambiguity if Chuckles stacks branches as documented.
+- **Risk — risk-HIGH:** Wrong per-job grading or hydration breaks downstream candidate matching and JOB_STATES for closed-loop consult sales behavior.
+
+---
+
 # AST-503 — Batch DO / GET / LIKE consult orchestration
 
 **Linear:** [AST-503](https://linear.app/astralcareermatch/issue/AST-503/batch-do-get-like-consult-orchestration-high-volume-encoded-batch)  

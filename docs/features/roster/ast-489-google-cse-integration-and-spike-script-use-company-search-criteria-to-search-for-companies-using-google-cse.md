@@ -1,3 +1,117 @@
+<!-- linear-archive: AST-489 archived 2026-06-15 -->
+
+## Linear archive (AST-489)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-489/google-cse-integration-and-spike-script-use-company-search-criteria-to  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-488 — Use "Company Search Criteria" to search for companies using Google CSE  
+**Blocked by / blocks / related:** parent: AST-488
+
+### Description
+
+## What this implements
+
+Deliver the Google Custom Search spike for company discovery: a reusable external-layer integration that accepts a search query string, calls Google CSE with deployment credentials, and returns structured results (title, URL, snippet per hit). Include a runnable spike script with hardcoded exemplar searches and domain restrictions so Susan can review result quality on the console.
+
+Exemplar keyword queries (hardcoded in script):
+
+* `healthtech SaaS platform "Series B" OR "Series C" remote`
+* `healthcare software platform integration company 2024 2025`
+* `clinical data platform SaaS company remote-first`
+
+Domain restrictions to exercise across searches: LinkedIn (company pages, not jobs), Crunchbase, Builtin, Wellfound, Indeed.
+
+Default result count: 10 per query; integration accepts a parameter where 0 means unlimited.
+
+## Acceptance criteria
+
+1. With valid `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ID` set in the environment, the spike script runs non-interactively and prints at least one page of search results for each exemplar query Susan approves for this spike.
+2. The Google Custom Search integration is callable independently of roster code (no import-time coupling to dispatcher or company batch logic).
+3. When credentials are missing or the API returns an error, the integration or script surfaces an explicit failure message; it does not return an empty success.
+4. Each printed result includes enough fields for a human to judge whether a company name could be inferred later (title, URL, snippet).
+5. Exemplar searches collectively exercise at least one LinkedIn-domain restriction and at least one additional job-board or careers-aggregator domain Susan specifies.
+
+## Boundaries
+
+* No dispatcher tasks, batch claiming, company/candidate DB writes, or company state transitions.
+* No Estelle/AI search-term generation.
+* No parsing CSE hits into company names or roster ingest.
+* No UI.
+* No change required to existing roster locate/parse/prefilter behavior.
+* Follow-on epic (separate ticket) will cover criteria generation, roster wiring, and AI vetting.
+
+## Notes for planning
+
+* Secrets (`GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID`) are already documented in `env.example`; read from environment only, crash if missing per ASTRAL_CODE_RULES §2.1.
+* External layer owns HTTP to Google; no data-layer logging.
+* Spike script is non-production (console output only).
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-488-use-company-search-criteria-to-search-for-companies-using-google-cse`, child `sub/AST-488/<child-segment>`. Created at **dispatch-linear**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-05-26T02:53:11.005Z
+**Diff:** `origin/dev` → `origin/sub/AST-488/AST-489-google-cse-integration-and-spike-script` — reviewed integration tip **`11b855e279490fc26831fa2dfd0b631119b10bcc`** (three-dot).
+
+**Doc appendix (doc-only Radia SHA):** `3a3d1d3e7d75e5b5952790d0843d8313347290ef` — [feature sheet + § Review](https://github.com/susansomerset/astral/blob/3a3d1d3e7d75e5b5952790d0843d8313347290ef/docs/features/roster/ast-489-google-cse-integration-and-spike-script-use-company-search-criteria-to-search-for-companies-using-google-cse.md)
+
+Findings (**ASTRAL_CODE_RULES** / **`AST-382`** rubric where applicable):
+
+- **Solid:** `src/external/google_cse.py` stays external-only (`os`, `typing`, `requests`); §2.1 lazy env read with **`RuntimeError`** messaging both **`GOOGLE_CSE_*`** vars; **`ValueError`** on empty query; site-filter OR clause; **`num` ≤ 10; pagination semantics for **`max_results == 0`** with **`seen_starts`** guard; **`RuntimeError`** on non-2xx, bad JSON / root type, Google **`error`** envelope, malformed **`items`**; organic zero returns **`[]`** only when consistent with parsed body. Spike respects ticket boundaries (**no** dispatcher/DB/UI). Component tests **`tests/component/external/test_google_cse.py`** cover the brittle branches; **`ASTRAL_TEST_BIBLE.md`** maps the lane. Broad **`except`** in **`scripts/spikes/ast489_google_cse_company_search_spike.py`** is **not** a D2 swallow—stderr **`ERROR:`** + **`exit(1)`** with **`noqa`** rationale (acceptable **`scripts/`** tradeoff vs rubric wording).
+
+- **advisory:** Feature doc § **Self-Assessment justifications** still say “touches only” **`google_cse.py`** + spike; shipment also adds **`tests/.../test_google_cse.py`** + bible row—harmless mismatch, tighten next doc edit.
+
+- **advisory:** **Review stub** table still claims **`tests/`** untouched—that line is stale after **`test(AST-489)`**.
+
+- **advisory:** Non-**`str`** entries in **`site_filters`** are skipped silently (**`except`-style robustness**, not swallowed API errors)—fine for callers passing clean tuples; optional docstring callout if broader reuse.
+
+**fix-now / discuss:** none.
+
+Cherry-pick **`3a3d1d3`** onto integration line only if you rely on **`docs/features/...`** being present before PR Ready; **`resolve-astral`** per usual for product deltas.
+
+#### ada — 2026-05-26T02:51:16.476Z
+[check-linear]
+
+- **Betty’s Tests Ready manifest (product note):** Acknowledged — `dev-ada` already has `origin/sub/AST-488/AST-489-google-cse-integration-and-spike-script` merged; tip includes pagination fix **`5366ba1c`** and component tests **`11b855e2`** under merge **`7f962229`** (`/Users/susan/chuckles/astral-ada`). Ran `git fetch origin && git merge origin/sub/AST-488/AST-489-google-cse-integration-and-spike-script` → **already up to date** (branch was already an ancestor).
+- **Thread scan:** Earlier **Plan pushed** comment is mine — no reply needed. No other open questions @ada on this ticket in scope.
+- **Session scope:** Susan limited this pass to **AST-489** only (skipped other Team Astral assignee/@search hits).
+
+No further inbox actions on AST-489 for this skill pass; **`test-astral`** stays off until Susan names that stage explicitly.
+
+#### betty — 2026-05-26T02:47:21.013Z
+QA manifest (Betty — Tests Ready)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/external/test_google_cse.py` — mocks `requests`; asserts env/credentials errors, HTTP/JSON/API error paths, `site:` filter query shape, `max_results=0` multi-page fetch (after `fix(AST-489)` on `origin/sub/AST-488/AST-489-google-cse-integration-and-spike-script` @ `5366ba1c` + `test(AST-489)` @ `11b855e2`).
+2. Optional wider gate: `./scripts/testing/run_component_tests.sh` (matches `ASTRAL_TEST_BIBLE` Appendix A when you need full component + frontend coverage).
+3. **Live spike (not CI):** With `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ID` set, run `python3 scripts/spikes/ast489_google_cse_company_search_spike.py` from repo root — verifies AC1 exemplar queries / domain filters against the real API.
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` §7.13b documents `src/external/google_cse.py` → `tests/component/external/test_google_cse.py`.
+
+**Product note:** Pagination for `max_results == 0` was broken (next `start` was pre-registered in `seen_starts`, so the loop exited before a second HTTP call). Fixed in `5366ba1c` on the publish ref above — please pull before `test-astral`.
+
+— Betty
+
+#### ada — 2026-05-26T02:38:41.219Z
+**Plan pushed** (`dev-ada` commit `c7b8b51a`, mirrored on **`origin/sub/AST-488/AST-489-google-cse-integration-and-spike-script`** as `c6ab308a`).
+
+**Doc:** [`docs/features/roster/ast-489-google-cse-integration-and-spike-script-use-company-search-criteria-to-search-for-companies-using-google-cse.md`](https://github.com/susansomerset/astral/blob/sub/AST-488/AST-489-google-cse-integration-and-spike-script/docs/features/roster/ast-489-google-cse-integration-and-spike-script-use-company-search-criteria-to-search-for-companies-using-google-cse.md)
+
+**Self-Assessment**
+
+- **Scope — `Single-Component`:** Only `src/external/google_cse.py` plus `scripts/spikes/ast489_google_cse_company_search_spike.py` are in scope — no dispatcher, roster DB, Estelle, or UI surfaces.
+- **Conf — `Medium`:** Pagination and Google’s error JSON shapes are nailed down in the plan, but if the live API returns empty organic results while HTTP succeeds, Susan may need to tune CSE setup or exemplar strings rather than treating that as AC3 failure.
+- **Risk — `low`:** Failures stay inside the optional CSE pathway and spike CLI; prod batch paths unchanged.
+
+Ada
+
+---
+
 # AST-489 — Google CSE integration and spike script
 
 - **Linear (this ticket):** [AST-489](https://linear.app/astralcareermatch/issue/AST-489/google-cse-integration-and-spike-script-use-company-search-criteria-to)

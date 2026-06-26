@@ -1,3 +1,215 @@
+<!-- linear-archive: AST-513 archived 2026-06-23 -->
+
+## Linear archive (AST-513)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-513/token-gap-correction  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** susan  
+**Priority / estimate:** High / —  
+**Parent:** AST-313 — Artifact Pipeline Prompt Authoring  
+**Blocked by / blocks / related:** parent: AST-313
+
+### Description
+
+## Purpose
+
+The artifact pipeline (parent [AST-313](https://linear.app/astralcareermatch/issue/AST-313/artifact-pipeline-prompt-authoring)) needs prompts that reference job-specific context already produced by the consult path — visible job description text and persisted JD / DO / GET / LIKE analysis — but that context is not available today as `{$TOKEN}` substitutions in Manage Tasks or at `do_task` runtime. This ticket closes that gap so Susan can author artifact chain prompts against real job data for a single job per call, without hand-pasting consult output or relying on opaque `live_content` alone.
+
+## Functional scope
+
+* Register five job-scoped prompt tokens in the authoritative token registry, skipping any name that already exists: `{$VISIBLE_JD}`, `{$ANALYSIS_JD}`, `{$ANALYSIS_DO}`, `{$ANALYSIS_GET}`, `{$ANALYSIS_LIKE}`.
+* Resolve each token at prompt-substitution time for artifact pipeline tasks when exactly one job is in scope for the call (the job the artifact chain is building for).
+* `{$VISIBLE_JD}` — the job's plain-text job description (the same canonical JD text the consult coat-check uses for that job), without batch index labels or appended company website context.
+* `{$ANALYSIS_JD}`, `{$ANALYSIS_DO}`, `{$ANALYSIS_GET}`, `{$ANALYSIS_LIKE}` — the persisted consult outputs for the JD, DO, GET, and LIKE phases for that job, formatted for stateless artifact agents as human-readable text (not JSON): for each vector in the analysis, emit:
+  * `CONSIDER: <Vector Title>`
+  * `<Full Vector Rubric>` (the full editable rubric text blob from the candidate's rubric artifact — not parsed grade definitions)
+  * `ANALYSIS RESULT: <Analysis Grade> (<Confidence rating>/5 confidence)`
+* These ANALYSIS tokens are for artifact prompts only — artifact agents need full rubric context; candidate-facing flows already know their rubrics.
+* When consult data for a token's phase is absent or empty, resolve to empty string using the same warning behavior as other registered tokens that resolve empty.
+* Expose the new token names wherever prompt authors discover tokens today (Manage Tasks token picker / token list API).
+* Admin prompt preview for a selected job entity resolves these tokens the same way production artifact runs do.
+
+## Boundaries
+
+* Does **not** author or edit artifact pipeline prompt prose — that remains Susan's work under [AST-313](https://linear.app/astralcareermatch/issue/AST-313/artifact-pipeline-prompt-authoring).
+* Does **not** add tokens beyond the five named above (including no `{$ANALYSIS_UPSHOT}` unless Susan adds a follow-up ticket).
+* Does **not** change consult grading, persistence keys, job state transitions, or the artifact chain's `run_next` wiring.
+* Does **not** support multi-job / batch artifact calls — one job per artifact `do_task` invocation.
+* Must not alter behavior of existing candidate, chain, config, or output-type tokens.
+* Token names and registry entries must remain config-driven per product code rules.
+
+## Acceptance criteria
+
+1. All five token names appear in the authoritative sorted token list available to Manage Tasks / prompt tooling.
+2. Running an artifact pipeline entry task (e.g. `contemplate_job` at **BUILD_ARTIFACTS**) for a job that has completed consult phases substitutes non-empty values for `{$VISIBLE_JD}` and each `{$ANALYSIS_*}` token whose phase data exists on that job.
+3. Each `{$ANALYSIS_*}` value uses the CONSIDER / rubric blob / ANALYSIS RESULT format per vector (readable text, not JSON).
+4. The same substitutions work in Manage Tasks preview when a job entity is selected for an artifact task.
+5. A job missing a given phase's persisted data yields an empty substitution for that token with the standard empty-token warning.
+6. No duplicate registry entries are created for token names already present before this work lands.
+
+## Dependencies and blockers
+
+* [AST-313](https://linear.app/astralcareermatch/issue/AST-313/artifact-pipeline-prompt-authoring) (parent) — consumes these tokens in authored prompts; not a code blocker.
+* [AST-304](https://linear.app/astralcareermatch/issue/AST-304/add-parsable-chain-tokens-to-resolve-tokens) / **AST-455** — `resolve_tokens` and call-site context threading (merged baseline).
+* [AST-450](https://linear.app/astralcareermatch/issue/AST-450/register-artifact-pipeline-task-keys-dumb-chain-registry) — artifact pipeline task keys and **BUILD_ARTIFACTS** dispatch entry.
+* [AST-479](https://linear.app/astralcareermatch/issue/AST-479/job-states-passed-like-recommended-and-consult-like-pass-synthesize) / [AST-480](https://linear.app/astralcareermatch/issue/AST-480/analysis-upshot-consult-dispatch-and-job-data-persist-synthesize-job) — jobs reach artifact entry with consult outputs persisted on `job_data`.
+
+## Open questions
+
+none.
+
+---
+
+## Original brief
+
+There are several tokens we are missing to be inserted in the task.  Please add those that are not already found in the original set:
+
+{$VISIBLE_JD}
+
+{$ANALYSIS_JD}
+
+{$ANALYSIS_DO}
+
+{$ANALYSIS_GET}
+
+{$ANALYSIS_LIKE}
+
+So they can be used in the artifacts prompts for the job in question.
+
+Remember, Artifact calls are one job only, no batches in a single call.
+
+### Comments
+
+#### chuckles — 2026-05-28T21:29:33.033Z
+## Manual test steps
+
+1. Merge UAT branch into local `dev`: `git fetch origin && git checkout dev && git merge origin/ftr/AST-513-token-gap-correction` (resolve any local WIP on `dev` first — prep-uat §8 blocked on uncommitted `src/core/consult.py` / `src/core/roster.py` in the orchestration worktree).
+2. Restart the app if it is running.
+3. Open **Manage Tasks**, pick an artifact task with `entity_type` job (e.g. `contemplate_job`). Confirm `/api/admin/tasks/meta/tokens` lists `VISIBLE_JD`, `ANALYSIS_JD`, `ANALYSIS_DO`, `ANALYSIS_GET`, `ANALYSIS_LIKE`.
+4. Open **Preview Resolved** for that task with a candidate that has rubric artifacts populated and optional **Job ID** set to a job that has completed JD / DO / GET / LIKE consult (`job_data` has `job_description`, `jd_grades`, `do_grades`, etc.). Confirm `{$VISIBLE_JD}` and each `{$ANALYSIS_*}` resolve to readable text (CONSIDER / rubric blob / ANALYSIS RESULT per vector).
+5. Ad-hoc preview with a job entity: same token resolution as step 4.
+6. (Optional) Trigger `contemplate_job` / artifact chain entry for one job in **BUILD_ARTIFACTS** and confirm prompts receive the same substitutions in production `do_task` path.
+
+`origin/ftr/AST-513-token-gap-correction` @ `c2804247` · local `dev` merge pending (§8 blocked — see step 1).
+
+— Chuckles
+
+#### radia — 2026-05-28T21:26:03.363Z
+## Review (`origin/dev...origin/sub/AST-313/AST-513-token-gap-correction`)
+
+**Plan fidelity:** Matches AST-513 functional scope and all six acceptance criteria. Five tokens in registry + picker; CONSIDER/rubric/ANALYSIS RESULT formatter; single-job gating; admin preview + adhoc parity. No consult grading, dispatch, or `run_next` wiring changes — boundary clean vs AST-313 siblings.
+
+**§2.1 / §3.3:** Token names and phase map config-driven; `job_context` precomputed in core (same pattern as `chain_context`) — utils does not import data.
+
+**§2.4 / §2.6:** Job tokens gated by `_single_job_in_scope`; `run_resume_artifact_chain_for_job` already passes `batch_size: 1` + `batch_entities: [job]`. Read-only consult output — no new transitions.
+
+### fix-now
+
+- **`src/core/agent.py` `_job_context_for_call`** — function-scoped `from src.core import consult` has no cycle-break comment. Same file documents this at L647–648 for `run_resume_artifact_chain_for_job` (**B1**). Add matching one-liner before the import.
+
+### advisory
+
+- **`AdminTaskPrompts.tsx`** — job preview is text-input only; plan mentioned optional entity dropdown. AC 4 satisfied; picker UX can be a follow-up if Susan wants it.
+
+### sign-off
+
+Registry, formatter, threading, and tests look correct for artifact single-job calls. One comment fix, then **`resolve-astral`**.
+
+Doc commit on publish ref: `docs/features/artifacts/ast-513-token-gap-correction.md` (Review section).
+
+#### hedy — 2026-05-28T21:24:39.614Z
+[check-linear]
+
+**Inbox (parent AST-513 / Astral Artifacts):** `@hedy` issue search (team), fallback scan (`updatedAt -P14D`), threads on **AST-513**, parent **AST-313** siblings, and Hedy-assignee roster children (**AST-505**–**508**). **0** actionable comments — nothing `@hedy` or directed at Hedy needing reply or small fix after prior agent `[check-linear]` posts.
+
+**AST-513:** **Tests Passed**, assignee **Ada** — no Hedy pipeline action from this pass.
+
+**§0a blocked — `dev-hedy` merge with `origin/dev`:**
+- `docs/ASTRAL_TEST_BIBLE.md` (content conflict)
+- `src/core/consult.py` (content conflict)
+- `tests/component/core/test_agent.py` (content conflict)
+
+Merge aborted; `dev-hedy` restored (still ahead/behind `origin/dev`). Need Susan/Chuckles direction before resolving integration conflicts — not attempting resolution from this inbox pass.
+
+#### ada — 2026-05-28T21:24:38.833Z
+[check-linear]
+
+**Inbox (parent AST-513 / Astral Artifacts):** Scanned `@ada` (team + project), assignee-me in project, and full thread on **AST-513** + parent **AST-313**. **0** actionable comments — nothing `@ada` or directed at Ada needing a reply or small fix after Ada’s **Tests Passed** post.
+
+**§0a:** `dev-ada` @ `/Users/susan/chuckles/astral-ada`; merged `origin/dev` (already up to date).
+
+**Status note:** **AST-513** is **Tests Passed**, assignee Ada — no engineer pipeline action from this pass (Radia **`review-astral`** owns the next gate).
+
+#### ada — 2026-05-28T21:23:25.389Z
+**Tests Passed** — manifest green after one product fix.
+
+**Fix:** lazy-import `roster` in `consult.py` (breaks `consult` ↔ `roster` cycle when AST-507 prefilter imports consult helpers at module load).
+
+**Commands (all pass):**
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst513JobTokens tests/component/core/test_consult.py::TestAst513JobTokenContext tests/component/core/test_agent.py::TestAst513JobContext tests/component/ui/api/test_api_admin.py::TestTaskRoutes::test_preview_task_forwards_astral_job_id tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token`
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx -t "astral_job_id"`
+
+**Publish:** `origin/sub/AST-313/AST-513-token-gap-correction` @ `8385f398` (was `d8e00965`).
+
+#### betty — 2026-05-28T21:20:04.896Z
+**Tests Ready** — manifest for `test-astral` (§7.13zj).
+
+**Publish ref:** `origin/sub/AST-313/AST-513-token-gap-correction` @ `d8e00965`
+
+**Bible shasum** (`docs/ASTRAL_TEST_BIBLE.md` on publish ref): `d4717759462a7f0d8cc9cc4fc0e5292aece069fe`
+
+**Manifest**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst513JobTokens tests/component/core/test_consult.py::TestAst513JobTokenContext tests/component/core/test_agent.py::TestAst513JobContext tests/component/ui/api/test_api_admin.py::TestTaskRoutes::test_preview_task_forwards_astral_job_id tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token`
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx -t "astral_job_id"`
+
+**Coverage summary:** Five job-scoped tokens in registry + `resolve_tokens(job_context=…)`; `build_job_token_context` / analysis phase formatter; `_single_job_in_scope` + `do_task` / preview threading; admin preview + ad-hoc job entity resolution; Manage Tasks preview appends `astral_job_id` when job id filled.
+
+— Betty
+
+#### katherine — 2026-05-28T21:10:13.066Z
+[check-linear]
+
+**Inbox (parent AST-513 / Astral Artifacts):** Scanned `@katherine` issue search (team + project), threads on **AST-513**, **AST-313** siblings, and Katherine-assignee tickets (**AST-308**, **AST-481**). **0** actionable comments after Katherine’s latest `[check-linear]` / handoff posts — nothing `@katherine` or directed at Katherine needing a reply or small fix.
+
+**§0a blocked — `dev-kath` merge with `origin/dev`:**
+- `docs/ASTRAL_TEST_BIBLE.md` (content conflict)
+- `docs/features/candidate/ast-511-middle-name-on-candidate-profile-and-admin.md` (modify/delete — deleted on `origin/dev`, modified on `dev-kath`)
+- `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` (content conflict)
+
+Merge aborted; `dev-kath` restored (still ahead of `origin/dev-kath`). Need Susan/Chuckles direction before resolving integration conflicts — not attempting resolution from this inbox pass.
+
+**Note:** **AST-513** is **Plan Approved**, assignee **Ada** — no Katherine pipeline action from this pass.
+
+#### ada — 2026-05-28T21:06:46.408Z
+Plan: [`docs/features/artifacts/ast-513-token-gap-correction.md`](https://github.com/susansomerset/astral/blob/sub/AST-313/AST-513-token-gap-correction/docs/features/artifacts/ast-513-token-gap-correction.md) (published `602b73ea` on `sub/AST-313/AST-513-token-gap-correction`).
+
+**Scope:** `Single-Component` — Registry + `job_context` threading in `resolve_tokens` / `do_task`, consult-side formatters for the five tokens, admin preview parity, minimal Manage Tasks job-id field; no consult grading or dispatch changes.
+
+**Conf:** `high` — Mirrors existing `chain_context` injection and persisted `job_data` keys; AC fully specified on the ticket.
+
+**Risk:** `Medium` — Wrong single-job scope or formatter drift affects artifact prompts only when those tokens appear; other tokens unchanged.
+
+#### chuckles — 2026-05-28T21:04:04.380Z
+## Git (authoritative — ignore Linear `gitBranchName`)
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-513 | sub/AST-313/AST-513-token-gap-correction |
+
+— Chuckles
+
+#### chuckles — 2026-05-28T20:53:52.169Z
+@susan
+
+1. For each `{$ANALYSIS_*}` token, what human-readable shape should prompt authors receive — serialized grades + score + notes (matching the recap style used when building analysis-upshot live content), grades only, or another format you prefer for Judith/Estelle prompts?
+
+— Chuckles
+
+---
+
 # AST-513 — Token Gap Correction
 
 **Linear:** [AST-513 — Token Gap Correction](https://linear.app/astralcareermatch/issue/AST-513/token-gap-correction)  

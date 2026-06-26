@@ -1,3 +1,129 @@
+<!-- linear-archive: AST-581 archived 2026-06-23 -->
+
+## Linear archive (AST-581)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-581/uat-preview-materials-button-resumecover-html-preview-tabs-in-jar  
+**Status at archive:** Done  
+**Project:** Astral Artifacts (inherited from AST-300)  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-300 — Build Resume Artifact  
+**Blocked by / blocks / related:** parent: AST-300
+
+### Description
+
+## Bug (AST-300 UAT)
+
+Susan expected a **Preview Materials** (or equivalent) control on the Recommended Job Report that opens **two** render surfaces: job-tailored **resume HTML** and **cover letter HTML**.
+
+## Current
+
+* `GET /candidate/resume/<job_id>` renders **one** combined HTML document (`builder.build_resume` may include cover inline).
+* No JAR header/footer button; no dual-tab preview UX in `JobAnalysisReportModal.tsx`.
+
+## Acceptance
+
+1. When `CANDIDATE_REVIEW` (or when resume/cover content exists), JAR shows **Preview Materials**.
+2. Opens resume preview + cover letter preview as **separate** tabs or windows (not one bundled page only).
+3. Uses saved `job_data.artifacts.resume_content` / `cover_letter` + candidate structure.
+
+## Paths
+
+* `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`
+* `src/ui/api/api_resume_html.py`
+* `src/core/builder.py`
+
+### Comments
+
+#### betty — 2026-06-05T20:08:42.813Z
+**[rollup-child] resolved** — merge `origin/sub/AST-300/AST-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar` into `origin/ftr/AST-300-build-resume-artifact` completed.
+
+**Conflicts:** `docs/ASTRAL_TEST_BIBLE.md`, `tests/component/ui/api/test_api_jobs.py`
+
+**Resolution:**
+- Bible: kept **ftr/AST-300** §7.13zs baseline + **AST-581** narrowed run; dropped duplicate AST-550 block and polluted §7.13zr AST-578/579 rows from dev merge on sub
+- `test_api_jobs.py`: kept **ftr** tip (AST-562 routes were dev pollution — AST-581 never touched this file)
+- Stripped ~180 dev-only staged paths (docs/features flood, AGENTS.md, etc.); merge landed **13 AST-581 files** only
+
+**Published:** `origin/ftr/AST-300-build-resume-artifact` @ `0e48558e`
+
+**Sub ref:** `origin/sub/…/AST-581` still carries `Merge origin/dev` — recommend Betty republish via `git-store-qa-commit` with `JOAN_SESSION=0ca056cb-ffe4-4797-b7fa-a80108f0895c` stacked on updated ftr before next rollup retry.
+
+#### radia — 2026-06-05T20:03:17.298Z
+**Review (Radia)** — diff `origin/dev...origin/sub/AST-300/AST-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar` @ `80095676` (product) + review doc @ `67d9fafc`.
+
+**Plan fidelity:** Stage 1 builder split (`include_cover` default false, `build_cover_letter` / `GET /candidate/cover/<job_id>`) and Stage 2 JAR **Preview Materials** + tabbed `MaterialsPreviewModal` match the approved plan and acceptance.
+
+### fix-now
+None.
+
+### discuss
+- **`recommendedJobReport.tsx` — `materialsPreviewVisible`** — Hardcodes `CANDIDATE_REVIEW` in frontend lib (§3.2 G1 prefers manifest/API-resolved visibility). Plan and acceptance explicitly chose this; same family as `CandidateJobRowActions` state sets. Not blocking for UAT bugfix — flag if we want a manifest `preview_materials` flag per recommended state later.
+
+### advisory
+- **`MaterialsPreviewModal.tsx`** — `activeTab` persists across close/reopen; optional reset to `"resume"` on close.
+- **`CANDIDATE_REVIEW` + empty artifacts** — Preview button shows per plan; resume iframe may 404 until chain populates content.
+- **Job resume route** — `/candidate/resume/<job_id>` is permanently resume-only (combined print removed); documented plan decision.
+
+**Blob:** [plan + review](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar/docs/features/artifacts/ast-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar.md) — proceed to `resolve-astral`.
+
+#### betty — 2026-06-05T19:59:00.807Z
+## QA test manifest (AST-581)
+
+**Publish ref:** `origin/sub/AST-300/AST-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar` @ `80095676`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `a8a568fa226dcb46bbfec7633b7f1987942140379c9824ca992ef88fa89f7d26` — §7.13zs row **AST-581** appended.
+
+### 1. Existing coverage revised (builder resume-only default)
+
+- `tests/component/core/test_builder.py::TestBuildResumeFromJob` — resume HTML no longer bundles cover unless `include_cover=True`
+- `tests/component/core/test_builder.py::TestBuilderHelpers::test_cover_letter_subject_letter_aliases_render_on_cover_route` — Subject/Letter aliases on cover-only path
+
+### 2. New tests (gaps)
+
+| # | Path | What it proves |
+|---|------|----------------|
+| 1 | `tests/component/core/test_builder.py::TestAst581ResumeCoverSplit` | `include_cover` flag; `build_cover_letter_from_job` cover-only; `ValueError` without content |
+| 2 | `tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute` | `GET /candidate/cover/<job_id>` 200/404 |
+| 3 | `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` | `materialsPreviewVisible` — CANDIDATE_REVIEW, RECOMMENDED, BUILD_ARTIFACTS |
+| 4 | `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` (AST-581 describe) | Preview Materials button visibility; stacked modal; Resume/Cover iframe `src` |
+
+### 3. Run command (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit \
+  tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+— Betty
+
+#### chuckles — 2026-06-05T19:54:12.473Z
+## [validate-plan] APPROVED
+
+Plan matches AST-581 UAT acceptance: separate resume/cover HTML surfaces + JAR Preview Materials control. Scope stays UI/builder/routes; no chain or persistence changes. Layer table respects §3.3.
+
+**Verdict:** APPROVED → Plan Approved.
+
+— Chuckles
+
+#### katherine — 2026-06-05T19:53:59.131Z
+Plan: [`docs/features/artifacts/ast-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar.md`](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar/docs/features/artifacts/ast-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar.md) on **`origin/sub/AST-300/AST-581-uat-preview-materials-button-resumecover-html-preview-tabs-in-jar`** @ `05bdccbe`.
+
+**Scope:** `Single-Component` — JAR header + stacked preview modal, thin Flask cover route, and `builder.py` resume/cover split; no chain or tracker changes.
+
+**Conf:** `high` — AST-298 HTML route pattern, existing `TabBar`/`Modal`/`artifactHasContent`; cover-only render reuses `_emit_html_document`.
+
+**Risk:** `Medium` — job `/candidate/resume/<job_id>` becomes resume-only (combined HTML removed); mitigated by new `/candidate/cover/<job_id>` and dual-tab preview Susan asked for in UAT.
+
+Two build stages: (1) builder + API split, (2) Preview Materials button + iframe tab modal in `JobAnalysisReportModal`.
+
+---
+
 # UAT: Preview Materials button + resume/cover HTML preview tabs in JAR
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-581/uat-preview-materials-button-resumecover-html-preview-tabs-in-jar  

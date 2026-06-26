@@ -14,6 +14,7 @@ Public API: authenticate_session_jwt, StytchAuthError
 from typing import Any
 
 from src.utils.config import AUTH_CONFIG
+from src.utils.integration_io import require_controlled_external_io
 
 __all__ = ["authenticate_session_jwt", "StytchAuthError"]
 
@@ -61,6 +62,7 @@ def _display_name(user: Any, email: str | None, user_id: str) -> str:
 
 def authenticate_session_jwt(session_jwt: str) -> dict:
     """Validate a Stytch session JWT; return user_id, email, name dict."""
+    require_controlled_external_io("stytch.authenticate_session_jwt")
     token = (session_jwt or "").strip()
     if not token:
         raise StytchAuthError("missing session JWT")

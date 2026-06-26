@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.core import tracker as tracker_mod
+from src.utils import config as cfg
 
 
 # Branches: invalid company, batch_id, raw_job_listings; duplicate vs new ingest.
@@ -48,106 +49,16 @@ class TestIngestJobs:
         assert counts["new"] == 1 and counts["duplicates"] == 0 and counts["invalid_title"] == 1
         save.assert_called_once()
 
+    def test_counts_identity_duplicate_bounce_from_save_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod.database, "raw_job_listing_is_duplicate", lambda *args, **kwargs: False)
+        monkeypatch.setattr(tracker_mod.database, "save_job", MagicMock(return_value=False))
+
+        counts = tracker_mod.ingest_jobs("co", "batch-1", ["Engineer role listing"])
+
+        assert counts == {"new": 0, "duplicates": 1, "invalid_title": 0}
+
 
 # Branches: merge vs replace save_job_data.
-class TestIngestBoardListings:
-    def test_requires_ids_and_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        with pytest.raises(ValueError, match="required"):
-            tracker_mod.ingest_board_listings("", "bk", "bs", "b1", [], None, {})
-        with pytest.raises(ValueError, match="list"):
-            tracker_mod.ingest_board_listings(
-                "cand-1",
-                "bk",
-                "bs",
-                "b1",
-                "not-a-list",
-                title_matchers=None,
-                parse_instructions={},
-            )  # type: ignore[arg-type]
-
-    def test_creates_placeholder_company_and_inserts(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        save_co = MagicMock()
-        monkeypatch.setattr(tracker_mod.database, "get_company", lambda _s: None)
-        monkeypatch.setattr(tracker_mod.database, "save_company", save_co)
-        monkeypatch.setattr(tracker_mod.database, "update_company", MagicMock())
-        monkeypatch.setattr(tracker_mod.database, "board_listing_is_duplicate", lambda _c, _b, _k: False)
-        monkeypatch.setattr(tracker_mod.database, "save_job", MagicMock())
-        mock_record = MagicMock()
-        monkeypatch.setattr(tracker_mod.database, "record_board_search_run", mock_record)
-        counts = tracker_mod.ingest_board_listings(
-            "cand-board",
-            "tst",
-            "search-9",
-            "batch-board",
-            ['<div><a href="https://x.example/j/y">Senior Engineer role</a></div>'],
-            title_matchers=None,
-            parse_instructions={"job_title": "Engineer"},
-        )
-        assert counts == {"new": 1, "duplicates": 0, "invalid_title": 0}
-        save_co.assert_called_once()
-        mock_record.assert_called_once_with(
-            "batch-board",
-            "search-9",
-            "cand-board",
-            "tst",
-            {"new": 1, "duplicates": 0, "invalid_title": 0},
-        )
-
-    def test_placeholder_company_already_exists_updates_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            tracker_mod.database,
-            "get_company",
-            lambda _short: {"short_name": _short},
-        )
-        save_co = MagicMock()
-        monkeypatch.setattr(tracker_mod.database, "save_company", save_co)
-        up_co = MagicMock()
-        monkeypatch.setattr(tracker_mod.database, "update_company", up_co)
-        monkeypatch.setattr(tracker_mod.database, "board_listing_is_duplicate", lambda _c, _b, _k: True)
-        monkeypatch.setattr(tracker_mod.database, "record_board_search_run", MagicMock())
-        counts = tracker_mod.ingest_board_listings(
-            "cand-board",
-            "tst",
-            "search-x",
-            "batch-x",
-            ["<p>duplicate blob</p>"],
-            title_matchers=None,
-            parse_instructions={},
-        )
-        assert counts["duplicates"] == 1 and counts["new"] == 0
-        save_co.assert_not_called()
-        up_co.assert_called_once()
-
-    def test_invalid_title_increment(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            tracker_mod.database,
-            "get_company",
-            lambda _short: {"short_name": _short},
-        )
-        monkeypatch.setattr(tracker_mod.database, "save_company", MagicMock())
-        monkeypatch.setattr(tracker_mod.database, "update_company", MagicMock())
-        monkeypatch.setattr(
-            tracker_mod.database,
-            "board_listing_is_duplicate",
-            lambda _c, _b, _k: False,
-        )
-        save_job = MagicMock()
-        monkeypatch.setattr(tracker_mod.database, "save_job", save_job)
-        monkeypatch.setattr(tracker_mod.database, "record_board_search_run", MagicMock())
-        counts = tracker_mod.ingest_board_listings(
-            "cand-board",
-            "tst",
-            "search-i",
-            "batch-i",
-            ["bogus title blob", '<a href="https://jobs.example/q">Matched engineer role</a>'],
-            title_matchers=[re.compile(r"engineer", re.I)],
-            parse_instructions={},
-        )
-        assert counts == {"new": 1, "duplicates": 0, "invalid_title": 1}
-        save_job.assert_called_once()
-
 
 class TestSaveJobData:
     def test_merge_and_replace_delegate_to_database(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,7 +94,7 @@ class TestGetJobData:
     async def test_self_heals_short_job_description(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job: Dict[str, Any] = {"astral_job_id": "job-1", "job_data": {"job_description": "short"}}
         scrape = AsyncMock()
-        monkeypatch.setattr("src.core.gazer.scrape_jd_batch", scrape)
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
 
         await tracker_mod.get_job_data(job, "job_description")
 
@@ -192,14 +103,14 @@ class TestGetJobData:
     @pytest.mark.asyncio
     async def test_self_heal_failure_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job: Dict[str, Any] = {"astral_job_id": "job-2", "job_data": {}}
-        monkeypatch.setattr("src.core.gazer.scrape_jd_batch", AsyncMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", AsyncMock(side_effect=RuntimeError("boom")))
 
         assert await tracker_mod.get_job_data(job, "job_description") is None
 
     @pytest.mark.asyncio
     async def test_initializes_non_dict_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job: Dict[str, Any] = {"job_data": None}
-        monkeypatch.setattr("src.core.gazer.scrape_jd_batch", AsyncMock())
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", AsyncMock())
 
         await tracker_mod.get_job_data(job, "job_description")
 
@@ -245,6 +156,85 @@ class TestInitializeJob:
         assert kwargs["job_title"] == "Title"
         assert kwargs["job_data"] == {"extra": "value"}
         assert "grades" not in (kwargs["job_data"] or {})
+
+
+# Branches: canonical lookup; delete single row; collision delete on qualify path.
+class TestAst733InitializeJobCollision:
+    def test_deletes_current_row_when_canonical_exists(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job(
+            "canonical",
+            company="acme",
+            state="NEW",
+            job_title="Engineer",
+            company_job_id="ext-1",
+            job_link="https://canonical.example/j",
+        )
+        db.save_job(
+            "collision",
+            company="acme",
+            state="NEW",
+            job_title="Temp",
+            company_job_id="old",
+            job_link="https://collision.example/y",
+        )
+
+        assert tracker_mod.initialize_job(
+            "collision",
+            "acme",
+            {
+                "company_job_id": "ext-1",
+                "job_title": "Engineer",
+                "job_link": "https://new.example/j",
+            },
+        ) is False
+        assert db.get_job("collision") is None
+        canonical = db.get_job("canonical")
+        assert canonical is not None
+        assert canonical["job_title"] == "Engineer"
+        assert canonical["company_job_id"] == "ext-1"
+
+    def test_saves_when_no_collision(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job("job-new", company="acme", state="NEW", job_link="https://x.example/y")
+
+        assert tracker_mod.initialize_job(
+            "job-new",
+            "acme",
+            {
+                "company_job_id": "ext-99",
+                "job_title": "Engineer",
+                "job_link": "https://example.com/j",
+            },
+        ) is True
+        row = db.get_job("job-new")
+        assert row is not None
+        assert row["company_job_id"] == "ext-99"
+        assert row["job_title"] == "Engineer"
+
+    def test_incomplete_identity_skips_collision_lookup(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = seeded_db
+        db.save_company("acme", state="IMPORTED")
+        db.save_job(
+            "job-a",
+            company="acme",
+            state="NEW",
+            job_title="Only",
+            company_job_id="x",
+            job_link="https://a.example",
+        )
+        lookup = MagicMock(return_value="canonical")
+        monkeypatch.setattr(tracker_mod.database, "get_job_id_by_identity", lookup)
+        db.save_job("job-b", company="acme", state="NEW", job_title="Pending", job_link="https://b.example")
+
+        assert tracker_mod.initialize_job(
+            "job-b",
+            "acme",
+            {"job_title": "Only", "job_link": "https://b.example"},
+        ) is True
+        lookup.assert_not_called()
 
 
 # Branches: missing job; invalid transition; score optional on transition.
@@ -611,14 +601,11 @@ class TestAst562ArtifactBuildTransitions:
             conn.close()
 
     def test_start_artifact_build_from_recommended(self, seeded_db) -> None:
-        from src.utils.config import resume_artifact_first_compound_state
-
         db = seeded_db
         db.save_company("acme", state="IMPORTED")
         db.save_job("job-562", company="acme", state="RECOMMENDED", job_data={"artifacts": {}})
-        first = resume_artifact_first_compound_state()
-        assert tracker_mod.start_artifact_build("job-562") == first
-        assert db.get_job("job-562")["state"] == first
+        assert tracker_mod.start_artifact_build("job-562") == cfg.BUILD_ARTIFACTS_BASE_STATE
+        assert db.get_job("job-562")["state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
 
     def test_start_artifact_build_rejects_wrong_state(self, seeded_db) -> None:
         db = seeded_db
@@ -713,7 +700,7 @@ class TestAst562ArtifactBuildTransitions:
         db = seeded_db
         db.save_company("acme", state="IMPORTED")
         db.save_job("job-562", company="acme", state="RECOMMENDED", job_data={})
-        with pytest.raises(ValueError, match="cancel only from BUILD_ARTIFACTS in-progress hop states"):
+        with pytest.raises(ValueError, match="cancel only from BUILD_ARTIFACTS in-progress states"):
             tracker_mod.cancel_artifact_build("job-562")
 
 

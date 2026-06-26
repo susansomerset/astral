@@ -21,6 +21,8 @@ from email.mime.text import MIMEText
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from src.utils.integration_io import require_controlled_external_io
+
 # ---------------------------------------------------------------------------
 # Startup validation — fail loud at import time rather than silently at send time
 # ---------------------------------------------------------------------------
@@ -40,6 +42,7 @@ _TOKEN_URI = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/t
 
 def send_email(to: str, subject: str, body: str) -> bool:
     """Send a plain-text email via the Gmail API. Returns True on success."""
+    require_controlled_external_io("gmail.send_email")
     try:
         creds = Credentials(
             token=None,

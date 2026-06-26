@@ -450,7 +450,7 @@ export default function ArtifactEditor({
           <div className="dep-actions">
             {canGenerate && (
               <button
-                className="dep-btn save"
+                className={`dep-btn save${generating ? " in-flight" : ""}`}
                 onClick={handleGenerateClick}
                 disabled={generating}
                 style={{ marginRight: 8 }}

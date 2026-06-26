@@ -30,10 +30,12 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_STATES,
+    EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
+    RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
 )
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 
@@ -108,6 +110,86 @@ def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
                 raise ValueError(f"Rubric {key!r}, vector {label!r}: {e}") from e
 
 
+def _rubric_rows_to_criteria(rows: list) -> list:
+    """Map rubric_vector DB rows to consult/UI criterion dicts (AST-723)."""
+    out: list = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = {
+            "code": row.get("code"),
+            "label": row.get("label"),
+            "content": row.get("content"),
+            "importance": row.get("importance"),
+        }
+        try:
+            rubric_text.ensure_criterion_grade_table(item)
+        except ValueError:
+            # Legacy/backfill rows may lack trailing grade tables; consult hydrates on demand.
+            pass
+        out.append(item)
+    return out
+
+
+def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
+    """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
+    if not candidate_id or not owner_task_key:
+        return []
+    rows = database.list_rubric_vectors(candidate_id, owner_task_key, current_only=True)
+    criteria = _rubric_rows_to_criteria(rows)
+    if owner_task_key == "prefilter_company":
+        embedded_codes = {
+            str(c.get("code")).strip().upper()
+            for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
+            if isinstance(c, dict) and c.get("code")
+        }
+        tail = [
+            c
+            for c in criteria
+            if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
+        ]
+        return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+    return criteria
+
+
+def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
+    """Token resolver entry — same list shape as rubric_criteria_for_task."""
+    return rubric_criteria_for_task(candidate_id, owner_task_key)
+
+
+def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
+    """Sync rubric criteria artifacts to rubric_vector; drop keys from artifacts blob (AST-723).
+
+    Legacy artifact purge: scripts/migrations/backfill_rubric_vectors.py --purge-artifacts
+    --confirm-purge after AC#9 verify — not automatic here."""
+    if not isinstance(artifacts, dict):
+        return
+    for key, val in list(artifacts.items()):
+        if key not in RUBRIC_CRITERIA_ARTIFACT_KEYS:
+            continue
+        if val is None:
+            continue
+        owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(key)
+        if not owner:
+            raise ValueError(f"No rubric owner task_key for artifact {key!r}")
+        if not isinstance(val, list):
+            raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
+        database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
+        del artifacts[key]
+
+
+def hydrate_rubric_artifacts_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay table-backed rubric lists into GET response artifacts (display only)."""
+    if not isinstance(cd, dict):
+        return
+    arts = cd.get("artifacts")
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    for artifact_key, owner in RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.items():
+        arts[artifact_key] = rubric_criteria_for_task(candidate_id, owner)
+
+
 def _normalize_search_term_lines(val: str) -> list[str]:
     return [line for line in (s.strip() for s in val.split("\n")) if line]
 
@@ -138,8 +220,29 @@ def company_search_terms_lines(candidate_id: str) -> list[str]:
     return company_search_terms_lines_for_candidate(candidate_id)
 
 
+def ensure_company_search_terms_table_synced(candidate_id: str) -> None:
+    """Reconcile legacy artifact blob into table; strip blob after import (AST-802)."""
+    database.reconcile_company_search_terms_from_artifact(candidate_id)
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        return
+    cd = copy.deepcopy(candidate.get("candidate_data") or {})
+    arts = cd.get("artifacts")
+    if not isinstance(arts, dict) or "company_search_terms" not in arts:
+        return
+    # Migration may import via nested reconcile in the same call stack — strip when table is authoritative.
+    if not database.list_company_search_terms(candidate_id):
+        return
+    updated_arts = dict(arts)
+    del updated_arts["company_search_terms"]
+    cd["artifacts"] = updated_arts
+    # replace=True — deep-merge cannot delete nested artifact keys (AST-802).
+    save_candidate_data(candidate_id, cd, replace=True)
+
+
 def company_search_terms_lines_for_candidate(candidate_id: str) -> list[str]:
     """Table-backed search term lines (AST-524)."""
+    ensure_company_search_terms_table_synced(candidate_id)
     return [row["search_term"] for row in database.list_company_search_terms(candidate_id)]
 
 
@@ -206,6 +309,7 @@ def preview_task_prompt(
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
     cd = candidate.get("candidate_data") or {}
+    cid = candidate.get("astral_candidate_id") or candidate_id
     jc: Optional[Dict[str, str]] = None
     if astral_job_id and str(astral_job_id).strip():
         job = database.get_job(str(astral_job_id).strip())
@@ -213,11 +317,11 @@ def preview_task_prompt(
             raise ValueError(f"Job not found: {astral_job_id}")
         from src.core.consult import build_job_token_context
 
-        jc = build_job_token_context(job, cd)
-    cid = candidate.get("astral_candidate_id") or candidate_id
+        jc = build_job_token_context(job, cd, candidate_id=cid or "")
     if cid:
         joined = company_search_terms_joined_text(cid)
         cd = dict(cd)
+        cd["_astral_candidate_id"] = cid
         arts = dict(cd.get("artifacts") or {})
         arts["company_search_terms"] = joined
         cd["artifacts"] = arts
@@ -496,6 +600,9 @@ def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
         payload = parsed
     if isinstance(payload, dict):
         _flatten_craft_resume_section_strings(payload)
+        raw_struct = payload.get("resume_structure")
+        if not isinstance(raw_struct, dict) or not raw_struct.get("sections"):
+            payload["resume_structure"] = default_resume_structure()
 
 
 _DRAFT_JOB_RESUME_METADATA_KEYS = frozenset({"astral_job_id", "company", "title", "task_success"})
@@ -694,6 +801,7 @@ def run_candidate_artifact_generation(
     candidate_id: str,
     task_key: str,
     live_content: Optional[str],
+    debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
     candidate = database.get_candidate(candidate_id)
@@ -730,6 +838,7 @@ def run_candidate_artifact_generation(
                     live_content=live_content or "",
                     index=candidate_id,
                     ctx=candidate,
+                    debug=debug,
                 )
             )
         except Exception as e:
@@ -799,6 +908,14 @@ def run_candidate_artifact_generation(
                 task_key,
                 batch_id,
                 total_cost,
+            )
+        parsed_response = result.get("parsed_response")
+        if task_key == "craft_resume_base" and parsed_response is not None:
+            structure, content = split_craft_resume_base_payload(parsed_response)
+            database.save_candidate(
+                candidate_id,
+                candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
+                merge=True,
             )
         return (
             {

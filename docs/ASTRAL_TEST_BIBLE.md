@@ -1,11 +1,13 @@
 This is the reference to existing tests, including unit/component and integration testing.
 
+> **AST-598 migration:** Canonical content now lives under **`docs/test-bible/`** (see **`docs/test-bible/README.md`**). This monolith is retained until Radia **review-child** confirms the tree is complete; Betty appends new manifests to per-component files, not here.
+
 **Owner:** **Betty** — maintained via **`qa-astral`**: use it to decide which **existing** tests apply to an issue (manifest-only is OK when coverage already matches), which tests a change **breaks** and must be revised, and when to **append or correct** this file so the map stays true. **Engineers do not commit** this file or other **test-tree** paths — see **`docs/ASTRAL_TEAM_WORKFLOW.md`** § Test ownership.
 
 ## 2. Where tests live
 
 - **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`).
-- **Integration tests:** `tests/integration/` is a placeholder only until a separate program opens integration work.
+- **Integration tests:** See `docs/test-bible/integration/README.md`.
 - **Data layer carve-out (§4a):** `tests/component/data/database/` holds cluster files for `src/data/database.py`; see `tests/component/data/database/_README.md`.
 
 ## 4a. `database.py` cluster tests
@@ -21,7 +23,7 @@ This is the reference to existing tests, including unit/component and integratio
 - Target **100% branch coverage** for each file committed to **`LOCKED_AT_100`** (`scripts/testing/check_per_file_coverage.py`).
 - List intended branches in comment blocks above each `class Test…` (see `tests/component/core/test_tracker.py` when present).
 - When such a file reaches 100%, update **§7.12**, the **§7.13** tables (branch lock column), and **`LOCKED_AT_100`** in the same commit.
-- **`pragma: no cover`** is allowed only with a short in-file note and bible mention when a branch is impractical to hit in component tests (AST-390: `formatting.py` DOM sibling union + JSON heal edge paths; AST-391: `playwright.py` browser session/crawl paths and `anthropic.py` SDK/heal edge paths; AST-394: `api_admin.py` `update_dtask` `score_floor` elif false exit arc; **AST-471**: `gazer.py` `process_gaze_board_batch` debug-only `_log.debug` stanza; `roster.py` unreachable `job_ids` index guard after length parity).
+- **`pragma: no cover`** is allowed only with a short in-file note and bible mention when a branch is impractical to hit in component tests (AST-390: `formatting.py` DOM sibling union + JSON heal edge paths; AST-391: `playwright.py` browser session/crawl paths and `anthropic.py` SDK/heal edge paths; AST-394: `api_admin.py` `update_dtask` `score_floor` elif false exit arc; **AST-471**: `roster.py` unreachable `job_ids` index guard after length parity — **AST-622** retired gazer board-batch legacy `_log.debug` stanza in favor of §1.5.1 contract lines).
 
 ### 6b. Frontend (Vitest + RTL under `tests/component/frontend/`)
 
@@ -120,6 +122,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | Source | Test file | Branch lock |
 | --- | --- | --- |
 | `src/utils/config.py` | `tests/component/utils/test_config.py` | yes |
+| `src/utils/deploy_status.py` | `tests/component/utils/test_deploy_status.py` | no |
 | `src/utils/formatting.py` | `tests/component/utils/test_formatting.py` | yes |
 | `src/utils/auth.py` | `tests/component/utils/test_auth.py` | no |
 
@@ -159,6 +162,7 @@ Do **not** weaken **`LOCKED_AT_100`** on **`dev-betty`** / child **`sub/*`** pub
 | `src/core/agent.py` | `tests/component/core/test_agent.py` | yes |
 | `src/core/roster.py` | `tests/component/core/test_roster.py` | yes |
 | `src/core/intake.py` | `tests/component/core/test_intake.py` | yes |
+| `src/core/bootstrap.py` | `tests/component/core/test_bootstrap.py` | no |
 
 **AST-486 (consult layering):** **`TestTrackerFacades.test_ast486_consult_layer_facades_delegate_to_database`** asserts **`tracker.get_company`**, **`tracker.append_agent_response`**, and **`tracker.list_timesheets`** forward to **`database`** (`consult.py` consumes **`tracker`** only for those paths).
 
@@ -270,37 +274,21 @@ Hop-to-hop **`chain_context`** uses **`CALLER_SYSTEM`**, **`CALLER_CACHE_A`**–
 | --- | --- | --- |
 | Routed Manage Tasks UX | `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` (**`AST-456`**), `tests/component/frontend/lib/test_manageTasksTokenPicker.test.ts` (**merged picker**) |
 
+## 7.13 boards channel (SUNSET — AST-757)
+
+**No active manifest.** Astral Boards removed (**AST-765** product, **AST-766** schema). Revival SHAs and rationale: **`docs/ASTRAL_CODE_RULES.md` §3.7**. Historical plans: **`docs/features/boards/`**. Retired monolith subsections below are archive index only.
+
 ## 7.13q Astral Boards `board_search` REST + DDL + workflow **`state`** (**AST-458**, **AST-471**, parent **AST-379**)
 
-Workflow **`state`**: **`ACTIVE`** | **`INACTIVE`** | **`ERROR`** (literals **`BOARD_SEARCH_STATES`**); claim requires **`ACTIVE`** plus clear **`batch_id`** (§2.4 lock = **`batch_id`** only — **`clear_board_search_batch`** clears **`batch_id`** alone). **`enabled`** removed. **`search_mode`** (API **`mode`**: `criteria` \| `deeplink`), **`deeplink_url`**, **`entry_url`** / deeplink **`netloc`** parity, duplicates per **AST-458**. **`gaze_board`** seed uses **`trigger_state`** **`ACTIVE`**, **`entity_type`** **`board_search`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| `board_search` schema + **`claim_board_search_batch`** ACTIVE + clear batch + **`last_scan_at`** cadence (AST-482) | `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestClaimBoardSearchSqlShape`**, **`TestBoardSearchLastScanCadenceAst482`**) |
-| Deeplink normalization + duplicate fingerprints | `src/core/boards.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardDeeplinkNormalize`**) |
-| REST `/api/boards/searches` (reject legacy **`enabled`**) | `src/ui/api/api_boards.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**, **`test_list_adopted_boards_for_picker`**) |
-| **`ingest_board_listings`** (gaze → jobs) | `src/core/tracker.py` | `tests/component/core/test_tracker.py` (**`TestIngestBoardListings`**) |
-| **`process_gaze_board_batch`** + **`set_board_search_state`** | `src/core/gazer.py` | `tests/component/core/test_gazer.py` (**`TestProcessGazeBoardBatch`**) |
-| **`run_consult_task`** / **`_run_unified`** `entity_type=board_search` (**`ACTIVE`**) | `src/core/consult.py`, `src/core/dispatcher.py` | `tests/component/core/test_consult.py`, `tests/component/core/test_dispatcher.py` |
-| **`board_search_deeplink`** | `src/external/playwright.py` | `tests/component/external/test_playwright.py` (**`TestBoardSearchDeeplink`**) |
-| Scheduler **`_tick_loop`** wait → **`clear`** | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py` (**`TestScheduler::test_tick_loop_calls_clear_after_wait_then_stops`**) |
-| Locked-file branch gate (AST-455 chain preview ripple on **458** handoff) | `src/core/candidate.py`, `src/core/agent.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_candidate.py` (**chain_sim preview**), `tests/component/core/test_agent.py` (**`TestAst455SevenSegmentAssembly`**, **`TestChainContext`**, **`TestStoreBlocks`**), `tests/component/ui/api/test_api_admin.py` (**`test_preview_task_chain_sim_and_chain_tokens`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh` (includes this file).
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13r `gaze_board` claim filter — **`state = ACTIVE`** (**AST-471**, supersedes **AST-459** **`enabled`** idea)
 
-Eligible rows for **`claim_board_search_batch`** are **`state = 'ACTIVE'`** with **`batch_id`** cleared. User pause = **`INACTIVE`**; gaze failure sets **`ERROR`** until resume **`ACTIVE`**. Deeplink **`search_mode`** / **`run_board_search_gaze`** URL contract remains **`TestRunBoardSearchGazeAst459`** in **`test_boards.py`** where named.
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
-## 7.13s Manage Candidate Board Searches UI (**AST-457**, **AST-471** UX, parent **AST-379**)
+## 7.13s Manage Candidate Board Searches UI (**AST-457**, **AST-471** UX, parent **AST-379**; **UI retired AST-649**, parent **AST-648**)
 
-**`CandidateBoardSearches`** — Active / Paused toggles PATCH **`state`** **`ACTIVE`** ↔ **`INACTIVE`**; **`ERROR`** row shows **Resume ACTIVE**. CRUD via **`/api/boards/searches`**, **`GET /api/boards`** picker.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Routed Board Searches page | `src/ui/frontend/src/pages/CandidateBoardSearches.tsx` | `tests/component/frontend/pages/test_CandidateBoardSearches.test.tsx` (**§6c** — **`/api/candidates`**, **`/api/boards`**, **`/api/boards/searches`**) |
-| Route registration | `src/ui/frontend/src/routes.tsx` | `tests/component/frontend/test_routes.test.tsx` (`candidate/board_searches`; no `title_patterns`) |
-| REST + DDL | `src/ui/api/api_boards.py`, `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchRestAst458`**) |
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7. UI removed **AST-649**; backend removed **AST-765**.
 
 ## 7.13t NO_OPENINGS Playwright recheck + **JOBS_FOUND** (**AST-463**, parent **AST-460**)
 
@@ -324,14 +312,7 @@ Generic **`apply_copy_output_table_upsert(table_name, json_payload)`**: parse JS
 
 ## 7.13v Board-sourced qualify + evaluate dispatch (**AST-419**, parent **AST-379**)
 
-Board jobs ingested via **`ingest_board_listings`** (placeholder **`__board__{board_key}`** company, **`board_search_id`**, state **`NEW`**) must reach **`validate_title` → `qualify_job_listings` → `scrape_jd` → `evaluate_jd`** through normal **`claim_job_batch` / `get_new_job_batch`** dispatch — no state-machine bypass. Uses real SQLite (**`seeded_db`**); consult/scrape agent calls mocked.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Board ingest → **`NEW`** + placeholder company | `src/core/tracker.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`TestBoardSourcedQualifyEvaluateAst419::test_board_ingest_starts_in_new_with_board_search_id`**) |
-| Full qualify/evaluate dispatch chain for board jobs | `src/core/tracker.py`, `src/core/gazer.py`, `src/core/consult.py` | `tests/component/core/test_board_sourced_qualify_evaluate.py` (**`test_board_job_reaches_qualify_and_evaluate_dispatch`**) |
-
-Manifest default: `./scripts/testing/run_component_tests.sh tests/component/core/test_board_sourced_qualify_evaluate.py`.
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13w Consult config absorb — `GAZER_CONFIG` + `TASK_CONFIG` orchestration (**AST-466**, **AST-467**, **AST-468**, parent **AST-376**)
 
@@ -339,14 +320,13 @@ Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_tit
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`**, board registry layout | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestBoardRegistryAst457`**, **`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
-| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `consult_*` dispatch → **`grade_*`** orch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). **`TestProcessGazeBoardBatch`** is **`§7.13q`** / boards spine (**`process_gaze_board_batch`**) — if that symbol is absent on your tip, rerun gazer narrowly with **`pytest tests/component/core/test_gazer.py -k 'not ProcessGazeBoardBatch'`** alongside consult before asserting full-file green. |
+| **`GAZER_CONFIG`**, **`RUBRIC_ARTIFACT_KEYS`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst309CoverLetterTaskConfig`** where applicable, **`TestAst479LikePassStates`**); branch lock for **`config.py`** via full component run |
+| **`TASK_CONFIG` / `GAZER_CONFIG` orchestration (**AST-467**)** | `src/core/consult.py`, `src/core/gazer.py` | `tests/component/core/test_consult.py` ( **`monkeypatch` / assertions on `TASK_CONFIG` — `consult_*` dispatch → **`grade_*`** orch via **`_consult_orchestration`**); `test_gazer.py` for **`validate_title_batch`**, **`scrape_jd_batch`**, **`process_gazer_batch`** ( **`GAZER_CONFIG`** ). |
 | Dispatch resolution helpers (**AST-468**) | `src/core/dispatcher.py`, `src/data/database.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_admin.py` |
-| Board-sourced pipeline still sees same states | `src/core/tracker.py`, consult + gazer | `tests/component/core/test_board_sourced_qualify_evaluate.py` |
 
 Sibling **AST-468** dispatch helpers documented in **§7.13x**.
 
-Manifest default ( **`test-astral`** on publish tip — consult/config scope; avoids unrelated **`origin/dev`** board integration gaps): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
+Manifest default ( **`test-astral`** on publish tip — consult/config scope): `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/core/test_consult.py tests/component/core/test_gazer.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py`.
 
 **Harness:** `./scripts/testing/run_component_tests.sh` with trailing paths forwards them to **`pytest`** (narrow selection + same **`--cov=src`** / JSON report wiring). **`check_per_file_coverage.py`** (**`LOCKED_AT_100`**) runs **only** with zero args (full **`tests/component`** selection); narrowed manifest calls skip that gate because branch rows are incomplete for untouched locked modules.
 
@@ -363,7 +343,7 @@ Manifest default ( **`test-astral`** on publish tip — dispatch/admin resolutio
 
 ## 7.13y LIKE → `PASSED_LIKE`, Recommended queue, synthesis handoff (**AST-479** / **AST-480**, parent **AST-478**)
 
-**`consult_like`** success lands in **`PASSED_LIKE`** (not **`BUILD_ARTIFACTS`**). **`RECOMMENDED_JOB_STATES`** lists **`RECOMMENDED`**, **`BUILD_ARTIFACTS`**, **`CANDIDATE_REVIEW`** — pre-upshot **`PASSED_LIKE`** stays in **`IN_REVIEW`** / score-gated consult views. **`analysis_upshot`** dispatch (**AST-480**) runs at **`PASSED_LIKE`** / **`PASSED_LIKE_RETRY`** (scored claim), persists **`job_data["analysis_upshot"]`**, transitions **`PASSED_LIKE` → `RECOMMENDED`** (or **`PASSED_LIKE_RETRY`** on failure).
+**`grade_like`** success lands in **`PASSED_LIKE`** (not **`BUILD_ARTIFACTS`**). **`RECOMMENDED_JOB_STATES`** lists **`RECOMMENDED`**, **`BUILD_ARTIFACTS`**, **`CANDIDATE_REVIEW`** — pre-upshot **`PASSED_LIKE`** stays in **`IN_REVIEW`** / score-gated consult views. **`analysis_upshot`** dispatch (**AST-480**) runs at **`PASSED_LIKE`** / **`PASSED_LIKE_RETRY`** (scored claim), persists **`job_data["analysis_upshot"]`**, transitions **`PASSED_LIKE` → `RECOMMENDED`** (or **`PASSED_LIKE_RETRY`** on failure).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -430,25 +410,7 @@ When **pytest** is green, full **`./scripts/testing/run_component_tests.sh`** re
 
 ## 7.13za Board search **`last_scan_at`** **`gaze_board`** cadence (**AST-482**, parent **AST-379**)
 
-Mirror company **`WATCH` / `gaze`**: nullable **`board_search.last_scan_at`**, **`BOARDS_CONFIG["gaze_board"]["scan_interval_hours"]`** (default **24**), staleness **`AND`** in **`claim_board_search_batch`** matches **`count_eligible_for_dispatch_task`** ( **`freq_hrs` override** when **> 0**). **`dispatch_task`** seed **`sort_by`** **`last_scan_at`** (+ migration **`updated_at` → `last_scan_at`** for legacy rows). **`update_board_search_last_scan_at`** bumps **only success path** after **`run_board_search_gaze`** in **`process_gaze_board_batch`** (no bump on **`except`**). Dispatcher passes **`scan_interval_hours`** + **`sort_by`** into **`claim_board_search_batch`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Claim staleness **`NULL`** / stale / fresh + **`count_eligible`** parity + **`freq_hrs`** tightening | `src/data/database.py` | `tests/component/data/database/test_board_search_integration.py` (**`TestBoardSearchLastScanCadenceAst482`**) |
-| Success bump vs failure silent | `src/core/gazer.py` | `tests/component/core/test_gazer.py` (**`TestProcessGazeBoardBatch`**) |
-| **`_run_unified`** board_search **`scan_interval_hours`** / **`sort_by`** kwargs | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py` (**`TestRunUnified`**) |
-| **`BOARDS_CONFIG["gaze_board"]["scan_interval_hours"]`** | `src/utils/config.py` | `tests/component/utils/test_config.py` (**`TestAst471DispatchConfigHelpers::test_gaze_board_boards_config_scan_interval_hours`**) |
-
-Narrow (**`test-astral`** **AST-482** tip):
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_board_search_integration.py::TestBoardSearchLastScanCadenceAst482 \
-  tests/component/core/test_gazer.py::TestProcessGazeBoardBatch \
-  tests/component/core/test_dispatcher.py::TestRunUnified::test_claims_board_search_batch_and_clears \
-  tests/component/core/test_dispatcher.py::TestRunUnified::test_board_search_claim_passes_freq_and_sort_kw \
-  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_gaze_board_boards_config_scan_interval_hours
-```
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7.
 
 ## 7.13zb First-segment grade token readability (**AST-483**, parent **AST-472**)
 
@@ -597,7 +559,7 @@ Phase 0: newline-delimited **`artifacts.company_search_terms`**, **`craft_compan
   tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx
 ```
 
-**Harness tail (items 1–4):** `run_component_tests.sh` always runs full Vitest coverage after pytest. Cross-ticket page tests must stay green — notably **`test_AdminManageCandidates.test.tsx`** (AST-511 middle-name field selectors) and **`test_CandidateBoardSearches.test.tsx`** (AST-457 mode switch via **`UserPromptProvider`**, not **`window.confirm`**).
+**Harness tail (items 1–4):** `run_component_tests.sh` always runs full Vitest coverage after pytest. Cross-ticket page tests must stay green — notably **`test_AdminManageCandidates.test.tsx`** (AST-511 middle-name field selectors).
 
 **AST-505** narrowed run (blocker **AST-504** tests optional smoke — terms artifact must exist for dispatch eligibility):
 **AST-505** narrowed run (blocker **AST-504** tests optional smoke — terms artifact must exist for legacy artifact path; per-term eligibility → **AST-525**):
@@ -1261,6 +1223,593 @@ npm run test:component -- \
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendDeps
+```
+
+## 7.13zzb Debug logging backfill — dispatcher (**AST-615**, parent **AST-540**)
+
+**AST-540 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/dispatcher.py`** orchestration — task start, per-entity claim index/detail, loop drain iterations, skip/guard early exits, batch-end summaries (after per-index detail), unchanged **debug** passthrough to consult. **No Betty log-string tests** (parent + child explicit); plan Stage 6 is manual UAT spot-check only. **AST-557** representative **inflow_discovery** instrumentation is generalized to all task keys in **AST-615**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-615** | Generalize AST-557 inflow-only debug gates to all dispatcher paths; retire `[DEBUG]` in touched blocks; `_dispatch_entity_identifier` helper | `src/core/dispatcher.py` | **`tests/component/core/test_dispatcher.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-615** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_dispatcher.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `_run_unified` claim / chunk / batch-call / network skip | **`TestRunUnified`** (`test_returns_zero_without_debug_logging`, `test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails`, inflow rows) |
+| `_run_dispatch_loop` min_count / drain / max_runs / zero processed | **`TestRunDispatchLoop`** |
+| `_dispatch_one` scheduler handoff | **`TestDispatchOne`** |
+| `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
+| `_check_circuit_breaker` | **`TestCircuitBreaker`** |
+
+## 7.13zzc Rebuild AST-586 git casualty (**AST-617**, parent **AST-600**)
+
+Restores **`database.py`** **`count_eligible_for_dispatch_task`** / schema backfill and **`api_admin.py`** **`is_scored`** / **`score_floor`** call sites to **`dispatch_claim_uses_score_floor`**. Config helper + **`dispatcher.py`** claim path already on **`origin/dev`** / sibling **AST-615** (**§7.13zzb**). **Manifest-only** — reuse **§7.13zv** (**AST-586**) narrowed run; no new test files.
+
+| Child | Behavior | Sources | Manifest |
+| --- | --- | --- | --- |
+| **AST-617** | DB eligible count + admin dispatch rows align with claim helper (not grading metadata) | `src/data/database.py`, `src/ui/api/api_admin.py` | **§7.13zv** narrowed run |
+
+## 7.13zzd Rebuild AST-519 git casualty — base resume UI + API (**AST-616**, parent **AST-601**)
+
+Restores **AST-519** per-candidate **Base Resume Content** behavior lost in git merges: **`GET …/resume_structure`**, structure-driven tabs (not global shapes), **`base_resume`** orphan strip on PUT, accent on **`artifacts.resume_structure.accent_color`**. Core helpers and **`ArtifactEditor`** structure mode already on **`origin/dev`** / **AST-517** lineage. **Betty** updates **`test_ArtifactsBaseResumeContent.test.tsx`** to mock structure GET + assert accent PUT path (**§6c** routed page).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-616** | API GET route + imports; Base Resume Content wired to structure sections + accent | `src/ui/api/api_candidate.py`, `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` | **§7.13zl** **AST-519** narrowed run (reuse **`TestAst519ResumeStructureApi`**, **`TestAst519ResumeStructureUiHelpers`**, **`test_ArtifactEditor.test.tsx`** structureSections rows); **`tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`** (structure GET, orphan hidden, accent PUT, candidate switch) |
+
+**AST-616** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t "structureSections|Base Resume Content|resume_structure"
+```
+
+## 7.13zze Debug logging backfill — agent (**AST-618**, parent **AST-541**)
+
+**AST-541 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/agent.py`** **`do_task`** orchestration — generalized entry header (task key, batch id, index) before external LLM call; token overlay / job-context detail; assembly **`llm_params`** + block counts; truncated response payload via **`debug_detail_block`**; **`run_next`** hop boundary detail; retire hand-rolled **`[DEBUG]`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **AST-597** resume-hop index lines generalized to all tasks via **`_do_task_debug_entry`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-618** | Contract debug across `do_task` entry/exit, token overlay, assembly, response payload, `run_next` boundary | `src/core/agent.py` | **`tests/component/core/test_agent.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-618** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `do_task` entry header + batch/index detail | **`TestDoTask::test_debug_flag_passed_to_child`**; **`TestAst597MidChainResumeHydrationAndTransitions::test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry`** |
+| Token overlay / caller hydration | **`test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry`** (asserts `caller_source` / `caller_hydration`, not golden index lines) |
+| `run_next` hop boundary INFO (unchanged §1.5.1) | **`TestDoTask::test_hop_boundary_log_on_run_next`**; **`TestDoTask::test_chain_entry_log`** |
+| Per-hop ledger + chain skip | **`TestAst531RunNextHopLedger`**; **`TestDoTask::test_mid_chain_empty_caller_skips_api`** |
+| `debug=False` unchanged | **`TestDoTask`** paths without **`debug=True`**; full-file branch lock |
+
+## 7.13zzf Debug logging backfill — roster (**AST-621**, parent **AST-542**)
+
+**AST-542 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/roster.py`** inflow paths — **`run_inflow_discovery_batch`** / **`vet_inflow_discovery`** baseline from **AST-557** on **`ftr/`**; this child adds **`resolve_company_website`** contract debug, **`_ingest_failure_reason`** ` | ` detail under vet-row headers, and empty-dedupe skip header. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only. **`debug=False`** must stay unchanged — existing inflow behavior tests are the gate.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-621** | Ingest failure reason helper; `resolve_company_website` CSE/vet/state contract; empty-dedupe header in discovery batch | `src/core/roster.py` | **`tests/component/core/test_roster.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-621** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_roster.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `run_inflow_discovery_batch` vet-row ingest outcomes + empty dedupe | **`TestAst505InflowDiscovery`** (`test_run_batch_happy_path`, `test_run_batch_cse_failure_continues`, `test_run_batch_no_stale_terms_returns_zero_errors`, `test_run_batch_searches_only_stale_terms`) |
+| `resolve_company_website` CSE + `find_company_website` + state transitions | **`TestAst506InflowResolve`** |
+| `debug=False` unchanged on inflow paths | **`TestAst505InflowDiscovery`** / **`TestAst506InflowResolve`** paths without **`debug=True`**; full-file branch lock |
+
+**Rollup reconcile (AST-621):** Betty publish ref **`origin/sub/AST-542/AST-621-roster-inflow-vet-ingest-debug`** — one **§7.13zzf** table row; **`rollup-child`** merges into **`origin/ftr/ast-542-debug-logging-backfill-roster`**.
+
+## 7.13zzg Debug logging backfill — consult (**AST-619**, parent **AST-543**)
+
+**AST-543 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/consult.py`** — Pattern-A **`_run_batch_consult`** per-job index headers + **`|`** detail before batch summaries; **`qualify_job_listings`** / **`evaluate_jd_batch`** wrappers; encoded **`consult_do`** / **`consult_get`** / **`consult_like`** batches; single-job **`render_verdict`**; rubric grading helpers **`_render_pass_fail`**, **`_render_score`**, **`_apply_render_verdict_decoded_job`**; retire hand-rolled **`[DEBUG]`** and **`_LOG_DEBUG`** guards in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-619** | Contract debug across batch loops, grading branches, qualify/evaluate, encoded consult batches, `render_verdict` | `src/core/consult.py` | **`tests/component/core/test_consult.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-619** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_consult.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_consult.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `_render_pass_fail` / `_render_score` grading branches | **`TestRenderPassFail`**, **`TestRenderPassFailDebug`**, **`TestRenderScore`**, **`TestRenderScoreBranches`** |
+| `_run_batch_consult` batch start, per-job indices, envelope failure | **`TestRunBatchConsult`**, **`TestRunBatchConsultBranches`** |
+| `qualify_job_listings` / `evaluate_jd_batch` Pattern-A wrappers | **`TestQualifyJobListings`**, **`TestEvaluateJdBatch`** |
+| `render_verdict` single-job decode path | **`TestRenderVerdict`** |
+| Encoded DO/GET/LIKE batch routing | **`TestAst503`**, **`TestRunConsultTask`** consult batch rows |
+| `debug=False` unchanged | **`TestRemainingConsultBranches::test_runs_without_debug_logging`**; full-file branch lock |
+
+**Betty test fix (AST-619):** **`enable_debug_log`** fixture uses **`logger.set_debug_flag(True)`** — product removed **`_LOG_DEBUG`** / **`isEnabledFor`** guards in favor of **`debug_detail`**.
+
+## 7.13zzh Debug logging backfill — external LLM wrappers (**AST-620**, parent **AST-546**)
+
+**AST-546 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/external/anthropic.py`** and **`src/external/deepseek.py`** — shared **`_emit_llm_call_debug`** helper, Style D index + **`|`** detail lines (model, task key, timing, tokens, truncated response preview via **`debug_detail_block`**); retire hand-rolled **`[DEBUG]`** blocks. **`log_llm_batch_summary`** and non-debug INFO/ERROR timing lines unchanged when **`debug=False`**. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-620** | Contract debug on success, API error, and outer exception paths for Anthropic + DeepSeek send wrappers | `src/external/anthropic.py`, `src/external/deepseek.py` | **`tests/component/external/test_anthropic.py`** (full file); **`tests/component/external/test_deepseek.py`**; **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-620** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/external/test_anthropic.py tests/component/external/test_deepseek.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/external/test_anthropic.py
+```
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `send_to_anthropic` success + `debug=True` (formats, web search) | **`TestSendToAnthropic::test_text_json_and_python_success`** |
+| `send_to_anthropic` API failure / invalid format | **`test_api_failure_returns_error_payload`**, **`test_invalid_response_format_raises`** |
+| `send_to_deepseek` success + timesheet buckets | **`TestSendToDeepseekTimesheetMapping::test_record_timesheet_kwargs_match_deepseek_buckets`** |
+| `_parse_api_response` (unchanged) | **`TestDeepseekParseApiResponse`** |
+| `do_task` → DeepSeek provider wiring | **`TestAst492BrainSettingDoTask::test_send_to_deepseek_receives_vendor_model_and_tier_meta`** (**§7.13zd**) |
+
+## 7.13zzi Debug logging backfill — gazer (**AST-622**, parent **AST-544**)
+
+**AST-544 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/gazer.py`** — company gaze (`process_gazer_batch`), job-list dedupe trace (`raw_job_listing_is_duplicate` read-only), JD scrape / title-validation batches (`scrape_jd_batch`, `validate_title_batch`), and board gaze (`process_gaze_board_batch`); retire hand-rolled **`[DEBUG]`** / noise **`_log.debug`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **`debug=False`** must stay unchanged — existing gazer behavior tests + branch lock are the gate.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-622** | Contract debug across four batch entry points; identifier helpers; listing dedupe trace helper | `src/core/gazer.py` | **`tests/component/core/test_gazer.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-622** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_gazer.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_gazer.py
+```
+
+**Manifest focus (existing + branch-coverage extensions — no log-string asserts):**
+
+| Touched path | Existing / extended tests |
+| --- | --- |
+| `scrape_jd_batch` outcome paths (missing link, scrape error, empty/short JD, classify fail, pass) | **`TestScrapeJdBatch`**, **`TestScrapeJdBatchDebugPaths`**, **`TestScrapeJdBatchDebugBranchCoverage`** |
+| `validate_title_batch` pass/fail + batch summary | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
+| `process_gazer_batch` scrape/parse/ingest + dedupe trace | **`TestProcessGazerBatch`**, **`TestProcessGazerBatchDebugPaths`**, **`TestProcessGazerBatchDebugBranchCoverage`**, **`TestLogListingDedupeTrace`** |
+| Identifier helpers | **`TestGazerIdentifierHelpers`** |
+| `debug=False` unchanged | All **`debug=False`** rows above; full-file branch lock |
+
+**Betty test fix (AST-622):** Extended **`test_gazer.py`** for **`LOCKED_AT_100`** on new **`debug=True`/`False`** branch pairs — not golden log-line asserts.
+
+## 7.13zzj Debug logging backfill — builder (**AST-623**, parent **AST-545**)
+
+**AST-545 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/builder.py`** — resume/cover letter/base-resume render entry points with Style D **`index 1/1`** headers, **`|`** detail for content-source resolution (job **`resume_content`** vs candidate **`base_resume`**, cover letter vs sample text), enabled structure keys, accent source, ATS keyword count, and truncated HTML preview via **`debug_detail_block`**; **`debug=False`** unchanged. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-623** | Contract debug on `build_resume`, `build_resume_from_job`, `build_cover_letter`, `build_cover_letter_from_job`, `build_base_resume`; read-only source label helpers; failure headers on `ValueError` paths | `src/core/builder.py` | **`tests/component/core/test_builder.py`** (full file — **`LOCKED_AT_100`**); **`tests/component/utils/test_debug_logging.py`** + **`tests/component/utils/test_logging_batch.py`** (**§7.13zt** contract regression) |
+
+**AST-623** narrowed run (pytest-only — instrumentation-only child; no new log-string assertions):
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_builder.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+Equivalent harness:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_builder.py
+```
+
+**Manifest focus (existing + branch-coverage extensions — no log-string asserts):**
+
+| Touched path | Existing / extended tests |
+| --- | --- |
+| `build_resume_from_job` success + failure + `include_cover` + keyword shapes | **`TestBuildResumeFromJob`**, **`TestBuildResumeFromJobDebugPaths`**, **`TestAst581ResumeCoverSplit`** |
+| `build_resume` load chain + failure headers | **`TestBuildResume`**, **`TestBuildResumeDebugPaths`** |
+| `build_cover_letter` / `build_cover_letter_from_job` | **`TestAst581ResumeCoverSplit`**, **`TestBuildCoverLetterDebugPaths`**, **`TestBuildCoverLetterFromJobDebugPaths`** |
+| `build_base_resume` | **`TestBuildBaseResume`**, **`TestBuildBaseResumeDebugPaths`** |
+| Source label helpers | **`TestBuilderIdentifierHelpers`** |
+| `debug=False` unchanged | All pre-AST-623 rows above; full-file branch lock |
+
+**Betty test fix (AST-623):** Extended **`test_builder.py`** for **`LOCKED_AT_100`** on new **`debug=True`/`False`** branch pairs — not golden log-line asserts.
+
+## 7.13zzk Session log-off screen — expired session detection (**AST-625**, parent **AST-624**)
+
+**AST-624 (parent):** Dedicated log-off screen when the SPA detects a prior Stytch session is gone (timeout) or Flask returns **401** while the user was authenticated — distinct copy per reason, **Refresh** clears tab-scoped marks and reloads for **Login** recovery. First-time visitors still see **`Login`**. Frontend-only; no Flask or Stytch Dashboard changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-625** | `sessionStorage` had-session + log-off reason; centralized **`api()`** 401 hook; **`RequireAuth`** routes **`LogOffScreen`** vs **`Login`** vs children; reason-specific copy + **Refresh** | `src/ui/frontend/src/lib/sessionAuthMark.ts`, `src/ui/frontend/src/lib/api.ts`, `src/ui/frontend/src/contexts/AuthContext.tsx`, `src/ui/frontend/src/components/RequireAuth.tsx`, `src/ui/frontend/src/pages/LogOffScreen.tsx` | `tests/component/frontend/lib/test_sessionAuthMark.test.ts`; `tests/component/frontend/lib/test_api.test.ts`; `tests/component/frontend/contexts/test_AuthContext.test.tsx`; `tests/component/frontend/components/test_RequireAuth.test.tsx`; `tests/component/frontend/components/test_LogOffScreen.test.tsx` |
+
+**AST-625** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../tests/component/frontend/lib/test_sessionAuthMark.test.ts \
+  ../tests/component/frontend/lib/test_api.test.ts \
+  ../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../tests/component/frontend/components/test_LogOffScreen.test.tsx
+```
+
+**Regression guard (unchanged AST-612/613):** After manifest green, spot-check **`test_Login.test.tsx`**, **`test_AdminRoute.test.tsx`**, **`test_NavigationShell.test.tsx`** — no auth-gate regressions.
+
+## 7.13zzl Table upsert schema ensure before validation (**AST-627**, parent **AST-626**)
+
+**AST-626 (parent):** Lazy `_ensure_*_schema` handlers run **before** column validation in both Copy Output upsert (`apply_copy_output_table_upsert`) and config-table upsert (`apply_config_table_upsert`). Data-layer registry **`ensure_table_schema_for_upsert`** maps known table names to existing handlers; unregistered tables unchanged. Preserves AST-373 / AST-464 merge semantics — no UI or allowlist changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-627** | Registry + ensure hook in config upsert; core path calls ensure before `table_columns`; removes duplicate in-transaction `agent_task` ensure | `src/data/database.py`, `src/core/table_copy_upsert.py` | **`tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_schema_ensure_before_validate`**; full **`test_table_copy_upsert.py`** + config upsert rows in **`test_schema.py`** for AST-464 regressions |
+| **AST-629** | UAT bug: `ensure_table_schema_for_upsert` clears process-global `_*_schema_ensured` flags before handler so stale DB + flag-already-True still migrates | `src/data/database.py` (`_UPSERT_SCHEMA_ENSURE_FLAGS`, `ensure_table_schema_for_upsert`) | **`tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass::test_copy_upsert_stale_dispatch_task_when_schema_flag_already_true`**; **`tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_when_schema_flag_already_true`**; full **`TestAst627EnsureBeforeValidate`** + **`TestApplyConfigTableUpsert`** for AST-627/464 regressions |
+| **AST-637** | UAT bug: `company` upsert handler chains `_ensure_company_candidate_fk` + adds `agent_responses_legacy` DDL; registry flags reset both globals (AST-629 combo) | `src/data/database.py` (`_ensure_company_table_for_upsert`, `_ensure_company_schema`) | **`tests/component/data/database/test_table_copy_upsert.py::TestAst637CompanyUpsertSchemaEnsure::test_copy_upsert_stale_company_missing_candidate_and_legacy_columns`**; full **`TestAst627EnsureBeforeValidate`** + **`TestAst629UpsertFlagBypass`** for AST-626/629 regressions |
+
+**AST-627** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
+  tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_schema_ensure_before_validate \
+  tests/component/data/database/test_table_copy_upsert.py \
+  tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert \
+  -q
+```
+
+**AST-629** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass \
+  tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert::test_config_upsert_stale_candidate_when_schema_flag_already_true \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
+  tests/component/data/database/test_schema.py::TestApplyConfigTableUpsert \
+  -q
+```
+
+**AST-637** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst637CompanyUpsertSchemaEnsure \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst627EnsureBeforeValidate \
+  tests/component/data/database/test_table_copy_upsert.py::TestAst629UpsertFlagBypass \
+  -q
+```
+
+## 7.13zzm Agent content token resolution (**AST-631**, parent **AST-574**)
+
+**AST-574 (parent):** Agent `content` resolves registry tokens when used as the direct system block or when injected behind task `system_prompt` **`{$SELECTED_AGENT}`** — same `resolve_tokens` call context as task segments. **AST-632** (Katherine) covers Manage Agents autocomplete + preview UI only.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-631** | `resolved_agent_content`; `_chain_context` puts resolved body in `SELECTED_AGENT`; `do_task` / `preview_prompt` / admin enrich use shared path | `src/core/agent.py`, `src/ui/api/api_admin.py` | `tests/component/core/test_agent.py::TestAst631AgentContentTokens`; `tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens`; `tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent`; full **`tests/component/core/test_agent.py`** (**`LOCKED_AT_100`**) |
+| **AST-632** | `get_manage_agents_tokens`; `GET /agents/meta/tokens`; `POST /agents/preview`; Manage Agents `TokenTextarea` + resolved preview (literal save) | `src/utils/config.py`, `src/ui/api/api_admin.py`, `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | `tests/component/utils/test_config.py::TestGetManageAgentsTokens`; `tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_ast632_manage_agents_token_meta_and_preview`; `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` (**`AST-632`** routed page + preview) |
+| **AST-636** | UAT fix: portaled `TokenTextarea` menu (modal clipping); `useAgentTokenList` ignores non-OK `/agents/meta/tokens` | `src/ui/frontend/src/components/TokenTextarea.tsx`, `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | `tests/component/frontend/components/test_TokenTextarea.test.tsx` (**`AST-636`** portal); `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` (**`AST-636`** edit-modal autocomplete + non-OK meta) |
+
+**AST-631** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst631AgentContentTokens \
+  tests/component/core/test_agent.py::TestChainContext::test_merges_extra_chain_tokens \
+  tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_agent_body_when_system_is_selected_agent \
+  -q
+```
+
+**AST-632** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestGetManageAgentsTokens \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents::test_ast632_manage_agents_token_meta_and_preview \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+**AST-636** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+## 7.13zzn Admin candidate filter on three admin tabs (**AST-634**, parent **AST-628**)
+
+**AST-628 (parent):** Shared **`AdminCandidateFilterControl`** + **`useAdminCandidateFilter`** on Scheduled Actions (client-side row filter), Execution History (URL-backed ledger scope), and Agent Timesheets (URL-backed list + export). Default tracks left-nav until Susan picks manually; **All** shows cross-candidate rows; Execution History dropdown lists global **`/api/candidates`** even when ledger rows omit a candidate.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-634** | Hook + label helpers; three routed admin pages | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `src/ui/frontend/src/components/AdminCandidateFilterControl.tsx`, `src/ui/frontend/src/lib/candidateLabel.ts`, `AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx`, `AdminAgentTimesheets.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`; `tests/component/frontend/lib/test_candidateLabel.test.ts`; **`AST-634`** describe in `test_AdminScheduledActions.test.tsx`, `test_AdminPerformanceMonitor.test.tsx`, `test_AdminAgentTimesheets.test.tsx` |
+
+**RTL note (Execution History):** page tests seed **`candidate_id`** on the initial route when **`urlPresentDisablesSync`** applies — bare mount without URL param can hang on nav-sync effects.
+
+**AST-634** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/lib/test_candidateLabel.test.ts \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  -t "AST-634|useAdminCandidateFilter|candidateLabel"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
+
+## 7.13zzna Execution History direct candidate switch (**AST-662**, parent **AST-656**)
+
+**AST-656 (parent):** Execution History **`/admin/performance`** on-page **Candidate** dropdown must apply direct candidate-to-candidate changes without an intermediate **All** selection — dropdown display, URL **`candidate_id`**, ledger fetch, table rows, and total cost stay in sync. UI-only fix on shared **`useAdminCandidateFilter`** (**`manualPinRef`** nav-sync guard) plus memoized **`urlBacked`** on **`AdminPerformanceMonitor`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-662** | Direct A→B switch; hook manual-pin guard; stable **`urlBacked`** on Execution History | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `AdminPerformanceMonitor.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` (direct **`c1`→`c2`** urlBacked case); **`AST-634`** describe + new direct-switch case in `test_AdminPerformanceMonitor.test.tsx` |
+
+**AST-662** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-634|direct urlBacked|direct candidate switch"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** and hook file when parent UAT runs — **§7.13zzn** **AST-634** cases must stay green.
+
+## 7.13zzo Auto retry — union claim/count + per-entity batch retry routing (**AST-641**, **AST-642**, parent **AST-630**)
+
+**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-641** | `dispatch_claim_states`; multi-state SQL in claim/count; dispatcher passes `states=` into batch helpers | `src/utils/config.py`, `src/data/database.py`, `src/core/tracker.py`, `src/core/roster.py`, `src/core/dispatcher.py` | `tests/component/utils/test_config.py::TestAst641DispatchClaimStates`; `tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount`; `tests/component/core/test_dispatcher.py` **`test_ast641_*`** |
+| **AST-642** | `_consult_batch_fail_dest`; `_transition_batch_consult_failures`; per-entity routing in `_run_batch_consult`, `_run_analysis_upshot_batch`, qualify short-title path | `src/core/consult.py` | `tests/component/core/test_consult.py::TestConsultBatchFailDest`; `tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry` |
+
+**AST-641** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst641DispatchClaimStates \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount \
+  tests/component/core/test_dispatcher.py -k ast641
+```
+
+**AST-642** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry
+```
+
+```
+
+## 7.13zzp UAT — craft_resume_base omits resume_structure (**AST-644**, parent **AST-601**)
+
+**AST-644 (UAT bug):** Model returns **`craft_resume_base`** success envelope with content fields only — no **`resume_structure`** key — so **`_validate_response_schema`** hard-failed before **`split_craft_resume_base_payload`** could apply **`default_resume_structure()`** (AST-517). Fix: **`normalize_craft_resume_base_agent_payload`** injects config default when structure is missing or has empty **`sections`**, mirroring split path. No UI / schema / AST-517 storage changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-644** | Pre-validation default **`resume_structure`** injection | `src/core/candidate.py` | **`tests/component/core/test_candidate.py::TestAst517ResumeStructure`** — **`test_normalize_injects_default_when_resume_structure_missing`**, **`test_normalize_injects_default_when_resume_structure_sections_empty`**, **`test_normalize_preserves_valid_custom_resume_structure`**; reuse **`test_split_uses_default_when_structure_missing`** (split path unchanged) |
+
+**AST-644** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure
+```
+
+## 7.13zzq Token lookup list — trigger-adjacent placement (**AST-643**, parent **AST-638**)
+
+**AST-638 (parent):** Shared **`TokenTextarea`** portaled autocomplete menu appears below the active **`{$`** trigger line (scroll-adjusted), flips above when insufficient viewport room below, and preserves AST-636 portal + open/filter/dismiss/keyboard behavior. All consumers (Manage Tasks, Manage Agents, Anthropic Ad Hoc) inherit from the component — no per-page manifest.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-643** | `menuAnchor` subtracts `scrollTop`; viewport flip; `triggerCharIndex` wiring | `src/ui/frontend/src/components/TokenTextarea.tsx` | Full **`tests/component/frontend/components/test_TokenTextarea.test.tsx`** — **`AST-643`** placement (`menu` fixed `top` strictly below textarea origin on first-line trigger); **`AST-636`** portal; existing open/filter/dismiss/keyboard rows |
+
+**AST-643** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_TokenTextarea.test.tsx
+```
+
+## 7.13zzr Yellow in-flight styling for AI generate buttons (**AST-645**, parent **AST-635**)
+
+**AST-635 (parent):** Shared **UI-call-to-AI** primary actions (artifact craft **Generate** / **Regenerate**, **Company Search Terms**, Recommended Job Report **Generate Artifacts** / **Working…**) use a shared `.in-flight` CSS modifier on existing `.dep-btn.save` / `.modal-btn.save` buttons — yellow/gold while `generating` / `primaryBusy`, green when idle. **Save** / **Cancel** unchanged.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-645** | Shared `.in-flight` in `App.css`; wire `generating` / `primaryBusy` on three generate controls | `src/ui/frontend/src/App.css`, `ArtifactEditor.tsx`, `ArtifactsCompanySearchTerms.tsx`, `RecommendedJobReportHeader.tsx` | `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — **`AST-645: Generate/Regenerate button uses in-flight class while generating`**; `tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx` — **`AST-645: Generate button uses in-flight class while generating`** (§6c routed page); `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — **`AST-645: Generate Artifacts primary action uses in-flight class while Working`** |
+
+**AST-645** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+## 7.13zzs Admin deploy status nav footer (**AST-646**, **AST-651**, **AST-653**, parent **AST-640**)
+
+**AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label when `ASTRAL_DEPLOY_ENV` is any non-empty string (after strip), short commit hash with message tooltip, and server-formatted uptime. Non-admins keep the existing footer spacer; no deploy API call.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-646** | `GET /api/deploy_status` (`@require_admin`); `deploy_status.py` payload builder; `AdminDeployFooter` + admin gate in `NavigationShell` | `src/utils/deploy_status.py`, `src/ui/api/api_system.py`, `src/ui/frontend/src/components/{AdminDeployFooter,NavigationShell}.tsx` | `tests/component/utils/test_deploy_status.py`; `tests/component/ui/api/test_api_system.py::TestDeployStatus`; `tests/component/frontend/components/test_AdminDeployFooter.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx` (admin footer visible; non-admin absent) |
+| **AST-651** | UAT: drop `DEPLOY_STATUS_CONFIG` allowlist — `_resolve_environment()` returns stripped raw `ASTRAL_DEPLOY_ENV`; whitespace-only omits label | `src/utils/deploy_status.py`, `src/utils/config.py`, `env.example` | **`tests/component/utils/test_deploy_status.py::TestResolveEnvironment`** — **`test_non_allowlisted_value_returns_raw`** (`eu-west`), **`test_whitespace_only_returns_none`**; keep **`test_valid_local`**, **`test_unset_returns_none`**, payload tests unchanged. No UI/API test edits (mocks unchanged). |
+| **AST-653** | UAT: on `ASTRAL_DEPLOY_ENV=local`, UI-initiated LLM paths auto-enable debug via `is_local_deploy_env()` / `ui_llm_debug()`; non-local unchanged | `src/utils/deploy_status.py`, `src/ui/api/{api_intake,api_admin,api_candidate,api_boards}.py`, `src/core/{dispatcher,candidate,boards}.py` | **`tests/component/utils/test_deploy_status.py::TestLocalDeployDebug`** — local/staging/unset OR semantics for `is_local_deploy_env` and `ui_llm_debug`; existing **`TestResolveEnvironment`** + payload tests unchanged. No log-string golden tests (AST-538 gating only). |
+
+**AST-646** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+**AST-651** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py::TestResolveEnvironment
+```
+
+**AST-653** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py::TestLocalDeployDebug
+```
+
+## 7.13zzt List table layout — freeze columns, sticky header, cell tooltips (**AST-647**, **AST-652**, parent **AST-633**)
+
+**AST-633 (parent):** Shared list-table presentation for **ListPage** and bespoke grouped tables: **N** frozen left data columns (default **2** from `UI_CONFIG` via `/api/system/ui_config`), checkbox and row-action columns always frozen in addition to **N**, sticky header in the table scroll region, horizontal scroll for wide tables, long cells truncated to **30** chars with full value in hover tooltip (`title`).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-647** | `UI_CONFIG` defaults; shared `listTableLayout` / `uiConfig` / `ListTableTruncatedCell`; ListPage freeze + truncate; **AdminScheduledActions** bespoke table with `frozenDataColumns={3}` | `src/utils/config.py`, `src/ui/frontend/src/lib/{listTableLayout,uiConfig}.ts`, `ListPage.tsx`, `ListTableTruncatedCell.tsx`, `App.css`, `AdminScheduledActions.tsx` | `tests/component/frontend/lib/test_listTableLayout.test.ts`; `tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx`; `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx`; `tests/component/frontend/components/test_ListPage.test.tsx` (api mock + `/api/system/ui_config` — **uiConfig** extract regression); `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-647: phase table freezes first three data columns`** + candidate-filter test fixes; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults` |
+| **AST-652** | UAT: drop force-fit (`table-layout: fixed` / `width: 100%`); default `.list-page-table` autosize; remove `horizontalScrollable` gate and redundant `--auto` / inline overrides; Scheduled Actions phase tables drop `%` column widths | `App.css`, `ListPage.tsx`, `AdminAgentTimesheets.tsx`, `AdminCostReconciliation.tsx`, `AdminScheduledActions.tsx`, `JobsInReview.tsx`, `JobsRecommended.tsx`, `JobsSkipped.tsx` | `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` — **`AST-652: default list-page-table uses autosize layout`**; `tests/component/frontend/components/test_ListPage.test.tsx` (drop obsolete `horizontalScrollable` prop); re-run **AST-647** manifest rows above (freeze/truncate unchanged) |
+| **AST-657** | UAT: under autosize, measure rendered `<th>` widths after layout; `mergeWidthsForSticky` + `useListTableColumnMeasure` feed `stickyLeftPx` so **N** left data columns stay sticky (not only action column) | `listTableLayout.ts`, `useListTableColumnMeasure.ts`, `ListPage.tsx`, `AdminScheduledActions.tsx`, `App.css` | `tests/component/frontend/lib/test_listTableLayout.test.ts` — **`AST-657:`** `mergeWidthsForSticky`, `measureListTableColumnWidths`, measured checkbox `stickyLeftPx`; `tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx` — **`AST-657: frozen data columns get cumulative sticky left offsets after measure`**; re-run **AST-647** `test_AdminScheduledActions.test.tsx` phase-freeze case |
+
+**AST-652** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx
+```
+
+**AST-647** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_list_table_layout_defaults
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_listTableLayout.test.ts \
+  ../../../tests/component/frontend/components/test_ListTableTruncatedCell.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage_listTableLayout.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+## 7.13zzu Remove board search UI + hide `gaze_board` from Scheduled Actions (**AST-649**, parent **AST-648**)
+
+**RETIRED (AST-757):** No component-test obligations. See Code Rules §3.7. UI retired **AST-649**; backend removed **AST-765**.
+
+## 7.13zzw Core bootstrap runtime startup (**AST-654**, parent **AST-383**)
+
+**AST-383 (parent epic):** Move Flask process startup (LLM env validation → `sync_agent_tasks` → `start_scheduler`) from **`src/ui/server.py`** into **`src/core/bootstrap.py`**. UI calls **`bootstrap_runtime()`** once after blueprint registration — no direct **`src.data`** import in **`server.py`**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-654** | Ordered **`bootstrap_runtime()`** pipeline; fail-fast **`_validate_runtime_coupling()`** before DB sync | `src/core/bootstrap.py`, `src/ui/server.py` | **`tests/component/core/test_bootstrap.py`** (full file); **`tests/component/ui/test_server.py::TestServeReact`** ( **`server_client`** stubs **`bootstrap_runtime`** ); **`tests/component/ui/conftest.py`** **`server_client`** fixture |
+
+**AST-654** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/ui/test_server.py
+```
+
+**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** use **`grade_*`** dispatch-row keys (e.g. **`grade_do`**, **`prefilter`**) — same strings as **`TASK_CONFIG`** after **AST-747** identity cutover; **`resolve_dispatch_task_config_key()`** trims only.
+
+## 7.13zzx Themed confirm — admin native `window.confirm` migration (**AST-659**, parent **AST-639**)
+
+**AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-659** | Data Management upsert apply; Manage Candidates logical delete + clear API key → themed **`alertdialog`** (confirm/cancel) | `src/ui/frontend/src/pages/AdminDataManagement.tsx`, `AdminManageCandidates.tsx` | **`tests/component/frontend/pages/test_AdminDataManagement.test.tsx`** — **`alertdialog`** **"Apply upsert"** → **Apply** on upsert success + API **`ok:false`** paths (**§6c** routed page); **`tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`** — **"Clear API key"** / **"Delete candidate"** confirm paths; **AC5 regression:** **`tests/component/frontend/pages/test_CandidateIntake.test.tsx`** (existing **`useUserConfirm`** — unchanged) |
+
+**AST-659** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
+```
+
+## 7.13zzv UAT — craft_resume_base Generate does not persist artifacts (**AST-650**, parent **AST-601**)
+
+**AST-650 (UAT bug):** UI **Generate** POST for **`craft_resume_base`** returned HTTP 200 with **`parsed_response`** but never wrote **`artifacts.resume_structure`** / **`artifacts.base_resume`** — persistence existed only on **`parse_candidate_resume`**. Fix: after successful **`do_task`** in **`run_candidate_artifact_generation`**, **`split_craft_resume_base_payload`** + **`save_candidate(..., merge=True)`** for **`craft_resume_base`** only (mirrors parse path). No UI / schema / prompt changes.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-650** | UI Generate success persists structure + base_resume | `src/core/candidate.py` **`run_candidate_artifact_generation`** | **`tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration`** — **`test_persists_artifacts_on_craft_resume_base_success`**, **`test_does_not_persist_artifacts_on_other_task_success`**; revised **`test_returns_200_on_success`** (mock **`save_candidate`**) |
+
+**AST-650** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration
 ```
 
 ## Appendix A — Run component tests

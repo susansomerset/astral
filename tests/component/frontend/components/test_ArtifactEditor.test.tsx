@@ -7,9 +7,10 @@ import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { installBaseApiMocks } from "../pages/page-mocks"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -107,6 +108,54 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+  })
+
+  it("AST-645: Generate/Regenerate button uses in-flight class while generating", async () => {
+    let resolveGenerate!: (value: Response) => void
+    const generatePromise = new Promise<Response>((resolve) => {
+      resolveGenerate = resolve
+    })
+    mockApis("CONTEXT_READY")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                rubric: [{ label: "Fit", content: "Body", importance: 5 }],
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
+        return generatePromise
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    const generateBtn = screen.getByRole("button", { name: "Regenerate" })
+    expect(generateBtn).not.toHaveClass("in-flight")
+    await userEvent.click(generateBtn)
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    await waitFor(() => expect(generateBtn).toHaveClass("in-flight"))
+    expect(screen.getByRole("button", { name: "Save" })).not.toHaveClass("in-flight")
+    resolveGenerate({
+      ok: true,
+      json: async () => ({
+        success: true,
+        parsed_response: { criteria: [{ label: "Generated", content: "New body" }] },
+      }),
+    } as Response)
+    await waitFor(() => expect(generateBtn).not.toHaveClass("in-flight"))
+    expect(generateBtn).toHaveClass("save")
   })
 
   it("supports fixed-shape artifacts and add/remove controls", async () => {

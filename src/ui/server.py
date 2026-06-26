@@ -15,11 +15,12 @@ _repo_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_repo_root))
 sys.path.insert(0, str(_repo_root / "src"))
 
-from flask import Flask, send_from_directory
+from flask import Flask, request, send_from_directory
 
 from src.core.auth_bootstrap import wire_stytch_token_authenticator
 
 _DIST = Path(__file__).parent / "frontend" / "dist"
+_FRONTEND_SRC = Path(__file__).parent / "frontend" / "src"
 
 app = Flask(__name__, static_folder=None)
 
@@ -45,28 +46,53 @@ app.register_blueprint(companies_bp)
 from ui.api.api_jobs import jobs_bp  # noqa: E402
 app.register_blueprint(jobs_bp)
 
-from ui.api.api_boards import boards_bp  # noqa: E402
-app.register_blueprint(boards_bp)
-
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
 
-# --- Sync agent_task rows at startup ---
-# B2: UI layer normally avoids `src.data`; this path stays until AST-383 moves
-# startup sync behind `core.bootstrap` (see plan AST-385 / AST-383).
-from src.utils.config import get_task_keys, validate_llm_provider_environment  # noqa: E402
+from ui.api_errors import server_error_from_exception  # noqa: E402
 
-validate_llm_provider_environment()
 
-from src.data import database  # noqa: E402
+@app.errorhandler(Exception)
+def _api_uncaught_exception(exc: Exception):
+    if not request.path.startswith("/api/"):
+        raise exc
+    return server_error_from_exception(exc)
 
-database.sync_agent_tasks(get_task_keys())
 
-# --- Start dispatch scheduler ---
-from src.core.dispatcher import start_scheduler  # noqa: E402
-start_scheduler()
+# --- Runtime bootstrap (validation → agent_task sync → scheduler) ---
+from src.core.bootstrap import bootstrap_runtime  # noqa: E402
+
+bootstrap_runtime()
 
 # --- Serve React app ---
+
+
+def _warn_stale_frontend_dist() -> None:
+    """Local dev: Flask :5001 serves dist/; git pull does not rebuild it."""
+    dist_index = _DIST / "index.html"
+    if not _FRONTEND_SRC.is_dir():
+        return
+    src_files = [
+        p for p in _FRONTEND_SRC.rglob("*")
+        if p.suffix in (".ts", ".tsx") and p.is_file()
+    ]
+    if not src_files:
+        return
+    if not dist_index.is_file():
+        print(
+            "WARNING: frontend/dist missing — UI on :5001 will 404 or be stale; "
+            "run: cd src/ui/frontend && npm run build (or use http://localhost:5173)",
+            file=sys.stderr,
+        )
+        return
+    dist_mtime = dist_index.stat().st_mtime
+    newest_src = max(p.stat().st_mtime for p in src_files)
+    if newest_src > dist_mtime:
+        print(
+            "WARNING: frontend/dist older than src/ — :5001 serves stale UI; "
+            "rebuild (npm run build) or use http://localhost:5173 (vite)",
+            file=sys.stderr,
+        )
 
 
 @app.route("/", defaults={"path": ""})
@@ -79,4 +105,5 @@ def serve_react(path):
 
 
 if __name__ == "__main__":  # pragma: no cover
+    _warn_stale_frontend_dist()
     app.run(debug=True, port=5001)

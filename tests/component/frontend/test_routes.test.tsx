@@ -13,7 +13,7 @@ describe("routes", () => {
     expect(navShell?.children?.some(child => child.index)).toBe(true)
     expect(navShell?.children?.some(child => child.path === "*")).toBe(true)
     expect(navShell?.children?.some(child => child.path === "jobs/recommended")).toBe(true)
-    expect(navShell?.children?.some(child => child.path === "candidate/board_searches")).toBe(true)
+    expect(navShell?.children?.some(child => child.path === "candidate/board_searches")).toBe(false)
     expect(navShell?.children?.some(child => child.path === "candidate/title_patterns")).toBe(false)
     expect(navShell?.children?.some(child => child.path === "admin/data_management")).toBe(true)
   })

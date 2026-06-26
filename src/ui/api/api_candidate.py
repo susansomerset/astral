@@ -9,21 +9,26 @@ from flask import Blueprint, g, jsonify, request
 from ui.auth import require_auth, require_admin
 from src.core.candidate import (
     apply_company_search_terms_save,
+    apply_rubric_vectors_save,
     clear_candidate_api_key,
     company_search_terms_joined_text,
     company_search_terms_lines_for_candidate,
     delete_candidate as core_delete_candidate,
+    enabled_resume_structure_sections,
+    filter_base_resume_to_structure,
     get_candidate,
+    hydrate_rubric_artifacts_for_response,
     initiate_candidate,
     list_candidates as core_list_candidates,
-    company_search_terms_joined_text,
-    company_search_terms_lines_for_candidate,
+    normalize_resume_structure,
     normalize_rubric_artifacts_on_save,
+    resolve_resume_structure,
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
 )
 from src.utils.config import CANDIDATE_STATES, TASK_CONFIG, UI_CONFIG
+from src.utils.deploy_status import ui_llm_debug
 
 candidate_bp = Blueprint("candidate", __name__, url_prefix="/api/candidates")
 
@@ -98,6 +103,21 @@ def get_candidate_states():
     return jsonify(list(CANDIDATE_STATES.keys()))
 
 
+@candidate_bp.route("/<candidate_id>/resume_structure")
+@require_auth
+def get_candidate_resume_structure(candidate_id):
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    cd = candidate.get("candidate_data") or {}
+    resolved = resolve_resume_structure(cd)
+    sections = enabled_resume_structure_sections(resolved)
+    accent = resolved.get("accent_color")
+    if not isinstance(accent, str):
+        accent = None
+    return jsonify({"sections": sections, "accent_color": accent})
+
+
 @candidate_bp.route("/<candidate_id>")
 @require_auth
 def get_candidate_detail(candidate_id):
@@ -106,6 +126,9 @@ def get_candidate_detail(candidate_id):
         return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
     # AST-526: table-backed field for Artifacts textarea (not artifacts blob).
     candidate["company_search_terms"] = company_search_terms_joined_text(candidate_id)
+    cd = candidate.get("candidate_data") or {}
+    hydrate_rubric_artifacts_for_response(candidate_id, cd)
+    candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
 
 
@@ -168,6 +191,7 @@ def update_candidate_data(candidate_id):
                     body.pop("artifacts", None)
                 else:
                     normalize_rubric_artifacts_on_save(arts)
+                    apply_rubric_vectors_save(candidate_id, arts)
             prof = body.get("profile")
             if isinstance(prof, dict) and "cover_letter_signature_image" in prof:
                 _validate_cover_letter_signature_image(prof.get("cover_letter_signature_image"))
@@ -237,5 +261,7 @@ def generate_artifact(candidate_id, task_key):
     if task_key == "craft_resume_base":
         live = (cd.get("context") or {}).get("starting_resume_text", "")
 
-    body, status = run_candidate_artifact_generation(candidate_id, task_key, live)
+    body, status = run_candidate_artifact_generation(
+        candidate_id, task_key, live, debug=ui_llm_debug()
+    )
     return jsonify(body), status

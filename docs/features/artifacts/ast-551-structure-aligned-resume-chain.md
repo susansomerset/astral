@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-551 archived 2026-06-23 -->
+
+## Linear archive (AST-551)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-551/structure-aligned-resume-chain-after-ast-477-build-resume-artifact  
+**Status at archive:** Done  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-300 — Build Resume Artifact  
+**Blocked by / blocks / related:** parent: AST-300; related: AST-313
+
+### Description
+
+## What this implements
+
+Align the resume artifact daisy-chain with the post-[AST-477](https://linear.app/astralcareermatch/issue/AST-477/candidate-resume-structure) structure model: chain hops consume and produce JSON keyed to the candidate's enabled section ids from `artifacts.resume_structure`, using `run_next` token pass-through ([AST-450](https://linear.app/astralcareermatch/issue/AST-450/register-artifact-pipeline-task-keys-dumb-chain-registry)) rather than code-orchestrated promotion or global `BUILD_CONFIG.artifact_shapes` keys. Ensures early hops can read base resume via cache/chain tokens and revised content flows to terminal craft hop.
+
+## Acceptance criteria
+
+2. A BUILD_ARTIFACTS job claimed by the artifact dispatch produces a complete resume chain run (all configured hops through the terminal resume-craft task) and persists `job_data.artifacts.resume_content`.
+3. Persisted `resume_content` keys are a subset of the candidate's enabled structure section ids; contact sections present match the snapshot rules from [AST-477](https://linear.app/astralcareermatch/issue/AST-477/candidate-resume-structure).
+4. On chain failure, the job is **BUILD_FAILED** (or configured error state) and no false CANDIDATE_REVIEW draft is shown.
+5. A second candidate with a different section catalog receives job `resume_content` keyed only to their catalog — no cross-candidate section leakage.
+
+## Boundaries
+
+Does not wire BUILD_ARTIFACTS dispatch row or tracker persist (**sibling Hedy ticket**). Does not build JAR UI tabs (**sibling Katherine ticket**). Does not re-author Manage Tasks prompts ([AST-313](https://linear.app/astralcareermatch/issue/AST-313/artifact-pipeline-prompt-authoring) Done).
+
+## Notes for planning
+
+[AST-370](https://linear.app/astralcareermatch/issue/AST-370/ast-300-do-task-chain-wiring-token-plumbing-integration) Done work predates [AST-477](https://linear.app/astralcareermatch/issue/AST-477/candidate-resume-structure) — gap-fill only. No ordered pipeline arrays in config ([AST-450](https://linear.app/astralcareermatch/issue/AST-450/register-artifact-pipeline-task-keys-dumb-chain-registry)). Terminal hop must hand off parseable structure-keyed JSON for tracker persist.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent **ftr/AST-300-build-resume-artifact**, child **sub/AST-300/<child-id>-structure-aligned-resume-chain**.
+
+### Comments
+
+#### radia — 2026-06-03T00:42:02.298Z
+**Review** — `origin/dev...origin/sub/AST-300/AST-551-structure-aligned-resume-chain` @ `77ee996f` (product); review doc @ [`12133827`](https://github.com/susansomerset/astral/commit/12133827562331e4258fa60852c00b5566495c97) → [plan + Radia review](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-551-structure-aligned-resume-chain/docs/features/artifacts/ast-551-structure-aligned-resume-chain.md#review-radia).
+
+**fix-now:** none.
+
+**discuss**
+- `src/core/agent.py` `run_resume_artifact_chain_for_job`: chain stops only when `not candidate_data` **and** `candidate_id` from company. Empty `candidate_data` with no company row still runs the chain — confirm that is acceptable or hard-fail whenever `_candidate_data_for_job` returns empty.
+
+**advisory**
+- Terminal persist guard (`finalize_job_resume` / `finalize_cover_letter` only) and structure-keyed persist path match plan Stages 1–3; writes still go through `save_job_artifact_resume_content` / AST-518 filtering.
+- Parent AC 2–4 (BUILD_ARTIFACTS dispatch, BUILD_FAILED, no false CANDIDATE_REVIEW) remain **AST-552** — not blockers for this diff.
+- Susan manual: Manage Tasks `run_next` must end at `finalize_job_resume`; prompts should use `{$BASE_RESUME}` and mid-hop `{$CALLER_RESPONSE}` (code cannot assert DB graph).
+
+#### betty — 2026-06-02T22:55:02.865Z
+1. `tests/component/core/test_tracker.py::TestAst551StructureAlignedResumeChain`
+2. `tests/component/core/test_agent.py::TestRunResumeArtifactChainForJob::test_run_resume_artifact_chain_seeds_candidate_data`
+3. `tests/component/core/test_consult.py::TestAst513JobTokenContext::test_build_job_token_context_resume_section_catalog`
+4. `tests/component/utils/test_config.py::TestAst513JobTokens::test_resume_section_catalog_token_source`
+5. `tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts`
+6. `tests/component/core/test_tracker.py::TestPersistJobArtifactFromParsed`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst551StructureAlignedResumeChain \
+  tests/component/core/test_agent.py::TestRunResumeArtifactChainForJob::test_run_resume_artifact_chain_seeds_candidate_data \
+  tests/component/core/test_consult.py::TestAst513JobTokenContext::test_build_job_token_context_resume_section_catalog \
+  tests/component/utils/test_config.py::TestAst513JobTokens::test_resume_section_catalog_token_source \
+  tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts \
+  tests/component/core/test_tracker.py::TestPersistJobArtifactFromParsed
+```
+
+`docs/ASTRAL_TEST_BIBLE.md` on `origin/sub/AST-300/AST-551-structure-aligned-resume-chain`: shasum `3f4ebcbda0b2fc44db2d555ea1c3537a356379a34f0270d9c2160886a723e3b8` · publish tip `77ee996f`.
+
+**Out of pytest scope (Susan / AST-552):** Confirm Manage Tasks resume chain ends at `finalize_job_resume`; full BUILD_ARTIFACTS dispatch + BUILD_FAILED on chain failure needs **AST-552** on the integration branch.
+
+#### ada — 2026-06-02T22:51:14.229Z
+**Manual verify (Susan):** Confirm Manage Tasks resume chain ends at `finalize_job_resume` and that early-hop prompts reference `{$BASE_RESUME}` with mid-hop `{$CALLER_RESPONSE}` — code cannot assert the DB `run_next` graph.
+
+**Publish tip:** `origin/sub/AST-300/AST-551-structure-aligned-resume-chain` @ `ffcb0a85` (product); review stub doc pending Joan publish.
+
+**AST-552 dependency:** AC 2–4 (full BUILD_ARTIFACTS dispatch, failure transitions) still need sibling **AST-552** on the integration branch.
+
+#### ada — 2026-06-02T22:31:30.882Z
+Plan: [docs/features/artifacts/ast-551-structure-aligned-resume-chain.md](https://github.com/susansomerset/astral/blob/sub/AST-300/AST-551-structure-aligned-resume-chain/docs/features/artifacts/ast-551-structure-aligned-resume-chain.md)
+
+**Scope:** `scope-Single-Component` — chain entry context, terminal structure-keyed persist match, and `RESUME_SECTION_CATALOG` job token only (no dispatcher/UI).
+
+**Conf:** `conf-Medium` — `run_next` graph and prompt token usage are Susan-side; code patterns from AST-370/518 are clear.
+
+**Risk:** `risk-HIGH` — wrong terminal persist or missing `candidate_data` on chain entry corrupts job `resume_content`.
+
+**Blocked by AST-552 for E2E:** dispatch BUILD_ARTIFACTS gate and failure→BUILD_FAILED transitions are Hedy; this plan lands chain + persist handoff first.
+
+#### ada — 2026-06-02T22:30:57.480Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-300/AST-551-structure-aligned-resume-chain/docs/features/artifacts/ast-551-structure-aligned-resume-chain.md
+
+**Scope — `scope-Single-Component`:** Core-only alignment (`candidate.py`, `tracker.py`, `agent.py`, small `config.py` tweak) for structure-keyed terminal resume JSON and persist matching — no dispatch/UI.
+
+**Conf — `conf-Medium`:** Reuses AST-477/518 filtering patterns; full BUILD_ARTIFACTS E2E waits on sibling **AST-552** (Hedy).
+
+**Risk — `risk-HIGH`:** Wrong terminal persist/match risks cross-catalog leakage or false `resume_content` on non-terminal hops (AST-300 AC 5–6).
+
+Published plan SHA `dd63d6d5` on `origin/sub/AST-300/AST-551-structure-aligned-resume-chain` (Joan session `0ca056cb`).
+
+---
+
 # AST-551 — Structure-aligned resume chain after AST-477 (Build Resume Artifact)
 
 **Linear:** [AST-551](https://linear.app/astralcareermatch/issue/AST-551/structure-aligned-resume-chain-after-ast-477-build-resume-artifact)  

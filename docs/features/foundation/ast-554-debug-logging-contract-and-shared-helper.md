@@ -1,3 +1,124 @@
+<!-- linear-archive: AST-554 archived 2026-06-15 -->
+
+## Linear archive (AST-554)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-554/debug-logging-contract-and-shared-helper-improve-quality-of-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-538 — Improve Quality of Debug Logging  
+**Blocked by / blocks / related:** parent: AST-538; blocks: AST-556; blocks: AST-557
+
+### Description
+
+## What this implements
+
+Code Rules debug section + shared logging helper (index N/M, `|` detail, truncation, debug gating).
+
+## Acceptance criteria
+
+1,3,4,7 from parent AST-538.
+
+## Boundaries
+
+No dispatcher/roster instrumentation; no nav rename; no review-astral skill.
+
+## Git branch (authoritative)
+
+Per orientation-astral: parent `ftr/ast-538-improve-quality-of-debug-logging`, child `sub/AST-538/<child-id>-<slug>`.
+
+### Comments
+
+#### radia — 2026-06-03T00:37:20.438Z
+**Review** — `origin/dev...origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` @ `6c7a2e24` (product); review doc @ `77cb5e9b`.
+
+**fix-now:** none.
+
+**discuss:** none.
+
+**advisory**
+- `src/utils/logging.py` — `_PrefixedLogger.test()` vs new helpers: `test()` still emits `[ ~ ]`-prefixed INFO when `debug_flag=True`; AST-557 backfill should prefer `debug_index` / `debug_detail` / `debug_detail_block` for batch traces.
+- `format_debug_index_header`: skip `debug_index` when `total=0` (raises `ValueError` for `total < 1`).
+
+**§1.5 / §3.3:** utils-only; no new `utils → data` import. **§1.3 DRY:** truncation/header centralized. Plan Stages 1–3 match diff; scope boundaries respected (no dispatcher/roster/AST-555/556 smuggling).
+
+Plan + review: [ast-554-debug-logging-contract-and-shared-helper.md](https://github.com/susansomerset/astral/blob/sub/AST-538/AST-554-debug-logging-contract-and-helper/docs/features/foundation/ast-554-debug-logging-contract-and-shared-helper.md) (`77cb5e9b`).
+
+Ada: proceed to `resolve-astral` — no product changes required from this review.
+
+#### betty — 2026-06-03T00:26:15.516Z
+[check-linear]
+
+- **`[qa-handoff]` cleared:** manifest item 1 → direct **`pytest`** (was **`run_component_tests.sh`** ×2 invoking Vitest tail on **`dev-ada`**).
+- **Bible §7.13zs:** narrowed run + handoff note; publish `origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` @ **`6c7a2e24`** (shasum `6a1c1da1…`).
+- **Assignee → Ada** for **`test-astral`**; stay **Tests Ready**.
+
+#### betty — 2026-06-03T00:26:12.086Z
+## QA test manifest (updated for `[qa-handoff]`)
+
+**Publish ref:** `origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` @ `6c7a2e24`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `6a1c1da1e56f95443a6d7ee5606736d91f302684`
+
+**Bible:** §7.13zs (parent **AST-538**)
+
+1. `.venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q`
+
+**Notes:** Python-only child — direct **`pytest`** gate (13 passed on your tree). Avoids **`run_component_tests.sh`** Vitest tail / **AST-511** cross-ticket failures. No product changes needed.
+
+#### ada — 2026-06-03T00:23:11.749Z
+[qa-handoff]
+
+**Manifest pytest targets:** green on `dev-ada` after merges (`origin/dev`, `origin/ftr/ast-538-improve-quality-of-debug-logging`, `origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` @ `b97d7770`).
+
+**Commands you listed (exit 1 — not AST-554 product):**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_debug_logging.py`
+   - **pytest:** 11 passed (`TestTruncateDebugContent`, `TestFormatDebugIndexHeader`, `TestPrefixedLoggerDebugGating`)
+   - **then Vitest (full suite):** 2 failed in `test_AdminManageCandidates.test.tsx` — expects **Middle Name** field / `profile.middle` (**AST-511**); no matching UI on `dev-ada` (`grep` shows tests present, `src/ui/frontend` has no Middle Name)
+
+2. `./scripts/testing/run_component_tests.sh tests/component/utils/test_logging_batch.py` — same pattern (pytest OK, Vitest AST-511 failures)
+
+**Direct pytest (manifest paths only):** `.venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q` → **13 passed**
+
+**Ask:** Please either (a) post a **Tests Ready** manifest using **pytest-only** commands for this python-only child (per bible note on AST-511 / AST-522 — narrowed `run_component_tests.sh` still runs all Vitest), or (b) adjust harness to skip Vitest when trailing args are python paths only. No product changes needed on `logging.py` for these failures.
+
+@Betty White
+
+#### betty — 2026-06-02T22:56:35.393Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` @ `b97d7770`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `53326a3875f39dd5c54ba9842b6b5cead5674d3865c2c05788f43240065102db`
+
+**Bible:** §7.13zs (parent **AST-538**)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_debug_logging.py`
+2. `./scripts/testing/run_component_tests.sh tests/component/utils/test_logging_batch.py`
+
+**Coverage (plan Stage 3):** gating + truncation math only — no log-string golden files per parent AC.
+
+**Notes:** Build left tests to Betty (`test_debug_logging.py` per plan). Operational AC 2/4 backfill remains **AST-557**.
+
+#### ada — 2026-06-02T22:31:31.165Z
+Plan: `docs/features/foundation/ast-554-debug-logging-contract-and-shared-helper.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-538/AST-554-debug-logging-contract-and-helper/docs/features/foundation/ast-554-debug-logging-contract-and-shared-helper.md
+
+Publish: `origin/sub/AST-538/AST-554-debug-logging-contract-and-helper` @ `7c30d0f2`
+
+**Self-assessment**
+- **Scope:** `Single-Component` — `logging.py` helpers + §1.5.1 rules + component tests only; no dispatcher/roster/nav/review-astral edits (AST-557/555/556).
+- **Conf:** `high` — Parent AST-538 fixes line kinds, truncation math, and boundaries; builds on existing `_PrefixedLogger` / `debug_flag` pattern.
+- **Risk:** `Medium` — Bad gating or truncation misleads UAT, but production batch paths unchanged until children adopt the helper.
+
+**Stages:** (1) `truncate_debug_content` + `debug_index` / `debug_detail` / `debug_detail_block`; (2) ASTRAL_CODE_RULES §1.5.1; (3) `test_debug_logging.py` for gating + omit math (AC 7); AC 4 operational spot-check deferred to AST-557.
+
+---
+
 # AST-554 — Debug logging contract and shared helper (Improve Quality of Debug Logging)
 
 - **Linear (this ticket):** [AST-554](https://linear.app/astralcareermatch/issue/AST-554/debug-logging-contract-and-shared-helper-improve-quality-of-debug)

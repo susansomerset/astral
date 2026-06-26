@@ -31,6 +31,18 @@ class TestEnumerateArray:
         assert fmt.enumerate_array("", ["only"]) == "1: only"
 
 
+# Branches: empty; scheme strip; fragment drop; slash collapse; index suffix strip.
+class TestNormalizeLink:
+    def test_plan_examples(self) -> None:
+        assert fmt.normalize_link("https://Acme.com/careers/") == "acme.com/careers"
+        assert fmt.normalize_link("http://www.acme.com/jobs/index.html") == "www.acme.com/jobs"
+        assert fmt.normalize_link("//careers.acme.com/openings//") == "careers.acme.com/openings"
+
+    def test_empty_and_whitespace(self) -> None:
+        assert fmt.normalize_link("") == ""
+        assert fmt.normalize_link("   ") == ""
+
+
 # Branches: blank lines; bad prefix; non-int index; happy path.
 class TestParseEnumerateArray:
     def test_parses_numbered_lines(self) -> None:
@@ -61,6 +73,26 @@ class TestFormatGradeDisplay:
     def test_with_and_without_confidence_label(self) -> None:
         assert fmt.format_grade_display({"vector": "V", "grade": "A", "confidence_label": "high"}) == "V: A (high)"
         assert fmt.format_grade_display({"vector": "V", "grade": "B"}) == "V: B"
+
+
+# Branches: None/non-str; consecutive blanks; whitespace-only lines; preserve content.
+class TestCollapseConsecutiveBlankLines:
+    def test_collapses_runs_of_blank_lines(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines("line1\n\n\nline2") == "line1\n\nline2"
+        assert fmt.collapse_consecutive_blank_lines("line1\n \n\t\nline2") == "line1\n\nline2"
+
+    def test_preserves_single_blank_and_non_blank_content(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines("line1\nline2") == "line1\nline2"
+        assert fmt.collapse_consecutive_blank_lines("  content  ") == "  content  "
+        assert fmt.collapse_consecutive_blank_lines("only") == "only"
+
+    def test_empty_and_whitespace_only_input(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines("") == ""
+        assert fmt.collapse_consecutive_blank_lines("\n\n\n") == ""
+
+    def test_none_and_non_string_passthrough(self) -> None:
+        assert fmt.collapse_consecutive_blank_lines(None) == ""  # type: ignore[arg-type]
+        assert fmt.collapse_consecutive_blank_lines(7) == 7  # type: ignore[arg-type]
 
 
 # Branches: empty delimiter raises; strip/filter empties.
@@ -119,6 +151,24 @@ class TestFindJobContainers:
     def test_fallback_when_titles_missing(self) -> None:
         dom = "<div>unrelated</div>"
         assert fmt.find_job_containers(dom, ["Missing A", "Missing B"]) == [dom]
+
+    def test_sibling_anchor_links_two_titles(self) -> None:
+        """AST-827: medicarerights-style flat job-link rows — one anchor per title."""
+        dom = (
+            '<div class="careers-list">'
+            '<a href="https://example.com/job-a">Client Services Associate: Bilingual Spanish and English</a>'
+            '<a href="https://example.com/job-b">Policy Analyst</a>'
+            '</div>'
+        )
+        titles = [
+            "Client Services Associate: Bilingual Spanish and English",
+            "Policy Analyst",
+        ]
+        out = fmt.find_job_containers(dom, titles)
+        joined = "\n".join(out)
+        assert "Client Services Associate" in joined
+        assert "Policy Analyst" in joined
+        assert joined.count("<a ") >= 2
 
 
 # Branches: invalid input; missing key; closed string; truncated payload; fence stripping.

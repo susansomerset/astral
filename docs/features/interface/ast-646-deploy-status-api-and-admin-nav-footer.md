@@ -1,0 +1,375 @@
+<!-- linear-archive: AST-646 archived 2026-06-23 -->
+
+## Linear archive (AST-646)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-646/deploy-status-api-and-admin-nav-footer-show-environment-and-up-time-as  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-640 — Show environment and up time as read-only at the bottom of nav for admin view only.  
+**Blocked by / blocks / related:** parent: AST-640
+
+### Description
+
+## What this implements
+
+Deliver the admin-only deploy status strip at the bottom of the left navigation: an authenticated API that resolves environment (from a named deploy env var when set), short commit hash with commit message for tooltip, server process uptime in Susan's compact format, and a read-only footer in `NavigationShell` visible only when `is_admin` is true. When the env var is missing or invalid, the footer still shows commit tip and uptime without an environment label.
+
+## Acceptance criteria
+
+1. Sign in as an admin on local dev → bottom of left nav shows `local`, a commit identifier, and an uptime string in the compact format above.
+2. Sign in as an admin on Railway staging → label reads `staging` with that deploy's commit tip and uptime.
+3. Sign in as an admin on Railway production → label reads `production` with matching commit and uptime.
+4. Sign in as a non-admin user on the same deploy → nav footer is absent; layout unchanged aside from missing footer.
+5. Uptime strings match the format rules: `<1m` under one minute; minute-only under one hour; `XhYm` under one day; `XdYhZZm` at one day+ with two-digit minutes.
+6. After a server restart/deploy, the displayed commit and uptime reflect the new process within one normal API refresh cycle (no stale pre-restart uptime persisting indefinitely).
+7. Footer remains read-only: no user action changes environment, commit, or uptime display.
+
+Additional from parent open-question resolution:
+
+* Short hash (≈7 characters) displayed; tooltip shows commit description/message.
+* When deploy env var is unset, show commit + uptime only (no environment label).
+* Uptime may use client-side tick between API polls or periodic re-fetch — implementer's choice for smooth display.
+
+## Boundaries
+
+* Does not replace Performance Monitor, scheduler status, or `/health`.
+* Does not expose secrets, full env blobs, or non-admin users.
+* No backend debug-logging contract (UI readout only).
+* Does not add links or copy buttons unless a sibling ticket says so.
+
+## Notes for planning
+
+* Server resolves environment, commit SHA, commit message, and process boot time; frontend renders API fields only (Interface project dumb-frontend rule).
+* Admin-only: gate API and UI on `is_admin` consistent with Admin nav visibility.
+* Uptime format: `<1m`; `5m`/`24m` under 1h; `1h15m` under 1d; `3d22h07m` at 1d+ (minutes zero-padded when days shown).
+* Named env var for deploy environment — choose name and document in `env.example`; graceful omission when unset.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-640`, child `sub/AST-640/<child-segment>`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-14T21:17:27.549Z
+**Diff:** `origin/dev...origin/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer` @ `1647c04e` (pre-doc tip; doc commit follows on publish ref).
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### advisory
+
+- `src/utils/deploy_status.py` — `_git_head_info()` runs two `git` subprocesses per `/api/deploy_status` hit (30s admin poll). Low traffic; fine for ship. Optional module-level cache later if Railway latency shows up in UAT.
+- Same module — `("unknown", "")` on git failure is plan-approved graceful degradation for images without `.git`; not §D2 (bounded read-only admin display).
+
+### Plan / rules spot-check
+
+- Stages 1–3 land as specified; Betty manifest covers auth gates, uptime formats, admin vs non-admin footer, environment omission.
+- §2.1: `DEPLOY_STATUS_CONFIG` + optional `ASTRAL_DEPLOY_ENV` with documented `.get()` exception.
+- §3.3: utils payload builder → thin API route → dumb frontend via `api()`; no layer violations in diff.
+- §5d: no sibling scope on publish ref.
+- §5f: N/A (ticket explicitly UI readout only).
+
+**Doc:** `docs/features/interface/ast-646-deploy-status-api-and-admin-nav-footer.md` § Review (Radia doc commit on publish ref).
+
+**Verdict:** Approve → `resolve-child` / UAT. Set `ASTRAL_DEPLOY_ENV` on Railway for AC2–3; smoke post-restart uptime refresh (AC6).
+
+#### katherine — 2026-06-14T21:16:50.136Z
+[check-linear] blocked: merge conflict — docs/ASTRAL_TEST_BIBLE.md (@Betty White)
+
+#### betty — 2026-06-14T21:11:05.528Z
+## QA test manifest (AST-646)
+
+**Publish:** `origin/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer` @ `1647c04e` (`merge-tests(AST-646): origin/tests 09f17e74`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `75a240268b184091ff54ce0676f94edcd8a42362502b5b258c0dbd18358aa72c` — see **§7.13zzs**.
+
+### Existing coverage revised
+- `tests/component/frontend/components/test_NavigationShell.test.tsx` — admin mocks `/api/deploy_status`; asserts footer visible for admin, absent for non-admin.
+
+### New tests
+1. **`tests/component/utils/test_deploy_status.py`** — `format_uptime_seconds` samples (`<1m`, `5m`, `1h15m`, `3d22h07m`); `_resolve_environment` unset/valid/invalid; `get_deploy_status_payload` commit fields + optional `environment`.
+2. **`tests/component/ui/api/test_api_system.py::TestDeployStatus`** — 401 without Bearer; 403 non-admin; 200 admin JSON keys; `environment` omitted when unset; uptime format samples via payload builder.
+3. **`tests/component/frontend/components/test_AdminDeployFooter.test.tsx`** — renders env + commit tooltip + uptime; omits env label when absent; error state.
+4. **`tests/component/frontend/components/test_NavigationShell.test.tsx`** — admin footer integration (see above).
+
+### Narrowed run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_deploy_status.py \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+— Betty
+
+#### katherine — 2026-06-14T21:05:56.612Z
+Plan published for AST-646 (deploy status API + admin nav footer).
+
+**Plan doc:** [ast-646-deploy-status-api-and-admin-nav-footer.md](https://github.com/susansomerset/astral/blob/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer/docs/features/interface/ast-646-deploy-status-api-and-admin-nav-footer.md)
+
+**Approach:** New `src/utils/deploy_status.py` resolves optional `ASTRAL_DEPLOY_ENV` (allowed: local/test/staging/production), git short SHA + subject, and process uptime from module-load boot time. `GET /api/deploy_status` is `@require_admin`. `AdminDeployFooter` in `NavigationShell` polls every 30s (same as nav_config); non-admins keep the existing spacer.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one utils module, one system route, one React footer, sidebar CSS; no core/data/dispatch.
+- **Conf:** `high` — mirrors AST-611 admin gating; uptime rules and env omission are fully specified in the ticket.
+- **Risk:** `low` — read-only admin strip; mistakes are display-only, not data or dispatch impact.
+
+Awaiting plan review → **Plan Approved** before build.
+
+---
+
+# Deploy status API and admin nav footer
+
+**Linear:** [AST-646](https://linear.app/astralcareermatch/issue/AST-646/deploy-status-api-and-admin-nav-footer-show-environment-and-up-time-as)  
+**Parent:** [AST-640](https://linear.app/astralcareermatch/issue/AST-640/show-environment-and-up-time-as-read-only-at-the-bottom-of-nav-for)  
+**Publish ref:** `sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer`
+
+Administrators need an at-a-glance deploy signal in the left nav: which environment the server is running, which commit tip is live, and how long the current process has been up. This ticket adds an admin-only `GET /api/deploy_status` endpoint (server-sourced truth) and a read-only footer pinned to the bottom of `NavigationShell`, visible only when `is_admin` is true.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/utils/config.py` | Add `DEPLOY_STATUS_CONFIG` with allowed environment labels | utils |
+| `src/utils/deploy_status.py` | New module: process boot time, git tip, env resolution, uptime formatting | utils |
+| `src/ui/api/api_system.py` | Add `GET /api/deploy_status` with `@require_admin` | ui |
+| `env.example` | Document `ASTRAL_DEPLOY_ENV` | docs |
+| `src/ui/frontend/src/components/AdminDeployFooter.tsx` | New read-only footer component | ui |
+| `src/ui/frontend/src/components/NavigationShell.tsx` | Render footer for admins; keep spacer for non-admins | ui |
+| `src/ui/frontend/src/App.css` | Styles for `.nav-deploy-footer` | ui |
+
+**QA manifest (Betty — not engineer commits):** extend `tests/component/ui/api/test_api_system.py` with `TestDeployStatus` covering: 401 without Bearer; 403 for non-admin; 200 for admin with expected JSON keys; `environment` omitted when env var unset/invalid; `uptime` format samples (`<1m`, `5m`, `1h15m`, `3d22h07m`) via monkeypatched boot time and `format_uptime_seconds`; commit fields present (monkeypatch `_git_head_info`).
+
+## Stage 1: Deploy status helpers and config
+
+**Done when:** `DEPLOY_STATUS_CONFIG` exists; `deploy_status.py` exports `get_deploy_status_payload()` returning a dict with resolved fields; `python -m compileall src/utils/deploy_status.py` passes; no API or UI wiring yet.
+
+1. In `src/utils/config.py`, after `RAILWAY_CONFIG` block (~line 1952), add:
+   ```python
+   # ---------------------------------------------------------------------------
+   # DEPLOY_STATUS_CONFIG: admin nav footer — allowed deploy environment labels.
+   # Actual value read from ASTRAL_DEPLOY_ENV env var (optional; see deploy_status.py).
+   # ---------------------------------------------------------------------------
+   DEPLOY_STATUS_CONFIG = {
+       "allowed_environments": ("local", "test", "staging", "production"),
+   }
+   ```
+   Update the module header comment list (~lines 12–26) to include `DEPLOY_STATUS_CONFIG`.
+
+2. Create `src/utils/deploy_status.py` with module docstring: server-side deploy status for admin nav footer (AST-646). Imports: `os`, `subprocess`, `time`; `DEPLOY_STATUS_CONFIG` from `src.utils.config`; `_PROJECT_ROOT` pattern — use `Path(__file__).resolve().parent.parent.parent` (same depth as `config.py`).
+
+3. At module load in `deploy_status.py`, set `_PROCESS_BOOT_TIME = time.time()` (wall clock at first import of this module — one value per worker process).
+
+4. In `deploy_status.py`, implement `format_uptime_seconds(seconds: float) -> str`:
+   - If `seconds < 60`: return `"<1m"`.
+   - Let `total_minutes = int(seconds // 60)`.
+   - If `total_minutes < 60`: return `f"{total_minutes}m"` (no zero-padding).
+   - Let `total_hours = total_minutes // 60`, `rem_minutes = total_minutes % 60`.
+   - If `total_hours < 24`: return `f"{total_hours}h{rem_minutes}m"`.
+   - Let `total_days = total_hours // 24`, `rem_hours = total_hours % 24`, `rem_mins = total_minutes % 60`.
+   - Return `f"{total_days}d{rem_hours}h{rem_mins:02d}m"` (minutes zero-padded to two digits when days ≥ 1).
+
+5. In `deploy_status.py`, implement `_resolve_environment() -> str | None`:
+   - Read `raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip().lower()`.
+   - If `raw` is empty: return `None`.
+   - If `raw` not in `DEPLOY_STATUS_CONFIG["allowed_environments"]`: return `None` (graceful omission — do not crash, do not return invalid label).
+   - Return `raw`.
+
+6. In `deploy_status.py`, implement `_git_head_info() -> tuple[str, str]` returning `(commit_short, commit_message)`:
+   - `cwd = Path(__file__).resolve().parent.parent.parent` (repo root).
+   - Run `git rev-parse --short=7 HEAD` with `subprocess.run(..., capture_output=True, text=True, timeout=2, cwd=cwd)`.
+   - On success with returncode 0 and non-empty stdout: `commit_short = stdout.strip()`.
+   - Run `git log -1 --format=%s` same way for `commit_message`.
+   - On any failure (no git, not a repo, timeout): return `("unknown", "")` — never raise to caller.
+
+7. In `deploy_status.py`, implement `get_deploy_status_payload() -> dict`:
+   ```python
+   uptime_seconds = max(0.0, time.time() - _PROCESS_BOOT_TIME)
+   commit_short, commit_message = _git_head_info()
+   payload = {
+       "commit_short": commit_short,
+       "commit_message": commit_message,
+       "uptime": format_uptime_seconds(uptime_seconds),
+       "uptime_seconds": int(uptime_seconds),
+   }
+   env = _resolve_environment()
+   if env is not None:
+       payload["environment"] = env
+   return payload
+   ```
+   Do not include `"environment"` key when unresolved (not `null` string in JSON — omit key entirely).
+
+⚠️ **Decision:** `ASTRAL_DEPLOY_ENV` is optional with `.get()` — unlike secrets, deploy label omission is intentional when unset (parent open-question resolution). Allowed values live in `DEPLOY_STATUS_CONFIG` per rules §2.1.
+
+⚠️ **Decision:** Git subprocess from repo root, not `config._PROJECT_ROOT` import, to keep `deploy_status.py` self-contained and avoid circular imports.
+
+## Stage 2: Admin deploy status API endpoint
+
+**Done when:** `GET /api/deploy_status` returns 401 without auth, 403 for non-admin, 200 JSON for admin with shape from Stage 1; `env.example` documents the env var.
+
+1. In `src/ui/api/api_system.py`, add import: `from ui.auth import require_auth, require_admin` (extend existing `require_auth` import line).
+2. Add import: `from src.utils.deploy_status import get_deploy_status_payload`.
+3. After the `/api/me` route block (~line 120), add:
+   ```python
+   @system_bp.route("/deploy_status")
+   @require_admin
+   def deploy_status():
+       return jsonify(get_deploy_status_payload())
+   ```
+4. In `env.example`, after the `ASTRAL_ALLOWED_IPS` block (~line 20), add:
+   ```
+   # Deploy environment label for admin nav footer (optional).
+   # When set, must be one of: local, test, staging, production.
+   # When unset or invalid, admin footer shows commit + uptime only.
+   ASTRAL_DEPLOY_ENV=local
+   ```
+
+## Stage 3: Admin nav footer UI
+
+**Done when:** Signed-in admin sees a compact read-only line at the bottom of the left sidebar with environment (when present), short commit hash (tooltip = commit message), and uptime; non-admin users see no footer (existing spacer preserved); footer refetches every 30s like nav config.
+
+1. Create `src/ui/frontend/src/components/AdminDeployFooter.tsx`:
+   - Import `useEffect`, `useState` from `react`; `useAuth` from `../contexts/AuthContext`; `api` from `../lib/api`.
+   - Type `DeployStatus = { environment?: string; commit_short: string; commit_message: string; uptime: string; uptime_seconds: number }`.
+   - Component returns `null` when `loading` from `useAuth()` or when fetch has not succeeded yet (no error flash for non-admins — parent only mounts this for admins).
+   - `useEffect`: when auth not loading, call `api("/api/deploy_status")`, parse JSON on 200, set state; on failure set `error` true. `setInterval` 30_000 ms, cleanup on unmount. Deps: `[authLoading]` from `useAuth()`.
+   - Render:
+     ```tsx
+     <div className="nav-deploy-footer" aria-label="Deploy status">
+       {status.environment != null && (
+         <>
+           <span className="nav-deploy-env">{status.environment}</span>
+           <span className="nav-deploy-sep">·</span>
+         </>
+       )}
+       <span className="nav-deploy-commit" title={status.commit_message || undefined}>
+         {status.commit_short}
+       </span>
+       <span className="nav-deploy-sep">·</span>
+       <span className="nav-deploy-uptime">{status.uptime}</span>
+     </div>
+     ```
+   - On fetch error, render `<div className="nav-deploy-footer nav-deploy-footer-error">Deploy status unavailable</div>` (still pinned at bottom).
+   - No buttons, links, or copy actions.
+
+2. In `src/ui/frontend/src/components/NavigationShell.tsx`:
+   - Import `AdminDeployFooter`.
+   - Replace the unconditional `<span className="nav-footer-spacer" />` (~line 129) with:
+     ```tsx
+     {isAdmin ? <AdminDeployFooter /> : <span className="nav-footer-spacer" />}
+     ```
+   - Do not fetch deploy status when `!isAdmin`.
+
+3. In `src/ui/frontend/src/App.css`, after `.nav-footer-spacer` block (~line 209), add:
+   ```css
+   .nav-deploy-footer {
+     margin-top: auto;
+     flex-shrink: 0;
+     padding: 10px 12px 14px;
+     border-top: 1px solid var(--border);
+     font-size: 11px;
+     line-height: 1.4;
+     color: var(--text-muted);
+     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+   }
+   .nav-deploy-footer-error {
+     color: var(--danger);
+   }
+   .nav-deploy-env {
+     color: var(--text-secondary);
+     text-transform: lowercase;
+   }
+   .nav-deploy-sep {
+     margin: 0 4px;
+     opacity: 0.6;
+   }
+   .nav-deploy-commit {
+     color: var(--text-secondary);
+     cursor: default;
+   }
+   .nav-deploy-uptime {
+     color: var(--text-muted);
+   }
+   ```
+
+⚠️ **Decision:** Periodic 30s re-fetch (same interval as `nav_config`) instead of client-side uptime ticking — keeps all uptime formatting on the server per Interface dumb-frontend rule; no duplicated format logic in React.
+
+⚠️ **Decision:** `margin-top: auto` on `.nav-deploy-footer` pins the strip to the sidebar bottom without the 80px spacer; non-admins keep `.nav-footer-spacer` so layout is unchanged for them.
+
+## Self-Assessment
+
+**Scope:** `Single-Component` — one new utils module, one system API route, one small React component, and sidebar CSS; no core, data, or dispatch changes.
+
+**Conf:** `high` — follows existing `@require_admin` / `isAdmin` patterns from AST-611; uptime rules and env-var graceful omission are fully specified in AST-640/646; git subprocess fallback is a known pattern.
+
+**Risk:** `low` — read-only admin-only display; wrong label or uptime is confusing but does not affect dispatch, data integrity, or non-admin UX.
+
+## Rules self-review
+
+| Rule | Assessment |
+|------|------------|
+| §1.3 DRY | Uptime formatting and deploy resolution centralized in `deploy_status.py`; API and UI consume one payload builder. |
+| §2.1 config | Allowed environment set in `DEPLOY_STATUS_CONFIG`; optional deploy label from env var per ticket (not a secret). |
+| §2.4 batch | N/A — no batch processing. |
+| §2.6 state machine | N/A. |
+| §3.3 imports | `deploy_status.py` in utils; `api_system.py` imports utils only; frontend uses `api()` helper. |
+| §3.5 naming | `get_deploy_status_payload`, `AdminDeployFooter`, `ASTRAL_DEPLOY_ENV` match existing conventions. |
+
+## Execution contract (for the developer agent)
+
+- Execute stages in order. **Stop** on ambiguity — comment on **AST-640** parent with 🛑 template from **plan-child**.
+- Blocking questions → comment on **AST-640** parent with 🛑 format from **plan-child**.
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer`  
+**Product commits:** `7810b2ac` (deploy status helpers + config), `3ef85eae` (admin API endpoint), `71ecb534` (admin nav footer UI)
+
+## Review
+
+**Diff:** `origin/dev...origin/sub/AST-640/AST-646-deploy-status-api-and-admin-nav-footer` @ `1647c04e`  
+**Reviewed:** 2026-06-14
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 match spec: `DEPLOY_STATUS_CONFIG` + `deploy_status.py` payload builder; `GET /api/deploy_status` with `@require_admin`; `AdminDeployFooter` + `isAdmin` gate in `NavigationShell`; `env.example` documents `ASTRAL_DEPLOY_ENV`. |
+| Acceptance criteria | Betty manifest covers 401/403/200, environment omission, uptime format samples (`<1m`, `5m`, `1h15m`, `3d22h07m`), admin vs non-admin footer visibility, error state. |
+| §2.1 config | Allowed environment set in `DEPLOY_STATUS_CONFIG`; optional deploy label via `os.environ.get` documented in plan (intentional omission, not a secret). |
+| §3.3 layers | `deploy_status.py` in utils (config only); `api_system.py` imports utils; frontend renders API fields via `api()` — dumb-frontend rule satisfied. |
+| §3.5 naming | `get_deploy_status_payload`, `AdminDeployFooter`, `ASTRAL_DEPLOY_ENV` align with conventions. |
+| Admin gating | API `@require_admin` (401 via `@require_auth`, 403 non-admin) + UI mount only when `isAdmin` — consistent with AST-611 patterns. |
+| Scope | Self-assessment `scope-Single-Component` / `conf-high` / `risk-low` matches diff footprint; no sibling scope bleed. |
+
+### Issues
+
+| Severity | Location | Note |
+| --- | --- | --- |
+| advisory | `deploy_status.py` `_git_head_info()` | Two `git` subprocess calls per `/api/deploy_status` request (30s admin poll). Low traffic; acceptable. Optional future cache if Railway latency matters — not blocking. |
+| advisory | `deploy_status.py` L61–62 | Graceful `("unknown", "")` on git failure is intentional per plan (Railway image may lack `.git`); not a §D2 silent-failure violation — bounded read-only display. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| resolve-child | None required — proceed to §9a / User Testing. |
+| UAT | Confirm `ASTRAL_DEPLOY_ENV` on Railway staging/production; verify admin footer after deploy restart (AC6). |
+
+**Verdict:** Approve for `resolve-child` — no fix-now or discuss items.
+
+## Resolution
+
+- **2026-06-14 — Katherine (`resolve-child`):** Radia review clean — no fix-now items. Product commits (`7810b2ac`–`71ecb534`) and Betty tests (`1647c04e`) stand as shipped. Advisory git subprocess cache deferred. `merge-resume(AST-646)` integrated `origin/dev` with Betty-reconciled bible (`47737068`) for §9a. §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-640`. Ticket → **User Testing**.

@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import AgentPrompts from "../../../../src/ui/frontend/src/pages/AdminAgentPrompts"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -72,8 +73,23 @@ describe("AdminAgentPrompts", () => {
     mockedApi.mockReset()
   })
 
+  const agentTokens = ["FIRST_NAME", "LAST_NAME"]
+
   function mockApi() {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
       if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
       if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
       if (url === "/api/admin/agents/models") return { json: async () => models } as Response
@@ -123,5 +139,107 @@ describe("AdminAgentPrompts", () => {
     })
     await userEvent.click(screen.getByText("agent_a"))
     await waitFor(() => expect(screen.getByText("load failed")).toBeInTheDocument())
+  }, 15000)
+
+  it("AST-636: shows token autocomplete when typing {$ in edit modal", async () => {
+    mockApi()
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("agent_a"))
+    await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+    const textarea = screen.getByDisplayValue("system prompt") as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "{$" } })
+    textarea.setSelectionRange(2, 2)
+    fireEvent.keyUp(textarea)
+    await waitFor(() => {
+      expect(screen.getByText((_, node) => node?.textContent === "{$FIRST_NAME}")).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByText((_, node) => node?.textContent === "{$FIRST_NAME}"))
+    await waitFor(() => expect(textarea).toHaveValue("{$FIRST_NAME}"))
+  }, 15000)
+
+  it("AST-636: tolerates non-OK agent token meta without showing picker", async () => {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/admin/agents/meta/tokens") {
+        return { ok: false, status: 500, json: async () => ({ error: "fail" }) } as Response
+      }
+      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+      if (url === "/api/admin/agents/agent_a" && !init?.method) {
+        return { json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
+      }
+    })
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("agent_a"))
+    await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+    const textarea = screen.getByDisplayValue("system prompt") as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "system prompt{$" } })
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    fireEvent.keyUp(textarea)
+    expect(screen.queryByText((_, node) => node?.textContent === "{$FIRST_NAME}")).not.toBeInTheDocument()
+  }, 15000)
+
+  it("AST-632: loads agent tokens, preview resolved, save preserves literal placeholders", async () => {
+    localStorage.setItem("astral_selected_candidate", "c1")
+    let putBody = ""
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
+      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+      if (url === "/api/admin/agents/agent_a" && !init?.method) {
+        return { json: async () => ({ ...agents[0], content: "Hello {$FIRST_NAME}" }) } as Response
+      }
+      if (url === "/api/admin/agents/preview" && init?.method === "POST") {
+        const body = JSON.parse(String(init?.body))
+        expect(body.candidate_id).toBe("c1")
+        expect(body.content).toBe("Hello {$FIRST_NAME}")
+        return { ok: true, json: async () => ({ candidate_id: "c1", content: "Hello Ada" }) } as Response
+      }
+      if (url === "/api/admin/agents/agent_a" && init?.method === "PUT") {
+        putBody = String(init?.body)
+        return { ok: true, status: 200, json: async () => ({ agent_id: "agent_a" }) } as Response
+      }
+    })
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("agent_a"))
+    await waitFor(() => expect(screen.getByDisplayValue("Hello {$FIRST_NAME}")).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "Preview Resolved" }))
+    await waitFor(() => expect(screen.getByText("Hello Ada")).toBeInTheDocument())
+    expect(screen.getByText(/Preview: c1/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(putBody).toContain("{$FIRST_NAME}"))
+    expect(putBody).not.toContain("Hello Ada")
+  }, 20000)
+
+  it("AST-783: shows agent repo JSON divergence banner on routed page", async () => {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: true, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+    })
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText(/agent personas/)).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Revert to file" })).toBeInTheDocument()
   }, 15000)
 })

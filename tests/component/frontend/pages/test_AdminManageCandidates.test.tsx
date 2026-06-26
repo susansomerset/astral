@@ -7,6 +7,8 @@ import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
@@ -62,7 +64,6 @@ describe("AdminManageCandidates", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
-    vi.spyOn(window, "confirm").mockReturnValue(true)
   })
 
   function mockApi() {
@@ -97,10 +98,14 @@ describe("AdminManageCandidates", () => {
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
     await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Show" }))
     await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Clear" }))
+    const clearDialog = await screen.findByRole("alertdialog", { name: "Clear API key" })
+    await userEvent.click(within(clearDialog).getByRole("button", { name: "Clear key" }))
     await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }))
+    const deleteDialog = await screen.findByRole("alertdialog", { name: "Delete candidate" })
+    await userEvent.click(within(deleteDialog).getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(screen.getByText(/Candidate "doe_jane" deleted/)).toBeInTheDocument())
   }, 20000)
 

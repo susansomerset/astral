@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-493 archived 2026-06-15 -->
+
+## Linear archive (AST-493)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-493/deepseek-client-and-provider-dispatch-routing-support-other-ai-models  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-491 — Support other ai models: DeepSeek  
+**Blocked by / blocks / related:** parent: AST-491; blocks: AST-494
+
+### Description
+
+## What this implements
+
+DeepSeek integration using the **Anthropic-compatible** API surface (`https://api.deepseek.com/anthropic`), plus centralized routing so all existing agent/task flows that use the shared AI entry point invoke the correct provider and resolved model from config + agent `brain_setting` without callers selecting a vendor.
+
+## Acceptance criteria
+
+1. With `DEEPSEEK_API_KEY` set, when config selects DeepSeek, a representative agent task completes end-to-end with the same success/failure semantics as today on Anthropic.
+2. With config selecting Anthropic, existing agent tasks behave as before (no regression on a representative graded task).
+3. For DeepSeek calls that return cache read usage, downstream timesheet writes receive cache read token counts (write path consumed by sibling timesheet ticket).
+
+## Boundaries
+
+Does not own timesheet schema migration or admin UI label changes. Does not enable OpenAI-compatible DeepSeek chat API. Does not add third-party agent-tool integrations.
+
+## Notes for planning
+
+* Mirror established `anthropic.py` external-layer patterns; core `do_task` delegates by provider.
+* Support DeepSeek thinking modes for flash/pro tiers per parent definition answers.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent `ftr/AST-491-support-other-ai-models-deepseek`, child `sub/AST-491/<child-segment>`. Created at dispatch-linear.
+
+### Comments
+
+#### ada — 2026-05-27T03:06:42.959Z
+[check-linear]
+
+- **Session scope:** Susan directed **assigned issue ids: (none)** — no `test-astral` / publish-ref merges for this inbox pass beyond **§0a** integration line.
+- **Skill §6:** **`test-astral`** is not invoked unless she names that stage in the same message after **check-linear**; this run was **check-linear** only with an empty allowlist.
+- **Acknowledged** your **`@Ada Lovelace`** handoff: manifest on **`origin/sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing`** @ **`be9ee17c3c52a15b3fab8f0cd1609e4130ec27b8`**, §**7.13ze** narrow command, Radia review posted after your note.
+- **§0a (this workspace):** `git fetch origin`, **`dev-ada`**, **`git merge origin/dev`** — completed; working tree reflects merged **`origin/dev`** tip.
+
+Ready when Susan assigns AST-491 work to me or names **`test-astral`** for this ticket.
+
+#### radia — 2026-05-26T22:45:14.579Z
+**Diff:** three-dot `origin/dev` vs **AST-491 dispatch** [`sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing`](https://github.com/susansomerset/astral/tree/sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing). **Publish tip:** `be9ee17c3c52a15b3fab8f0cd1609e4130ec27b8`.
+
+- **`src/external/deepseek.py`** — Shape and parsing arms mirror `anthropic.py` (explicit ticket comment); uses `calculate_cost_components_deepseek`, `provider="deepseek"` and unified ledger kwargs merged with AST-494.
+- **Core routing** — `do_task` / extended `run_adhoc` (`tier_meta` drives DeepSeek branch) delegate by `get_active_llm_provider()`; callers stay vendor-oblivious.
+- **Silent exception handling on timesheet record** matches the existing Anthropic client pattern (preserve primary success/failure path).
+
+**discuss** — Thinking path wires `thinking` + `output_config["effort"]` rather than the `reasoning_effort` wording in some vendor examples; smoke against current DeepSeek anthropic-compat docs so reasoning/thinking knobs are honored. Config still carries unused `reasoning_effort` on tier rows (acceptable if single-effort stance).
+
+Review appendix (cherry-pick target): [`ast-493-deepseek-client-and-provider-dispatch-routing.md`](https://github.com/susansomerset/astral/blob/6262a3a9bfb39eee879dab2dd9e479f113524553/docs/features/roster/ast-493-deepseek-client-and-provider-dispatch-routing.md) @ `6262a3a9`.
+
+#### betty — 2026-05-26T22:36:46.451Z
+[check-linear]
+
+- Prior “docs-only publish ref” **blocker withdrawn**: product **`do_task` / `run_adhoc`** DeepSeek path is on the integration line; Ada’s **`[qa-handoff]`** was on **AST-492** (cleared there).
+- QA: **`docs(AST-493)`** — **`docs/ASTRAL_TEST_BIBLE.md`** §**7.13ze** (DeepSeek **`send_to_deepseek`** + unified **`agent_timesheets`** / **`agent_req_id`** manifest command).
+- Published: **`origin/sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing`** @ **`be9ee17c3c52a15b3fab8f0cd1609e4130ec27b8`**.
+
+**Manifest (pytest narrow, §7.13ze):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/data/database/test_timesheets.py \
+  tests/component/core/test_timesheets.py
+```
+
+**Betty:** Move this issue to **Tests Ready** if the UI still shows **Code Complete** (MCP **`save_issue`** update failed from this session).
+
+@Ada Lovelace — **`test-astral`** queue.
+
+#### betty — 2026-05-26T22:27:54.695Z
+@susan — **Blocked for qa-astral:** `origin/sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing` tip is **docs-only** (plan commit); no `send_to_deepseek` / `deepseek` client on that ref — `do_task` still raises for deepseek. Holding **Code Complete**; no Tests Ready handoff until implementation lands on the publish ref (or you confirm a different authoritative branch).
+
+— Betty
+
+#### betty — 2026-05-26T22:24:11.933Z
+@susan — blocker for QA handoff: **`origin/sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing` tip (`471cea87`) is docs-only.** There is no `src/external/deepseek.py`, no `send_to_deepseek`, and `do_task` / product code on the integration tip I’m using still has the AST-492 DeepSeek stub. I can’t post a truthful **Tests Ready** manifest until Ada’s implementation commits reach this publish ref.
+
+Recommendation: Ada cherry-picks / merges product SHAs onto the **`AST-493` sub publish ref**, then Betty re-runs qa-astral.
+
+— Betty
+
+#### ada — 2026-05-26T22:09:11.736Z
+Plan doc:
+
+https://github.com/susansomerset/astral/blob/sub/AST-491/AST-493-deepseek-client-and-provider-dispatch-routing/docs/features/roster/ast-493-deepseek-client-and-provider-dispatch-routing.md
+
+**Self-assessment (with reasons)**  
+**Scope · MAJOR-CHANGE** — New `external/deepseek.py`, forks `agent.py` do_task/run_adhoc, extends `cost_calculator.py`; necessary to meet “single AI entry stays do_task while vendor swaps underneath.”  
+**Conf · conf-Medium** — Anthropic Python SDK pointed at DeepSeek base URL plus thinking/reasoning flags is plausible but empirical; mocks + comparing against DeepSeek’s Anthropic-compat doc are the mitigation; stop with a parent-issue comment if `messages.create` kwargs disagree with live docs.  
+**risk-HIGH** — Bad `usage` mapping or omitting reasoning fields yields wrong billed tokens or degraded responses feeding unchanged grading validators; parity tests anchoring `{success, timesheet..., parsed_response}` contract are mandatory before Code Complete.
+
+Ada
+
+---
+
 # AST-493 — DeepSeek client and provider dispatch routing
 
 **Parent:** [AST-491 — Support other ai models: DeepSeek](https://linear.app/astralcareermatch/issue/AST-491/support-other-ai-models-deepseek)  

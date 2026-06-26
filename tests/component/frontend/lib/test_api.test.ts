@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import api, { setAuthTokenGetter } from "../../../../src/ui/frontend/src/lib/api"
+import api, { setAuthTokenGetter, setUnauthorizedHandler } from "../../../../src/ui/frontend/src/lib/api"
+import {
+  clearSessionAuthMarks,
+  getLogOffReason,
+  markHadSession,
+} from "../../../../src/ui/frontend/src/lib/sessionAuthMark"
 
 describe("api", () => {
   beforeEach(() => {
+    clearSessionAuthMarks()
     setAuthTokenGetter(() => null)
+    setUnauthorizedHandler(null)
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok")))
   })
 
@@ -21,5 +28,25 @@ describe("api", () => {
     await api("/api/ping")
     const headers = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].headers as Headers
     expect(headers.get("Authorization")).toBeNull()
+  })
+
+  it("sets server-rejection and calls unauthorized handler on 401 when had-session", async () => {
+    markHadSession()
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unauthorized", { status: 401 })))
+    const response = await api("/api/ping")
+    expect(response.status).toBe(401)
+    expect(getLogOffReason()).toBe("server-rejection")
+    expect(handler).toHaveBeenCalledOnce()
+  })
+
+  it("does not set log-off reason on 401 for first-time visitors", async () => {
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unauthorized", { status: 401 })))
+    await api("/api/ping")
+    expect(getLogOffReason()).toBeNull()
+    expect(handler).not.toHaveBeenCalled()
   })
 })

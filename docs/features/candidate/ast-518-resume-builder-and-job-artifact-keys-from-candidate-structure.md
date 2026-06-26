@@ -1,3 +1,120 @@
+<!-- linear-archive: AST-518 archived 2026-06-15 -->
+
+## Linear archive (AST-518)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-518/resume-builder-and-job-artifact-keys-from-candidate-structure  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-477 — Candidate Resume Structure  
+**Blocked by / blocks / related:** parent: AST-477
+
+### Description
+
+## What this implements
+
+Resume HTML builder (`src/core/builder.py` / BUILD_CONFIG) and job-level `resume_content` artifacts consume the **per-candidate section catalog** from the candidate record, not the global `base_resume_structure` list. Job `resume_content` keys must be a subset of the candidate’s section ids; builder merge uses structure metadata (including accent on structure). Agent task response shapes for job resume crafting respect non-editable contact/header sections on structure. Cover letter artifact uses `Subject` and `Letter` keys per parent decision.
+
+## Acceptance criteria
+
+3. When job-level `resume_content` exists, its keys are a subset of the same section ids; builder/UI do not show orphan keys.
+
+## Boundaries
+
+* Does **not** own persistence of structure on candidate — blocked on AST-517.
+* Does **not** implement Base Resume Content React tabs — Katherine sibling.
+* Does **not** implement AST-300 full daisy-chain pipeline.
+
+## Notes for planning
+
+* `docs/features/artifacts/ast-294-build-builderpy-resume-and-cover-letter-renderer.md`, `ast-296-add-build-config-to-config-py.md`.
+* Validate against `BUILD_CONFIG` `supported_sections` / `artifact_shapes`.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-477-candidate-resume-structure`, child `sub/AST-477/<child-segment>`.
+
+### Comments
+
+#### betty — 2026-05-29T00:10:45.026Z
+**Betty — rollup bible/test fix (AST-477 sub→ftr unblock)**
+
+Published to `origin/sub/AST-477/AST-518-resume-builder-and-job-artifact-keys-from-candidate-structure` @ `ae60f16f`.
+
+- **§7.13zl:** single epic section extending ftr/517 — rows for **AST-517** + **AST-518** (no duplicate heading).
+- **`test_candidate.py`:** `TestAst517ResumeStructure` + `TestAst518ResumeStructureProjection` present on sub ref.
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:
+```
+ebd8df40b5fcf62c68f39cfbcb27937c91a22274
+```
+
+Status unchanged (**User Testing**). Chuckles may retry **rollup-child** AST-518 → ftr.
+
+— Betty
+
+#### radia — 2026-05-28T23:28:13.712Z
+**Diff:** `origin/dev...origin/sub/AST-477/AST-518-resume-builder-and-job-artifact-keys-from-candidate-structure` (includes AST-517 merge)
+
+### Plan fidelity
+- Builder emits body sections in per-candidate catalog order with structure titles; accent reads `resume_structure` with legacy `base_resume.accent_color` shim — matches Stage 2.
+- `tracker._prepare_job_resume_content` strips orphan job keys, snapshots contact trio from payload/base, and `normalize_cover_letter_artifact` / builder read paths accept **Subject/Letter** with **re_line/body** legacy shims — matches Stages 3–4.
+- Acceptance #3 (job `resume_content` ⊆ section ids) enforced at save + builder filter.
+
+### ASTRAL_CODE_RULES
+- **§3.3:** `builder.py` → `candidate` + `tracker`; `tracker.py` → `candidate` + data — no UI/data from builder — good.
+- **§1.4:** Body order from structure `order`, not hardcoded `_RESUME_BODY_KEYS` alone — good.
+- **§2.1:** Config comments document static `artifact_shapes` vs runtime structure subset — good.
+
+### discuss
+- **Inherited orphan tests (from AST-517 merge):** Same `TestNormalizeCompanySearchTermsOnSave` / cross-ticket config test classes on publish ref without impl until AST-519 — see AST-517 thread; clean up before parent merge.
+- **`BUILD_CONFIG["artifact_shapes"]["resume_content"]`:** Static key list remains while runtime filter is structure-driven — plan documents the split; confirm job-craft prompts eventually align with per-candidate subsets (parent AST-477, not blocking this ticket).
+
+### advisory
+- **`_prepare_job_resume_content`:** Contact snapshot writes empty strings when base missing — correct for historical job resume HTML; UI should not rely on empty contact rows for display logic.
+
+#### betty — 2026-05-28T23:16:14.203Z
+**Tests Ready** — `origin/sub/AST-477/AST-518-resume-builder-and-job-artifact-keys-from-candidate-structure` @ `047ae6e5`
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `7e04e77488f5f18ec3ce8e2f5f22fbcdb1ccf93c6d451f6de857dfc3e19506ec`
+
+**Manifest** (`test-astral`):
+
+1. `tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection`
+2. `tests/component/core/test_builder.py::TestAst518BuilderResumeStructure`
+3. `tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts`
+4. `tests/component/core/test_builder.py::TestBuilderHelpers`
+5. `tests/component/core/test_tracker.py::TestAst302JobArtifacts`
+6. `tests/component/core/test_tracker.py::TestAst309CoverLetterArtifact`
+7. `tests/component/core/test_tracker.py::TestPersistJobArtifactFromParsed`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection \
+  tests/component/core/test_builder.py::TestAst518BuilderResumeStructure \
+  tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts \
+  tests/component/core/test_builder.py::TestBuilderHelpers \
+  tests/component/core/test_tracker.py::TestAst302JobArtifacts \
+  tests/component/core/test_tracker.py::TestAst309CoverLetterArtifact \
+  tests/component/core/test_tracker.py::TestPersistJobArtifactFromParsed
+```
+
+**Coverage notes:** Revises **AST-302** / **AST-309** tracker tests for structure-filtered `resume_content` and canonical **`Subject`**/**`Letter`** cover keys. Builder helper tests updated for `_emit_body_sections_html(render, ordered_ids, titles)`.
+
+— Betty
+
+#### ada — 2026-05-28T22:59:55.166Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-477/AST-518-resume-builder-and-job-artifact-keys-from-candidate-structure/docs/features/candidate/ast-518-resume-builder-and-job-artifact-keys-from-candidate-structure.md
+
+**Self-Assessment**
+- **Scope — Single-Component:** Builder emission plus tracker job persist filtering and cover-letter key shims — no React or structure persistence.
+- **Conf — Medium:** Depends on AST-517 `resolve_resume_structure` shape; cover letter Subject/Letter vs re_line/body needs shim discipline.
+- **Risk — Medium:** Incorrect key filtering or section order would regress resume/cover HTML output.
+
+---
+
 # AST-518 — Resume builder and job artifact keys from candidate structure
 
 **Linear:** [AST-518](https://linear.app/astralcareermatch/issue/AST-518/resume-builder-and-job-artifact-keys-from-candidate-structure)  

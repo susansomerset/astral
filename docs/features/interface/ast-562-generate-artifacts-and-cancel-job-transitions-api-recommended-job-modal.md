@@ -1,3 +1,176 @@
+<!-- linear-archive: AST-562 archived 2026-06-15 -->
+
+## Linear archive (AST-562)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-562/generate-artifacts-and-cancel-job-transitions-api-recommended-job  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-499 — Recommended Job Modal  
+**Blocked by / blocks / related:** parent: AST-499; blocks: AST-565; related: AST-313
+
+### Description
+
+## What this implements
+
+Candidate-facing transitions for the Recommended Job Report: **Generate Artifacts** moves `RECOMMENDED` → `BUILD_ARTIFACTS` only via explicit UI action (never dispatch-driven); **Cancel** during build returns `BUILD_ARTIFACTS` → `RECOMMENDED` and clears partial `job_data.artifacts` (and related in-flight artifact state per parent open question). Actions are config/manifest-driven, not hardcoded TS state machines. May add `candidate_action` values or a dedicated endpoint — dev plan picks API shape (parent: agreed, not dispatch side effects).
+
+## Acceptance criteria
+
+5. **Generate Artifacts** on `RECOMMENDED` moves job to `BUILD_ARTIFACTS` only via that button; UI reflects in-progress; **Cancel** returns to `RECOMMENDED`.
+
+(Parent boundary: Does **not** auto-enter `BUILD_ARTIFACTS` except via **Generate Artifacts** UI.)
+
+## Boundaries
+
+* Does **not** build the tabbed report shell, tabs, header, or list row entry (sibling Katherine).
+* Does **not** add `take_jd` schema/prompt (sibling Ada — parallel OK).
+* Does **not** reimplement artifact pipeline authoring ([AST-313](https://linear.app/astralcareermatch/issue/AST-313)).
+
+## Notes for planning
+
+* Cancel clears partial artifacts — Susan confirmed in parent Open questions.
+* Katherine wires buttons into the report modal after this ticket's contract exists.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** branch law: parent `ftr/AST-499-recommended-job-modal`, child `sub/AST-499/<ticket-id>-generate-artifacts-cancel-job-transitions-api`. Created at dispatch-linear.
+
+### Comments
+
+#### radia — 2026-06-03T03:02:13.436Z
+**Doc publish:** `docs/features/interface/ast-562-generate-artifacts-and-cancel-job-transitions-api-recommended-job-modal.md` on `origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `8ae20990` (Joan `store-review-commit` add/add conflict; patch-applied publish).
+
+#### radia — 2026-06-03T03:01:25.923Z
+**Review** — `origin/dev...origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `deeca407`
+
+### fix-now
+None for **AST-562** scope.
+
+### discuss
+- **`api_jobs.py`:** Publish tip also has **`POST …/approve_artifacts`** (**AST-552**) in addition to **`generate_artifacts`** / **`cancel_artifact_build`**. Both can enter **`BUILD_ARTIFACTS`** from **`RECOMMENDED`**. Manifest **`primary_actions_by_state`** exposes **generate** only — **AST-565** should wire manifest actions, not approve, for the Recommended Job Report **Generate Artifacts** button.
+- **`docs/ASTRAL_TEST_BIBLE.md`:** Cumulative bible sections (**AST-549/551/552/558**, etc.) on the sub tip; not a product gap for this ticket.
+
+### advisory
+- Post-cancel in-flight **`contemplate_job`** may briefly repopulate artifacts (plan-accepted race).
+
+### Solid (rules)
+- **§1.4 / §2.6:** `JOB_STATES`, `JOB_BUILD_ARTIFACT_CLEAR_KEYS`, `JOBS_RECOMMENDED_PRIMARY_ACTIONS` → manifest **`primary_actions_by_state`**.
+- **§2.4:** `clear_job_batch_lock` + cancel clears **`batch_id`**.
+- **§2.6 / §3.3:** Transitions via **`tracker`**; API → tracker only; generate does not invoke dispatch.
+- **AC cancel clear:** **`clear_job_build_artifacts`** removes build keys with **`replace=True`** (**AST-552** pattern); **`test_cancel_persists_cleared_build_artifact_keys`** guards DB persistence.
+
+Combined plan + review table: `docs/features/interface/ast-562-generate-artifacts-and-cancel-job-transitions-api-recommended-job-modal.md` (doc commit via Joan on publish ref after this comment).
+
+#### betty — 2026-06-03T02:59:09.600Z
+[check-linear]
+
+**[qa-handoff] cleared** — manifest step 2 green after test fix on publish ref.
+
+- **Test:** `test_clear_job_build_artifacts_patches_listed_keys` — mock accepts `replace=`; asserts key removal + preserved `analysis_upshot` (AST-552 pattern).
+- **Manifest (14/14):** config `test_ast562_*` (2), `TestAst562ArtifactBuildTransitions` (6), `TestAst562GenerateCancelRoutes` (6).
+- **Publish:** `origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `deeca407`
+- **Bible shasum on publish ref:** run `git show origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api:docs/ASTRAL_TEST_BIBLE.md | shasum` before `test-astral` if you need the exact digest.
+
+Product tip remains @ `e565d840`. Reassigned **Hedy** for **`test-astral`** — stay **Tests Ready**.
+
+#### betty — 2026-06-03T02:58:38.737Z
+[check-linear]
+
+- **`test_clear_job_build_artifacts_patches_listed_keys`:** mock accepts `replace=`; asserts `resume_content` / `cover_letter` **removed** (not `{}` merge); `analysis_upshot` preserved — AST-552 / `e565d840` pattern.
+- **`test_cancel_persists_cleared_build_artifact_keys`:** asserts keys absent after cancel.
+- Manifest step 2: **14/14** green (config + tracker + API).
+- Publish: `origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `deeca407`; bible shasum on ref updated in §7.13zv.
+- Reassigned **Hedy** for **`test-astral`** — manifest unchanged from Tests Ready comment.
+
+#### hedy — 2026-06-03T02:56:58.427Z
+[qa-handoff]
+
+@Betty White — manifest step 2 is **5/6 green** with the key-removal + `replace=True` product fix (AST-552 `clear_job_artifact_resume_content` pattern). One test still blocks full green:
+
+**Failing:** `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_clear_job_build_artifacts_patches_listed_keys`
+
+**Why (test/manifest, not product):**
+- Mock `_save(jid, payload)` does not accept `replace=` → `TypeError` once product calls `save_job_data(..., replace=True)`.
+- Assertion expects partial merge payload `artifacts == {resume_content: {}, cover_letter: {}}` (no `analysis_upshot`). That matches the old `{}` deep-merge plan, which **cannot** clear nested draft fields — your `test_cancel_persists_cleared_build_artifact_keys` note and AC require **key removal** (same as `TestAst552BuildArtifactsGate::test_clear_job_artifact_resume_content_drops_resume_key`).
+
+**Passing after product fix on `dev-hedy` (uncommitted):**
+- Both config manifest lines
+- `test_cancel_persists_cleared_build_artifact_keys`, `test_cancel_transitions_and_releases_batch_lock`, other `TestAst562ArtifactBuildTransitions` cases
+- `TestAst562GenerateCancelRoutes` (6/6)
+
+**Suggested test fix:** Update `test_clear_job_build_artifacts_patches_listed_keys` to mirror AST-552 mock (`replace` kwarg) and assert cleared keys are **absent** and `analysis_upshot` remains. Republish `origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` and reassign Hedy.
+
+**Product (ready to publish after test fix):** `clear_job_build_artifacts` removes `JOB_BUILD_ARTIFACT_CLEAR_KEYS` from `artifacts` and `save_job_data(..., replace=True)`.
+
+#### hedy — 2026-06-03T02:56:21.160Z
+[qa-handoff]
+
+@Betty White — product fix is on `origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `e565d840` (`clear_job_build_artifacts` now removes `JOB_BUILD_ARTIFACT_CLEAR_KEYS` via `save_job_data(..., replace=True)`, AST-552 pattern).
+
+**Manifest status after publish:**
+- Steps 1 and 3: green
+- Step 2 class: 5/6 green; **one test-layer failure remains**
+
+**Failing test (not product):**
+`tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions::test_clear_job_build_artifacts_patches_listed_keys`
+
+```
+TypeError: _save() got an unexpected keyword argument 'replace'
+```
+
+The monkeypatch `_save(jid, payload)` does not accept `replace=`, and it still asserts `saved[0]["artifacts"] == {"resume_content": {}, "cover_letter": {}}` instead of key removal + preserved `analysis_upshot`.
+
+**AC integration test now passes:**
+`test_cancel_persists_cleared_build_artifact_keys` — green with `e565d840`.
+
+Please update the unit test mock/assertions for the AST-552 clear pattern, republish to `sub/*`, and reassign Hedy. Full manifest command block unchanged from your Tests Ready comment.
+
+#### betty — 2026-06-03T02:53:47.003Z
+**Tests Ready manifest** (`origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `96b0ecdd`; `docs/ASTRAL_TEST_BIBLE.md` shasum `c03f52007b904899790b86dda8a48dc610ade5bd`)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_primary_actions_by_state tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_prior_states_allow_cancel_from_build`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions`
+3. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes`
+
+**Product fix expected:** `test_cancel_persists_cleared_build_artifact_keys` fails on publish tip — `clear_job_build_artifacts` deep-merge with `{}` leaves nested draft fields; use key removal or `replace=True` merge (same pattern as `clear_job_artifact_resume_content` / AST-552). Other manifest lines should pass after that fix.
+
+#### betty — 2026-06-03T02:53:07.439Z
+1. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_primary_actions_by_state`
+2. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_prior_states_allow_cancel_from_build`
+3. `tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions` (full class)
+4. `tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_primary_actions_by_state \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast562_recommended_prior_states_allow_cancel_from_build \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/ui/api/test_api_jobs.py::TestAst562GenerateCancelRoutes
+```
+
+`docs/ASTRAL_TEST_BIBLE.md` shasum on `origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api`: `96b0ecdd` tip — bible `3f4ebcbda0b2fc44db2d555ea1c3537a356379a34f0270d9c2160886a723e3b8`
+
+**Product note for `test-astral`:** `test_cancel_persists_cleared_build_artifact_keys` enforces AC that partial `resume_content` / `cover_letter` are cleared after cancel. Today `clear_job_build_artifacts` deep-merges `{}` and leaves nested fields — fix tracker (AST-552 key-removal or replace-merge pattern) before manifest is fully green.
+
+#### hedy — 2026-06-02T22:54:45.317Z
+Betty manifest (qa-astral): extend `tests/component/ui/api/test_api_jobs.py` — generate/cancel happy paths, 409 wrong state, 404 missing job; `tests/component/utils/test_config.py` — `primary_actions_by_state`; `tests/component/core/test_tracker.py` — cancel clears artifact keys and releases `batch_id`.
+
+`origin/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api` @ `19f3f615`
+
+#### hedy — 2026-06-02T22:33:21.375Z
+Plan: [`docs/features/interface/ast-562-generate-artifacts-and-cancel-job-transitions-api-recommended-job-modal.md`](https://github.com/susansomerset/astral/blob/sub/AST-499/AST-562-generate-artifacts-cancel-job-transitions-api/docs/features/interface/ast-562-generate-artifacts-and-cancel-job-transitions-api-recommended-job-modal.md)
+
+**Scope — Single-Component:** Config manifest + `tracker` cancel/generate helpers + two Flask POST routes + `clear_job_batch_lock` in data — no React (**AST-565**) and no `consult.py` pipeline exit work.
+
+**Conf — high:** Reuses existing `candidate_action`/`skip` 409 patterns, **AST-522** manifest shape, and seeded `contemplate_job` @ `BUILD_ARTIFACTS`; adds `BUILD_ARTIFACTS` → `RECOMMENDED` `prior_states` edge and config-driven artifact clear keys.
+
+**Risk — Medium:** Bad transitions or incomplete artifact clear would strand jobs or show stale drafts; in-flight dispatch after cancel is an accepted race (Susan: inspect logs).
+
+---
+
 # Generate Artifacts and Cancel job transitions API (Recommended Job Modal)
 
 **Linear:** [AST-562](https://linear.app/astralcareermatch/issue/AST-562/generate-artifacts-and-cancel-job-transitions-api-recommended-job)  

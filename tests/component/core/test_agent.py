@@ -53,6 +53,18 @@ def _llm_failure_envelope(**extra: Any) -> Dict[str, Any]:
     return body
 
 
+def _rubric_evaluate_jd_ctx() -> Dict[str, Any]:
+    return {"candidate_data": {}, "batch_entities": _batch_entities("job-1")}
+
+
+def _patch_normalize_rubric_response(
+    monkeypatch: pytest.MonkeyPatch,
+    side_effect: Any,
+) -> None:
+    """evaluate_jd rubric path uses consult normalize, not agent._decode_payload (AST-603)."""
+    monkeypatch.setattr(consult_mod, "_normalize_rubric_task_response", side_effect)
+
+
 def _strict_batch_llm_ok(*, payload: str = "0|CRA2", api_label: str = "raw") -> Dict[str, Any]:
     """Mock LLM result for _STRICT_ENCODED_BATCH_CONSULT_KEYS tasks (AST-501 envelope)."""
     return {
@@ -324,6 +336,198 @@ class TestAst603RubricNormalize:
         assert consult_mod._parse_link_index_field("JOB:16") == [16]
         assert consult_mod._parse_link_index_field("CULT:38,3") == [38, 3]
 
+    def test_lovable_encoded_line_with_bracket_tails(self) -> None:
+        # AST-697: positional bracket link_set tails via consult normalizer (AST-603 path).
+        out = consult_mod._normalize_rubric_task_response(
+            "prefilter_company",
+            _ast603_prefilter_task_config(),
+            "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]",
+            _ast603_prefilter_ctx(),
+        )
+        job = out["jobs"][0]
+        assert job["possible_job_links"] == [59, 60]
+        assert job["culture_links_to_explore"] == [51, 46, 53]
+
+
+class TestAst697PrefilterBracketLinkDecode:
+    """AST-697: bracket link_set tails in _decode_payload and shared consult helper."""
+
+    @staticmethod
+    def _prefilter_decode_ctx() -> Dict[str, Any]:
+        return {
+            "batch_entities": [{"astral_job_id": "co-acme"}],
+            "vector_labels": {
+                "RC": "Reality Check",
+                "MP": "Mission Product Orientation",
+                "US": "US Presence",
+            },
+        }
+
+    def test_decode_payload_susan_canonical_bracket_tails(self) -> None:
+        ctx = {
+            "batch_entities": [{"astral_job_id": "acme"}],
+            "vector_labels": {"ER": "Example", "ME": "Mission", "PG": "Product"},
+        }
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|ERC2|MEA3|PGA2|[13]|[3,6,19]",
+            ctx,
+        )["jobs"][0]
+        assert job["possible_job_links"] == [13]
+        assert job["culture_links_to_explore"] == [3, 6, 19]
+
+    def test_decode_payload_bracket_tails_rca_mpb_usa(self) -> None:
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]",
+            self._prefilter_decode_ctx(),
+        )["jobs"][0]
+        assert job["possible_job_links"] == [59, 60]
+        assert job["culture_links_to_explore"] == [51, 46, 53]
+
+    def test_decode_payload_job_cult_prefix_unchanged(self) -> None:
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|RCA3|MPB3|USA3|JOB:16|CULT:38,3,27",
+            self._prefilter_decode_ctx(),
+        )["jobs"][0]
+        assert job["possible_job_links"] == [16]
+        assert job["culture_links_to_explore"] == [38, 3, 27]
+
+    def test_decode_payload_grades_only_omits_link_keys(self) -> None:
+        job = agent_mod._decode_payload(
+            "prefilter_company",
+            "grades_encoded_prefilter_links",
+            "000|RCA3|MPB3|USA3",
+            self._prefilter_decode_ctx(),
+        )["jobs"][0]
+        assert "possible_job_links" not in job
+        assert "culture_links_to_explore" not in job
+
+
+class TestAst699LetterPipePositionPrefix:
+    """AST-699: position-prefixed letter-pipe lines must not misroute to _decode_payload."""
+
+    def test_position_prefixed_letter_pipe_bracket_tails(self) -> None:
+        out = consult_mod._normalize_rubric_task_response(
+            "prefilter_company",
+            _ast603_prefilter_task_config(),
+            "0|A|B|A|[35]|[22,34,39,52,53]",
+            _ast603_prefilter_ctx(),
+        )
+        job = out["jobs"][0]
+        assert [g["grade"] for g in job["grades"]] == ["A", "B", "A"]
+        assert job["possible_job_links"] == [35]
+        assert job["culture_links_to_explore"] == [22, 34, 39, 52, 53]
+
+    def test_bare_letter_pipe_bracket_tails(self) -> None:
+        out = consult_mod._normalize_rubric_task_response(
+            "prefilter_company",
+            _ast603_prefilter_task_config(),
+            "A|B|A|[35]|[22,34,39,52,53]",
+            _ast603_prefilter_ctx(),
+        )
+        job = out["jobs"][0]
+        assert job["possible_job_links"] == [35]
+        assert job["culture_links_to_explore"] == [22, 34, 39, 52, 53]
+
+    def test_should_decode_as_encoded_line_routing(self) -> None:
+        assert consult_mod._should_decode_as_encoded_line("0|A|B|A|[35]|[22,34,39,52,53]") is False
+        assert consult_mod._should_decode_as_encoded_line("000|RCA3|MPB3|USA3|[59,60]|[51,46,53]") is True
+        assert consult_mod._should_decode_as_encoded_line("A|B|A|15|13,16,14") is False
+
+
+class TestAst698DoTaskDebugRawResponse:
+    @pytest.mark.asyncio
+    async def test_short_raw_response_emits_under_debug_contract(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        short_body = '{\n  "agent_performance": {},\n  "agent_payload": "0|CRA2"\n}'
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_performance": {}, "agent_payload": "0|CRA2"},
+                    "api_response": _api_response(short_body),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        assert out["success"] is True
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "raw_response task_key=evaluate_jd" in combined
+        assert "agent_payload" in combined
+
+    @pytest.mark.asyncio
+    async def test_encoded_payload_uses_contract_helpers_not_legacy_info(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(return_value=_strict_batch_llm_ok(api_label="envelope")),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "encoded_payload task_key=evaluate_jd" in combined
+        assert "literal encoded agent_payload" not in combined
+
+    @pytest.mark.asyncio
+    async def test_debug_false_skips_raw_response_contract_lines(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(return_value=_strict_batch_llm_ok(api_label="envelope")),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=False,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "raw_response task_key=" not in combined
+        assert "encoded_payload task_key=" not in combined
+
 
 class TestPromptHelpers:
     def test_resolves_system_prompt_and_chain_tokens(self) -> None:
@@ -461,8 +665,15 @@ class TestResolveTaskPrompts:
 
 class TestChainContext:
     def test_merges_extra_chain_tokens(self) -> None:
-        base = agent_mod._chain_context({"content": "agent"}, {"CALLER_RESPONSE": "hop"})
+        base = agent_mod._chain_context(
+            {"content": "agent"},
+            {},
+            "qualify_job_listings",
+            None,
+            {"CALLER_RESPONSE": "hop"},
+        )
         assert base["CALLER_RESPONSE"] == "hop"
+        assert base["SELECTED_AGENT"] == "agent"
 
     def test_formats_non_json_caller_response(self) -> None:
         hop = agent_mod._chain_tokens_for_next_hop(
@@ -529,6 +740,85 @@ class TestChainContext:
                 system_content="sys",
                 unknown_param="bad",
             )
+
+
+# Branches: resolved_agent_content; SELECTED_AGENT injection; direct vs template system paths (AST-631).
+class TestAst631AgentContentTokens:
+    _AGENT_BODY = "Hi, you're Grace. You're helping {$FIRST_NAME} find a great role."
+    _PLAIN_BODY = "Hi, you're Grace. No tokens here."
+
+    def _cd(self) -> dict:
+        return {"profile": {"first": "Ada"}}
+
+    def test_resolved_agent_content_substitutes_candidate_tokens(self) -> None:
+        out = agent_mod.resolved_agent_content(
+            {"content": self._AGENT_BODY},
+            self._cd(),
+            "qualify_job_listings",
+        )
+        assert "helping Ada find" in out
+        assert "{$FIRST_NAME}" not in out
+
+    def test_direct_system_block_resolves_first_name(self) -> None:
+        agent_row = {"content": self._AGENT_BODY}
+        task_row = {"system_prompt": ""}
+        text = agent_mod.resolved_task_system(
+            agent_row,
+            task_row,
+            self._cd(),
+            "qualify_job_listings",
+            {},
+        )
+        assert "helping Ada find" in text
+        assert "{$FIRST_NAME}" not in text
+
+    def test_selected_agent_path_resolves_agent_body_tokens(self) -> None:
+        agent_row = {"content": self._AGENT_BODY}
+        task_row = {"system_prompt": "{$SELECTED_AGENT}"}
+        cc = agent_mod._chain_context(agent_row, self._cd(), "qualify_job_listings", None)
+        text = agent_mod.resolved_task_system(
+            agent_row,
+            task_row,
+            self._cd(),
+            "qualify_job_listings",
+            cc,
+        )
+        assert "helping Ada find" in text
+        assert "{$FIRST_NAME}" not in text
+
+    def test_plain_agent_body_unchanged_on_direct_and_selected_paths(self) -> None:
+        agent_row = {"content": self._PLAIN_BODY}
+        task_row_empty = {"system_prompt": ""}
+        direct = agent_mod.resolved_task_system(
+            agent_row,
+            task_row_empty,
+            self._cd(),
+            "qualify_job_listings",
+            {},
+        )
+        cc = agent_mod._chain_context(agent_row, self._cd(), "qualify_job_listings", None)
+        via_selected = agent_mod.resolved_task_system(
+            agent_row,
+            {"system_prompt": "{$SELECTED_AGENT}"},
+            self._cd(),
+            "qualify_job_listings",
+            cc,
+        )
+        assert direct == self._PLAIN_BODY
+        assert via_selected == self._PLAIN_BODY
+
+    def test_preview_prompt_selected_agent_path_matches_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        agent_row = {"content": self._AGENT_BODY, "model_code": "claude"}
+        task_row = {
+            "system_prompt": "{$SELECTED_AGENT}",
+            "user_prompt": "user",
+            "cache_prompt": "",
+            "nocache_prompt": "",
+        }
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row))
+        blocks = agent_mod.preview_prompt("qualify_job_listings", self._cd())
+        assert "helping Ada find" in blocks["system"]
+        assert "{$FIRST_NAME}" not in blocks["system"]
 
 
 class TestLegacyAbiGuards:
@@ -1028,7 +1318,7 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
-        assert "Agent failure" in out["error"]
+        assert "empty agent_payload" in out["error"]
 
         send.return_value = {
             "success": True,
@@ -1281,7 +1571,7 @@ class TestDoTask:
         send = AsyncMock(
             return_value={
                 "success": True,
-                "parsed_response": {"agent_payload": "bad|CRA2"},
+                "parsed_response": _llm_failure_envelope(),
                 "api_response": _api_response(),
                 "timesheet": {},
             }
@@ -1290,10 +1580,10 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
-        assert "bad position" in out["error"]
+        assert "empty agent_payload" in out["error"]
 
         send.return_value = {
             "success": True,
@@ -1304,7 +1594,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
         assert "confidence digit 0" in out["error"]
@@ -1689,6 +1979,46 @@ class TestAst469ResolveRunNextLive:
         assert captured.get("JOB_LIST_VISIBLE") == "Role listing plain text"
 
 
+class TestAst692JobsiteScrapeIssueAgent:
+    """AST-692: agent suppresses parse_job_list when select_job_page returns JOBSITE_SCRAPE_ISSUE."""
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_suppresses_parse_chain_for_jobsite_scrape_issue(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def resolve_prompt(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            if task_key == "select_job_page":
+                return _agent_rows(run_next="parse_job_list")
+            return _agent_rows(run_next="")
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve_prompt)
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "response_type": "JOBSITE_SCRAPE_ISSUE",
+                    "selected_page": 1,
+                    "scrape_issue_summary": "shell only",
+                },
+                "api_response": _api_response("sel"),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+
+        out = await agent_mod.do_task(
+            "select_job_page",
+            live_content="<root>shell page</root>",
+            index="co-692",
+            ctx={"candidate_data": {}, "resolve_run_next_live": lambda _p: ("<div/>", "visible")},
+            store_agent_data=False,
+        )
+
+        assert out["success"] is True
+        assert out.get("parsed_response", {}).get("response_type") == "JOBSITE_SCRAPE_ISSUE"
+        assert send.await_count == 1
+
 class TestRunAdhoc:
     async def test_requires_model_code(self) -> None:
         with pytest.raises(ValueError, match="requires model_code"):
@@ -1792,6 +2122,38 @@ class TestResponseSchemaBranches:
         agent_mod._coerce_schema_str_fields_from_list(parsed, schema)
         assert parsed["agent_payload"]["search_terms"] == "site:linkedin.com foo\nbar"
         assert agent_mod._validate_response_schema(parsed, schema, "craft_company_search_terms") is None
+
+    def test_ast676_int_bounds_and_bool_rejection(self) -> None:
+        schema = {"importance": {"type": "int", "required": True, "min": 1, "max": 10}}
+        ok = {"agent_payload": {"importance": 5}}
+        assert agent_mod._validate_response_schema(ok, schema, "task") is None
+        missing = agent_mod._validate_response_schema({"agent_payload": {}}, schema, "task")
+        assert missing is not None and "Missing required field 'importance'" in missing
+        assert "must be int, got bool" in agent_mod._validate_response_schema(
+            {"agent_payload": {"importance": True}}, schema, "task"
+        )
+        assert "must be >= 1" in agent_mod._validate_response_schema(
+            {"agent_payload": {"importance": 0}}, schema, "task"
+        )
+        assert "must be <= 10" in agent_mod._validate_response_schema(
+            {"agent_payload": {"importance": 11}}, schema, "task"
+        )
+
+    def test_ast676_craft_rubric_criteria_schema(self) -> None:
+        schema = TASK_CONFIG["craft_prefilter_rubric"]["response_schema"]
+        ok = {
+            "agent_payload": {
+                "criteria": [{"label": "L", "content": "c", "importance": 5}],
+            },
+        }
+        assert agent_mod._validate_response_schema(ok, schema, "craft_prefilter_rubric") is None
+        bad = {
+            "agent_payload": {
+                "criteria": [{"label": "L", "content": "c"}],
+            },
+        }
+        err = agent_mod._validate_response_schema(bad, schema, "craft_prefilter_rubric")
+        assert err is not None and "criteria[0]" in err
 
     def test_effective_entity_type_defaults_candidate_for_craft(self) -> None:
         tc = TASK_CONFIG["craft_company_search_terms"]
@@ -2096,7 +2458,10 @@ class TestDoTaskRemainingPaths:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": {"agent_payload": "bad|CRA2"},
+                    "parsed_response": {
+                        "agent_performance": "ok",
+                        "agent_payload": "bad|CRA2",
+                    },
                     "api_response": _api_response(),
                     "timesheet": {},
                 }
@@ -2109,13 +2474,17 @@ class TestDoTaskRemainingPaths:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: (_ for _ in ()).throw(ValueError("boom")),
+        )
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
-        assert any("agent_payload" in body for body in saved)
+        assert any("bad|CRA2" in body or "agent_payload" in body for body in saved)
 
 
 class TestPromptAndSchemaEdges:
@@ -2400,17 +2769,15 @@ class TestDoTaskFinalBranches:
         monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         send = AsyncMock(side_effect=lambda *args, **kwargs: _strict_batch_llm_ok(payload="0|CRA2"))
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
-        calls = {"n": 0}
-
-        def _schema(parsed: Any, schema: Any, task_key: str) -> str | None:
-            calls["n"] += 1
-            return "schema failed" if calls["n"] > 1 else None
-
-        monkeypatch.setattr(agent_mod, "_validate_response_schema", _schema)
+        monkeypatch.setattr(
+            agent_mod,
+            "_validate_response_schema",
+            lambda parsed, schema, task_key: "schema failed",
+        )
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["error"] == "schema failed"
 
@@ -2423,7 +2790,7 @@ class TestDoTaskFinalBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["error"] == "confidence failed"
 
@@ -2468,7 +2835,7 @@ class TestDoTaskStoreExceptions:
         return await agent_mod.do_task(
             task_key,
             index="job-1",
-            ctx=ctx or {"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=ctx or _rubric_evaluate_jd_ctx(),
         )
 
     async def test_records_validation_failure_response_block(
@@ -2503,24 +2870,27 @@ class TestDoTaskStoreExceptions:
         assert out["success"] is False
 
     async def test_json_schema_store_exception(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: (_ for _ in ()).throw(ValueError("normalize failed")),
+        )
         out = await self._run_with_response_store_error(
             monkeypatch,
             batch_token,
             {
                 "success": True,
-                "parsed_response": _strict_batch_llm_ok(payload="not-valid-encoded")["parsed_response"],
+                "parsed_response": {"agent_payload": "not-valid-encoded"},
                 "api_response": _api_response(),
                 "timesheet": {},
             },
         )
-        assert out["error"]
+        assert "normalize failed" in out["error"]
 
     async def test_json_confidence_store_exception(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {
                 "jobs": [
                     {
                         "astral_job_id": "job-1",
@@ -2577,6 +2947,10 @@ class TestDoTaskStoreExceptions:
         batch_token: Any,
         enable_debug_log: None,
     ) -> None:
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: (_ for _ in ()).throw(ValueError("normalize failed")),
+        )
         out = await self._run_with_response_store_error(
             monkeypatch,
             batch_token,
@@ -2587,22 +2961,26 @@ class TestDoTaskStoreExceptions:
                 "timesheet": {},
             },
         )
-        assert "bad position" in out["error"]
+        assert "normalize failed" in out["error"]
 
     async def test_post_decode_store_exceptions(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_anthropic",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {"agent_payload": "0|CRA2"},
-                    "api_response": _api_response(),
-                    "timesheet": {},
-                }
-            ),
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
         )
+        def _llm_ok(*_a: Any, **_k: Any) -> Dict[str, Any]:
+            return {
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": "ok",
+                    "agent_payload": "0|CRA2",
+                },
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_llm_ok))
 
         def _save(**kwargs: Any) -> str:
             if kwargs.get("block_type") == "RESPONSE":
@@ -2615,7 +2993,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["error"] == "schema failed"
 
@@ -2628,7 +3006,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["error"] == "confidence failed"
 
@@ -2708,10 +3086,9 @@ class TestDoTaskStoreExceptions:
 
     async def test_post_decode_schema_requires_job_grades(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {"jobs": [{"astral_job_id": "job-1"}]},
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
         )
         monkeypatch.setattr(
             agent_mod,
@@ -2730,7 +3107,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
         assert "grades" in out["error"].lower()
@@ -2741,10 +3118,9 @@ class TestDoTaskStoreExceptions:
         batch_token: Any,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {
                 "jobs": [
                     {
                         "astral_job_id": "job-1",
@@ -2753,6 +3129,7 @@ class TestDoTaskStoreExceptions:
                 ],
             },
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
 
         def _save2(**kwargs: Any) -> str:
             if kwargs.get("block_type") == "RESPONSE":
@@ -2776,7 +3153,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
         assert "confidence" in out["error"]
@@ -2807,12 +3184,15 @@ class TestDoTaskStoreExceptions:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        monkeypatch.setattr(agent_mod, "_decode_payload", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom")))
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: (_ for _ in ()).throw(ValueError("boom")),
+        )
         monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
         assert bodies and "agent_payload" not in bodies[0]
@@ -3088,7 +3468,7 @@ class TestDoTaskShouldStoreBranches:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": {"agent_payload": "bad|CRA2"},
+                    "parsed_response": _llm_failure_envelope(),
                     "api_response": _api_response(),
                     "timesheet": {},
                 }
@@ -3097,7 +3477,7 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
         assert any(c.kwargs.get("block_type") == "RESPONSE" for c in saved.call_args_list)
@@ -3111,11 +3491,11 @@ class TestDoTaskShouldStoreBranches:
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
         monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {"jobs": [{"astral_job_id": "job-1"}]},
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3131,9 +3511,10 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
+        assert out["error"] == "schema failed"
         assert any(c.kwargs.get("block_type") == "RESPONSE" for c in saved.call_args_list)
 
     async def test_post_decode_confidence_failure_stores_response_block(
@@ -3145,10 +3526,9 @@ class TestDoTaskShouldStoreBranches:
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
         monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {
                 "jobs": [
                     {
                         "astral_job_id": "job-1",
@@ -3157,6 +3537,7 @@ class TestDoTaskShouldStoreBranches:
                 ],
             },
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3172,7 +3553,7 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
         assert "confidence" in out["error"]
@@ -3227,7 +3608,7 @@ class TestDoTaskShouldStoreBranches:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": {"agent_payload": "bad|CRA2"},
+                    "parsed_response": _llm_failure_envelope(),
                     "api_response": _api_response(),
                     "timesheet": {},
                 }
@@ -3236,9 +3617,9 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
-        assert "bad position" in out["error"]
+        assert "empty agent_payload" in out["error"]
 
     async def test_post_decode_schema_store_exception_with_batch(
         self,
@@ -3246,11 +3627,11 @@ class TestDoTaskShouldStoreBranches:
         batch_token: Any,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {"jobs": [{"astral_job_id": "job-1"}]},
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
         monkeypatch.setattr(
             agent_mod,
             "_store_response_block",
@@ -3272,9 +3653,10 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
+        assert out["error"] == "schema failed"
 
     async def test_post_decode_confidence_store_exception_with_batch(
         self,
@@ -3282,10 +3664,9 @@ class TestDoTaskShouldStoreBranches:
         batch_token: Any,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {
                 "jobs": [
                     {
                         "astral_job_id": "job-1",
@@ -3294,6 +3675,7 @@ class TestDoTaskShouldStoreBranches:
                 ],
             },
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
         monkeypatch.setattr(
             agent_mod,
             "_store_response_block",
@@ -3315,7 +3697,7 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert "confidence" in out["error"]
 
@@ -3368,7 +3750,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": {"agent_payload": "bad|CRA2"},
+                    "parsed_response": _llm_failure_envelope(),
                     "api_response": _api_response(),
                     "timesheet": {},
                 }
@@ -3377,20 +3759,20 @@ class TestDoTaskStoreExceptionWithoutBatch:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
-        assert "bad position" in out["error"]
+        assert "empty agent_payload" in out["error"]
 
     async def test_post_decode_schema_failure_without_batch(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {"jobs": [{"astral_job_id": "job-1"}]},
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
         monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
@@ -3407,19 +3789,19 @@ class TestDoTaskStoreExceptionWithoutBatch:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
+        assert out["error"] == "schema failed"
 
     async def test_post_decode_confidence_failure_without_batch(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "_decode_payload",
-            lambda *a, **k: {
+        _patch_normalize_rubric_response(
+            monkeypatch,
+            lambda task_key, task_config, parsed, ctx: {
                 "jobs": [
                     {
                         "astral_job_id": "job-1",
@@ -3428,6 +3810,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
                 ],
             },
         )
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
         monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
@@ -3444,7 +3827,7 @@ class TestDoTaskStoreExceptionWithoutBatch:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_rubric_evaluate_jd_ctx(),
         )
         assert "confidence" in out["error"]
 
@@ -3456,7 +3839,7 @@ class TestDoTaskEncodedPostDecodeFallthrough:
         batch_token: Any,
     ) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "_decode_payload", lambda *a, **k: "decoded-text")
+        _patch_normalize_rubric_response(monkeypatch, lambda task_key, task_config, parsed, ctx: "decoded-text")
         real_schema = agent_mod._validate_response_schema
 
         def _schema(parsed: Any, schema: Any, task_key: str) -> str | None:
@@ -3505,142 +3888,8 @@ class TestMergeChainContextForNextHop:
         }
 
 
-_SKIP_RESUME_CHAIN_CANDIDATE_DATA = pytest.mark.skipif(
-    "candidate_data" not in inspect.getsource(agent_mod.run_resume_artifact_chain_for_job),
-    reason="run_resume_artifact_chain_for_job does not seed candidate_data on branch",
-)
-
-
-@_SKIP_RESUME_CHAIN_CANDIDATE_DATA
-class TestRunResumeArtifactChainForJob:
-    async def test_raises_when_first_task_key_missing_from_task_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(
-            agent_mod.BUILD_CONFIG,
-            "resume_artifact_chain",
-            {"first_task_key": "__not_in_task_config__"},
-        )
-        with pytest.raises(ValueError, match="first_task_key"):
-            await agent_mod.run_resume_artifact_chain_for_job("job-1")
-
-    async def test_raises_when_first_task_key_blank(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(
-            agent_mod.BUILD_CONFIG,
-            "resume_artifact_chain",
-            {"first_task_key": "  "},
-        )
-        with pytest.raises(ValueError, match="first_task_key"):
-            await agent_mod.run_resume_artifact_chain_for_job("job-1")
-
-    async def test_job_not_found_returns_error_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(database_mod, "get_job", lambda jid: None)
-        out = await agent_mod.run_resume_artifact_chain_for_job("missing-job")
-        assert out["success"] is False
-        assert "not found" in (out.get("error") or "").lower()
-
-    async def test_uses_matching_job_from_ctx_job_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            database_mod,
-            "get_job",
-            lambda jid: (_ for _ in ()).throw(AssertionError("get_job should not run")),
-        )
-        do_task = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        job = {"astral_job_id": "j1", "company": "c1"}
-        await agent_mod.run_resume_artifact_chain_for_job("j1", ctx={"job": job, "extra": 1})
-
-        do_task.assert_awaited_once()
-        call_kw = do_task.await_args.kwargs
-        assert call_kw.get("live_content") is None
-        assert call_kw["ctx"]["batch_entities"] == [job]
-        assert call_kw["ctx"]["extra"] == 1
-        assert call_kw["ctx"]["vector_labels"] == {}
-
-    async def test_prefers_job_data_when_job_key_wrong_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            database_mod,
-            "get_job",
-            lambda jid: (_ for _ in ()).throw(AssertionError("get_job should not run")),
-        )
-        do_task = AsyncMock(return_value={"success": True})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        good = {"astral_job_id": "j2", "company": None}
-        bad = {"astral_job_id": "other"}
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j2",
-            ctx={"job": bad, "job_data": good},
-        )
-        assert do_task.await_args.kwargs["ctx"]["batch_entities"] == [good]
-
-    async def test_fetches_job_when_ctx_rows_mismatch(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        fetched = {"astral_job_id": "j3", "company": None}
-        monkeypatch.setattr(database_mod, "get_job", lambda jid: fetched if jid == "j3" else None)
-        do_task = AsyncMock(return_value={"success": True})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j3",
-            ctx={"job": {"astral_job_id": "nope"}},
-        )
-        assert do_task.await_args.kwargs["ctx"]["batch_entities"] == [fetched]
-
-    async def test_respects_existing_vector_labels_in_ctx(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = {"astral_job_id": "j5", "company": None}
-        monkeypatch.setattr(
-            database_mod,
-            "get_job",
-            lambda jid: (_ for _ in ()).throw(AssertionError("no fetch")),
-        )
-        do_task = AsyncMock(return_value={"success": True})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        vl = {"V": "lbl"}
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j5",
-            ctx={"job": job, "vector_labels": vl},
-        )
-        assert do_task.await_args.kwargs["ctx"]["vector_labels"] is vl
-
-    async def test_run_resume_artifact_chain_seeds_candidate_data(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cd = {
-            "artifacts": {
-                "resume_structure": {},
-                "base_resume": {"professional_summary": "base"},
-            }
-        }
-        job = {"astral_job_id": "j-cd", "company": "co1"}
-        monkeypatch.setattr(database_mod, "get_job", lambda jid: job if jid == "j-cd" else None)
-        monkeypatch.setattr(
-            "src.core.tracker._candidate_data_for_job",
-            lambda jid: cd,
-        )
-        monkeypatch.setattr(
-            "src.core.tracker.get_company",
-            lambda c: {"candidate_id": "cand-99"},
-        )
-        do_task = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-        await agent_mod.run_resume_artifact_chain_for_job("j-cd")
-        ctx = do_task.await_args.kwargs["ctx"]
-        assert ctx["candidate_data"] == cd
-        assert ctx["astral_candidate_id"] == "cand-99"
-
-
 class TestAst597MidChainResumeHydrationAndTransitions:
-    """AST-597: agent_data caller hydration and per-hop BUILD_ARTIFACTS transitions."""
+    """AST-597 / AST-803: agent_data caller hydration; per-hop compound transitions retired."""
 
     def test_resume_artifact_parent_hop_key_first_hop_none(self) -> None:
         assert agent_mod._resume_artifact_parent_hop_key("anticipate_scan") is None
@@ -3653,7 +3902,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         parsed = agent_mod._parsed_response_from_stored_response_text(raw, "advise_job_resume")
         assert parsed == "line-a\nline-b"
 
-    def test_latest_job_hop_agent_ref_skips_failed_response_rows(
+    def test_hop_agent_ref_for_parent_skips_failed_response_rows(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
@@ -3678,7 +3927,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
                 },
             ],
         }
-        ref = agent_mod._latest_job_hop_agent_ref(job, "advise_job_resume")
+        ref = agent_mod._hop_agent_ref_for_parent(job, "advise_job_resume", None)
         assert ref is not None
         assert ref["prompt_blocks"][0]["id"] == "good"
 
@@ -3739,116 +3988,15 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         assert ctx is None
         assert err and "No stored agent_data" in err
 
-    def test_maybe_transition_resume_hop_progress_advances_compound_state(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        calls: list[tuple[list[str], str]] = []
-
-        def _transition(ids: list[str], state: str) -> None:
-            calls.append((ids, state))
-
-        monkeypatch.setattr("src.core.tracker.transition_job_state", _transition)
-        agent_mod._maybe_transition_resume_hop_progress("anticipate_scan", "job-1")
-        assert calls == [
-            (["job-1"], cfg.resume_artifact_next_compound_state("anticipate_scan"))
-        ]
-
-    def test_maybe_transition_resume_hop_progress_skips_terminal_hop(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        transition = MagicMock()
-        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
-        agent_mod._maybe_transition_resume_hop_progress("finalize_job_resume", "job-1")
-        transition.assert_not_called()
-
     @pytest.mark.asyncio
-    async def test_run_resume_mid_chain_seeds_chain_context_from_agent_data(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = {
-            "astral_job_id": "j-mid",
-            "company": None,
-            "agent_responses": [
-                {
-                    "task_key": "advise_job_resume",
-                    "prompt_blocks": [
-                        {"type": "SYSTEM", "id": "sys-1"},
-                        {"type": "RESPONSE", "id": "resp-1"},
-                    ],
-                }
-            ],
-        }
-        cd = {"artifacts": {"resume_structure": {}, "base_resume": {}}}
-        monkeypatch.setattr(
-            "src.core.tracker._candidate_data_for_job",
-            lambda jid: cd,
-        )
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "j-mid" else None,
-        )
-        monkeypatch.setattr(
-            agent_mod,
-            "get_agent_data_for_ids",
-            MagicMock(
-                return_value={
-                    "sys-1": {"block_data": "stored sys"},
-                    "resp-1": {"block_data": "stored response"},
-                }
-            ),
-        )
-        do_task = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        await agent_mod.run_resume_artifact_chain_for_job(
-            "j-mid",
-            ctx={"job": job},
-            first_task_key="draft_job_resume",
-        )
-
-        do_task.assert_awaited_once()
-        seed = do_task.await_args.kwargs.get("chain_context") or {}
-        assert seed.get("_caller_hydration_source") == "agent_data"
-        assert seed.get("_hop_parent_task_key") == "advise_job_resume"
-        assert do_task.await_args.args[0] == "draft_job_resume"
-
-    @pytest.mark.asyncio
-    async def test_run_resume_mid_chain_hydration_failure_skips_do_task(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = {"astral_job_id": "j-fail", "company": None, "agent_responses": []}
-        cd = {"artifacts": {"resume_structure": {}, "base_resume": {}}}
-        monkeypatch.setattr("src.core.tracker._candidate_data_for_job", lambda jid: cd)
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "j-fail" else None,
-        )
-        do_task = AsyncMock()
-        monkeypatch.setattr(agent_mod, "do_task", do_task)
-
-        out = await agent_mod.run_resume_artifact_chain_for_job(
-            "j-fail",
-            ctx={"job": job},
-            first_task_key="draft_job_resume",
-        )
-
-        assert out["success"] is False
-        assert "No stored agent_data" in (out.get("error") or "")
-        do_task.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_do_task_success_transitions_resume_hop_compound_state(
+    async def test_do_task_success_does_not_transition_compound_build_state(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        transitions: list[tuple[list[str], str]] = []
-
-        def _transition(ids: list[str], state: str) -> None:
-            transitions.append((ids, state))
-
-        monkeypatch.setattr("src.core.tracker.transition_job_state", _transition)
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -3869,9 +4017,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
             ctx={"candidate_data": {"artifacts": {}}, "batch_entities": _batch_entities("job-597")},
         )
         assert out["success"] is True
-        assert transitions == [
-            (["job-597"], cfg.resume_artifact_next_compound_state("anticipate_scan"))
-        ]
+        transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry(
@@ -3882,6 +4028,33 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level("DEBUG")
+        job = {
+            "astral_job_id": "job-dbg",
+            "agent_responses": [
+                {
+                    "task_key": "advise_job_resume",
+                    "batch_id": "batch-1",
+                    "prompt_blocks": [
+                        {"type": "SYSTEM", "id": "sys-dbg"},
+                        {"type": "RESPONSE", "id": "resp-dbg"},
+                    ],
+                }
+            ],
+        }
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: job if jid == "job-dbg" else None,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_data_for_ids",
+            MagicMock(
+                return_value={
+                    "sys-dbg": {"block_data": "upstream sys"},
+                    "resp-dbg": {"block_data": "upstream resp"},
+                }
+            ),
+        )
         agent_row, task_row = _agent_rows(run_next="")
         task_row["system_prompt"] = "sys {$CALLER_SYSTEM}"
         monkeypatch.setattr(
@@ -3906,9 +4079,6 @@ class TestAst597MidChainResumeHydrationAndTransitions:
             ctx=_draft_job_resume_ctx(),
             debug=True,
             chain_context={
-                "CALLER_SYSTEM": "upstream sys",
-                "CALLER_RESPONSE": "upstream resp",
-                "_caller_hydration_source": "agent_data",
                 "_hop_parent_task_key": "advise_job_resume",
             },
         )
@@ -3916,6 +4086,391 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         assert "caller_source=agent_data" in combined
         assert "caller_hydration=agent_data" in combined
         assert "upstream=advise_job_resume" in combined
+
+
+class TestAst769GeneralCallerHydration:
+    """AST-769: general caller hydration from agent_data for all entity types."""
+
+    def test_anchor_batch_id_from_state_history_uses_current_state_row(self) -> None:
+        entity = {
+            "state": "JOBLIST_IDENTIFIED",
+            "state_history": [
+                {"to_state": "PJL_READY", "batch_id": "batch-old"},
+                {"to_state": "JOBLIST_IDENTIFIED", "batch_id": "batch-anchor"},
+            ],
+        }
+        assert agent_mod._anchor_batch_id_from_state_history(entity) == "batch-anchor"
+
+    def test_hop_agent_ref_for_parent_prefers_anchor_batch_over_newer_ref(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_data_for_ids",
+            MagicMock(
+                side_effect=lambda ids: {
+                    "resp-wrong": {"block_data": '{"selected_page": 9}'},
+                    "resp-right": {"block_data": '{"selected_page": 1}'},
+                }
+            ),
+        )
+        entity = {
+            "state": "JOBLIST_IDENTIFIED",
+            "state_history": [
+                {"to_state": "JOBLIST_IDENTIFIED", "batch_id": "batch-anchor"},
+            ],
+            "agent_responses": [
+                {
+                    "task_key": "select_job_page",
+                    "batch_id": "batch-newer-unrelated",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "resp-wrong"}],
+                },
+                {
+                    "task_key": "select_job_page",
+                    "batch_id": "batch-anchor",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "resp-right"}],
+                },
+            ],
+        }
+        anchor = agent_mod._anchor_batch_id_from_state_history(entity)
+        ref = agent_mod._hop_agent_ref_for_parent(entity, "select_job_page", anchor)
+        assert ref is not None
+        assert ref["batch_id"] == "batch-anchor"
+        assert ref["prompt_blocks"][0]["id"] == "resp-right"
+
+    def test_merge_hydrated_caller_context_preserves_non_caller_keys(self) -> None:
+        hydrated = {
+            "CALLER_SYSTEM": "stored sys",
+            "CALLER_RESPONSE": "stored resp",
+            "_caller_hydration_source": "agent_data",
+            "_hop_parent_task_key": "select_job_page",
+        }
+        merged = agent_mod._merge_hydrated_caller_context(
+            {"JOB_LIST_VISIBLE": "listing plain text", "SELECTED_AGENT": "Grace"},
+            hydrated,
+        )
+        assert merged["JOB_LIST_VISIBLE"] == "listing plain text"
+        assert merged["SELECTED_AGENT"] == "Grace"
+        assert merged["CALLER_SYSTEM"] == "stored sys"
+        assert merged["_caller_hydration_source"] == "agent_data"
+
+    @pytest.mark.asyncio
+    async def test_do_task_parse_job_list_hydrates_caller_from_company_agent_data(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        company = {
+            "short_name": "co-769",
+            "state": "JOBLIST_IDENTIFIED",
+            "state_history": [
+                {"to_state": "JOBLIST_IDENTIFIED", "batch_id": "batch-1"},
+            ],
+            "agent_responses": [
+                {
+                    "task_key": "select_job_page",
+                    "batch_id": "batch-1",
+                    "prompt_blocks": [
+                        {"type": "SYSTEM", "id": "sys-sjp"},
+                        {"type": "RESPONSE", "id": "resp-sjp"},
+                    ],
+                }
+            ],
+        }
+        monkeypatch.setattr(
+            "src.core.tracker.get_company",
+            lambda cid: company if cid == "co-769" else None,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_data_for_ids",
+            MagicMock(
+                return_value={
+                    "sys-sjp": {"block_data": "parent roster system"},
+                    "resp-sjp": {
+                        "block_data": json.dumps(
+                            {
+                                "selected_page": 1,
+                                "response_type": "JOBLIST_TITLES",
+                                "job_titles": ["Engineer"],
+                            }
+                        )
+                    },
+                }
+            ),
+        )
+
+        def resolve_prompt(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            agent_row, task_row = _agent_rows()
+            if task_key == "parse_job_list":
+                task_row["system_prompt"] = (
+                    "Parse {$CALLER_SYSTEM} {$CALLER_RESPONSE} visible={$JOB_LIST_VISIBLE}"
+                )
+            return agent_row, task_row
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve_prompt)
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_task",
+            lambda tk: {"agent_id": "agent-1", "run_next": "parse_job_list"}
+            if tk == "select_job_page"
+            else None,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "get_task_keys",
+            lambda: ["select_job_page", "parse_job_list"],
+        )
+
+        captured: Dict[str, Any] = {}
+        orig_resolve = agent_mod.resolve_tokens
+
+        def capture_resolve(
+            prompt: str,
+            cd: Any,
+            tk: str,
+            cc: Any,
+            job_context: Any = None,
+            **kwargs: Any,
+        ) -> str:
+            if tk == "parse_job_list":
+                captured["CALLER_SYSTEM"] = (cc or {}).get("CALLER_SYSTEM")
+                captured["CALLER_RESPONSE"] = (cc or {}).get("CALLER_RESPONSE")
+                captured["JOB_LIST_VISIBLE"] = (cc or {}).get("JOB_LIST_VISIBLE")
+            return orig_resolve(prompt, cd, tk, cc, job_context, **kwargs)
+
+        monkeypatch.setattr(agent_mod, "resolve_tokens", capture_resolve)
+        _patch_strict_batch_anthropic(monkeypatch)
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "job_container": "div",
+                    "job_tag": "a",
+                    "job_ids": ["j-1"],
+                },
+                "api_response": _api_response("parse"),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
+        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
+
+        out = await agent_mod.do_task(
+            "parse_job_list",
+            live_content="<jobs/>",
+            index="co-769",
+            ctx={"candidate_data": {}},
+            chain_context={"JOB_LIST_VISIBLE": "Role listing plain text"},
+        )
+
+        assert out["success"] is True
+        send.assert_awaited_once()
+        assert captured.get("CALLER_SYSTEM") == "parent roster system"
+        assert "Engineer" in (captured.get("CALLER_RESPONSE") or "")
+        assert captured.get("JOB_LIST_VISIBLE") == "Role listing plain text"
+
+    @pytest.mark.asyncio
+    async def test_do_task_job_cover_letter_hydrates_from_stored_parent_hop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        job = {
+            "astral_job_id": "job-cl-769",
+            "agent_responses": [
+                {
+                    "task_key": "contemplate_job",
+                    "batch_id": "batch-cl",
+                    "prompt_blocks": [
+                        {"type": "SYSTEM", "id": "sys-cj"},
+                        {"type": "RESPONSE", "id": "resp-cj"},
+                    ],
+                }
+            ],
+        }
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: job if jid == "job-cl-769" else None,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_data_for_ids",
+            MagicMock(
+                return_value={
+                    "sys-cj": {"block_data": "contemplate system"},
+                    "resp-cj": {"block_data": "contemplate narrative"},
+                }
+            ),
+        )
+
+        agent_row, task_row = _agent_rows()
+        task_row["system_prompt"] = "Draft {$CALLER_SYSTEM} {$CALLER_RESPONSE}"
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: (agent_row, task_row)
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_parent_hop_task_key_for_child",
+            lambda child: "contemplate_job" if child == "draft_cover_letter" else None,
+        )
+
+        captured: Dict[str, str] = {}
+
+        def capture_resolve(
+            prompt: str,
+            cd: Any,
+            tk: str,
+            cc: Any,
+            job_context: Any = None,
+            **kwargs: Any,
+        ) -> str:
+            if tk == "draft_cover_letter":
+                captured["CALLER_SYSTEM"] = (cc or {}).get("CALLER_SYSTEM", "")
+                captured["CALLER_RESPONSE"] = (cc or {}).get("CALLER_RESPONSE", "")
+            return resolve_tokens(prompt, cd, tk, cc, job_context, **kwargs)
+
+        monkeypatch.setattr(agent_mod, "resolve_tokens", capture_resolve)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"re_line": "Re:", "body": "Dear hiring manager"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
+        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
+
+        out = await agent_mod.do_task(
+            "draft_cover_letter",
+            index="job-cl-769",
+            ctx={"candidate_data": {"profile": {}}},
+        )
+
+        assert out["success"] is True
+        assert captured.get("CALLER_SYSTEM") == "contemplate system"
+        assert captured.get("CALLER_RESPONSE") == "contemplate narrative"
+
+    @pytest.mark.asyncio
+    async def test_do_task_hydration_miss_returns_error_without_llm(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        monkeypatch.setattr(
+            "src.core.tracker.get_company",
+            lambda cid: {"short_name": cid, "agent_responses": []},
+        )
+        agent_row, task_row = _agent_rows()
+        task_row["system_prompt"] = "Parse {$CALLER_SYSTEM}"
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: (agent_row, task_row)
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_parent_hop_task_key_for_child",
+            lambda child: "select_job_page" if child == "parse_job_list" else None,
+        )
+        send = AsyncMock()
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+
+        out = await agent_mod.do_task(
+            "parse_job_list",
+            live_content="<jobs/>",
+            index="co-miss",
+            ctx={"candidate_data": {}},
+        )
+
+        assert out["success"] is False
+        assert "No stored agent_data" in (out.get("error") or "")
+        send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_do_task_hydrated_hop_debug_logs_agent_data(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        company = {
+            "short_name": "co-dbg",
+            "agent_responses": [
+                {
+                    "task_key": "select_job_page",
+                    "batch_id": "batch-1",
+                    "prompt_blocks": [
+                        {"type": "SYSTEM", "id": "sys-dbg"},
+                        {"type": "RESPONSE", "id": "resp-dbg"},
+                    ],
+                }
+            ],
+        }
+        monkeypatch.setattr(
+            "src.core.tracker.get_company",
+            lambda cid: company if cid == "co-dbg" else None,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_data_for_ids",
+            MagicMock(
+                return_value={
+                    "sys-dbg": {"block_data": "dbg sys"},
+                    "resp-dbg": {"block_data": '{"selected_page": 1}'},
+                }
+            ),
+        )
+        agent_row, task_row = _agent_rows()
+        task_row["system_prompt"] = "Parse {$CALLER_SYSTEM}"
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: (agent_row, task_row)
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_parent_hop_task_key_for_child",
+            lambda child: "select_job_page" if child == "parse_job_list" else None,
+        )
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "job_container": "d",
+                        "job_tag": "a",
+                        "job_ids": ["1"],
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
+        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
+
+        await agent_mod.do_task(
+            "parse_job_list",
+            live_content="<jobs/>",
+            index="co-dbg",
+            ctx={"candidate_data": {}},
+            debug=True,
+        )
+
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "caller_hydration=agent_data" in combined
+        assert "upstream=select_job_page" in combined
 
 
 class TestRunCoverLetterArtifactChainForJob:
@@ -4235,3 +4790,348 @@ class TestAst515AdhocWorkbenchLedger:
             )
         assert any(u[1].get("total_errors") == 1 for u in ledger_trackers["updates"])
         assert agent_mod.log_batch_id.get() is None
+
+
+class TestAst724VectorFeedbackCapture:
+    """AST-724: lenient vector_reviews capture on SUCCESS — parse failures store FEEDBACK only."""
+
+    def test_agent_performance_status_normalizes_dict_and_string(self) -> None:
+        assert agent_mod._agent_performance_status({"status": "SUCCESS"}) == "success"
+        assert agent_mod._agent_performance_status("Failure") == "failure"
+        assert agent_mod._agent_performance_status(None) is None
+
+    def test_rubric_feedback_owner_and_candidate_resolves_from_cd_and_ctx(self) -> None:
+        owner, cid = agent_mod._rubric_feedback_owner_and_candidate(
+            "grade_get",
+            {"_astral_candidate_id": "cand-1"},
+            None,
+        )
+        assert owner == "grade_get"
+        assert cid == "cand-1"
+        owner2, cid2 = agent_mod._rubric_feedback_owner_and_candidate(
+            "evaluate_jd",
+            {},
+            {"astral_candidate_id": "cand-2"},
+        )
+        assert owner2 == "evaluate_jd"
+        assert cid2 == "cand-2"
+
+    def test_clean_parse_inserts_vector_feedback_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-724-clean",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        conn = db._get_connection()
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM vector_feedback WHERE batch_id = ?",
+                ("batch-724-clean",),
+            ).fetchone()[0]
+            assert n == 3
+        finally:
+            conn.close()
+        assert prompt_blocks == []
+
+    def test_unparseable_stores_feedback_block_not_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-724-raw",
+            entity_type="candidate",
+            index="0",
+            perf={"status": "success", "vector_reviews": ["not-valid"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        assert len(prompt_blocks) == 1
+        assert prompt_blocks[0]["type"] == "FEEDBACK"
+        rows = db.get_agent_data_by_batch("batch-724-raw", block_type="FEEDBACK")
+        assert len(rows) == 1
+
+    def test_non_success_skips_capture(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-724-fail",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "failure", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        assert prompt_blocks == []
+        rows = db.get_agent_data_by_batch("batch-724-fail", block_type="FEEDBACK")
+        assert rows == []
+
+
+class TestAst809VectorFeedbackBatchMetadata:
+    """AST-809: batch_id, batch_size, and completed_at on vector_feedback rows."""
+
+    def test_capture_skips_insert_when_batch_id_missing(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=5,
+        )
+        assert prompt_blocks == []
+
+    def test_capture_persists_batch_metadata_on_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        completed = "2026-06-25 14:30:00"
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-809-meta",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=[],
+            batch_size=7,
+            completed_at=completed,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-809-meta")
+        assert len(rows) == 3
+        assert all(r["batch_id"] == "batch-809-meta" for r in rows)
+        assert all(r["batch_size"] == 7 for r in rows)
+        assert all(r["completed_at"] == completed for r in rows)
+
+
+class TestAst816VectorFeedbackCapture:
+    """AST-816: normalize parse, UUID-backed expected codes, debug hydration."""
+
+    def test_json_string_vector_reviews_persists_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "evaluate_jd",
+            [
+                {"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5},
+                {"code": "DOR", "label": "Domain", "content": "d\nA = one", "importance": 5},
+            ],
+        )
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-1",
+            batch_id="batch-816-json",
+            entity_type="candidate",
+            index=None,
+            perf={
+                "status": "success",
+                "vector_reviews": '["CLRRACOVK", "DORRACOVK"]',
+            },
+            debug=False,
+            prompt_blocks=[],
+            batch_size=2,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-816-json")
+        assert len(rows) == 6
+
+    def test_debug_emits_diagnostic_on_parse_failure(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "evaluate_jd",
+            [{"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-1",
+            batch_id="batch-816-diag",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["CLRRACOVK", "DORRACOVK"]},
+            debug=True,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert any(
+            token in combined
+            for token in ("reason=unknown_code", "reason=extra_codes", "reason=missing_codes")
+        )
+        assert "CLR Culture" in combined
+        assert len(prompt_blocks) == 1
+
+
+class TestAst820VectorFeedbackDebugTrace:
+    """AST-820: debug-only pipeline trace and explicit early-return skip reasons."""
+
+    def test_debug_skip_empty_batch_id(self, seeded_db, caplog: pytest.LogCaptureFixture) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture skipped" in combined
+        assert "skip reason=empty batch_id" in combined
+
+    def test_debug_skip_empty_expected_codes(self, seeded_db, caplog: pytest.LogCaptureFixture) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-no-rubric",
+            batch_id="batch-820-empty",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["CLRRACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "skip reason=empty_expected_codes" in combined
+        assert "candidate=cand-no-rubric" in combined
+
+    def test_debug_emits_pipeline_trace_on_capture_start(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-820-trace",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture start" in combined
+        assert "vector_reviews trace candidate=cand-1" in combined
+        assert "normalize -> 1 lines" in combined
+        assert "diagnostic reason=ok" in combined
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_skip_when_candidate_id_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_performance": {
+                            "status": "success",
+                            "vector_reviews": ["G1RACOVK"],
+                        },
+                        "agent_payload": "0|CRA2",
+                    },
+                    "api_response": _api_response("envelope"),
+                    "timesheet": {},
+                }
+            ),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture skipped" in combined
+        assert "skip reason=missing owner=" in combined

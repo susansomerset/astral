@@ -264,7 +264,7 @@ export default function CostReconciliation() {
       {/* Table — horizontally scrollable for wide crosstab */}
       {csvRows && csvRows.length > 0 && !loading && (
         <div className="list-page-table-wrap list-page-table-wrap--scroll">
-          <table className="list-page-table list-page-table--auto">
+          <table className="list-page-table">
             <thead>
               <tr>
                 <th>Date</th>

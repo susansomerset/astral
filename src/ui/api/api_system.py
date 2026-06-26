@@ -4,7 +4,7 @@ from typing import Optional
 
 from flask import Blueprint, g, jsonify, request
 
-from ui.auth import require_auth
+from ui.auth import require_auth, require_admin
 from src.core.candidate import get_candidate
 from src.utils.config import (
     NAV_CONFIG,
@@ -18,6 +18,7 @@ from src.utils.config import (
     build_state_ui_manifest,
 )
 from src.utils.logging import get_logger
+from src.core.deploy_status import get_deploy_status_payload
 
 system_bp = Blueprint("system", __name__, url_prefix="/api")
 
@@ -118,6 +119,12 @@ def health():
 @require_auth
 def me():
     return jsonify(g.user)
+
+
+@system_bp.route("/deploy_status")
+@require_admin
+def deploy_status():
+    return jsonify(get_deploy_status_payload())
 
 
 @system_bp.route("/nav_config")

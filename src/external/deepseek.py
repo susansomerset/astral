@@ -23,7 +23,8 @@ from src.utils.formatting import (
     looks_like_encoded_grades_text,
     clean_encoded_agent_payload,
 )
-from src.external.anthropic import extract_api_response_text
+from src.utils.llm_external import extract_api_response_text, emit_llm_call_debug
+from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
 __all__ = ["send_to_deepseek"]
@@ -181,6 +182,7 @@ async def send_to_deepseek(
     record_timesheet: Optional[Callable[..., None]] = None,
 ) -> Dict[str, Any]:
     """Send blocks to DeepSeek Anthropic-compatible API; timesheet via record_timesheet callback."""
+    require_controlled_external_io("deepseek.send_to_deepseek")
     start_time = datetime.now()
     calltime = start_time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -192,6 +194,9 @@ async def send_to_deepseek(
         "duration": (datetime.now() - start_time).total_seconds(),
         "inputtotal": 0, "inputcached": 0, "outputtotal": 0, "cache_creation_tokens": 0,
     }
+
+    if debug:
+        logger.set_debug_flag(True)
 
     try:
         client = _get_client(api_key_override)
@@ -246,10 +251,20 @@ async def send_to_deepseek(
             if debug:
                 raw_text = extract_api_response_text(response) if response.content else ""
                 stop_reason = getattr(response, "stop_reason", "?")
-                logger.info("[DEBUG] send_to_deepseek('%s'): %.1fs | stop_reason=%s", prompt_label, duration, stop_reason)
-                logger.info(
-                    "[DEBUG]   vendor=%s tokens: fresh=%d cache_read=%d cache_write=%d output=%s",
-                    vendor_model, input_total, input_cached, cache_creation_tokens, output_total,
+                emit_llm_call_debug(
+                    logger_name=__name__,
+                    func_name="send_to_deepseek",
+                    prompt_label=prompt_label,
+                    model=vendor_model,
+                    duration=duration,
+                    stop_reason=stop_reason,
+                    input_total=input_total,
+                    input_cached=input_cached,
+                    cache_creation_tokens=cache_creation_tokens,
+                    output_total=output_total,
+                    raw_text=raw_text,
+                    provider="deepseek",
+                    vendor_detail=f"vendor={vendor_model}",
                 )
 
             try:
@@ -330,8 +345,40 @@ async def send_to_deepseek(
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
             log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=str(e))
+            if debug:
+                emit_llm_call_debug(
+                    logger_name=__name__,
+                    func_name="send_to_deepseek",
+                    prompt_label=prompt_label,
+                    model=vendor_model,
+                    duration=duration,
+                    stop_reason="error",
+                    input_total=0,
+                    input_cached=0,
+                    cache_creation_tokens=0,
+                    output_total=0,
+                    error=str(e),
+                    provider="deepseek",
+                    vendor_detail=f"vendor={vendor_model}",
+                )
             return {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
         log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=str(e))
+        if debug:
+            emit_llm_call_debug(
+                logger_name=__name__,
+                func_name="send_to_deepseek",
+                prompt_label=prompt_label,
+                model=vendor_model,
+                duration=duration,
+                stop_reason="error",
+                input_total=0,
+                input_cached=0,
+                cache_creation_tokens=0,
+                output_total=0,
+                error=str(e),
+                provider="deepseek",
+                vendor_detail=f"vendor={vendor_model}",
+            )
         return {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}

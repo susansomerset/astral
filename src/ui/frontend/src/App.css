@@ -19,7 +19,6 @@
  * 11. Toast
  * 12. Agent Timesheets
  * 13. Execution History
- * 14. Board Searches (candidate)
  */
 
 
@@ -208,6 +207,59 @@ body {
   flex-shrink: 0;
 }
 
+.nav-deploy-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.nav-deploy-footer-error {
+  color: var(--danger);
+}
+.nav-deploy-env {
+  color: var(--text-secondary);
+  text-transform: lowercase;
+  cursor: default;
+  user-select: none;
+}
+.nav-deploy-env-wrap {
+  position: relative;
+  display: inline-block;
+}
+.nav-deploy-env-interactive {
+  cursor: pointer;
+}
+.nav-deploy-tickets-tooltip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 6px 8px;
+  background: var(--bg-elevated, var(--bg-deep));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.nav-deploy-tickets-tooltip-line {
+  white-space: nowrap;
+}
+.nav-deploy-sep {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+.nav-deploy-uptime {
+  color: var(--text-muted);
+}
+
 /* === 6. Content Area === */
 
 .content {
@@ -350,20 +402,16 @@ body {
 }
 
 .list-page-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 13px;
-}
-
-.list-page-table--auto {
-  table-layout: auto;
   width: auto;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 13px;
 }
 
 .list-page-table thead th {
   position: sticky;
   top: 0;
+  z-index: 2;
   background: var(--bg-elevated);
   text-align: left;
   padding: 6px 10px;
@@ -374,10 +422,9 @@ body {
   user-select: none;
   overflow: hidden;
   text-overflow: ellipsis;
-  position: relative;
 }
 
-.col-resize-handle {
+.list-page-table thead th .col-resize-handle {
   position: absolute;
   right: 0;
   top: 0;
@@ -387,7 +434,7 @@ body {
   background: transparent;
 }
 
-.col-resize-handle:hover {
+.list-page-table thead th .col-resize-handle:hover {
   background: var(--accent-gold);
   opacity: 0.4;
 }
@@ -410,6 +457,42 @@ body {
   padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-table-cell-frozen {
+  position: sticky;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.list-page-table thead th.list-table-cell-frozen {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg-elevated);
+}
+
+.list-page-table tbody td.list-table-cell-frozen {
+  position: sticky;
+}
+
+.list-page-table tbody tr:hover td.list-table-cell-frozen {
+  background: var(--bg-elevated);
+}
+
+.list-table-cell-frozen-right {
+  position: sticky;
+  right: 0;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.list-page-table thead th.list-table-cell-frozen-right {
+  z-index: 3;
+  background: var(--bg-elevated);
 }
 
 .list-page-table tbody tr:hover {
@@ -772,6 +855,17 @@ body {
   background: var(--cta-green-hover);
 }
 
+.modal-btn.save.in-flight,
+.modal-btn.save.in-flight:disabled {
+  background: var(--accent-gold);
+  border: none;
+  color: var(--bg-deep);
+}
+
+.modal-btn.save.in-flight:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
+}
+
 .modal-btn.danger {
   background: var(--danger);
   border: none;
@@ -1057,6 +1151,17 @@ body {
 
 .dep-btn.save:hover {
   background: var(--cta-green-hover);
+}
+
+.dep-btn.save.in-flight,
+.dep-btn.save.in-flight:disabled {
+  background: var(--accent-gold);
+  border: none;
+  color: var(--bg-deep);
+}
+
+.dep-btn.save.in-flight:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
 }
 
 .dep-btn.danger {
@@ -1549,6 +1654,20 @@ input.side-tab-heading-editable:focus {
 .toast-error   { background: var(--danger); }
 .toast-info    { background: var(--bg-elevated); border: 1px solid var(--border); }
 
+.toast-error-clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.toast-error-clickable:hover {
+  filter: brightness(1.08);
+}
+.toast-copy-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 /* === 12. Agent Timesheets === */
 
 .admin-filters {
@@ -1632,8 +1751,6 @@ input.side-tab-heading-editable:focus {
   border-radius: 4px 4px 0 0;
 }
 
-/* === 14. Board Searches — uses ListPage + Modal dep-* fields (CandidateBoardSearches.tsx) === */
-
 /* === 13. Execution History === */
 
 .dispatch-status-badge {
@@ -1673,7 +1790,7 @@ input.side-tab-heading-editable:focus {
 
 .dispatch-log-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-bottom: 6px;
 }
 
@@ -1785,6 +1902,31 @@ input.side-tab-heading-editable:focus {
   flex: 1;
   min-height: 0;
   resize: none;
+}
+
+.batch-feedback-hydrated {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.batch-feedback-hydrated-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.batch-feedback-hydrated-table th,
+.batch-feedback-hydrated-table td {
+  border: 1px solid var(--border-color, #ccc);
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.batch-feedback-hydrated-table th {
+  background: var(--surface-muted, #f5f5f5);
+  font-weight: 600;
 }
 
 /* ============================================================

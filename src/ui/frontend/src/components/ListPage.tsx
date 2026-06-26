@@ -1,27 +1,14 @@
-import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode, type CSSProperties } from "react"
 import { formatCell } from "../lib/fmt"
-import api from "../lib/api"
+import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
+import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
+import { useListTableColumnMeasure } from "../lib/useListTableColumnMeasure"
+import ListTableTruncatedCell from "./ListTableTruncatedCell"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>
 
 interface ColumnTypeConfig { align: "left" | "right" | "center"; number_format: string | null }
-interface UiConfig { column_types: Record<string, ColumnTypeConfig> }
-
-// Fetch once per session — module-level cache, no re-fetch on remount
-let _uiConfig: UiConfig | null = null
-let _uiConfigPending: Promise<void> | null = null
-function loadUiConfig(onReady: () => void) {
-  if (_uiConfig) { onReady(); return }
-  if (!_uiConfigPending) {
-    _uiConfigPending = api("/api/system/ui_config")
-      .then(r => r.json())
-      .then(d => { _uiConfig = d })
-      .catch(() => { _uiConfig = { column_types: {} } })
-      .finally(() => { _uiConfigPending = null })
-  }
-  _uiConfigPending.then(onReady)
-}
 
 export interface Column<T = Row> {
   key: string
@@ -52,7 +39,7 @@ export interface ListPageProps<T = Row> {
   emptyMessage?: string
   actions?: ReactNode
   rowActions?: (row: T) => ReactNode
-  horizontalScrollable?: boolean                        // default: false; when true, table scrolls horizontally instead of squishing
+  frozenDataColumns?: number                            // per-screen override; omit → UI_CONFIG default
 }
 
 const EXPAND_THRESHOLD = 100
@@ -109,7 +96,7 @@ export default function ListPage<T extends Row>({
   emptyMessage = "No records found.",
   actions,
   rowActions,
-  horizontalScrollable = false,
+  frozenDataColumns,
 }: ListPageProps<T>) {
   const [filter, setFilter] = useState("")
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -117,6 +104,10 @@ export default function ListPage<T extends Row>({
 
   // Load UI_CONFIG once (module-level cache) — triggers re-render when ready
   useEffect(() => { loadUiConfig(() => forceUpdate(n => n + 1)) }, [])
+
+  const uiConfig = getUiConfig()
+  const frozenN = resolveFrozenDataColumns(uiConfig, frozenDataColumns)
+  const truncateChars = resolveCellTruncateChars(uiConfig)
 
   // Column ordering (drag-and-drop reposition) — restored from localStorage
   const colKeys = useMemo(() => columns.map(c => c.key), [columns])
@@ -160,6 +151,7 @@ export default function ListPage<T extends Row>({
 
   // Column resizing — restored from localStorage
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => loadLayout(title).widths || {})
+  const tableRef = useRef<HTMLTableElement>(null)
 
   // Persist layout changes to localStorage
   useEffect(() => { saveLayout(title, colOrder, colWidths) }, [title, colOrder, colWidths])
@@ -273,14 +265,43 @@ export default function ListPage<T extends Row>({
   const showCheckboxes = selectable || hasBulk
   const primarySortKey = userSort?.key ?? null
 
+  const { checkboxWidthPx, mergedWidths } = useListTableColumnMeasure(
+    tableRef,
+    colOrder,
+    showCheckboxes,
+    colWidths,
+    [sorted.length, frozenN, truncateChars],
+  )
+
   function colTypeConfig(col: Column<T>): ColumnTypeConfig | null {
-    if (!col.type || !_uiConfig) return null
-    return _uiConfig.column_types[col.type] ?? null
+    if (!col.type || !uiConfig) return null
+    return uiConfig.column_types[col.type] ?? null
   }
 
-  function colAlign(col: Column<T>): React.CSSProperties | undefined {
+  function colAlign(col: Column<T>): CSSProperties | undefined {
     const cfg = colTypeConfig(col)
     return cfg ? { textAlign: cfg.align } : undefined
+  }
+
+  function frozenCellStyle(dataColIndex: number | null, base: CSSProperties): CSSProperties {
+    if (dataColIndex == null) return base
+    const left = stickyLeftPx(dataColIndex, mergedWidths, colOrder, showCheckboxes, frozenN, checkboxWidthPx)
+    if (left == null) return base
+    return { ...base, left }
+  }
+
+  function renderCellContent(col: Column<T>, raw: unknown, row: T): ReactNode {
+    if (col.render) {
+      const rendered = col.render(raw, row)
+      if (typeof rendered === "string" && rendered.length > truncateChars) {
+        return <ListTableTruncatedCell text={rendered} maxChars={truncateChars} />
+      }
+      return rendered
+    }
+    if (col.expandable) return <ExpandableCell text={String(raw ?? "")} />
+    const cfg = colTypeConfig(col)
+    const text = cfg ? formatCell(raw, cfg.number_format) : String(raw ?? "")
+    return <ListTableTruncatedCell text={text} maxChars={truncateChars} />
   }
 
   return (
@@ -319,12 +340,12 @@ export default function ListPage<T extends Row>({
       ) : sorted.length === 0 ? (
         <p className="list-page-status">{emptyMessage}</p>
       ) : (
-        <div className={`list-page-table-wrap${horizontalScrollable ? " list-page-table-wrap--scroll" : ""}`}>
-          <table className={`list-page-table${horizontalScrollable ? " list-page-table--auto" : ""}`}>
+        <div className="list-page-table-wrap list-page-table-wrap--scroll">
+          <table ref={tableRef} className="list-page-table">
             <thead>
               <tr>
                 {showCheckboxes && (
-                  <th className="list-page-check-col">
+                  <th className="list-page-check-col list-table-cell-frozen" style={{ left: 0 }}>
                     <input
                       type="checkbox"
                       checked={selected.size === sorted.length && sorted.length > 0}
@@ -332,11 +353,17 @@ export default function ListPage<T extends Row>({
                     />
                   </th>
                 )}
-                {orderedColumns.map(col => (
+                {orderedColumns.map((col, i) => {
+                  const frozen = i < frozenN
+                  const thStyle = frozenCellStyle(i, {
+                    ...colAlign(col),
+                    ...(colWidths[col.key] ? { width: colWidths[col.key] } : {}),
+                  })
+                  return (
                   <th
                     key={col.key}
-                    className={col.sortable !== false ? "sortable" : ""}
-                    style={{ ...colAlign(col), ...(colWidths[col.key] ? { width: colWidths[col.key] } : {}) }}
+                    className={`${col.sortable !== false ? "sortable" : ""}${frozen ? " list-table-cell-frozen" : ""}`.trim()}
+                    style={Object.keys(thStyle).length ? thStyle : undefined}
                     onClick={() => col.sortable !== false && handleSort(col.key)}
                     draggable
                     onDragStart={() => onColDragStart(col.key)}
@@ -353,8 +380,9 @@ export default function ListPage<T extends Row>({
                       }}
                     />
                   </th>
-                ))}
-                {rowActions && <th />}
+                  )
+                })}
+                {rowActions && <th className="list-table-cell-frozen-right" />}
               </tr>
             </thead>
             <tbody>
@@ -367,7 +395,7 @@ export default function ListPage<T extends Row>({
                     onClick={() => onRowClick?.(row)}
                   >
                     {showCheckboxes && (
-                      <td className="list-page-check-col" onClick={e => e.stopPropagation()}>
+                      <td className="list-page-check-col list-table-cell-frozen" style={{ left: 0 }} onClick={e => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selected.has(id)}
@@ -375,27 +403,24 @@ export default function ListPage<T extends Row>({
                         />
                       </td>
                     )}
-                    {orderedColumns.map(col => {
-                      const raw = row[col.key]
-                      let cell: ReactNode
-                      if (col.render) cell = col.render(raw, row)
-                      else if (col.expandable) cell = <ExpandableCell text={String(raw ?? "")} />
-                      else {
-                        const cfg = colTypeConfig(col)
-                        cell = cfg ? formatCell(raw, cfg.number_format) : String(raw ?? "")
-                      }
-                      const tdStyle: React.CSSProperties = {
+                    {orderedColumns.map((col, i) => {
+                      const frozen = i < frozenN
+                      const tdStyle = frozenCellStyle(i, {
                         ...colAlign(col),
                         ...(colWidths[col.key] ? { width: colWidths[col.key] } : {}),
-                      }
+                      })
                       return (
-                        <td key={col.key} style={Object.keys(tdStyle).length ? tdStyle : undefined}>
-                          {cell}
+                        <td
+                          key={col.key}
+                          className={frozen ? "list-table-cell-frozen" : undefined}
+                          style={Object.keys(tdStyle).length ? tdStyle : undefined}
+                        >
+                          {renderCellContent(col, row[col.key], row)}
                         </td>
                       )
                     })}
                     {rowActions && (
-                      <td className="list-page-row-actions" onClick={e => e.stopPropagation()}>
+                      <td className="list-page-row-actions list-table-cell-frozen-right" onClick={e => e.stopPropagation()}>
                         {rowActions(row)}
                       </td>
                     )}

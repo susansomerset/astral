@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react"
 import { useStytch, useStytchSession } from "@stytch/react"
-import api, { setAuthTokenGetter } from "../lib/api"
+import api, { setAuthTokenGetter, setUnauthorizedHandler } from "../lib/api"
+import { markHadSession, setLogOffReason } from "../lib/sessionAuthMark"
 
 export interface MeUser {
   user_id: string
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { session } = useStytchSession()
   const [user, setUser] = useState<MeUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [, setAuthEpoch] = useState(0)
 
   // Stable string dep — Stytch hook objects may change identity every render.
   const sessionJwt =
@@ -45,11 +47,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthTokenGetter(() => sessionJwt)
   }, [sessionJwt])
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => setAuthEpoch((n) => n + 1))
+    return () => setUnauthorizedHandler(null)
+  }, [])
+
   const loadMe = useCallback(async () => {
     setLoading(true)
     try {
       const r = await api("/api/me")
       if (!r.ok) {
+        if (r.status === 401) {
+          setLogOffReason("server-rejection")
+          setAuthEpoch((n) => n + 1)
+        }
         setUser(null)
         return
       }
@@ -68,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+    markHadSession()
     // sessionJwt may be null when Stytch uses opaque cookies — /api/me uses cookie auth.
     loadMe()
   }, [session, sessionJwt, loadMe])

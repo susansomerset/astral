@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-561 archived 2026-06-15 -->
+
+## Linear archive (AST-561)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-561/take-jd-in-analysis-upshot-schema-and-estelle-prompt-recommended-job  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-499 — Recommended Job Modal  
+**Blocked by / blocks / related:** parent: AST-499; blocks: AST-565; related: AST-480; related: AST-313
+
+### Description
+
+## What this implements
+
+Extend the `analysis_upshot` consult contract so the JD phase has Estelle's per-phase thoughts in the same shape as DO/GET/LIKE: add `take_jd` to the JSON schema, update the Estelle prompt, and persist via the existing analysis_upshot dispatch and `job_data` path ([AST-480](https://linear.app/astralcareermatch/issue/AST-480) area). No React or report UI in this ticket.
+
+## Acceptance criteria
+
+10. `take_jd` is persisted by analysis_upshot task and rendered on the JD tab.
+
+(Data contract from parent: Add `take_jd` to `analysis_upshot` schema and Estelle prompt so JD phase has the same "thoughts above vectors" shape as DO/GET/LIKE. Report UX is the contract; do not invent fields only in React.)
+
+## Boundaries
+
+* Does **not** build the Recommended Job Report modal (sibling Katherine).
+* Does **not** implement **Generate Artifacts** / **Cancel** API or UI (sibling Hedy).
+* Does **not** change consult scoring, dispatch batching, or graders beyond schema/prompt/persist for `take_jd`.
+
+## Notes for planning
+
+* Align with [AST-313](https://linear.app/astralcareermatch/issue/AST-313) artifact pipeline prompt patterns.
+* Katherine's report consumes `take_jd` on the JD tab after this lands.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** branch law: parent `ftr/AST-499-recommended-job-modal`, child `sub/AST-499/<ticket-id>-take-jd-analysis-upshot-schema-estelle-prompt`. Created at dispatch-linear.
+
+### Comments
+
+#### radia — 2026-06-03T03:02:15.149Z
+**Review Posted** — `origin/dev...origin/sub/AST-499/AST-561-take-jd-analysis-upshot-schema-estelle-prompt` @ `74746cbe` (build `ecc6be1e`, tests `0ddf2b24`).
+
+**Plan doc:** [ast-561-take-jd…](https://github.com/susansomerset/astral/blob/sub/AST-499/AST-561-take-jd-analysis-upshot-schema-estelle-prompt/docs/features/interface/ast-561-take-jd-in-analysis-upshot-schema-and-estelle-prompt-recommended-job-modal.md#radia-review-ast-561) — Radia review section.
+
+### fix-now
+None.
+
+### discuss
+- **AST-499 AC #10** (“rendered on JD tab”) — correctly deferred to **AST-565**; this ticket only adds schema + prompt + persist path.
+- Plan Stage 2 described build-time `save_agent_task`; ship uses idempotent **`_apply_ast561_analysis_upshot_take_jd_migration`** (same family as AST-469). Acceptable; **`_AST561_ANALYSIS_UPSHOT_USER_PROMPT_SEED`** is fallback when live prompts are empty.
+
+### advisory
+- Betty’s bible commit on publish tip also carries **§7.13zq/zs/zv** (sibling manifests) — integration-line sync, not AST-561 product scope.
+- Migration patches **`user_prompt`** / **`nocache_prompt`** only; spot-check Manage Tasks if JSON keys live solely in **`cache_prompt*`** segments on a prod DB.
+
+### §3 rubric
+- **§2.1** config: `take_jd` required on `analysis_upshot` only — pass.
+- **§B2** layers: data migration + utils config; no UI/core drift — pass.
+- **§D2**: migration `sqlite3.Error` → return matches schema-ensure tradeoff — justified.
+
+**Ada:** `resolve-astral` — no product edits expected; dry-run merge with `origin/dev`, then **User Testing**.
+
+#### radia — 2026-06-03T03:01:59.697Z
+**Review** — `origin/dev...origin/sub/AST-499/AST-561-take-jd-analysis-upshot-schema-estelle-prompt` (tip `74746cbe` after review doc).
+
+**fix-now:** none.
+
+**discuss**
+- Parent **AST-499** AC #10 (“rendered on JD tab”) is **AST-565** only; this ticket correctly stops at persist + prompt/schema.
+
+**advisory**
+- `docs/ASTRAL_TEST_BIBLE.md` on `0ddf2b24` also adds **§7.13zq/zs/zv** (sibling manifests) — integration-line bible sync, not **AST-561** product scope.
+- Migration updates `user_prompt` / `nocache_prompt` only; if JSON key lists live only in `cache_prompt*` segments, spot-check Manage Tasks post-deploy.
+
+**Plan / rules:** `take_jd` in `TASK_CONFIG["analysis_upshot"]["response_schema"]` (§2.1); idempotent `_apply_ast561_analysis_upshot_take_jd_migration` matches **AST-469** silent-return pattern; no `consult` / UI / dispatch diff; `tracker.save_job_data` wholesale persist unchanged.
+
+**Doc:** `docs/features/interface/ast-561-take-jd-in-analysis-upshot-schema-and-estelle-prompt-recommended-job-modal.md` (Radia review section) @ `74746cbe`.
+
+**Ada:** `resolve-astral` — no product edits expected from this review.
+
+#### betty — 2026-06-03T02:55:17.499Z
+**Tests Ready** — manifest for `test-astral` on `origin/sub/AST-499/AST-561-take-jd-analysis-upshot-schema-estelle-prompt` @ `0ddf2b24`.
+
+1. `python3 -m pytest tests/component/utils/test_config.py::TestAst480AnalysisUpshotConfig -q`  
+   (or `./scripts/testing/run_component_tests.sh` with the same node id — harness uses project venv)
+
+**Scope:** Backend-only (**AST-561**). **`take_jd`** required on `TASK_CONFIG["analysis_upshot"]["response_schema"]`; prompt migration in `database.py`. No frontend/parser changes this ticket (**AST-565** owns `analysisUpshot.ts` + JD tab).
+
+**Optional regression** (same spine as §7.13y — mocks do not schema-validate synthesis JSON):  
+`tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_passed_like_to_analysis_upshot_batch`
+
+`docs/ASTRAL_TEST_BIBLE.md` on publish ref: `974da744e2d6b17992e1013f8fe4dc99616d66f8` (§7.13zw).
+
+#### ada — 2026-06-02T22:34:11.193Z
+Plan: `docs/features/interface/ast-561-take-jd-in-analysis-upshot-schema-and-estelle-prompt-recommended-job-modal.md`
+
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-499/AST-561-take-jd-analysis-upshot-schema-estelle-prompt/docs/features/interface/ast-561-take-jd-in-analysis-upshot-schema-estelle-prompt-recommended-job-modal.md
+
+Publish: `origin/sub/AST-499/AST-561-take-jd-analysis-upshot-schema-estelle-prompt` @ `4232822b`
+
+**Self-Assessment**
+
+- **Scope:** `Single-Component` — One `TASK_CONFIG` schema field and one `agent_task` prompt version for `analysis_upshot`; no consult router or UI in this ticket.
+- **Conf:** `high` — Same pattern as AST-480 (`take_*` strings + existing `_run_analysis_upshot_batch` persist).
+- **Risk:** `Medium` — Prompt/schema mismatch would strand jobs on `PASSED_LIKE_RETRY` or ship empty `take_jd` until prompt tuning; Katherine (AST-565) depends on the field being populated.
+
+---
+
 # AST-561 — take_jd in analysis_upshot schema and Estelle prompt (Recommended Job Modal)
 
 **Parent:** [AST-499 — Recommended Job Modal](https://linear.app/astralcareermatch/issue/AST-499/recommended-job-modal)  

@@ -3,7 +3,12 @@ import { useSearchParams } from "react-router-dom"
 import api from "../lib/api"
 import Time from "../components/Time"
 import { useCandidate } from "../contexts/CandidateContext"
+import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import BatchAgentDataModal from "../components/BatchAgentDataModal"
+import {
+  type AdminCandidateFilterValue,
+  useAdminCandidateFilter,
+} from "../hooks/useAdminCandidateFilter"
 
 interface LedgerRow {
   batch_id: string
@@ -32,6 +37,10 @@ interface LogEntry {
 type SortDir = "asc" | "desc"
 const FILTER_KEYS = ["task_key", "candidate_id", "status", "date_from", "date_to"] as const
 const STATUSES = ["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]
+
+function candidateIdFromParams(sp: URLSearchParams): AdminCandidateFilterValue {
+  return sp.get("candidate_id") || ""
+}
 
 function todayInTz(tz: string): string {
   // Returns "YYYY-MM-DD" in the given timezone
@@ -80,11 +89,7 @@ const COLUMNS = [
 
 
 export default function PerformanceMonitor() {
-  const { candidates, selectedId } = useCandidate()
-  const tz = useMemo(() => {
-    const c = candidates.find(x => x.astral_candidate_id === selectedId)
-    return (c?.candidate_data?.profile as Record<string, string> | undefined)?.timezone || "UTC"
-  }, [candidates, selectedId])
+  const { selectedId } = useCandidate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,8 +101,34 @@ export default function PerformanceMonitor() {
   const [logCache, setLogCache] = useState<Record<string, LogEntry[]>>({})
   const [skipChecks, setSkipChecks] = useState(true)
   const [agentDataBatchId, setAgentDataBatchId] = useState<string | null>(null)
+  const [agentDataCandidateId, setAgentDataCandidateId] = useState<string | null>(null)
   const userSetDateFrom = useRef(false)
   const userSetDateTo = useRef(false)
+  const initialCandidateDefaultApplied = useRef(false)
+
+  const setCandidateParam = useCallback((next: AdminCandidateFilterValue) => {
+    setSearchParams(prev => {
+      const nextParams = new URLSearchParams(prev)
+      if (next) nextParams.set("candidate_id", next)
+      else nextParams.delete("candidate_id")
+      return nextParams
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const urlCandidate = candidateIdFromParams(searchParams)
+  const urlBacked = useMemo(
+    () => ({ value: urlCandidate, setValue: setCandidateParam }),
+    [urlCandidate, setCandidateParam],
+  )
+  const { candidateFilter, setCandidateFilter, syncWithNav, candidates } = useAdminCandidateFilter({
+    urlBacked,
+    urlPresentDisablesSync: true,
+  })
+
+  const tz = useMemo(() => {
+    const c = candidates.find(x => x.astral_candidate_id === selectedId)
+    return (c?.candidate_data?.profile as Record<string, string> | undefined)?.timezone || "UTC"
+  }, [candidates, selectedId])
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
@@ -131,13 +162,17 @@ export default function PerformanceMonitor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tz])
 
+  useEffect(() => {
+    if (initialCandidateDefaultApplied.current) return
+    if (searchParams.get("candidate_id")) return
+    if (!syncWithNav || !selectedId) return
+    initialCandidateDefaultApplied.current = true
+    setCandidateParam(selectedId)
+  }, [searchParams, syncWithNav, selectedId, setCandidateParam])
+
   // Distinct values for dropdowns (derived from loaded data)
   const taskOptions = useMemo(() => {
     const s = new Set(rows.map(r => r.task_key).filter(Boolean) as string[])
-    return Array.from(s).sort()
-  }, [rows])
-  const candidateOptions = useMemo(() => {
-    const s = new Set(rows.map(r => r.candidate_id).filter(Boolean) as string[])
     return Array.from(s).sort()
   }, [rows])
 
@@ -259,13 +294,11 @@ export default function PerformanceMonitor() {
             {taskOptions.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
-        <label>
-          Candidate
-          <select value={filters.candidate_id || ""} onChange={e => setFilter("candidate_id", e.target.value)}>
-            <option value="">All</option>
-            {candidateOptions.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+        <AdminCandidateFilterControl
+          value={candidateFilter}
+          onChange={setCandidateFilter}
+          candidates={candidates}
+        />
         <label>
           Status
           <select value={filters.status || ""} onChange={e => setFilter("status", e.target.value)}>
@@ -353,7 +386,10 @@ export default function PerformanceMonitor() {
                         <div className="dispatch-expand-header">
                           <button
                             className="dispatch-batch-link"
-                            onClick={() => setAgentDataBatchId(row.batch_id)}
+                            onClick={() => {
+                              setAgentDataBatchId(row.batch_id)
+                              setAgentDataCandidateId(row.candidate_id || null)
+                            }}
                             title="View agent data for this batch"
                           >
                             {row.batch_id}
@@ -372,7 +408,11 @@ export default function PerformanceMonitor() {
 
       <BatchAgentDataModal
         batchId={agentDataBatchId}
-        onClose={() => setAgentDataBatchId(null)}
+        candidateId={agentDataCandidateId || undefined}
+        onClose={() => {
+          setAgentDataBatchId(null)
+          setAgentDataCandidateId(null)
+        }}
       />
     </div>
   )

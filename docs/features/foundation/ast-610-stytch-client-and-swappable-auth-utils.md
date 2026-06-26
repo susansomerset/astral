@@ -1,3 +1,121 @@
+<!-- linear-archive: AST-610 archived 2026-06-23 -->
+
+## Linear archive (AST-610)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-610/stytch-client-and-swappable-auth-utils-use-stytch-for-user  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-609 — Use stytch for user authentication  
+**Blocked by / blocks / related:** parent: AST-609; blocks: AST-611
+
+### Description
+
+## What this implements
+
+Add a Stytch SDK wrapper in `src/external/stytch.py` and a provider-agnostic auth helper in `src/utils/auth.py` so the platform can be swapped later without touching Flask or React. Wire Stytch env/config keys (project id, secret, session/JWT settings). No UI or Flask decorator changes in this ticket — only the external client + utils layer and config/env documentation.
+
+## Acceptance criteria
+
+* Stytch client lives in `src/external/stytch.py` following existing external-layer patterns.
+* Auth abstraction lives in `src/utils/auth.py` (validate session/JWT, return normalized user dict with `user_id`, `name`, `is_admin`).
+* Config/env entries documented in `env.example` for Stytch credentials.
+* Susan's Stytch user is flagged as admin via config (e.g. admin email/user id list) — not hardcoded in Flask.
+* Unit/component tests cover token validation happy path and invalid/missing token.
+
+## Boundaries
+
+* Does **not** change `src/ui/auth.py` decorators or API routes — sibling **AST-611**.
+* Does **not** change React login or nav — sibling **AST-612**.
+* Does **not** remove IP allowlist yet — **AST-611** owns cutover.
+
+## Notes for planning
+
+* Parent brief: swap-friendly auth like other externals; Susan mentioned `auth.py` in utils and stytch in externals — codebase uses `src/external/` (singular).
+* Read `ASTRAL_CODE_RULES` §2.9 Authentication Decorator for intended `g.user` shape.
+* Stytch B2C session JWT or session token — pick approach that fits Railway + React SPA.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-609-use-stytch-for-user-authentication`, child `sub/AST-609/AST-610-stytch-client-and-auth-utils`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-12T22:39:09.386Z
+**Review** — `origin/dev...origin/sub/AST-609/AST-610-stytch-client-and-auth-utils` @ `fa9b85ef` (9 files, +645). Plan: `docs/features/foundation/ast-610-stytch-client-and-swappable-auth-utils.md` (Radia section @ latest push).
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### Advisory
+- **`src/external/stytch.py` (§1.3):** `authenticate_session_jwt` sits below `_primary_email` / `_display_name`; public-before-helpers convention — optional reorder on a future touch.
+- **`AUTH_CONFIG` (§2.1):** `STYTCH_PROJECT_ID` / `STYTCH_SECRET` use `os.environ.get(..., "")` — plan Stage 1 §5 defers fail-until-first-call; acceptable for AST-610; AST-611 owns cutover timing.
+
+### Plan fidelity
+- Stytch wrapper + swappable `utils/auth.py` + `AUTH_CONFIG` + `env.example` — matches plan Stages 1–3.
+- No `src/ui/` changes; `register_token_authenticator` wiring correctly deferred to **AST-611**.
+- Tests (`test_stytch.py`, `test_auth.py`) cover acceptance criteria (happy path, invalid/missing token, admin lists).
+
+### Rules spot-check
+| Rule | Result |
+|------|--------|
+| §3.3 imports | Pass — registry avoids utils→external |
+| §2.1 admin lists | Pass — env-driven `ASTRAL_ADMIN_*` |
+| §2.9 `g.user` shape | Pass — `{user_id, name, is_admin}` |
+| §3.5 naming | Pass |
+| D2 `validate_bearer_token` | Pass — plan-required `None` on auth failure (AST-611 → 401) |
+
+**AST-611 handoff:** `register_token_authenticator(stytch.authenticate_session_jwt)` before `@require_auth` checks.
+
+#### betty — 2026-06-12T22:37:06.958Z
+## QA test manifest (AST-610)
+
+**Publish:** `origin/sub/AST-609/AST-610-stytch-client-and-auth-utils` @ `fa9b85ef`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref: `d4729571ef772870ed5b6f301bbba6eee3d53191` (§7.13zza)
+
+### Manifest — run in order
+
+1. `tests/component/external/test_stytch.py::TestAuthenticateSessionJwt` — Stytch JWT happy path, empty token, SDK error wrap, missing env
+2. `tests/component/utils/test_auth.py::TestIsAdmin` — admin by user_id, email (case-insensitive), neither
+3. `tests/component/utils/test_auth.py::TestNormalizeUser` — `user_id` / `name` / `is_admin` shape; blank name → email
+4. `tests/component/utils/test_auth.py::TestValidateBearerToken` — empty token, no authenticator, mock happy path, authenticator raises → `None`
+
+### Narrowed command
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_stytch.py::TestAuthenticateSessionJwt \
+  tests/component/utils/test_auth.py::TestIsAdmin \
+  tests/component/utils/test_auth.py::TestNormalizeUser \
+  tests/component/utils/test_auth.py::TestValidateBearerToken
+```
+
+### Notes
+
+- No existing bible coverage broken (new modules only).
+- No UI / Flask paths — §6c N/A.
+- **AST-611** must wire `register_token_authenticator(stytch.authenticate_session_jwt)` before live auth.
+
+#### ada — 2026-06-12T22:33:35.205Z
+Plan published on `origin/sub/AST-609/AST-610-stytch-client-and-auth-utils`:
+
+**Plan doc:** [ast-610-stytch-client-and-swappable-auth-utils.md](https://github.com/susansomerset/astral/blob/sub/AST-609/AST-610-stytch-client-and-auth-utils/docs/features/foundation/ast-610-stytch-client-and-swappable-auth-utils.md)
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — two new modules (`external/stytch.py`, `utils/auth.py`) plus `AUTH_CONFIG` and env/deps; no Flask or React in this ticket.
+- **Conf:** `conf-high` — follows existing external lazy-client and utils patterns; registerable authenticator resolves layer import rules without utils→external coupling.
+- **Risk:** `risk-Medium` — wrong user shape or admin config would block AST-611, but live auth is unchanged until Hedy wires the decorator.
+
+**Key decision for review:** `utils/auth.py` uses `register_token_authenticator()` so UI never imports `external`; AST-611 registers `stytch.authenticate_session_jwt` at startup.
+
+---
+
 # AST-610 — Stytch client and swappable auth utils (Use stytch for user authentication)
 
 - **Linear (this ticket):** [AST-610](https://linear.app/astralcareermatch/issue/AST-610/stytch-client-and-swappable-auth-utils-use-stytch-for-user)

@@ -105,6 +105,30 @@ def parse_enumerate_array(text: str) -> Dict[int, str]:
     return result
 
 
+def normalize_link(url: str) -> str:
+    """Pure PJL URL key: strip scheme, drop fragment, trim trailing slashes and index filenames."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    lower = url.lower()
+    for prefix in ("https://", "http://", "//"):
+        if lower.startswith(prefix):
+            url = url[len(prefix):]
+            lower = url.lower()
+            break
+    if "#" in url:
+        url = url.split("#", 1)[0]
+    url = url.lower()
+    while "//" in url:
+        url = url.replace("//", "/")
+    url = url.rstrip("/")
+    for suffix in ("/index.html", "/index.htm", "/index.php"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)].rstrip("/")
+            break
+    return url
+
+
 def value_to_str(val: object) -> str:
     """Coerce a resolved token value to a string for prompt insertion.
     Arrays of {label, content} objects auto-render as markdown h3 sections.
@@ -143,6 +167,27 @@ def split_to_list(value: str, delimiter: str = ",") -> List[str]:
     if not delimiter:
         raise ValueError("split_to_list: delimiter must be non-empty")
     return [part.strip() for part in value.split(delimiter) if part.strip()]
+
+
+def collapse_consecutive_blank_lines(text: str) -> str:
+    """Collapse runs of blank lines to a single blank line.
+
+    A line is blank when it is empty or contains only whitespace (spaces, tabs).
+    Non-empty lines keep their original string (no strip/reformat of content).
+    """
+    if not text or not isinstance(text, str):
+        return "" if text is None else text
+    out: List[str] = []
+    prev_blank = False
+    for line in text.splitlines():
+        if not line.strip():
+            if not prev_blank:
+                out.append("")
+            prev_blank = True
+        else:
+            out.append(line)
+            prev_blank = False
+    return "\n".join(out)
 
 
 def parse_text(raw_html: str) -> str:
@@ -230,6 +275,14 @@ def find_job_containers(dom_html: str, job_titles: List[str]) -> List[str]:
             if union == titles_set:  # pragma: no cover
                 return [str(c) for c in containers]  # pragma: no cover
             parent = parent.parent  # pragma: no cover
+
+    # Phase 2b: sibling leaves each carry one title (medicarerights-style job links).
+    if leaves:  # pragma: no cover
+        union_from_leaves: set = set()  # pragma: no cover
+        for _, leaf_titles in leaves:  # pragma: no cover
+            union_from_leaves.update(leaf_titles)  # pragma: no cover
+        if len(titles_set) >= 2 and union_from_leaves == titles_set:  # pragma: no cover
+            return [str(leaf) for leaf, _ in leaves]  # pragma: no cover
 
     return [dom_html]  # pragma: no cover
 
