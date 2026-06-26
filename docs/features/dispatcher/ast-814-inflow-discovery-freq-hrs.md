@@ -210,3 +210,42 @@ No conflicts requiring plan revision.
 **QA (Betty):** Component tests per Stage 4 table — `freq_hrs=0` with fresh terms eligible; `freq_hrs=168` cadence; dispatcher debug cites `freq_hrs=`; config literal tests updated.
 
 **Manual UAT:** Repro **somerset** / **LIVE_PROMPTS** / `freq_hrs=0` — Scheduled Actions **Available ≥ 1**, manual **Run** does not skip for `0 stale (scan_interval_hours=168)`.
+
+---
+
+## Radia review (2026-06-26)
+
+**Diff:** `origin/dev...origin/sub/AST-813/AST-814-inflow-discovery-freq-hrs` @ `d506465`  
+**Product commits:** `6015f9b` database · `c9cc9c0` config · `7aa989b` dispatcher/roster  
+**Tests:** `6a36a8a` manifest + bible (Betty)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Stage 1 — data | `count_stale` / `list_stale` take `freq_hrs`; `<= 0` returns all table rows (fixes inverted early-return); `describe_candidate_inflow_discovery_eligibility` requires row `freq_hrs`; reason cites `freq_hrs=`, not `scan_interval_hours`; `count_eligible_for_dispatch_task` candidate branch passes `task["freq_hrs"]`. |
+| Stage 2 — config | `scan_interval_hours` and `dispatch_freq_hrs` removed from `INFLOW_CONFIG["discovery"]`; remaining `scan_interval_hours` hits are company WATCH/gaze only (§2.1). |
+| Stage 3 — dispatch/roster | `_dispatch_one` injects `ctx["inflow_discovery_freq_hrs"]`; debug skip path passes row `freq_hrs` to describe; `run_inflow_discovery_batch` reads ctx, not config. |
+| §1.3 DRY | Single stale-helper pair shared by count, list, describe, and batch. |
+| §2.4 / §2.6 | Stale SQL unchanged when `freq_hrs > 0`; LIVE_PROMPTS gate unchanged; `last_run_at` still ignored for per-term cadence. |
+| §1.5.1 debug | Eligibility reason on skip only; cites `freq_hrs=` — matches AST-802 narrow exception. |
+| §3.3 | Lazy `database → candidate` import in describe unchanged; no new layer violations. |
+| Tests + bible | `TestAst814InflowDiscoveryFreqHrs`, dispatcher debug, roster `freq_hrs=0` fresh-term CSE, config literal removal, AST-524 zero-semantics update. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| None blocking | — |
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — Susan UAT on parent **AST-813** (`somerset` / `freq_hrs=0` repro).
+
+— Radia
