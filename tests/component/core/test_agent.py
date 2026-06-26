@@ -5018,3 +5018,120 @@ class TestAst816VectorFeedbackCapture:
         )
         assert "CLR Culture" in combined
         assert len(prompt_blocks) == 1
+
+
+class TestAst820VectorFeedbackDebugTrace:
+    """AST-820: debug-only pipeline trace and explicit early-return skip reasons."""
+
+    def test_debug_skip_empty_batch_id(self, seeded_db, caplog: pytest.LogCaptureFixture) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture skipped" in combined
+        assert "skip reason=empty batch_id" in combined
+
+    def test_debug_skip_empty_expected_codes(self, seeded_db, caplog: pytest.LogCaptureFixture) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-no-rubric",
+            batch_id="batch-820-empty",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["CLRRACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "skip reason=empty_expected_codes" in combined
+        assert "candidate=cand-no-rubric" in combined
+
+    def test_debug_emits_pipeline_trace_on_capture_start(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-820-trace",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture start" in combined
+        assert "vector_reviews trace candidate=cand-1" in combined
+        assert "normalize -> 1 lines" in combined
+        assert "diagnostic reason=ok" in combined
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_skip_when_candidate_id_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_performance": {
+                            "status": "success",
+                            "vector_reviews": ["G1RACOVK"],
+                        },
+                        "agent_payload": "0|CRA2",
+                    },
+                    "api_response": _api_response("envelope"),
+                    "timesheet": {},
+                }
+            ),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture skipped" in combined
+        assert "skip reason=missing owner=" in combined

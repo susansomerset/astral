@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Lenient parse + diagnostic helpers for rubric vector_reviews (AST-724 / AST-816)."""
+"""Lenient parse, diagnostic, and pipeline trace helpers for vector_reviews (AST-724 / AST-816 / AST-820)."""
 
 from __future__ import annotations
 
@@ -148,6 +148,87 @@ def format_hydrated_review_debug_line(row: Dict[str, str]) -> str:
     if len(content) > 80:
         content = content[:80] + "…"
     return f"{code} {label} — R/{rel} C/{cla} V/{ver} — {content}"
+
+
+def _trace_repr_truncated(raw: Any, limit: int = 120) -> str:
+    text = repr(raw)
+    if len(text) > limit:
+        return text[:limit] + "…"
+    return text
+
+
+def _normalize_failure_reason(raw: Any) -> str:
+    if raw is None:
+        return "missing"
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return "empty_string"
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return "json_decode"
+        if not isinstance(parsed, list):
+            return "json_not_list"
+        raw = parsed
+    if isinstance(raw, list):
+        if not raw:
+            return "empty_list"
+        for item in raw:
+            if not isinstance(item, str):
+                return "non_string_element"
+            if not item.strip():
+                return "empty_line"
+        return "unknown"
+    return f"bad_type_{type(raw).__name__}"
+
+
+def vector_reviews_pipeline_trace(
+    *,
+    raw_reviews: Any,
+    expected_codes: frozenset[str],
+    code_to_uuid: Dict[str, str],
+    rubric_by_code: Dict[str, Dict[str, Any]],
+    candidate_id: str = "",
+    owner_task_key: str = "",
+) -> List[str]:
+    """Ordered debug_detail lines for normalize → parse → hydrate (AST-820); no logging side effects."""
+    lines: List[str] = [
+        f"vector_reviews trace candidate={candidate_id} owner={owner_task_key}",
+        f"raw type={type(raw_reviews).__name__} repr={_trace_repr_truncated(raw_reviews)}",
+    ]
+    raw_list = normalize_vector_reviews_raw(raw_reviews)
+    if raw_list is None:
+        lines.append(f"normalize -> None (reason={_normalize_failure_reason(raw_reviews)})")
+    else:
+        lines.append(f"normalize -> {len(raw_list)} lines")
+    lines.append(f"expected_codes={sorted(expected_codes)} count={len(expected_codes)}")
+    lines.append(
+        f"rubric_lookup_keys={sorted(rubric_by_code.keys())} count={len(rubric_by_code)}"
+    )
+    for idx, compact in enumerate(raw_list or []):
+        parsed = parse_vector_review_string(compact)
+        if parsed is None:
+            lines.append(f"line[{idx}] {compact} parse=fail")
+        else:
+            code, _ = parsed
+            lines.append(f"line[{idx}] {compact} parse=ok code={code}")
+    _, reason, parsed_codes, missing_codes = parse_vector_reviews_diagnostic(
+        raw_reviews, expected_codes, code_to_uuid
+    )
+    extra = sorted(parsed_codes - expected_codes) if parsed_codes else []
+    lines.append(
+        f"diagnostic reason={reason or 'ok'} parsed={sorted(parsed_codes)} "
+        f"missing={sorted(missing_codes)} extra={extra}"
+    )
+    hydrated = hydrate_vector_review_strings(
+        raw_list if raw_list is not None else raw_reviews,
+        rubric_by_code,
+    )
+    lines.append(f"hydrate rows={len(hydrated)}")
+    for row in hydrated[:7]:
+        lines.append(format_hydrated_review_debug_line(row))
+    return lines
 
 
 def format_vector_reviews_raw(perf: dict) -> str:
