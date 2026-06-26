@@ -128,10 +128,57 @@ class TestAst802InflowDiscoveryEligible:
     def test_describe_eligibility_reason_wrong_state(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("c802", state="NEW", candidate_data={})
-        eligible, reason = db.describe_candidate_inflow_discovery_eligibility("c802")
+        eligible, reason = db.describe_candidate_inflow_discovery_eligibility("c802", 168.0)
         assert eligible == 0
         assert "eligibility:" in reason
         assert "LIVE_PROMPTS" in reason
+
+
+class TestAst814InflowDiscoveryFreqHrs:
+    """AST-814: dispatch_task.freq_hrs drives stale helpers and eligibility (not config 168)."""
+
+    def _seed_live_fresh(self, db, cid: str = "c814", terms: list[str] | None = None) -> None:
+        db.save_candidate(cid, state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms(cid, terms or ["alpha", "beta"])
+        for term in terms or ["alpha", "beta"]:
+            db.update_company_search_term_last_scan_at(cid, term)
+
+    def test_freq_hrs_zero_eligible_and_lists_all_fresh_terms(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_live_fresh(db)
+        assert db.count_candidate_inflow_discovery_eligible("c814", 0.0, None) == 1
+        assert db.count_stale_company_search_terms("c814", 0.0) == 2
+        assert db.list_stale_company_search_terms("c814", 0.0) == ["alpha", "beta"]
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c814",
+            "task_key": "inflow_discovery",
+            "freq_hrs": 0,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+
+    def test_freq_hrs_168_all_fresh_not_eligible(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_live_fresh(db)
+        assert db.count_candidate_inflow_discovery_eligible("c814", 168.0, None) == 0
+        eligible, reason = db.describe_candidate_inflow_discovery_eligibility("c814", 168.0)
+        assert eligible == 0
+        assert "freq_hrs=168" in reason
+        assert "scan_interval_hours" not in reason
+
+    def test_dispatch_task_freq_zero_overrides_fresh_exclusion(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_live_fresh(db)
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c814",
+            "task_key": "inflow_discovery",
+            "freq_hrs": 0,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+        assert db.count_candidate_inflow_discovery_eligible("c814", 168.0, None) == 0
 
 
 class TestAst506InflowResolveEligible:

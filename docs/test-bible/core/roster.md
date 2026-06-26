@@ -40,6 +40,18 @@
 
 ---
 
+### AST-814 · AST-813
+
+**AST-814:** **`run_inflow_discovery_batch`** reads **`ctx["inflow_discovery_freq_hrs"]`** (from dispatcher), not config **168**.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`freq_hrs=0`** in ctx searches fresh table terms | `src/core/roster.py` | **`TestAst505InflowDiscovery::test_run_batch_freq_hrs_zero_searches_fresh_terms`** |
+
+**Broken / obsolete (Betty revision):** **`test_run_batch_no_stale_terms_returns_zero_errors`** and **`test_run_batch_searches_only_stale_terms`** pass **`inflow_discovery_freq_hrs: 168`** in ctx (empty ctx defaults **`freq_hrs` to 0** = all rows stale).
+
+---
+
 ### AST-621 · AST-542
 
 **AST-542 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/roster.py`** inflow paths — **`run_inflow_discovery_batch`** / **`vet_inflow_discovery`** baseline from **AST-557** on **`ftr/`**; this child adds **`resolve_company_website`** contract debug, **`_ingest_failure_reason`** ` | ` detail under vet-row headers, and empty-dedupe skip header. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only. **`debug=False`** must stay unchanged — existing inflow behavior tests are the gate.

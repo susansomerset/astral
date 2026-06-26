@@ -1038,10 +1038,12 @@ class TestAst504CompanySearchTermsConfig:
 
 
 class TestAst525InflowDiscoveryConfig:
-    """AST-525: per-term scan interval for inflow_discovery cadence."""
+    """AST-525/814: per-term last_scan_at cadence; interval from dispatch_task.freq_hrs (AST-814)."""
 
-    def test_scan_interval_hours_literal(self) -> None:
-        assert cfg.INFLOW_CONFIG["discovery"]["scan_interval_hours"] == 168
+    def test_discovery_config_has_no_scan_interval_literals(self) -> None:
+        d = cfg.INFLOW_CONFIG["discovery"]
+        assert "scan_interval_hours" not in d
+        assert "dispatch_freq_hrs" not in d
 
 
 class TestAst505InflowDiscoveryConfig:
@@ -1051,7 +1053,7 @@ class TestAst505InflowDiscoveryConfig:
         d = cfg.INFLOW_CONFIG["discovery"]
         assert d["max_results_per_query"] == 100
         assert d["date_restrict_days"] == 7
-        assert d["dispatch_freq_hrs"] == 168
+        assert "dispatch_freq_hrs" not in d
         assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"

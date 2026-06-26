@@ -78,7 +78,7 @@ class TestAst524CompanySearchTermsTable:
         finally:
             conn.close()
         assert db.count_stale_company_search_terms("cand-1", 24.0) == 2
-        assert db.count_stale_company_search_terms("cand-1", 0) == 0
+        assert db.count_stale_company_search_terms("cand-1", 0) == 2
         assert db.count_stale_company_search_terms("", 24.0) == 0
 
     def test_list_stale_company_search_terms_ordered(self, seeded_db) -> None:
@@ -96,4 +96,4 @@ class TestAst524CompanySearchTermsTable:
         finally:
             conn.close()
         assert db.list_stale_company_search_terms("cand-1", 24.0) == ["alpha", "zebra"]
-        assert db.list_stale_company_search_terms("cand-1", 0) == []
+        assert db.list_stale_company_search_terms("cand-1", 0) == ["alpha", "zebra"]
