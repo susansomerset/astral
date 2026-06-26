@@ -61,6 +61,7 @@ from src.utils.rubric_feedback import (
     normalize_vector_reviews_raw,
     parse_vector_review_string,
     parse_vector_reviews_diagnostic,
+    vector_reviews_pipeline_trace,
 )
 from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
@@ -1090,23 +1091,72 @@ def _capture_rubric_vector_feedback(
     batch_size: int,
     completed_at: Optional[str] = None,
 ) -> None:
-    """Lenient vector_reviews capture on SUCCESS — parse failures never fail the run (AST-724 / AST-816)."""
-    if _agent_performance_status(perf) != "success":
+    """Lenient vector_reviews capture on SUCCESS — parse failures never fail the run (AST-724 / AST-816 / AST-820)."""
+    dbg = _do_task_debug_logger(debug) if debug else None
+    perf_status = _agent_performance_status(perf)
+    if perf_status != "success":
+        if dbg:
+            dbg.debug_index(
+                func="_capture_rubric_vector_feedback",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="vector feedback capture skipped",
+            )
+            dbg.debug_detail(f"skip reason=agent_performance.status={perf_status}")
         return
     if not (batch_id or "").strip():
+        if dbg:
+            dbg.debug_index(
+                func="_capture_rubric_vector_feedback",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="vector feedback capture skipped",
+            )
+            dbg.debug_detail("skip reason=empty batch_id")
         return
     code_to_uuid = list_rubric_vector_uuid_by_code(candidate_id, owner_task_key)
     expected_codes = frozenset(code_to_uuid.keys()) if code_to_uuid else frozenset()
     if not expected_codes:
+        if dbg:
+            dbg.debug_index(
+                func="_capture_rubric_vector_feedback",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="vector feedback capture skipped",
+            )
+            dbg.debug_detail(
+                f"skip reason=empty_expected_codes candidate={candidate_id} "
+                f"owner={owner_task_key}"
+            )
         return
     perf_dict = perf if isinstance(perf, dict) else {}
+    rubric_by_code = _rubric_by_code_lookup(candidate_id, owner_task_key)
+    if dbg:
+        dbg.debug_index(
+            func="_capture_rubric_vector_feedback",
+            index=1,
+            total=1,
+            identifier=task_key,
+            outcome="vector feedback capture start",
+        )
+        for trace_line in vector_reviews_pipeline_trace(
+            raw_reviews=perf_dict.get("vector_reviews"),
+            expected_codes=expected_codes,
+            code_to_uuid=code_to_uuid,
+            rubric_by_code=rubric_by_code,
+            candidate_id=candidate_id,
+            owner_task_key=owner_task_key,
+        ):
+            dbg.debug_detail(trace_line)
     raw_list = normalize_vector_reviews_raw(perf_dict.get("vector_reviews"))
     parsed_rows, failure_reason, parsed_codes, missing_codes = parse_vector_reviews_diagnostic(
         raw_list if raw_list is not None else perf_dict.get("vector_reviews"),
         expected_codes,
         code_to_uuid,
     )
-    rubric_by_code = _rubric_by_code_lookup(candidate_id, owner_task_key)
 
     if parsed_rows is None:
         try:
@@ -1120,8 +1170,7 @@ def _capture_rubric_vector_feedback(
             prompt_blocks.append({"type": "FEEDBACK", "id": fb_id})
         except Exception:
             logger.debug("store_feedback_block failed", exc_info=True)
-        if debug:
-            dbg = _do_task_debug_logger(debug)
+        if dbg:
             dbg.debug_index(
                 func="_capture_rubric_vector_feedback",
                 index=1,
@@ -1152,11 +1201,12 @@ def _capture_rubric_vector_feedback(
             batch_size=batch_size,
             completed_at=completed_at,
         )
-    except Exception:
+    except Exception as exc:
+        if dbg:
+            dbg.debug_detail(f"insert_vector_feedback_rows failed: {exc!r}")
         logger.debug("insert_vector_feedback_rows failed", exc_info=True)
         return
-    if debug:
-        dbg = _do_task_debug_logger(debug)
+    if dbg:
         total = len(parsed_rows)
         for idx, row in enumerate(parsed_rows, start=1):
             compact = _compact_from_parsed_row(row)
@@ -2175,6 +2225,24 @@ async def do_task(
         _perf = envelope_snapshot.get("agent_performance")
         if _perf is not None:
             _owner, _cid = _rubric_feedback_owner_and_candidate(task_key, cd, ctx)
+            _perf_dict = _perf if isinstance(_perf, dict) else {}
+            if (
+                debug
+                and isinstance(_perf_dict, dict)
+                and _perf_dict.get("vector_reviews") is not None
+                and not (_owner and _cid)
+            ):
+                _skip_dbg = _do_task_debug_logger(debug)
+                _skip_dbg.debug_index(
+                    func="do_task",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome="vector feedback capture skipped",
+                )
+                _skip_dbg.debug_detail(
+                    f"skip reason=missing owner={_owner!r} candidate_id={_cid!r}"
+                )
             if _owner and _cid:
                 _capture_rubric_vector_feedback(
                     task_key=task_key,
