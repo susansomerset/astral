@@ -178,3 +178,16 @@ None.
 
 **Verdict:** Clean — `resolve-child` may proceed.
 
+---
+
+## Resolution
+
+**Date:** 2026-06-26  
+**Review:** Radia clean — no fix-now items.
+
+Product: `try`/`except ValueError` in `_normalize_company_url_for_dedupe` only (`src/core/roster.py`). Republish removed AST-820 bleed from polluted sub log.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-815-vet-inflow-discovery-routing`.
+
+**Handoff:** User Testing — Susan UAT checklist in Build review stub.
+
