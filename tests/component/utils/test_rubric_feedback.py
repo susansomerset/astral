@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import List
+
 from src.utils import rubric_feedback as rf_mod
 from src.utils import config as cfg
 
@@ -83,3 +85,67 @@ class TestAst808HydrateVectorReviewStrings:
     def test_skips_malformed_and_non_list_input(self) -> None:
         assert rf_mod.hydrate_vector_review_strings(None, {}) == []
         assert rf_mod.hydrate_vector_review_strings(["not-valid"], {"G1": {}}) == []
+
+
+class TestAst816NormalizeVectorReviews:
+    def test_parses_json_string_envelope(self) -> None:
+        out = rf_mod.normalize_vector_reviews_raw('["CLRRACOVK", " DORRACOVK "]')
+        assert out == ["CLRRACOVK", "DORRACOVK"]
+
+    def test_rejects_non_string_elements(self) -> None:
+        assert rf_mod.normalize_vector_reviews_raw(["G1RACOVK", 1]) is None
+
+
+class TestAst816ParseVectorReviewsDiagnostic:
+    def test_success_returns_rows_and_empty_reason(self) -> None:
+        rows, reason, parsed, missing = rf_mod.parse_vector_reviews_diagnostic(
+            ["G1RACOVK", "G2RSCOVE"],
+            frozenset({"G1", "G2"}),
+            {"G1": "uuid-1", "G2": "uuid-2"},
+        )
+        assert reason is None
+        assert missing == frozenset()
+        assert parsed == frozenset({"G1", "G2"})
+        assert rows is not None and len(rows) == 2
+
+    def test_missing_codes_reason(self) -> None:
+        _, reason, _, missing = rf_mod.parse_vector_reviews_diagnostic(
+            ["G1RACOVK"],
+            frozenset({"G1", "G2"}),
+            {"G1": "uuid-1", "G2": "uuid-2"},
+        )
+        assert reason == "missing_codes"
+        assert missing == frozenset({"G2"})
+
+    def test_evaluate_jd_style_codes_parse(self) -> None:
+        # 3-letter rubric codes: CODE + R + rel + C + cla + V + ver (Susan UAT evaluate_jd set)
+        codes = [
+            "CLRRACOVK", "DORRACOVK", "DQRRACOVK", "JNRRACOVK",
+            "LORRACOVK", "RLRRACOVK", "TIRRACOVK",
+        ]
+        parsed_codes: List[str] = []
+        for line in codes:
+            one = rf_mod.parse_vector_review_string(line)
+            assert one is not None
+            parsed_codes.append(one[0])
+        expected = frozenset(parsed_codes)
+        uuid_map = {code: f"uuid-{code}" for code in expected}
+        rows, reason, _, _ = rf_mod.parse_vector_reviews_diagnostic(codes, expected, uuid_map)
+        assert reason is None
+        assert rows is not None and len(rows) == len(expected)
+
+
+class TestAst816FormatHydratedReviewDebugLine:
+    def test_formats_labels_and_truncates_content(self) -> None:
+        row = {
+            "code": "CLR",
+            "label": "Culture fit",
+            "relevance_label": "Aligned",
+            "clarity_label": "OK",
+            "verdict_label": "Keep",
+            "content": "x" * 100,
+        }
+        line = rf_mod.format_hydrated_review_debug_line(row)
+        assert line.startswith("CLR Culture fit — R/Aligned C/OK V/Keep — ")
+        assert line.endswith("…")
+        assert len(line) < 200

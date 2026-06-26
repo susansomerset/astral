@@ -33,3 +33,27 @@ Config gate **`is_rubric_backed_task`** + **`prompt_suffix`**: **`docs/test-bibl
 | Rubric lookup hydration | `src/utils/rubric_feedback.py` | `TestAst808HydrateVectorReviewStrings` |
 
 Admin API + page: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+---
+
+### AST-816 · AST-378 (UAT fix)
+
+**`normalize_vector_reviews_raw`**, **`parse_vector_reviews_diagnostic`**, **`format_hydrated_review_debug_line`** — JSON-string envelopes, strict expected-code match, debug labels (Susan UAT compact codes on **`evaluate_jd`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Raw envelope normalize | `src/utils/rubric_feedback.py` | `TestAst816NormalizeVectorReviews` |
+| Diagnostic parse reasons | `src/utils/rubric_feedback.py` | `TestAst816ParseVectorReviewsDiagnostic` |
+| Hydrated debug line format | `src/utils/rubric_feedback.py` | `TestAst816FormatHydratedReviewDebugLine` |
+
+**AST-816** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_feedback.py::TestAst816NormalizeVectorReviews \
+  tests/component/utils/test_rubric_feedback.py::TestAst816ParseVectorReviewsDiagnostic \
+  tests/component/utils/test_rubric_feedback.py::TestAst816FormatHydratedReviewDebugLine \
+  -q
+```
+
+Capture + Admin wiring: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/frontend/pages.md`**.
