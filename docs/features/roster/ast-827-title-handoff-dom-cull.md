@@ -301,3 +301,17 @@ No conflicts requiring escalation.
 | advisory | Optional: append `cull={cull_outcome}` to parse dispatch `debug_index` outcome when touching debug again. |
 
 **Publish tip:** `fe754bb` (product `703fd35` + tests `0a2890d` + merge-tests `fe754bb`)
+
+---
+
+## Resolution (2026-06-26)
+
+**Radia:** clean sign-off — no fix-now items.
+
+| Item | Outcome |
+|------|---------|
+| fix-now | None applied — product unchanged at resolve. |
+| discuss | medicarerights / two-title live listing confirmation deferred to parent **AST-824** UAT on staging. |
+| advisory | `debug_index` `cull=` omission left as-is (Radia advisory only); single-title `_culled_dom_for_parse` path retained. |
+
+**Publish tip at resolve:** `origin/sub/AST-824/AST-827-title-handoff-dom-cull` @ Radia review `40e774a`; §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-824-get-parse-job-list-to-work`.
