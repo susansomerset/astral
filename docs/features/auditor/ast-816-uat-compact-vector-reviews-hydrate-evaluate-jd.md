@@ -260,3 +260,14 @@ Focused UAT fix diff (12 files) — sibling AST-378 epic commits appear in three
 | UAT | Re-run Susan `evaluate_jd` SUCCESS: debug shows hydrated vector lines; FEEDBACK tab and Admin Vector Feedback hydrate compact codes; `vector_feedback` rows persist when rubric count matches. |
 
 **Verdict:** Clean — approve for User Testing.
+
+---
+
+## Resolution (Ada)
+
+**Date:** 2026-06-18  
+**Driven by:** Radia review — clean sign-off, no fix-now.
+
+**Changes:** None — product and plan doc at `c9c56d0` accepted as-is. Discuss (craft `owner_task_key` on FEEDBACK modal) and advisory DRY notes deferred per ticket scope.
+
+**§9a:** `origin/sub/AST-378/AST-816-uat-compact-vector-reviews-hydrate-evaluate-jd` merges cleanly into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
