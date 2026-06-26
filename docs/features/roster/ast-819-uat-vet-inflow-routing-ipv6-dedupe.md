@@ -157,3 +157,24 @@ tests/component/core/test_roster.py -k "normalize_company_url"
 - No scheduler crash from `Invalid IPv6 URL`
 - Pass → WEBSITE_FOUND or reject → VET_FAILED
 
+---
+
+## Review (Radia)
+
+**Diff:** `origin/ftr/AST-815-vet-inflow-discovery-routing...origin/sub/AST-815/AST-819-uat-vet-inflow-routing-ipv6-dedupe` (product: `d4aa1a8`)
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Single surgical change: `try`/`except ValueError` in `_normalize_company_url_for_dedupe`; callers already skip empty norm. |
+| AST-817 guard | Consult routing verified on `ftr` base — no `vet_inflow_discovery` in `consult.py`. |
+| §1.3 DRY | No second normalizer; existing helper hardened in place. |
+| Tests / bible | Betty manifest: routing regression + malformed IPv6 + valid URL unchanged. |
+
+### Issues
+
+None.
+
+**Verdict:** Clean — `resolve-child` may proceed.
+
