@@ -645,6 +645,27 @@ class TestAst759SharedPageScrapeContract:
         assert roster_mod._build_select_job_page_live_content("page body", "  ") == "page body"
 
 
+class TestAst826DedupeSelectJobPageNav:
+    """AST-826: dedupe global nav append when per-page nav already embedded."""
+
+    def test_skips_global_block_when_per_page_nav_embedded(self) -> None:
+        assembled = (
+            "=== PAGE 1: https://acme.com/careers ===\nroles\n"
+            "--- NAV LINKS ---\n1: https://acme.com/careers"
+        )
+        nav = "1: https://acme.com/careers\n2: https://acme.com/newjobs"
+        out = roster_mod._build_select_job_page_live_content(assembled, nav)
+        assert out == assembled
+        assert "=== NAV LINKS ===" not in out
+
+    def test_appends_global_block_when_no_embedded_nav_marker(self) -> None:
+        assembled = "=== PAGE 1: https://acme.com/careers ===\nroles"
+        nav = "1: https://acme.com/about\n2: https://acme.com/team"
+        out = roster_mod._build_select_job_page_live_content(assembled, nav)
+        assert "=== NAV LINKS ===" in out
+        assert nav in out
+
+
 class TestAst719PjlRosterHelpers:
     """AST-719: additive PJL scrape ledger helpers."""
 
@@ -769,7 +790,42 @@ class TestAst720PjlReadySelectDispatch:
         )
 
     @pytest.mark.asyncio
-    async def test_select_dispatch_passes_live_content_with_nav_links(
+    async def test_select_dispatch_dedupes_nav_when_per_page_embedded(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        nav = "1: https://acme.com/careers\n2: https://acme.com/newjobs"
+        assembled = (
+            "=== PAGE 1: https://acme.com/careers ===\nopen roles\n"
+            "--- NAV LINKS ---\n1: https://acme.com/careers"
+        )
+        company = self._pjl_ready_company(
+            pjl_nav_links=nav,
+            pjl_assembled_content=assembled,
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        captured: Dict[str, Any] = {}
+
+        async def fake_find(**kwargs: Any) -> Dict[str, Any]:
+            captured["assembled_content"] = kwargs.get("assembled_content")
+            captured["nav_links"] = kwargs.get("nav_links")
+            return {
+                "state": "JOBLIST_IDENTIFIED",
+                "response_type": "JOBLIST_TITLES",
+                "job_site": "",
+            }
+
+        monkeypatch.setattr(roster_mod, "_find_job_page_from_assembled", fake_find)
+        await roster_mod.run_select_job_page_dispatch(company, "batch-826")
+        live = captured.get("assembled_content") or ""
+        assert live == assembled
+        assert "=== NAV LINKS ===" not in live
+        assert captured.get("nav_links") == nav
+
+    @pytest.mark.asyncio
+    async def test_select_dispatch_appends_global_nav_when_no_embedded_per_page(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         nav = "1: https://acme.com/careers\n2: https://acme.com/newjobs"
@@ -789,7 +845,7 @@ class TestAst720PjlReadySelectDispatch:
             }
 
         monkeypatch.setattr(roster_mod, "_find_job_page_from_assembled", fake_find)
-        await roster_mod.run_select_job_page_dispatch(company, "batch-759")
+        await roster_mod.run_select_job_page_dispatch(company, "batch-826")
         live = captured.get("assembled_content") or ""
         assert "=== NAV LINKS ===" in live
         assert nav in live
