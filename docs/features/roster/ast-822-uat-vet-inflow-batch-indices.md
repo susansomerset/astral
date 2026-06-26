@@ -216,11 +216,44 @@ tests/component/utils/test_config.py -k "vet_inflow_discovery_dispatch"
 
 **Built:** @ `8580c9d` — `batch_call_mode=1` for `vet_inflow_discovery` (config + DB migration); AST-822 multi-hit prompt migration; `vet_inflow_discovery_company_batch` with `000/001/002` blurb renumber and `hit_index` decode; consult company branch routes vet before `run_company_task` fallback.
 
-**Test-child (Hedy):** _(fill on test-child)_
+**Test-child (Hedy):** Betty manifest green @ `65af66a` — 10 passed, no product fixes.
 
 **Susan UAT:**
 - **`batch_size=3`** → one vet call, **`000/001/002`** live content
 - Per-company **WEBSITE_FOUND** / **VET_FAILED** from **`hit_index`**
 - **`batch_size=1`** → no regression from AST-817/819
 
-Binding per **plan-child**: stages **1 → 5** in order; **one commit per stage** on epic worktree during **build-child**, publish each to **`origin/sub/AST-815/AST-822-uat-vet-inflow-batch-indices`**. Do not edit **`tests/`** or **`docs/test-bible/**`**. On ambiguity — **`🛑 Stage N blocked`** on **AST-815** parent; stop.
+---
+
+## Review (FIX-UAT)
+
+**Diff:** `origin/ftr/AST-815-vet-inflow-discovery-routing...origin/sub/AST-815/AST-822-uat-vet-inflow-batch-indices` (product: `8580c9d`)
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | `batch_call_mode=1` + DB migration; `vet_inflow_discovery_company_batch` mirrors AST-702 prefilter; consult routes vet before `run_company_task` fallback. |
+| Batch assembly | Blurbs renumbered `000`…`N-1`; singular header when `len(ready)==1`. |
+| Decode | `hit_index` → company row; shared `_apply_vet_inflow_result_row` with single-company wrapper. |
+| Tests / bible | Betty manifest: AST-776 regression, AST-822 two-hit batch, consult → batch, config defaults. |
+
+### Issues
+
+None.
+
+**Verdict:** Clean — FIX-UAT republish; no Radia review pass required (tests green).
+
+---
+
+## Resolution
+
+**Date:** 2026-06-26  
+**Review:** FIX-UAT skip — tests passed @ `65af66a`; no fix-now items.
+
+Product unchanged since `8580c9d` (config + DB migration + roster batch + consult guard). Publish tip includes Betty `merge-tests` @ `65af66a`.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-815-vet-inflow-discovery-routing`.
+
+**Handoff:** User Testing — Susan UAT checklist in Build review stub (`batch_size=3` one-call batch semantics).
+
