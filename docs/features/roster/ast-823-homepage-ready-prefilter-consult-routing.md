@@ -228,3 +228,19 @@ No conflicts requiring plan revision.
 |----------|----------|--------|
 | **discuss** | `src/data/database.py` AST-823 migration | If a candidate has **both** an already-correct `(prefilter, HOMEPAGE_READY)` row **and** a legacy `(prefilter_company, …)` row, the agent-key UPDATE can hit the triple-unique constraint. Susan's UAT repro likely has only the mis-keyed row; if schema ensure ever errors on migrate, delete the duplicate `prefilter_company` row (or drop the stale companion before UPDATE) per AST-703 collision precedent. |
 | **advisory** | `docs/features/roster/ast-823-homepage-ready-prefilter-consult-routing.md` | Engineer review stub noted Betty follow-on for legacy-key test — delivered on manifest tip; no further test gap. |
+
+---
+
+## Resolution (`resolve-child`)
+
+**Date:** 2026-06-26
+
+**Against:** Radia `review-child` on `origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing` @ `823de9a`.
+
+**Product**
+
+- **fix-now:** None — review clean.
+- **discuss:** Added `DELETE` of legacy `prefilter_company` company dispatch rows when canonical `(prefilter, HOMEPAGE_READY)` already exists for the same `candidate_id`, before the agent-key `UPDATE` — AST-703 / AST-736 triple-unique collision pattern.
+- **advisory:** Betty legacy-key test already on manifest tip — no further test gap.
+
+**§9a dry-run:** Clean sub replay merges into `origin/dev` and `origin/ftr/AST-821-get-prefilter-company-to-work`.

@@ -5720,6 +5720,19 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
     )
     # AST-823: legacy prefilter dispatch row retarget (agent key on dispatch row, stale batch mode).
     conn.execute(
+        """
+        DELETE FROM dispatch_task AS d
+        WHERE d.entity_type = 'company'
+          AND d.task_key = 'prefilter_company'
+          AND EXISTS (
+            SELECT 1 FROM dispatch_task AS g
+            WHERE g.candidate_id = d.candidate_id
+              AND g.task_key = 'prefilter'
+              AND g.trigger_state = 'HOMEPAGE_READY'
+          )
+        """
+    )
+    conn.execute(
         "UPDATE dispatch_task SET task_key = 'prefilter', trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
         "WHERE entity_type = 'company' AND task_key = 'prefilter_company'"
     )
