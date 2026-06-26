@@ -215,6 +215,29 @@ Routed page edit modal: **`docs/test-bible/frontend/pages.md`** (**AST-773**).
   -q
 ```
 
+### AST-825 · AST-821
+
+**AST-825 (UAT bug):** Schedulable dispatch key **`prefilter`** resolves admin **`task_keys`** grouping via **`dispatch_task_grouping_catalog_key`** → **`prefilter_company`** **`agent_task`** row (**Company Roster**, seq **5** between **`fetch_website`** and **`fetch_job_pages`**). Entity/trigger/scored metadata still keyed by dispatch **`prefilter`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grouping catalog resolver | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company` |
+| **`task_keys`** grouping lookup | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping::test_dispatch_task_keys_prefilter_grouping_from_prefilter_company_catalog` |
+
+Regression: **`TestAst739DispatchTaskKeysGrouping`** (**AST-739** direct catalog grouping).
+
+**AST-825** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company \
+  tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-785 · AST-754
 
 `GET /api/admin/dispatch_tasks` (`list_dtasks`) filters **`DISPATCH_RETIRED_TASK_KEYS`** before enrichment (parity with **`task_keys`** AST-749); wraps **`count_eligible_for_dispatch_task`** in try/except — logs warning, sets **`available_count=0`** on failure instead of 500ing the list.

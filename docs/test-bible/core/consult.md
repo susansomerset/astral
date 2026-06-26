@@ -486,8 +486,6 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
----
-
 ### AST-823 · AST-821
 
 **AST-823 (UAT bug):** **`run_consult_task`** company branch routes **`dispatch_task_key`** in **`("prefilter", "prefilter_company")`** to **`prefilter_company_batch`** — legacy mis-keyed dispatch rows no longer fall through to **`run_company_task`** on **HOMEPAGE_READY**. Idempotent **`dispatch_task`** migration retargets **`prefilter_company`** agent-key rows and stale **`batch_call_mode` / `trigger_state`** on company prefilter rows (**AST-703** DELETE-before-UPDATE order preserved).
@@ -519,6 +517,8 @@ Regression: **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMi
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
 
 ### AST-765 · AST-757 (SUNSET — documentation)
 
