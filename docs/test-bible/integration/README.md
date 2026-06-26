@@ -85,3 +85,33 @@ bash -n scripts/testing/run_railway_integration_tests.sh
 **Pass criterion:** items 1–2 exit 0 on publish ref tip.
 
 **Out of scope:** zero-arg `run_component_tests.sh`; production Railway smoke.
+
+### AST-818
+
+**Post-deploy gate (extends AST-712):** automatic Railway harness run after `origin/dev` deploy, GitHub commit status on dev SHA (`integration/tests`), Linear **Discussion** auto-create on failure. Contract: [`docs/integration-operator/POST_DEPLOY_GATE.md`](../../integration-operator/POST_DEPLOY_GATE.md).
+
+**Harness sanity (required):**
+
+```bash
+./scripts/testing/run_integration_tests.sh
+```
+
+**Gate scripts — syntax (required):**
+
+```bash
+bash -n scripts/post_github_commit_status.sh
+bash -n scripts/testing/post_deploy_integration_gate.sh
+bash -n scripts/testing/watch_post_deploy_integration.sh
+```
+
+**Linear failure script — compile (required):**
+
+```bash
+python3 -m py_compile scripts/create_integration_failure_discussion.py
+```
+
+**Pass criterion:** all items exit 0 on publish ref tip.
+
+**Railway + GitHub E2E:** Susan/Chuckles after cron/`watch_post_deploy_integration.sh` wired — not required for test-child when `gh`/`railway`/tokens absent.
+
+**Out of scope:** zero-arg `run_component_tests.sh`; new GitHub Actions workflow; empty commits to `origin/dev`.
