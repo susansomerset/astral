@@ -173,3 +173,40 @@ No unresolved rule conflicts.
 | 2 | Capture skip/start trace; `insert_vector_feedback_rows` debug; do_task missing owner/cid skip |
 
 **Review stub:** Pending Radia (`review-child`).
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-820-uat-vector-feedback-hydration-debug-logging` (code tip `22ee2e1`)  
+**Reviewed:** 2026-06-18
+
+Focused observability diff (9 files) — sibling AST-378 / AST-817 commits appear in three-dot history until `ftr` lands on `dev`; this review is AST-820 only.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–2 delivered: pure `vector_reviews_pipeline_trace` in utils; capture early-return skip lines; full pipeline trace on capture start; `do_task` skip when `vector_reviews` present but owner/candidate missing; insert exception `debug_detail`. |
+| §1.5.1 debug | All new emission gated on `debug=True`; uses `debug_index` + `debug_detail` only; no production log paths. |
+| Utils purity | Trace returns ordered strings — no logging import side effects; reuses AST-816 normalize/diagnostic/hydrate helpers. |
+| Trace coverage | Raw type/repr (120-char trunc), normalize outcome, expected codes, rubric lookup keys, per-line parse ok/fail, diagnostic summary, hydrate row count + up to 7 formatted lines. |
+| Capture skips | Explicit `skip reason=` for non-success status, empty `batch_id`, empty `expected_codes` — closes Susan's silent early-return gap. |
+| Tests | Utils trace (success, bad input, trunc); agent skip empty batch / empty expected / pipeline start; `do_task` missing candidate_id skip (manifest green). |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | `_capture_rubric_vector_feedback` failure path | Pipeline trace emits hydrate lines before AST-816 per-vector failure loop — intentional per plan (summary + §1.5.1 headers) but debug log will be verbose on parse failure. |
+| advisory | Plan out of scope | Admin `POST /vector_feedback/hydrate_reviews` still untraced — acceptable; dispatch debug is primary repro path. |
+| advisory | `_normalize_failure_reason` | Returns `unknown` when input is a valid string list but normalize still fails — should be unreachable; harmless if normalize/trace drift. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | None required — approve for User Testing. |
+| UAT | Re-run Susan `evaluate_jd` with debug enabled: confirm skip reasons or full pipeline trace in dispatch log; verify no new log noise when `debug=False`. |
+
+**Verdict:** Clean — approve for User Testing.
