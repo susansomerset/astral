@@ -206,6 +206,34 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-827 · AST-824
+
+**AST-827 (child):** Title list handoff on decomposed **select_job_page → parse_job_list** — `_normalize_job_titles` at finalize + parse dispatch; shared **`_culled_dom_for_parse`** with post-cull title coverage gate; **JOBS_FOUND** chain resolver parity. Sibling **AST-827** formatting Phase 2b covers medicarerights-style sibling `<a>` job rows.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Two-title list normalized and persisted on **JOBLIST_IDENTIFIED** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_finalize_joblist_identified_persists_two_titles` |
+| 2 | Parse dispatch passes multi-title culled DOM to **`_fetch_parse_job_list`** | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom` |
+| 3 | Partial cull / missing titles → **`PARSE_DISPATCH_NO_CONTAINERS`** | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_parse_dispatch_cull_miss_no_containers`; `::test_culled_dom_for_parse_cull_miss_when_titles_absent` |
+| 4 | **JOBS_FOUND** chain resolver unchanged tuple contract with multi-title cull | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_make_locate_parse_resolver_two_title_sibling_cull`; regression **`TestAst469LocateParseResolver`**, **`TestMakeLocateParseResolver469`** |
+
+Formatting sibling-anchor cull: **`docs/test-bible/utils/formatting.md`** (**AST-827**).
+
+**AST-827** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
+  tests/component/core/test_roster.py::TestAst469LocateParseResolver \
+  tests/component/core/test_roster.py::TestMakeLocateParseResolver469 \
+  tests/component/utils/test_formatting.py::TestFindJobContainers::test_sibling_anchor_links_two_titles \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-826 · AST-753
 
 **UAT dedupe:** **`_build_select_job_page_live_content`** skips trailing global **`=== NAV LINKS ===`** when assembled PJL already contains per-page **`--- NAV LINKS ---`** (AST-759 assembly); still appends global block for legacy rows with no embedded marker. **`nav_links=`** to **`_find_job_page_from_assembled`** unchanged for TRY_LINKS.
