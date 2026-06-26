@@ -483,3 +483,27 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-819 · AST-815 (UAT bug)
+
+**AST-819 (UAT bug):** Harden **`_normalize_company_url_for_dedupe`** — catch **`ValueError`** from malformed bracketed IPv6 / bad URLs, return `""` so discovery ingest and blurb pipe collection skip instead of crashing the batch. **AST-817** consult routing verified on branch (no product change this ticket). Susan repro: company **`vet_inflow_discovery`** crashed on **`Invalid IPv6 URL`** after mis-route into **`run_inflow_discovery_batch`**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Consult company vet → **`run_company_task`** (**AST-817** regression) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | Malformed IPv6 / bad URL dedupe safe | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty` |
+| 3 | Valid URL dedupe unchanged | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_normalize_company_url_strips_www` |
+
+**AST-819** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_strips_www \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
