@@ -210,3 +210,14 @@ Focused observability diff (9 files) — sibling AST-378 / AST-817 commits appea
 | UAT | Re-run Susan `evaluate_jd` with debug enabled: confirm skip reasons or full pipeline trace in dispatch log; verify no new log noise when `debug=False`. |
 
 **Verdict:** Clean — approve for User Testing.
+
+---
+
+## Resolution (Ada)
+
+**Date:** 2026-06-18  
+**Driven by:** Radia review — clean sign-off, no fix-now.
+
+**Changes:** None — product at `22ee2e1` and Radia doc at `56ddf6f` accepted as-is. Advisory verbose failure-path logging and untraced admin hydrate API deferred per ticket scope.
+
+**§9a:** `origin/sub/AST-378/AST-820-uat-vector-feedback-hydration-debug-logging` merges cleanly into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
