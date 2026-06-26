@@ -163,3 +163,16 @@ None.
 
 **Verdict:** Clean — `resolve-child` may proceed with no Radia fix-now items.
 
+---
+
+## Resolution
+
+**Date:** 2026-06-26  
+**Review:** Radia clean — no fix-now / discuss items.
+
+No additional product changes. Publish tip `135fd7e` (`docs(AST-817): Radia review — clean`) already includes Radia's plan-doc review section above. Product commit `f4281fd` (surgical `consult.py` mis-route removal) unchanged.
+
+**§9a dry-run:** `origin/sub/AST-815/AST-817-vet-inflow-company-routing` merges cleanly into `origin/dev` and `origin/ftr/AST-815-vet-inflow-discovery-routing`.
+
+**Handoff:** User Testing — Susan UAT checklist in Build review stub (vet dispatch logs company vet activity, not `no stale search terms`).
+
