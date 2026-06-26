@@ -148,3 +148,16 @@ No conflicts requiring plan revision.
 | Severity | Location | Action |
 |----------|----------|--------|
 | **advisory** | `src/utils/config.py` | Narrow `prefilter`-only map is intentional per plan (not a general alias table). If future roster dispatch keys diverge from `agent_task` keys, extend this helper rather than duplicating lookup in UI — same pattern as `_dispatch_trigger_state_for_task_key`. |
+
+---
+
+## Resolution
+
+**Date:** 2026-06-26  
+**Review:** Radia clean — no fix-now items @ `59867a0`; review doc @ `19ac04f`.
+
+**Product:** Unchanged since `e58e30d` — `dispatch_task_grouping_catalog_key` + `_dispatch_task_key_form_meta` grouping lookup only. Betty `merge-tests` @ `59867a0`.
+
+**§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-821-get-prefilter-company-to-work`.
+
+**Handoff:** User Testing — Susan confirms `GET /api/admin/dispatch_tasks/task_keys` shows `prefilter` under Company Roster between `fetch_website` and `fetch_job_pages`.
