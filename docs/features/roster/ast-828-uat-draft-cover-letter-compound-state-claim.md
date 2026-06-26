@@ -149,3 +149,15 @@ No conflicts requiring plan revision.
 | Verify | Compound `BUILD_ARTIFACTS.finalize_job_resume` claims without ValueError; `BUILD_ARTIFACTS.not_a_hop` still rejected |
 
 Betty manifest green @ `8f4ec67`. Awaiting Radia **review-child**.
+
+---
+
+## Resolution
+
+**Date:** 2026-06-26  
+**Sub-log hygiene:** Republished from `origin/ftr/AST-752-agent-data-caller-content` — linear AST-828 commits only; no `Merge remote-tracking branch` in ftr..sub range.
+
+**Product:** `is_valid_job_batch_claim_state` + `get_new_job_batch` claim validation (`aa6b161`).  
+**Tests:** Betty manifest 7/7 green (`8f4ec67`).
+
+**§9a dry-run:** pending Radia review + merge-child.
