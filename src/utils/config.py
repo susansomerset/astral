@@ -1281,7 +1281,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like",
+    "grade_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -1292,6 +1292,14 @@ _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
 def resolve_dispatch_task_config_key(task_key: str) -> str:
     """Return task_key unchanged — dispatch and TASK_CONFIG share one string (AST-736)."""
     return (task_key or "").strip()
+
+
+def dispatch_task_grouping_catalog_key(task_key: str) -> str:
+    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
+    tk = (task_key or "").strip()
+    if tk == "prefilter":
+        return ROSTER_CONFIG["prefilter"]["task_key"]
+    return tk
 
 
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:

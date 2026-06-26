@@ -552,6 +552,34 @@ class TestAst739DispatchTaskKeysGrouping:
         assert keys["orphan_only"]["task_name"] == ""
 
 
+# AST-825: prefilter dispatch key resolves grouping via prefilter_company agent_task catalog.
+class TestAst825PrefilterDispatchTaskKeysGrouping:
+    def test_dispatch_task_keys_prefilter_grouping_from_prefilter_company_catalog(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_group_order": "3000",
+                "task_group_name": "Company Roster",
+                "task_seq": 5.0,
+                "task_name": "Prefilter Company",
+            }
+            if task_key == "prefilter_company"
+            else None,
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        pf = keys["prefilter"]
+        assert pf["task_group_name"] == "Company Roster"
+        assert pf["task_group_order"] == "3000"
+        assert pf["task_seq"] == 5.0
+        assert pf["task_name"] == "Prefilter Company"
+        assert pf["entity_type"] == "company"
+        assert pf["trigger_state"] == "HOMEPAGE_READY"
+
+
 # AST-749: retired consult_* absent from task_keys even when list_dispatch_tasks returns legacy rows.
 class TestAst749DispatchTaskKeysRetiredFilter:
     def test_dispatch_task_keys_excludes_retired_consult_keys(

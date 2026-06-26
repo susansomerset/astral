@@ -494,6 +494,11 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
         assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
 
+    def test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company(self) -> None:
+        assert cfg.dispatch_task_grouping_catalog_key("prefilter") == "prefilter_company"
+        assert cfg.dispatch_task_grouping_catalog_key("fetch_website") == "fetch_website"
+        assert cfg.dispatch_task_grouping_catalog_key("  prefilter  ") == "prefilter_company"
+
     def test_retired_consult_dispatch_keys_rejected(self) -> None:
         assert cfg.dispatch_task_key_retired_message("consult_do") == (
             "task_key 'consult_do' is retired; use 'grade_do'"
