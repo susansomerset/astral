@@ -928,8 +928,6 @@ INFLOW_CONFIG = {
     "discovery": {
         "max_results_per_query": 100,
         "date_restrict_days": 7,
-        "dispatch_freq_hrs": 168,
-        "scan_interval_hours": 168,  # per-term last_scan_at staleness (AST-525); not dispatch_task.last_run_at
         "dispatch_trigger_state": "LIVE_PROMPTS",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
