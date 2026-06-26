@@ -395,14 +395,15 @@ Consult merge + config registry: **`docs/test-bible/core/consult.md`** · **`doc
 | --- | --- | --- |
 | Dual-row migration idempotency | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision` |
 
-Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases).
+Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases). **AST-823** adds **`TestAst823PrefilterDispatchMigration`** — see **`docs/test-bible/core/consult.md`** (**AST-823**).
 
 **AST-703** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
-  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration
 ```
 
 **Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.

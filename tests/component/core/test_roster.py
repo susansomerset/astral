@@ -1788,9 +1788,18 @@ class TestAst702PrefilterCompanyBatch:
             },
         ]
         ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c702"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
         monkeypatch.setattr(
             "src.core.candidate.rubric_criteria_for_task",
-            MagicMock(return_value=ctx["candidate_data"]["artifacts"]["company_prefilter"]),
+            MagicMock(return_value=rubric),
         )
         out = await roster_mod.prefilter_company_batch("batch-mix", companies, ctx=ctx, debug=False)
         assert out["passed"] == 1
