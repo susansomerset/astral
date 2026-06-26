@@ -299,6 +299,44 @@ class TestBatchApi:
         assert out == jobs
         claim.assert_called_once()
 
+    def test_compound_build_artifacts_hop_claimable_without_value_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        claim = MagicMock()
+        monkeypatch.setattr(tracker_mod.database, "claim_job_batch", claim)
+        monkeypatch.setattr(tracker_mod.database, "get_job_batch", lambda batch_id: [])
+
+        bid, out = tracker_mod.get_new_job_batch(
+            "BUILD_ARTIFACTS.finalize_job_resume",
+            batch_id="batch-828",
+        )
+
+        assert bid == "batch-828"
+        assert out == []
+        claim.assert_called_once()
+
+    def test_invalid_compound_suffix_still_rejects(self) -> None:
+        with pytest.raises(ValueError, match="not in allowed list"):
+            tracker_mod.get_new_job_batch(
+                "BUILD_ARTIFACTS.not_a_hop",
+                batch_id="batch-bad",
+            )
+
+    def test_states_list_accepts_legacy_compound_hop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        claim = MagicMock()
+        monkeypatch.setattr(tracker_mod.database, "claim_job_batch", claim)
+        monkeypatch.setattr(tracker_mod.database, "get_job_batch", lambda batch_id: [])
+
+        tracker_mod.get_new_job_batch(
+            "NEW",
+            batch_id="batch-multi",
+            states=["CANDIDATE_REVIEW", "BUILD_ARTIFACTS.finalize_job_resume"],
+        )
+
+        claim.assert_called_once()
+
     def test_get_and_clear_batch_delegate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(tracker_mod.database, "get_job_batch", lambda batch_id: ["job"])
         monkeypatch.setattr(tracker_mod.database, "clear_job_batch", lambda batch_id: 2)
