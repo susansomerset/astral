@@ -1294,6 +1294,14 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
     return (task_key or "").strip()
 
 
+def dispatch_task_grouping_catalog_key(task_key: str) -> str:
+    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
+    tk = (task_key or "").strip()
+    if tk == "prefilter":
+        return ROSTER_CONFIG["prefilter"]["task_key"]
+    return tk
+
+
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "prefilter":
         return ROSTER_CONFIG["prefilter"]["input_state"]

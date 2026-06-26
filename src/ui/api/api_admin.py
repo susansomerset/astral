@@ -59,6 +59,7 @@ from src.utils.config import (
     DISPATCH_SCHEDULABLE_TASK_KEYS,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
+    dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     get_task_keys,
@@ -889,8 +890,10 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions form defaults: schedulable keys use dispatch_task_admin_defaults;
-    grouping fields from agent_task row for the dispatch task_key (AST-736 — no alias map)."""
+    grouping fields from agent_task via dispatch_task_grouping_catalog_key; entity/trigger
+    keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
+    grouping_key = dispatch_task_grouping_catalog_key(task_key)
     cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
@@ -903,7 +906,7 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
         "is_scored": dispatch_task_key_is_scored(task_key),
-        **_catalog_task_grouping_meta(catalog_key),
+        **_catalog_task_grouping_meta(grouping_key),
     }
 
 
