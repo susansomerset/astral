@@ -472,6 +472,20 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-822 · AST-815 (UAT bug)
+
+**AST-822 (UAT bug):** Company **`vet_inflow_discovery`** consult guard routes to **`vet_inflow_discovery_company_batch`** (full claimed entity list) before **`run_company_task`** fallback — replaces **AST-817**/`819` **`run_company_task`** consult path for dispatch batching.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Consult vet → batch runner (not discovery batch / not per-entity warm) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | Batch assembly + **`hit_index`** decode | `src/core/roster.py` | `::TestAst822VetInflowDiscoveryBatch` |
+| 3 | Single-company wrapper (**AST-776** regression) | `src/core/roster.py` | `::TestAst776VetInflowDiscoveryCompany` |
+
+**Regression note:** **AST-817** manifest consult line updated in **AST-822** — batch mock replaces **`run_company_task`** expectation.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

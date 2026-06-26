@@ -1097,7 +1097,7 @@ class TestAst505InflowDiscoveryConfig:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
         assert d["entity_type"] == "company"
         assert d["trigger_state"] == "NEW"
-        assert d["batch_call_mode"] == 0
+        assert d["batch_call_mode"] == 1
         assert "vet_inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
 

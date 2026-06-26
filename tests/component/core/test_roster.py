@@ -1787,7 +1787,11 @@ class TestAst702PrefilterCompanyBatch:
                 "company_data": {"homepage_text": "other homepage"},
             },
         ]
-        ctx = _prefilter_rubric_ctx()
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c702"}
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=ctx["candidate_data"]["artifacts"]["company_prefilter"]),
+        )
         out = await roster_mod.prefilter_company_batch("batch-mix", companies, ctx=ctx, debug=False)
         assert out["passed"] == 1
         assert out["failed"] == 1
@@ -4428,10 +4432,8 @@ class TestAst776VetInflowDiscoveryCompany:
     ) -> None:
         from src.core import consult as consult_mod
 
-        company_task = AsyncMock(
-            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        )
-        monkeypatch.setattr(roster_mod, "run_company_task", company_task)
+        batch = AsyncMock(return_value={"passed": 1, "failed": 0, "skipped": 0, "total": 1})
+        monkeypatch.setattr(roster_mod, "vet_inflow_discovery_company_batch", batch)
         entity = {
             "short_name": "co_new",
             "candidate_id": "c776",
@@ -4449,8 +4451,58 @@ class TestAst776VetInflowDiscoveryCompany:
             dispatch_task_key="vet_inflow_discovery",
         )
         assert out["total_passed"] == 1
-        company_task.assert_awaited_once()
-        assert company_task.await_args.kwargs["dispatch_task_key"] == "vet_inflow_discovery"
+        batch.assert_awaited_once()
+        assert batch.await_args.args[0] == "batch-776"
+        assert batch.await_args.args[1] == [entity]
+
+
+class TestAst822VetInflowDiscoveryBatch:
+    """AST-822: batch vet_inflow_discovery — 000/001/002 live content + hit_index decode."""
+
+    def test_renumber_vet_blurb_line(self) -> None:
+        assert roster_mod._renumber_vet_blurb_line("000|A|https://a|s", 2) == "002|A|https://a|s"
+        assert roster_mod._renumber_vet_blurb_line("bad", 1) == "001|bad"
+
+    @pytest.mark.asyncio
+    async def test_batch_two_hits_decode_by_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "results": [
+                        {"hit_index": 0, "action": "slug", "website": "https://a.example"},
+                        {"hit_index": 1, "action": "ignore"},
+                    ],
+                },
+            },
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        companies = [
+            {
+                "short_name": "co_a",
+                "company_data": {"inflow_discovery_blurb": "000|A|https://a.example|s"},
+            },
+            {
+                "short_name": "co_b",
+                "company_data": {"inflow_discovery_blurb": "000|B|https://b.example|t"},
+            },
+        ]
+        out = await roster_mod.vet_inflow_discovery_company_batch("batch-822", companies, debug=False)
+        assert out == {"passed": 1, "failed": 1, "skipped": 0, "total": 2}
+        do_task.assert_awaited_once()
+        live = do_task.await_args.kwargs["live_content"]
+        assert "Discovery hits" in live
+        assert "000|A|" in live
+        assert "001|B|" in live
+        update.assert_called_once_with("co_a", company_website="https://a.example")
+        assert transition.call_args_list == [
+            call("co_a", "WEBSITE_FOUND"),
+            call("co_b", "VET_FAILED"),
+        ]
 
 
 class TestAst506InflowResolve:
