@@ -315,7 +315,7 @@ No plan conflicts requiring `conf-!!-NONE`.
 | Field | Value |
 |-------|-------|
 | **Publish ref** | `origin/sub/AST-512/AST-818-post-deploy-integration-github-status` |
-| **Built tip** | _(after build-child)_ |
-| **Stages** | 1 — GitHub status; 2 — Linear Discussion script; 3 — gate orchestrator; 4 — watcher + docs; 5 — Joan skill; 6 — Betty bible § AST-818 |
-| **Betty next** | Stage 6 bible appendix |
+| **Built tip** | _(after stage 5 push)_ |
+| **Stages** | 1 — GitHub status (`3087ce2`); 2 — Linear script (`8bef457`); 3 — gate (`c7c447f`); 4 — watcher + docs; 5 — Joan skill (operator machine) |
+| **Betty next** | Stage 6 bible § AST-818 |
 | **test-child manifest** | § QA manifest above |
