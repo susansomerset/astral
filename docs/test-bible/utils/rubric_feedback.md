@@ -57,3 +57,23 @@ Admin API + page: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/
 ```
 
 Capture + Admin wiring: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+---
+
+### AST-820 · AST-378 (UAT fix)
+
+**`vector_reviews_pipeline_trace`** — ordered debug_detail lines for normalize → diagnostic parse → hydrate (no logging in utils).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pipeline trace builder | `src/utils/rubric_feedback.py` | `TestAst820VectorReviewsPipelineTrace` |
+
+**AST-820** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_feedback.py::TestAst820VectorReviewsPipelineTrace \
+  -q
+```
+
+Capture early-return + `do_task` skip debug: **`docs/test-bible/core/agent.md`**.
