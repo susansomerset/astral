@@ -1,3 +1,96 @@
+<!-- linear-archive: AST-383 archived 2026-06-23 -->
+
+## Linear archive (AST-383)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-383/corebootstrap-runtime-startup-orchestration-from-uiserverpy  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** chuckles  
+**Priority / estimate:** High / —  
+**Parent:** —  
+**Blocked by / blocks / related:** —
+
+### Description
+
+## Goal
+
+Centralize **process startup** that today lives partly in `src/ui/server.py` (direct `src.data` import for `sync_agent_tasks`) so the UI entrypoint calls **core** only, and coupling checks stay in one obvious place.
+
+## Proposed shape
+
+* Add `src/core/bootstrap.py` (name TBD) exposing something like `bootstrap_runtime()` (exact API TBD).
+* `src/ui/server.py` calls that once after Flask blueprints are registered and **before** `start_scheduler()` (or the bootstrap module owns the ordering internally).
+
+## Responsibilities (this ticket)
+
+* **Validate** task / config / DB coupling that must hold before the app runs dispatch and agent work (exact assertions TBD—e.g. task keys vs `agent_task` rows, schema expectations).
+* **Ensure** required DB rows for runtime (today: `database.sync_agent_tasks(get_task_keys())` or equivalent moved behind core).
+* **Start** in-process scheduler via existing `src/core/dispatcher.py` entrypoints.
+
+## Explicitly out of scope
+
+* **Admin table export / import** and repo-pinned snapshot workflows are [AST-381](https://linear.app/astralcareermatch/issue/AST-381/pushing-database-content-to-github) only. Those flows must **not** run automatically from this bootstrap path; keep the tickets discrete.
+
+## Related
+
+* [AST-381](https://linear.app/astralcareermatch/issue/AST-381/pushing-database-content-to-github) — repo snapshot + UI-driven export / preview / import of admin DB content.
+* [AST-321](https://linear.app/astralcareermatch/issue/AST-321/refactor-api-layer-to-use-core-components) — refactor `ui/api/*` to stop importing `data` directly (orthogonal; bootstrap is server entry, not blueprints).
+
+### Comments
+
+#### chuckles — 2026-06-15T00:48:40.575Z
+## Git (authoritative — ignore Linear `gitBranchName`)
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-383 (parent) | ftr/ast-383-corebootstrap-runtime-startup-orchestration-from-uiserverpy |
+| AST-654 | sub/AST-383/AST-654-core-bootstrap-runtime-startup |
+
+**Epic worktree:** `astral-AST-383/` — one active sub checked out at a time.
+
+**Parent:** AST-383
+
+— Chuckles
+
+#### susan — 2026-06-15T00:08:06.613Z
+You have all the information you need to execute this ticket.
+
+#### chuckles — 2026-06-14T22:15:05.364Z
+[check-linear] Still valid as **Foundation hygiene**, not shipped: `src/ui/server.py` still imports `src.data.database` for `sync_agent_tasks` and calls `start_scheduler` directly (lines 55–67 cite AST-383 as pending). No `src/core/bootstrap.py` on `dev`. The 2025-05-16 “already on origin/dev” note was wrong.
+
+**Your call:** cancel/archive if layer cleanup isn’t worth the churn right now; or move to **Todo** when you want a small Foundation pass (plan + Betty branch exist). Nothing downstream is blocked today.
+
+— Chuckles
+
+#### susan — 2026-06-14T22:13:37.747Z
+@chuckles  Does this still need doing?  It's pretty old, so I wanted to make sure we still need it.
+
+#### chuckles — 2026-05-16T21:30:04.247Z
+## Plan Review — Chuckles
+
+**Verdict: APPROVED**
+
+Plan is faithful to the definition. No findings. ASTRAL_CODE_RULES compliance confirmed. Self-assessment is honest (conf-Medium, risk-HIGH — bootstrap ordering and fail-fast validation documented).
+
+**Note:** Implementation already on `origin/dev` ([retroactive-pipeline] C2).
+
+— Chuckles
+
+#### betty — 2026-05-08T22:08:25.327Z
+**Plan posted** — `docs/features/foundation/ast-383-corebootstrap-runtime-startup-orchestration-from-uiserverpy.md`
+
+GitHub: https://github.com/susansomerset/astral/blob/betty/ast-383-corebootstrap-runtime-startup-orchestration-from-uiserverpy/docs/features/foundation/ast-383-corebootstrap-runtime-startup-orchestration-from-uiserverpy.md
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — New `core/bootstrap.py` and Flask entry ordering for sync + scheduler.
+- **Conf:** `Medium` — Startup validation rules are extendable; minimal fail-fast spelled in plan.
+- **Risk:** `HIGH` — Ordering / silent failure risks unsynced tasks or duplicate scheduler; mitigated by explicit staged bootstrap and grep verification.
+
+— Betty
+
+---
+
 # Plan: AST-383 — core/bootstrap: runtime startup orchestration from `ui/server.py`
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-383/corebootstrap-runtime-startup-orchestration-from-uiserverpy  

@@ -69,7 +69,7 @@ class TestJobsRoutes:
         assert recommended.get_json()[0]["latest_score"] == 1
         states = captured.get("states") or []
         assert "RECOMMENDED" in states
-        assert cfg.resume_artifact_first_compound_state() in states
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
         other = jobs_client.get("/api/jobs?view=applied", headers=auth_headers)
         assert other.get_json() == []
 
@@ -281,13 +281,13 @@ class TestJobsRoutes:
     def test_approve_artifacts_from_recommended(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        first = cfg.resume_artifact_first_compound_state()
+        flat = cfg.BUILD_ARTIFACTS_BASE_STATE
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "RECOMMENDED"})
-        start = MagicMock(return_value=first)
+        start = MagicMock(return_value=flat)
         monkeypatch.setattr(jobs_mod, "start_artifact_build", start)
         resp = jobs_client.post("/api/jobs/job-595/approve_artifacts", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.get_json() == {"ok": True, "state": first}
+        assert resp.get_json() == {"ok": True, "state": flat}
         start.assert_called_once_with("job-595")
 
     def test_approve_artifacts_wrong_state_returns_409(
@@ -296,7 +296,7 @@ class TestJobsRoutes:
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
-            lambda job_id: {"astral_job_id": job_id, "state": cfg.resume_artifact_first_compound_state()},
+            lambda job_id: {"astral_job_id": job_id, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
         )
         resp = jobs_client.post("/api/jobs/job-595/approve_artifacts", headers=auth_headers)
         assert resp.status_code == 409
@@ -316,13 +316,13 @@ class TestAst562GenerateCancelRoutes:
     def test_generate_artifacts_happy_path(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        first = cfg.resume_artifact_first_compound_state()
+        flat = cfg.BUILD_ARTIFACTS_BASE_STATE
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "RECOMMENDED"})
-        start = MagicMock(return_value=first)
+        start = MagicMock(return_value=flat)
         monkeypatch.setattr(jobs_mod, "start_artifact_build", start)
         resp = jobs_client.post("/api/jobs/job-562/generate_artifacts", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.get_json() == {"ok": True, "state": first}
+        assert resp.get_json() == {"ok": True, "state": flat}
         start.assert_called_once_with("job-562")
 
     def test_cancel_artifact_build_happy_path(
@@ -331,7 +331,7 @@ class TestAst562GenerateCancelRoutes:
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
-            lambda job_id: {"astral_job_id": job_id, "state": cfg.resume_artifact_first_compound_state()},
+            lambda job_id: {"astral_job_id": job_id, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
         )
         cancel = MagicMock(return_value="RECOMMENDED")
         monkeypatch.setattr(jobs_mod, "cancel_artifact_build", cancel)

@@ -26,11 +26,127 @@ After successful **`prep-uat-land.sh`** ftr land push, **`record-landed-parent.s
 | `merge-parent.sh` does not invoke helper | `TestMergeParentShell::test_merge_parent_shell_does_not_record_merge_ticket_log` |
 | Same ticket id → timestamp update, no duplicate | `TestAppendMergeTicketLog::test_append_same_id_updates_timestamp_no_duplicate` |
 
+---
+
+### AST-800
+
+Prep-uat **`record-landed-parent.sh`** invokes **`scripts/rebuild_merge_ticket_log.py`** (full log rebuild) — replaces append-only path (AST-683). See **`dev/record_landed_parent.md`**.
+
+| Behavior | Tests |
+| --- | --- |
+| Shell wires rebuild, not append | `TestRecordLandedParentShell::test_record_landed_parent_wires_rebuild_not_append` |
+| Rebuild stub + commit in temp repo | `TestRecordLandedParent::test_record_landed_parent_rebuilds_and_commits` |
+| Missing rebuild CLI → `BLOCKED` | `TestRecordLandedParent::test_record_landed_parent_missing_rebuild_script_blocks` |
+
 **Manifest pytest gate:**
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/component/utils/test_merge_ticket_log.py \
+  tests/component/external/test_linear.py \
+  tests/component/core/test_deploy_status.py \
   tests/component/scripts/test_record_landed_parent.py \
   -q
 ```
+
+---
+
+### AST-805 · AST-801
+
+**UAT fix:** Prep-uat **`record-landed-parent.sh`** runs rebuild **before** Linear parent moves to **User Testing**, so the landing parent was omitted from **`fetch_user_testing_parent_ids()`**. **`--landing-parent AST-NNN`** unions the landing id with the Linear UAT set; ftr-on-dev and **`recorded_at`** gates unchanged (**AST-800**).
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Union landing parent not in mocked Linear UAT set | `scripts/rebuild_merge_ticket_log.py` | **`TestRebuildMergeTicketLogLandingParent::test_collect_entries_unions_landing_parent_not_in_linear_uat`** |
+| 2 | Landing parent still requires ftr-on-dev | same | **`::test_collect_entries_skips_landing_parent_without_ftr_on_dev`** |
+| 3 | Blank `--landing-parent` ignored | same | **`::test_collect_entries_ignores_blank_landing_parent`** |
+| 4 | stdout JSON includes **`landing_parent`** | same | **`::test_main_json_summary_includes_landing_parent`** |
+| 5 | Shell passes **`--landing-parent "$PARENT_ID"`** | `scripts/git/record-landed-parent.sh` | **`TestRecordLandedParentShell::test_record_landed_parent_passes_landing_parent_flag`** |
+| 6 | Temp-repo integration stub receives flag | same + rebuild stub | **`TestRecordLandedParent::test_record_landed_parent_rebuilds_and_commits`** |
+
+**Regression (required):** **AST-800** rebuild wiring tests in same module remain green.
+
+**AST-805** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–6 + AST-800 regression in **`test_record_landed_parent.py`** — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-806
+
+**UAT fix:** Prep-uat **`record-landed-parent.sh`** used bare **`python3`**, so rebuild failed with missing **`dotenv`** and **`data/merge_ticket_log.json`** never landed on **dev** (e.g. **AST-788** absent from deploy env tooltip). Resolve **`${ASTRAL_PYTHON:-$REPO_ROOT/.venv/bin/python}`**; **BLOCKED** when not executable. **`--landing-parent`** wiring unchanged (**AST-805**).
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Venv python resolution + no bare `python3 "$REBUILD"` | `scripts/git/record-landed-parent.sh` | **`TestRecordLandedParentShell::test_record_landed_parent_resolves_venv_python`** |
+| 2 | Missing `.venv/bin/python` → **BLOCKED** (AST-806) | same | **`TestRecordLandedParent::test_record_landed_parent_missing_venv_python_blocks`** |
+| 3 | **`ASTRAL_PYTHON`** override runs rebuild | same | **`TestRecordLandedParent::test_record_landed_parent_honors_astral_python_override`** |
+| 4 | Missing rebuild CLI still **BLOCKED** after venv gate | same | **`TestRecordLandedParent::test_record_landed_parent_missing_rebuild_script_blocks`** |
+
+**Regression (required):** **AST-805** landing-parent union + **AST-800** rebuild wiring tests in same module remain green.
+
+**AST-806** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + AST-805/AST-800 regression — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-807 · AST-799
+
+**UAT fix (prep-uat land):** **`record-landed-parent.sh`** invoked bare **`python3`**, so **`rebuild_merge_ticket_log.py`** failed with missing **`dotenv`** and **AST-799** never appeared in the deploy env tooltip merge-ticket list. Resolve **`${ASTRAL_PYTHON:-$REPO_ROOT/.venv/bin/python}`**; **BLOCKED** with **`setup_dev.sh`** hint when interpreter not executable. **`--landing-parent`** wiring unchanged (**AST-805**).
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 7 | Shell uses repo venv Python (not bare `python3 "$REBUILD"`) | `scripts/git/record-landed-parent.sh` | **`TestRecordLandedParentShell::test_record_landed_parent_uses_venv_python`** |
+| 8 | Missing venv → **BLOCKED** before rebuild | same | **`TestRecordLandedParent::test_record_landed_parent_blocks_without_venv`** |
+
+**Regression (required):** **AST-805** landing-parent union, **AST-800** rebuild wiring, **`test_record_landed_parent_honors_astral_python_override`**, **`test_record_landed_parent_missing_rebuild_script_blocks`**.
+
+**AST-807** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 7–8 + AST-805/AST-800/806 regression in **`test_record_landed_parent.py`** — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-811 · AST-810
+
+**Scope:** **`scripts/rebuild_merge_ticket_log.py`** — `_resolve_recorded_at` uses ritual greps (prep-uat → merge-parent → finish-up), then ftr land greps, then `_first_ftr_land_on_dev` walk; **no** dev-HEAD collapse via `git log dev ftr -1`. Utils read path, deploy status, tooltip UX unchanged.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | prep-uat grep wins; walk not invoked | `scripts/rebuild_merge_ticket_log.py` | **`TestRebuildMergeTicketLogTimestampResolution::test_resolve_recorded_at_prefers_prep_uat_grep`** |
+| 2 | ftr `merge origin/{ftr}` grep after empty ritual greps | same | **`::test_resolve_recorded_at_ftr_land_grep_before_walk`** |
+| 3 | All greps empty → distinct walk timestamps per parent | same | **`::test_collect_entries_distinct_recorded_at_when_walk_fallback`** |
+| 4 | Rebuild summary: two parents, unequal `recorded_at` (no dev-HEAD collapse) | same | **`::test_main_rebuild_summary_no_dev_head_timestamp_collapse`** |
+
+**Regression (required):** **AST-805** landing-parent union tests in **`test_rebuild_merge_ticket_log.py`** remain green.
+
+**AST-811** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + AST-805 regression — not zero-arg harness / branch-lock gate.

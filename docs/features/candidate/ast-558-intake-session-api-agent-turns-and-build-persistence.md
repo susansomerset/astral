@@ -1,3 +1,154 @@
+<!-- linear-archive: AST-558 archived 2026-06-23 -->
+
+## Linear archive (AST-558)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-558/intake-session-api-agent-turns-and-build-persistence-candidate-intake  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539; blocks: AST-559
+
+### Description
+
+## What this implements
+
+Backend for Estelle-led candidate intake: session store with resume-after-close, three user-message modes (`initiate_candidate`, `candidate_response`, `build_request`), config-driven Estelle calls with cache reuse, interview-turn JSON validation (`ready_to_build`, `assistant_message`), one `build_request` per session with persistence of all seven output areas via existing candidate save/normalization (including company search terms table sync), source material fields on candidate context, execution history recording per model call.
+
+## Acceptance criteria
+
+ 2. Each user reply advances the thread via `assistant_message`; Estelle responses include `ready_to_build`; **Generate Profile** is disabled until the latest response has `ready_to_build: true`.
+ 3. While `ready_to_build: true`, the user can still send `candidate_response` turns and Estelle may ask further clarifications before generate is pressed.
+ 4. **Generate Profile** sends `build_request` and persists all seven output areas as flat text strings verifiable on existing candidate UI/API.
+ 5. Company search terms from build appear in the Company Search Terms experience and are consumed by roster inflow the same as manually entered terms.
+ 6. Title patterns from build are stored on the candidate profile and participate in gazer title filtering the same as manually entered patterns.
+ 7. After a successful build in a session, **Generate Profile** cannot be fired again in that same modal session; opening a new session allows a new build.
+ 8. Pasted resume, cover, and LinkedIn source texts remain on the candidate record after the session.
+ 9. If the candidate already satisfies `check_context_complete` after build, the existing **CONTEXT_READY** transition occurs through current core logic (no duplicate state-machine invention).
+10. Estelle agent settings (model, prompts) are loaded from admin config; changing Estelle in Manage Tasks changes intake behavior without code deploy.
+11. Closing and reopening the same intake session resumes the conversation (not a blank session).
+12. Each intake model call appears in **Execution History** with prompt/logging parity to other agent exchanges; observable from Admin without new Intake-modal cost UI.
+13. Post-build, `parse_candidate_resume` **/** `craft_resume_base` **are not auto-invoked** — user performs those steps separately when ready.
+
+## Boundaries
+
+Does not implement Intake modal UI or nav (sibling Katherine ticket). Does not draft prompt text files on parent (Chuckles attachment). Does not auto-invoke post-build resume craft.
+
+## Notes for planning
+
+Expose stable API contract for UI: session CRUD, turn endpoint, build endpoint. Follow AST-202 Estelle/Manage Tasks patterns. Company search terms via AST-490 table sync. Session persistence = transcript + cache reload pattern like ad hoc multi-turn.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent **ftr/ast-539-candidate-intake-chat-session**, child **sub/AST-539/<child-id>-intake-session-api** (slug at dispatch).
+
+### Comments
+
+#### radia — 2026-06-03T00:26:34.407Z
+**Review** (`origin/dev...origin/sub/AST-539/AST-558-intake-session-api` @ `470c01e5`, product tip before doc: `470c01e5`)
+
+**What's solid**
+- REST contract + DTO flags match plan Stage 3 and parent **AST-539** AC 2–4, 7, 11 (`src/core/intake.py`, `src/ui/api/api_intake.py`).
+- §3.3: UI → core only; core uses `do_task`, `save_candidate_data`, `sync_company_search_terms_from_text`, `check_context_complete` — no new state machine.
+- §2.4: `intake-{task_key}` ledger per turn; `prompt_snapshot` + `agent.py` `intake_*` snapshot hook for resume-after-close.
+- Build: seven-path whitelist, one build per session (tested), no auto `parse_candidate_resume` / `craft_resume_base`.
+- Component tests: `tests/component/core/test_intake.py`, `tests/component/ui/api/test_api_intake.py` (bible §7.13zr).
+
+**discuss**
+- `post_intake_build` does not check `last_ready_to_build` — only ACTIVE + not BUILT. UI (**AST-559**) gates Generate Profile; confirm if API should **400** when not ready.
+- `POST /sessions` leaves prior ACTIVE rows; `GET /active` returns newest — Katherine should hold `session_id` or use `/active`.
+
+**advisory**
+- `INTAKE_CONFIG["estelle_agent_id"]` unused — Estelle via Manage Tasks `agent_task` rows; seed three `intake_*` keys before live UAT.
+
+**fix-now:** none — Ada may **resolve-astral** on happy path.
+
+**Doc:** `docs/features/candidate/ast-558-intake-session-api-agent-turns-and-build-persistence.md` § Radia review (2026-06-03); published `590d4736` on publish ref (`dev-radia` source `582dfe08`).
+
+#### betty — 2026-06-03T00:22:51.435Z
+[check-linear]
+
+**[qa-handoff] cleared** — manifest items 1–2 now exit 0 on narrowed harness.
+
+- **Harness:** `run_component_tests.sh` runs Vitest only with zero args; trailing pytest paths (manifest 1–2) are pytest-only.
+- **Tests:** `test_AdminManageCandidates.test.tsx` — **AST-511** (canceled) middle-name cases **`it.skip`**.
+- **Bible:** §7.13zr + Appendix A note; shasum on publish ref: `2872f983227332a8af63877968c2605d8859dfba7757de82963d0f2845942621`
+- **Publish:** `origin/sub/AST-539/AST-558-intake-session-api` @ `470c01e5`
+
+**Manifest (unchanged commands, now green):**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_intake.py`
+2. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_intake.py`
+
+Reassigned **Ada** for **`test-astral`** — stay **Tests Ready**.
+
+#### ada — 2026-06-03T00:13:38.756Z
+[qa-handoff]
+
+@Betty White — Re-verified on `dev-ada` after merges (`origin/dev`, `origin/ftr/ast-539-candidate-intake-chat-session`, `origin/sub/AST-539/AST-558-intake-session-api` @ `e043f447`). Blocker unchanged from prior handoff.
+
+**Manifest items 1–2:** pytest green on both paths; `run_component_tests.sh` still exits **1** after full Vitest tail (`test_AdminManageCandidates.test.tsx` — **Middle Name** / `profile.middle`; **AST-510** / **AST-511** canceled, no `middle` in product).
+
+**Direct pytest (repro):**
+```bash
+.venv/bin/python -m pytest tests/component/core/test_intake.py tests/component/ui/api/test_api_intake.py -q
+```
+→ **17 passed**.
+
+Please update manifest or test tree so items 1–2 exit 0 (e.g. skip/remove AST-511 middle-name Vitest cases, pytest-only gate per §7.13zr, or harness change). Reassign **Ada** when green.
+
+#### ada — 2026-06-03T00:11:33.393Z
+[qa-handoff]
+
+@Betty White — manifest **pytest** is green; **`run_component_tests.sh`** exits **1** on the harness Vitest tail only.
+
+**Commands (Betty manifest):**
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_intake.py` → pytest **9 passed**; then full Vitest runs.
+2. Same pattern for `tests/component/ui/api/test_api_intake.py`.
+
+**Direct pytest (publish tip on `dev-ada` after merges):**
+```bash
+.venv/bin/python -m pytest tests/component/core/test_intake.py tests/component/ui/api/test_api_intake.py -q
+```
+→ **17 passed** in 0.26s.
+
+**Vitest failures (not in AST-558 manifest):**
+- `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — expects **Middle Name** label and `profile.middle` in POST body.
+- **AST-511** is **Canceled**; `AdminManageCandidates.tsx` has no middle field on `origin/sub/AST-539/AST-558-intake-session-api`, `origin/ftr/ast-539-candidate-intake-chat-session`, or local tree after merges.
+
+**Why this is test/harness, not AST-558 product:** Bible §7.13zr manifest is intake backend only (no UI). Bible §565 documents that narrowed `run_component_tests.sh` still runs **full** Vitest; tail is red due to **canceled AST-511** specs, not `test_intake.py` / `test_api_intake.py`.
+
+**Ask:** Update manifest or test tree so engineer gate for **AST-558** is reproducible green (e.g. drop/skip AST-511 middle-name Vitest cases, or document pytest-only gate for this child). Reassign **Ada** when `run_component_tests.sh` items 1–2 exit 0.
+
+**Refs:** `origin/sub/AST-539/AST-558-intake-session-api` @ `e043f447` (matches Betty SHA).
+
+#### betty — 2026-06-02T22:58:06.096Z
+**QA test manifest** (`origin/sub/AST-539/AST-558-intake-session-api` @ `e043f447`)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_intake.py`
+2. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_intake.py`
+
+**Coverage:** new component tests for session lifecycle, turn validation, build persistence (company search terms sync + `check_context_complete`), ledger `intake-{task_key}` prefix, and REST contract/auth/error paths. No UI tests — **AST-559** owns the modal.
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` §7.13zr; shasum on publish ref: `33cb9eeb884cb566f6950441ff8ef278ce7c5a94`
+
+**UAT note (from build):** Seed `intake_initiate_candidate`, `intake_candidate_response`, and `intake_build_request` in Manage Tasks (`agent_id` = `X00_estelle_recruiter`) before live Estelle intake calls.
+
+#### ada — 2026-06-02T22:31:51.387Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-539/AST-558-intake-session-api/docs/features/candidate/ast-558-intake-session-api-agent-turns-and-build-persistence.md
+
+**Scope:** MAJOR-CHANGE — New `candidate_intake_session` table, `src/core/intake.py`, `api_intake.py`, three `TASK_CONFIG` intake tasks, and a small `agent.py` snapshot hook for multi-turn cache resume.
+
+**Conf:** Medium — Reuses `do_task`, dispatch ledger, and AST-524 search-term sync; new pieces are session store + cache snapshot wiring.
+
+**Risk:** Medium — Build persistence touches candidate context/profile and `check_context_complete`; mitigated by whitelisted build keys and no new state-machine logic.
+
+Published to `origin/sub/AST-539/AST-558-intake-session-api` @ `acdc8074`.
+
+---
+
 # AST-558 — Intake session API, agent turns, and build persistence
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-558/intake-session-api-agent-turns-and-build-persistence-candidate-intake  

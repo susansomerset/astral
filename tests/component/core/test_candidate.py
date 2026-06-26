@@ -1035,3 +1035,65 @@ class TestAst594DraftJobResumePayload:
         assert "candidate_contact" not in ap
         assert ap["candidate_contact_detail"] == "ada@example.com"
         assert candidate_mod.validate_draft_job_resume_payload(ap, {}) is None
+
+
+class TestAst723RubricVectorsCutover:
+    def test_apply_save_syncs_table_and_strips_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        criteria = [{"code": "CR", "label": "fit", "content": "line", "importance": 5}]
+        arts: Dict[str, Any] = {"joblist_rubric": criteria}
+        candidate_mod.apply_rubric_vectors_save("c723", arts)
+        assert "joblist_rubric" not in arts
+        assert synced == [("c723", "qualify_job_listings", criteria)]
+
+    def test_hydrate_overlays_table_backed_artifacts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "rubric_criteria_for_task",
+            lambda cid, owner: [{"code": "CR", "content": "x", "importance": 5}] if owner == "qualify_job_listings" else [],
+        )
+        cd: Dict[str, Any] = {"artifacts": {"base_resume": "keep"}}
+        candidate_mod.hydrate_rubric_artifacts_for_response("c723", cd)
+        assert cd["artifacts"]["joblist_rubric"][0]["code"] == "CR"
+        assert cd["artifacts"]["base_resume"] == "keep"
+
+    def test_prefilter_merges_embedded_rc_from_table(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("prefilter_company", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "prefilter_company",
+            [
+                {
+                    "code": "MP",
+                    "label": "Mission",
+                    "content": "Mission body",
+                    "importance": 5,
+                }
+            ],
+        )
+        rubric = candidate_mod.rubric_criteria_for_task("cand-1", "prefilter_company")
+        assert rubric[0]["code"] == "RC"
+        assert rubric[0]["label"] == "Reality Check"
+        assert any(r["code"] == "MP" for r in rubric)
+
+    def test_preview_injects_astral_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {}},
+        )
+        captured: dict = {}
+
+        def _pp(task_key: str, cd: dict, chain_context=None, job_context=None):
+            captured["cd"] = cd
+            return {"prompt": task_key}
+
+        monkeypatch.setattr(candidate_mod, "preview_prompt", _pp)
+        candidate_mod.preview_task_prompt("craft_joblist_rubric", candidate_id="c723")
+        assert captured["cd"]["_astral_candidate_id"] == "c723"

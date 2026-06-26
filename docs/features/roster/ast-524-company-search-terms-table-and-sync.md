@@ -1,3 +1,140 @@
+<!-- linear-archive: AST-524 archived 2026-06-15 -->
+
+## Linear archive (AST-524)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-524/company-search-terms-table-and-sync-company-search-terms-table-with  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-523 — Company search terms table with per-term last_scan_at (Roster inflow)  
+**Blocked by / blocks / related:** parent: AST-523; blocks: AST-526; blocks: AST-525
+
+### Description
+
+## What this implements
+
+Persistent **company_search_terms** storage: one row per candidate per search term with **last_scan_at**, upsert-and-delete sync from a line list, and one-time migration from legacy **artifacts.company_search_terms** strings.
+
+## Acceptance criteria
+
+1. Saving the Company Search Terms textarea creates/updates/deletes **company_search_terms** rows for that candidate; terms removed from the text are deleted from the table.
+2. Regenerating terms and saving applies upsert-and-delete; terms unchanged in text retain their prior **last_scan_at**.
+3. Migrating an existing candidate with an artifact string produces equivalent table rows without data loss.
+
+## Boundaries
+
+* Does not change **inflow_discovery** batch logic or dispatch eligibility — **AST-525**.
+* Does not change Artifacts UI wiring — **AST-526**.
+* No per-row table editor; sync API only.
+* No calendar/cron schedules.
+
+## Notes for planning
+
+* Mirror **board_search.last_scan_at** cadence patterns in [**database.py**](<http://database.py>).
+* Update [**database.py**](<http://database.py>) header inventory when adding the table.
+* Core helpers in [**candidate.py**](<http://candidate.py>) replace artifact string normalization as source of truth.
+* [**config.py**](<http://config.py>) **COMPANY_SEARCH_TERMS** token path retarget is **AST-525** (consumer) — expose list/join helpers here.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent **ftr/AST-523-company-search-terms-table-with-per-term-last-scan-at-roster-inflow**, child **sub/AST-523/AST-524-company-search-terms-table-and-sync**.
+
+### Comments
+
+#### chuckles — 2026-06-02T19:34:48.744Z
+[check-linear]
+
+Confirmed merged to **`origin/dev`**: roster-inflow composite **`803aaa1f`** (includes **AST-523** rollup **`0cc15621`**). **`company_search_terms`** table + sync helpers present on dev (`database.py` / `candidate.py` — 38 references). Child **`sub/AST-523/AST-524-*`** deleted post-rollup (expected).
+
+**Done** — engineer assignee unchanged (Hedy).
+
+— Chuckles
+
+#### susan — 2026-06-02T17:40:16.267Z
+@chuckles Please confirm this ticket is actually done and merged to dev origin, and then set it to Done?
+
+#### radia — 2026-05-29T03:11:41.639Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-523/AST-524-company-search-terms-table-and-sync`
+
+### What's solid
+- **§3.3:** `api → core → data` for sync; data-layer line-split helper avoids `database → core`.
+- **Schema:** `company_search_terms` inventory, composite PK, index, migration only when row count is 0, `ON CONFLICT` preserves `last_scan_at`.
+- **§2.4:** N/A — not batch-claimed rows.
+- **Plan:** Upsert-and-delete, `apply_company_search_terms_save` strips artifact blob, dedicated sync route matches stage intent.
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **`_migrate_company_search_terms_from_artifacts`:** Sweeps all `candidate` rows (no `DELETED` filter). Acceptable if intentional; otherwise consider aligning with list helpers that skip deleted candidates.
+- **Extra API:** `PUT …/company_search_terms/sync` beyond plan stage 2 — fine if Betty manifest covers it.
+
+— Radia
+
+#### hedy — 2026-05-29T03:06:50.439Z
+[check-linear]
+
+**Session scope:** Parent **AST-523** / **Astral Roster** — assigned **AST-524**, **AST-525** (sibling **AST-526** and parent pipeline out of scope).
+
+**§0a (`astral-hedy` / `dev-hedy`):** `git fetch origin`, `checkout dev-hedy`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`). No publish-ref merges (check-linear only; no `test-astral` / `resolve-astral`).
+
+**§0b:** `@hedy` issue search (Team Astral + **Astral Roster** project); **14d** roster fallback. Full threads on **AST-524**, **AST-525**, parent **AST-523**, and other Hedy-assignee roster tickets (**AST-505**, **AST-506**, **AST-508**). **0** actionable comments — nothing `@hedy` or directed at Hedy needing reply or small fix.
+
+**§1:** Assignee **AST-524** / **AST-525** — latest activity is Betty QA manifests + Chuckles plan validation (pre-build); no thread nags since plan posts.
+
+**Epic status (informational):** Both tickets **Tests Passed**; **AST-526** also **Tests Passed** (Katherine). Next gates: Radia **`review-astral`** on children — not invoked from this pass.
+
+**Pipeline:** Inbox quiet; no `plan-astral` / `build-astral` / `test-astral` / `resolve-astral`.
+
+#### betty — 2026-05-29T02:30:51.748Z
+**Bible shasum correction:** `bcc3cd8bf28f9cfe4cbf24e78c26e094e199ae24` on `origin/sub/AST-523/AST-524-company-search-terms-table-and-sync`.
+
+#### betty — 2026-05-29T02:30:47.317Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-523/AST-524-company-search-terms-table-and-sync` @ `984a50bd`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `$(git show origin/sub/AST-523/AST-524-company-search-terms-table-and-sync:docs/ASTRAL_TEST_BIBLE.md | shasum | awk '{print $1}')` — see §7.13zi
+
+Run **`test-astral`** on **`dev-hedy`** (replay **`git fetch origin`** → **`git merge origin/dev`** → **`git merge origin/sub/AST-523/AST-524-company-search-terms-table-and-sync`** first per bible §7.12b if substrate drift).
+
+1. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_company_search_terms.py::TestAst524CompanySearchTermsTable`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestNormalizeCompanySearchTermsOnSave`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestCompanySearchTermsLines`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst524CompanySearchTermsTable`
+5. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_blank_company_search_terms`
+6. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestAst524CompanySearchTermsSync`
+
+**Coverage map:** §7.13zi (parent **AST-523**). No UI page ticket — §6c routed-page rules N/A (**AST-526** owns Artifacts UI).
+
+**Notes:** Existing **AST-504** artifact/normalize tests remain for legacy read path until **AST-525** retargets consumers. Manifest pytest nodes passed on **`dev-betty`** after merge replay.
+
+#### chuckles — 2026-05-29T02:14:23.454Z
+## Plan validation — APPROVED
+
+**Verdict:** APPROVED → **Plan Approved**
+
+Definition fidelity, layer boundaries, config literals, and board_search cadence mirror all check out.
+
+**acceptable:** 526 names `parse_company_search_terms_text` / `company_search_terms_text`; 524 plan uses `company_search_terms_joined_text` — align symbol names in 524 build so 526 contract matches.
+
+— Chuckles
+
+#### hedy — 2026-05-29T02:12:32.116Z
+Plan: [`docs/features/roster/ast-524-company-search-terms-table-and-sync.md`](https://github.com/susansomerset/astral/blob/sub/AST-523/AST-524-company-search-terms-table-and-sync/docs/features/roster/ast-524-company-search-terms-table-and-sync.md)
+
+**Self-Assessment**
+- **Scope:** Single-Component — `database.py`, `candidate.py`, and `api_candidate.py` only; table + sync API, no UI or discovery cadence.
+- **Conf:** Medium — mirrors existing `board_search` / `last_scan_at` table patterns; upsert SQL must preserve `last_scan_at` on unchanged terms.
+- **Risk:** Medium — migration/sync bugs could drop terms or reset scan timestamps; scoped to roster inflow storage, not consult/job paths.
+
+---
+
 # AST-524 — Company search terms table and sync
 
 - **Linear:** [AST-524](https://linear.app/astralcareermatch/issue/AST-524/company-search-terms-table-and-sync-company-search-terms-table-with)

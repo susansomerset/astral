@@ -77,6 +77,15 @@ describe("AdminAgentPrompts", () => {
 
   function mockApi() {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
@@ -211,4 +220,26 @@ describe("AdminAgentPrompts", () => {
     await waitFor(() => expect(putBody).toContain("{$FIRST_NAME}"))
     expect(putBody).not.toContain("Hello Ada")
   }, 20000)
+
+  it("AST-783: shows agent repo JSON divergence banner on routed page", async () => {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            agent: { diverged: true, repo_relative_path: "data/admin/agent.json" },
+            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+    })
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText(/agent personas/)).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Revert to file" })).toBeInTheDocument()
+  }, 15000)
 })

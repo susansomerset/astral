@@ -1,3 +1,163 @@
+<!-- linear-archive: AST-526 archived 2026-06-15 -->
+
+## Linear archive (AST-526)
+
+**Archived:** 2026-06-15  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-526/artifacts-ui-and-api-for-search-terms-table-company-search-terms-table  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-523 — Company search terms table with per-term last_scan_at (Roster inflow)  
+**Blocked by / blocks / related:** parent: AST-523
+
+### Description
+
+## What this implements
+
+Artifacts **Company Search Terms** page and candidate API: load textarea from table rows (newline-joined), save/autosave syncs upsert-and-delete via **AST-524** helpers; Generate flow unchanged from user perspective.
+
+## Acceptance criteria
+
+1. Saving the Company Search Terms textarea creates/updates/deletes **company_search_terms** rows for that candidate; terms removed from the text are deleted from the table.
+2. Regenerating terms and saving applies upsert-and-delete; terms unchanged in text retain their prior **last_scan_at**.
+3. Artifacts page still presents one textarea, one term per line; Generate/Regenerate/Save behavior matches other craft artifacts from the user's perspective.
+
+## Boundaries
+
+* No table schema — **AST-524**.
+* No discovery/dispatch logic — **AST-525**.
+* Textarea only; no per-row table UI.
+
+## Notes for planning
+
+* **ArtifactsCompanySearchTerms.tsx**, **api_candidate.py**.
+* Stop persisting **artifacts.company_search_terms** blob on save after **AST-524** lands.
+
+## Git branch (authoritative)
+
+**sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table**
+
+### Comments
+
+#### chuckles — 2026-06-02T19:34:52.294Z
+[check-linear]
+
+Confirmed merged to **`origin/dev`** via **AST-523** / **AST-490** composite merges (**`0cc15621`**, **`803aaa1f`**). Artifacts Company Search Terms UI + API on dev (`ArtifactsCompanySearchTerms.tsx`, `api_candidate.py`). Publish sub branch deleted post-rollup.
+
+**Done** — engineer assignee unchanged (Katherine).
+
+— Chuckles
+
+#### susan — 2026-06-02T17:40:30.998Z
+@chuckles Please confirm this ticket is actually done and merged to dev origin, and then set it to Done?
+
+#### chuckles — 2026-05-29T03:40:17.009Z
+## prep-uat blocker — fix-now (Katherine)
+
+**prep-uat AST-523** failed at §6 collection: tests import **`RESUME_STRUCTURE_*`** symbols removed from product on this publish ref (Radia §5d — AST-517/519 surface intentionally out of AST-526 scope).
+
+**Failing imports:**
+- `tests/component/core/test_candidate.py` — `RESUME_STRUCTURE_CONTACT_SECTION_IDS`, `RESUME_STRUCTURE_KNOWN_SECTION_IDS`
+- `tests/component/utils/test_config.py` — `RESUME_STRUCTURE_DEFAULT`, contact/known section ids
+
+**Fix:** Remove or rewrite those test sections so collection matches the 526 product scope (no `resume_structure` API/config on this branch). Do **not** restore `RESUME_STRUCTURE_*` in `config.py` unless Susan reverses the Radia cut.
+
+**Owner:** Katherine — fix on **`dev-kath`**, publish to **`origin/sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table`**, then **`resolve-astral AST-526`** → User Testing. Chuckles will re-rollup 526 → ftr after.
+
+— Chuckles
+
+#### radia — 2026-05-29T03:11:44.482Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table`
+
+### What's solid (AST-526 scope)
+- **GET detail:** `candidate["company_search_terms"] = company_search_terms_joined_text(candidate_id)` — table-backed load.
+- **PUT data:** `apply_company_search_terms_save` before persist; `if body:` avoids empty save after blob strip.
+- **Frontend:** `ArtifactsCompanySearchTerms.tsx` reads top-level `c.company_search_terms`; save body unchanged (`artifacts.company_search_terms`).
+- **§3.3:** API uses core helpers, no direct `database` in routes.
+
+### fix-now
+- **§5d cross-ticket boundary:** Incremental diff **524→526** adds **AST-517** `resume_structure` surface (`RESUME_STRUCTURE_*` in `config.py`, `normalize_resume_structure` / `resolve_resume_structure` in `candidate.py`, `GET …/resume_structure` and related `api_candidate.py` paths). **Not** in AST-526 plan or acceptance criteria — remove from this publish ref or split to the owning ticket before **resolve-astral**.
+
+### discuss
+- **Plan symbol names:** Plan cites `parse_company_search_terms_text` / `sync_company_search_terms`; implementation uses `normalize_company_search_terms_on_save` + `sync_company_search_terms_from_text` / `apply_company_search_terms_save`. Behavior looks equivalent; confirm Betty tests target the shipped names.
+
+### advisory
+(none)
+
+— Radia
+
+#### katherine — 2026-05-29T02:58:32.993Z
+[check-linear]
+
+**Session scope:** **AST-526** only (parent **AST-523** / **Astral Roster**); sibling **AST-524**/**525** and parent pipeline out of scope.
+
+**§0a (`astral-kath` / `dev-kath`):** `git fetch origin`, `checkout dev-kath`, `merge origin/dev` — **merge-clean** (`BEHIND=0`, `origin/dev` ancestor of `HEAD`). No publish-ref merges (check-linear only; no `test-astral` / `resolve-astral`).
+
+**§0b:** `@katherine` issue search (Team Astral + **Astral Roster** project); **14d** fallback on roster project. Full thread on **AST-526**. **0** actionable comments — nothing `@katherine` or directed at Katherine needing reply or small fix.
+
+**§1:** Assignee **AST-526** — latest thread activity is Katherine test-pass report (`4e9f3f49`); Betty manifest updates predate it and require no engineer reply.
+
+**Pipeline:** Inbox quiet; ticket **Tests Passed** — no `resolve-astral` from this pass (happy path).
+
+#### katherine — 2026-05-29T02:53:13.882Z
+Manifest green after product fix @ `origin/sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table` `4e9f3f49`.
+
+```
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestAst526ArtifactsCompanySearchTermsApi  # 3 passed
+npx vitest run .../test_ArtifactsCompanySearchTerms.test.tsx  # 2 passed
+```
+
+**Fix:** `update_candidate_data` skips `save_candidate_data` when the PUT body is empty after company search terms sync; restored `resume_structure` core/config symbols required by `api_candidate` imports on the integration line.
+
+#### betty — 2026-05-29T02:45:12.563Z
+**Manifest update** — publish tip is now `a2c353c6`; bible shasum `348d58d8979332e6d8a3beec5daab02a82c0c8d81949259f37ef95235831f79c`.
+
+Blank-input **400** coverage lives in **`TestAst526ArtifactsCompanySearchTermsApi::test_update_rejects_blank_company_search_terms`** (publish ref does not carry the legacy **`TestCandidateRoutes`** node).
+
+— Betty
+
+#### betty — 2026-05-29T02:44:45.967Z
+## QA test manifest
+
+**Publish ref:** `origin/sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table` @ `8e6dd085`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `fa54004dff2204faec35284dec9d769403a3c55334bb44ed4ad40ab3d5b2221b` on publish ref (§7.13zi)
+
+Run from repo root on **`dev-kath`** after merging this publish ref:
+
+1. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestAst526ArtifactsCompanySearchTermsApi`
+2. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_blank_company_search_terms`
+3. `./scripts/testing/run_component_tests.sh tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx`
+
+**Blocker smoke (optional):** §7.13zi **AST-524** narrowed run if table/sync regressions are suspected.
+
+**Coverage notes:**
+- **GET** detail injects top-level **`company_search_terms`** from **`company_search_terms_joined_text`** (not artifacts blob).
+- **PUT** with only **`artifacts.company_search_terms`** syncs table, strips blob, skips **`save_candidate_data`** when body is empty after pop (AST-526 API order).
+- **§6c** routed page Vitest mocks top-level GET field; Generate/Regenerate/Save paths unchanged.
+
+— Betty
+
+#### chuckles — 2026-05-29T02:14:23.919Z
+## Plan validation — APPROVED
+
+**Verdict:** APPROVED → **Plan Approved**
+
+Textarea UX preserved; PUT intercept + strip blob is the right contract.
+
+— Chuckles
+
+#### katherine — 2026-05-29T02:11:52.105Z
+Plan: [`docs/features/roster/ast-526-artifacts-ui-and-api-for-search-terms-table-company-search-terms-table-with-per-term-last-scan-at-roster-inflow.md`](https://github.com/susansomerset/astral/blob/sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table/docs/features/roster/ast-526-artifacts-ui-and-api-for-search-terms-table-company-search-terms-table-with-per-term-last-scan-at-roster-inflow.md) (published `39508dfd` on `sub/AST-523/AST-526-artifacts-ui-and-api-for-search-terms-table`).
+
+**Self-assessment**
+- **Scope:** `Single-Component` — `api_candidate.py`, `ArtifactsCompanySearchTerms.tsx`, and targeted tests only; no schema, discovery, or token work.
+- **Conf:** `Medium` — UI/API pattern is familiar, but build depends on AST-524 helper names (`parse_company_search_terms_text`, `sync_company_search_terms`, `company_search_terms_text`) landing on the integration line first.
+- **Risk:** `Medium` — Save intercept must sync the table without writing `artifacts.company_search_terms`; failure mode is isolated to this Artifacts page.
+
+---
+
 # AST-526 — Artifacts UI and API for search terms table (Company search terms table with per-term last_scan_at (Roster inflow))
 
 - **Linear:** [AST-526](https://linear.app/astralcareermatch/issue/AST-526/artifacts-ui-and-api-for-search-terms-table-company-search-terms-table)

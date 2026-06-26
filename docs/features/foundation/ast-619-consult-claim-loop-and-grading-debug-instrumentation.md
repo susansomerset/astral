@@ -1,3 +1,119 @@
+<!-- linear-archive: AST-619 archived 2026-06-23 -->
+
+## Linear archive (AST-619)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-619/consult-claim-loop-and-grading-path-debug-instrumentation-debug  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-543 — Debug logging backfill: consult  
+**Blocked by / blocks / related:** parent: AST-543
+
+### Description
+
+## What this implements
+
+Backfill the **AST-538** debug logging contract across **consult** batch and grading paths in `src/core/consult.py`: consult claim loops, encoded rubric evaluation, job consult stages, and state transitions with index headers and `|` detail lines. Debug runs must show per-job inputs, grading branches, and pass/fail reasons — not only batch totals.
+
+## Acceptance criteria
+
+1. A representative **consult** batch with **debug=True** shows, **before** the batch summary line, index headers and `|` detail for each claimed job in that pass plus grading branch context (pass/fail reason).
+2. Rubric evaluation paths (`_render_pass_fail`, `_render_score`, verdict rendering) emit `|` detail explaining branch taken when **debug=True**.
+3. **debug=False** produces no new debug-only log lines on touched consult paths (spot-check one consult batch).
+4. Radia review treats missing or inadequate debug instrumentation on touched consult **debug** surfaces as **fix-now** per **AST-538**.
+
+## Boundaries
+
+* Does **not** instrument dispatcher, roster, agent, gazer, builder, or external LLM modules — sibling backfill tickets **AST-540**–**AST-546**.
+* Does **not** change consult scoring, state machine, or business logic.
+* Does **not** add Betty log-string tests.
+
+## Notes for planning
+
+* Use shared debug helper from **AST-538** (`src/utils/logging.py`); retire hand-rolled `logger.debug` / `[DEBUG]` INFO lines in touched consult code where the AST-538 contract applies.
+* Primary file: `src/core/consult.py`.
+* Lazy-import patterns unchanged; logging only.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-543-debug-logging-backfill-consult`, child `sub/AST-543/<child-id>-consult-claim-loop-grading-debug`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-14T04:45:09.658Z
+**Review** — `origin/dev...origin/sub/AST-543/AST-619-consult-claim-loop-grading-debug` @ `08b8f377`
+
+Plan doc: `docs/features/foundation/ast-619-consult-claim-loop-and-grading-debug-instrumentation.md` (Review section)
+
+### fix-now
+
+- **`src/core/agent.py`** (~86 lines vs `origin/dev`) — **§5d / plan execution contract.** Ticket forbids `agent.py`. Publish ref drops `_resume_hop_debug_index`, resume-hop `debug_detail`, and legacy `[DEBUG]` while keeping partial `_do_task_debug_*` from a sibling merge. **Revert `agent.py` to byte-match `origin/dev`** on this ref (agent backfill is AST-541/618).
+
+### discuss
+
+- **Grading detail order (§1.5.1):** `_render_pass_fail` / `_render_score` emit `debug_detail` inside `process_fn` before `_run_batch_consult` emits the per-job `debug_index`. OK for UAT if branch-then-index is acceptable; otherwise reorder in resolve.
+- **Sticky `set_debug_flag`:** No reset on batch exit — confirm debug=False spot-check after a debug batch in the same worker.
+
+### solid (consult.py)
+
+- `_LOG_DEBUG` / `[DEBUG]` retired; contract via `set_debug_flag` + helpers.
+- `_run_batch_consult`: batch start, per-job indices (incl. failures), missing IDs, batch-end detail ordering.
+- `qualify_job_listings` / `evaluate_jd_batch`: input + JD-readiness indices; legacy INFO gated `if not debug:`.
+- Scored dispatch skip indices; `render_verdict` + `_apply_render_verdict_decoded_job(debug=…)`.
+- No batch claim/clear or transition semantic changes (§2.4/§2.6).
+
+### advisory
+
+- Betty bible + `enable_debug_log` fixture — appropriate for `_LOG_DEBUG` removal.
+
+#### betty — 2026-06-14T04:41:22.433Z
+## QA test manifest (§7.13zzg)
+
+**Publish:** `origin/sub/AST-543/AST-619-consult-claim-loop-grading-debug` @ `9cb5a5bb` (`merge-tests(AST-619): origin/tests 74b5ea01`)
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref = `77b8f02f472a6a367ff0915c5484a364cd27fad2`
+
+Instrumentation-only child — **no new log-string tests** per ticket AC. Existing **`LOCKED_AT_100`** + §7.13zt contract regression.
+
+1. **`tests/component/core/test_consult.py`** — full file (branch lock on `src/core/consult.py`)
+2. **`tests/component/utils/test_debug_logging.py`** — §7.13zt gating/truncation regression
+3. **`tests/component/utils/test_logging_batch.py`** — batch helper regression
+
+**Narrowed run (pytest-only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_consult.py tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
+
+**Manifest focus (existing classes):**
+
+| Touched path | Existing tests |
+| --- | --- |
+| `_render_pass_fail` / `_render_score` | `TestRenderPassFail`, `TestRenderPassFailDebug`, `TestRenderScore`, `TestRenderScoreBranches` |
+| `_run_batch_consult` | `TestRunBatchConsult`, `TestRunBatchConsultBranches` |
+| `qualify_job_listings` / `evaluate_jd_batch` | `TestQualifyJobListings`, `TestEvaluateJdBatch` |
+| `render_verdict` | `TestRenderVerdict` |
+| Encoded DO/GET/LIKE batches | `TestAst503`, `TestRunConsultTask` batch rows |
+| `debug=False` unchanged | `TestRemainingConsultBranches::test_runs_without_debug_logging` |
+
+**Betty test fix:** `enable_debug_log` fixture now uses `logger.set_debug_flag(True)` — product removed `_LOG_DEBUG` / `isEnabledFor` guards in favor of `debug_detail`.
+
+— Betty
+
+#### hedy — 2026-06-14T04:34:53.323Z
+Plan doc: [ast-619-consult-claim-loop-and-grading-debug-instrumentation.md](https://github.com/susansomerset/astral/blob/sub/AST-543/AST-619-consult-claim-loop-grading-debug/docs/features/foundation/ast-619-consult-claim-loop-and-grading-debug-instrumentation.md)
+
+Five stages: (1) `_consult_job_identifier` + grading helpers `_render_pass_fail` / `_render_score` → `debug_detail` branches; (2) `_run_batch_consult` per-job indices, missing-ID headers, batch-end detail, retire `[DEBUG]`; (3) `qualify_job_listings` / `evaluate_jd_batch` input + JD-readiness skips; (4) encoded consult prep skips + `render_verdict` / `_apply_render_verdict_decoded_job`; (5) manual UAT spot-checks.
+
+**Self-Assessment**
+- **Scope:** `Single-Component` — only `src/core/consult.py`; existing logging helpers, no new modules.
+- **Conf:** `high` — AST-538 contract and sibling dispatcher backfill patterns; every current `[DEBUG]` / `_LOG_DEBUG` site mapped to explicit steps.
+- **Risk:** `Medium` — consult batch/grading is production-critical; flag gating must stay strict so `debug=False` stays quiet.
+
+---
+
 # AST-619 — Consult claim, loop, and grading-path debug instrumentation (Debug logging backfill: consult)
 
 - **Linear (this ticket):** [AST-619](https://linear.app/astralcareermatch/issue/AST-619/consult-claim-loop-and-grading-path-debug-instrumentation-debug)

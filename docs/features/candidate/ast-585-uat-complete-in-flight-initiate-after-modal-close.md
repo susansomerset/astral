@@ -1,3 +1,156 @@
+<!-- linear-archive: AST-585 archived 2026-06-23 -->
+
+## Linear archive (AST-585)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-585/uat-complete-in-flight-initiate-after-modal-close  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539
+
+### Description
+
+## Repro (Susan UAT AST-539 @ `b7886c0d`)
+
+User closes intake modal while initiate/turn request is in flight — response lost; thread empty on return.
+
+## Expected
+
+* Backend completes model call and persists transcript even if client disconnects.
+* On return → **Continue** → user sees Estelle response when ready (in-progress conversation recognized).
+
+## Fix scope
+
+`IntakeChatModal.tsx` (do not abort in-flight fetch on unmount; optional poll on resume). Core intake if server drops work on incomplete request. Vitest + component tests.
+
+Parent: AST-539.
+
+### Comments
+
+#### betty — 2026-06-06T01:49:15.916Z
+## QA test manifest (AST-585)
+
+**Publish ref:** `origin/sub/AST-539/AST-585-inflight-initiate-persist-after-close` @ `e5b682d0`  
+**`docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref:** `f80745d9a1225af9c134509bcbaea454e6a3ee69`  
+**Bible:** §7.13zr row **AST-585** + narrowed run
+
+### Run (merge this `sub/*` tip on `dev-kath` before replay)
+
+1. **Core — background initiate/turn + `awaiting_agent` + duplicate guard**
+   ```bash
+   .venv/bin/python -m pytest tests/component/core/test_intake.py -k "create_session_persists or duplicate_active or background_initiate or turn_appends" -q
+   ```
+
+2. **API — immediate 201 with `awaiting_agent`; duplicate active → 409**
+   ```bash
+   .venv/bin/python -m pytest tests/component/ui/api/test_api_intake.py -k "create_session_201 or duplicate_active_409" -q
+   ```
+
+3. **Vitest — `IntakeChatModal` poll until assistant + unmount-safe autoStart (§6c component)**
+   ```bash
+   cd src/ui/frontend && npx tsc -b --noEmit
+   cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx -t "polls active session until assistant arrives after empty resume|unmount during autoStart"
+   ```
+
+### Notes
+
+- Existing §7.13zr rows (**AST-558**–**584**) unchanged; no obsolete tests dropped.
+- Full `test_CandidateIntake.test.tsx` includes **AST-584** `freshStart` regression — requires `freshStart` logic from rolled `ftr/` (not in this `sub/*` product slice alone).
+
+— Betty
+
+#### betty — 2026-06-06T01:49:04.180Z
+**Bible shasum** on `origin/sub/AST-539/AST-585-inflight-initiate-persist-after-close`: `b618f1c881700d006640362c8fd1def395310e3c2dfe1a8bb28ae5801a95ce93`
+
+#### betty — 2026-06-06T01:49:00.332Z
+## QA test manifest (AST-585)
+
+**Publish ref:** `origin/sub/AST-539/AST-585-inflight-initiate-persist-after-close` @ `e5b682d0`
+
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum on publish ref — run `git show origin/sub/AST-539/AST-585-inflight-initiate-persist-after-close:docs/ASTRAL_TEST_BIBLE.md | shasum -a 256` after merge.
+
+### 1. Existing coverage (bible-backed — run these)
+
+1. **Core — background initiate/turn + `awaiting_agent`**
+   ```bash
+   .venv/bin/python -m pytest tests/component/core/test_intake.py -k "create_session_persists or duplicate_active or background_initiate or turn_appends" -q
+   ```
+   Cases: immediate `awaiting_agent` on create/turn; duplicate active guard; failure message on background initiate; turn completes in background thread.
+
+2. **API — 201 shape + duplicate 409**
+   ```bash
+   .venv/bin/python -m pytest tests/component/ui/api/test_api_intake.py -k "create_session_201 or duplicate_active_409" -q
+   ```
+
+3. **Vitest — poll + unmount (AST-585 regressions)**
+   ```bash
+   cd src/ui/frontend && npx tsc -b --noEmit
+   cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx -t "polls active session|unmount during autoStart"
+   ```
+
+### 2. Broken / obsolete tests (revision in this pass)
+
+- **`test_intake.py`**: synchronous-create assertions updated for background initiate/turn (`awaiting_agent`, wait helpers).
+- **`test_api_intake.py`**: `test_create_session_201_shape` expects empty transcript + `awaiting_agent: true` (no immediate `batch_id`).
+- **`test_CandidateIntake.test.tsx`**: mocks return `awaiting_agent` on POST; GET resolves assistant on poll; new poll + unmount cases.
+
+### 3. Engineer note — `freshStart` regression on publish ref
+
+`origin/sub/AST-539/AST-585-inflight-initiate-persist-after-close` dropped **`freshStart`** wiring in `IntakeChatModal.tsx` vs `origin/ftr/ast-539-candidate-intake-chat-session` (AST-584). Full-file Vitest will fail on **`freshStart ignores stale active GET and creates session`** until `freshStart` prop logic is restored from ftr tip when merging product.
+
+— Betty
+
+#### betty — 2026-06-06T01:46:02.213Z
+## QA test manifest (AST-585)
+
+**Publish ref:** `origin/sub/AST-539/AST-585-inflight-initiate-persist-after-close` @ `24110601`  
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `f80745d9a1225af9c134509bcbaea454e6a3ee69` on publish ref (§7.13zr **AST-585** row)
+
+### 1. Core — background initiate/turn + duplicate guard
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_intake.py -k "create_session_persists or duplicate_active or background_initiate or turn_appends" -q
+```
+
+- Immediate create DTO: `awaiting_agent: true`, empty `transcript`; background completes assistant
+- Duplicate active session → `ValueError` / initiate failure assistant copy
+- Turn: immediate user line + `awaiting_agent`; background completes assistant + `ready_to_build`
+
+### 2. API — 201 shape + duplicate 409
+
+```bash
+.venv/bin/python -m pytest tests/component/ui/api/test_api_intake.py -k "create_session_201 or duplicate_active_409" -q
+```
+
+### 3. Vitest — poll + unmount (IntakeChatModal)
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx -t "polls active session until assistant arrives after empty resume|unmount during autoStart"
+```
+
+### Product note (blocker for full Vitest file green)
+
+`IntakeChatModal` on this sub tip dropped **`freshStart`** prop wiring present on `origin/ftr/ast-539-candidate-intake-chat-session` (AST-584). Restore before running the full `test_CandidateIntake.test.tsx` suite — `freshStart ignores stale active GET and creates session` fails until fixed.
+
+— Betty
+
+#### katherine — 2026-06-05T23:23:31.881Z
+Plan: [ast-585-uat-complete-in-flight-initiate-after-modal-close.md](https://github.com/susansomerset/astral/blob/sub/AST-539/AST-585-inflight-initiate-persist-after-close/docs/features/candidate/ast-585-uat-complete-in-flight-initiate-after-modal-close.md) @ `9ce9475c`
+
+Three stages: (1) daemon-thread initiate + turn completion in `intake.py` with `awaiting_agent` DTO + duplicate-active **409**; (2) `IntakeChatModal` poll + `mountedRef` (no `AbortSignal` on unmount); (3) core/API/Vitest regressions.
+
+**Scope:** Single-Component — one modal component plus existing intake orchestration; no schema or new routes.
+
+**Conf:** Medium — backfill-style threading is established, but intake async + poll contract is new for this epic.
+
+**Risk:** Medium — session create/turn paths are on the AST-539 critical path; guarded by duplicate-active check and immediate user-line persist before turn background work.
+
+---
+
 # AST-585 — UAT: Complete in-flight initiate after modal close
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-585/uat-complete-in-flight-initiate-after-modal-close  

@@ -1,3 +1,108 @@
+<!-- linear-archive: AST-673 archived 2026-06-23 -->
+
+## Linear archive (AST-673)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-673/preserve-job-site-on-find-job-page-failure-companyjob-site-is  
+**Status at archive:** Done  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-671 — company.job_site is overwritten with company.company_website  
+**Blocked by / blocks / related:** parent: AST-671; related: AST-180; related: AST-318; related: AST-669
+
+### Description
+
+## What this implements
+
+Fix **find_job_page** dispatch so roster never corrupts company data: when a company already has a verified **job_site**, the run uses the stored careers URL (like the **JOBS_FOUND** path) instead of PJL-from-prefilter discovery alone; when the run fails or early-exits without confirming a new listings URL, **job_site** stays unchanged. Failure paths must not copy **company_website** into **job_site**. When there was no **job_site** before the run, **job_site** stays empty on failure.
+
+## Acceptance criteria
+
+1. **Repro:** Company in a **find_job_page** dispatch trigger state with a verified **job_site** URL distinct from **company_website** → run **find_job_page** from dispatch → if the run ends in **NO_JOBLIST** (or any other terminal failure state from this path), **job_site** in the company table still equals the pre-run verified URL; **company_website** is unchanged.
+2. **No homepage substitution:** After any failed or early-exit **find_job_page** dispatch on a company that had a non-empty **job_site** before the run, **job_site** is never equal to **company_website** unless they were already equal before the run.
+3. **Success path:** When **find_job_page** successfully confirms a careers listings URL, **job_site** updates to that confirmed URL (including redirect final URL when applicable).
+4. **No job_site baseline:** Company with empty **job_site** before the run — failure leaves **job_site** empty (no **company_website** substitution).
+5. **Regression:** **JOBS_FOUND** re-parse path and **parse_job_list** dispatch on stored **job_site** still work for companies whose **job_site** was preserved by this fix.
+
+## Boundaries
+
+* Does **not** fix Execution History / agent-data visibility — parent sibling [AST-669](https://linear.app/astralcareermatch/issue/AST-669/find-job-page-job-doesnt-display-the-agent-content).
+* Does **not** add websearch fallback for no careers page — [AST-180](https://linear.app/astralcareermatch/issue/AST-180/revisit-no-job-site-states).
+* Does **not** change **company_website** redirect/deeplink handling — [AST-318](https://linear.app/astralcareermatch/issue/AST-318/update-redirected-website-domains).
+
+## Notes for planning
+
+* Primary surface: roster **find_job_page** dispatch entry points (**TO_WATCH**, **JOBS_FOUND**, **PREFILTER_PASSED**).
+* Susan confirmed: existing **job_site** → use stored-URL path; no pre-existing **job_site** → leave empty on failure.
+* `_save_company` currently sets **job_site** from **page_option_url** — audit all failure paths.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-671-company-job-site-overwritten`, child `sub/AST-671/<child-id>-preserve-job-site-on-find-job-page-failure`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-15T18:04:59.355Z
+**Review** — `origin/dev...origin/sub/AST-671/AST-673-preserve-job-site-on-find-job-page-failure` (`6b869b41` after doc commit)
+
+**Plan fidelity:** Stages 1–3 land as specified — `_job_site_for_persist` centralizes column writes in `_save_company`; `find_job_page` redirects to `jobs_found_process_job_site` when pre-run `job_site` is non-empty; empty baseline in `jobs_found_process_job_site` returns `job_site=""`. No AST-674 / agent-data scope.
+
+**Rules (§1.3 DRY, §2.6):** State transitions unchanged; helper covers all `page_option_url=company_website` NO_JOBLIST paths without per-callsite duplication. No new cross-layer imports or debug-contract changes.
+
+**Tests:** Betty manifest covers AC 1–5 (`TestJobSiteForPersist673`, `TestFindJobPageAst673`, `TestJobsFoundProcessJobSite469` extensions per `docs/test-bible/core/roster.md`).
+
+**fix-now:** None.
+
+**discuss:** `find_job_page` PJL-failure return dict still sets `"job_site": company_website` (~1343, ~1353) while DB persists `""` on empty baseline — `run_company_task` does not re-persist from return; AC satisfied. Optional follow-up to align return shape for callers that display result `job_site`.
+
+**advisory:** `_save_company` docstring still says `page_option_url` "becomes job_site" (~1692); extra `get_company` on each save when `pre_run_job_site` omitted — acceptable per plan.
+
+**Doc:** [plan + review table](docs/features/roster/ast-673-preserve-job-site-on-find-job-page-failure-companyjob-site-is-overwritten.md#radia-review-2026-06-15)
+
+#### betty — 2026-06-15T18:02:05.743Z
+## QA test manifest (AST-673)
+
+**Publish ref:** `origin/sub/AST-671/AST-673-preserve-job-site-on-find-job-page-failure` @ `90d5115a` (`merge-tests(AST-673): origin/tests 3a774b0d`)
+
+**Bible:** `docs/test-bible/core/roster.md` shasum `c6df14da509e2f922fbff8dccb5e6ee288c99f45` on publish ref
+
+### Run (narrowed — pass criterion: pytest green)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestJobSiteForPersist673 \
+  tests/component/core/test_roster.py::TestFindJobPageAst673 \
+  tests/component/core/test_roster.py::TestJobsFoundProcessJobSite469::test_missing_site_response \
+  tests/component/core/test_roster.py::TestJobsFoundProcessJobSite469::test_scrape_empty_preserves_pre_run_job_site
+```
+
+### Manifest lines
+
+1. **`TestJobSiteForPersist673`** — `_job_site_for_persist` helper: WATCH/NO_OPENINGS/CANNOT_PARSE write `page_option_url`; NO_JOBLIST preserves pre-run or empty baseline (AC 1–4 unit coverage).
+2. **`TestFindJobPageAst673::test_save_company_no_joblist_preserves_pre_run_job_site`** — `_save_company` NO_JOBLIST never substitutes `company_website` when DB has verified `job_site` (AC 1–2).
+3. **`TestFindJobPageAst673::test_find_job_page_failure_empty_job_site_stays_empty`** — PJL missing-links failure leaves `job_site=""` (AC 4).
+4. **`TestFindJobPageAst673::test_save_company_watch_writes_confirmed_job_site`** — WATCH success writes confirmed listings URL (AC 3).
+5. **`TestFindJobPageAst673::test_find_job_page_with_job_site_delegates_jobs_found_path`** — non-empty `job_site` → `jobs_found_process_job_site` redirect, not PJL (AC 5).
+6. **`TestJobsFoundProcessJobSite469::test_missing_site_response`** — empty baseline return shape uses `job_site=""` not homepage (AC 4, Stage 3).
+7. **`TestJobsFoundProcessJobSite469::test_scrape_empty_preserves_pre_run_job_site`** — JOBS_FOUND scrape-empty failure preserves stored `job_site` (AC 1, 5).
+
+**Broken / obsolete:** `test_missing_site_response` extended to assert `job_site == ""` (was implicit).
+
+**Regression note:** Existing `TestRunCompanyTask` JOBS_FOUND / `test_locate_job_page_paths` unchanged — still gate parse on stored `job_site`.
+
+#### hedy — 2026-06-15T17:52:18.442Z
+Plan doc: [ast-673-preserve-job-site-on-find-job-page-failure-companyjob-site-is-overwritten.md](https://github.com/susansomerset/astral/blob/sub/AST-671/AST-673-preserve-job-site-on-find-job-page-failure/docs/features/roster/ast-673-preserve-job-site-on-find-job-page-failure-companyjob-site-is-overwritten.md)
+
+**Approach:** Central `_job_site_for_persist` wired into `_save_company` so NO_JOBLIST (and other locate failures) preserve pre-run `job_site` or stay empty — never substitute `company_website`. Early redirect in `find_job_page` when `job_site` is already set → `jobs_found_process_job_site` (Susan's AST-671 open Q2). Stage 4 is Betty test manifest only.
+
+**Self-assessment**
+- **Scope:** `scope-Single-Component` — `roster.py` only; no config/dispatcher/UI.
+- **Conf:** `conf-high` — Root cause is `_save_company` always writing `page_option_url`; JOBS_FOUND path already models stored-URL behavior.
+- **Risk:** `risk-Medium` — `job_site` feeds gaze/parse; localized helper + one entry redirect, but wrong logic corrupts roster data.
+
+---
+
 # AST-673 — Preserve job_site on find_job_page failure
 
 **Linear:** [AST-673 — Preserve job_site on find_job_page failure (company.job_site is overwritten with company.company_website)](https://linear.app/astralcareermatch/issue/AST-673/preserve-job-site-on-find-job-page-failure-companyjob-site-is)

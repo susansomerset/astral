@@ -188,10 +188,10 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
         run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        from src.utils.config import resume_artifact_compound_state
+        from src.utils.config import BUILD_ARTIFACTS_BASE_STATE
         task = {
             "entity_type": "job",
-            "trigger_state": resume_artifact_compound_state("anticipate_scan"),
+            "trigger_state": BUILD_ARTIFACTS_BASE_STATE,
             "task_key": "anticipate_scan",
             "batch_call_mode": 0,
         }
@@ -240,64 +240,7 @@ class TestRunUnified:
         assert out["total_processed"] == 1
         clear.assert_called_once_with(batch_id)
 
-    @pytest.mark.asyncio
-    async def test_claims_board_search_batch_and_clears(
-        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
-    ) -> None:
-        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        entities = [{"board_search_id": "bs1"}]
-        claim = MagicMock(return_value=entities)
-        clear = MagicMock()
-        monkeypatch.setattr("src.data.database.claim_board_search_batch", claim)
-        monkeypatch.setattr("src.data.database.clear_board_search_batch", clear)
-        consult_out = {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        run = AsyncMock(return_value=consult_out)
-        monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        ctx = {"astral_candidate_id": "c99"}
-        task = {
-            "entity_type": "board_search",
-            "trigger_state": "ACTIVE",
-            "task_key": "gaze_board",
-            "batch_size": 7,
-            "batch_call_mode": 1,
-        }
-        out = await dispatcher_mod._run_unified(task, ctx, False)
-        assert out == consult_out
-        claim.assert_called_once_with(
-            batch_id, 7, candidate_id="c99", scan_interval_hours=24.0, sort_by=None
-        )
-        clear.assert_called_once_with(batch_id)
-        run.assert_awaited_once_with(
-            "board_search", "ACTIVE", entities, batch_id, ctx, False, dispatch_task_key="gaze_board",
-        )
 
-    @pytest.mark.asyncio
-    async def test_board_search_claim_passes_freq_and_sort_kw(
-        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
-    ) -> None:
-        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        entities = [{"board_search_id": "bs9"}]
-        claim = MagicMock(return_value=entities)
-        monkeypatch.setattr("src.data.database.claim_board_search_batch", claim)
-        monkeypatch.setattr("src.data.database.clear_board_search_batch", MagicMock())
-        run = AsyncMock(
-            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        )
-        monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        ctx = {"astral_candidate_id": "c99"}
-        task = {
-            "entity_type": "board_search",
-            "trigger_state": "ACTIVE",
-            "task_key": "gaze_board",
-            "batch_size": 3,
-            "batch_call_mode": 1,
-            "freq_hrs": 48,
-            "sort_by": "last_scan_at",
-        }
-        await dispatcher_mod._run_unified(task, ctx, False)
-        claim.assert_called_once_with(
-            batch_id, 3, candidate_id="c99", scan_interval_hours=48.0, sort_by="last_scan_at"
-        )
 
     @pytest.mark.asyncio
     async def test_ast505_candidate_entity_routes_ctx_without_company_clear(
@@ -361,7 +304,7 @@ class TestRunUnified:
         task = {
             "entity_type": "company",
             "trigger_state": "PREFILTER_PASSED",
-            "task_key": "find_job_page",
+            "task_key": "fetch_job_pages",
             "batch_call_mode": 0,
             "score_floor": 7.0,
         }
@@ -416,7 +359,7 @@ class TestRunUnified:
         task = {
             "entity_type": "job",
             "trigger_state": "PASSED_JD",
-            "task_key": "consult_do",
+            "task_key": "grade_do",
             "batch_call_mode": 1,
             "batch_size": 10,
         }
@@ -435,7 +378,7 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
         task = {
             "entity_type": "job",
-            "trigger_state": "VALID_TITLE",
+            "trigger_state": "NEW",
             "task_key": "qualify_job_listings",
             "batch_call_mode": 1,
             "batch_size": 10,
@@ -455,13 +398,13 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
         task = {
             "entity_type": "job",
-            "trigger_state": "VALID_TITLE",
+            "trigger_state": "NEW",
             "task_key": "qualify_job_listings",
             "batch_call_mode": 1,
             "batch_size": 10,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert claim.call_args.kwargs["states"] == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+        assert claim.call_args.kwargs["states"] == ["NEW"]
 
     @pytest.mark.asyncio
     async def test_ast641_retry_only_job_trigger_single_claim_state(
@@ -1131,6 +1074,66 @@ class TestRunDispatchLoop:
         task = {"id": 14, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1, "max_runs": 0}
         await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 1
+
+
+class TestAst802InflowDiscoveryDebug:
+    @pytest.mark.asyncio
+    async def test_skip_emits_eligibility_reason_when_debug_true(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c802", state="NEW", candidate_data={})
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        run = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 802,
+            "task_key": "inflow_discovery",
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c802",
+            "auto_mode": 1,
+            "min_count": 1,
+            "debug": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-802", accumulated, None)
+        run.assert_not_awaited()
+        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("eligibility:" in d for d in details)
+
+
+class TestAst814InflowDiscoveryDebug:
+    @pytest.mark.asyncio
+    async def test_skip_cites_freq_hrs_when_all_terms_fresh(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c814", ["term"])
+        db.update_company_search_term_last_scan_at("c814", "term")
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        run = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 814,
+            "task_key": "inflow_discovery",
+            "entity_type": "candidate",
+            "trigger_state": "LIVE_PROMPTS",
+            "candidate_id": "c814",
+            "auto_mode": 1,
+            "min_count": 1,
+            "freq_hrs": 168,
+            "debug": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-814", accumulated, None)
+        run.assert_not_awaited()
+        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("freq_hrs=168" in d for d in details)
+        assert not any("scan_interval_hours" in d for d in details)
 
 
 class TestTaskThreadTarget:

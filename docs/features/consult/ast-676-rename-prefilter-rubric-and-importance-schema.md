@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-676 archived 2026-06-23 -->
+
+## Linear archive (AST-676)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-676/rename-prefilter-rubric-task-and-require-importance-in-craft-rubric  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-655 — update criteria prompts to specify the importance and explain what that means  
+**Blocked by / blocks / related:** parent: AST-655; blocks: AST-678; blocks: AST-677
+
+### Description
+
+## What this implements
+
+Rename the company prefilter craft task from **craft_company_prefilter** to **craft_prefilter_rubric** across the product codebase (config task registry, backend references, tests, and any non-UI call sites). Extend **TASK_CONFIG** response validation for all six rubric craft tasks so each criterion in the `criteria` list requires an integer **importance** in 1–10, matching rubric artifact normalization bounds.
+
+## Acceptance criteria
+
+1. **craft_company_prefilter** is renamed to **craft_prefilter_rubric** everywhere the craft task key is referenced in backend/config/tests (UI handled in sibling **AST-657**).
+2. Task response schema for all six requires `importance` (integer, 1–10) on every `criteria` item; missing or out-of-range values fail the craft task with a clear validation error.
+
+## Boundaries
+
+* Does **not** update React Artifacts pages (sibling **AST-657**).
+* Does **not** author or deploy admin prompt text (sibling **AST-658**).
+* Does **not** change consult scoring math or rubric UI behavior.
+
+## Notes for planning
+
+* Six tasks: renamed prefilter rubric plus the five existing `craft_*_rubric` consult criteria tasks.
+* Stored artifact key `company_prefilter` stays unchanged; only the craft **task key** renames.
+* Prompt bodies live in **agent_task** DB — out of scope here.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what`, child `sub/AST-655/AST-656-rename-prefilter-rubric-and-importance-schema`. Created at dispatch-parent.
+
+### Comments
+
+#### ada — 2026-06-15T18:27:57.898Z
+**[merge-child] fix:** Republished `origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` — removed `Merge remote-tracking branch` commits (216b896b, e65192e4). Sub history now stacked cleanly on `origin/ftr/AST-655-update-criteria-prompts-to-specify-the-importance-and-explain-what` via cherry-pick; `plan(AST-676)` / `resolve(AST-676)` subjects aligned with `validate-sub-log`. Tip after push: see validate-sub-log on main repo.
+
+#### radia — 2026-06-15T18:24:26.596Z
+**Diff:** `origin/dev...origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` @ `e4074d1a` (8 files, +253/−40).
+
+**Plan fidelity:** Stages 1–3 match the combined plan — shared `_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA`, `craft_prefilter_rubric` rename in `TASK_CONFIG`, `_validate_response_schema` int `min`/`max` + bool guard, spike script, Betty manifest tests + bible blocks.
+
+### fix-now
+None.
+
+### discuss
+None blocking. Sequencing risks (UI still on `craft_company_prefilter` until **AST-677**; Generate fails until prompts return `importance` in **AST-678**) are documented in the plan Self-Assessment and are intentional sibling scope.
+
+### advisory
+- **`src/utils/config.py`:** `importance` bounds are literal `1`/`10` on the schema field, not wired to `ASTRAL_CONFIG["consult_importance"]`. Plan documents this decision; acceptable — note if consult bounds ever change, update schema manually.
+- **`grep craft_company_prefilter src/`:** only `ArtifactsCompanyWatchCriteria.tsx` remains — correct per AST-677 boundary.
+
+### ASTRAL_CODE_RULES
+- §1.3 DRY: single shared schema for six tasks; validator change localized in `agent.py`.
+- §1.4 / §2.1: task registry and response shapes in `config.py`; no magic numbers in core beyond field spec.
+- §2.3: schema validation path correct; bool-before-int guard handles Python `isinstance(True, int)`.
+- Layer / logging / batch / debug: N/A — no touched paths in those areas.
+
+**Doc:** [ast-676-rename-prefilter-rubric-and-importance-schema.md](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema/docs/features/consult/ast-676-rename-prefilter-rubric-and-importance-schema.md) — Review section updated @ `e4074d1a`.
+
+#### betty — 2026-06-15T18:20:43.910Z
+## QA test manifest (AST-676)
+
+**Publish ref:** `origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` @ `e0089dc2` (`merge-tests(AST-676): origin/tests a0e02d28`)
+
+1. **`tests/component/utils/test_config.py::TestAst676CraftRubricSchema`** — `craft_prefilter_rubric` present; `craft_company_prefilter` absent; all six rubric craft tasks share `importance` int 1–10 in `items_schema`.
+2. **`tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection`** — `_validate_response_schema` accepts in-range int, rejects missing/bool/out-of-range.
+3. **`tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema`** — nested `criteria[]` validation passes with `importance`; fails when omitted.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst676CraftRubricSchema \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema
+```
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/utils/config.md` → `441298317614c38f0d5cfb30c729a33c125be9ec1200b546734283f52a775d4f`
+- `docs/test-bible/core/agent.md` → `1fc26ddb3d66084f6ba44092af903ab23ae08769deaef0018d42f1ed28c4b110`
+
+**Coverage notes:** Product code landed without Stage 3 tests (build test-tree ban); Betty added manifest tests + bible blocks. UI task key rename (**AST-677**) and admin prompts (**AST-678**) remain sibling scope — not in this manifest.
+
+— Betty
+
+#### ada — 2026-06-15T18:17:28.990Z
+`origin/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema` @ `faf4d24f` — product code complete. Plan stage 3 component tests (`test_agent.py`, `test_config.py`) deferred to **qa-child** per build test-tree ban.
+
+#### ada — 2026-06-15T18:15:37.574Z
+Plan: [ast-676-rename-prefilter-rubric-and-importance-schema.md](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-676-rename-prefilter-rubric-and-importance-schema/docs/features/consult/ast-676-rename-prefilter-rubric-and-importance-schema.md)
+
+Three stages: (1) shared `_CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA` + rename `craft_company_prefilter` → `craft_prefilter_rubric` in `TASK_CONFIG`; (2) extend `_validate_response_schema` with int `min`/`max` and bool rejection; (3) component tests + spike script key list.
+
+**Self-assessment**
+- **Scope — Single-Component:** `config.py`, `agent.py`, two test modules, one spike script only.
+- **Conf — high:** Reuses existing schema validation patterns; bounds match landed `consult_importance`.
+- **Risk — Medium:** Rubric Generate fails until prompts return `importance` (AST-678); Company Watch UI still uses old task key until AST-677.
+
+---
+
 # AST-676 — Rename prefilter rubric task and require importance in craft rubric schema
 
 **Linear:** [AST-676](https://linear.app/astralcareermatch/issue/AST-676/rename-prefilter-rubric-task-and-require-importance-in-craft-rubric)  

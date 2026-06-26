@@ -1,3 +1,127 @@
+<!-- linear-archive: AST-677 archived 2026-06-23 -->
+
+## Linear archive (AST-677)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-677/artifacts-ui-prefilter-rubric-task-rename-update-criteria-prompts-to  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-655 — update criteria prompts to specify the importance and explain what that means  
+**Blocked by / blocks / related:** parent: AST-655
+
+### Description
+
+## What this implements
+
+Update Artifacts UI and any frontend/API client references so **Company Watch Criteria** invokes **craft_prefilter_rubric** instead of **craft_company_prefilter**, consistent with the backend rename in **AST-656**.
+
+## Acceptance criteria
+
+1. **Generate** on Company Watch Criteria invokes the renamed task successfully.
+
+## Boundaries
+
+* Does **not** change TASK_CONFIG or backend rename (blocked by **AST-656**).
+* Does **not** update admin prompt bodies (**AST-658**).
+
+## Notes for planning
+
+* Primary surface: Company Watch Criteria Artifacts page taskKey.
+* Grep for `craft_company_prefilter` under frontend and UI-adjacent paths.
+
+## Git branch (authoritative)
+
+Child `sub/AST-655/AST-657-artifacts-ui-prefilter-rubric-rename`. Blocked by **AST-656** for merge/integration order.
+
+### Comments
+
+#### radia — 2026-06-15T19:02:30.287Z
+**Review** — `origin/dev...origin/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename` @ **`27f2a582`**
+
+Plan: [`docs/features/consult/ast-677-artifacts-ui-prefilter-rubric-rename.md`](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename/docs/features/consult/ast-677-artifacts-ui-prefilter-rubric-rename.md) (Review section appended)
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### advisory
+
+| Location | Finding |
+|----------|---------|
+| Branch diff vs `origin/dev` | Includes sibling epic commits (**AST-676** config/validator, **AST-674** roster tests, **AST-679** deploy footer) from ftr integration. AST-677 product footprint remains one TSX `taskKey` line + Betty page test — not scope creep on this ticket. |
+| `ArtifactsCompanyWatchCriteria` Generate | May still fail schema validation until **AST-678** prompts emit `importance` — expected per plan Self-Assessment Risk; rename is correct regardless. |
+| Linear description | Git branch line says `AST-657`; publish ref is `sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename`. |
+
+### What's solid
+
+- **`ArtifactsCompanyWatchCriteria.tsx`:** `taskKey="craft_prefilter_rubric"`; `artifactKey="company_prefilter"` unchanged — matches Stage 1.
+- **`grep craft_company_prefilter src/ui/frontend/`** — zero matches.
+- **§3.3 / §3.2:** UI-only; no new cross-layer imports.
+- **§2.1:** Literal task key matches backend `TASK_CONFIG` (**AST-676**); same pattern as other Artifacts pages.
+- **Test:** `AST-677: Generate POSTs craft_prefilter_rubric` covers AC1 (POST path via Regenerate).
+
+**Recommended:** Proceed to **resolve-child** (no product changes required).
+
+#### betty — 2026-06-15T18:54:57.525Z
+## QA test manifest — AST-677
+
+**Publish ref:** `origin/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename` @ `6941bc19` (`merge-tests(AST-677): origin/tests 008b297c`)
+
+### 1. Existing coverage (bible-backed)
+
+| # | Test | Why |
+| --- | --- | --- |
+| 1 | `tests/component/utils/test_config.py::TestAst676CraftRubricSchema` | Backend **`craft_prefilter_rubric`** key + shared rubric schema (**AST-676** regression) |
+| 2 | `tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection` | **`importance`** validation at **`do_task`** (**AST-676** regression) |
+| 3 | `tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema` | Shared rubric criteria schema (**AST-676** regression) |
+
+### 2. Broken / obsolete tests
+
+None — page had only a render smoke test; no assertions referenced **`craft_company_prefilter`**.
+
+### 3. Gaps (new this pass)
+
+| # | Test | AC |
+| --- | --- | --- |
+| 4 | `tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx` — **`renders company watch criteria editor`** | §6c routed page + first-paint mocks |
+| 5 | Same file — **`AST-677: Generate POSTs craft_prefilter_rubric`** | AC1 — **Generate** POST **`/api/candidates/{id}/generate/craft_prefilter_rubric`** |
+
+### Narrowed run
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst676CraftRubricSchema \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_int_bounds_and_bool_rejection \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema
+```
+
+### Bible
+
+- `docs/test-bible/frontend/pages.md` — **`### AST-677 · AST-655`** block
+- shasum @ publish ref: `00b2f8fd1f6e5ed96082365d2f30162dbc98d03efd52f5ae614b822ac1883190`
+
+#### ada — 2026-06-15T18:31:08.486Z
+Plan: [`docs/features/consult/ast-677-artifacts-ui-prefilter-rubric-rename.md`](https://github.com/susansomerset/astral/blob/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename/docs/features/consult/ast-677-artifacts-ui-prefilter-rubric-rename.md) on `origin/sub/AST-655/AST-677-artifacts-ui-prefilter-rubric-rename` @ `3748e9b9`.
+
+**Scope:** `minor` — one `taskKey` prop in `ArtifactsCompanyWatchCriteria.tsx`; no backend or `ArtifactEditor` changes.
+
+**Conf:** `high` — AST-676 already renamed the backend task; grep shows only this UI file still uses the old key.
+
+**Risk:** `low` — isolated Generate path on one Artifacts page; prompt `importance` failures until AST-678 are expected epic sequencing, not this rename.
+
+---
+
 # AST-677 — Artifacts UI prefilter rubric task rename
 
 **Linear:** [AST-677](https://linear.app/astralcareermatch/issue/AST-677/artifacts-ui-prefilter-rubric-task-rename-update-criteria-prompts-to)  

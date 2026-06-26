@@ -1,3 +1,97 @@
+<!-- linear-archive: AST-703 archived 2026-06-23 -->
+
+## Linear archive (AST-703)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-703/uat-dispatch-tasks-admin-500-prefilter-migration-unique-collision  
+**Status at archive:** Done  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-700 — prefilter as batch process  
+**Blocked by / blocks / related:** parent: AST-700
+
+### Description
+
+## What failed
+
+Opening **Scheduled Actions** (admin dispatch tasks UI) returns **HTTP 500** on `GET /api/admin/dispatch_tasks` and `GET /api/admin/dispatch_tasks/task_keys`. Server log shows `sqlite3.IntegrityError: UNIQUE constraint failed: dispatch_task.candidate_id, dispatch_task.task_key, dispatch_task.trigger_state` during `_ensure_dispatch_task_schema` while handling the request. Susan cannot view or configure `fetch_website` / `prefilter` dispatch rows.
+
+## Expected
+
+Admin dispatch-task endpoints load successfully after AST-700 lands. Susan can open Scheduled Actions, see task keys (including `fetch_website`), and inspect/edit dispatch rows for the two-phase prefilter pipeline.
+
+## Repro
+
+1. Run app on `origin/dev` (or staging) with AST-700 landed and a candidate DB that already had legacy `prefilter` rows at both `WEBSITE_FOUND` and `WEBSITE_FOUND_RETRY`.
+2. Open **Scheduled Actions** in the admin UI (or `GET /api/admin/dispatch_tasks` and `/api/admin/dispatch_tasks/task_keys`).
+3. Observe **500** and IntegrityError in server log.
+
+## Parent AC (quoted inline)
+
+> **fetch_website dispatch task.** A new schedulable company dispatch task claims companies in **WEBSITE_FOUND** (and **WEBSITE_FOUND_RETRY** when applicable).
+>
+> **Batch prefilter dispatch task.** A schedulable company dispatch task claims companies in **HOMEPAGE_READY**.
+
+## Boundaries
+
+* This bug does **not** change: prefilter rubric, batch evaluate logic, scrape behavior, or UI layout beyond making dispatch admin APIs load.
+* Does **not** re-open AST-701/702 feature scope — migration/idempotency fix only.
+
+### Comments
+
+#### betty — 2026-06-16T17:40:41.534Z
+## QA test manifest (AST-703)
+
+**Publish ref:** `origin/sub/AST-700/AST-703-uat-dispatch-task-migration-unique-collision` @ `93f0fd3` (tests `22998eb`)
+
+1. **Dual-row migration** — legacy `prefilter`/`WEBSITE_FOUND` + `prefilter`/`WEBSITE_FOUND_RETRY` on one candidate migrates to exactly one `HOMEPAGE_READY` row with `batch_call_mode=1` without UNIQUE violation — `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision`
+
+2. **AST-702 regression** — base-row migrate + obsolete retry delete + `_RETRY_TASK_SEED` — `tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration
+```
+
+**Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/consult.md` 7958d31e50d17dca73506666d4ec7329ad1eac5db505987dcd14f7be9f78c8b2
+- `docs/test-bible/core/roster.md` e55e1710c131c20b1504b2ef9111e7a559e132c227194ba455da225c8d9afc49
+
+— Betty
+
+#### hedy — 2026-06-16T17:40:25.680Z
+Plan doc: [ast-703-uat-dispatch-tasks-admin-500-prefilter-migration-unique-collision.md](https://github.com/susansomerset/astral/blob/sub/AST-700/AST-703-uat-dispatch-task-migration-unique-collision/docs/features/consult/ast-703-uat-dispatch-tasks-admin-500-prefilter-migration-unique-collision.md) @ `4169ec7d`
+
+**Root cause:** AST-702 migration `UPDATE`d both `prefilter` @ `WEBSITE_FOUND` and @ `WEBSITE_FOUND_RETRY` to `HOMEPAGE_READY` before `DELETE` — triple-unique `(candidate_id, task_key, trigger_state)` violation when both legacy rows exist.
+
+**Fix (Stage 1):** `DELETE` retry row first, then `UPDATE` base `WEBSITE_FOUND` → `HOMEPAGE_READY` + `batch_call_mode=1`. Stage 2: Betty regression test for both rows on same candidate.
+
+**Self-assessment**
+- **Scope:** minor — single migration block in `database.py`
+- **Conf:** high — repro confirmed locally; reorder of existing AST-702 SQL
+- **Risk:** Medium — edge orphan retry-only rows lose dispatch row; admin schema ensure contained
+
+#### hedy — 2026-06-16T17:38:32.611Z
+Plan: `docs/features/consult/ast-703-uat-dispatch-task-migration-unique-collision.md`
+https://github.com/susansomerset/astral/blob/sub/AST-700/AST-703-uat-dispatch-task-migration-unique-collision/docs/features/consult/ast-703-uat-dispatch-task-migration-unique-collision.md
+
+**Root cause:** AST-702 migration UPDATEs both legacy `prefilter`/`WEBSITE_FOUND` and `prefilter`/`WEBSITE_FOUND_RETRY` to `HOMEPAGE_READY` in one statement before DELETE — triple unique collision when both rows exist.
+
+**Fix:** DELETE obsolete `prefilter`/`WEBSITE_FOUND_RETRY` first; UPDATE only `prefilter`/`WEBSITE_FOUND` → `HOMEPAGE_READY` + `batch_call_mode=1`.
+
+**Self-assessment**
+- Scope: `minor` — one migration block in `database.py`.
+- Conf: `high` — error matches code path; reorder is direct fix for Susan's repro.
+- Risk: `Medium` — migration runs on first admin dispatch schema ensure; localized but admin-critical path.
+
+---
+
 # UAT: dispatch_tasks admin 500 — prefilter migration UNIQUE collision
 
 **Linear:** [AST-703](https://linear.app/astralcareermatch/issue/AST-703/uat-dispatch-tasks-admin-500-prefilter-migration-unique-collision)  

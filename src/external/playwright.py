@@ -18,7 +18,6 @@ from bs4 import BeautifulSoup
 from src.utils.config import ASTRAL_CONFIG
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger
-from src.utils.url_merge import merge_url_query_params
 
 _log = get_logger(__name__)
 
@@ -262,22 +261,6 @@ async def _try_dismiss_cookie_banner_fuzzy(page: Page, debug: bool = False) -> b
     return result
 
 
-async def board_search_deeplink(
-    page: PageHandle,
-    entry_url: str,
-    query_params: Optional[Dict[str, Any]],
-) -> Tuple[str, Dict[str, Any]]:  # pragma: no cover
-    """Load a board search results page: ``entry_url`` plus optional criteria query string.
-
-    Returns ``(page_html, meta)`` — meta reserved for scrape diagnostics (empty for now).
-    Tests mock this symbol; staging runs the real navigator.
-    """
-    url = merge_url_query_params(entry_url, query_params)
-    await navigate_and_wait_for_ready(page, url)
-    html = await page.content()
-    return html, {}
-
-
 async def navigate_and_wait_for_ready(page: PageHandle, url: str, timeout: int = 60000) -> None:  # pragma: no cover
     """Navigate page to URL and wait for it to be ready.
     
@@ -316,10 +299,7 @@ async def wait_for_page_ready_after_navigation(page: PageHandle, timeout: int = 
 
 
 async def get_page(context: BrowserSession, url: Optional[str] = None) -> PageHandle:  # pragma: no cover
-    """Create a page from ``context``; optionally navigate when ``url`` is non-empty.
-
-    Board gaze calls with no URL — navigation is delegated to ``board_search_deeplink``.
-    """
+    """Create a page from ``context``; optionally navigate when ``url`` is non-empty."""
     page = await context.new_page()
 
     if not url or not str(url).strip():
@@ -537,6 +517,25 @@ async def extract_visible_text(page: PageHandle) -> Dict[str, Any]:  # pragma: n
         "text": body_text,
         "url": page.url
     }
+
+
+async def extract_page_scrape_contract(page: PageHandle) -> Dict[str, Any]:  # pragma: no cover
+    """Raw visible text + nav URL list from one loaded page (AST-759 shared contract)."""
+    vt = await extract_visible_text(page)
+    nav_urls: List[str] = []
+    nav_error: Optional[str] = None
+    try:
+        nav_urls = await extract_site_page_list(page=page, max_depth=1, verify=False) or []
+    except Exception as e:
+        nav_error = str(e)
+    out: Dict[str, Any] = {
+        "visible_text": vt.get("text") or "",
+        "nav_urls": nav_urls,
+        "final_url": vt.get("url") or page.url,
+    }
+    if nav_error:
+        out["nav_error"] = nav_error
+    return out
 
 
 async def get_visible_text(  # pragma: no cover
@@ -2372,24 +2371,6 @@ def extract_tags_in_order(html: str, tag_pattern: str) -> List[str]:
         search_pos = end_pos
     
     return chunks
-
-
-async def board_search_deeplink(
-    page: Page,
-    entry_url: str,
-    query_params: Optional[Dict[str, Any]] = None,
-) -> Tuple[str, Dict[str, Any]]:
-    """Anonymous board search via URL params (AST-418 deep_link v1)."""
-    from urllib.parse import urlencode
-
-    url = (entry_url or "").strip()
-    params = {k: v for k, v in (query_params or {}).items() if v is not None and str(v) != ""}
-    if params:
-        sep = "&" if "?" in url else "?"
-        url = f"{url}{sep}{urlencode(params)}"
-    await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    await _try_dismiss_cookie_banner(page)
-    return (await page.content(), {"mode": "deep_link", "url": url})
 
 
 def extract_raw_job_listings(dom_html: str, container: str, job_tag: str, container_index: int = 0) -> List[str]:

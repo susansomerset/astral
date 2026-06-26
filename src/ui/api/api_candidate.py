@@ -9,6 +9,7 @@ from flask import Blueprint, g, jsonify, request
 from ui.auth import require_auth, require_admin
 from src.core.candidate import (
     apply_company_search_terms_save,
+    apply_rubric_vectors_save,
     clear_candidate_api_key,
     company_search_terms_joined_text,
     company_search_terms_lines_for_candidate,
@@ -16,6 +17,7 @@ from src.core.candidate import (
     enabled_resume_structure_sections,
     filter_base_resume_to_structure,
     get_candidate,
+    hydrate_rubric_artifacts_for_response,
     initiate_candidate,
     list_candidates as core_list_candidates,
     normalize_resume_structure,
@@ -124,6 +126,9 @@ def get_candidate_detail(candidate_id):
         return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
     # AST-526: table-backed field for Artifacts textarea (not artifacts blob).
     candidate["company_search_terms"] = company_search_terms_joined_text(candidate_id)
+    cd = candidate.get("candidate_data") or {}
+    hydrate_rubric_artifacts_for_response(candidate_id, cd)
+    candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
 
 
@@ -186,6 +191,7 @@ def update_candidate_data(candidate_id):
                     body.pop("artifacts", None)
                 else:
                     normalize_rubric_artifacts_on_save(arts)
+                    apply_rubric_vectors_save(candidate_id, arts)
             prof = body.get("profile")
             if isinstance(prof, dict) and "cover_letter_signature_image" in prof:
                 _validate_cover_letter_signature_image(prof.get("cover_letter_signature_image"))

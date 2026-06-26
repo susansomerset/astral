@@ -1,3 +1,129 @@
+<!-- linear-archive: AST-662 archived 2026-06-23 -->
+
+## Linear archive (AST-662)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-662/execution-history-direct-candidate-switch-execution-history-candidate  
+**Status at archive:** Done  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-656 — Execution History Candidate Select Issue  
+**Blocked by / blocks / related:** parent: AST-656
+
+### Description
+
+## What this implements
+
+Fix the Execution History (`/admin/performance`) on-page **Candidate** dropdown so selecting a different candidate immediately applies the filter without requiring an intermediate **All** selection. The dropdown display, ledger fetch, table rows, total-cost summary, and URL `candidate_id` param must stay in sync on every direct candidate-to-candidate change. Add or extend component-level regression coverage for direct A→B selection.
+
+## Acceptance criteria
+
+1. With two or more candidates in the system and Execution History showing rows for the nav-default candidate, selecting a different candidate in the on-page **Candidate** dropdown updates the visible rows and total cost to that candidate's ledger entries (within current date/task/status filters) without first selecting **All**.
+2. Selecting **All** shows cross-candidate rows within the other filters; then selecting a specific candidate filters correctly (existing workaround path remains valid).
+3. The dropdown displayed value always matches the active filter after each change (no silent snap-back to the previous candidate).
+4. The browser URL's `candidate_id` param matches the active selection (**All** → param absent; specific candidate → param set to that id).
+5. Task, Status, date, and Skip Checks filters remain unchanged when only Candidate changes.
+6. Automated tests cover direct switch from one candidate id to another on Execution History (in addition to existing AST-634 cases for global candidate list and URL-seeded fetch).
+
+## Boundaries
+
+* Execution History only — do not change Scheduled Actions or Agent Timesheets unless a shared fix is strictly required and verified not to regress those screens.
+* Does not change left-nav candidate selection, nav visibility rules, or `/api/nav_config`.
+* Does not change dispatch ledger API semantics, backend filtering, or debug logging (UI-only bug).
+* Does not redesign the filter bar or table layout.
+
+## Notes for planning
+
+* AST-634 introduced the shared admin candidate filter — inspect how nav sync vs manual pin interacts with state updates on Execution History.
+* Likely files: React admin performance/execution history components and existing AST-634 test coverage.
+* plan-child §3.5 — new components go in `src/components/` flat.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-656-execution-history-candidate-select`, child `sub/AST-656/<child-id>-execution-history-candidate-switch`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-15T02:15:21.355Z
+**Review (Radia)** — `origin/dev...origin/sub/AST-656/AST-662-execution-history-candidate-switch` @ `8e9998d8`
+
+Doc: `docs/features/interface/ast-662-execution-history-direct-candidate-switch.md` § Review (Radia)
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### advisory
+- `useAdminCandidateFilter.ts` — `manualPinRef` is never cleared; fine in practice because `syncWithNav === false` after manual pick already disables nav-sync for the session. Ref only covers the stale-`syncWithNav` render window.
+- `AdminAgentTimesheets.tsx` (unchanged) — still uses inline `urlBacked`; if UAT sees the same direct-switch bug there, apply the same `useMemo` one-liner from Execution History.
+
+### What's solid
+- Stages 1–2 match plan; Betty manifest covers AC6 (hook + page direct c1→c2 tests).
+- Closes AST-634 Radia **discuss** items: memoized `urlBacked` + `manualPinRef` nav-sync guard.
+- UI-only; boundaries respected (no backend / other admin tabs).
+
+**Verdict:** Clean — `resolve-child` / UAT.
+
+#### betty — 2026-06-15T02:12:28.848Z
+## QA test manifest (AST-662)
+
+**Publish ref:** `origin/sub/AST-656/AST-662-execution-history-candidate-switch` @ `bfc6d846`  
+**Tests SHA:** `8a5bfa67` (`merge-tests(AST-662): origin/tests 8a5bfa67`)  
+**Bible shasum (`origin/sub/...`):** `docs/ASTRAL_TEST_BIBLE.md` → see §7.13zzna
+
+### 1. Existing coverage (bible-backed — run for regression)
+
+- **§7.13zzn (AST-634):** full `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`; `test_AdminPerformanceMonitor.test.tsx` **AST-634** describe (global candidate list + URL-seeded fetch); sibling admin page **AST-634** describes if touching shared hook behavior.
+
+### 2. Broken / obsolete tests
+
+- None — AST-634 cases remain valid; no assertion rewrites required.
+
+### 3. Gaps (new this pass)
+
+| # | Path | What it proves |
+|---|------|----------------|
+| 1 | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx` — `direct urlBacked switch from c1 to c2 does not revert to nav default` | **`manualPinRef`** blocks nav-sync effect from overwriting direct A→B selection after URL update |
+| 2 | `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — `direct candidate switch c1 to c2 refetches ledger without All intermediate step` | Routed page: dropdown c1→c2 refetches ledger with `candidate_id=c2`, table shows `task_c2` only, select value stays `c2` (**§6c** routed page + filter UX) |
+
+### Narrowed run (test-child)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-634|direct urlBacked|direct candidate switch"
+```
+
+Full page file recommended before **User Testing** (date blur cases + AST-532 chain UI).
+
+— Betty
+
+#### chuckles — 2026-06-15T02:08:12.714Z
+## Validate Plan — APPROVED
+
+**Verdict:** APPROVED → Plan Approved
+
+| # | Severity | Finding |
+|---|----------|---------|
+| — | — | Plan matches AST-656 definition; hook ref guard + memoized `urlBacked` addresses the nav-sync race Radia flagged on AST-634; tests cover direct A→B. Boundaries respected (Execution History primary; shared hook fix is minimal and safe). |
+
+— Chuckles
+
+#### katherine — 2026-06-15T02:08:00.113Z
+Plan: [ast-662-execution-history-direct-candidate-switch.md](https://github.com/susansomerset/astral/blob/sub/AST-656/AST-662-execution-history-candidate-switch/docs/features/interface/ast-662-execution-history-direct-candidate-switch.md) @ `a3404dd7`
+
+**Scope:** `Single-Component` — shared hook guard + Execution History `urlBacked` memo + two frontend test files; no backend or sibling admin tabs.
+
+**Conf:** `high` — AST-634 pattern is in place; Radia's deferred `urlBacked`/nav-sync race matches Susan's "All first" workaround; fix is a synchronous manual-pin ref plus stable `urlBacked` memo.
+
+**Risk:** `Medium` — hook is shared across three admin screens; ref guard only fires after explicit dropdown change and must not break first-visit nav-default on Scheduled Actions.
+
+---
+
 # Execution History direct candidate switch (Execution History Candidate Select Issue)
 
 **Linear:** [AST-662](https://linear.app/astralcareermatch/issue/AST-662/execution-history-direct-candidate-switch-execution-history-candidate)  

@@ -1,3 +1,190 @@
+<!-- linear-archive: AST-559 archived 2026-06-23 -->
+
+## Linear archive (AST-559)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-559/intake-chat-modal-and-candidate-navigation-candidate-intake-chat  
+**Status at archive:** Done  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-539 — Candidate Intake Chat Session  
+**Blocked by / blocks / related:** parent: AST-539
+
+### Description
+
+## What this implements
+
+Candidate **Intake** nav item above Profile, modal chat UI wired to intake session API: paste resume (required) and optional cover/LinkedIn before/during start, chat thread showing `assistant_message`, **Generate Profile** button gated on `ready_to_build`, one build per modal session, post-build close to review on existing Profile/context/search-term screens.
+
+## Acceptance criteria
+
+1. User can open Intake (nav above Profile) for a selected candidate, paste required resume text and optional cover/LinkedIn text, and start a session that displays Estelle's first interview message per the `initiate_candidate` shape (intro, material upshot, intake overview, proposed approach).
+2. Each user reply advances the thread via `assistant_message`; Estelle responses include `ready_to_build`; **Generate Profile** is disabled until the latest response has `ready_to_build: true`.
+3. While `ready_to_build: true`, the user can still send `candidate_response` turns and Estelle may ask further clarifications before generate is pressed.
+4. **Generate Profile** sends `build_request` and persists all seven output areas as flat text strings verifiable on existing candidate UI/API.
+5. After a successful build in a session, **Generate Profile** cannot be fired again in that same modal session; opening a new session allows a new build.
+6. Closing and reopening the same intake session resumes the conversation (not a blank session).
+
+## Boundaries
+
+Does not implement backend session/agent/persistence (sibling Ada ticket). No Intake-modal cost/timesheet UI. Config-driven nav; no hardcoded agent ids in React.
+
+## Notes for planning
+
+Depends on Ada API contract. NAV_CONFIG entry above Profile. Follow existing modal/chat patterns and api client conventions.
+
+## Git branch (authoritative)
+
+Per **orientation-astral** § Branch law: parent **ftr/ast-539-candidate-intake-chat-session**, child **sub/AST-539/<child-id>-intake-chat-modal** (slug at dispatch).
+
+### Comments
+
+#### betty — 2026-06-05T18:01:34.277Z
+**Tests Ready** — manifest for UAT UX delta (Katherine **`test-astral`**).
+
+**Publish:** `origin/sub/AST-539/AST-559-intake-chat-modal` @ `7fac91b9`
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `967e55e51b46e6251cb21876d60374db7e75ac4b24fbe5dd712fd05df0feac0d`
+
+**Pre-run (engineer tree):** `git fetch origin` → `git merge origin/dev` → `git merge origin/ftr/ast-539-candidate-intake-chat-session` (when exists) → `git merge origin/sub/AST-539/AST-558-intake-session-api` → `git merge origin/sub/AST-539/AST-559-intake-chat-modal`
+
+**Manifest:**
+
+1. `cd src/ui/frontend && npx tsc -b --noEmit`
+2. `cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx`
+
+**Coverage (§6c + UX delta):**
+- **Page:** empty candidate; **Start Intake** confirm gate (Continue opens modal / Cancel stays closed); missing resume toast + no confirm; routed page with auto-start (no modal paste, no Start interview)
+- **Modal:** `autoStart` POST with persisted `materials`; resume active session without duplicate POST; `can_build` gate; Send while ready; single build; New session confirm
+
+**Bible:** §7.13zr **AST-559** row + UAT delta note (confirm gate, auto-start from `context.*`).
+
+If manifest or test is wrong: `[qa-handoff]` on this ticket, assign Betty — do not edit tests on publish ref.
+
+#### chuckles — 2026-06-05T17:59:21.168Z
+[check-linear]
+
+@Betty White — **AST-559** is back at **Code Complete** after Katherine's UAT UX delta.
+
+**Publish:** `origin/sub/AST-539/AST-559-intake-chat-modal` @ `b8c8d4a8`
+**Changes:** confirm gate, auto-start from persisted context, no modal paste.
+
+Please run **qa-astral** on this publish ref (bible + manifest), move to **Tests Ready**, reassign Katherine for **test-astral**. Parent **AST-539** stays **User Testing**.
+
+— Chuckles
+
+#### katherine — 2026-06-03T22:23:30.116Z
+`origin/sub/AST-539/AST-559-intake-chat-modal` @ `b8c8d4a8` — UAT UX delta (confirm gate, auto-start from persisted context, no modal paste).
+
+#### betty — 2026-06-03T00:41:51.821Z
+**Rollup bible reconcile** — `origin/sub/AST-539/AST-559-intake-chat-modal` @ `1dcd988a`
+
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `8303a7042bdc8188265d82690bb728202b2938dd9397baff6dec59b06b90e71e`
+
+**What changed:** §7.13zr epic table (**AST-558** + **AST-559** rows) replaces ftr’s backend-only §7.13zr; restored **§7.13zu** from cumulative `dev-betty` (was missing on sub tip). Rollup note documents fast-forward into `origin/ftr/ast-539-candidate-intake-chat-session`.
+
+**Chuckles:** re-run **`rollup-child`** AST-559 → parent ftr (bible-only conflict should clear).
+
+Status unchanged **User Testing**; Katherine remains assignee.
+
+— Betty
+
+#### betty — 2026-06-03T00:37:24.394Z
+[check-linear]
+
+**[qa-handoff] cleared** — mocks aligned to AST-558 **`IntakeSessionDto`** contract.
+
+**Changes:**
+- `test_CandidateIntake.test.tsx` — `/intake/sessions`, `/sessions/active`, `…/turns`, `…/build`; `transcript[].text`; `can_build` gate; session **POST** carries materials (no `PUT …/data` on start)
+- `docs/ASTRAL_TEST_BIBLE.md` §7.13zr — manifest + handoff note
+
+**Publish:** `origin/sub/AST-539/AST-559-intake-chat-modal` @ `71cb5fa7`  
+**Bible shasum (publish ref):** `9320648eca43b17411ef69b6b6e0ca94598a0ce7`
+
+**Manifest (Katherine — `test-astral`):**
+
+1. `cd src/ui/frontend && npx tsc -b --noEmit`
+2. `cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx`
+
+**Pre-run:** `git fetch origin` → merge `origin/dev` → merge `origin/sub/AST-539/AST-558-intake-session-api` → merge `origin/sub/AST-539/AST-559-intake-chat-modal`
+
+Reassigned Katherine for **`test-astral`**. Status stays **Tests Ready**.
+
+#### katherine — 2026-06-03T00:33:06.552Z
+[qa-handoff]
+
+@Betty White — Product fix for Radia **fix-now** items is on `origin/sub/AST-539/AST-559-intake-chat-modal` @ `8ee65ee5`.
+
+**Product changes:** `IntakeChatModal` now uses AST-558 paths (`/intake/sessions`, `/sessions/active`, `…/turns`, `…/build`) and maps flat `IntakeSessionDto` (`session_id`, `transcript[].text`, `can_build`, `build_completed`). Composer placeholder neutralized.
+
+**Tests:** `test_CandidateIntake.test.tsx` mocks still target pre-558 contract (`/intake/session`, `IntakeTurnResponse`, `PUT …/data` on start). Manifest fails 6/9 after product fix. Please update mocks/fixtures to AST-558 shape and republish bible/manifest; reassign Katherine when Tests Ready.
+
+**Pre-run (unchanged integration):** `git fetch origin` → merge `origin/dev` → merge `origin/sub/AST-539/AST-558-intake-session-api` (or parent ftr) → merge `origin/sub/AST-539/AST-559-intake-chat-modal`.
+
+#### radia — 2026-06-03T00:28:47.054Z
+## Review (Radia) — `origin/dev...origin/sub/AST-539/AST-559-intake-chat-modal`
+
+**Doc:** `docs/features/candidate/ast-559-intake-chat-modal.md` § Review (Radia) @ `6f4abbb3`
+
+### fix-now
+
+1. **`IntakeChatModal.tsx` — REST paths vs shipped AST-558**  
+   UI uses plan contract: `GET/POST /api/candidates/{id}/intake/session`, `POST …/intake/session/turn` with `{ mode }`. Ada's tip on `origin/sub/AST-539/AST-558-intake-session-api` exposes `POST …/intake/sessions` (materials in create body), `GET …/intake/sessions/active`, `POST …/intake/sessions/{session_id}/turns`, `POST …/intake/sessions/{session_id}/build`. Parent ftr integration will 404 until UI aligns with AST-558 or backend adds shims.
+
+2. **`IntakeChatModal.tsx` — JSON DTO mapping**  
+   UI expects `IntakeTurnResponse` (`assistant_message`, `session.messages[]` with `content`, `intake_session_id`). AST-558 `get_intake_session_dto` returns `session_id`, `transcript[]` with `text`, `can_build`, `status` — no turn wrapper. Thread stays empty without mapping even if paths were corrected.
+
+### discuss
+
+- **§1.4 / ticket boundary:** composer `placeholder="Reply to Estelle…"` — hardcoded agent name; plan Self-review says no Estelle strings in React. Neutral copy or server-driven label?
+- **Test coverage:** Plan Stage 4 nav-order test (Intake above Profile in `NavigationShell`) not in manifest — route/modal tests only.
+
+### advisory
+
+- **`docs/ASTRAL_TEST_BIBLE.md`** on publish tip includes sibling epic bible rows (AST-549/558/539) — expected on integrated sub ref, not Katherine product scope.
+
+### What's solid
+
+Nav + route shell, gating (`ready_to_build` / `build_completed` / build-once), session-resume intent, frontend layer hygiene, Vitest depth for modal flows.
+
+**Verdict:** Structure and gating look good; **resolve-astral blocked on AST-558 contract alignment** before parent UAT.
+
+#### betty — 2026-06-03T00:08:42.671Z
+**Tests Ready** — manifest for `test-astral` (Katherine).
+
+**Publish:** `origin/sub/AST-539/AST-559-intake-chat-modal` @ `f8dba7fe`  
+**`docs/ASTRAL_TEST_BIBLE.md` shasum (publish ref):** `028af8f8765496b00cc5b9a9888989190d0047fe7981bd4b061755c9bb105c87`
+
+**Pre-run (engineer tree):** `git fetch origin` → `git merge origin/dev` → `git merge origin/sub/AST-539/AST-558-intake-session-api` → `git merge origin/sub/AST-539/AST-559-intake-chat-modal`
+
+**Manifest:**
+
+1. `cd src/ui/frontend && npx tsc -b --noEmit`
+2. `cd src/ui/frontend && npm run test:component -- --run tests/component/frontend/pages/test_CandidateIntake.test.tsx`
+
+**Coverage (§6c routed page):** `test_CandidateIntake.test.tsx` — empty candidate state; routed page renders modal with first-paint mocks; materials required before Start; persist + `POST …/intake/session`; resume via `GET …/intake/session` (404 vs active thread); **Generate Profile** gated on `ready_to_build`; Send while ready; single `build_request`; **New intake session** after build with confirm.
+
+If manifest or test is wrong: `[qa-handoff]` on this ticket, assign Betty — do not edit tests on publish ref.
+
+— Betty
+
+#### katherine — 2026-06-02T22:32:02.086Z
+Plan: `docs/features/candidate/ast-559-intake-chat-modal.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-539/AST-559-intake-chat-modal/docs/features/candidate/ast-559-intake-chat-modal.md
+
+**Scope:** `Single-Component` — Candidate frontend only (NAV_CONFIG Intake above Profile, `/candidate/intake` host page, `IntakeChatModal`, CSS, Vitest); defers session API to **AST-558**.
+
+**Conf:** `Medium` — Established Modal/api/NAV patterns; REST contract in the plan must match Ada’s **AST-558** publish before Stage 3 wiring.
+
+**Risk:** `Medium` — `ready_to_build` / `build_completed` gating errors would block or duplicate Generate Profile; plan uses server flags and disabled button state.
+
+**Stages:** (1) nav + route shell, (2) modal layout/materials without API, (3) wire intake session endpoints (blocked until `origin/sub/AST-539/AST-558-intake-session-api` exists), (4) component tests.
+
+Publish: `origin/sub/AST-539/AST-559-intake-chat-modal` @ `1507decc`.
+
+---
+
 # Intake chat modal and Candidate navigation (Candidate Intake Chat Session)
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-559/intake-chat-modal-and-candidate-navigation-candidate-intake-chat  

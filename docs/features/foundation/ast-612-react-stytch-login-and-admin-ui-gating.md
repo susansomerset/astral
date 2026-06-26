@@ -1,3 +1,148 @@
+<!-- linear-archive: AST-612 archived 2026-06-23 -->
+
+## Linear archive (AST-612)
+
+**Archived:** 2026-06-23  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-612/react-stytch-login-and-admin-ui-gating-use-stytch-for-user  
+**Status at archive:** Done  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-609 — Use stytch for user authentication  
+**Blocked by / blocks / related:** parent: AST-609
+
+### Description
+
+## What this implements
+
+Add Stytch-powered login to the React SPA. Store session token and inject `Authorization: Bearer` via shared `api.ts`. Hide admin navigation entries and block `/admin/*` routes for non-admin users. Prevent non-admin users from changing the selected candidate in the UI (read-only selector or fixed candidate).
+
+## Acceptance criteria
+
+* Unauthenticated users see login; authenticated users reach the app with valid Bearer on all API calls.
+* Admin nav items and admin pages hidden/disabled when `/api/me` reports `is_admin: false`.
+* Non-admin cannot change selected candidate (UI + respects server 403 from **AST-611**).
+* Frontend component tests cover login gate, admin nav visibility, and candidate selector lock.
+
+## Boundaries
+
+* Does **not** implement backend token validation — blocked on **AST-611**.
+* Does **not** add Stytch Python client — **AST-610**.
+
+## Notes for planning
+
+* Katherine domain: `src/ui/frontend/`, `api.ts`, routing in `App.tsx`, candidate context/provider.
+* Use Stytch frontend SDK appropriate for SPA + Railway deployment.
+* Read `ASTRAL_CODE_RULES` §2.9 for intended api client token pattern.
+
+## Git branch (authoritative)
+
+Parent `ftr/ast-609-use-stytch-for-user-authentication`, child `sub/AST-609/AST-612-react-login-and-admin-ui`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-12T23:02:23.654Z
+**Review @ `e98ab853`** (`origin/sub/AST-609/AST-612-react-login-and-admin-ui`)
+
+Diff baseline: `origin/dev...e98ab853`. Branch also contains **AST-610/611** sibling commits not on `dev`; findings are **AST-612 frontend scope only**.
+
+### fix-now
+None.
+
+### discuss
+None.
+
+### Advisory
+- **`stytchClient.ts`** — `StytchUIClient` from `@stytch/vanilla-js` vs plan’s `createStytchUIClient`; works with `StytchProvider`.
+- **`AuthContext.tsx`** — `isAdmin` false while `/api/me` loads; admin candidate `<select>` may flicker disabled briefly (happy-path OK).
+- **`ASTRAL_CODE_RULES.md` §2.9** — still Auth0 stub wording; optional doc pass when parent lands.
+- Full diff vs `dev` includes backend auth from **610/611** — expected on this branch, not 612 scope creep.
+
+### Plan fidelity (clean)
+Stytch login gate, Bearer `session_jwt` on `api()`, `/api/me` → `isAdmin`, `RequireAuth`, `AdminRoute` on all nine `admin/*` routes, non-admin candidate lock (`NavigationShell` + `CandidateContext`). Betty manifest cases present.
+
+Doc: `docs/features/foundation/ast-612-react-stytch-login-and-admin-ui-gating.md` § Review (Radia).
+
+#### katherine — 2026-06-12T23:01:11.752Z
+Manifest green after product fix `e98ab853` on `origin/sub/AST-609/AST-612-react-login-and-admin-ui`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../tests/component/frontend/lib/test_api.test.ts \
+  ../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+```
+
+6 files, 17 tests — pass. No max-update-depth warnings.
+
+Fix: `AuthContext` effect deps on `session_jwt` string instead of `useStytch()` object identity.
+
+#### betty — 2026-06-12T22:59:50.067Z
+## QA test manifest (AST-612)
+
+**Publish ref:** `origin/sub/AST-609/AST-612-react-login-and-admin-ui` @ `84a725bc`  
+**Bible:** `docs/ASTRAL_TEST_BIBLE.md` shasum `f45777de88ad5d53d31bc94a65dea7243a629459` on publish ref  
+**§7.13zza** — AST-612 row appended (sibling AST-610/611 rows unchanged)
+
+### Run (Vitest — from `src/ui/frontend/`)
+
+```bash
+npm run test:component -- \
+  ../tests/component/frontend/lib/test_api.test.ts \
+  ../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+```
+
+### Manifest
+
+1. **`tests/component/frontend/lib/test_api.test.ts`** — `setAuthTokenGetter` injects `Authorization: Bearer <jwt>`; omits header when no token
+2. **`tests/component/frontend/contexts/test_AuthContext.test.tsx`** — mock Stytch session + `/api/me` → `isAdmin` true/false; clears user when session absent
+3. **`tests/component/frontend/components/test_RequireAuth.test.tsx`** — no session → Stytch login visible; session → children render
+4. **`tests/component/frontend/components/test_AdminRoute.test.tsx`** — `isAdmin: false` → redirect to `/jobs/recommended`; loading gate; admin sees children
+5. **`tests/component/frontend/components/test_NavigationShell.test.tsx`** — existing admin nav/candidate select + **`isAdmin: false` → combobox disabled**
+6. **`tests/component/frontend/contexts/test_CandidateContext.test.tsx`** — existing load/refresh + **`setSelectedId` noop when non-admin**
+
+### Harness updates (existing suites)
+
+- **`tests/component/frontend/test-utils.tsx`** — `AuthProvider` + Stytch mock in `AllProviders`; default `/api/me` admin in `installBaseApiMocks`
+- **`tests/component/frontend/stytchMock.tsx`** + **`vite.config.ts` `test.alias`** — Vitest-only `@stytch/react` stub (production build unaffected)
+- **`test_App.test.tsx`**, **`test_routes.test.tsx`** — updated for Stytch shell + nested route tree
+
+### Coverage notes
+
+- **Existing (bible-backed):** AST-611 backend auth tests unchanged — engineer runs manifest #1–6 only for this ticket's frontend scope
+- **Broken/revised:** `test_api.test.ts` (stub token removed), `test_App` / `test_routes` / `test-utils` / `NavigationShell` / `CandidateContext` (auth wiring)
+- **No new gaps** beyond plan AC for happy path
+
+— Betty
+
+#### katherine — 2026-06-12T22:55:19.684Z
+**Code complete** — `origin/sub/AST-609/AST-612-react-login-and-admin-ui`
+
+- Stytch `StytchLogin` + `/authenticate` callback; `api()` sends `Authorization: Bearer <session_jwt>` via `setAuthTokenGetter`
+- `/api/me` drives `isAdmin`; `AdminRoute` blocks `/admin/*` for non-admins; candidate `<select>` disabled + `setSelectedId` noop for non-admins
+- Admin nav remains server-filtered via `/api/nav_config` (AST-611)
+
+**Betty QA manifest (§7.13zza):** `test_api.test.ts` token getter; `test_AuthContext.test.tsx`; `test_RequireAuth.test.tsx`; `test_AdminRoute.test.tsx`; `test_NavigationShell.test.tsx` non-admin combobox; `test_CandidateContext.test.tsx` noop; mock `@stytch/react` + `AuthProvider` in `test-utils.tsx`
+
+#### katherine — 2026-06-12T22:53:28.609Z
+Plan doc: [ast-612-react-stytch-login-and-admin-ui-gating.md](https://github.com/susansomerset/astral/blob/sub/AST-609/AST-612-react-login-and-admin-ui/docs/features/foundation/ast-612-react-stytch-login-and-admin-ui-gating.md) on `sub/AST-609/AST-612-react-login-and-admin-ui` (merged `origin/ftr/ast-609-use-stytch-for-user-authentication` with AST-610+611).
+
+**Approach:** `@stytch/react` prebuilt login (Email Magic Links + Google OAuth), `session_jwt` via `setAuthTokenGetter` in `api.ts`, `/api/me` for `is_admin`, `AdminRoute` wrappers on all `/admin/*` paths, disabled candidate `<select>` + `setSelectedId` noop for non-admins. Admin nav visibility stays server-driven from `/api/nav_config` (AST-611). Happy path only.
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — shared API client, auth context, App/routes shell, nine admin routes, and candidate selector across frontend modules.
+- **Conf:** Medium — new Stytch React SDK in repo but backend Bearer contract is fixed on `ftr`; prebuilt SPA pattern is documented.
+- **Risk:** Medium — login regression blocks the whole app; client admin gating is defense-in-depth over server `@require_admin`.
+
+---
+
 # AST-612 — React Stytch login and admin UI gating (Use stytch for user authentication)
 
 - **Linear (this ticket):** [AST-612](https://linear.app/astralcareermatch/issue/AST-612/react-stytch-login-and-admin-ui-gating-use-stytch-for-user)

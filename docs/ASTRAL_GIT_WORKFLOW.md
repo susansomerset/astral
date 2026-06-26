@@ -154,16 +154,17 @@ resolve(AST-NNN): — findings addressed
 ### Betty's workflow
 
 1. **Local commit** on `tests` in `astral-tests` (test-lane files only).
-2. **`git push origin tests`** — publish test corpus to `origin/tests`.
-3. **`merge-tests(AST-NNN)`** — from `astral-tests`, integrate that commit onto the sub-branch and push `origin/sub/<parent>/<child>`:
+2. **`./scripts/git/validate-tests-branch.sh`** — must pass before push.
+3. **`git push origin tests`** — publish test corpus to `origin/tests`.
+4. **`merge-tests(AST-NNN)`** — from `astral-tests`, integrate that commit onto the sub-branch and push `origin/sub/<parent>/<child>`:
    - `git fetch origin`
    - Check out the sub-branch locally (in `astral-tests` worktree — temporary checkout).
    - `git merge <sha>` where `<sha>` is **the single** Betty commit for this ticket from step 1 (already on `origin/tests`).
    - Commit message: `merge-tests(AST-NNN): origin/tests <sha>`.
    - `git push origin HEAD:sub/<parent>/<child>`.
    - Return to local `tests` branch in `astral-tests`.
-4. **Engineer** resumes in the **ftr worktree** — checks out the sub-branch at the `merge-tests()` tip from origin (merge-on-checkout from `ftr` as usual).
-5. **Engineer** runs tests, fixes `src/` only, commits `test(AST-NNN)`, pushes `origin/sub/...`.
+5. **Engineer** resumes in the **ftr worktree** — checks out the sub-branch at the `merge-tests()` tip from origin (merge-on-checkout from `ftr` as usual).
+6. **Engineer** runs tests, fixes `src/` only, commits `test(AST-NNN)`, pushes `origin/sub/...`.
 
 Betty **never** uses the ftr worktree. She references `origin/sub/...` read-only during planning (step 1 prep); step 3 is the only write to the sub-branch, and she does it from `astral-tests`.
 
@@ -194,12 +195,15 @@ Before `merge-child()`, Chuckles validates the sub-branch log:
 
 - `plan()` present
 - `code()` present
-- `merge-tests()` present
+- `merge-tests()` present — **exactly one** per child id
 - `test()` present
 - `docs()` with `— clean` or `— findings`
 - `resolve()` with matching state
 - If `park-wip()`: paired `merge-resume()`
 - No commits to blocked paths (hooks enforce)
+- No **`Merge remote-tracking branch`** (git pull on sub)
+
+**Script (mandatory):** `./scripts/git/validate-sub-log.sh <publish-ref> [child-id]` — called by **`merge-child.sh`**.
 
 Failure → Chuckles posts on the Linear ticket; no merge.
 
@@ -251,7 +255,11 @@ Ten commit types. One owner each.
 
 Chuckles merge scripts (`refresh-ftr.sh`, `merge-child.sh`) use ephemeral `tmp-refresh-*` / `tmp-merge-child-*` local branch names. Those branches must be deleted when the script exits — they must **never** appear on `origin` or linger in `git log` decorations.
 
-Legacy `worktree/<IssueID>` local branch names from old worktree helpers should be pruned when the epic worktree uses `sub/*` directly. Only `sub/*`, `ftr/*`, `dev`, `tests`, and `main` should matter in day-to-day history.
+**Never push to origin:** `worktree/*`, `tmp-*`, `tmp-fix-*`. Prune strays: `./scripts/git/prune-remote-scratch-refs.sh` (use `--dry-run` first).
+
+Epic worktrees check out **`origin/ftr/<parent-segment>`** (see **`agent-worktrees.sh epic-create`**), not legacy **`worktree/AST-NNN`** branch names.
+
+Legacy `worktree/<IssueID>` refs on **origin** should be deleted. Only `sub/*`, `ftr/*`, `dev`, `tests`, and `main` should matter in day-to-day history.
 
 ## What never happens
 
