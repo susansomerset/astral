@@ -231,3 +231,20 @@ No conflicts requiring **`conf-!!-NONE`**.
 - Do not edit **`tests/`**, **`docs/test-bible/**`**, or **`docs/ASTRAL_TEST_BIBLE.md`** — Betty owns test manifest updates for **`run_next`** catalog assumptions.
 - Do not change **`dispatch_task`** seeds, **`parse_job_list`** dispatch entry, or **`select_job_page`** / **`parse_job_list`** prompts.
 - Blocking ambiguity → 🛑 comment on **AST-833** parent per plan-child template.
+
+---
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-833/AST-834-clear-select-job-page-run-next`
+
+**Product commits:**
+
+| SHA | Stage | Summary |
+|-----|-------|---------|
+| `705b840` | 2 | Neutralize AST-469 setter; add `_apply_ast834_clear_select_job_page_run_next_migration` |
+| `3ce83b4` | 3 | Clear `select_job_page.run_next` in `data/admin/agent_task.json` + AST-756 fixture (byte-identical) |
+
+**Stage 4:** Skipped — targeted roster/agent/repo tests green; `_finalize_joblist_titles_select_only` covers JOBS_FOUND without Manage Tasks `run_next`.
+
+**Built @ `3ce83b4`**
