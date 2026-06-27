@@ -1015,6 +1015,40 @@ class TestAst720PjlReadySelectDispatch:
         assert out["total_errors"] == 1
 
 
+class TestAst834SelectJobPageRunNextClear:
+    """AST-834: decomposed PJL_READY select must not in-process chain parse_job_list."""
+
+    @pytest.mark.asyncio
+    async def test_decomposed_select_invokes_select_do_task_only(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        company = TestAst720PjlReadySelectDispatch()._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        task_keys: list[str] = []
+        captured_ctx: Dict[str, Any] = {}
+
+        async def track_do_task(task_key: str, **kwargs: Any) -> Dict[str, Any]:
+            task_keys.append(task_key)
+            captured_ctx.update(kwargs.get("ctx") or {})
+            return {
+                "success": True,
+                "parsed_response": {
+                    "response_type": "JOBLIST_TITLES",
+                    "selected_page": 1,
+                    "job_titles": ["Engineer"],
+                },
+            }
+
+        monkeypatch.setattr(roster_mod, "do_task", track_do_task)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-834")
+        assert out["state"] == "JOBLIST_IDENTIFIED"
+        assert task_keys == ["select_job_page"]
+        assert "resolve_run_next_live" not in captured_ctx
+
+
 class TestAst721ParseDispatchHelpers:
     """AST-721: parse dispatch URL resolution and failure-state ladder."""
 
