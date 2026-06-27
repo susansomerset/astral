@@ -63,3 +63,24 @@ npm run test:component -- \
 ```
 
 **Regression guard (unchanged AST-612/613):** After manifest green, spot-check **`test_Login.test.tsx`**, **`test_AdminRoute.test.tsx`**, **`test_NavigationShell.test.tsx`** — no auth-gate regressions.
+
+---
+
+### AST-830 · AST-829
+
+**AST-829 (parent):** Production Google OAuth on Railway fails after redirect — Stytch **SessionsGet** succeeds but browser lands on Stytch Login Error. **AST-830** hardens SPA **`/authenticate`** OAuth/magic-link handoff: init gate, single-flight **`authenticateByUrl`**, in-app error + **Try again** (no hosted Stytch error page). **`env.example`** documents live-project checklist; Flask JWT validation is sibling **AST-831**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-830** | **`completeAuthenticateFromUrl`** outcomes; **`Authenticate`** page loading / redirect / error UI | `src/ui/frontend/src/lib/stytchAuthenticateHandoff.ts`, `src/ui/frontend/src/pages/Authenticate.tsx` | `tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts`; `tests/component/frontend/pages/test_Authenticate.test.tsx` |
+
+**AST-830** narrowed run (Vitest — from `src/ui/frontend/`; **§6c** routed page):
+
+```bash
+npx tsc -b --noEmit
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx
+```
+
+**Regression guard:** **`test_stytchRedirect.test.ts`**, **`test_Login.test.tsx`** — redirect URL wiring unchanged.

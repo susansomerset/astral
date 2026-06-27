@@ -444,6 +444,32 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-832 · AST-788 (UAT bug)
+
+**AST-832 (UAT bug):** Scheduler **Run** for **anticipate_scan** (`run_next_chain=True`, flat **`BUILD_ARTIFACTS`** trigger) aborted at legacy compound **`BUILD_ARTIFACTS.finalize_job_resume`** with `dispatch row mismatch` because **`_resolve_chain_start_task_key`** only accepted hop-specific **`dispatch_task_key`**. Chain-entry rows must resume from the job's legacy compound hop.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Chain-entry dispatch + legacy compound → compound hop start key | `src/core/consult.py` | **`TestAst803ChainHelpers::test_chain_entry_resolves_legacy_finalize_job_resume`** |
+| 2 | Named candidate entry discovery (`anticipate_scan`) | same | **`::test_chain_entry_resolves_with_candidate_entry_discovery`** |
+| 3 | **`_chain_dispatch_row_ok`** accepts chain-entry at legacy hop | same | **`::test_chain_entry_dispatch_row_ok_for_legacy_finalize_hop`** |
+| 4 | **`_run_build_artifacts_chain_batch`** runs **`do_chain_for_job`** (no skip) | same | **`TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch`** |
+
+**Regression (required):** hop-specific legacy row still resolves (**`TestAst803ChainHelpers::test_legacy_compound_job_state_resolves_start_key`**); **AST-803** chain graduation + dispatch honesty suites unchanged.
+
+**AST-832** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + regression helper — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-817 · AST-815
 
 **AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.

@@ -5,12 +5,27 @@ export const stytchTestState = {
   session: {} as object | null,
   isInitialized: true,
   sessionJwt: "test-session-jwt",
+  /** Return value for parseAuthenticateUrl (AST-830). */
+  parseAuthenticateUrlResult: null as {
+    token: string
+    tokenType: string
+    handled: boolean
+  } | null,
+  /** Stub for authenticateByUrl (AST-830). */
+  authenticateByUrlImpl: async (_opts: { session_duration_minutes: number }) =>
+    ({ handled: true, tokenType: "oauth" }) as {
+      handled: boolean
+      tokenType?: string
+      token?: string
+    } | null,
 }
 
 export function resetStytchTestState(): void {
   stytchTestState.session = {}
   stytchTestState.isInitialized = true
   stytchTestState.sessionJwt = "test-session-jwt"
+  stytchTestState.parseAuthenticateUrlResult = null
+  stytchTestState.authenticateByUrlImpl = async () => ({ handled: true, tokenType: "oauth" })
   lastStytchLoginConfig = null
   try {
     sessionStorage.clear()
@@ -31,6 +46,8 @@ export function useStytch() {
           ? { session_jwt: stytchTestState.sessionJwt }
           : null,
     },
+    parseAuthenticateUrl: () => stytchTestState.parseAuthenticateUrlResult,
+    authenticateByUrl: stytchTestState.authenticateByUrlImpl,
   }
 }
 
