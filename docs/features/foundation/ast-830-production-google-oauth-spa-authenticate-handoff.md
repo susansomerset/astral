@@ -247,3 +247,43 @@ No conflicts requiring plan revision.
 **UAT ops (Susan):** Stage 3 Stytch Dashboard live-project + Railway checklist in plan — confirm before production Google OAuth re-test.
 
 **Betty:** `test_stytchAuthenticateHandoff.test.ts`, `test_Authenticate.test.tsx` per plan Files Changed table.
+
+---
+
+## Radia review (2026-06-27)
+
+**Diff:** `origin/dev...origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` (`8930265`)
+
+**Session:** `fa43d223-42ec-491f-af77-c0f209a3e4d9`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–2: `completeAuthenticateFromUrl` helper with success / no-token / unsupported-token / error outcomes; `Authenticate.tsx` init gate (`isInitialized`), existing-session short-circuit, `useRef` single-flight, in-app error + **Try again**, query strip on failure; `env.example` production live-project checklist. |
+| SDK contract | `parseAuthenticateUrl` on client root (not `session`) per `@stytch/vanilla-js` v19 — documented in build stub; tests mock matches implementation. |
+| Layering (§3.3) | Frontend-only delta; no Flask / `src/external/stytch.py` / backend auth changes — AST-831 boundary respected. |
+| DRY (§1.3) | Handoff logic in `stytchAuthenticateHandoff.ts`; page is thin orchestration. |
+| Error handling (§D2) | `authenticateByUrl` rejections and unhandled outcomes become typed results — no swallowed exceptions on auth path. |
+| Session duration | `SESSION_DURATION_MINUTES = 60` matches `Login.tsx` `loginExpirationMinutes` / `signupExpirationMinutes` (60). |
+| Tests / bible | Betty manifest covers helper outcomes, page loading / redirect / error / single-flight; bible rows in `frontend/lib.md` and `components.md` match diff. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | Branch diff vs `origin/dev` | **`AST-832`** artifacts present: `tests/component/core/test_consult.py` additions + `docs/test-bible/core/consult.md` row — outside AST-830 layer contract (no `consult.py` product in diff). Likely ftr rollup on publish ref; confirm merge-child narrative or split before parent close. |
+| **discuss** | Plan Stage 3 | Susan ops checklist (Stytch Dashboard live project + Railway) still pending — not a code defect; production Google OAuth sign-off needs Susan confirmation per plan before parent UAT closes AST-829. |
+| **advisory** | `stytchAuthenticateHandoff.ts` | `SESSION_DURATION_MINUTES` is a module constant, not shared with `Login.tsx` — same value (60), plan explicitly waived new config block; drift risk is low. |
+| **advisory** | `Authenticate.tsx` `useRef` guard | React StrictMode dev remount resets ref (double-invoke possible in dev only); production StrictMode does not double-invoke effects — matches plan's production OAuth target. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child`. |
+| discuss | Stage 3 Susan checklist on **AST-830** before production Google OAuth re-test; note `/api/me` + **AST-831** if session JWT validation still fails after SPA handoff succeeds. |
+| discuss | AST-832 test/bible rows on publish ref — acceptable ftr rollup or cherry-pick hygiene at merge-child. |
+| advisory | Optional: extract shared `60` to a frontend auth constant if Login duration changes later. |
+
+**Publish tip:** `8930265` (product `ffcce3c` + env `0b224ff` + tests `8930265`)
