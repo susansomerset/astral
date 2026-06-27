@@ -220,3 +220,11 @@ No changes to `tests/component/ui/test_auth.py` unless Betty finds regressions �
 | §3.5 Naming | `log_stytch_project_env` mirrors existing module-level Stytch helpers |
 
 No conflicts requiring plan revision.
+
+## Review (build)
+
+**Built @ `b4a312a`** — `origin/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation`
+
+- Stage 1: `env.example` backend live-project verification block (AST-831)
+- Stage 2: `max_token_age_seconds=0` on `authenticate_jwt`; `log_stytch_project_env()` at startup; `session_not_found` ops hint in `validate_bearer_token`
+- Stage 3 (Susan ops): pending — Railway backend `STYTCH_*` alignment checklist in plan §Stage 3
