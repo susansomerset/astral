@@ -248,3 +248,43 @@ No conflicts requiring **`conf-!!-NONE`**.
 **Stage 4:** Skipped — targeted roster/agent/repo tests green; `_finalize_joblist_titles_select_only` covers JOBS_FOUND without Manage Tasks `run_next`.
 
 **Built @ `3ce83b4`**
+
+---
+
+## Radia review (2026-06-27)
+
+**Diff:** `origin/dev...origin/sub/AST-833/AST-834-clear-select-job-page-run-next` @ `57e99c7`  
+**Product commits:** `705b840` database migration · `3ce83b4` repo JSON + AST-756 fixture  
+**Tests:** `828142e` AST-834 manifest · `57e99c7` merge-tests rollup (sibling manifests on branch — product footprint AST-834 only)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 2–3 delivered as specified; Stage 4 correctly skipped — no `roster.py` edits; review stub documents green targeted roster/agent tests. |
+| Migration (§3.5) | `_apply_ast469_select_job_page_run_next_migration` neutralized (early return + supersede docstring); `_apply_ast834_clear_select_job_page_run_next_migration` clears only `select_job_page` current row when `run_next='parse_job_list'`; wired after AST-469 in `_ensure_agent_task_schema`; parameterized UPDATE; idempotent on empty/other values. |
+| Catalog sync (AST-786) | `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` byte-identical with `select_job_page.run_next=""` — prevents startup re-import of stale link. |
+| State machine (§2.6) | Decomposed PJL_READY select remains single-hop (`chain_parse=False`); parse dispatch at JOBLIST_IDENTIFIED unchanged; JOBS_FOUND select-only fallback preserved without Manage Tasks `run_next`. |
+| Layering / logging | Data-layer only; no new logging; no cross-layer imports. |
+| Tests + bible | Betty manifest (`TestAst834ClearSelectJobPageRunNextMigration`, `TestAst834SelectJobPageRunNextClear`, `TestAst834SelectJobPageEmptyRunNext`, repo JSON assertion) matches plan AC; AST-469 live-resolver regression retained. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | Publish ref rollup | Branch includes sibling test/bible commits from `merge-tests` (AST-825–832, AST-830/831) — **product diff vs `origin/dev` is AST-834-only** (`database.py` + JSON pair). Expected epic worktree rollup; not scope smuggling into `src/`. |
+| **advisory** | `_apply_ast834_clear_select_job_page_run_next_migration` | Clears only when stripped `run_next == "parse_job_list"` — whitespace-padded variants would not match (unlikely given AST-469 seeded exact value). |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child`. |
+| discuss | None. |
+| advisory | Parent **AST-833** UAT: confirm PJL_READY select no longer chains parse in-process on staging after deploy. |
+
+**Counts:** 0 fix-now · 0 discuss · 2 advisory
+
+**Outcome:** Clean — ship.
+
+— Radia
