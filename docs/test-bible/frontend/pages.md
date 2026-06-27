@@ -747,3 +747,39 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
   -t "AST-783"
 ```
+
+---
+
+### AST-808 · AST-378 (UAT fix)
+
+Assessment column + expandable criterion on **Admin Vector Feedback**; **FEEDBACK** batch modal hydrates compact **`vector_reviews`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assessment column on page | `src/ui/frontend/src/pages/AdminVectorFeedback.tsx` | `test_AdminVectorFeedback.test.tsx` |
+| Hydrated FEEDBACK table in modal | `src/ui/frontend/src/components/BatchAgentDataModal.tsx` | `test_BatchAgentDataModal.test.tsx` (AST-808 hydrated case) |
+| Ledger `candidate_id` when prop omitted (AST-816) | `src/ui/frontend/src/components/BatchAgentDataModal.tsx` | `test_BatchAgentDataModal.test.tsx` (AST-816 ledger case) |
+
+Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminVectorFeedback.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```
+
+### AST-816 · AST-378 (UAT fix)
+
+**Performance Monitor** and **Vector Feedback** pass row **`candidate_id`** into **`BatchAgentDataModal`**; modal resolves **`candidate_id`** from ledger when prop absent so **`hydrate_reviews`** POST succeeds.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ledger-only hydrate (no prop) | `BatchAgentDataModal.tsx` | `test_BatchAgentDataModal.test.tsx` (AST-816) |
+
+**AST-816** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```
+

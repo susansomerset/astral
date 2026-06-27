@@ -40,6 +40,18 @@
 
 ---
 
+### AST-814 · AST-813
+
+**AST-814:** **`run_inflow_discovery_batch`** reads **`ctx["inflow_discovery_freq_hrs"]`** (from dispatcher), not config **168**.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | **`freq_hrs=0`** in ctx searches fresh table terms | `src/core/roster.py` | **`TestAst505InflowDiscovery::test_run_batch_freq_hrs_zero_searches_fresh_terms`** |
+
+**Broken / obsolete (Betty revision):** **`test_run_batch_no_stale_terms_returns_zero_errors`** and **`test_run_batch_searches_only_stale_terms`** pass **`inflow_discovery_freq_hrs: 168`** in ctx (empty ctx defaults **`freq_hrs` to 0** = all rows stale).
+
+---
+
 ### AST-621 · AST-542
 
 **AST-542 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/roster.py`** inflow paths — **`run_inflow_discovery_batch`** / **`vet_inflow_discovery`** baseline from **AST-557** on **`ftr/`**; this child adds **`resolve_company_website`** contract debug, **`_ingest_failure_reason`** ` | ` detail under vet-row headers, and empty-dedupe skip header. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only. **`debug=False`** must stay unchanged — existing inflow behavior tests are the gate.
@@ -194,6 +206,59 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 
 ---
 
+### AST-827 · AST-824
+
+**AST-827 (child):** Title list handoff on decomposed **select_job_page → parse_job_list** — `_normalize_job_titles` at finalize + parse dispatch; shared **`_culled_dom_for_parse`** with post-cull title coverage gate; **JOBS_FOUND** chain resolver parity. Sibling **AST-827** formatting Phase 2b covers medicarerights-style sibling `<a>` job rows.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Two-title list normalized and persisted on **JOBLIST_IDENTIFIED** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_finalize_joblist_identified_persists_two_titles` |
+| 2 | Parse dispatch passes multi-title culled DOM to **`_fetch_parse_job_list`** | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom` |
+| 3 | Partial cull / missing titles → **`PARSE_DISPATCH_NO_CONTAINERS`** | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_parse_dispatch_cull_miss_no_containers`; `::test_culled_dom_for_parse_cull_miss_when_titles_absent` |
+| 4 | **JOBS_FOUND** chain resolver unchanged tuple contract with multi-title cull | `src/core/roster.py` | `::TestAst827TitleHandoffDomCull::test_make_locate_parse_resolver_two_title_sibling_cull`; regression **`TestAst469LocateParseResolver`**, **`TestMakeLocateParseResolver469`** |
+
+Formatting sibling-anchor cull: **`docs/test-bible/utils/formatting.md`** (**AST-827**).
+
+**AST-827** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
+  tests/component/core/test_roster.py::TestAst469LocateParseResolver \
+  tests/component/core/test_roster.py::TestMakeLocateParseResolver469 \
+  tests/component/utils/test_formatting.py::TestFindJobContainers::test_sibling_anchor_links_two_titles \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-826 · AST-753
+
+**UAT dedupe:** **`_build_select_job_page_live_content`** skips trailing global **`=== NAV LINKS ===`** when assembled PJL already contains per-page **`--- NAV LINKS ---`** (AST-759 assembly); still appends global block for legacy rows with no embedded marker. **`nav_links=`** to **`_find_job_page_from_assembled`** unchanged for TRY_LINKS.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live content dedupe helper | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst826DedupeSelectJobPageNav` |
+| PJL_READY dispatch embedded vs legacy paths | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_dedupes_nav_when_per_page_embedded`, `::test_select_dispatch_appends_global_nav_when_no_embedded_per_page` |
+
+**Broken / obsolete (Betty revision):** **`TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links`** — replaced by AST-826 dedupe + legacy global-append cases (AST-759 global append no longer expected when per-page nav embedded).
+
+**AST-826** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst826DedupeSelectJobPageNav \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_dedupes_nav_when_per_page_embedded \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_appends_global_nav_when_no_embedded_per_page \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-759 · AST-753
 
 **Shared page scrape contract** — single Playwright load → collapsed visible text + enumerated nav links; **`scrape_company_homepage_content`** and **`_scrape_pjl_page`** route through **`scrape_loaded_page_contract`** / **`finalize_page_scrape_contract`**; PJL rows persist **`enumerated_nav_links`**; **`_assemble_pjl_content`** embeds per-page **`--- NAV LINKS ---`**; **`run_select_job_page_dispatch`** passes **`_build_select_job_page_live_content`** (global **`pjl_nav_links`**) into **`_find_job_page_from_assembled`**. Does not change AST-720 routing or **`fetch_job_pages_batch`** pass/fail transitions.
@@ -202,8 +267,9 @@ Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/te
 | --- | --- | --- |
 | Contract finalize + select live content helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract` |
 | PJL merge/assemble nav persistence | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
-| PJL_READY select live content parity | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links` |
 | Homepage scrape via shared contract | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` |
+
+Select live content dedupe (UAT): **`docs/test-bible/core/roster.md`** (**AST-826**).
 
 Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AST-759**).
 
@@ -215,7 +281,6 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract \
   tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
-  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links \
   tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent \
   tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists \
   -q
@@ -383,14 +448,15 @@ Consult merge + config registry: **`docs/test-bible/core/consult.md`** · **`doc
 | --- | --- | --- |
 | Dual-row migration idempotency | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision` |
 
-Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases).
+Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases). **AST-823** adds **`TestAst823PrefilterDispatchMigration`** — see **`docs/test-bible/core/consult.md`** (**AST-823**).
 
 **AST-703** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
-  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration
 ```
 
 **Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
@@ -471,3 +537,53 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-819 · AST-815 (UAT bug)
+
+**AST-819 (UAT bug):** Harden **`_normalize_company_url_for_dedupe`** — catch **`ValueError`** from malformed bracketed IPv6 / bad URLs, return `""` so discovery ingest and blurb pipe collection skip instead of crashing the batch. **AST-817** consult routing verified on branch (no product change this ticket). Susan repro: company **`vet_inflow_discovery`** crashed on **`Invalid IPv6 URL`** after mis-route into **`run_inflow_discovery_batch`**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Consult company vet → **`run_company_task`** (**AST-817** regression) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | Malformed IPv6 / bad URL dedupe safe | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty` |
+| 3 | Valid URL dedupe unchanged | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_normalize_company_url_strips_www` |
+
+**AST-819** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_strips_www \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-822 · AST-815 (UAT bug)
+
+**AST-822 (UAT bug):** **`vet_inflow_discovery`** company dispatch batches eligible **NEW** rows — **`batch_call_mode=1`**, **`vet_inflow_discovery_company_batch`** assembles **`000|…` / `001|…` / `002|…`** live content, one **`do_task`**, **`hit_index`** decode per company. Consult routes **`dispatch_task_key=vet_inflow_discovery`** to batch runner (**AST-776** single-company wrapper unchanged for legacy **`run_company_task`** path).
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Single-company vet wrapper (**AST-776** regression) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` |
+| 2 | Blurb renumber + multi-hit batch decode | `src/core/roster.py` | `::TestAst822VetInflowDiscoveryBatch` |
+| 3 | Consult company vet → batch runner | `src/core/consult.py` | `::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 4 | Dispatch **`batch_call_mode=1`** default | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults` |
+
+**AST-822** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

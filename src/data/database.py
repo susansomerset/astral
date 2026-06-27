@@ -27,9 +27,11 @@ Tables used (inventory):
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
-  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id, created_at).
+  candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
+  batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
   One row per feedback type per vector per run; type/value codes validated against RUBRIC_FEEDBACK_CONFIG (AST-724 writes).
-  list_vector_feedback — filtered join to rubric_vector for Admin exploration (AST-725).
+  batch_size and completed_at capture dispatch run metadata (AST-809); created_at equals insert instant (same as capture).
+  list_vector_feedback — filtered join to rubric_vector for Admin exploration; includes content/importance hydration (AST-808).
   aggregate_vector_feedback_by_vector — per-current-vector counts and value distributions (AST-725).
 - candidate_intake_session — Per-candidate Estelle intake chat (intake_session_id TEXT PK, candidate_id,
   status ACTIVE|BUILT, transcript JSON, prompt_snapshot JSON, last_ready_to_build INTEGER, built_at TIMESTAMP,
@@ -3108,6 +3110,8 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
                 feedback_type TEXT NOT NULL,
                 value TEXT NOT NULL,
                 agent_data_id TEXT,
+                batch_size INTEGER,
+                completed_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP NOT NULL
             )
         """)
@@ -3122,6 +3126,12 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
             "ON vector_feedback (candidate_id, task_key)"
         )
         conn.commit()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(vector_feedback)").fetchall()}
+    if "batch_size" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN batch_size INTEGER")
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE vector_feedback ADD COLUMN completed_at TIMESTAMP")
+    conn.commit()
     _vector_feedback_schema_ensured = True
 
 
@@ -3183,11 +3193,15 @@ def insert_vector_feedback_rows(
     candidate_id: str,
     batch_id: str,
     task_key: str,
+    batch_size: int,
+    completed_at: Optional[str] = None,
     agent_data_id: Optional[str] = None,
 ) -> None:
-    """Insert one row per feedback type per parsed vector (AST-724)."""
-    if not vector_rows:
+    """Insert one row per feedback type per parsed vector (AST-724 / AST-809 batch metadata)."""
+    if not vector_rows or not (batch_id or "").strip():
         return
+    ts = completed_at or _utc_now()
+    bs = int(batch_size) if batch_size and batch_size > 0 else 1
 
     def _with_conn() -> None:
         conn = _get_connection()
@@ -3209,8 +3223,8 @@ def insert_vector_feedback_rows(
                         """INSERT INTO vector_feedback
                            (vector_feedback_id, rubric_vector_uuid, candidate_id,
                             batch_id, task_key, feedback_type, value,
-                            agent_data_id, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            agent_data_id, batch_size, completed_at, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             str(uuid.uuid4()),
                             rubric_uuid,
@@ -3220,7 +3234,9 @@ def insert_vector_feedback_rows(
                             feedback_type,
                             value,
                             agent_data_id,
-                            _utc_now(),
+                            bs,
+                            ts,
+                            ts,
                         ),
                     )
             conn.commit()
@@ -3288,10 +3304,12 @@ def list_vector_feedback(
                 params.append(f"{date_to}T23:59:59")
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
-                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.task_key,
-                           vf.feedback_type, vf.value, vf.agent_data_id, vf.created_at,
-                           vf.rubric_vector_uuid, rv.code AS vector_code,
-                           rv.label AS vector_label, rv.current AS rubric_current
+                f"""SELECT vf.vector_feedback_id, vf.candidate_id, vf.batch_id, vf.batch_size,
+                           vf.completed_at, vf.task_key, vf.feedback_type, vf.value,
+                           vf.agent_data_id, vf.created_at, vf.rubric_vector_uuid,
+                           rv.code AS vector_code, rv.label AS vector_label,
+                           rv.content AS vector_content, rv.importance AS vector_importance,
+                           rv.current AS rubric_current
                     FROM vector_feedback vf
                     LEFT JOIN rubric_vector rv ON vf.rubric_vector_uuid = rv.rubric_vector_uuid
                     {where}
@@ -3892,24 +3910,29 @@ def update_company_search_term_last_scan_at(candidate_id: str, search_term: str)
     _run_with_retry(_inner)
 
 
-def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> int:
-    """Count terms with NULL or stale last_scan_at (AST-525 consumer)."""
+def count_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> int:
+    """Count stale terms for inflow_discovery (AST-525/814); freq_hrs<=0 means all table rows."""
     if not candidate_id or not str(candidate_id).strip():
-        return 0
-    if scan_interval_hours <= 0:
         return 0
 
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            row = conn.execute(
-                """SELECT COUNT(*) FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchone()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM company_search_terms WHERE candidate_id = ?",
+                    (candidate_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT COUNT(*) FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))""",
+                    (candidate_id, str(fh)),
+                ).fetchone()
             return int(row[0]) if row else 0
         finally:
             conn.close()
@@ -3917,25 +3940,32 @@ def count_stale_company_search_terms(candidate_id: str, scan_interval_hours: flo
     return _run_with_retry(_with_conn)
 
 
-def list_stale_company_search_terms(candidate_id: str, scan_interval_hours: float) -> List[str]:
-    """Stale term strings for inflow_discovery (AST-525); ordered search_term ASC."""
+def list_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> List[str]:
+    """Stale term strings for inflow_discovery (AST-525/814); ordered search_term ASC."""
     if not candidate_id or not str(candidate_id).strip():
-        return []
-    if scan_interval_hours <= 0:
         return []
 
     def _with_conn() -> List[str]:
         conn = _get_connection()
         try:
             _ensure_company_search_terms_table(conn)
-            rows = conn.execute(
-                """SELECT search_term FROM company_search_terms
-                   WHERE candidate_id = ?
-                     AND (last_scan_at IS NULL
-                          OR last_scan_at < datetime('now', '-' || ? || ' hours'))
-                   ORDER BY search_term ASC""",
-                (candidate_id, str(float(scan_interval_hours))),
-            ).fetchall()
+            fh = float(freq_hrs or 0)
+            if fh <= 0:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                       ORDER BY search_term ASC""",
+                    (candidate_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT search_term FROM company_search_terms
+                       WHERE candidate_id = ?
+                         AND (last_scan_at IS NULL
+                              OR last_scan_at < datetime('now', '-' || ? || ' hours'))
+                       ORDER BY search_term ASC""",
+                    (candidate_id, str(fh)),
+                ).fetchall()
             return [r[0] for r in rows]
         finally:
             conn.close()
@@ -4362,6 +4392,39 @@ Use the standard two-key JSON envelope. In `agent_payload`, return:
 """
 
 
+_AST822_VET_INFLOW_BATCH_MARKER = "MULTI-HIT VET BATCH (AST-822)"
+
+_AST822_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
+## MULTI-HIT VET BATCH (AST-822)
+
+You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
+
+`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
+
+## Mechanical scope only
+
+Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
+news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
+
+## Response
+
+Use the standard two-key JSON envelope. In `agent_payload`, return one `results` object per input line:
+
+```json
+{"results": [
+  {"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"},
+  {"hit_index": 1, "action": "slug"|"ignore", "website": "…"}
+]}
+```
+
+- `hit_index` must match the input line index (`000` → 0, `001` → 1, …).
+- `action: "ignore"` — wrong page type; omit website or leave empty.
+- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
+"""
+
+
 def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
     """AST-776: seed mechanical-only vet_inflow_discovery prompt for company dispatch on NEW."""
     marker = _AST776_VET_INFLOW_MECHANICAL_MARKER
@@ -4386,6 +4449,48 @@ def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection
         if fcw and (fcw[0] or "").strip():
             agent_id = fcw[0]
     new_up = _AST776_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
+
+def _apply_ast822_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-822: widen vet_inflow_discovery prompt for multi-hit batch decode."""
+    marker = _AST822_VET_INFLOW_BATCH_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST822_VET_INFLOW_USER_PROMPT_SEED.strip()
     _save_agent_task_on_connection(
         conn,
         "vet_inflow_discovery",
@@ -4558,6 +4663,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
+    _apply_ast822_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5688,6 +5794,36 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
         "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
     )
+    # AST-823: legacy prefilter dispatch row retarget (agent key on dispatch row, stale batch mode).
+    conn.execute(
+        """
+        DELETE FROM dispatch_task AS d
+        WHERE d.entity_type = 'company'
+          AND d.task_key = 'prefilter_company'
+          AND EXISTS (
+            SELECT 1 FROM dispatch_task AS g
+            WHERE g.candidate_id = d.candidate_id
+              AND g.task_key = 'prefilter'
+              AND g.trigger_state = 'HOMEPAGE_READY'
+          )
+        """
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET task_key = 'prefilter', trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE entity_type = 'company' AND task_key = 'prefilter_company'"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND entity_type = 'company' "
+        "AND trigger_state IN ('WEBSITE_FOUND', 'WEBSITE_FOUND_RETRY')"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET batch_call_mode = 1 "
+        "WHERE task_key = 'prefilter' AND entity_type = 'company' AND batch_call_mode = 0"
+    )
+    conn.execute(
+        "UPDATE dispatch_task SET batch_call_mode = 1 WHERE task_key = 'vet_inflow_discovery'"
+    )
     conn.commit()
     # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
     _CONSULT_TO_GRADE_DISPATCH_KEYS = (
@@ -6033,13 +6169,14 @@ def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
-def describe_candidate_inflow_discovery_eligibility(candidate_id: str) -> tuple[int, str]:
-    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802)."""
+def describe_candidate_inflow_discovery_eligibility(candidate_id: str, freq_hrs: float) -> tuple[int, str]:
+    """Return (0|1 eligible, reason detail when ineligible) for inflow_discovery (AST-802/814)."""
     from src.core.candidate import ensure_company_search_terms_table_synced
 
     if not candidate_id or not str(candidate_id).strip():
         return 0, "eligibility: missing candidate_id"
     cid = str(candidate_id).strip()
+    fh = float(freq_hrs or 0)
     ensure_company_search_terms_table_synced(cid)
     cand = get_candidate(cid)
     if not cand:
@@ -6048,15 +6185,14 @@ def describe_candidate_inflow_discovery_eligibility(candidate_id: str) -> tuple[
     state = (cand.get("state") or "").strip()
     if state != trigger:
         return 0, f"eligibility: candidate state {state!r} != {trigger!r}"
-    scan_h = float(INFLOW_CONFIG["discovery"]["scan_interval_hours"])
     total = len(list_company_search_terms(cid))
     if total == 0:
         return 0, "eligibility: company_search_terms table empty"
-    stale = count_stale_company_search_terms(cid, scan_h)
+    stale = count_stale_company_search_terms(cid, fh)
     if stale == 0:
         return (
             0,
-            f"eligibility: {total} table row(s) but 0 stale (scan_interval_hours={scan_h})",
+            f"eligibility: {total} table row(s) but 0 stale (freq_hrs={fh})",
         )
     return 1, ""
 
@@ -6067,8 +6203,10 @@ def count_candidate_inflow_discovery_eligible(
     last_run_at: Optional[str],
 ) -> int:
     """inflow_discovery when LIVE_PROMPTS and ≥1 stale company_search_terms row (AST-525)."""
-    del freq_hrs, last_run_at  # unused — per-term last_scan_at, not dispatch_task.last_run_at
-    eligible, _reason = describe_candidate_inflow_discovery_eligibility(candidate_id)
+    del last_run_at  # per-term last_scan_at, not dispatch_task.last_run_at
+    eligible, _reason = describe_candidate_inflow_discovery_eligibility(
+        candidate_id, float(freq_hrs or 0)
+    )
     return eligible
 
 
@@ -6102,7 +6240,9 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(candidate_id, 0, None)
+        return count_candidate_inflow_discovery_eligible(
+            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+        )
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)

@@ -1904,6 +1904,31 @@ input.side-tab-heading-editable:focus {
   resize: none;
 }
 
+.batch-feedback-hydrated {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.batch-feedback-hydrated-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.batch-feedback-hydrated-table th,
+.batch-feedback-hydrated-table td {
+  border: 1px solid var(--border-color, #ccc);
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.batch-feedback-hydrated-table th {
+  background: var(--surface-muted, #f5f5f5);
+  font-weight: 600;
+}
+
 /* ============================================================
    14. Entity Pages (AST-329) — Company & Job modals
    ============================================================ */

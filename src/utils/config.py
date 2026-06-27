@@ -928,8 +928,6 @@ INFLOW_CONFIG = {
     "discovery": {
         "max_results_per_query": 100,
         "date_restrict_days": 7,
-        "dispatch_freq_hrs": 168,
-        "scan_interval_hours": 168,  # per-term last_scan_at staleness (AST-525); not dispatch_task.last_run_at
         "dispatch_trigger_state": "LIVE_PROMPTS",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
@@ -1283,7 +1281,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like",
+    "grade_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -1294,6 +1292,14 @@ _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
 def resolve_dispatch_task_config_key(task_key: str) -> str:
     """Return task_key unchanged — dispatch and TASK_CONFIG share one string (AST-736)."""
     return (task_key or "").strip()
+
+
+def dispatch_task_grouping_catalog_key(task_key: str) -> str:
+    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
+    tk = (task_key or "").strip()
+    if tk == "prefilter":
+        return ROSTER_CONFIG["prefilter"]["task_key"]
+    return tk
 
 
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
@@ -2972,6 +2978,16 @@ def legacy_build_artifacts_hop(state: str) -> str | None:
         return None
     hop = st[len(LEGACY_BUILD_ARTIFACTS_PREFIX):]
     return hop if hop in resume_artifact_hop_task_keys() else None
+
+
+def is_valid_job_batch_claim_state(state: str) -> bool:
+    """True for JOB_STATES keys and legacy BUILD_ARTIFACTS.<hop> holding states (batch claim only)."""
+    s = (state or "").strip()
+    if not s:
+        return False
+    if s in JOB_STATES:
+        return True
+    return legacy_build_artifacts_hop(s) is not None
 
 
 parse_resume_artifact_hop = legacy_build_artifacts_hop

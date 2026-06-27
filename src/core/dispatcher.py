@@ -483,6 +483,8 @@ async def _dispatch_one(task: Dict) -> None:
     ctx = dict(ctx)
     if task.get("skip_cache"):
         ctx["skip_cache"] = True
+    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+        ctx["inflow_discovery_freq_hrs"] = float(task.get("freq_hrs") or 0)
 
     entity_batch_id = f"{task_key}-{uuid.uuid4()}"
     has_run_next_chain = bool(_current_agent_task_run_next(task_key))
@@ -620,7 +622,8 @@ async def _run_dispatch_loop(
                     )
                     if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
                         _eligible, reason = database.describe_candidate_inflow_discovery_eligibility(
-                            task.get("candidate_id") or ""
+                            task.get("candidate_id") or "",
+                            float(task.get("freq_hrs") or 0),
                         )
                         if reason:
                             logger.debug_detail(reason)

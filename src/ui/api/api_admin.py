@@ -18,6 +18,7 @@ from src.data.database import (
     apply_config_table_upsert,
     list_vector_feedback,
     aggregate_vector_feedback_by_vector,
+    list_rubric_vectors,
 )
 
 from src.core.consult import list_timesheets
@@ -58,6 +59,7 @@ from src.utils.config import (
     DISPATCH_SCHEDULABLE_TASK_KEYS,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
+    dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     get_task_keys,
@@ -72,7 +74,9 @@ from src.utils.config import (
     validate_allowed_brain_setting,
     RUBRIC_FEEDBACK_CONFIG,
     rubric_owner_task_key_choices,
+    rubric_owner_task_key,
 )
+from src.utils.rubric_feedback import hydrate_vector_review_strings
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
@@ -635,8 +639,12 @@ _VECTOR_FEEDBACK_COLUMNS = [
     {"key": "candidate_id", "label": "Candidate", "type": "str"},
     {"key": "task_key", "label": "Task", "type": "str"},
     {"key": "batch_id", "label": "Batch", "type": "str"},
-    {"key": "vector_code", "label": "Vector", "type": "str"},
+    {"key": "batch_size", "label": "Batch size", "type": "int"},
+    {"key": "completed_at", "label": "Completed", "type": "datetime"},
+    {"key": "vector_code", "label": "Code", "type": "str"},
     {"key": "vector_label", "label": "Label", "type": "str"},
+    {"key": "vector_assessment_header", "label": "Assessment", "type": "str"},
+    {"key": "vector_content", "label": "Criterion", "type": "str"},
     {"key": "feedback_type", "label": "Type", "type": "str"},
     {"key": "value", "label": "Value", "type": "str"},
     {"key": "value_label", "label": "Value label", "type": "str"},
@@ -667,11 +675,52 @@ def _vector_feedback_filters() -> dict:
     return out
 
 
+def _vector_assessment_header(importance: Any, label: Any, code: Any) -> str:
+    imp = importance if isinstance(importance, int) and 1 <= importance <= 10 else 5
+    lab = (str(label or "").strip()) or "??"
+    cd = (str(code or "").strip())
+    return f"{imp} - {lab} ({cd})" if cd else f"{imp} - {lab}"
+
+
+def _resolve_rubric_owner_task_key(
+    owner_task_key: Optional[str] = None,
+    task_key: Optional[str] = None,
+) -> Optional[str]:
+    owner = (owner_task_key or "").strip()
+    if owner:
+        return owner
+    tk = (task_key or "").strip()
+    if not tk:
+        return None
+    mapped = rubric_owner_task_key(tk)
+    return mapped or tk
+
+
+def _rubric_lookup_by_code(candidate_id: str, owner_task_key: str) -> Dict[str, Dict[str, Any]]:
+    rows = list_rubric_vectors(candidate_id, owner_task_key, current_only=True)
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        code = str(row.get("code") or "").strip().upper()
+        if not code:
+            continue
+        out[code] = {
+            "label": row.get("label") or "",
+            "content": row.get("content") or "",
+            "importance": row.get("importance"),
+        }
+    return out
+
+
 def _enrich_vector_feedback_row(row: dict) -> dict:
     out = dict(row)
     out["value_label"] = _feedback_value_label(str(out.get("value") or ""))
     ft = str(out.get("feedback_type") or "")
     out["feedback_type_label"] = _feedback_type_label(ft)
+    out["vector_assessment_header"] = _vector_assessment_header(
+        out.get("vector_importance"),
+        out.get("vector_label"),
+        out.get("vector_code"),
+    )
     return out
 
 
@@ -701,6 +750,36 @@ def list_vector_feedback_summary():
 @require_admin
 def list_vector_feedback_task_keys():
     return jsonify(list(rubric_owner_task_key_choices()))
+
+
+@admin_bp.route("/vector_feedback/rubric_lookup")
+@require_admin
+def vector_feedback_rubric_lookup():
+    candidate_id = (request.args.get("candidate_id") or "").strip()
+    owner_task_key = _resolve_rubric_owner_task_key(
+        request.args.get("owner_task_key"),
+        request.args.get("task_key"),
+    )
+    if not candidate_id or not owner_task_key:
+        return jsonify({"error": "candidate_id and owner_task_key required"}), 400
+    return jsonify(_rubric_lookup_by_code(candidate_id, owner_task_key))
+
+
+@admin_bp.route("/vector_feedback/hydrate_reviews", methods=["POST"])
+@require_admin
+def vector_feedback_hydrate_reviews():
+    data = request.get_json(silent=True) or {}
+    candidate_id = str(data.get("candidate_id") or "").strip()
+    owner_task_key = _resolve_rubric_owner_task_key(
+        data.get("owner_task_key"),
+        data.get("task_key"),
+    )
+    vector_reviews = data.get("vector_reviews")
+    if not candidate_id or not owner_task_key:
+        return jsonify({"error": "candidate_id and owner_task_key required"}), 400
+    rubric_by_code = _rubric_lookup_by_code(candidate_id, owner_task_key)
+    rows = hydrate_vector_review_strings(vector_reviews, rubric_by_code)
+    return jsonify({"rows": rows})
 
 
 # ---------------------------------------------------------------------------
@@ -811,8 +890,10 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions form defaults: schedulable keys use dispatch_task_admin_defaults;
-    grouping fields from agent_task row for the dispatch task_key (AST-736 — no alias map)."""
+    grouping fields from agent_task via dispatch_task_grouping_catalog_key; entity/trigger
+    keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
+    grouping_key = dispatch_task_grouping_catalog_key(task_key)
     cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
@@ -825,7 +906,7 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
         "is_scored": dispatch_task_key_is_scored(task_key),
-        **_catalog_task_grouping_meta(catalog_key),
+        **_catalog_task_grouping_meta(grouping_key),
     }
 
 

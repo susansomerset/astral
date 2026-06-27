@@ -494,6 +494,11 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
         assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
 
+    def test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company(self) -> None:
+        assert cfg.dispatch_task_grouping_catalog_key("prefilter") == "prefilter_company"
+        assert cfg.dispatch_task_grouping_catalog_key("fetch_website") == "fetch_website"
+        assert cfg.dispatch_task_grouping_catalog_key("  prefilter  ") == "prefilter_company"
+
     def test_retired_consult_dispatch_keys_rejected(self) -> None:
         assert cfg.dispatch_task_key_retired_message("consult_do") == (
             "task_key 'consult_do' is retired; use 'grade_do'"
@@ -669,6 +674,25 @@ class TestAst803FlatBuildArtifactsChainDispatch:
     def test_build_failed_prior_includes_flat_build_artifacts(self) -> None:
         priors = cfg.JOB_STATES["BUILD_FAILED"]["prior_states"]
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
+
+
+class TestAst828JobBatchClaimStateValidation:
+    """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
+
+    def test_flat_job_state_valid(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("CANDIDATE_REVIEW") is True
+        assert cfg.is_valid_job_batch_claim_state("NEW") is True
+
+    def test_legacy_compound_hop_valid(self) -> None:
+        compound = cfg.resume_artifact_compound_state("finalize_job_resume")
+        assert cfg.is_valid_job_batch_claim_state(compound) is True
+
+    def test_invalid_compound_suffix_rejected(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("BUILD_ARTIFACTS.not_a_hop") is False
+
+    def test_blank_rejected(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("") is False
+        assert cfg.is_valid_job_batch_claim_state("  ") is False
 
 
 # AST-586 — dispatch claim score_floor vs task grading metadata (parent AST-547).
@@ -1038,10 +1062,12 @@ class TestAst504CompanySearchTermsConfig:
 
 
 class TestAst525InflowDiscoveryConfig:
-    """AST-525: per-term scan interval for inflow_discovery cadence."""
+    """AST-525/814: per-term last_scan_at cadence; interval from dispatch_task.freq_hrs (AST-814)."""
 
-    def test_scan_interval_hours_literal(self) -> None:
-        assert cfg.INFLOW_CONFIG["discovery"]["scan_interval_hours"] == 168
+    def test_discovery_config_has_no_scan_interval_literals(self) -> None:
+        d = cfg.INFLOW_CONFIG["discovery"]
+        assert "scan_interval_hours" not in d
+        assert "dispatch_freq_hrs" not in d
 
 
 class TestAst505InflowDiscoveryConfig:
@@ -1051,7 +1077,7 @@ class TestAst505InflowDiscoveryConfig:
         d = cfg.INFLOW_CONFIG["discovery"]
         assert d["max_results_per_query"] == 100
         assert d["date_restrict_days"] == 7
-        assert d["dispatch_freq_hrs"] == 168
+        assert "dispatch_freq_hrs" not in d
         assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
@@ -1095,7 +1121,7 @@ class TestAst505InflowDiscoveryConfig:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
         assert d["entity_type"] == "company"
         assert d["trigger_state"] == "NEW"
-        assert d["batch_call_mode"] == 0
+        assert d["batch_call_mode"] == 1
         assert "vet_inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
 
 

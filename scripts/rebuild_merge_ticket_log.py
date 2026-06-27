@@ -64,16 +64,71 @@ def _git_log_timestamp(dev_ref: str, *extra_args: str) -> str:
     return result.stdout.strip()
 
 
+def _commit_timestamp(sha: str) -> str:
+    result = _run_git("log", "-1", "--format=%cI", sha)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _grep_land_timestamp(dev_ref: str, grep: str) -> str:
+    return _git_log_timestamp(dev_ref, f"--grep={grep}")
+
+
+def _ftr_tip_sha(ftr_ref: str) -> str:
+    result = _run_git("rev-parse", f"origin/{ftr_ref}")
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _first_ftr_land_on_dev(dev_ref: str, ftr_ref: str) -> str:
+    ftr_tip = _ftr_tip_sha(ftr_ref)
+    if not ftr_tip:
+        return ""
+    base = _run_git("merge-base", dev_ref, f"origin/{ftr_ref}")
+    if base.returncode != 0 or not base.stdout.strip():
+        return ""
+    revs = _run_git("rev-list", "--reverse", f"{base.stdout.strip()}..{dev_ref}")
+    if revs.returncode != 0:
+        return ""
+    first_inclusion_sha = ""
+    for sha in revs.stdout.splitlines():
+        if not sha.strip():
+            continue
+        sha = sha.strip()
+        anc = _run_git("merge-base", "--is-ancestor", ftr_tip, sha)
+        if anc.returncode != 0:
+            continue
+        if not first_inclusion_sha:
+            first_inclusion_sha = sha
+        parents = _run_git("cat-file", "-p", sha)
+        if parents.returncode != 0:
+            continue
+        parent_shas = [
+            line.split()[1] for line in parents.stdout.splitlines() if line.startswith("parent ")
+        ]
+        if len(parent_shas) >= 2:
+            first_parent_anc = _run_git("merge-base", "--is-ancestor", ftr_tip, parent_shas[0])
+            if first_parent_anc.returncode != 0:
+                return _commit_timestamp(sha)
+    if first_inclusion_sha:
+        return _commit_timestamp(first_inclusion_sha)
+    return ""
+
+
 def _resolve_recorded_at(parent_id: str, dev_ref: str, ftr_ref: str) -> str:
     for grep in (
         f"prep-uat({parent_id}):",
         f"merge-parent({parent_id}):",
         f"finish-up({parent_id}):",
+        f"merge origin/{ftr_ref}",
+        f"Merge remote-tracking branch 'origin/{ftr_ref}'",
     ):
-        recorded_at = _git_log_timestamp(dev_ref, f"--grep={grep}")
+        recorded_at = _grep_land_timestamp(dev_ref, grep)
         if recorded_at:
             return recorded_at
-    return _git_log_timestamp(dev_ref, ftr_ref)
+    return _first_ftr_land_on_dev(dev_ref, ftr_ref)
 
 
 def _collect_entries(

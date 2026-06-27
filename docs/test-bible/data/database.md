@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `src/data/database.py` | `tests/component/data/test_database.py`; clusters under `tests/component/data/database/` | pending |
 
-**AST-524:** `company_search_terms` table cluster — `tests/component/data/database/test_company_search_terms.py` (sync, migration, `last_scan_at` preservation; no branch lock on `database.py`).
+**AST-524:** `company_search_terms` table cluster — **`freq_hrs<=0`** stale semantics (**AST-814**) — `tests/component/data/database/test_company_search_terms.py` (sync, migration, `last_scan_at` preservation; no branch lock on `database.py`).
 
 **AST-723:** `sync_rubric_vectors_from_criteria` + AST-723 token migration — extends `test_rubric_vectors.py` (**AST-722** cluster).
 

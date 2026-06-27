@@ -276,6 +276,14 @@ def find_job_containers(dom_html: str, job_titles: List[str]) -> List[str]:
                 return [str(c) for c in containers]  # pragma: no cover
             parent = parent.parent  # pragma: no cover
 
+    # Phase 2b: sibling leaves each carry one title (medicarerights-style job links).
+    if leaves:  # pragma: no cover
+        union_from_leaves: set = set()  # pragma: no cover
+        for _, leaf_titles in leaves:  # pragma: no cover
+            union_from_leaves.update(leaf_titles)  # pragma: no cover
+        if len(titles_set) >= 2 and union_from_leaves == titles_set:  # pragma: no cover
+            return [str(leaf) for leaf, _ in leaves]  # pragma: no cover
+
     return [dom_html]  # pragma: no cover
 
 

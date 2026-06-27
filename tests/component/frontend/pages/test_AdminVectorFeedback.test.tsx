@@ -27,6 +27,8 @@ const detailRow = {
   value_label: "Aligned",
   vector_code: "G1",
   vector_label: "G1",
+  vector_assessment_header: "5 - G1 fit (G1)",
+  vector_content: "Criterion body text",
   created_at: "2026-06-01T12:00:00Z",
   agent_data_id: null,
 }
@@ -75,7 +77,8 @@ describe("AdminVectorFeedback", () => {
     await waitFor(() => expect(screen.getByText("Per-vector summary (active rubric)")).toBeInTheDocument())
     expect(screen.getByText("Vector feedback rows")).toBeInTheDocument()
     expect(screen.getByText("vf-1")).toBeInTheDocument()
-    expect(screen.getAllByText("G1").length >= 1).toBe(true)
+    expect(screen.getByText("5 - G1 fit (G1)")).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "Assessment" })).toBeInTheDocument()
 
     fireEvent.blur(screen.getByLabelText("From"), { target: { value: "2026-05-01" } })
     fireEvent.blur(screen.getByLabelText("To"), { target: { value: "2026-06-14" } })

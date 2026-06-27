@@ -552,6 +552,34 @@ class TestAst739DispatchTaskKeysGrouping:
         assert keys["orphan_only"]["task_name"] == ""
 
 
+# AST-825: prefilter dispatch key resolves grouping via prefilter_company agent_task catalog.
+class TestAst825PrefilterDispatchTaskKeysGrouping:
+    def test_dispatch_task_keys_prefilter_grouping_from_prefilter_company_catalog(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda task_key: {
+                "task_group_order": "3000",
+                "task_group_name": "Company Roster",
+                "task_seq": 5.0,
+                "task_name": "Prefilter Company",
+            }
+            if task_key == "prefilter_company"
+            else None,
+        )
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        pf = keys["prefilter"]
+        assert pf["task_group_name"] == "Company Roster"
+        assert pf["task_group_order"] == "3000"
+        assert pf["task_seq"] == 5.0
+        assert pf["task_name"] == "Prefilter Company"
+        assert pf["entity_type"] == "company"
+        assert pf["trigger_state"] == "HOMEPAGE_READY"
+
+
 # AST-749: retired consult_* absent from task_keys even when list_dispatch_tasks returns legacy rows.
 class TestAst749DispatchTaskKeysRetiredFilter:
     def test_dispatch_task_keys_excludes_retired_consult_keys(
@@ -1927,6 +1955,8 @@ class TestAst725VectorFeedback:
         body = shaped.get_json()
         assert body["rows"][0]["vector_feedback_id"] == "vf-1"
         assert any(c["key"] == "value_label" for c in body["columns"])
+        col_keys = {c["key"] for c in body["columns"]}
+        assert {"batch_size", "completed_at"}.issubset(col_keys)
 
     def test_summary_requires_candidate_and_owner_task_key(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         missing = admin_client.get("/api/admin/vector_feedback/summary", headers=auth_headers)
@@ -1952,6 +1982,85 @@ class TestAst725VectorFeedback:
         assert body["rows"][0]["code"] == "G1"
         keys = admin_client.get("/api/admin/vector_feedback/task_keys", headers=auth_headers).get_json()
         assert "grade_get" in keys
+
+
+class TestAst809VectorFeedbackBatchMetadata:
+    def test_list_returns_batch_metadata_fields(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "vector_feedback_id": "vf-809",
+            "candidate_id": "c1",
+            "batch_id": "batch-809",
+            "batch_size": 6,
+            "completed_at": "2026-06-25 12:00:00",
+            "task_key": "grade_get",
+            "feedback_type": "relevance",
+            "value": "A",
+        }
+        monkeypatch.setattr(admin_mod, "list_vector_feedback", lambda **kwargs: [row])
+        body = admin_client.get("/api/admin/vector_feedback?req_dict=1", headers=auth_headers).get_json()
+        assert body["rows"][0]["batch_size"] == 6
+        assert body["rows"][0]["completed_at"] == "2026-06-25 12:00:00"
+
+
+class TestAst808VectorFeedbackHydration:
+    def test_list_enriches_assessment_header_and_columns(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "vector_feedback_id": "vf-808",
+            "candidate_id": "c1",
+            "batch_id": "b1",
+            "task_key": "grade_get",
+            "vector_code": "G1",
+            "vector_label": "Grade fit",
+            "vector_content": "Criterion body",
+            "vector_importance": 8,
+            "feedback_type": "relevance",
+            "value": "A",
+        }
+        monkeypatch.setattr(admin_mod, "list_vector_feedback", lambda **kwargs: [row])
+        body = admin_client.get("/api/admin/vector_feedback?req_dict=1", headers=auth_headers).get_json()
+        enriched = body["rows"][0]
+        assert enriched["vector_assessment_header"] == "8 - Grade fit (G1)"
+        assert enriched["vector_content"] == "Criterion body"
+        col_keys = {c["key"] for c in body["columns"]}
+        assert {"vector_assessment_header", "vector_content"}.issubset(col_keys)
+
+    def test_rubric_lookup_returns_code_map(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_rubric_vectors",
+            lambda cid, owner, current_only=True: [
+                {"code": "G1", "label": "Grade fit", "content": "Body", "importance": 5},
+            ],
+        )
+        body = admin_client.get(
+            "/api/admin/vector_feedback/rubric_lookup?candidate_id=c1&owner_task_key=grade_get",
+            headers=auth_headers,
+        ).get_json()
+        assert body["G1"]["label"] == "Grade fit"
+        assert body["G1"]["content"] == "Body"
+
+    def test_hydrate_reviews_endpoint(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "_rubric_lookup_by_code",
+            lambda cid, owner: {
+                "G1": {"label": "Grade fit", "content": "Criterion body", "importance": 5},
+            },
+        )
+        resp = admin_client.post(
+            "/api/admin/vector_feedback/hydrate_reviews",
+            json={
+                "candidate_id": "c1",
+                "owner_task_key": "grade_get",
+                "vector_reviews": ["G1RACOVK"],
+            },
+            headers=auth_headers,
+        )
+        rows = resp.get_json()["rows"]
+        assert len(rows) == 1
+        assert rows[0]["code"] == "G1"
+        assert rows[0]["label"] == "Grade fit"
+        assert "Criterion body" in rows[0]["content"]
 
 
 class TestAst783RepoJsonApi:

@@ -4835,6 +4835,7 @@ class TestAst724VectorFeedbackCapture:
             perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
+            batch_size=1,
         )
         conn = db._get_connection()
         try:
@@ -4866,6 +4867,7 @@ class TestAst724VectorFeedbackCapture:
             perf={"status": "success", "vector_reviews": ["not-valid"]},
             debug=False,
             prompt_blocks=prompt_blocks,
+            batch_size=1,
         )
         assert len(prompt_blocks) == 1
         assert prompt_blocks[0]["type"] == "FEEDBACK"
@@ -4891,7 +4893,245 @@ class TestAst724VectorFeedbackCapture:
             perf={"status": "failure", "vector_reviews": ["G1RACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
+            batch_size=1,
         )
         assert prompt_blocks == []
         rows = db.get_agent_data_by_batch("batch-724-fail", block_type="FEEDBACK")
         assert rows == []
+
+
+class TestAst809VectorFeedbackBatchMetadata:
+    """AST-809: batch_id, batch_size, and completed_at on vector_feedback rows."""
+
+    def test_capture_skips_insert_when_batch_id_missing(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=5,
+        )
+        assert prompt_blocks == []
+
+    def test_capture_persists_batch_metadata_on_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        completed = "2026-06-25 14:30:00"
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-809-meta",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=[],
+            batch_size=7,
+            completed_at=completed,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-809-meta")
+        assert len(rows) == 3
+        assert all(r["batch_id"] == "batch-809-meta" for r in rows)
+        assert all(r["batch_size"] == 7 for r in rows)
+        assert all(r["completed_at"] == completed for r in rows)
+
+
+class TestAst816VectorFeedbackCapture:
+    """AST-816: normalize parse, UUID-backed expected codes, debug hydration."""
+
+    def test_json_string_vector_reviews_persists_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "evaluate_jd",
+            [
+                {"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5},
+                {"code": "DOR", "label": "Domain", "content": "d\nA = one", "importance": 5},
+            ],
+        )
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-1",
+            batch_id="batch-816-json",
+            entity_type="candidate",
+            index=None,
+            perf={
+                "status": "success",
+                "vector_reviews": '["CLRRACOVK", "DORRACOVK"]',
+            },
+            debug=False,
+            prompt_blocks=[],
+            batch_size=2,
+        )
+        rows = db.list_vector_feedback(candidate_id="cand-1", batch_id="batch-816-json")
+        assert len(rows) == 6
+
+    def test_debug_emits_diagnostic_on_parse_failure(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "evaluate_jd",
+            [{"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-1",
+            batch_id="batch-816-diag",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["CLRRACOVK", "DORRACOVK"]},
+            debug=True,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert any(
+            token in combined
+            for token in ("reason=unknown_code", "reason=extra_codes", "reason=missing_codes")
+        )
+        assert "CLR Culture" in combined
+        assert len(prompt_blocks) == 1
+
+
+class TestAst820VectorFeedbackDebugTrace:
+    """AST-820: debug-only pipeline trace and explicit early-return skip reasons."""
+
+    def test_debug_skip_empty_batch_id(self, seeded_db, caplog: pytest.LogCaptureFixture) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture skipped" in combined
+        assert "skip reason=empty batch_id" in combined
+
+    def test_debug_skip_empty_expected_codes(self, seeded_db, caplog: pytest.LogCaptureFixture) -> None:
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="evaluate_jd",
+            owner_task_key="evaluate_jd",
+            candidate_id="cand-no-rubric",
+            batch_id="batch-820-empty",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["CLRRACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "skip reason=empty_expected_codes" in combined
+        assert "candidate=cand-no-rubric" in combined
+
+    def test_debug_emits_pipeline_trace_on_capture_start(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-820-trace",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture start" in combined
+        assert "vector_reviews trace candidate=cand-1" in combined
+        assert "normalize -> 1 lines" in combined
+        assert "diagnostic reason=ok" in combined
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_skip_when_candidate_id_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("INFO")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_performance": {
+                            "status": "success",
+                            "vector_reviews": ["G1RACOVK"],
+                        },
+                        "agent_payload": "0|CRA2",
+                    },
+                    "api_response": _api_response("envelope"),
+                    "timesheet": {},
+                }
+            ),
+        )
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "vector feedback capture skipped" in combined
+        assert "skip reason=missing owner=" in combined
