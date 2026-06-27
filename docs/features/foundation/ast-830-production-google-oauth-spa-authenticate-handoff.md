@@ -287,3 +287,19 @@ No conflicts requiring plan revision.
 | advisory | Optional: extract shared `60` to a frontend auth constant if Login duration changes later. |
 
 **Publish tip:** `8930265` (product `ffcce3c` + env `0b224ff` + tests `8930265`)
+
+## Resolution (2026-06-27)
+
+**Review tip:** `0a9df2c` (`docs(AST-830): Radia review — clean SPA authenticate handoff`)
+
+**fix-now:** None — no product changes required.
+
+**discuss (closed for resolve):**
+- **AST-832 test/bible rows on publish ref** — ftr rollup from sibling merge on epic worktree; AST-830 product diff is frontend-only. Chuckles **`merge-child`** narrative covers rollup; no Katherine split.
+- **Stage 3 Susan ops** — remains Susan manual UAT on production (`https://astral.up.railway.app`); checklist posted on Linear 2026-06-27. `/api/me` 401 after successful SPA handoff → **AST-831**, not AST-830.
+
+**advisory:** Accepted as-is (shared `60` constant drift risk low; StrictMode dev-only double-invoke acceptable).
+
+**§9a dry-run:** `origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` @ `0a9df2c` merges cleanly into `origin/dev` and `origin/ftr/AST-829-production-google-oauth-stytch-live`.
+
+**Manifest:** Betty items 1–4 green on publish ref (17 tests).
