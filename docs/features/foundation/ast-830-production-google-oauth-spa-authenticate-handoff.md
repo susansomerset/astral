@@ -233,3 +233,17 @@ export async function completeAuthenticateFromUrl(
 | §3.5 Naming | `stytchAuthenticateHandoff.ts` pairs with `stytchRedirect.ts` / `stytchClient.ts` |
 
 No conflicts requiring plan revision.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` @ `0b224ff`.
+
+**Stages delivered:**
+- Stage 1: `stytchAuthenticateHandoff.ts`, hardened `Authenticate.tsx` — `ffcce3c`.
+- Stage 2: `env.example` production live Stytch checklist — `0b224ff`.
+
+**Plan note:** `parseAuthenticateUrl` lives on the Stytch client root (not `stytch.session`) per `@stytch/vanilla-js` v19 types; helper interface adjusted accordingly.
+
+**UAT ops (Susan):** Stage 3 Stytch Dashboard live-project + Railway checklist in plan — confirm before production Google OAuth re-test.
+
+**Betty:** `test_stytchAuthenticateHandoff.test.ts`, `test_Authenticate.test.tsx` per plan Files Changed table.
