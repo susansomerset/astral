@@ -288,3 +288,15 @@ No conflicts requiring **`conf-!!-NONE`**.
 **Outcome:** Clean — ship.
 
 — Radia
+
+---
+
+## Resolution (Hedy / resolve — 2026-06-27)
+
+**Review:** Radia @ `38232b5` — 0 fix-now · 0 discuss · 2 advisory (rollup scope note; whitespace edge on migration guard — no change).
+
+**Product changes:** None — review clean; Stages 2–3 already shipped (`705b840`, `3ce83b4`); Stage 4 skipped per plan.
+
+**Verification:** Betty manifest items 1–4 green (13/13) on publish ref @ `38232b5`; §9a dry-run clean vs `origin/dev` and `origin/ftr/ast-833-select-job-page-run-next`.
+
+**Resolved @ `38232b5`**
