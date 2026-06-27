@@ -1683,6 +1683,16 @@ def _build_artifacts_chain_entry_task_key(candidate_id: str) -> str:
     return fallback
 
 
+def _chain_entry_dispatch_task_key(candidate_id: str) -> str:
+    cid = (candidate_id or "").strip()
+    if cid:
+        try:
+            return _build_artifacts_chain_entry_task_key(cid)
+        except ValueError:
+            return resume_artifact_hop_task_keys()[0]
+    return resume_artifact_hop_task_keys()[0]
+
+
 def _resolve_chain_start_task_key(
     job: Dict[str, Any],
     *,
@@ -1695,7 +1705,12 @@ def _resolve_chain_start_task_key(
     job_state = (job.get("state") or "").strip()
     legacy_hop = legacy_build_artifacts_hop(job_state)
     if legacy_hop:
-        return legacy_hop if tk == legacy_hop else None
+        if tk == legacy_hop:
+            return legacy_hop
+        entry = _chain_entry_dispatch_task_key(candidate_id)
+        if tk == entry:
+            return legacy_hop
+        return None
     if job_state == BUILD_ARTIFACTS_BASE_STATE:
         return tk
     return None
