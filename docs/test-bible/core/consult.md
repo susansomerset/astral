@@ -444,6 +444,108 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-832 · AST-788 (UAT bug)
+
+**AST-832 (UAT bug):** Scheduler **Run** for **anticipate_scan** (`run_next_chain=True`, flat **`BUILD_ARTIFACTS`** trigger) aborted at legacy compound **`BUILD_ARTIFACTS.finalize_job_resume`** with `dispatch row mismatch` because **`_resolve_chain_start_task_key`** only accepted hop-specific **`dispatch_task_key`**. Chain-entry rows must resume from the job's legacy compound hop.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Chain-entry dispatch + legacy compound → compound hop start key | `src/core/consult.py` | **`TestAst803ChainHelpers::test_chain_entry_resolves_legacy_finalize_job_resume`** |
+| 2 | Named candidate entry discovery (`anticipate_scan`) | same | **`::test_chain_entry_resolves_with_candidate_entry_discovery`** |
+| 3 | **`_chain_dispatch_row_ok`** accepts chain-entry at legacy hop | same | **`::test_chain_entry_dispatch_row_ok_for_legacy_finalize_hop`** |
+| 4 | **`_run_build_artifacts_chain_batch`** runs **`do_chain_for_job`** (no skip) | same | **`TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch`** |
+
+**Regression (required):** hop-specific legacy row still resolves (**`TestAst803ChainHelpers::test_legacy_compound_job_state_resolves_start_key`**); **AST-803** chain graduation + dispatch honesty suites unchanged.
+
+**AST-832** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + regression helper — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-817 · AST-815
+
+**AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.
+
+**Manifest focus (existing coverage — no new tests):**
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Company vet consult → **`run_company_task`** (not discovery batch) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | **`vet_inflow_discovery_company`** outcomes + routing (**AST-776** regression) | `src/core/roster.py` | `::TestAst776VetInflowDiscoveryCompany` |
+| 3 | Discovery batch no inline vet (**AST-775** regression) | `src/core/roster.py` | `::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors` |
+| 4 | Config company entity (**AST-776** regression) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task` |
+
+**AST-817** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-822 · AST-815 (UAT bug)
+
+**AST-822 (UAT bug):** Company **`vet_inflow_discovery`** consult guard routes to **`vet_inflow_discovery_company_batch`** (full claimed entity list) before **`run_company_task`** fallback — replaces **AST-817**/`819` **`run_company_task`** consult path for dispatch batching.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Consult vet → batch runner (not discovery batch / not per-entity warm) | `src/core/consult.py` | `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` |
+| 2 | Batch assembly + **`hit_index`** decode | `src/core/roster.py` | `::TestAst822VetInflowDiscoveryBatch` |
+| 3 | Single-company wrapper (**AST-776** regression) | `src/core/roster.py` | `::TestAst776VetInflowDiscoveryCompany` |
+
+**Regression note:** **AST-817** manifest consult line updated in **AST-822** — batch mock replaces **`run_company_task`** expectation.
+
+---
+
+### AST-823 · AST-821
+
+**AST-823 (UAT bug):** **`run_consult_task`** company branch routes **`dispatch_task_key`** in **`("prefilter", "prefilter_company")`** to **`prefilter_company_batch`** — legacy mis-keyed dispatch rows no longer fall through to **`run_company_task`** on **HOMEPAGE_READY**. Idempotent **`dispatch_task`** migration retargets **`prefilter_company`** agent-key rows and stale **`batch_call_mode` / `trigger_state`** on company prefilter rows (**AST-703** DELETE-before-UPDATE order preserved).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`prefilter`** batch routing (regression) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` |
+| Legacy **`prefilter_company`** dispatch key | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key` |
+| Batch runner unchanged | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch` |
+| Dispatcher union claim | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states` |
+| Migration retarget | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration` |
+
+**Broken / obsolete (Betty revision):** **`TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts`** — batch runner loads rubric via **`rubric_criteria_for_task(astral_candidate_id, …)`**; test stubs lookup with embedded **RC** + sets **`astral_candidate_id`** in ctx.
+
+Regression: **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMigrationUniqueCollision`** (**AST-702** / **AST-703**).
+
+**AST-823** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

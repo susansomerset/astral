@@ -571,6 +571,33 @@ class TestAst371ResumeArtifactDispatch:
         assert out["total_passed"] == 0
         assert released == ["job-1"]
 
+    @pytest.mark.asyncio
+    async def test_chain_batch_runs_legacy_compound_chain_entry_dispatch(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-832: chain-entry anticipate_scan must not mismatch at finalize_job_resume."""
+        chain = AsyncMock(return_value={"success": True})
+        compound = cfg.resume_artifact_compound_state("finalize_job_resume")
+        entry_key = cfg.resume_artifact_hop_task_keys()[0]
+        monkeypatch.setattr(consult_mod, "do_chain_for_job", chain)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": compound},
+        )
+        out = await consult_mod._run_build_artifacts_chain_batch(
+            "batch-832",
+            [{"astral_job_id": "job-832"}],
+            {"astral_candidate_id": "somerset"},
+            False,
+            entry_key,
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert out["total_passed"] == 1
+        assert out["total_errors"] == 0
+        chain.assert_awaited_once()
+        assert chain.await_args.kwargs["dispatch_task_key"] == entry_key
+
 
 @_SKIP_AST552_RESUME_BODY
 class TestAst803ChainGraduation:
@@ -734,6 +761,39 @@ class TestAst803ChainHelpers:
             job, dispatch_task_key="draft_job_resume", candidate_id="c1",
         )
         assert start == "draft_job_resume"
+
+    def test_chain_entry_resolves_legacy_finalize_job_resume(self) -> None:
+        """AST-832: scheduler Run uses chain-entry dispatch row at legacy compound hop."""
+        entry_key = cfg.resume_artifact_hop_task_keys()[0]
+        job = {"state": cfg.resume_artifact_compound_state("finalize_job_resume")}
+        start = consult_mod._resolve_chain_start_task_key(
+            job, dispatch_task_key=entry_key, candidate_id="",
+        )
+        assert start == "finalize_job_resume"
+
+    def test_chain_entry_resolves_with_candidate_entry_discovery(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            consult_mod,
+            "_build_artifacts_chain_entry_task_key",
+            lambda cid: "anticipate_scan",
+        )
+        job = {"state": cfg.resume_artifact_compound_state("finalize_job_resume")}
+        start = consult_mod._resolve_chain_start_task_key(
+            job, dispatch_task_key="anticipate_scan", candidate_id="somerset",
+        )
+        assert start == "finalize_job_resume"
+
+    def test_chain_entry_dispatch_row_ok_for_legacy_finalize_hop(self) -> None:
+        entry_key = cfg.resume_artifact_hop_task_keys()[0]
+        job = {"state": cfg.resume_artifact_compound_state("finalize_job_resume")}
+        assert consult_mod._chain_dispatch_row_ok(
+            job,
+            entry_key,
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "",
+        )
 
     def test_chain_failure_mode_classifies_hard_errors(self) -> None:
         assert consult_mod._chain_failure_mode({"error": "Job not found: x"}, "tk") == "hard"
