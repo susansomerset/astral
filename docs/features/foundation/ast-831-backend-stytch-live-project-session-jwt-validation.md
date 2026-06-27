@@ -228,3 +228,42 @@ No conflicts requiring plan revision.
 - Stage 1: `env.example` backend live-project verification block (AST-831)
 - Stage 2: `max_token_age_seconds=0` on `authenticate_jwt`; `log_stytch_project_env()` at startup; `session_not_found` ops hint in `validate_bearer_token`
 - Stage 3 (Susan ops): pending — Railway backend `STYTCH_*` alignment checklist in plan §Stage 3
+
+---
+
+## Radia review (2026-06-27)
+
+**Diff:** `origin/dev...origin/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation` (`1be0852`)
+
+**Session:** `fa43d223-42ec-491f-af77-c0f209a3e4d9`
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–2: `max_token_age_seconds=0` on `authenticate_jwt`; `log_stytch_project_env()` wired from `auth_bootstrap`; `session_not_found` ops hint in `validate_bearer_token` (still `None` → 401); `env.example` backend live-project checklist. |
+| Auth contract | User-resolution path unchanged; invalid JWT still swallowed to 401 via existing `validate_bearer_token` except block — no weakened validation. |
+| Layering (§3.3) | Utils does not import external; core → external wiring matches AST-611 pattern; no React / Flask decorator changes. |
+| Tests / bible | Betty manifest asserts `max_token_age_seconds=0` on happy path, `TestLogStytchProjectEnv` (live/test/truncate/unset), `test_session_not_found_logs_ops_hint`; bible rows in `external/stytch.md` + `utils/auth.md`. |
+| Scope boundary | AST-830 frontend handoff out of product diff — sibling split respected in product code. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **discuss** | Branch diff vs `origin/dev` | **AST-832** + **AST-830** artifacts on publish ref (`test_consult.py`, frontend Vitest files, sibling bible rows) — outside AST-831 layer contract; likely ftr rollup. Confirm merge-child narrative. |
+| **discuss** | Plan Stage 3 | Susan Railway backend `STYTCH_*` confirmation pending — production `/api/me` **200** after Google login depends on ops alignment + **AST-830** SPA handoff. |
+| **discuss** | `src/external/stytch.py` `log_stytch_project_env` | §3.2 says external modules do not log — plan **Decision** explicitly requires startup project-env visibility here; justified layer bend via approved plan, not ad hoc. |
+| **advisory** | `src/external/stytch.py` | Uses `logging.getLogger(__name__)` — peer `playwright.py` uses `get_logger`; align on touch if logging in external is retained. |
+| **advisory** | `test_stytch.py::test_local_jwt_response_fetches_user_by_session_user_id` | Plan QA table asked for `max_token_age_seconds=0` assert on this test too; only happy-path test asserts kwarg — low gap, remote validation still covered by product path. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child`. |
+| discuss | Stage 3 Susan backend checklist before production sign-off; if `session_not_found` persists after ops confirm, stop per plan with Stytch `request_id`. |
+| discuss | ftr rollup siblings on publish ref — acceptable at merge-child or split for clarity. |
+| advisory | Optional: `get_logger` in `stytch.py`; optional kwarg assert on local-JWT fallback test. |
+
+**Publish tip:** `1be0852` (product `b4a312a` + env `6b0cf47` + tests `1be0852`)
