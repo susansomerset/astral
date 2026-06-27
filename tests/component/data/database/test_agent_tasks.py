@@ -380,3 +380,86 @@ class TestAst790AgentTaskGroupingImport:
         assert task["task_name"] == "Anticipate Scan"
         assert float(task["task_seq"]) == 1.0
 
+class TestAst834ClearSelectJobPageRunNextMigration:
+    """AST-834: neutralize AST-469 re-seed; clear stale select_job_page → parse_job_list link."""
+
+    def _select_run_next(self, db, conn: sqlite3.Connection) -> str:
+        row = conn.execute(
+            "SELECT run_next FROM agent_task WHERE task_key = 'select_job_page' AND current = 1 LIMIT 1",
+        ).fetchone()
+        assert row is not None
+        return row[0] or ""
+
+    def test_ast834_migration_clears_stale_parse_job_list_link(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            db.save_agent_task(
+                "select_job_page",
+                agent_id="job_analyst_grace",
+                user_prompt="select prompt",
+                run_next="parse_job_list",
+            )
+            assert self._select_run_next(db, conn) == "parse_job_list"
+            db._apply_ast834_clear_select_job_page_run_next_migration(conn)
+            assert self._select_run_next(db, conn) == ""
+        finally:
+            conn.close()
+
+    def test_ast469_migration_no_longer_seeds_blank_run_next(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            db.save_agent_task(
+                "select_job_page",
+                agent_id="job_analyst_grace",
+                user_prompt="select prompt",
+                run_next="",
+            )
+            db._apply_ast469_select_job_page_run_next_migration(conn)
+            assert self._select_run_next(db, conn) == ""
+        finally:
+            conn.close()
+
+    def test_ast834_migration_idempotent_when_run_next_already_empty(
+        self, sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            db.save_agent_task(
+                "select_job_page",
+                agent_id="job_analyst_grace",
+                user_prompt="select prompt",
+                run_next="",
+            )
+            db._apply_ast834_clear_select_job_page_run_next_migration(conn)
+            assert self._select_run_next(db, conn) == ""
+        finally:
+            conn.close()
+
+    def test_ensure_schema_leaves_select_job_page_run_next_empty_after_stale_row(
+        self, sqlite_in_memory,
+    ) -> None:
+        import src.data.database as database_mod
+
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            database_mod._agent_task_schema_ensured = False
+            db._ensure_agent_task_schema(conn)
+            db.save_agent_task(
+                "select_job_page",
+                agent_id="job_analyst_grace",
+                user_prompt="select prompt",
+                run_next="parse_job_list",
+            )
+            database_mod._agent_task_schema_ensured = False
+            db._ensure_agent_task_schema(conn)
+            assert self._select_run_next(db, conn) == ""
+        finally:
+            conn.close()
+

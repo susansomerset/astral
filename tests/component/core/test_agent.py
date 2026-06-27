@@ -2019,6 +2019,46 @@ class TestAst692JobsiteScrapeIssueAgent:
         assert out.get("parsed_response", {}).get("response_type") == "JOBSITE_SCRAPE_ISSUE"
         assert send.await_count == 1
 
+
+class TestAst834SelectJobPageEmptyRunNext:
+    """AST-834: catalog-empty run_next must not chain parse without resolve_run_next_live."""
+
+    @pytest.mark.asyncio
+    async def test_jblist_titles_single_hop_when_run_next_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(run_next=""),
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "response_type": "JOBLIST_TITLES",
+                    "selected_page": 1,
+                    "job_titles": ["Engineer"],
+                },
+                "api_response": _api_response("sel"),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+
+        out = await agent_mod.do_task(
+            "select_job_page",
+            live_content="<root> enumerated parent </root>",
+            index="co-ast834",
+            ctx={"candidate_data": {}},
+            store_agent_data=False,
+        )
+
+        assert out["success"] is True
+        assert send.await_count == 1
+
+
 class TestRunAdhoc:
     async def test_requires_model_code(self) -> None:
         with pytest.raises(ValueError, match="requires model_code"):
