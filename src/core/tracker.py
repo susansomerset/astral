@@ -24,6 +24,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     TRACKER_CONFIG,
     is_build_artifacts_in_progress,
+    is_valid_job_batch_claim_state,
     validate_value,
 )
 from src.utils.logging import get_logger
@@ -529,6 +530,14 @@ def transition_job_state(job_ids: List[str], to_state: str, score: Optional[floa
 
 # ---- Batch API ----
 
+def _assert_valid_job_batch_claim_state(state: str) -> None:
+    if not is_valid_job_batch_claim_state(state):
+        raise ValueError(
+            f"Value {state!r} not in allowed list: {_JOB_STATE_LIST} "
+            f"(legacy BUILD_ARTIFACTS.<hop> holding states are claim-only)"
+        )
+
+
 def get_new_job_batch(
     state: str,
     limit: Optional[int] = None,
@@ -548,10 +557,10 @@ def get_new_job_batch(
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided)."""
     if states is None:
-        validate_value(_JOB_STATE_LIST, state)
+        _assert_valid_job_batch_claim_state(state)
     else:
         for s in states:
-            validate_value(_JOB_STATE_LIST, s)
+            _assert_valid_job_batch_claim_state(s)
     limit_val = limit if limit is not None else 10
     sort_by_val = sort_by
     if not batch_id and not context:

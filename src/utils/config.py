@@ -2980,6 +2980,16 @@ def legacy_build_artifacts_hop(state: str) -> str | None:
     return hop if hop in resume_artifact_hop_task_keys() else None
 
 
+def is_valid_job_batch_claim_state(state: str) -> bool:
+    """True for JOB_STATES keys and legacy BUILD_ARTIFACTS.<hop> holding states (batch claim only)."""
+    s = (state or "").strip()
+    if not s:
+        return False
+    if s in JOB_STATES:
+        return True
+    return legacy_build_artifacts_hop(s) is not None
+
+
 parse_resume_artifact_hop = legacy_build_artifacts_hop
 
 

@@ -8,3 +8,4 @@ __all__ = ["wire_stytch_token_authenticator"]
 
 def wire_stytch_token_authenticator() -> None:
     register_token_authenticator(stytch.authenticate_session_jwt)
+    stytch.log_stytch_project_env()

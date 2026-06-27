@@ -676,6 +676,25 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
+class TestAst828JobBatchClaimStateValidation:
+    """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
+
+    def test_flat_job_state_valid(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("CANDIDATE_REVIEW") is True
+        assert cfg.is_valid_job_batch_claim_state("NEW") is True
+
+    def test_legacy_compound_hop_valid(self) -> None:
+        compound = cfg.resume_artifact_compound_state("finalize_job_resume")
+        assert cfg.is_valid_job_batch_claim_state(compound) is True
+
+    def test_invalid_compound_suffix_rejected(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("BUILD_ARTIFACTS.not_a_hop") is False
+
+    def test_blank_rejected(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("") is False
+        assert cfg.is_valid_job_batch_claim_state("  ") is False
+
+
 # AST-586 — dispatch claim score_floor vs task grading metadata (parent AST-547).
 class TestAst586DispatchClaimScoreFloor:
     def test_valid_title_input_trigger_not_claim_scored(self) -> None:

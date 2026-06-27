@@ -557,6 +557,20 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+---
+
+### AST-828 · AST-752 (UAT bug)
+
+**`is_valid_job_batch_claim_state`:** true for **`JOB_STATES`** keys and legacy **`BUILD_ARTIFACTS.<hop>`** via **`legacy_build_artifacts_hop`** — batch claim boundary only; does not expand **`JOB_STATES`** registry.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper true/false cases | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
+
+Tracker batch API manifest: **`docs/test-bible/core/tracker.md`** (**AST-828**).
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
