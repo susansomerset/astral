@@ -140,3 +140,14 @@ Job stays at legacy compound **`BUILD_ARTIFACTS.finalize_job_resume`**; **`draft
 | Boundaries | No compound `JOB_STATES` keys; no AST-806 / AST-828 scope |
 
 No conflicts flagged.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-788/AST-832-uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job-resume`
+
+**Commits:**
+- `9acf0e6` — `code(AST-832): chain-entry mid-chain resume for legacy BUILD_ARTIFACTS compound states`
+
+**Manual verify:** `_resolve_chain_start_task_key` + `_chain_dispatch_row_ok` return `finalize_job_resume` for `BUILD_ARTIFACTS.finalize_job_resume` job with `anticipate_scan` chain-entry dispatch.
