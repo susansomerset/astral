@@ -267,3 +267,17 @@ No conflicts requiring plan revision.
 | advisory | Optional: `get_logger` in `stytch.py`; optional kwarg assert on local-JWT fallback test. |
 
 **Publish tip:** `1be0852` (product `b4a312a` + env `6b0cf47` + tests `1be0852`)
+
+## Resolution (2026-06-27)
+
+**Review @ `74cdcea`** — Radia **fix-now: none**. No product commits required.
+
+| Item | Resolution |
+|------|------------|
+| fix-now | N/A — shipped Stages 1–2 unchanged. |
+| discuss — ftr rollup siblings on publish ref | Expected epic-worktree merge history; **AST-831** product delta is `env.example`, `stytch.py`, `auth_bootstrap.py`, `auth.py` only. Sibling test rows (**AST-830**, **AST-832**) ride merge history until **merge-child**. |
+| discuss — Stage 3 Susan Railway `STYTCH_*` | Remains manual UAT prerequisite on parent **AST-829**; not blocking **User Testing** on this child. |
+| discuss — `log_stytch_project_env` logging in external | Plan **Decision** stands; no code change. |
+| advisory — `get_logger` / extra kwarg assert | Deferred; not required for sign-off. |
+
+**§9a dry-run:** `origin/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation` → `origin/dev` **clean**; → `origin/ftr/AST-829-production-google-oauth-stytch-live` **clean**.
