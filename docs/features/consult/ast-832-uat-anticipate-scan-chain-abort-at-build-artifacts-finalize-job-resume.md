@@ -151,3 +151,14 @@ No conflicts flagged.
 - `9acf0e6` — `code(AST-832): chain-entry mid-chain resume for legacy BUILD_ARTIFACTS compound states`
 
 **Manual verify:** `_resolve_chain_start_task_key` + `_chain_dispatch_row_ok` return `finalize_job_resume` for `BUILD_ARTIFACTS.finalize_job_resume` job with `anticipate_scan` chain-entry dispatch.
+
+---
+
+## Resolution
+
+**Date:** 2026-06-27  
+**Radia review:** Clean — no fix-now items.
+
+**Shipped:** `_chain_entry_dispatch_task_key` + `_resolve_chain_start_task_key` fix so chain-entry dispatch (`anticipate_scan`) resumes from legacy compound job state (`finalize_job_resume`) instead of `dispatch row mismatch` abort. AST-534 hop-specific rows unchanged. Betty manifest 7/7 green.
+
+**Publish tip:** `origin/sub/AST-788/AST-832-uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job-resume` @ `6f902ba` · §9a dev + ftr dry-run clean.
