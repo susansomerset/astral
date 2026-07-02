@@ -149,3 +149,12 @@ Binding per **plan-child**: execute **Stage 1** then **Stage 2** in order; **one
 | §3.5 naming | Follows existing `admin-filters` / `setFilter` / `dispatch-log-*` conventions. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-838/AST-840-execution-history-log-level-filter` @ `55852b20755a314212892f5e1dbcf264697bbf3a`
+
+Stage 1: URL-backed **Level** filter control (`log_level` param, not in `FILTER_KEYS`).  
+Stage 2: `LogViewer` client-side `visibleLogs` filter, filtered-empty message, filtered **Copy**.
