@@ -180,3 +180,15 @@ Expect manifest updates for:
 - Roster discovery test: assert **`pace_detail`** is invoked during mock CSE (streaming), not only after return.
 - Optional: assert mocked multi-page search produces interleaved pacing + **`CSE HTTP start=`** outcome lines in call order.
 - Regression: existing **`TestGoogleCseAst837PacingAndRateLimit`** + AST-489 module tests remain green.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-835/AST-839-uat-cse-debug-verbose-per-http-trace` @ `5ce1c46`
+
+**Stages delivered:**
+- Stage 1: per-HTTP `pace_detail` outcome lines in `google_cse.py` — `f65f6ff`
+- Stage 2: stream `log.debug_detail` as `pace_detail` in discovery + resolve — `5ce1c46`
+
+**Betty / qa-child:** Roster discovery streaming callback assertions; optional multi-page interleaved pacing + `CSE HTTP start=` order; regression on AST-837 + AST-489 CSE tests.
