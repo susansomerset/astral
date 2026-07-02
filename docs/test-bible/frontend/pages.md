@@ -464,6 +464,26 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-840 · AST-838
+
+**AST-838 (parent):** Susan triages failed dispatch runs from Execution History (`/admin/performance`); verbose INFO lines bury ERROR/WARNING rows. **AST-840**: URL-persisted **Level** filter (`log_level` param) in the filter bar; client-side filtering on expanded log viewer and **Copy** only — ledger fetch and `/api/admin/dispatch_ledger` query params unchanged.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-840** | **Level** dropdown (All/DEBUG/INFO/WARNING/ERROR); `log_level` URL param; `LogViewer` `visibleLogs` filter; filtered-empty message; filtered **Copy** | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — **`AST-840 log level filter`** describe |
+
+**AST-840** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-840 log level filter"
+```
+
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** — default **All** preserves **AST-532**, **AST-634**, and copy-toolbar describes.
+
+---
+
 ### AST-677 · AST-655
 
 **AST-677 (child):** Company Watch Criteria Artifacts page **`taskKey`** rename only — **`craft_company_prefilter`** → **`craft_prefilter_rubric`**. Stored artifact **`company_prefilter`** unchanged. Backend **`TASK_CONFIG`** + schema validation covered by **AST-676**; admin prompt bodies: Susan pastes approved explainer via Manage Tasks (**AST-685** reverts auto-migration; see sibling UAT explainer-text bug).
