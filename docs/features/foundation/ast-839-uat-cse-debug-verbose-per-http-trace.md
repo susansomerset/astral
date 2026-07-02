@@ -192,3 +192,33 @@ Expect manifest updates for:
 - Stage 2: stream `log.debug_detail` as `pace_detail` in discovery + resolve — `5ce1c46`
 
 **Betty / qa-child:** Roster discovery streaming callback assertions; optional multi-page interleaved pacing + `CSE HTTP start=` order; regression on AST-837 + AST-489 CSE tests.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-835/AST-839-uat-cse-debug-verbose-per-http-trace` @ `b3d925a`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Root cause / fix | AST-837 `pace_lines` buffer removed; `log.debug_detail` passed as live `pace_detail` callback — pacing sleeps and HTTP outcomes stream with real timestamps during `search_google_cse`. |
+| Plan fidelity | Stage 1 outcome lines in `_http_get_with_pacing_and_retry` (`items=`, `rate_limited=true`, `rate_limited=exhausted`); Stage 2 pre-search `debug_index` + streaming at discovery and resolve call sites. |
+| §1.5.1 debug | Emission gated on `debug=True` via existing `set_debug_flag`; pre-search index per term/company; `search complete:` detail replaces post-search index hit-count outcome (documented UAT decision). |
+| §2.5 external | No logging added in `google_cse.py`; `pace_detail` callback only. |
+| AST-837 boundary | Pacing config, retry semantics, and `GOOGLE_CSE_CONFIG` untouched — debug wiring only. |
+| Tests / bible | `TestGoogleCseAst839HttpOutcomeLines` (success, multi-page, retry, exhausted); roster streaming order tests for discovery + resolve; bible AST-839 manifest rows. |
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **Advisory** | FIX-UAT clean — no `resolve-child` product work expected; Chuckles may advance bug to **User Testing** after Susan re-tests per fix-uat lane. |
+| **Advisory** | Resolve path now emits two `debug_index` headers when CSE succeeds then vet runs (pre-search `CSE search` + downstream vet index) — pre-existing multi-phase pattern; acceptable for UAT HTTP trace focus. |
+
+**Verdict:** Clean — no Radia fix-now items.
