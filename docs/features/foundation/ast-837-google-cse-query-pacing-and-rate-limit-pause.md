@@ -278,3 +278,16 @@ pace_detail = pace_lines.append if debug else None
 | §3.5 naming | Config block name **`GOOGLE_CSE_CONFIG`** matches module/domain |
 
 No conflicts requiring **`Conf: !!-NONE`**.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause` @ `48ee9b1`
+
+**Stages delivered:**
+- Stage 1: `GOOGLE_CSE_CONFIG` literals — `6c424cb`
+- Stage 2: inter-query pacing + rate-limit pause/retry in `google_cse.py` — `e4af754`
+- Stage 3: `pace_detail` debug callback wiring in `run_inflow_discovery_batch` and `resolve_company_website` — `48ee9b1`
+
+**Betty / qa-child:** Component tests for pacing delay spacing and 429 retry behavior per ticket AC1–AC2; existing `test_google_cse.py` regression gate.
