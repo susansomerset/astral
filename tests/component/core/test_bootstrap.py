@@ -78,6 +78,11 @@ class TestBootstrapRuntime:
             "apply_repo_admin_json_at_startup",
             lambda: calls.append("repo_json"),
         )
+        monkeypatch.setattr(
+            bootstrap_mod.database,
+            "ensure_all_upsert_registry_schemas_at_startup",
+            lambda: calls.append("schema_ensure"),
+        )
         monkeypatch.setattr(bootstrap_mod, "get_task_keys", lambda: ["craft_resume_base"])
         monkeypatch.setattr(
             bootstrap_mod.database,
@@ -95,6 +100,7 @@ class TestBootstrapRuntime:
         assert calls == [
             "validate",
             "repo_json",
+            "schema_ensure",
             "sync:['craft_resume_base']",
             "scheduler",
         ]
