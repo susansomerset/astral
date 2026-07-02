@@ -192,3 +192,36 @@ No conflicts requiring `Conf: !!-NONE`.
 - Stage 2: `run_inflow_discovery_batch` non-debug WARNING batch summary when `errors > 0` — `dd6c179`
 
 **Betty / qa-child:** Manifest in plan header — dispatcher terminal logging + roster WARNING `app_log` assertions.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-838/AST-841-inflow-discovery-failed-log-alignment` @ `f950ac0`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity — Stage 1 | `failure_reason` on all three except paths; terminal `logger.error` / `logger.warning` in `_dispatch_one` finally after successful `update_dispatch_ledger`, before `flush_log_buffer`; uses module `logger` (`src.core.dispatcher`) not `_sched_log`. |
+| Plan fidelity — Stage 2 | Non-debug-gated roster WARNING batch summary when `errors > 0`, placed after debug footer, before return; per-term `CSE failed` warnings unchanged. |
+| §1.5 / §5f | Production ERROR/WARNING triage lines — not debug-contract emission; correctly ungated so **AST-840** Level filter works without debug dispatch. |
+| §2.4 batch | No claim/process/release or `batch_id` lifecycle changes. |
+| §2.6 / §3.3 | No state-machine or cross-layer import changes. |
+| Tests / bible | `TestAst841DispatchTerminalLogging` (INTERRUPTED → ERROR, COMPLETED+errors → WARNING); roster `test_run_batch_cse_failure_continues` asserts per-term + batch WARNING strings; bible rows in `dispatcher.md` and `roster.md`. |
+
+### Issues
+
+| Severity | Location | Issue |
+| --- | --- | --- |
+| **discuss** | Plan Stage 0 step 7 | Staging DB was not queried; plan gate says stop and `@susan` before Stage 1. Build proceeded with repro + code-trace **working hypothesis** only — ledger `status` for repro batch `inflow_discovery-3ea198da-…` is unconfirmed. Repro duration (~148s) vs default `dispatch_timeout_seconds` (3600) makes timeout-as-root-cause unlikely; abrupt termination without `finally` remains possible. |
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **discuss** | During parent UAT / staging verification, query repro batch (or fresh failed run) in `dispatch_ledger` + `app_log` to confirm hypothesis; new terminal lines won't retroactively explain the original export. |
+| **Advisory** | Terminal ERROR/WARNING emits only when `update_dispatch_ledger` succeeds (inside inner try) — per plan; if ledger write fails, gap persists (edge case). |
+| **Advisory** | Self-Assessment says `Single-Component` but diff touches `dispatcher.py` + `roster.py` — plan table already lists both; prose mismatch only. |
+
+**Verdict:** Clean for merge — no Radia **fix-now** product items; one **discuss** on unconfirmed Stage 0 DB root cause before Susan signs off UAT.
