@@ -861,6 +861,16 @@ async def run_inflow_discovery_batch(
             f"batch summary terms_searched={term_total} deduped_hits={hit_total} "
             f"recorded={recorded} skipped={skipped} errors={errors}"
         )
+    if errors > 0:
+        logger.warning(
+            "run_inflow_discovery_batch: %d CSE term error(s) for candidate %s "
+            "(terms_searched=%d recorded=%d skipped=%d)",
+            errors,
+            candidate_id,
+            term_total,
+            recorded,
+            skipped,
+        )
     return {
         "total_processed": 1,
         "total_passed": recorded,
