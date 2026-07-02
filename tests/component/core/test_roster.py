@@ -4368,7 +4368,9 @@ class TestAst505InflowDiscovery:
         assert term_row["last_scan_at"] is not None
 
     @pytest.mark.asyncio
-    async def test_run_batch_cse_failure_continues(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_run_batch_cse_failure_continues(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         db = seeded_db
         db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
         db.sync_company_search_terms("c1", ["bad", "good"])
@@ -4380,12 +4382,16 @@ class TestAst505InflowDiscovery:
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
-        out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
+        with caplog.at_level("WARNING", logger="src.core.roster"):
+            out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
         assert out["total_errors"] == 1
         rows = {r["search_term"]: r["last_scan_at"] for r in db.list_company_search_terms("c1")}
         assert rows["good"] is not None
         assert rows["bad"] is None
         assert db.get_company("ok_example") is not None
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "CSE failed for term 'bad'" in combined
+        assert "1 CSE term error(s) for candidate c1" in combined
 
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:

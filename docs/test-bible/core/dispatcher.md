@@ -119,3 +119,26 @@ Equivalent harness:
   tests/component/core/test_dispatcher.py::TestAst802InflowDiscoveryDebug \
   -q
 ```
+
+---
+
+### AST-841 · AST-838
+
+**AST-838 (parent):** Execution History Level filter (**AST-840**). **AST-841:** Align **inflow_discovery** (and all dispatch tasks sharing **`_dispatch_one`**) ledger terminal status with **ERROR**/**WARNING** **`app_log`** rows — Susan can triage FAILED/INTERRUPTED runs and COMPLETED-with-errors without INFO-only exports.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-841** | **`_dispatch_one` finally** — ERROR on FAILED/INTERRUPTED; WARNING on COMPLETED with **`total_errors > 0`**. **`run_inflow_discovery_batch`** — non-debug WARNING batch summary when **`errors > 0`**. | `src/core/dispatcher.py`, `src/core/roster.py` | **`TestAst841DispatchTerminalLogging`** in `test_dispatcher.py`; **`TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`** (caplog WARNING: per-term **`CSE failed`** + batch **`CSE term error(s)`**) |
+
+**AST-841** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_dispatcher.py::TestAst841DispatchTerminalLogging \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues \
+  -q
+```
+
+**Regression guard:** full **`test_dispatcher.py`** + **`TestAst505InflowDiscovery`** when parent UAT runs full epic.
+
+---
