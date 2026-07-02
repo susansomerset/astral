@@ -638,12 +638,15 @@ async def resolve_company_website(
         return {"success": True, "state": "WEBSITE_FOUND", "error": None}
     name = (entity.get("company_name") or short_name or "").strip()
     query = f"{name} official website"
+    pace_lines: list[str] = []
+    pace_detail = pace_lines.append if debug else None
     try:
         hits = search_google_cse(
             query=query,
             max_results=int(cfg["max_results"]),
             site_filters=None,
             days=cfg["date_restrict_days"],
+            pace_detail=pace_detail,
         )
     except (RuntimeError, ValueError) as exc:
         if debug:
@@ -654,6 +657,8 @@ async def resolve_company_website(
                 identifier=short_name,
                 outcome=f"CSE failed: {exc!s}",
             )
+            for line in pace_lines:
+                log.debug_detail(line)
             log.debug_detail(f"query={query!r}")
         logger.warning("[%s] resolve_company_website: CSE failed: %s", short_name, exc)
         return {"success": False, "state": None, "error": str(exc)}
@@ -665,6 +670,8 @@ async def resolve_company_website(
             identifier=short_name,
             outcome=f"{len(hits)} CSE hit(s)",
         )
+        for line in pace_lines:
+            log.debug_detail(line)
         log.debug_detail(f"query={query!r} raw_hits={len(hits)}")
         for hi, hit in enumerate(hits):
             if hi >= 20:  # UAT cap — same as discovery
@@ -777,12 +784,15 @@ async def run_inflow_discovery_batch(
     seen_urls: Set[str] = set()
     errors = 0
     for term_i, term in enumerate(terms, start=1):
+        pace_lines: list[str] = []
+        pace_detail = pace_lines.append if debug else None
         try:
             hits = search_google_cse(
                 query=term,
                 max_results=int(cfg["max_results_per_query"]),
                 site_filters=None,
                 days=int(cfg["date_restrict_days"]),
+                pace_detail=pace_detail,
             )
         except (RuntimeError, ValueError) as exc:
             if debug:
@@ -793,6 +803,8 @@ async def run_inflow_discovery_batch(
                     identifier=term,
                     outcome=f"CSE failed: {exc!s}",
                 )
+                for line in pace_lines:
+                    log.debug_detail(line)
             logger.warning("run_inflow_discovery_batch: CSE failed for term %r: %s", term, exc)
             errors += 1
             continue
@@ -804,6 +816,8 @@ async def run_inflow_discovery_batch(
                 identifier=term,
                 outcome=f"{len(hits)} hit(s)",
             )
+            for line in pace_lines:
+                log.debug_detail(line)
             log.debug_detail(f"search_term={term!r} raw_hits={len(hits)}")
             for hi, hit in enumerate(hits):
                 if hi >= 20:  # UAT cap per term
