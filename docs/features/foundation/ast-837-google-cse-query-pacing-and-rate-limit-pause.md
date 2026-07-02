@@ -324,3 +324,17 @@ None.
 | **Advisory** | Process-global `_last_cse_request_at` is acceptable per plan (single Gunicorn worker); revisit if Railway worker count changes. |
 
 **Verdict:** Clean — `resolve-child` may proceed with no Radia fix-now items.
+
+---
+
+## Resolution (2026-07-02)
+
+**Review @ `7521a29`** — Radia **fix-now: none**. No product commits required.
+
+| Item | Resolution |
+|------|------------|
+| fix-now | N/A — shipped Stages 1–3 unchanged (`6c424cb`, `e4af754`, `48ee9b1`). |
+| advisory — resolve `pace_detail` test gap | Accepted — discovery test + external `pace_detail` coverage sufficient; no symmetric resolve test added. |
+| advisory — process-global `_last_cse_request_at` | Accepted per plan single-worker assumption; no change. |
+
+**§9a dry-run:** `origin/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause` → `origin/dev` **clean**; → `origin/ftr/AST-835-rate-limit-queries-for-a-config-driven-pause` **clean**.
