@@ -158,3 +158,32 @@ No conflicts requiring plan revision.
 
 Stage 1: URL-backed **Level** filter control (`log_level` param, not in `FILTER_KEYS`).  
 Stage 2: `LogViewer` client-side `visibleLogs` filter, filtered-empty message, filtered **Copy**.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-838/AST-840-execution-history-log-level-filter` @ `583d7f5`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 **Level** dropdown + `log_level` URL param (not in `FILTER_KEYS`); Stage 2 `LogViewer` `visibleLogs` memo, filtered-empty message, filtered **Copy**, full-batch `logCache`/fetch unchanged. |
+| Scope | Single-file UI change only — no backend, API, or data-layer touch; matches Self-Assessment `Single-Component`. |
+| §3.3 layer | Page stays in `src/ui/frontend`; no new cross-layer imports. |
+| §2.1 config | `LOG_LEVELS` UI constant mirrors existing `STATUSES` pattern on the same page; display filter only — not entity state machine logic. |
+| Empty-state order | Zero-log message preserved before filtered-empty; **Copy** toolbar omitted when filtered-empty per plan decision. |
+| Tests / bible | Betty **`AST-840 log level filter`** describe covers manifest (default All, URL seed, ledger fetch isolation, severity filter, filtered-empty, FAILED row visibility, filtered Copy, no refetch on level change); bible row added. |
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **Advisory** | Invalid or typo `log_level` URL values (not in `LOG_LEVELS`) will show filtered-empty for every expanded batch — acceptable given plan’s strict-equality contract; no change required unless Susan wants URL validation later. |
+
+**Verdict:** Clean — no Radia fix-now items.
