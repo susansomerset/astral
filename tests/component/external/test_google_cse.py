@@ -297,3 +297,79 @@ class TestGoogleCseAst837PacingAndRateLimit:
         messages: list[str] = []
         google_cse_mod.search_google_cse("q", pace_detail=messages.append)
         assert any("pacing: sleeping" in line for line in messages)
+        assert any("CSE HTTP start=1 status=200 items=1" in line for line in messages)
+
+
+# --- AST-839: per-HTTP pace_detail outcome lines (UAT debug trace) ---
+class TestGoogleCseAst839HttpOutcomeLines:
+    def test_success_emits_http_outcome_with_item_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "inter_query_delay_sec", 0)
+        payload = {
+            "items": [
+                {"title": "A", "link": "https://a", "snippet": "s"},
+                {"title": "B", "link": "https://b", "snippet": "s2"},
+            ]
+        }
+        rsp = _fake_response(True, payload=payload)
+        monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=rsp))
+        monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
+        messages: list[str] = []
+        google_cse_mod.search_google_cse("q", pace_detail=messages.append)
+        assert messages == ["CSE HTTP start=1 status=200 items=2"]
+
+    def test_multi_page_emits_outcome_per_http_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "inter_query_delay_sec", 0)
+        page1 = {
+            "items": [{"title": "1", "link": "u1", "snippet": "s"}],
+            "queries": {"nextPage": [{"startIndex": 11}]},
+        }
+        page2 = {"items": [{"title": "2", "link": "u2", "snippet": "s2"}]}
+        monkeypatch.setattr(
+            google_cse_mod.requests,
+            "get",
+            MagicMock(
+                side_effect=[
+                    _fake_response(True, payload=page1),
+                    _fake_response(True, payload=page2),
+                ]
+            ),
+        )
+        monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
+        messages: list[str] = []
+        google_cse_mod.search_google_cse("q", max_results=0, pace_detail=messages.append)
+        assert messages == [
+            "CSE HTTP start=1 status=200 items=1",
+            "CSE HTTP start=11 status=200 items=1",
+        ]
+
+    def test_rate_limit_retry_emits_rate_limited_then_success_outcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "inter_query_delay_sec", 0)
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "rate_limit_max_retries", 1)
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "rate_limit_pause_sec", 65)
+        fail_rsp = _fake_response(False, status=429, raw_text="limited")
+        ok_payload = {"items": [{"title": "A", "link": "https://a", "snippet": ""}]}
+        ok_rsp = _fake_response(True, payload=ok_payload)
+        monkeypatch.setattr(
+            google_cse_mod.requests, "get", MagicMock(side_effect=[fail_rsp, ok_rsp])
+        )
+        monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
+        monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
+        messages: list[str] = []
+        google_cse_mod.search_google_cse("q", pace_detail=messages.append)
+        assert messages[0] == "CSE HTTP start=1 status=429 rate_limited=true"
+        assert "rate limit: HTTP 429" in messages[1]
+        assert messages[-1] == "CSE HTTP start=1 status=200 items=1"
+
+    def test_rate_limit_exhausted_emits_exhausted_outcome(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "inter_query_delay_sec", 0)
+        monkeypatch.setitem(google_cse_mod.GOOGLE_CSE_CONFIG, "rate_limit_max_retries", 0)
+        fail_rsp = _fake_response(False, status=429, raw_text="limited")
+        monkeypatch.setattr(google_cse_mod.requests, "get", MagicMock(return_value=fail_rsp))
+        monkeypatch.setattr(google_cse_mod.time, "sleep", MagicMock())
+        monkeypatch.setattr(google_cse_mod.time, "monotonic", MagicMock(return_value=0.0))
+        messages: list[str] = []
+        with pytest.raises(RuntimeError, match=r"Google CSE HTTP 429"):
+            google_cse_mod.search_google_cse("q", pace_detail=messages.append)
+        assert messages[-1] == "CSE HTTP start=1 status=429 rate_limited=exhausted"
