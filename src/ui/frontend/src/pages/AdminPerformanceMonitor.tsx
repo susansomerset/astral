@@ -407,7 +407,7 @@ export default function PerformanceMonitor() {
                             {row.batch_id}
                           </button>
                         </div>
-                        <LogViewer logs={logs} loading={logsLoading} />
+                        <LogViewer logs={logs} loading={logsLoading} logLevelFilter={logLevelFilter} />
                       </td>
                     </tr>
                   )}
@@ -431,14 +431,36 @@ export default function PerformanceMonitor() {
 }
 
 
-function LogViewer({ logs, loading }: { logs: LogEntry[]; loading: boolean }) {
+function LogViewer({
+  logs,
+  loading,
+  logLevelFilter,
+}: {
+  logs: LogEntry[]
+  loading: boolean
+  logLevelFilter: string
+}) {
   const [copied, setCopied] = useState(false)
 
+  const visibleLogs = useMemo(() => {
+    if (!logLevelFilter) return logs
+    return logs.filter(entry => entry.level === logLevelFilter)
+  }, [logs, logLevelFilter])
+
   if (loading) return <div className="dispatch-log-panel"><p className="list-page-status">Loading logs...</p></div>
-  if (logs.length === 0) return <div className="dispatch-log-panel"><p className="list-page-status">No log entries for this batch.</p></div>
+  if (logs.length === 0) {
+    return <div className="dispatch-log-panel"><p className="list-page-status">No log entries for this batch.</p></div>
+  }
+  if (visibleLogs.length === 0) {
+    return (
+      <div className="dispatch-log-panel">
+        <p className="list-page-status">{`No '${logLevelFilter}' type log entries for this batch.`}</p>
+      </div>
+    )
+  }
 
   function copyLogs() {
-    const text = logs.map(e => `[${e.created_at}] ${e.level} ${e.logger_name}: ${e.message}`).join("\n")
+    const text = visibleLogs.map(e => `[${e.created_at}] ${e.level} ${e.logger_name}: ${e.message}`).join("\n")
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -462,7 +484,7 @@ function LogViewer({ logs, loading }: { logs: LogEntry[]; loading: boolean }) {
           </tr>
         </thead>
         <tbody>
-          {logs.map(entry => (
+          {visibleLogs.map(entry => (
             <tr key={entry.id} className={entry.level === "ERROR" ? "dispatch-log-error" : entry.level === "WARNING" ? "dispatch-log-warn" : ""}>
               <td className="dispatch-log-time"><Time value={entry.created_at} /></td>
               <td className={`dispatch-log-level dispatch-log-level-${entry.level.toLowerCase()}`}>{entry.level}</td>
