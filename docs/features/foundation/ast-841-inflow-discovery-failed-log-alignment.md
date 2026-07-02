@@ -225,3 +225,16 @@ No conflicts requiring `Conf: !!-NONE`.
 | **Advisory** | Self-Assessment says `Single-Component` but diff touches `dispatcher.py` + `roster.py` — plan table already lists both; prose mismatch only. |
 
 **Verdict:** Clean for merge — no Radia **fix-now** product items; one **discuss** on unconfirmed Stage 0 DB root cause before Susan signs off UAT.
+
+## Resolution (2026-07-02)
+
+**Review @ `60ddb97`** — Radia **fix-now: none**. No product commits required.
+
+| Item | Resolution |
+|------|------------|
+| **fix-now** | N/A — shipped Stages 1–2 unchanged (`64b2efb`, `dd6c179`); tests @ `f950ac0`. |
+| **discuss** — staging DB not queried for repro batch | Accepted — repro batch ledger `status` remains unconfirmed; **Staging verification** section above covers parent UAT query of `dispatch_ledger` + `app_log` for `inflow_discovery-3ea198da-6353-46fe-8b65-fff9a6057e12` (or a fresh failed run). New terminal lines align future runs; they do not retroactively explain the original export. |
+| **advisory** — terminal lines only after successful `update_dispatch_ledger` | Accepted per plan — no change. |
+| **advisory** — Self-Assessment `Single-Component` vs two modules | Accepted — plan **Files Changed** table already lists both modules; prose mismatch only. |
+
+**§9a dry-run:** `origin/sub/AST-838/AST-841-inflow-discovery-failed-log-alignment` @ `f950ac0` → `origin/dev` **clean**; → `origin/ftr/AST-838-filter-execution-history-log-by-level` **clean**.
