@@ -4449,6 +4449,31 @@ class TestAst505InflowDiscovery:
         proc.assert_awaited_once_with(cand, "batch-505", cand, False)
 
 
+class TestAst837CsePaceDebug:
+    """AST-837: roster wires pace_detail to debug_detail when debug=True."""
+
+    @pytest.mark.asyncio
+    async def test_discovery_debug_flushes_pace_detail(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c1", ["fintech"])
+
+        def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
+            pace_detail = kwargs.get("pace_detail")
+            if pace_detail is not None:
+                pace_detail("pacing: sleeping 0.42s before CSE HTTP request")
+            return [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
+
+        monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
+        debug_details: list[str] = []
+        monkeypatch.setattr(roster_mod.logger, "debug_detail", debug_details.append)
+        cand = {"astral_candidate_id": "c1", "candidate_data": {}}
+        await roster_mod.run_inflow_discovery_batch(cand, "batch-837", cand, True)
+        assert any("pacing: sleeping 0.42s" in line for line in debug_details)
+
+
 class TestAst775InflowDiscoveryRecordNew:
     """AST-775: discovery batch records NEW rows only — no inline vet_inflow_discovery."""
 

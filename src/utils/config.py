@@ -949,6 +949,18 @@ INFLOW_CONFIG = {
     },
 }
 
+# Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
+GOOGLE_CSE_CONFIG = {
+    # Minimum spacing between successive CSE HTTP requests (including pagination pages
+    # within one search_google_cse call). 0 disables pacing delay.
+    "inter_query_delay_sec": 1.2,
+    # Sleep duration after a rate-limit response before retrying the same HTTP request.
+    "rate_limit_pause_sec": 65,
+    # Number of pause-and-retry cycles after a rate-limit response (0 = no retries;
+    # 2 means up to 3 HTTP attempts total for that request).
+    "rate_limit_max_retries": 2,
+}
+
 # ---------------------------------------------------------------------------
 # GAZER_CONFIG: gazer-batch steps (validate_title inline-only qualify pre-step; fetch_jd; gaze).
 # Mirrors orchestration for gazer-owned paths until gazer.py reads this block directly (AST-467).
