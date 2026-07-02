@@ -37,6 +37,7 @@ interface LogEntry {
 type SortDir = "asc" | "desc"
 const FILTER_KEYS = ["task_key", "candidate_id", "status", "date_from", "date_to"] as const
 const STATUSES = ["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]
+const LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"] as const
 
 function candidateIdFromParams(sp: URLSearchParams): AdminCandidateFilterValue {
   return sp.get("candidate_id") || ""
@@ -141,6 +142,8 @@ export default function PerformanceMonitor() {
     }
     return f
   }, [searchParams, tz])
+
+  const logLevelFilter = searchParams.get("log_level") || ""
 
   const [dateFromInput, setDateFromInput] = useState("")
   const [dateToInput, setDateToInput] = useState("")
@@ -304,6 +307,15 @@ export default function PerformanceMonitor() {
           <select value={filters.status || ""} onChange={e => setFilter("status", e.target.value)}>
             <option value="">All</option>
             {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
+        <label>
+          Level
+          <select value={logLevelFilter} onChange={e => setFilter("log_level", e.target.value)}>
+            <option value="">All</option>
+            {LOG_LEVELS.map(level => (
+              <option key={level} value={level}>{level}</option>
+            ))}
           </select>
         </label>
         <label>
