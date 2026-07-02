@@ -181,3 +181,15 @@ Expect `batch_created_at` present after bootstrap. Do **not** commit test DB fil
 | AST-626 boundary | Upsert paths unchanged; bootstrap adds the startup hook AST-626 explicitly excluded |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup` @ `ef2f5e6`.
+
+**Stages delivered:**
+- Stage 1: Company audit clean — `_ensure_company_schema` / `_ensure_company_candidate_fk` already cover `batch_created_at` and canonical columns; no product delta.
+- Stage 2: `ensure_all_upsert_registry_schemas_at_startup()` in `src/data/database.py` — `375f454`.
+- Stage 3: `bootstrap_runtime()` calls schema ensure before sync/scheduler; `server.py` comment updated — `ef2f5e6`.
+- Stage 4: `py_compile` pass; `rg` clean (no `src.data` in `server.py`).
+
+**Betty:** manifest at **Code Complete** — bootstrap ordering test + `ensure_all_upsert_registry_schemas_at_startup` idempotency on legacy `company` without `batch_created_at`.
