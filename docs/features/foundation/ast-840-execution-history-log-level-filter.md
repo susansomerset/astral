@@ -187,3 +187,14 @@ None.
 | **Advisory** | Invalid or typo `log_level` URL values (not in `LOG_LEVELS`) will show filtered-empty for every expanded batch — acceptable given plan’s strict-equality contract; no change required unless Susan wants URL validation later. |
 
 **Verdict:** Clean — no Radia fix-now items.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-02  
+**Review ref:** `origin/sub/AST-838/AST-840-execution-history-log-level-filter` @ `95c1833` (Radia doc) · product @ `55852b2`
+
+No **fix-now** items. Product unchanged from build @ `55852b2` + Betty `merge-tests(AST-840)` @ `583d7f5`. Advisory invalid `log_level` URL values accepted per plan strict-equality contract.
+
+**§9a dry-run:** `origin/sub/AST-838/AST-840-execution-history-log-level-filter` → `origin/dev`: clean · → `origin/ftr/AST-838-filter-execution-history-log-by-level`: clean
