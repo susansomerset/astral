@@ -222,3 +222,17 @@ None.
 | **Advisory** | Resolve path now emits two `debug_index` headers when CSE succeeds then vet runs (pre-search `CSE search` + downstream vet index) — pre-existing multi-phase pattern; acceptable for UAT HTTP trace focus. |
 
 **Verdict:** Clean — no Radia fix-now items.
+
+---
+
+## Resolution (2026-07-02)
+
+**Review @ `7d33e50`** — Radia **fix-now: none**. No product commits required.
+
+| Item | Resolution |
+|------|------------|
+| fix-now | N/A — shipped Stages 1–2 unchanged (`f65f6ff`, `5ce1c46`). |
+| advisory — FIX-UAT clean | Accepted — no resolve product work; Susan re-tests CSE debug trace on staging. |
+| advisory — dual `debug_index` on resolve success (CSE search + vet) | Accepted — pre-existing multi-phase pattern; UAT focus is per-HTTP trace under pre-search index. |
+
+**§9a dry-run:** `origin/sub/AST-835/AST-839-uat-cse-debug-verbose-per-http-trace` → `origin/dev` **clean**; → `origin/ftr/AST-835-rate-limit-queries-for-a-config-driven-pause` **clean**.
