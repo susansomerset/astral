@@ -158,3 +158,37 @@ Susan's attached repro (~2026-07-02 22:47–22:50 UTC) shows an **inflow_discove
 | §3.5 naming | Log messages include `task_key`, `batch_id`, and count field names matching ledger columns. |
 
 No conflicts requiring `Conf: !!-NONE`.
+
+## Investigation findings
+
+**Staging DB:** Not queried in this build environment (no Railway/staging DB access from epic worktree). Findings below combine parent repro log + code trace per plan Stage 0 steps 3–4.
+
+| Field | Value / note |
+|-------|----------------|
+| **batch_id** | `inflow_discovery-3ea198da-6353-46fe-8b65-fff9a6057e12` |
+| **Repro log severities** | INFO only — **zero ERROR, zero WARNING** rows in Susan's complete export |
+| **Repro progress** | Debug Style D headers through **term 10/20**; no batch footer, no dispatcher loop-stop detail, no scheduler terminal line |
+| **Repro duration** | ~148s (22:47:36 → 22:50:04) vs default `dispatch_timeout_seconds` = 3600 |
+| **Code paths** | `_dispatch_one` sets FAILED/INTERRUPTED only in except blocks (`_sched_log.error` / `_sched_log.exception` on `dispatch.scheduler`); COMPLETED allowed with `total_errors > 0`. Per-term CSE failures emit `logger.warning` on `src.core.roster` but repro shows none — run likely terminated mid-batch before CSE failures or before finally-block terminal logs were visible in export. |
+
+**Root cause (working hypothesis):** Terminal dispatch outcome was not guaranteed on `src.core.dispatcher` at ledger finalize — Susan's export lacks any ERROR/WARNING triage line despite a non-success ledger row. Gap-filling **ERROR** on FAILED/INTERRUPTED and **WARNING** on COMPLETED-with-errors in `_dispatch_one` finally (after ledger write, before `flush_log_buffer`) plus roster batch WARNING summary when `errors > 0` aligns log severities with ledger outcomes for Level filter triage (**AST-840**).
+
+**Fix stages applied:** Stage 1 (dispatcher) + Stage 2 (roster) per decision table row 1 and row 2.
+
+## Staging verification (Susan / post-Tests Passed)
+
+- Re-run **inflow_discovery** with debug enabled on a candidate with ≥10 stale terms (or replay conditions matching repro).
+- If run ends **FAILED** or **INTERRUPTED**: expand log with Level = **ERROR** → terminal `src.core.dispatcher` line visible with batch id and reason.
+- If run ends **COMPLETED** with CSE term errors: Level = **WARNING** → roster CSE summary + dispatcher COMPLETED-with-errors line visible.
+- Confirm ledger **Status** column matches expectation (do not conflate **Errors** count column with **Status**).
+
+## Review (build)
+
+**Built:** `origin/sub/AST-838/AST-841-inflow-discovery-failed-log-alignment` @ `dd6c179`
+
+**Stages delivered:**
+- Stage 0: Investigation findings documented in plan (repro + code trace; staging DB not queried)
+- Stage 1: `_dispatch_one` terminal ERROR/WARNING logging after ledger write — `64b2efb`
+- Stage 2: `run_inflow_discovery_batch` non-debug WARNING batch summary when `errors > 0` — `dd6c179`
+
+**Betty / qa-child:** Manifest in plan header — dispatcher terminal logging + roster WARNING `app_log` assertions.
