@@ -291,3 +291,36 @@ No conflicts requiring **`Conf: !!-NONE`**.
 - Stage 3: `pace_detail` debug callback wiring in `run_inflow_discovery_batch` and `resolve_company_website` — `48ee9b1`
 
 **Betty / qa-child:** Component tests for pacing delay spacing and 429 retry behavior per ticket AC1–AC2; existing `test_google_cse.py` regression gate.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause` @ `68a99d4`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 delivered: `GOOGLE_CSE_CONFIG` literals, shared `_http_get_with_pacing_and_retry` in `google_cse.py`, roster `pace_detail` wiring at both call sites. |
+| §1.4 config | Pacing literals in `GOOGLE_CSE_CONFIG`; no env overrides (AC5). |
+| §1.5.1 debug | `pace_detail` gated on `debug=True`; roster flushes buffered lines via `log.debug_detail` immediately after existing `debug_index` headers — no emission when `debug=False`. |
+| §2.5 external | No logging in `google_cse.py`; callback-only trace per plan. |
+| §2.6 state machine | Exhausted rate-limit retries still raise `RuntimeError`; discovery continues remaining terms; resolve returns `{success: False}` without transition — unchanged semantics. |
+| §3.3 layers | External imports `utils` only; core roster calls `search_google_cse` — no layer violations. |
+| Rate-limit detection | HTTP 429, JSON `code` 429, and `rateLimitExceeded` reason covered; 403 quota envelope still fails fast (no retry). |
+| Self-Assessment | `Single-Component` scope matches diff footprint; Conf/Risk `Medium` appropriate for UAT-tunable literals. |
+| Tests / bible | `TestGoogleCseAst837PacingAndRateLimit` + helper tests; roster `TestAst837CsePaceDebug`; bible AST-837 rows and narrowed manifest documented. |
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **Advisory** | Roster test covers discovery `pace_detail` flush only; `resolve_company_website` wiring mirrors 3a but has no symmetric component test — low risk given identical pattern and external-layer `pace_detail` coverage. |
+| **Advisory** | Process-global `_last_cse_request_at` is acceptable per plan (single Gunicorn worker); revisit if Railway worker count changes. |
+
+**Verdict:** Clean — `resolve-child` may proceed with no Radia fix-now items.
