@@ -1431,6 +1431,9 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         (_JOB_IDENTITY_UNIQUE_INDEX,),
     ).fetchone()
     if idx_row is None:
+        # AST-846: production legacy duplicates block idx_job_identity_unique; dedupe before create (AST-729 rules).
+        _delete_board_placeholder_jobs(conn)
+        _dedupe_job_identity_triples(conn)
         conn.execute(f"""
             CREATE UNIQUE INDEX {_JOB_IDENTITY_UNIQUE_INDEX}
             ON job (company, job_title, company_job_id)
