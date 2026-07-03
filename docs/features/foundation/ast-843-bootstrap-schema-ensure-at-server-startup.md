@@ -193,3 +193,32 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 4: `py_compile` pass; `rg` clean (no `src.data` in `server.py`).
 
 **Betty:** manifest at **Code Complete** — bootstrap ordering test + `ensure_all_upsert_registry_schemas_at_startup` idempotency on legacy `company` without `batch_created_at`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup` @ `6bdd983` (product: `375f454`, `ef2f5e6`)
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | All four stages delivered: Stage 1 company audit clean (no migration delta); Stage 2 `ensure_all_upsert_registry_schemas_at_startup()` matches plan snippet (sorted registry loop via `ensure_table_schema_for_upsert`, own connection, fail-fast); Stage 3 bootstrap order validation → repo JSON → schema ensure → sync → scheduler; Stage 4 compile + layer grep clean. |
+| §3.3 layers | `server.py` still imports core only — no new `src.data` in UI. `bootstrap.py` adds one data call on existing import path — allowed. |
+| §1.3 DRY | Single registry loop; no parallel migration logic; reuses AST-626 `ensure_table_schema_for_upsert` flag-reset semantics. |
+| Database | Company `_ensure_company_schema` already covers `batch_created_at` on CREATE + legacy ALTER; production gap explained by lazy ensure never running at bootstrap, not missing migration code. |
+| Self-Assessment | Scope `Single-Component` matches footprint (one data entrypoint, one bootstrap call, comment tweak). Conf `high` / Risk `Medium` align with registry-wide idempotent DDL at startup. |
+| Cross-ticket | No AST-777 refactor/drop scope; registry limited to `_UPSERT_LAZY_SCHEMA_HANDLERS` (13 tables) per Susan's confirmed scope. |
+| Tests / bible | Betty manifest landed: bootstrap ordering asserts `schema_ensure` after `repo_json`; `TestAst843BootstrapSchemaEnsure` proves legacy `company` gains `batch_created_at` and second call is no-op. Bible rows in `bootstrap.md`, `database.md`, `server.md` match manifest. |
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Severity | Action |
+| --- | --- |
+| **Advisory** | Werkzeug debug reloader may invoke bootstrap twice — plan documents idempotent ensure; acceptable. |
+| **Advisory** | Tables outside `_UPSERT_LAZY_SCHEMA_HANDLERS` (`rubric_vector`, timesheets, etc.) remain lazy-only at upsert — intentional per plan; AST-777 owns broader migration relocation if Susan expands scope later. |
+
+**Verdict:** Clean — `resolve-child` may proceed with no Radia fix-now items.
