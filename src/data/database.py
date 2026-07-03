@@ -5967,6 +5967,21 @@ def ensure_table_schema_for_upsert(conn: sqlite3.Connection, table: str) -> None
         globals()[flag_name] = False
     handler(conn)
 
+
+def ensure_all_upsert_registry_schemas_at_startup() -> None:
+    """Run idempotent lazy schema ensure for every upsert-registry table once at process bootstrap.
+
+    Invokes existing ``_UPSERT_LAZY_SCHEMA_HANDLERS`` only — no parallel migration logic.
+    Resets per-table ``_*_schema_ensured`` flags via ``ensure_table_schema_for_upsert`` so
+    stale process-global shortcuts cannot skip DDL on a legacy DB file."""
+    conn = _get_connection()
+    try:
+        for table in sorted(_UPSERT_LAZY_SCHEMA_HANDLERS):
+            ensure_table_schema_for_upsert(conn, table)
+    finally:
+        conn.close()
+
+
 def save_dispatch_task(
     candidate_id: str, task_key: str, min_count: int,
     auto_mode: bool = False, entity_type: Optional[str] = None,

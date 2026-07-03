@@ -12,7 +12,7 @@
 
 ### AST-654 · AST-383
 
-**AST-383 (parent epic):** Move Flask process startup (LLM env validation → repo admin JSON upsert (**AST-782**) → `sync_agent_tasks` → `start_scheduler`) from **`src/ui/server.py`** into **`src/core/bootstrap.py`**. UI calls **`bootstrap_runtime()`** once after blueprint registration — no direct **`src.data`** import in **`server.py`**.
+**AST-383 (parent epic):** Move Flask process startup (LLM env validation → repo admin JSON upsert (**AST-782**) → schema ensure (**AST-843**) → `sync_agent_tasks` → `start_scheduler`) from **`src/ui/server.py`** into **`src/core/bootstrap.py`**. UI calls **`bootstrap_runtime()`** once after blueprint registration — no direct **`src.data`** import in **`server.py`**.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
