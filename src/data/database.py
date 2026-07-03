@@ -155,6 +155,7 @@ def decrypt_value(ciphertext: str) -> str:
 _company_schema_ensured = False
 _job_schema_ensured = False
 _JOB_IDENTITY_UNIQUE_INDEX = "idx_job_identity_unique"
+_BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
 _company_candidate_fk_ensured = False
 _company_job_scan_schema_ensured = False
@@ -1330,6 +1331,60 @@ def _remove_jobs_by_company(company: str) -> int:
     finally:
         conn.close()
 
+
+
+def _delete_board_placeholder_jobs(conn: sqlite3.Connection) -> int:
+    """Remove decommissioned board-gaze placeholder job rows (AST-729 / AST-846)."""
+    cursor = conn.execute(
+        "DELETE FROM job WHERE company LIKE ?",
+        (_BOARD_PLACEHOLDER_COMPANY_LIKE,),
+    )
+    deleted = cursor.rowcount or 0
+    if deleted:
+        conn.commit()
+    return deleted
+
+
+def _dedupe_job_identity_triples(conn: sqlite3.Connection) -> int:
+    """Delete duplicate job rows sharing complete identity triples; earliest created_at survives (AST-729 / AST-846)."""
+    group_rows = conn.execute(
+        """
+        SELECT company, job_title, company_job_id
+        FROM job
+        WHERE company IS NOT NULL AND TRIM(company) != ''
+          AND job_title IS NOT NULL AND TRIM(job_title) != ''
+          AND company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+          AND company NOT LIKE ?
+        GROUP BY company, job_title, company_job_id
+        HAVING COUNT(*) > 1
+        """,
+        (_BOARD_PLACEHOLDER_COMPANY_LIKE,),
+    ).fetchall()
+
+    deleted_total = 0
+    for company, job_title, company_job_id in group_rows:
+        member_rows = conn.execute(
+            """
+            SELECT astral_job_id
+            FROM job
+            WHERE company = ? AND job_title = ? AND company_job_id = ?
+            ORDER BY created_at ASC NULLS LAST, astral_job_id ASC
+            """,
+            (company, job_title, company_job_id),
+        ).fetchall()
+        if len(member_rows) < 2:
+            continue
+        delete_ids = [row[0] for row in member_rows[1:]]
+        placeholders = ",".join("?" for _ in delete_ids)
+        cursor = conn.execute(
+            f"DELETE FROM job WHERE astral_job_id IN ({placeholders})",
+            delete_ids,
+        )
+        deleted_total += cursor.rowcount or 0
+    if deleted_total:
+        conn.commit()
+    return deleted_total
+
 def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     """Create job table for raw_job_listing ingest if not present. Idempotent."""
     global _job_schema_ensured
@@ -1376,6 +1431,9 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         (_JOB_IDENTITY_UNIQUE_INDEX,),
     ).fetchone()
     if idx_row is None:
+        # AST-846: production legacy duplicates block idx_job_identity_unique; dedupe before create (AST-729 rules).
+        _delete_board_placeholder_jobs(conn)
+        _dedupe_job_identity_triples(conn)
         conn.execute(f"""
             CREATE UNIQUE INDEX {_JOB_IDENTITY_UNIQUE_INDEX}
             ON job (company, job_title, company_job_id)
