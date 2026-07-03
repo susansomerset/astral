@@ -296,7 +296,7 @@ class TestIdentityDedupe:
         )
         counts = {k: 0 for k in _mod._COUNT_KEYS}
 
-        _mod.run_identity_dedupe(dry_run=False, company_filter=None, counts=counts)
+        _mod.run_identity_dedupe(dry_run=False, company_filter="acme", counts=counts)
 
         assert counts["errors"] == 1
         assert counts["dedupe_deleted"] == 0

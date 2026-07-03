@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` | `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py` | no |
 
-**Existing coverage (reuse):** board placeholder prefix — literal **`__board__`** company prefix (AST-765 removed `BOARDS_CONFIG`; migration script uses the same literal); job schema helpers — `src/data/database.py` **`_ensure_job_schema`** (database cluster tests).
+**Existing coverage (reuse):** board placeholder prefix — literal **`__board__`** company prefix (AST-765 removed `BOARDS_CONFIG`; migration script uses the same literal); job schema helpers — `src/data/database.py` **`_ensure_job_schema`** (database cluster tests). **AST-846:** live cleanup paths call **`_delete_board_placeholder_jobs`** / **`_dedupe_job_identity_triples`** in `database.py` — bootstrap dedupe contract in **`docs/test-bible/data/database.md`** § AST-846.
 
 ---
 
