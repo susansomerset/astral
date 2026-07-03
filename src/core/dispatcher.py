@@ -463,6 +463,7 @@ async def _dispatch_one(task: Dict) -> None:
     timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
     is_click = not bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
+    failure_reason: Optional[str] = None
     debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
     if debug:
         logger.set_debug_flag(True)
@@ -544,14 +545,17 @@ async def _dispatch_one(task: Dict) -> None:
         await _tracked()
     except asyncio.TimeoutError:
         final_status = "INTERRUPTED"
+        failure_reason = f"dispatch timeout after {timeout}s"
         _sched_log.error("[%s/%s] killed after %ds timeout", task_key, entity_batch_id, timeout)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
+        failure_reason = "dispatch cancelled by admin"
         _sched_log.warning("[%s/%s] KILLED by admin — thread cleared from memory", task_key, entity_batch_id)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
-    except Exception:
+    except Exception as exc:
         final_status = "FAILED"
+        failure_reason = f"dispatch crashed: {type(exc).__name__}"
         _sched_log.exception("[%s/%s] crashed", task_key, entity_batch_id)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     finally:
@@ -568,6 +572,28 @@ async def _dispatch_one(task: Dict) -> None:
                     entity_cost=round(entity_cost, 7),
                     **accumulated,
                 )
+                if final_status in ("FAILED", "INTERRUPTED"):
+                    logger.error(
+                        "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
+                        task_key,
+                        dispatch_ledger_id,
+                        final_status,
+                        failure_reason or "see scheduler log",
+                        accumulated.get("total_processed", 0),
+                        accumulated.get("total_passed", 0),
+                        accumulated.get("total_failed", 0),
+                        accumulated.get("total_errors", 0),
+                    )
+                elif accumulated.get("total_errors", 0) > 0:
+                    logger.warning(
+                        "[%s/%s] batch finished COMPLETED with errors — processed=%s passed=%s failed=%s errors=%s",
+                        task_key,
+                        dispatch_ledger_id,
+                        accumulated.get("total_processed", 0),
+                        accumulated.get("total_passed", 0),
+                        accumulated.get("total_failed", 0),
+                        accumulated.get("total_errors", 0),
+                    )
             except Exception as e:
                 _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
         flush_log_buffer()

@@ -45,7 +45,10 @@ class TestAuthenticateSessionJwt:
             "email": "susan@example.com",
             "name": "Susan Somerset",
         }
-        mock_sessions.authenticate_jwt.assert_called_once_with(session_jwt="jwt-here")
+        mock_sessions.authenticate_jwt.assert_called_once_with(
+            session_jwt="jwt-here",
+            max_token_age_seconds=0,
+        )
 
     def test_local_jwt_response_fetches_user_by_session_user_id(
         self, monkeypatch: pytest.MonkeyPatch
@@ -86,3 +89,51 @@ class TestAuthenticateSessionJwt:
         )
         with pytest.raises(stytch_mod.StytchAuthError, match="STYTCH_PROJECT_ID"):
             stytch_mod._get_client()
+
+
+# Branches: live/test/unknown project id; unset project id warning (AST-831).
+class TestLogStytchProjectEnv:
+    def test_logs_live_env_with_short_project_id(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        monkeypatch.setattr(
+            stytch_mod,
+            "AUTH_CONFIG",
+            {"stytch_project_id": "project-live-abc123", "stytch_secret": "secret"},
+            raising=False,
+        )
+        with caplog.at_level("INFO"):
+            stytch_mod.log_stytch_project_env()
+        assert "Stytch auth configured: env=live project_id=project-live-abc123" in caplog.text
+
+    def test_truncates_long_project_id_in_log(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        long_id = "project-live-d0218f6b-c64a-4fa1-84fe-21997a66593a"
+        monkeypatch.setattr(
+            stytch_mod,
+            "AUTH_CONFIG",
+            {"stytch_project_id": long_id, "stytch_secret": "secret"},
+            raising=False,
+        )
+        with caplog.at_level("INFO"):
+            stytch_mod.log_stytch_project_env()
+        assert f"project_id={long_id[:32]}…" in caplog.text
+
+    def test_logs_test_env(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        monkeypatch.setattr(
+            stytch_mod,
+            "AUTH_CONFIG",
+            {"stytch_project_id": "project-test-abc123", "stytch_secret": "secret"},
+            raising=False,
+        )
+        with caplog.at_level("INFO"):
+            stytch_mod.log_stytch_project_env()
+        assert "env=test" in caplog.text
+
+    def test_warns_when_project_id_unset(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        monkeypatch.setattr(
+            stytch_mod,
+            "AUTH_CONFIG",
+            {"stytch_project_id": "", "stytch_secret": ""},
+            raising=False,
+        )
+        with caplog.at_level("WARNING"):
+            stytch_mod.log_stytch_project_env()
+        assert "STYTCH_PROJECT_ID is unset" in caplog.text

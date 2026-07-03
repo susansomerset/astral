@@ -8,17 +8,39 @@ Required env vars (read via AUTH_CONFIG):
   STYTCH_PROJECT_ID — Stytch project id
   STYTCH_SECRET     — Stytch secret
 
-Public API: authenticate_session_jwt, StytchAuthError
+Public API: authenticate_session_jwt, log_stytch_project_env, StytchAuthError
 """
 
+import logging
 from typing import Any
 
 from src.utils.config import AUTH_CONFIG
 from src.utils.integration_io import require_controlled_external_io
 
-__all__ = ["authenticate_session_jwt", "StytchAuthError"]
+__all__ = ["authenticate_session_jwt", "log_stytch_project_env", "StytchAuthError"]
 
 _client = None
+_log = logging.getLogger(__name__)
+
+
+def _stytch_project_env(project_id: str) -> str:
+    pid = (project_id or "").strip()
+    if pid.startswith("project-live-"):
+        return "live"
+    if pid.startswith("project-test-"):
+        return "test"
+    return "unknown"
+
+
+def log_stytch_project_env() -> None:
+    """Log configured Stytch project env once at startup (no secrets)."""
+    project_id = AUTH_CONFIG["stytch_project_id"]
+    if not project_id:
+        _log.warning("STYTCH_PROJECT_ID is unset — Bearer auth will fail until configured")
+        return
+    env = _stytch_project_env(project_id)
+    short_id = project_id if len(project_id) <= 32 else f"{project_id[:32]}…"
+    _log.info("Stytch auth configured: env=%s project_id=%s", env, short_id)
 
 
 class StytchAuthError(Exception):
@@ -68,7 +90,10 @@ def authenticate_session_jwt(session_jwt: str) -> dict:
         raise StytchAuthError("missing session JWT")
     try:
         client = _get_client()
-        resp = client.sessions.authenticate_jwt(session_jwt=token)
+        resp = client.sessions.authenticate_jwt(
+            session_jwt=token,
+            max_token_age_seconds=0,
+        )
         # authenticate_jwt returns AuthenticateJWTLocalResponse: session + session_jwt, no user.
         user = getattr(resp, "user", None)
         if user is None:

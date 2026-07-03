@@ -59,7 +59,7 @@ def _api_uncaught_exception(exc: Exception):
     return server_error_from_exception(exc)
 
 
-# --- Runtime bootstrap (validation → agent_task sync → scheduler) ---
+# --- Runtime bootstrap (validation → repo json → schema ensure → agent_task sync → scheduler) ---
 from src.core.bootstrap import bootstrap_runtime  # noqa: E402
 
 bootstrap_runtime()

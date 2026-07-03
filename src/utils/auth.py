@@ -66,4 +66,9 @@ def validate_bearer_token(raw_token: str) -> dict | None:
     except Exception as exc:
         # Dev aid — Stytch errors are swallowed to 401; log once per failure for local debugging.
         _log.warning("Bearer token validation failed: %s", exc)
+        if "session_not_found" in str(exc):
+            _log.warning(
+                "Stytch session_not_found — verify STYTCH_PROJECT_ID and STYTCH_SECRET "
+                "match the live project used by VITE_STYTCH_PUBLIC_TOKEN (see env.example AST-831)"
+            )
         return None

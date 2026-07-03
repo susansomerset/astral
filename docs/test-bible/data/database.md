@@ -119,3 +119,22 @@ cd src/ui/frontend && npm run test:component -- \
 ### AST-766 · AST-757
 
 **Sunset `board_search` schema** — see `docs/test-bible/data/database/dispatch_tasks.md` § AST-766.
+
+### AST-843 · AST-842
+
+**AST-843 (parent AST-842):** `ensure_all_upsert_registry_schemas_at_startup()` iterates `_UPSERT_LAZY_SCHEMA_HANDLERS` at process bootstrap (wired from `bootstrap_runtime()` after repo admin JSON, before `sync_agent_tasks`). Schema-only — reuses AST-626 lazy ensure machinery; no upsert merge rule changes.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry-wide startup ensure | `src/data/database.py` (`ensure_all_upsert_registry_schemas_at_startup`) | `tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure::test_ensure_all_upsert_registry_schemas_at_startup_idempotent` |
+| Bootstrap wire order | `src/core/bootstrap.py` | `tests/component/core/test_bootstrap.py::TestBootstrapRuntime::test_runs_validation_sync_and_scheduler_in_order` |
+
+**AST-843** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure \
+  -q
+```
+

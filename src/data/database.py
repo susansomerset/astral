@@ -4548,7 +4548,12 @@ def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) ->
 
 
 def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
-    """AST-469: select_job_page chains to parse_job_list in roster; set run_next when blank (idempotent)."""
+    """AST-469 superseded by AST-834: decomposed dispatch — select_job_page must not chain parse via Manage Tasks run_next."""
+    return
+
+
+def _apply_ast834_clear_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
+    """AST-834: clear stale select_job_page → parse_job_list Manage Tasks link (idempotent)."""
     try:
         row = conn.execute(
             "SELECT task_key_uuid, run_next FROM agent_task WHERE task_key = 'select_job_page' AND current = 1 LIMIT 1"
@@ -4557,15 +4562,11 @@ def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -
         return
     if not row:
         return
-    if (row[1] or "").strip():
-        return
-    try:
-        _validate_run_next(conn, "select_job_page", "parse_job_list")
-    except ValueError:
+    if (row[1] or "").strip() != "parse_job_list":
         return
     conn.execute(
-        "UPDATE agent_task SET run_next = ?, updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
-        ("parse_job_list", row[0]),
+        "UPDATE agent_task SET run_next = '', updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
+        (row[0],),
     )
     conn.commit()
 
@@ -4660,6 +4661,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE agent_task ADD COLUMN {_col} {_typ}")
                 conn.commit()
     _apply_ast469_select_job_page_run_next_migration(conn)
+    _apply_ast834_clear_select_job_page_run_next_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
@@ -5964,6 +5966,21 @@ def ensure_table_schema_for_upsert(conn: sqlite3.Connection, table: str) -> None
     for flag_name in _UPSERT_SCHEMA_ENSURE_FLAGS.get(table, ()):
         globals()[flag_name] = False
     handler(conn)
+
+
+def ensure_all_upsert_registry_schemas_at_startup() -> None:
+    """Run idempotent lazy schema ensure for every upsert-registry table once at process bootstrap.
+
+    Invokes existing ``_UPSERT_LAZY_SCHEMA_HANDLERS`` only — no parallel migration logic.
+    Resets per-table ``_*_schema_ensured`` flags via ``ensure_table_schema_for_upsert`` so
+    stale process-global shortcuts cannot skip DDL on a legacy DB file."""
+    conn = _get_connection()
+    try:
+        for table in sorted(_UPSERT_LAZY_SCHEMA_HANDLERS):
+            ensure_table_schema_for_upsert(conn, table)
+    finally:
+        conn.close()
+
 
 def save_dispatch_task(
     candidate_id: str, task_key: str, min_count: int,

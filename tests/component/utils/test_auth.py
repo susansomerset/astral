@@ -109,3 +109,13 @@ class TestValidateBearerToken:
 
         auth_mod.register_token_authenticator(_boom)
         assert auth_mod.validate_bearer_token("bad-jwt") is None
+
+    def test_session_not_found_logs_ops_hint(self, caplog: pytest.LogCaptureFixture) -> None:
+        def _missing(_token: str) -> dict:
+            raise RuntimeError("error_type='session_not_found'")
+
+        auth_mod.register_token_authenticator(_missing)
+        with caplog.at_level("WARNING"):
+            assert auth_mod.validate_bearer_token("stale-jwt") is None
+        assert "Bearer token validation failed" in caplog.text
+        assert "Stytch session_not_found — verify STYTCH_PROJECT_ID" in caplog.text
