@@ -1814,6 +1814,19 @@ def _chain_hop_has_run_next(task_key: str) -> bool:
     return bool((row.get("run_next") or "").strip())
 
 
+def _chain_single_hop_dispatch_only(dispatch_task_key: str, candidate_id: str) -> bool:
+    """AST-534 mid-hop rows run one hop; chain-entry and terminal resume hop graduate after do_task."""
+    tk = (dispatch_task_key or "").strip()
+    if not _chain_hop_has_run_next(tk):
+        return False
+    if tk == _chain_entry_dispatch_task_key(candidate_id):
+        return False
+    hops = resume_artifact_hop_task_keys()
+    if tk not in hops:
+        return False
+    return tk != hops[0] and tk != hops[-1]
+
+
 async def do_chain_for_job(
     astral_job_id: str,
     *,
@@ -1889,7 +1902,7 @@ async def do_chain_for_job(
             task_key=start_key,
         )
 
-    if start_key == dispatch_task_key and _chain_hop_has_run_next(start_key):
+    if start_key == dispatch_task_key and _chain_single_hop_dispatch_only(dispatch_task_key, candidate_id):
         return {"success": True, "chain_incomplete": True}
 
     ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
