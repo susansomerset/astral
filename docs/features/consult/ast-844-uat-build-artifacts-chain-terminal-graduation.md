@@ -176,3 +176,14 @@ No conflicts flagged.
 - `2f22240` — `code(AST-844): terminal BUILD_ARTIFACTS hop dispatch and graduation logging`
 
 **Manual verify:** `_resolve_chain_start_task_key` + `_chain_dispatch_row_ok` accept `propose_application_responses` on flat `BUILD_ARTIFACTS` job.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-03  
+**Radia review:** Clean — no fix-now items.
+
+**Shipped:** `build_artifacts_chain_task_keys()` expands chain hop recognition to cover-letter hops + `propose_application_responses`; terminal-hop dispatch reaches `do_chain_for_job` graduation with info-level log; `_chain_single_hop_dispatch_only` narrows `chain_incomplete` to mid-hop resume rows (AST-534). Betty manifest 13/13 green.
+
+**Publish tip:** `origin/sub/AST-788/AST-844-uat-build-artifacts-chain-terminal-graduation` @ `301715e` · §9a dev + ftr dry-run clean.
