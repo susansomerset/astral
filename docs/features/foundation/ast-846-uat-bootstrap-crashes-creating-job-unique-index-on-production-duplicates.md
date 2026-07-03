@@ -244,3 +244,15 @@ No conflicts requiring `conf-!!-NONE`.
 | --- | --- | --- |
 | advisory | Manifest tie-break (`created_at` equal → `astral_job_id ASC`) not an explicit test case; covered by shared ORDER BY in helper | `tests/component/data/test_database.py` |
 | advisory | No-filter live migration run prints per-group `deleted` before bulk `_dedupe_job_identity_triples` at loop end — operator log timing only | `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` `run_identity_dedupe` |
+
+## Resolution (Hedy)
+
+**Resolved:** 2026-07-03 · publish ref @ `522723d`
+
+Radia **Review Posted** @ `277fbe8`: **fix-now** and **discuss** empty; advisory items (tie-break test gap, migration log timing) accepted per plan — no additional product changes required.
+
+**Shipped:**
+- `src/data/database.py` — `_delete_board_placeholder_jobs` + `_dedupe_job_identity_triples`; `_ensure_job_schema` runs both before `idx_job_identity_unique` CREATE when index missing.
+- `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` — live paths delegate to database helpers (DRY).
+
+**§9a dry-run:** `origin/sub/AST-842/AST-846-bootstrap-job-unique-index-dedup` merges cleanly into `origin/dev` and `origin/ftr/AST-842-production-schema-ensure-on-bootstrap`.
