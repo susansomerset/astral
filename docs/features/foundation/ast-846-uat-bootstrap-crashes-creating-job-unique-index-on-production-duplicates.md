@@ -206,3 +206,15 @@ Expect index present after run; duplicate group count drops to zero for complete
 | AST-843 boundary | Bootstrap registry loop unchanged; only `_ensure_job_schema` behavior extended |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-842/AST-846-bootstrap-job-unique-index-dedup` @ `cef6c09`
+
+**Stages delivered:**
+- Stage 1: `_delete_board_placeholder_jobs` + `_dedupe_job_identity_triples` in `src/data/database.py` — `826d8c9`.
+- Stage 2: `_ensure_job_schema` calls board cleanup + identity dedupe before `idx_job_identity_unique` CREATE — `1837eae`.
+- Stage 3: `cleanup_duplicate_and_board_gaze_jobs.py` live paths delegate to database helpers — `cef6c09`.
+- Stage 4: `python3 -m py_compile` pass on `database.py` + migration script.
+
+**Betty:** manifest at **Code Complete** — `TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` in `tests/component/data/test_database.py` (5 cases per plan).
