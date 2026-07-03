@@ -4368,7 +4368,9 @@ class TestAst505InflowDiscovery:
         assert term_row["last_scan_at"] is not None
 
     @pytest.mark.asyncio
-    async def test_run_batch_cse_failure_continues(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_run_batch_cse_failure_continues(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         db = seeded_db
         db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
         db.sync_company_search_terms("c1", ["bad", "good"])
@@ -4380,12 +4382,16 @@ class TestAst505InflowDiscovery:
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
-        out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
+        with caplog.at_level("WARNING", logger="src.core.roster"):
+            out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
         assert out["total_errors"] == 1
         rows = {r["search_term"]: r["last_scan_at"] for r in db.list_company_search_terms("c1")}
         assert rows["good"] is not None
         assert rows["bad"] is None
         assert db.get_company("ok_example") is not None
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "CSE failed for term 'bad'" in combined
+        assert "1 CSE term error(s) for candidate c1" in combined
 
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4450,28 +4456,78 @@ class TestAst505InflowDiscovery:
 
 
 class TestAst837CsePaceDebug:
-    """AST-837: roster wires pace_detail to debug_detail when debug=True."""
+    """AST-837 / AST-839: roster passes log.debug_detail as pace_detail when debug=True."""
 
     @pytest.mark.asyncio
-    async def test_discovery_debug_flushes_pace_detail(
+    async def test_discovery_debug_streams_pace_detail_during_search(
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
         db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
+        events: list[str] = []
+
+        def _debug_index(**kwargs: Any) -> None:
+            events.append(f"index:{kwargs.get('outcome')}")
+
+        def _debug_detail(msg: str) -> None:
+            events.append(f"detail:{msg}")
 
         def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
             pace_detail = kwargs.get("pace_detail")
             if pace_detail is not None:
-                pace_detail("pacing: sleeping 0.42s before CSE HTTP request")
+                pace_detail("CSE HTTP start=1 status=200 items=1")
             return [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        debug_details: list[str] = []
-        monkeypatch.setattr(roster_mod.logger, "debug_detail", debug_details.append)
+        monkeypatch.setattr(roster_mod.logger, "debug_index", _debug_index)
+        monkeypatch.setattr(roster_mod.logger, "debug_detail", _debug_detail)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
-        await roster_mod.run_inflow_discovery_batch(cand, "batch-837", cand, True)
-        assert any("pacing: sleeping 0.42s" in line for line in debug_details)
+        await roster_mod.run_inflow_discovery_batch(cand, "batch-839", cand, True)
+        assert events[0] == "index:CSE search"
+        http_idx = next(i for i, e in enumerate(events) if "CSE HTTP start=" in e)
+        complete_idx = next(i for i, e in enumerate(events) if e.startswith("detail:search complete:"))
+        assert http_idx < complete_idx
+
+
+class TestAst839CseDebugStreaming:
+    """AST-839: pre-search index header + search complete detail (no pace_lines buffer)."""
+
+    @pytest.mark.asyncio
+    async def test_resolve_debug_streams_pre_search_index_and_complete_detail(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_company("acme", state="NEW", company_name="Acme Corp")
+        events: list[str] = []
+
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_index",
+            lambda **kwargs: events.append(f"index:{kwargs.get('outcome')}"),
+        )
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_detail",
+            lambda msg: events.append(f"detail:{msg}"),
+        )
+        def _cse(**kwargs: Any) -> List[Dict[str, str]]:
+            pace_detail = kwargs.get("pace_detail")
+            if pace_detail is not None:
+                pace_detail("CSE HTTP start=1 status=200 items=0")
+            return []
+
+        monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "skip vet"}),
+        )
+        entity = {"company_name": "Acme Corp", "company_website": ""}
+        await roster_mod.resolve_company_website("acme", entity, {}, True)
+        assert events[0] == "index:CSE search"
+        assert any("CSE HTTP start=" in e for e in events)
+        assert any(e.startswith("detail:search complete:") for e in events)
 
 
 class TestAst775InflowDiscoveryRecordNew:

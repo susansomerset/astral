@@ -135,9 +135,16 @@ def _http_get_with_pacing_and_retry(
         )
         _last_cse_request_at = time.monotonic()
         last_parsed = _parse_cse_json(last_response)
+        items = last_parsed.get("items") if isinstance(last_parsed, dict) else None
+        item_count = len(items) if isinstance(items, list) else 0
 
         if _is_rate_limit_response(last_response.status_code, last_parsed):
             if attempt < max_retries:
+                _pace_detail_emit(
+                    pace_detail,
+                    f"CSE HTTP start={params['start']} status={last_response.status_code} "
+                    f"rate_limited=true",
+                )
                 _pace_detail_emit(
                     pace_detail,
                     f"rate limit: HTTP {last_response.status_code}; pausing {pause_sec:.0f}s "
@@ -147,9 +154,19 @@ def _http_get_with_pacing_and_retry(
                 continue
             break
 
+        _pace_detail_emit(
+            pace_detail,
+            f"CSE HTTP start={params['start']} status={last_response.status_code} "
+            f"items={item_count}",
+        )
         return last_response, last_parsed
 
     assert last_response is not None
+    _pace_detail_emit(
+        pace_detail,
+        f"CSE HTTP start={params['start']} status={last_response.status_code} "
+        f"rate_limited=exhausted",
+    )
     raise RuntimeError(
         f"Google CSE HTTP {last_response.status_code}: "
         f"{_truncate_body(last_response.text)}"

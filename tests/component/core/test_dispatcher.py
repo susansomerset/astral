@@ -982,6 +982,76 @@ class TestDispatchOne:
         await dispatcher_mod._dispatch_one(task)
 
 
+class TestAst841DispatchTerminalLogging:
+    """AST-841: terminal ERROR/WARNING app_log lines align ledger status with log severities."""
+
+    @pytest.mark.asyncio
+    async def test_interrupted_dispatch_emits_terminal_error_log(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "save_dispatch_ledger",
+            MagicMock(return_value=99),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=asyncio.CancelledError()))
+        task = {"id": 41, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[41] = {"asyncio_task": None}
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
+        assert any(
+            "batch finished INTERRUPTED" in r.message and "inflow_discovery" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_completed_with_errors_emits_terminal_warning_log(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "save_dispatch_ledger",
+            MagicMock(return_value=100),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_check_circuit_breaker", MagicMock())
+
+        async def _bump(ctx, task, task_key, batch_id, accumulated, dispatch_ledger_id=None):
+            accumulated["total_errors"] = 2
+            accumulated["total_processed"] = 5
+
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_bump))
+        task = {"id": 42, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[42] = {"asyncio_task": None}
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
+        assert any(
+            "batch finished COMPLETED with errors" in r.message
+            and "errors=2" in r.message
+            and "inflow_discovery" in r.message
+            for r in caplog.records
+        )
+
+
 class TestRunDispatchLoop:
     @pytest.mark.asyncio
     async def test_skips_when_queue_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
