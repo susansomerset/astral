@@ -222,3 +222,16 @@ None.
 | **Advisory** | Tables outside `_UPSERT_LAZY_SCHEMA_HANDLERS` (`rubric_vector`, timesheets, etc.) remain lazy-only at upsert — intentional per plan; AST-777 owns broader migration relocation if Susan expands scope later. |
 
 **Verdict:** Clean — `resolve-child` may proceed with no Radia fix-now items.
+
+## Resolution (Ada)
+
+**Resolved:** 2026-07-03 · publish ref @ `ba11482`
+
+Radia **Review Posted** @ `6bdd983`: **fix-now** and **discuss** empty; advisory items (Werkzeug double-bootstrap, non-registry tables lazy-only) accepted per plan. No additional product changes required.
+
+**Shipped:**
+- `src/data/database.py` — `ensure_all_upsert_registry_schemas_at_startup()` iterates all 13 `_UPSERT_LAZY_SCHEMA_HANDLERS` entries via `ensure_table_schema_for_upsert`.
+- `src/core/bootstrap.py` — schema ensure runs after repo admin JSON, before `sync_agent_tasks` / `start_scheduler`.
+- `src/ui/server.py` — bootstrap comment updated.
+
+**§9a dry-run:** `origin/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup` merges cleanly into `origin/dev` and `origin/ftr/AST-842-production-schema-ensure-on-bootstrap`.
