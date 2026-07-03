@@ -164,3 +164,15 @@ Server log shows **`batch_id=propose_application_responses-<uuid>`** and **`in_r
 | Boundaries | No **`JOB_STATES`** compound keys; no AST-832 revert |
 
 No conflicts flagged.
+
+---
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-788/AST-844-uat-build-artifacts-chain-terminal-graduation`
+
+**Commits:**
+- `45d9388` — `code(AST-844): build_artifacts_chain_task_keys helper`
+- `2f22240` — `code(AST-844): terminal BUILD_ARTIFACTS hop dispatch and graduation logging`
+
+**Manual verify:** `_resolve_chain_start_task_key` + `_chain_dispatch_row_ok` accept `propose_application_responses` on flat `BUILD_ARTIFACTS` job.
