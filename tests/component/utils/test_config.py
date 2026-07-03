@@ -676,6 +676,18 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
+class TestAst844BuildArtifactsChainTaskKeys:
+    """AST-844: full BUILD_ARTIFACTS CHAIN hop set for consult resolution."""
+
+    def test_includes_terminal_and_cover_hops_excludes_draft_cover_letter(self) -> None:
+        keys = cfg.build_artifacts_chain_task_keys()
+        assert "propose_application_responses" in keys
+        assert "check_cover_letter" in keys
+        assert "finalize_cover_letter" in keys
+        assert "draft_cover_letter" not in keys
+        assert keys == cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS - frozenset({"draft_cover_letter"})
+
+
 class TestAst828JobBatchClaimStateValidation:
     """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
 
