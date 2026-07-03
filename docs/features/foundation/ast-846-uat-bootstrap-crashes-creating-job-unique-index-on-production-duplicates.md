@@ -218,3 +218,29 @@ No conflicts requiring `conf-!!-NONE`.
 - Stage 4: `python3 -m py_compile` pass on `database.py` + migration script.
 
 **Betty:** manifest at **Code Complete** — `TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` in `tests/component/data/test_database.py` (5 cases per plan).
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-842/AST-846-bootstrap-job-unique-index-dedup` @ `277fbe8`  
+**Session:** `97db2d6d-6e0c-4489-9e48-01cbeada3930`
+
+### What's solid
+
+- Stages 1–3 match plan: `_delete_board_placeholder_jobs` / `_dedupe_job_identity_triples` in `src/data/database.py`; wired only when `idx_job_identity_unique` is missing; migration script live paths delegate to the same helpers (§1.3 DRY).
+- Survivor SQL aligns with AST-729 (`created_at ASC NULLS LAST`, `astral_job_id ASC` tie-break); partial unique index SQL unchanged (AST-732 boundary held).
+- Data layer discipline: no logging, no try/except swallow on delete or index create; fail-fast preserved.
+- AST-843 boundary intact — `ensure_all_upsert_registry_schemas_at_startup` unchanged; `ensure_table_schema_for_upsert` resets `_job_schema_ensured` so bootstrap path exercises dedupe (`test_bootstrap_registry_path`).
+- Component tests: `TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` (5/5) + AST-843 / AST-729 regression green locally.
+
+### Issues
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| — | None | — |
+
+### Recommended actions
+
+| Severity | Item | Location |
+| --- | --- | --- |
+| advisory | Manifest tie-break (`created_at` equal → `astral_job_id ASC`) not an explicit test case; covered by shared ORDER BY in helper | `tests/component/data/test_database.py` |
+| advisory | No-filter live migration run prints per-group `deleted` before bulk `_dedupe_job_identity_triples` at loop end — operator log timing only | `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` `run_identity_dedupe` |
