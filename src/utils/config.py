@@ -669,6 +669,11 @@ JOB_ARTIFACT_ENTRY_TASK_KEYS = frozenset({
 })
 
 
+def build_artifacts_chain_task_keys() -> frozenset[str]:
+    """All consult hops in the BUILD_ARTIFACTS CHAIN except draft_cover_letter (separate batch)."""
+    return frozenset(JOB_ARTIFACT_ENTRY_TASK_KEYS) - frozenset({"draft_cover_letter"})
+
+
 # ---------------------------------------------------------------------------
 # CONFIDENCE_* — AST-357: per-grade confidence for density scoring & prompts.
 # Multipliers keyed 1–5 (admin-tunable). Descriptions duplicated in output_types
