@@ -470,6 +470,37 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-844 · AST-788 (UAT bug)
+
+**AST-844 (UAT bug):** Terminal hop **`propose_application_responses`** dispatch on flat **`BUILD_ARTIFACTS`** was rejected by **`_resolve_chain_start_task_key`** (resume-hop-only set) → chain skipped → no **`CANDIDATE_REVIEW`** graduation. **`build_artifacts_chain_task_keys()`** expands hop membership; **`do_chain_for_job`** defers graduation when **`start_key == dispatch_task_key`** and hop has **`run_next`**; info log on successful graduation.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Full chain hop registry (excludes **`draft_cover_letter`**) | `src/utils/config.py` | **`TestAst844BuildArtifactsChainTaskKeys::test_includes_terminal_and_cover_hops_excludes_draft_cover_letter`** |
+| 2 | Terminal hop dispatch resolves start key | `src/core/consult.py` | **`TestAst803ChainHelpers::test_propose_application_responses_resolves_for_flat_build_artifacts`** |
+| 3 | **`_chain_dispatch_row_ok`** accepts terminal hop | same | **`::test_propose_application_responses_dispatch_row_ok`** |
+| 4 | Terminal **`do_chain_for_job`** → **`CANDIDATE_REVIEW`** | same | **`TestAst803ChainGraduation::test_do_chain_graduates_on_terminal_propose_application_responses`** |
+| 5 | Mid-chain hop with **`run_next`** → **`chain_incomplete`**, no transition | same | **`::test_do_chain_returns_chain_incomplete_for_mid_chain_hop_with_run_next`** |
+
+**Regression (required):** **AST-832** chain-entry resume helpers; **AST-803** graduation on **`finalize_job_resume`** / **`anticipate_scan`** entry unchanged.
+
+**AST-844** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_graduates_on_terminal_propose_application_responses \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_returns_chain_incomplete_for_mid_chain_hop_with_run_next \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_graduates_after_successful_do_task \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_graduates_on_anticipate_scan_entry \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–5 + regression graduation cases — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-817 · AST-815
 
 **AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.

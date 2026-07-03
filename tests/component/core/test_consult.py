@@ -659,6 +659,74 @@ class TestAst803ChainGraduation:
         transition.assert_called_once_with(["job-scan"], "CANDIDATE_REVIEW")
 
     @pytest.mark.asyncio
+    async def test_do_chain_graduates_on_terminal_propose_application_responses(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-844: terminal hop dispatch graduates after successful do_task."""
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.consult.do_task", AsyncMock(return_value={"success": True}))
+        monkeypatch.setattr(consult_mod, "_chain_hop_has_run_next", lambda tk: False)
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {
+                "astral_job_id": aid,
+                "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}},
+            },
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
+        out = await consult_mod.do_chain_for_job(
+            "job-term",
+            batch_id="batch-844",
+            ctx={"astral_candidate_id": "somerset"},
+            debug=False,
+            dispatch_task_key="propose_application_responses",
+            input_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert out["success"] is True
+        assert "chain_incomplete" not in out
+        transition.assert_called_once_with(["job-term"], "CANDIDATE_REVIEW")
+
+    @pytest.mark.asyncio
+    async def test_do_chain_returns_chain_incomplete_for_mid_chain_hop_with_run_next(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-844: single-hop dispatch on non-terminal row must not graduate early."""
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.consult.do_task", AsyncMock(return_value={"success": True}))
+        monkeypatch.setattr("src.core.agent._resume_artifact_parent_hop_key", lambda tk: None)
+        monkeypatch.setattr(
+            consult_mod,
+            "_chain_hop_has_run_next",
+            lambda tk: tk == "contemplate_job",
+        )
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {
+                "astral_job_id": aid,
+                "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "job_data": {"artifacts": {"resume_content": {"professional_summary": "ok"}}},
+            },
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        monkeypatch.setattr(consult_mod.tracker, "job_has_persisted_resume_body", lambda aid, row=None: True)
+        out = await consult_mod.do_chain_for_job(
+            "job-mid",
+            batch_id="batch-844-mid",
+            ctx={},
+            debug=False,
+            dispatch_task_key="contemplate_job",
+            input_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert out == {"success": True, "chain_incomplete": True}
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_chain_batch_transition_failure_releases_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
         released: list[str] = []
         transition = MagicMock(side_effect=ValueError("invalid transition"))
@@ -793,6 +861,25 @@ class TestAst803ChainHelpers:
             entry_key,
             cfg.BUILD_ARTIFACTS_BASE_STATE,
             "",
+        )
+
+    def test_propose_application_responses_resolves_for_flat_build_artifacts(self) -> None:
+        """AST-844: terminal hop dispatch row accepted on flat BUILD_ARTIFACTS job."""
+        job = {"state": cfg.BUILD_ARTIFACTS_BASE_STATE}
+        start = consult_mod._resolve_chain_start_task_key(
+            job,
+            dispatch_task_key="propose_application_responses",
+            candidate_id="somerset",
+        )
+        assert start == "propose_application_responses"
+
+    def test_propose_application_responses_dispatch_row_ok(self) -> None:
+        job = {"state": cfg.BUILD_ARTIFACTS_BASE_STATE}
+        assert consult_mod._chain_dispatch_row_ok(
+            job,
+            "propose_application_responses",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "somerset",
         )
 
     def test_chain_failure_mode_classifies_hard_errors(self) -> None:
