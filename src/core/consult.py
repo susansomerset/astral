@@ -32,6 +32,7 @@ from src.utils.config import (
     RUBRIC_TOTAL,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    build_artifacts_chain_task_keys,
     grade_value,
     importance_multiplier,
     is_build_artifacts_in_progress,
@@ -1700,7 +1701,7 @@ def _resolve_chain_start_task_key(
     candidate_id: str,
 ) -> Optional[str]:
     tk = (dispatch_task_key or "").strip()
-    if tk not in resume_artifact_hop_task_keys():
+    if tk not in build_artifacts_chain_task_keys():
         return None
     job_state = (job.get("state") or "").strip()
     legacy_hop = legacy_build_artifacts_hop(job_state)
@@ -1798,7 +1799,19 @@ def _chain_graduate_to_candidate_review(
         return False, f"transition_failed:{exc}"
     if debug:
         get_logger(__name__, debug_flag=True).debug_detail("graduation=CANDIDATE_REVIEW success")
+    logger.info(
+        "BUILD_ARTIFACTS chain graduated job=%s from_state=%s → CANDIDATE_REVIEW",
+        astral_job_id,
+        from_state,
+    )
     return True, "ok"
+
+
+def _chain_hop_has_run_next(task_key: str) -> bool:
+    from src.data.database import get_agent_task
+
+    row = get_agent_task((task_key or "").strip()) or {}
+    return bool((row.get("run_next") or "").strip())
 
 
 async def do_chain_for_job(
@@ -1875,6 +1888,9 @@ async def do_chain_for_job(
             str(result.get("error") or "chain hop failed"),
             task_key=start_key,
         )
+
+    if start_key == dispatch_task_key and _chain_hop_has_run_next(start_key):
+        return {"success": True, "chain_incomplete": True}
 
     ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
     if not ok:
