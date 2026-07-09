@@ -99,6 +99,19 @@ See **`docs/test-bible/data/database/jobs.md`** for index + **`save_job`** bounc
 
 ---
 
+### AST-848 · AST-847
+
+**Runtime dispatch hop labels** — **`write_job_dispatch_hop_label`** writes **`{trigger}.{task_key}`** to **`job.state`** without **`JOB_STATES`** registry validation; **`graduate_job_from_dispatch_chain`** transitions to config successor when predecessor is bare trigger, runtime hop label, or legacy compound hop.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop label write | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestAst848DispatchChainTracker::test_write_job_dispatch_hop_label` |
+| Chain graduation | `src/core/tracker.py` | `::test_graduate_from_runtime_hop_label`, `::test_graduate_rejects_unrelated_from_state` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
