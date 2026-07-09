@@ -557,6 +557,30 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-848 · AST-847
+
+**Dispatch hop label helpers** — **`dispatch_hop_label`**, **`parse_dispatch_hop_label`**, **`DISPATCH_CHAIN_TERMINAL_GRADUATION`**, **`dispatch_chain_graduation_target`**; **`is_valid_job_batch_claim_state`** accepts runtime **`{trigger}.{hop}`** labels when trigger is in graduation map.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Label helpers + claim predicate | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst848DispatchHopLabels` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
+
+---
+
+### AST-849 · AST-847
+
+**`dispatch_chain_claim_states_for_row`**, **`dispatch_chain_row_matches_job`**, **`is_dispatch_chain_trigger`**, **`_agent_task_parents_with_run_next`** — claim states derived from live **`agent_task.run_next`** graph (not **`resume_artifact_hop_task_keys()`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Claim states + row match | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
+
+---
+
 ### AST-828 · AST-752 (UAT bug)
 
 **`is_valid_job_batch_claim_state`:** true for **`JOB_STATES`** keys and legacy **`BUILD_ARTIFACTS.<hop>`** via **`legacy_build_artifacts_hop`** — batch claim boundary only; does not expand **`JOB_STATES`** registry.

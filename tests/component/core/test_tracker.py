@@ -345,6 +345,57 @@ class TestBatchApi:
         assert tracker_mod.clear_job_batch("batch-1") == 2
 
 
+class TestAst848DispatchChainTracker:
+    """AST-848: runtime hop labels and terminal chain graduation."""
+
+    def test_write_job_dispatch_hop_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[tuple[str, Dict[str, Any]]] = []
+        job = {
+            "astral_job_id": "job-848",
+            "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "state_history": [],
+            "batch_id": "batch-848",
+        }
+        monkeypatch.setattr(tracker_mod.database, "get_job", lambda jid: dict(job))
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_job",
+            lambda jid, **kw: saves.append((jid, kw)),
+        )
+        label = tracker_mod.write_job_dispatch_hop_label(
+            "job-848", cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan",
+        )
+        assert label == f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"
+        assert saves[-1][1]["state"] == label
+        assert saves[-1][1]["state_history"][-1]["to_state"] == label
+
+    def test_graduate_from_runtime_hop_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "finalize_job_resume")
+        job = {
+            "astral_job_id": "job-grad",
+            "state": label,
+            "state_history": [],
+            "batch_id": "batch-grad",
+        }
+        monkeypatch.setattr(tracker_mod.database, "get_job", lambda jid: dict(job))
+        monkeypatch.setattr(tracker_mod, "transition_job_state", transition)
+        to_state = tracker_mod.graduate_job_from_dispatch_chain(
+            "job-grad", cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert to_state == "CANDIDATE_REVIEW"
+        transition.assert_called_once_with(["job-grad"], "CANDIDATE_REVIEW")
+
+    def test_graduate_rejects_unrelated_from_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "RECOMMENDED"},
+        )
+        with pytest.raises(ValueError, match="Invalid chain graduation"):
+            tracker_mod.graduate_job_from_dispatch_chain("job-bad", cfg.BUILD_ARTIFACTS_BASE_STATE)
+
+
 # Branches: thin database facades for UI/API callers.
 class TestTrackerFacades:
     def test_delegates_to_database(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -208,3 +208,65 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal le
 ```
 
 Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.
+
+---
+
+### AST-848 · AST-847
+
+**AST-848:** Synchronous **`run_next`** chain ownership moves into **`do_task`**: after each successful hop, write runtime DB label **`{trigger_state}.{completed_task_key}`** via **`write_job_dispatch_hop_label`**; recurse via existing **`run_next`**; terminal graduation to config successor (**`BUILD_ARTIFACTS` → `CANDIDATE_REVIEW`**) in the same invocation when **`dispatch_chain_graduate_on_terminal`** is true and the last hop has empty **`run_next`**. Retires AST-803 consult **`_chain_graduate_to_candidate_review`**, persist gate, and **`chain_incomplete`** flag. Dispatch claim for runtime labels is sibling **AST-849**.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Hop label helpers + batch claim predicate | `src/utils/config.py` | **`TestAst848DispatchHopLabels`** |
+| 2 | Runtime hop write + chain graduation | `src/core/tracker.py` | **`TestAst848DispatchChainTracker`** |
+| 3 | Per-hop DB write + terminal graduation + hard failure | `src/core/agent.py` | **`TestAst848DispatchChainDoTask`** |
+
+**Regression (required):** **AST-597** mid-chain hydration without per-hop compound transitions; **AST-844** hop registry (**`TestAst844BuildArtifactsChainTaskKeys`**). Consult/dispatch claim wiring is sibling **AST-849**.
+
+**AST-848** narrowed run (agent + config + tracker slice):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/core/test_tracker.py::TestAst848DispatchChainTracker \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-849 · AST-847
+
+**AST-849:** Retires consult chain wrapper (**`do_chain_for_job`**, **`_run_build_artifacts_chain_batch`**, all **`_chain_*`** helpers). **`_run_dispatch_chain_job_batch`** invokes **`do_task`** only with **`dispatch_chain_row_matches_job`** gate. Generic **`dispatch_chain_claim_states_for_row`** + **`dispatch_chain_row_matches_job`** drive dispatcher claim/count filter and admin row validation. Depends on **AST-848** **`do_task`** ctx contract.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Chain claim states + row match helpers | `src/utils/config.py` | **`TestAst849DispatchChainClaimStates`** |
+| 2 | Post-claim entity filter | `src/core/dispatcher.py` | **`TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast849_post_claim_filter_skips_row_mismatch}`** |
+| 3 | **`_run_dispatch_chain_job_batch`** → **`do_task`** | `src/core/consult.py` | **`TestAst371ResumeArtifactDispatch`**, **`TestAst534DispatchTaskKeyHonesty`** |
+| 4 | Admin hop-label row validation | `src/ui/api/api_admin.py` | **`TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key`** |
+
+**Broken / obsolete (Betty revision):** **`TestAst803ChainGraduation`**, **`TestAst803ChainHelpers`**, **`_run_build_artifacts_chain_batch`** / **`do_chain_for_job`** / **`_run_craft_job_cover_letter_batch`** consult tests; **`test_ast596_resume_hop_mismatch_skips_claim`** (pre-claim guard removed — post-claim filter in item 2).
+
+**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`**; **AST-844** **`TestAst844BuildArtifactsChainTaskKeys`**; **AST-534** dispatch-key honesty (non-chain **`grade_do`** row in **`TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`**).
+
+**AST-849** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestRunConsultTask::test_routes_candidate_review_cover_letter_unhandled_returns_zero \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast849_post_claim_filter_skips_row_mismatch \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
