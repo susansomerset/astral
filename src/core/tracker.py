@@ -546,12 +546,10 @@ def graduate_job_from_dispatch_chain(job_id: str, trigger_state: str) -> str:
     if not to_state:
         raise ValueError(f"No graduation target for trigger_state={trigger_state!r}")
     from_state = (job.get("state") or "").strip()
+    parsed_hop = parse_dispatch_hop_label(from_state)
     allowed = (
         from_state == ts
-        or (
-            parse_dispatch_hop_label(from_state) is not None
-            and parse_dispatch_hop_label(from_state)[0] == ts
-        )
+        or (parsed_hop is not None and parsed_hop[0] == ts)
         or (ts == BUILD_ARTIFACTS_BASE_STATE and legacy_build_artifacts_hop(from_state) is not None)
     )
     if not allowed:

@@ -823,9 +823,11 @@ def _resume_hop_debug_index(
     *,
     debug: bool,
     ctx: Optional[Dict[str, Any]] = None,
+    index: Optional[str] = None,
 ) -> None:
     if not debug:
         return
+    ident = (index or task_key or "?").strip()
     trigger, _ = _dispatch_chain_ctx(ctx)
     if trigger:
         hop_idx = 1
@@ -837,7 +839,7 @@ def _resume_hop_debug_index(
             func=f"do_task({task_key})",
             index=hop_idx,
             total=total or hop_idx,
-            identifier=task_key,
+            identifier=ident,
             outcome="hop",
         )
         return
@@ -1722,7 +1724,7 @@ async def do_task(
                 chain_context, hydrated
             )
     in_chain = _in_run_next_chain(chain_context=chain_context, agent_task_row=agent_task_row)
-    _resume_hop_debug_index(task_key, debug=debug, ctx=ctx)
+    _resume_hop_debug_index(task_key, debug=debug, ctx=ctx, index=index)
     hop_ledger_batch_id: Optional[str] = None
     hop_ledger_closed = False
 
@@ -2135,6 +2137,9 @@ async def do_task(
             except Exception:
                 logger.debug("_store_response_block failed", exc_info=True)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
+        return {"success": False, "api_response": result.get("api_response"),
+                "parsed_response": None, "error": envelope_err, "raw_response": parsed,
+                "timesheet": result.get("timesheet", {})}
 
     if parsed is not None and response_format in ("json", "python") and not rubric_encoded:
         if isinstance(parsed, dict) and schema:

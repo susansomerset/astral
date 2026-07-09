@@ -339,3 +339,17 @@ No unresolved conflicts.
 | fix-now | Restore missing `return` on `envelope_err` path in `do_task` (`src/core/agent.py` ~2137). |
 | advisory | `graduate_job_from_dispatch_chain`: cache `parse_dispatch_hop_label(from_state)` result instead of calling twice. |
 | advisory | `_resume_hop_debug_index` dispatch-chain entry uses `identifier=task_key`; hop-ok path uses `identifier=index` — minor debug consistency only. |
+
+---
+
+## Resolution (2026-07-09)
+
+**Driven by:** Radia review @ `63341a3` on `origin/sub/AST-847/AST-848-do-task-run-next-chain`.
+
+| Item | Change |
+|------|--------|
+| **fix-now** — missing `return` on `envelope_err` path | Restored `return {"success": False, …}` after `_close_hop_ledger` in `do_task` strict-envelope failure block (`src/core/agent.py`). |
+| **advisory** — double `parse_dispatch_hop_label` | Cached `parsed_hop` in `graduate_job_from_dispatch_chain` (`src/core/tracker.py`). |
+| **advisory** — debug identifier consistency | `_resume_hop_debug_index` accepts `index` and uses job id as Style D identifier on dispatch-chain entry (`src/core/agent.py`). |
+
+**Verify:** Betty manifest (27 tests) green after resolve commit; §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-847-unify-build-artifacts-chain-do-task`.
