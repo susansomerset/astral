@@ -419,3 +419,31 @@ No unresolved conflicts requiring `!!-NONE`.
 **Manual verify:** `dispatch_chain_claim_states_for_row` / `dispatch_chain_row_matches_job` drive dispatcher claim + consult `_run_dispatch_chain_job_batch`; no `do_chain_for_job` in `consult.py`.
 
 ---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim` @ `68e5035`
+
+### What's solid
+
+- Stages 1–6 match plan: `dispatch_chain_claim_states_for_row` / `dispatch_chain_row_matches_job` / `is_dispatch_chain_trigger`; `count_eligible_for_dispatch_task` uses chain claim states; dispatcher generic claim + post-claim row filter; tracker hop-label listing; consult `_run_dispatch_chain_job_batch` + `do_task`-only routing; admin registry validation for hop trigger labels.
+- Consult chain wrapper fully retired — no `do_chain_for_job`, `_run_build_artifacts_chain_batch`, or `_chain_*` hits in `src/core/consult.py`.
+- Dispatcher no longer imports `build_artifacts_claim_states` / `resume_artifact_hop_task_keys` for chain guards.
+- Lazy `get_agent_task` in config helpers; §2.4 claim → filter → consult → `finally` clear preserved when consult runs.
+- Betty manifest covers claim helpers, row match, dispatcher post-filter, consult batch routing.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `src/core/dispatcher.py` ~230–284 | Post-claim `dispatch_chain_row_matches_job` filter can empty `entities` **after** `get_new_job_batch` already set `batch_id` on claimed rows. Early `return s` at ~284 skips the `try`/`finally` that calls `clear_job_batch(bid)` — jobs stay batch-locked (UAT AC #4 zero-work terminal-hop scenario). Call `clear_job_batch(bid)` before return when `entity_type == "job"` and post-filter yields empty list. |
+| **fix-now** | `src/core/agent.py` ~2137 (`envelope_err`, AST-848 carry-forward) | Strict-envelope failure path still missing `return` after `_close_hop_ledger` — falls through into validation/success handling. Flagged on AST-848; still present on this publish ref. Restore sibling `return {"success": False, …}`. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| fix-now | Clear `batch_id` on post-filter-empty path in `dispatcher._run_unified` before early return. |
+| fix-now | Restore `envelope_err` return in `do_task` (AST-848 fix, cherry-pick or inline). |
+| advisory | `test_ast849_post_claim_filter_skips_row_mismatch` should assert `clear_job_batch` on filter-empty path once fixed. |
+| advisory | `_run_dispatch_chain_job_batch` `continue` on row mismatch skips without `release_job_dispatch_claim` — safe today because dispatcher pre-filters; belt-and-suspenders if consult ever called directly. |
