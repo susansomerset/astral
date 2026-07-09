@@ -447,3 +447,25 @@ No unresolved conflicts requiring `!!-NONE`.
 | fix-now | Restore `envelope_err` return in `do_task` (AST-848 fix, cherry-pick or inline). |
 | advisory | `test_ast849_post_claim_filter_skips_row_mismatch` should assert `clear_job_batch` on filter-empty path once fixed. |
 | advisory | `_run_dispatch_chain_job_batch` `continue` on row mismatch skips without `release_job_dispatch_claim` — safe today because dispatcher pre-filters; belt-and-suspenders if consult ever called directly. |
+
+---
+
+## Resolution (Hedy)
+
+**Date:** 2026-07-09  
+**Publish:** `origin/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim`
+
+### Radia fix-now
+
+1. **`dispatcher._run_unified`** — When post-claim `dispatch_chain_row_matches_job` filter empties `entities`, call `clear_job_batch(bid)` before early `return s` so claimed jobs are not left batch-locked.
+2. **`do_task` `envelope_err` path** — Restore `return {"success": False, …}` after `_close_hop_ledger` so strict-envelope failures do not fall through into validation/success handling (AST-848 carry-forward on this ref).
+
+### Advisory
+
+- Betty may extend `test_ast849_post_claim_filter_skips_row_mismatch` to assert `clear_job_batch` on filter-empty path (not patched in this resolve pass).
+
+### §9a dry-run
+
+`origin/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim` merges cleanly into `origin/dev` and `origin/ftr/AST-847-unify-build-artifacts-chain-do-task`.
+
+---

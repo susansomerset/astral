@@ -258,6 +258,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         )
 
     if not entities:
+        if entity_type == "job" and bid:
+            clear_job_batch(bid)
         if debug:
             logger.debug_index(
                 func="dispatcher._run_unified",

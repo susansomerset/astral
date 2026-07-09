@@ -2135,6 +2135,14 @@ async def do_task(
             except Exception:
                 logger.debug("_store_response_block failed", exc_info=True)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
+        return {
+            "success": False,
+            "api_response": result.get("api_response"),
+            "parsed_response": None,
+            "error": envelope_err,
+            "raw_response": parsed,
+            "timesheet": result.get("timesheet", {}),
+        }
 
     if parsed is not None and response_format in ("json", "python") and not rubric_encoded:
         if isinstance(parsed, dict) and schema:
