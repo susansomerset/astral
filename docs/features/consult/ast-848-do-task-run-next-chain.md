@@ -310,3 +310,32 @@ No unresolved conflicts.
 **Verify:** `python3 -m py_compile` on all touched `.py` files — pass.
 
 **Out of scope (AST-849):** dispatcher claim/validation for runtime hop labels.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-847/AST-848-do-task-run-next-chain` @ `33cd52d`
+
+### What's solid
+
+- Stages 1–5 match the plan: config graduation map + hop helpers, tracker hop writes + `graduate_job_from_dispatch_chain`, agent per-hop labels / terminal graduation / failure routing, consult wrapper retirement, §2.6.0 carve-out.
+- AST-803 symbols removed (`_chain_graduate_to_candidate_review`, `_chain_single_hop_dispatch_only`, `persist_gate_failed`) — grep clean in `src/`.
+- Chain ctx contract (`dispatch_trigger_state`, `dispatch_chain_graduate_on_terminal`) wired in `do_chain_for_job`; `draft_cover_letter` routes through `_run_build_artifacts_chain_batch` when trigger is in graduation map.
+- `_job_state_matches_prior` in `transition_job_state` is the right companion for runtime hop labels — enables graduation and hard `ERROR_BUILD_ARTIFACTS` transitions from `{trigger}.{hop}` states whose trigger is in `prior_states`.
+- AST-538 debug on hop writes and graduation uses contract helpers; lazy tracker imports preserved.
+- Betty manifest tests align with behavior (hop label write, terminal graduation, hard failure, consult ctx).
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `src/core/agent.py` ~2137 (`envelope_err` block) | Refactor to pass `failure_error` into `_close_hop_ledger` **dropped the `return`** after strict-envelope failure. Execution falls through into schema validation / success path — strict encoded batch consult hops can report success after envelope failure. Restore `return {"success": False, …}` matching sibling failure branches (~2167). |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| fix-now | Restore missing `return` on `envelope_err` path in `do_task` (`src/core/agent.py` ~2137). |
+| advisory | `graduate_job_from_dispatch_chain`: cache `parse_dispatch_hop_label(from_state)` result instead of calling twice. |
+| advisory | `_resume_hop_debug_index` dispatch-chain entry uses `identifier=task_key`; hop-ok path uses `identifier=index` — minor debug consistency only. |
