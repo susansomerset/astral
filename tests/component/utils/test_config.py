@@ -688,6 +688,29 @@ class TestAst844BuildArtifactsChainTaskKeys:
         assert keys == cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS - frozenset({"draft_cover_letter"})
 
 
+class TestAst848DispatchHopLabels:
+    """AST-848: runtime dispatch hop labels + terminal graduation map."""
+
+    def test_dispatch_hop_label_builds_trigger_dot_hop(self) -> None:
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert label == f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"
+
+    def test_parse_dispatch_hop_label_roundtrip(self) -> None:
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job")
+        assert cfg.parse_dispatch_hop_label(label) == (cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job")
+
+    def test_parse_rejects_unknown_hop_task(self) -> None:
+        assert cfg.parse_dispatch_hop_label("BUILD_ARTIFACTS.not_a_task") is None
+
+    def test_dispatch_chain_graduation_target(self) -> None:
+        assert cfg.dispatch_chain_graduation_target(cfg.BUILD_ARTIFACTS_BASE_STATE) == "CANDIDATE_REVIEW"
+        assert cfg.dispatch_chain_graduation_target("UNKNOWN") is None
+
+    def test_runtime_hop_label_valid_for_batch_claim(self) -> None:
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.is_valid_job_batch_claim_state(label) is True
+
+
 class TestAst828JobBatchClaimStateValidation:
     """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
 

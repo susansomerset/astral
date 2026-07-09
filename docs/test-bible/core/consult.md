@@ -501,6 +501,19 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ---
 
+### AST-848 · AST-847
+
+**AST-848:** **`do_chain_for_job`** is a thin **`do_task`** launcher — sets **`dispatch_trigger_state`** + **`dispatch_chain_graduate_on_terminal`** on ctx; returns **`do_task`** result directly. Graduation, per-hop DB labels, and **`chain_incomplete`** removal live in **`do_task`** (**`docs/test-bible/core/agent.md`** AST-848). Retires **`_chain_graduate_to_candidate_review`**, persist gate, **`_chain_single_hop_dispatch_only`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chain ctx wiring + batch failure release | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainGraduation` |
+| Resolution helpers (unchanged) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst803ChainHelpers` |
+
+See **`docs/test-bible/core/agent.md`** AST-848 for primary manifest + narrowed run.
+
+---
+
 ### AST-817 · AST-815
 
 **AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.
