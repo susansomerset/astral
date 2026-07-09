@@ -83,6 +83,8 @@ from src.utils.config import (
     dispatch_task_admin_defaults,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
+    dispatch_chain_claim_states_for_row,
+    is_dispatch_chain_trigger,
     trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
@@ -6309,6 +6311,11 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if entity_type not in ENTITY_TYPES:
         return 0
     claim_states = dispatch_claim_states(state, entity_type)
+    if entity_type == "job" and is_dispatch_chain_trigger((state or "").strip()):
+        claim_states = dispatch_chain_claim_states_for_row(
+            (state or "").strip(),
+            (task.get("task_key") or "").strip(),
+        )
     if not claim_states:
         return 0
     task_key = task.get("task_key", "")
