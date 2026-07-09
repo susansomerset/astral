@@ -401,3 +401,21 @@ Betty should extend/replace consult + dispatcher coverage for AST-849 AC #3–#6
 | §3.5 naming | `dispatch_chain_*` prefix distinguishes from retired `_chain_*` consult helpers. |
 
 No unresolved conflicts requiring `!!-NONE`.
+
+---
+
+## Review (build stub)
+
+**Branch:** `origin/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim`
+
+**Commits:**
+- `4877799` — `code(AST-849): dispatch chain claim helpers in config`
+- `4b43cf7` — `code(AST-849): chain claim states in count_eligible_for_dispatch_task`
+- `43ef616` — `code(AST-849): generic dispatch chain claim and row filter in dispatcher`
+- `a114efb` — `code(AST-849): generic hop-label filter in list_dispatch_tasks_for_candidate`
+- `b25092c` — `code(AST-849): retire consult chain wrapper; do_task-only dispatch batch`
+- `7a00f8c` — `code(AST-849): generic dispatch chain row validation in admin API`
+
+**Manual verify:** `dispatch_chain_claim_states_for_row` / `dispatch_chain_row_matches_job` drive dispatcher claim + consult `_run_dispatch_chain_job_batch`; no `do_chain_for_job` in `consult.py`.
+
+---
