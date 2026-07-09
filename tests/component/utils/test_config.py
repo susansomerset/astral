@@ -711,6 +711,61 @@ class TestAst848DispatchHopLabels:
         assert cfg.is_valid_job_batch_claim_state(label) is True
 
 
+class TestAst849DispatchChainClaimStates:
+    """AST-849: generic dispatch-chain claim states and row matching."""
+
+    def test_is_dispatch_chain_trigger(self) -> None:
+        assert cfg.is_dispatch_chain_trigger(cfg.BUILD_ARTIFACTS_BASE_STATE) is True
+        assert cfg.is_dispatch_chain_trigger("RECOMMENDED") is False
+
+    def test_claim_states_include_bare_trigger_and_parent_hop_labels(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        states = cfg.dispatch_chain_claim_states_for_row(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job",
+        )
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
+        assert cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan") in states
+
+    def test_row_matches_bare_trigger(self) -> None:
+        assert cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "anticipate_scan",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+
+    def test_row_matches_parent_hop_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job", label,
+        )
+
+    def test_row_rejects_wrong_hop_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        wrong = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "draft_job_resume")
+        assert not cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job", wrong,
+        )
+
+    def test_terminal_hop_row_matches_flat_build_artifacts(self) -> None:
+        assert cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "propose_application_responses",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+
+
 class TestAst828JobBatchClaimStateValidation:
     """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
 
