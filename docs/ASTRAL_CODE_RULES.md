@@ -180,6 +180,10 @@ The `prompt_blocks` array contains foreign keys into the `agent_data` table. The
 
 Every company and every job has a `state`. Entities are processed in batches based on their current state (see 2.4). There is no daisy-chaining — a job does not automatically flow from one state to the next within a single run. Each dispatch cycle claims a batch of entities in a specific state, processes them, and transitions each entity to a new state. The next dispatch cycle picks them up from there in a separate invocation.
 
+#### 2.6.0 Dispatch run_next chains (AST-848)
+
+Within a **single** `do_task` invocation, when `ctx` carries `dispatch_trigger_state`, successful hops may write runtime DB labels `{trigger}.{task_key}` and recurse via `run_next` until the terminal hop. Terminal graduation to a registered `JOB_STATES` key happens in the same invocation when `dispatch_chain_graduate_on_terminal` is true and the last hop's `run_next` is empty. Runtime hop labels are **not** `JOB_STATES` registry keys; batch claim may accept them (see `is_valid_job_batch_claim_state` in `config.py`). This carve-out does **not** apply to roster/consult score transitions (`render_verdict`) or company batches.
+
 State transitions are config-driven and managed by the core layer only. The data layer (`database.py`) and its core wrappers (`tracker.py`, `roster.py`) accept the target state as a parameter from the caller and perform the database update — they do not decide what the next state should be.
 
 #### 2.6.1 Companies

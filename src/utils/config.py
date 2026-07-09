@@ -97,6 +97,11 @@ BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
 ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
 LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
 RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
+
+# Dispatch trigger_state -> JOB_STATES key when a full run_next chain completes (terminal hop, graduation enabled).
+DISPATCH_CHAIN_TERMINAL_GRADUATION: dict[str, str] = {
+    BUILD_ARTIFACTS_BASE_STATE: "CANDIDATE_REVIEW",
+}
 _RESUME_ARTIFACT_HOP_TASK_KEYS = (
     "anticipate_scan",
     "contemplate_job",
@@ -3004,7 +3009,39 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
         return False
     if s in JOB_STATES:
         return True
-    return legacy_build_artifacts_hop(s) is not None
+    if legacy_build_artifacts_hop(s) is not None:
+        return True
+    parsed = parse_dispatch_hop_label(s)
+    if parsed is not None and parsed[0] in DISPATCH_CHAIN_TERMINAL_GRADUATION:
+        return True
+    return False
+
+
+def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
+    ts = (trigger_state or "").strip()
+    tk = (completed_task_key or "").strip()
+    if not ts or not tk:
+        raise ValueError("dispatch_hop_label requires non-empty trigger_state and task_key")
+    return f"{ts}.{tk}"
+
+
+def parse_dispatch_hop_label(state: str) -> tuple[str, str] | None:
+    """Return (trigger_state, completed_task_key) when state matches trigger.hop pattern."""
+    st = (state or "").strip()
+    if "." not in st:
+        return None
+    trigger, hop = st.split(".", 1)
+    trigger = trigger.strip()
+    hop = hop.strip()
+    if not trigger or not hop:
+        return None
+    if hop not in TASK_CONFIG:
+        return None
+    return trigger, hop
+
+
+def dispatch_chain_graduation_target(trigger_state: str) -> str | None:
+    return DISPATCH_CHAIN_TERMINAL_GRADUATION.get((trigger_state or "").strip())
 
 
 parse_resume_artifact_hop = legacy_build_artifacts_hop
@@ -3030,6 +3067,7 @@ def all_resume_artifact_compound_states() -> tuple[str, ...]:
 
 _RAH = resume_artifact_hop_task_keys()
 assert len(_RAH) >= 1
+assert all(v in JOB_STATES for v in DISPATCH_CHAIN_TERMINAL_GRADUATION.values())
 assert all(tk in TASK_CONFIG for tk in _RAH)
 assert all((TASK_CONFIG[tk] or {}).get("entity_type") == "job" for tk in _RAH)
 for _tk, _tc in TASK_CONFIG.items():

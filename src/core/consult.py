@@ -33,6 +33,7 @@ from src.utils.config import (
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     build_artifacts_chain_task_keys,
+    dispatch_chain_graduation_target,
     grade_value,
     importance_multiplier,
     is_build_artifacts_in_progress,
@@ -1768,65 +1769,6 @@ def _chain_fail_result(
     return result
 
 
-def _chain_graduate_to_candidate_review(
-    astral_job_id: str,
-    *,
-    debug: bool = False,
-) -> Tuple[bool, str]:
-    row = tracker.get_job(astral_job_id)
-    if not row:
-        return False, "job_not_found"
-    if not tracker.job_has_persisted_resume_body(astral_job_id, None):
-        return False, "persist_gate_failed"
-    from_state = (row.get("state") or "").strip()
-    if debug:
-        dbg = get_logger(__name__, debug_flag=True)
-        dbg.debug_index(
-            func="_chain_graduate_to_candidate_review",
-            index=1,
-            total=1,
-            identifier=astral_job_id,
-            outcome="attempt",
-        )
-        dbg.debug_detail(f"from_state={from_state!r} persist_gate=pass")
-    try:
-        tracker.transition_job_state([astral_job_id], "CANDIDATE_REVIEW")
-    except ValueError as exc:
-        if debug:
-            get_logger(__name__, debug_flag=True).debug_detail(
-                f"graduation=failed error={exc!r} from_state={from_state!r}"
-            )
-        return False, f"transition_failed:{exc}"
-    if debug:
-        get_logger(__name__, debug_flag=True).debug_detail("graduation=CANDIDATE_REVIEW success")
-    logger.info(
-        "BUILD_ARTIFACTS chain graduated job=%s from_state=%s → CANDIDATE_REVIEW",
-        astral_job_id,
-        from_state,
-    )
-    return True, "ok"
-
-
-def _chain_hop_has_run_next(task_key: str) -> bool:
-    from src.data.database import get_agent_task
-
-    row = get_agent_task((task_key or "").strip()) or {}
-    return bool((row.get("run_next") or "").strip())
-
-
-def _chain_single_hop_dispatch_only(dispatch_task_key: str, candidate_id: str) -> bool:
-    """AST-534 mid-hop rows run one hop; chain-entry and terminal resume hop graduate after do_task."""
-    tk = (dispatch_task_key or "").strip()
-    if not _chain_hop_has_run_next(tk):
-        return False
-    if tk == _chain_entry_dispatch_task_key(candidate_id):
-        return False
-    hops = resume_artifact_hop_task_keys()
-    if tk not in hops:
-        return False
-    return tk != hops[0] and tk != hops[-1]
-
-
 async def do_chain_for_job(
     astral_job_id: str,
     *,
@@ -1836,8 +1778,9 @@ async def do_chain_for_job(
     dispatch_task_key: str,
     input_state: str,
 ) -> Dict[str, Any]:
-    """AST-803: run BUILD_ARTIFACTS CHAIN via do_task + run_next; graduate on success."""
+    """Run BUILD_ARTIFACTS CHAIN via do_task + run_next; graduation in do_task (AST-848)."""
     from src.core import agent as agent_mod
+    from src.core.agent import _current_agent_task_run_next
 
     job = tracker.get_job(astral_job_id)
     if not job or not is_build_artifacts_in_progress(job.get("state") or ""):
@@ -1877,6 +1820,10 @@ async def do_chain_for_job(
         task_ctx["astral_candidate_id"] = candidate_id
     if "vector_labels" not in task_ctx:
         task_ctx["vector_labels"] = {}
+    task_ctx["dispatch_trigger_state"] = (input_state or "").strip() or BUILD_ARTIFACTS_BASE_STATE
+    task_ctx["dispatch_chain_graduate_on_terminal"] = bool(
+        _current_agent_task_run_next(dispatch_task_key)
+    )
 
     seed_chain: Optional[Dict[str, str]] = None
     parent = agent_mod._resume_artifact_parent_hop_key(start_key)
@@ -1901,20 +1848,7 @@ async def do_chain_for_job(
             str(result.get("error") or "chain hop failed"),
             task_key=start_key,
         )
-
-    if start_key == dispatch_task_key and _chain_single_hop_dispatch_only(dispatch_task_key, candidate_id):
-        return {"success": True, "chain_incomplete": True}
-
-    ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
-    if not ok:
-        logger.warning(
-            "[%s] terminal graduation failed reason=%s entry_task_key=%s",
-            astral_job_id,
-            reason,
-            dispatch_task_key,
-        )
-        return {"success": False, "error": reason}
-    return {"success": True}
+    return result
 
 
 async def _run_build_artifacts_chain_batch(
@@ -2111,9 +2045,10 @@ async def run_consult_task(
         r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
     elif task_key == "analysis_upshot":
         return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug)
-    elif task_key == "draft_cover_letter":
-        return await _run_craft_job_cover_letter_batch(batch_id, entities, ctx, debug)
-    elif task_key in _JOB_ARTIFACT_ENTRY_KEYS:
+    elif task_key in _JOB_ARTIFACT_ENTRY_KEYS or (
+        task_key == "draft_cover_letter"
+        and dispatch_chain_graduation_target((input_state or "").strip())
+    ):
         return await _run_build_artifacts_chain_batch(
             batch_id, entities, ctx, debug, task_key, input_state,
         )

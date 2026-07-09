@@ -292,3 +292,21 @@ In the block building `inner = await do_task(effective_next, ...)`:
 | §3.5 naming | New functions prefixed by domain (`dispatch_hop_label`, `write_job_dispatch_hop_label`, `graduate_job_from_dispatch_chain`). |
 
 No unresolved conflicts.
+
+---
+
+## Review (build stub)
+
+**Built:** `astral-AST-847` @ `3c1a648` on `origin/sub/AST-847/AST-848-do-task-run-next-chain`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `421dd15` | Config: `DISPATCH_CHAIN_TERMINAL_GRADUATION`, hop label helpers, claim-state predicate |
+| 2 | `18894f0` | Tracker: `write_job_dispatch_hop_label`, `graduate_job_from_dispatch_chain`, prior-state flex |
+| 3 | `37948f4` | Agent: per-hop DB writes, terminal graduation, failure routing, chain ctx |
+| 4 | `8d8d2d9` | Consult: remove graduation wrapper; pass chain ctx; unify draft_cover_letter path |
+| 5 | `3c1a648` | Code rules §2.6.0 carve-out |
+
+**Verify:** `python3 -m py_compile` on all touched `.py` files — pass.
+
+**Out of scope (AST-849):** dispatcher claim/validation for runtime hop labels.
