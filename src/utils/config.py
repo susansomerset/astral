@@ -3044,6 +3044,68 @@ def dispatch_chain_graduation_target(trigger_state: str) -> str | None:
     return DISPATCH_CHAIN_TERMINAL_GRADUATION.get((trigger_state or "").strip())
 
 
+def is_dispatch_chain_trigger(trigger_state: str) -> bool:
+    """True when trigger_state has a terminal graduation map entry (dispatch run_next chain)."""
+    return dispatch_chain_graduation_target((trigger_state or "").strip()) is not None
+
+
+def _agent_task_parents_with_run_next(child_task_key: str) -> tuple[str, ...]:
+    from src.data.database import get_agent_task
+
+    child = (child_task_key or "").strip()
+    if not child:
+        return ()
+    parents: list[str] = []
+    for tk in TASK_CONFIG:
+        row = get_agent_task(tk) or {}
+        if (row.get("run_next") or "").strip() == child:
+            parents.append(tk)
+    return tuple(sorted(set(parents)))
+
+
+def dispatch_chain_claim_states_for_row(trigger_state: str, task_key: str) -> list[str]:
+    """Job states eligible for claim on this dispatch row (bare trigger + parent hop labels)."""
+    ts = (trigger_state or "").strip()
+    tk = (task_key or "").strip()
+    if not ts or not tk or not is_dispatch_chain_trigger(ts):
+        return [ts] if ts else []
+    states: list[str] = [ts]
+    for parent in _agent_task_parents_with_run_next(tk):
+        states.append(dispatch_hop_label(ts, parent))
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in states:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def dispatch_chain_row_matches_job(
+    trigger_state: str,
+    task_key: str,
+    job_state: str,
+) -> bool:
+    """True when job_state is claimable for this dispatch chain row before do_task runs."""
+    from src.data.database import get_agent_task
+
+    ts = (trigger_state or "").strip()
+    tk = (task_key or "").strip()
+    st = (job_state or "").strip()
+    if not ts or not tk:
+        return False
+    if st == ts:
+        return True
+    parsed = parse_dispatch_hop_label(st)
+    if not parsed:
+        return False
+    label_trigger, completed_hop = parsed
+    if label_trigger != ts:
+        return False
+    parent_row = get_agent_task(completed_hop) or {}
+    return (parent_row.get("run_next") or "").strip() == tk
+
+
 parse_resume_artifact_hop = legacy_build_artifacts_hop
 
 

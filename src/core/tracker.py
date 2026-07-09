@@ -25,10 +25,10 @@ from src.utils.config import (
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
     dispatch_hop_label,
+    parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
     is_valid_job_batch_claim_state,
     legacy_build_artifacts_hop,
-    parse_dispatch_hop_label,
     validate_value,
 )
 from src.utils.logging import get_logger
@@ -384,11 +384,10 @@ def list_dispatch_tasks_for_candidate(
             continue
         row_ts = (row.get("trigger_state") or "").strip()
         if ts:
-            if row_ts != ts and not (
-                ts == BUILD_ARTIFACTS_BASE_STATE
-                and row_ts.startswith(f"{BUILD_ARTIFACTS_BASE_STATE}.")
-            ):
-                continue
+            if row_ts != ts:
+                parsed = parse_dispatch_hop_label(row_ts)
+                if not (parsed and parsed[0] == ts):
+                    continue
         out.append(dict(row))
     return out
 

@@ -64,9 +64,8 @@ from src.utils.config import (
     dispatch_task_key_retired_message,
     get_task_keys,
     dispatch_claim_uses_score_floor,
-    BUILD_ARTIFACTS_BASE_STATE,
-    legacy_build_artifacts_hop,
-    resume_artifact_hop_task_keys,
+    is_dispatch_chain_trigger,
+    parse_dispatch_hop_label,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -1022,11 +1021,16 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
         registry = dispatch_entity_state_registry(et)
     except KeyError:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
-    if ts not in registry:
+    registry_ts = ts
+    parsed_registry = parse_dispatch_hop_label(ts)
+    if parsed_registry:
+        registry_ts = parsed_registry[0]
+    if registry_ts not in registry:
         return f"task_key {tk!r} ({et}) is not valid for trigger_state {ts!r}"
-    if tk in resume_artifact_hop_task_keys():
-        if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_build_artifacts_hop(ts) != tk:
-            return f"task_key {tk!r} requires trigger_state {BUILD_ARTIFACTS_BASE_STATE!r} (got {ts!r})"
+    if is_dispatch_chain_trigger(registry_ts):
+        parsed = parse_dispatch_hop_label(ts)
+        if parsed and parsed[1] != tk:
+            return f"task_key {tk!r} does not match hop in trigger_state {ts!r}"
     return None
 
 
