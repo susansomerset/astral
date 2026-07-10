@@ -158,3 +158,19 @@ Minimal UAT fix diff (6 files) — config string + regression tests only; this r
 | UAT | Re-run `evaluate_jd` (or rubric-backed task) with debug: model emits `RACOVK`-shape strings; capture/hydrate succeeds when rubric count matches. |
 
 **Verdict:** Clean — approve for User Testing.
+
+---
+
+## Resolution
+
+**Resolved:** 2026-07-10  
+**Review:** Radia clean — no fix-now items.
+
+| Item | Outcome |
+|------|---------|
+| Product | No additional changes — `ba84651` config fix stood as reviewed. |
+| Tests | Betty manifest green at `6a83783` (5/5 on first pass). |
+| Docs | Radia review section landed at `ea7b732`. |
+
+**Publish ref:** `origin/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example` @ `ea7b732`  
+**§9a:** Clean merge into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
