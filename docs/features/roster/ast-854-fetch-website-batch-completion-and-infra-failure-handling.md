@@ -224,3 +224,19 @@ No conflicts requiring plan revision.
 **Outcome:** Clean — ship.
 
 — Radia
+
+---
+
+## Resolution (2026-07-10)
+
+**Driven by:** Radia review @ `adef399` — 0 fix-now, 0 discuss, 3 advisory.
+
+| Item | Action |
+|------|--------|
+| **fix-now** | None — no product changes required. |
+| **discuss** | None. |
+| **advisory** — publish ref rollup | Expected AST-853 prerequisite on branch; AST-854 product footprint remains `fb7be4a` / `411e212` / `79f366d`. |
+| **advisory** — unhandled gather exception | No code change; claim release via dispatcher `finally` per plan; note for **AST-850** UAT. |
+| **advisory** — gazer bible `_RETRY_TASK_SEED` prose | Pre-existing bible debt; deferred to Betty. |
+
+**§9a dry-run:** `origin/sub/AST-850/AST-854-fetch-website-batch-completion-and-infra-failure-handling` @ `adef399` merges cleanly into `origin/dev` and `origin/ftr/AST-850-fetch-website-didnt-finish-in-production`.
