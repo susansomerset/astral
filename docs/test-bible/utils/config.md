@@ -605,6 +605,18 @@ External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-
 
 ---
 
+### AST-854 · AST-850
+
+**`GAZER_CONFIG["fetch_website"]["retry_state"]`** — **`WEBSITE_FOUND_RETRY`** for infra fail routing (**AST-854**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`retry_state`** on **`fetch_website`** gazer entry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig`, `::TestAst854FetchWebsiteRetryConfig` |
+
+Gazer routing manifest: **`docs/test-bible/core/gazer.md`** (**AST-854**).
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

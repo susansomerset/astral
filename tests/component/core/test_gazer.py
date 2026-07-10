@@ -108,7 +108,7 @@ class TestValidateTitleBatch:
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
         jobs = [{"astral_job_id": "job-1", "job_data": {"raw_job_listing": "anything"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, {"candidate_data": {}}, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         transition.assert_called_once_with(["job-1"], "VALID_TITLE")
 
     @pytest.mark.asyncio
@@ -179,9 +179,10 @@ class TestFetchWebsiteBatch:
         scrape.assert_awaited_once_with(
             "co-bad", "https://acme.com", batch_session=batch_session,
         )
-        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert out == {"passed": 0, "failed": 2, "total": 2, "errors": 0}
         assert transition.call_count == 2
         assert save.call_count == 2
+        transition.assert_any_call("co-bad", "CANNOT_READ_WEBSITE")
 
     @pytest.mark.asyncio
     async def test_success_persists_homepage_and_nav_links(
@@ -207,7 +208,7 @@ class TestFetchWebsiteBatch:
         )
         companies = [{"short_name": "acme", "company_website": "https://old.example"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         transition.assert_called_once_with("acme", "HOMEPAGE_READY")
         save.assert_called_once_with(
             "acme",
@@ -237,7 +238,7 @@ class TestFetchWebsiteBatch:
         )
         companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         save.assert_called_once_with(
             "acme",
             {"homepage_text": "intro\n\nbody", "nav_links": "1. /about"},
@@ -262,10 +263,106 @@ class TestFetchWebsiteBatch:
         monkeypatch.setitem(gazer_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
         companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once()
+        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
         err = save.call_args[0][1][gazer_mod.ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]]
         assert err.startswith("[playwright:scrape_timeout]")
+
+
+class TestFetchWebsiteFailRouting:
+    def test_infra_prefix_detection(self) -> None:
+        assert gazer_mod._is_fetch_website_infra_error("[playwright:context_closed] dead")
+        assert not gazer_mod._is_fetch_website_infra_error("bad scrape")
+
+    def test_fail_destination_routes_infra_retry_then_terminal(self) -> None:
+        cfg = gazer_mod.GAZER_CONFIG["fetch_website"]
+        infra = "[playwright:channel_error] boom"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", infra, cfg) == "WEBSITE_FOUND_RETRY"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND_RETRY", infra, cfg) == "CANNOT_READ_WEBSITE"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", "site unreadable", cfg) == "CANNOT_READ_WEBSITE"
+
+    @pytest.mark.asyncio
+    async def test_infra_scrape_error_retries_from_website_found(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "",
+                    "error": "[playwright:context_closed] browser dead",
+                }
+            ),
+        )
+        companies = [{"short_name": "acme", "company_website": "https://acme.com", "state": "WEBSITE_FOUND"}]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_infra_scrape_error_terminal_on_retry_state(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "",
+                    "error": "[playwright:context_closed] browser dead",
+                }
+            ),
+        )
+        companies = [
+            {"short_name": "acme", "company_website": "https://acme.com", "state": "WEBSITE_FOUND_RETRY"},
+        ]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+
+    @pytest.mark.asyncio
+    async def test_unhandled_gather_exception_increments_errors_and_continues(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+
+        async def _scrape(short_name: str, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
+            if short_name == "co-boom":
+                raise RuntimeError("unexpected scrape failure")
+            return {
+                "company_website": "https://example.com",
+                "visible_text": "ok",
+                "enumerated_nav_links": "",
+                "error": None,
+            }
+
+        monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", _scrape)
+        companies = [
+            {"short_name": "co-ok", "company_website": "https://a.com"},
+            {"short_name": "co-boom", "company_website": "https://b.com"},
+            {"short_name": "co-also-ok", "company_website": "https://c.com"},
+        ]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 2, "failed": 0, "total": 3, "errors": 1}
+        assert transition.call_count == 2
 
 
 class TestFetchJobPagesBatch:
@@ -318,7 +415,7 @@ class TestFetchJobPagesBatch:
             }
         ]
         out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         transition.assert_called_once_with("acme", "PJL_READY")
         saved = save.call_args[0][1]
         assert saved["pjl_scrape_pages"] == [
@@ -360,7 +457,7 @@ class TestFetchJobPagesBatch:
             }
         ]
         out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         scrape.assert_awaited_once()
         assert scrape.await_args.args[0] == "acme.com/jobs"
 
@@ -455,7 +552,7 @@ class TestFetchJdBatch:
         monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
         job = {"astral_job_id": "job-7", "job_link": "https://example.com/z", "job_title": "Role", "job_data": {"note": "keep"}}
         out = await gazer_mod.fetch_jd_batch("batch-1", [job], debug=False)
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         assert job["job_data"]["note"] == "keep"
 
     @pytest.mark.asyncio
@@ -471,7 +568,7 @@ class TestFetchJdBatch:
         monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=raw_jd))
         job = {"astral_job_id": "job-9", "job_link": "https://example.com/j", "job_title": "Role"}
         out = await gazer_mod.fetch_jd_batch("batch-1", [job])
-        assert out == {"passed": 1, "failed": 0, "total": 1}
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         saved = job["job_data"]["job_description"]
         assert "\n\n\n" not in saved
         assert saved.startswith("role summary\n\n")

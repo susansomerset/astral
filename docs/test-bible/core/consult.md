@@ -161,6 +161,19 @@ Gazer batch manifest: **`docs/test-bible/core/gazer.md`** (**AST-701**).
 
 ---
 
+### AST-854 · AST-850
+
+**AST-854:** **`run_consult_task`** **`fetch_website`** branch reads **`errors`** from **`fetch_website_batch`** return for **`total_errors`** (unhandled gather exceptions).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`total_errors`** from batch **`errors`** | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_errors_count` |
+| Baseline routing shape | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch` |
+
+Gazer fail-routing manifest: **`docs/test-bible/core/gazer.md`** (**AST-854**).
+
+---
+
 ### AST-702 · AST-700
 
 **AST-702:** **`dispatch_task_key=prefilter`** routes to **`prefilter_company_batch`** with **`skipped`** folded into **`total_errors`**.
