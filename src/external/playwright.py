@@ -128,6 +128,11 @@ async def _launch_browser(pw, headless: bool = True) -> Browser:  # pragma: no c
                 await asyncio.sleep(cfg["launch_retry_delay_seconds"])
     fc = classify_playwright_failure(last_err) if last_err else "launch_failure"
     detail = str(last_err) if last_err else "unknown launch error"
+    detail = (
+        f"{detail}\n"
+        f"  PLAYWRIGHT_BROWSERS_PATH={os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '(not set)')}\n"
+        f"  Try: playwright install firefox"
+    )
     raise PlaywrightInfraError(fc, detail) from last_err
 
 
@@ -169,6 +174,7 @@ class BatchBrowserSession:
                         return self._context
                 except Exception:
                     pass
+            await self._close_handles_best_effort()
             await self._open_fresh_locked()
             assert self._context is not None
             return self._context

@@ -244,3 +244,17 @@ No conflicts requiring plan revision.
 **Outcome:** Findings — `resolve-child` for stale-handle cleanup.
 
 — Radia
+
+---
+
+## Resolution (2026-07-10)
+
+**Driven by:** Radia review @ `2d29bb4` — 1 fix-now, 1 discuss.
+
+| Item | Action |
+|------|--------|
+| **fix-now** — `ensure_context` stale handles | `BatchBrowserSession.ensure_context` now calls `_close_handles_best_effort()` before `_open_fresh_locked()` when the live session is disconnected (mirrors `recover()` prelude). |
+| **discuss** — launch install hint | Restored one-line `PLAYWRIGHT_BROWSERS_PATH` + `playwright install firefox` guidance in `_launch_browser` final `PlaywrightInfraError.detail` alongside classified failure class. |
+| **advisory** — `connectivity_failure` | Left in frozenset for **AST-854** routing; classifier unchanged this ticket. |
+| **advisory** — scrape_timeout `debug_index` | Deferred — WARNING path sufficient until **AST-854** debug pass. |
+
