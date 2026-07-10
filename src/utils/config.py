@@ -97,6 +97,11 @@ BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
 ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
 LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
 RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
+
+# Dispatch trigger_state -> JOB_STATES key when a full run_next chain completes (terminal hop, graduation enabled).
+DISPATCH_CHAIN_TERMINAL_GRADUATION: dict[str, str] = {
+    BUILD_ARTIFACTS_BASE_STATE: "CANDIDATE_REVIEW",
+}
 _RESUME_ARTIFACT_HOP_TASK_KEYS = (
     "anticipate_scan",
     "contemplate_job",
@@ -669,6 +674,11 @@ JOB_ARTIFACT_ENTRY_TASK_KEYS = frozenset({
 })
 
 
+def build_artifacts_chain_task_keys() -> frozenset[str]:
+    """All consult hops in the BUILD_ARTIFACTS CHAIN except draft_cover_letter (separate batch)."""
+    return frozenset(JOB_ARTIFACT_ENTRY_TASK_KEYS) - frozenset({"draft_cover_letter"})
+
+
 # ---------------------------------------------------------------------------
 # CONFIDENCE_* — AST-357: per-grade confidence for density scoring & prompts.
 # Multipliers keyed 1–5 (admin-tunable). Descriptions duplicated in output_types
@@ -949,6 +959,18 @@ INFLOW_CONFIG = {
     },
 }
 
+# Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
+GOOGLE_CSE_CONFIG = {
+    # Minimum spacing between successive CSE HTTP requests (including pagination pages
+    # within one search_google_cse call). 0 disables pacing delay.
+    "inter_query_delay_sec": 1.2,
+    # Sleep duration after a rate-limit response before retrying the same HTTP request.
+    "rate_limit_pause_sec": 65,
+    # Number of pause-and-retry cycles after a rate-limit response (0 = no retries;
+    # 2 means up to 3 HTTP attempts total for that request).
+    "rate_limit_max_retries": 2,
+}
+
 # ---------------------------------------------------------------------------
 # GAZER_CONFIG: gazer-batch steps (validate_title inline-only qualify pre-step; fetch_jd; gaze).
 # Mirrors orchestration for gazer-owned paths until gazer.py reads this block directly (AST-467).
@@ -975,6 +997,7 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
         "fail_state": "CANNOT_READ_WEBSITE",
+        "retry_state": "WEBSITE_FOUND_RETRY",
     },
     "fetch_job_pages": {
         "fallback_batch_size": 10,
@@ -1281,7 +1304,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like",
+    "grade_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -1292,6 +1315,14 @@ _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
 def resolve_dispatch_task_config_key(task_key: str) -> str:
     """Return task_key unchanged — dispatch and TASK_CONFIG share one string (AST-736)."""
     return (task_key or "").strip()
+
+
+def dispatch_task_grouping_catalog_key(task_key: str) -> str:
+    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
+    tk = (task_key or "").strip()
+    if tk == "prefilter":
+        return ROSTER_CONFIG["prefilter"]["task_key"]
+    return tk
 
 
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
@@ -2132,8 +2163,11 @@ RUBRIC_FEEDBACK_CONFIG = {
     "prompt_suffix": (
         "Vector rubric review (agent_performance only — not agent_payload): include "
         "vector_reviews as a JSON list of strings. One string per rubric vector code "
-        "you were given, format CODE + R + {A|O|S|R|N} + C + {A|O|S|R|N} + V + {K|E|D} "
-        '(example: "Q1RAOCVK"). agent_performance.status reflects only whether you '
+        "you were given. Wire format: CODE then literal R, relevance letter, literal C, "
+        "clarity letter, literal V, verdict letter — relevance/clarity "
+        "{A|O|S|R|N}, verdict {K|E|D} "
+        '(example: "Q1RACOVK" = code Q1, relevance A, clarity O, verdict K). '
+        "agent_performance.status reflects only whether you "
         'could perform the task — never "failure" because grades or verdicts were harsh.'
     ),
 }
@@ -2167,6 +2201,22 @@ RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
     "playwright_browsers_path": str(_PROJECT_ROOT / ".browsers"),
+}
+
+# ---------------------------------------------------------------------------
+# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# ---------------------------------------------------------------------------
+PLAYWRIGHT_CONFIG = {
+    "launch_timeout_ms": 60_000,
+    "launch_max_attempts": 3,
+    "launch_retry_delay_seconds": 2.0,
+    "page_goto_timeout_ms": 30_000,
+    "connectivity_timeout_ms": 10_000,
+    "context_recovery_max_attempts": 2,
+    "company_scrape_timeout_seconds": 120,
+    "firefox_user_prefs": {
+        "security.sandbox.content.level": 0,
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -2972,6 +3022,110 @@ def legacy_build_artifacts_hop(state: str) -> str | None:
     return hop if hop in resume_artifact_hop_task_keys() else None
 
 
+def is_valid_job_batch_claim_state(state: str) -> bool:
+    """True for JOB_STATES keys and legacy BUILD_ARTIFACTS.<hop> holding states (batch claim only)."""
+    s = (state or "").strip()
+    if not s:
+        return False
+    if s in JOB_STATES:
+        return True
+    if legacy_build_artifacts_hop(s) is not None:
+        return True
+    parsed = parse_dispatch_hop_label(s)
+    if parsed is not None and parsed[0] in DISPATCH_CHAIN_TERMINAL_GRADUATION:
+        return True
+    return False
+
+
+def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
+    ts = (trigger_state or "").strip()
+    tk = (completed_task_key or "").strip()
+    if not ts or not tk:
+        raise ValueError("dispatch_hop_label requires non-empty trigger_state and task_key")
+    return f"{ts}.{tk}"
+
+
+def parse_dispatch_hop_label(state: str) -> tuple[str, str] | None:
+    """Return (trigger_state, completed_task_key) when state matches trigger.hop pattern."""
+    st = (state or "").strip()
+    if "." not in st:
+        return None
+    trigger, hop = st.split(".", 1)
+    trigger = trigger.strip()
+    hop = hop.strip()
+    if not trigger or not hop:
+        return None
+    if hop not in TASK_CONFIG:
+        return None
+    return trigger, hop
+
+
+def dispatch_chain_graduation_target(trigger_state: str) -> str | None:
+    return DISPATCH_CHAIN_TERMINAL_GRADUATION.get((trigger_state or "").strip())
+
+
+def is_dispatch_chain_trigger(trigger_state: str) -> bool:
+    """True when trigger_state has a terminal graduation map entry (dispatch run_next chain)."""
+    return dispatch_chain_graduation_target((trigger_state or "").strip()) is not None
+
+
+def _agent_task_parents_with_run_next(child_task_key: str) -> tuple[str, ...]:
+    from src.data.database import get_agent_task
+
+    child = (child_task_key or "").strip()
+    if not child:
+        return ()
+    parents: list[str] = []
+    for tk in TASK_CONFIG:
+        row = get_agent_task(tk) or {}
+        if (row.get("run_next") or "").strip() == child:
+            parents.append(tk)
+    return tuple(sorted(set(parents)))
+
+
+def dispatch_chain_claim_states_for_row(trigger_state: str, task_key: str) -> list[str]:
+    """Job states eligible for claim on this dispatch row (bare trigger + parent hop labels)."""
+    ts = (trigger_state or "").strip()
+    tk = (task_key or "").strip()
+    if not ts or not tk or not is_dispatch_chain_trigger(ts):
+        return [ts] if ts else []
+    states: list[str] = [ts]
+    for parent in _agent_task_parents_with_run_next(tk):
+        states.append(dispatch_hop_label(ts, parent))
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in states:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def dispatch_chain_row_matches_job(
+    trigger_state: str,
+    task_key: str,
+    job_state: str,
+) -> bool:
+    """True when job_state is claimable for this dispatch chain row before do_task runs."""
+    from src.data.database import get_agent_task
+
+    ts = (trigger_state or "").strip()
+    tk = (task_key or "").strip()
+    st = (job_state or "").strip()
+    if not ts or not tk:
+        return False
+    if st == ts:
+        return True
+    parsed = parse_dispatch_hop_label(st)
+    if not parsed:
+        return False
+    label_trigger, completed_hop = parsed
+    if label_trigger != ts:
+        return False
+    parent_row = get_agent_task(completed_hop) or {}
+    return (parent_row.get("run_next") or "").strip() == tk
+
+
 parse_resume_artifact_hop = legacy_build_artifacts_hop
 
 
@@ -2995,6 +3149,7 @@ def all_resume_artifact_compound_states() -> tuple[str, ...]:
 
 _RAH = resume_artifact_hop_task_keys()
 assert len(_RAH) >= 1
+assert all(v in JOB_STATES for v in DISPATCH_CHAIN_TERMINAL_GRADUATION.values())
 assert all(tk in TASK_CONFIG for tk in _RAH)
 assert all((TASK_CONFIG[tk] or {}).get("entity_type") == "job" for tk in _RAH)
 for _tk, _tc in TASK_CONFIG.items():
