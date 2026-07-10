@@ -165,3 +165,19 @@ No conflicts requiring plan revision.
 - **Merge `origin/ftr/AST-850-fetch-website-didnt-finish-in-production`** (includes AST-853) before Stage 1 code.
 - Do **not** edit **`tests/`** — Betty owns manifest at **Code Complete**.
 - Do **not** change **`fetch_job_pages_batch`**, **`prefilter`**, or Playwright modules (**AST-853** scope).
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-850/AST-854-fetch-website-batch-completion-and-infra-failure-handling`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `fb7be4a` | `retry_state` in `GAZER_CONFIG`; `_fetch_website_fail_destination` helpers |
+| 2 | `411e212` | Resilient `gather`, infra vs site fail routing, `errors` in return dict |
+| 3 | `79f366d` | Consult `total_errors` reads batch `errors` count |
+
+**Dispatcher audit:** `dispatcher._run_unified` `finally` always calls `clear_company_batch(bid)` for company batches — no code change.
+
+**Tip:** `79f366d`
