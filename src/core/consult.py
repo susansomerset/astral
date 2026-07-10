@@ -1721,7 +1721,7 @@ async def run_consult_task(
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
-            errors = max(0, total - passed - failed)
+            errors = r.get("errors", max(0, total - passed - failed))
             return {
                 "total_processed": total,
                 "total_passed": passed,
