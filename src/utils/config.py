@@ -997,6 +997,7 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
         "fail_state": "CANNOT_READ_WEBSITE",
+        "retry_state": "WEBSITE_FOUND_RETRY",
     },
     "fetch_job_pages": {
         "fallback_batch_size": 10,

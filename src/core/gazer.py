@@ -39,6 +39,23 @@ from src.utils.logging import get_logger
 _log = get_logger(__name__)
 
 
+def _is_fetch_website_infra_error(error: str) -> bool:
+    """True when scrape error is browser infra (AST-853 prefix or scrape_timeout label)."""
+    msg = (error or "").strip()
+    return msg.startswith("[playwright:")
+
+
+def _fetch_website_fail_destination(company_state: str, error: str, cfg: Dict[str, Any]) -> str:
+    """Route infra → retry once; site failure or retry re-fail → CANNOT_READ_WEBSITE."""
+    retry_state = cfg["retry_state"]
+    fail_state = cfg["fail_state"]
+    if _is_fetch_website_infra_error(error):
+        if (company_state or "").strip() == retry_state:
+            return fail_state
+        return retry_state
+    return fail_state
+
+
 def _gazer_job_identifier(job: Dict[str, Any]) -> str:
     """Primary debug identifier for a job row (§1.5.1 style D)."""
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
