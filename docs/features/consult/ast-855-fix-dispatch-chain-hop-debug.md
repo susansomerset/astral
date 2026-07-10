@@ -136,3 +136,44 @@ No conflicts requiring escalation.
 | 1 | `_dispatch_chain_hop_debug_counts` helper; entry + success hop debug use shared index/total |
 
 **Verify:** `python3 -m py_compile src/core/agent.py` — pass.
+
+---
+
+## Radia review (2026-07-10)
+
+**Diff:** `origin/dev...origin/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug` @ `6ba63c7`  
+**AST-855 product commits:** `282119f` helper + success-path alignment · `fc346cd` component tests · `6ba63c7` merge-tests rollup  
+**Tests:** manifest green per **Tests Passed** (Betty `TestAst855DispatchChainHopDebug` + **AST-848** regression class)
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1 delivered exactly: `_dispatch_chain_hop_debug_counts` above `_resume_hop_debug_index`; entry + success paths share helper; `format_debug_index_header` untouched. |
+| Root cause | Success path no longer uses `total or 1` — aligns with entry-path contract (`total if total >= idx else idx`); fixes `index 2/1` crash on multi-hop BUILD_ARTIFACTS chains. |
+| §1.3 DRY | Single helper replaces duplicated index/total derivation; `_dispatch_chain_*` naming consistent. |
+| §1.5.1 / §5f | Debug emission remains gated on `debug=True`; `debug_index` uses valid Style D pairs; existing `debug_detail` on hop-ok path preserved; no new anti-patterns. |
+| §2.6.0 boundary | Hop label write + graduation logic unchanged — debug header only; no precomputed chain totals (per plan + parent AST-852). |
+| Layering | Helper stays in `src/core/agent.py`; no new cross-layer imports. |
+| Self-Assessment | `minor` / `high` / `low` matches actual footprint. |
+| Tests + bible | `TestAst855DispatchChainHopDebug` covers helper edge cases + second-hop `contemplate_job` hop-ok log (`2/2`); bible manifest matches. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | Plan Stage 2 | Manual multi-hop smoke (`anticipate_scan` → `contemplate_job`, `debug=True`) remains parent **AST-852** UAT — not blocking this child. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child`. |
+| discuss | None. |
+| advisory | Parent **AST-852** UAT: confirm Stage 2 smoke when Susan exercises the wired chain locally. |
+
+**Counts:** 0 fix-now · 0 discuss · 1 advisory
+
+**Outcome:** Clean — ship.
+
+— Radia
