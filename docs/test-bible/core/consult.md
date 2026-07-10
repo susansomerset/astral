@@ -276,6 +276,26 @@ Entity ref upsert + modal story: **`docs/test-bible/data/database/agent_response
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-860 · AST-378 (UAT fix)
+
+**`_run_batch_consult`** injects **`astral_candidate_id`** (and **`candidate_data`** when present) into **`do_task`** **`task_ctx`** so rubric-backed batch capture receives candidate wiring.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `task_ctx` candidate wiring | `src/core/consult.py` | `TestAst860RunBatchConsultCandidateCtx::test_passes_astral_candidate_id_and_candidate_data_to_do_task` |
+
+**AST-860** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst860RunBatchConsultCandidateCtx \
+  -q
+```
+
+Capture normalize + expected_codes: **`docs/test-bible/core/agent.md`**.
+
 ### AST-723 · AST-378
 
 Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria_for_task`** replace **`_rubric_criteria_from_cd`** artifact reads. **`TestRubricHelpers`** revised for table-backed criteria.

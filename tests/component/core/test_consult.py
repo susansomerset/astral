@@ -3107,3 +3107,47 @@ class TestAst726LatestOnlyConsultOutcomes:
         saved = save.call_args.args[1]
         assert "joblist_grades" in saved
         # F-grade fail path has no numeric score — joblist_score omitted per _latest_score_value gate
+
+
+class TestAst860RunBatchConsultCandidateCtx:
+    """AST-860: _run_batch_consult wires astral_candidate_id into do_task ctx."""
+
+    @pytest.mark.asyncio
+    async def test_passes_astral_candidate_id_and_candidate_data_to_do_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: Dict[str, Any] = {}
+
+        async def fake_do_task(**kwargs: Any) -> Dict[str, Any]:
+            captured.update(kwargs)
+            return {
+                "success": True,
+                "parsed_response": {
+                    "jobs": [{
+                        "astral_job_id": "job-1",
+                        "grades": [{"grade": "A", "confidence": 2, "vector": "fit"}],
+                    }],
+                },
+                "timesheet": {},
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", fake_do_task)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric)
+        rubric = [{"label": "fit", "code": "CR", "content": "a\nA = one\nB = two"}]
+        ctx = {
+            "astral_candidate_id": "somerset",
+            "candidate_data": {"artifacts": {"joblist_rubric": rubric}},
+        }
+        await consult_mod._run_batch_consult(
+            "qualify_job_listings",
+            "batch-860",
+            [{"astral_job_id": "job-1", "state": "VALID_TITLE"}],
+            lambda rows: "content",
+            lambda _ij, _rj, cfg: cfg["pass_state"],
+            ctx,
+            False,
+        )
+        task_ctx = captured["ctx"]
+        assert task_ctx["astral_candidate_id"] == "somerset"
+        assert task_ctx["candidate_data"] == ctx["candidate_data"]
