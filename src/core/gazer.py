@@ -288,8 +288,8 @@ async def fetch_website_batch(
     debug: bool = False,
 ) -> Dict[str, int]:
     """Scrape homepage + nav_links for WEBSITE_FOUND companies (AST-701).
-    Transitions each company to HOMEPAGE_READY (pass) or CANNOT_READ_WEBSITE (fail).
-    Returns {"passed": N, "failed": N, "total": N}."""
+    Transitions each company to HOMEPAGE_READY (pass), WEBSITE_FOUND_RETRY (infra retry),
+    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "total", "errors"}."""
     if not await check_connectivity():
         raise ConnectionError(
             f"fetch_website_batch: no internet connectivity, aborting batch {batch_id} "
@@ -302,7 +302,7 @@ async def fetch_website_batch(
     fail_state = cfg["fail_state"]
     notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
     company_total = len(companies)
-    passed = failed = 0
+    passed = failed = errors = 0
 
     if debug and company_total > 0:
         _log.debug_index(
@@ -318,6 +318,7 @@ async def fetch_website_batch(
         async def _fetch_one_inner(company: Dict[str, Any], company_index: int) -> None:
             nonlocal passed, failed
             short_name = company.get("short_name") or ""
+            company_state = (company.get("state") or "").strip()
             original_website = (company.get("company_website") or "").strip()
             if not original_website:
                 if debug:
@@ -336,16 +337,17 @@ async def fetch_website_batch(
                 short_name, original_website, batch_session=batch_session
             )
             if scrape.get("error"):
+                dest = _fetch_website_fail_destination(company_state, scrape["error"], cfg)
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_website_batch",
                         index=company_index,
                         total=company_total,
                         identifier=_gazer_company_identifier(company),
-                        outcome=f"failed — {scrape['error']!s} -> {fail_state}",
+                        outcome=f"failed — {scrape['error']!s} -> {dest}",
                     )
                     _log.debug_detail(f"company_website={original_website!r}")
-                transition_company_state(short_name, fail_state)
+                transition_company_state(short_name, dest)
                 save_company_data(short_name, {notes_key: scrape["error"]})
                 failed += 1
                 return
@@ -379,6 +381,7 @@ async def fetch_website_batch(
         async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
             nonlocal failed
             short_name = company.get("short_name") or ""
+            company_state = (company.get("state") or "").strip()
             scrape_timeout = PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]
             try:
                 await asyncio.wait_for(
@@ -394,7 +397,16 @@ async def fetch_website_batch(
                 err = (
                     f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s"
                 )
-                transition_company_state(short_name, fail_state)
+                dest = _fetch_website_fail_destination(company_state, err, cfg)
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_website_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome=f"failed — {err} -> {dest}",
+                    )
+                transition_company_state(short_name, dest)
                 save_company_data(short_name, {notes_key: err})
                 failed += 1
 
@@ -404,17 +416,26 @@ async def fetch_website_batch(
             async with sem:
                 await _fetch_one(company, company_index)
 
-        await asyncio.gather(
+        results = await asyncio.gather(
             *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
-            return_exceptions=False,
+            return_exceptions=True,
         )
+        for r in results:
+            if isinstance(r, BaseException):
+                errors += 1
+                _log.exception(
+                    "fetch_website_batch unhandled error batch_id=%s: %s",
+                    batch_id,
+                    r,
+                    exc_info=r,
+                )
 
     if debug:
         _log.debug_detail(
-            f"summary passed={passed} failed={failed} total={company_total} "
+            f"summary passed={passed} failed={failed} errors={errors} total={company_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r}"
         )
-    return {"passed": passed, "failed": failed, "total": len(companies)}
+    return {"passed": passed, "failed": failed, "total": len(companies), "errors": errors}
 
 
 async def fetch_job_pages_batch(
