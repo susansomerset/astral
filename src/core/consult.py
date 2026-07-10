@@ -15,7 +15,7 @@ grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_co
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 from src.core import tracker
 from src.core.agent import do_task
@@ -23,6 +23,8 @@ from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
+    ERROR_BUILD_ARTIFACTS_STATE,
+    JOB_ARTIFACT_ENTRY_TASK_KEYS,
     JOB_STATES,
     ASTRAL_CONFIG,
     CONFIDENCE_MULTIPLIERS,
@@ -30,10 +32,11 @@ from src.utils.config import (
     RUBRIC_TOTAL,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
-    dispatch_chain_row_matches_job,
     grade_value,
     importance_multiplier,
-    is_dispatch_chain_trigger,
+    is_build_artifacts_in_progress,
+    legacy_build_artifacts_hop,
+    resume_artifact_hop_task_keys,
 )
 from src.utils.formatting import enumerate_array
 from src.utils.logging import get_logger
@@ -1029,12 +1032,8 @@ async def _run_batch_consult(
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     vector_labels = _vector_labels_map(rubric_criteria)
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
-    cid = _candidate_id_from_ctx(ctx)
-    task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
-    if cid:
-        task_ctx["astral_candidate_id"] = cid
-    if ctx and ctx.get("candidate_data") is not None:
-        task_ctx["candidate_data"] = ctx["candidate_data"]
+    task_ctx = {**ctx, "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels} if ctx else \
+               {"batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
     do_index = f"{task_key}_batch_{batch_id}"
     if batch_chunk_index is not None:
         do_index = f"{do_index}_c{batch_chunk_index}"
@@ -1631,57 +1630,275 @@ async def _run_cover_letter_for_job(
     await run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug)
 
 
-async def _run_dispatch_chain_job_batch(
+_JOB_ARTIFACT_ENTRY_KEYS = JOB_ARTIFACT_ENTRY_TASK_KEYS
+
+
+def _artifact_entry_hop_failed(aid: str) -> None:
+    tracker.release_job_dispatch_claim(aid)
+
+
+def _chain_run_next_targets(task_keys: Iterable[str]) -> set[str]:
+    from src.data.database import get_agent_task
+
+    targets: set[str] = set()
+    for tk in task_keys:
+        row = get_agent_task(tk) or {}
+        nxt = (row.get("run_next") or "").strip()
+        if nxt:
+            targets.add(nxt)
+    return targets
+
+
+def _build_artifacts_chain_entry_task_key(candidate_id: str) -> str:
+    rows = tracker.list_dispatch_tasks_for_candidate(
+        candidate_id, trigger_state=BUILD_ARTIFACTS_BASE_STATE,
+    )
+    keys = [
+        (row.get("task_key") or "").strip()
+        for row in rows
+        if (row.get("task_key") or "").strip() in resume_artifact_hop_task_keys()
+    ]
+    if not keys:
+        fallback = resume_artifact_hop_task_keys()[0]
+        logger.warning(
+            "chain entry: no BUILD_ARTIFACTS dispatch rows for candidate=%s; fallback=%s",
+            candidate_id,
+            fallback,
+        )
+        return fallback
+    run_next_targets = _chain_run_next_targets(keys)
+    candidates = [k for k in keys if k not in run_next_targets]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise ValueError(
+            f"ambiguous BUILD_ARTIFACTS chain entry candidates: {candidates!r}"
+        )
+    fallback = resume_artifact_hop_task_keys()[0]
+    logger.warning(
+        "chain entry: no hop without incoming run_next for candidate=%s; fallback=%s",
+        candidate_id,
+        fallback,
+    )
+    return fallback
+
+
+def _resolve_chain_start_task_key(
+    job: Dict[str, Any],
+    *,
+    dispatch_task_key: str,
+    candidate_id: str,
+) -> Optional[str]:
+    tk = (dispatch_task_key or "").strip()
+    if tk not in resume_artifact_hop_task_keys():
+        return None
+    job_state = (job.get("state") or "").strip()
+    legacy_hop = legacy_build_artifacts_hop(job_state)
+    if legacy_hop:
+        return legacy_hop if tk == legacy_hop else None
+    if job_state == BUILD_ARTIFACTS_BASE_STATE:
+        return tk
+    return None
+
+
+def _chain_dispatch_row_ok(
+    job: Dict[str, Any],
+    dispatch_task_key: str,
+    input_state: str,
+    candidate_id: str,
+) -> bool:
+    ts = (input_state or "").strip()
+    tk = (dispatch_task_key or "").strip()
+    legacy_trigger = legacy_build_artifacts_hop(ts)
+    if ts != BUILD_ARTIFACTS_BASE_STATE and legacy_trigger != tk:
+        logger.warning(
+            "artifact chain: task_key=%s expects trigger_state=%s got %s",
+            tk,
+            BUILD_ARTIFACTS_BASE_STATE,
+            ts,
+        )
+        return False
+    start = _resolve_chain_start_task_key(job, dispatch_task_key=tk, candidate_id=candidate_id)
+    if not start:
+        logger.warning(
+            "artifact chain: dispatch row mismatch task_key=%s job_state=%s",
+            tk,
+            (job.get("state") or "").strip(),
+        )
+        return False
+    return True
+
+
+def _chain_failure_mode(result: Dict[str, Any], task_key: str) -> Literal["retry", "hard"]:
+    err = str(result.get("error") or "")
+    if "Job not found" in err or "Missing candidate_data" in err:
+        return "hard"
+    return "retry"
+
+
+def _chain_fail_result(
+    astral_job_id: str,
+    error: str,
+    *,
+    task_key: str = "",
+) -> Dict[str, Any]:
+    """Hard failures transition to ERROR_BUILD_ARTIFACTS; retryable stay on BUILD_ARTIFACTS."""
+    result: Dict[str, Any] = {"success": False, "error": error}
+    if _chain_failure_mode(result, task_key) == "hard":
+        try:
+            tracker.transition_job_state([astral_job_id], ERROR_BUILD_ARTIFACTS_STATE)
+        except ValueError as exc:
+            logger.warning("[%s] ERROR_BUILD_ARTIFACTS transition failed: %s", astral_job_id, exc)
+    return result
+
+
+def _chain_graduate_to_candidate_review(
+    astral_job_id: str,
+    *,
+    debug: bool = False,
+) -> Tuple[bool, str]:
+    row = tracker.get_job(astral_job_id)
+    if not row:
+        return False, "job_not_found"
+    if not tracker.job_has_persisted_resume_body(astral_job_id, None):
+        return False, "persist_gate_failed"
+    from_state = (row.get("state") or "").strip()
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_index(
+            func="_chain_graduate_to_candidate_review",
+            index=1,
+            total=1,
+            identifier=astral_job_id,
+            outcome="attempt",
+        )
+        dbg.debug_detail(f"from_state={from_state!r} persist_gate=pass")
+    try:
+        tracker.transition_job_state([astral_job_id], "CANDIDATE_REVIEW")
+    except ValueError as exc:
+        if debug:
+            get_logger(__name__, debug_flag=True).debug_detail(
+                f"graduation=failed error={exc!r} from_state={from_state!r}"
+            )
+        return False, f"transition_failed:{exc}"
+    if debug:
+        get_logger(__name__, debug_flag=True).debug_detail("graduation=CANDIDATE_REVIEW success")
+    return True, "ok"
+
+
+async def do_chain_for_job(
+    astral_job_id: str,
+    *,
     batch_id: str,
-    entities: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]],
     debug: bool,
     dispatch_task_key: str,
     input_state: str,
-) -> Dict[str, int]:
-    """Dispatch-chain jobs: one do_task per entity; graduation in do_task (AST-848/849)."""
-    from src.core.agent import _current_agent_task_run_next
+) -> Dict[str, Any]:
+    """AST-803: run BUILD_ARTIFACTS CHAIN via do_task + run_next; graduate on success."""
+    from src.core import agent as agent_mod
 
-    passed = errors = 0
-    trigger = (input_state or "").strip()
-    for job in entities:
-        aid = job["astral_job_id"]
-        row = tracker.get_job(aid) or job
-        if not dispatch_chain_row_matches_job(
-            trigger, dispatch_task_key, (row.get("state") or ""),
-        ):
-            continue
-        cd = tracker._candidate_data_for_job(aid)
-        if not cd:
-            tracker.release_job_dispatch_claim(aid)
-            errors += 1
-            continue
-        task_ctx: Dict[str, Any] = {
-            **(ctx or {}),
-            "batch_entities": [row],
-            "batch_size": 1,
-            "job": row,
-            "candidate_data": cd,
-            "dispatch_trigger_state": trigger,
-            "dispatch_chain_graduate_on_terminal": bool(
-                _current_agent_task_run_next(dispatch_task_key)
-            ),
-        }
-        company_key = row.get("company")
+    job = tracker.get_job(astral_job_id)
+    if not job or not is_build_artifacts_in_progress(job.get("state") or ""):
+        return {"success": False, "error": "job_not_in_build_artifacts"}
+
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    if not candidate_id:
+        company_key = job.get("company")
         if isinstance(company_key, str) and company_key.strip():
             co = tracker.get_company(company_key.strip())
             if co and co.get("candidate_id"):
-                task_ctx["astral_candidate_id"] = str(co["candidate_id"])
-        if "vector_labels" not in task_ctx:
-            task_ctx["vector_labels"] = {}
-        result = await do_task(
-            dispatch_task_key,
-            index=aid,
-            ctx=task_ctx,
-            debug=debug,
+                candidate_id = str(co["candidate_id"])
+
+    start_key = _resolve_chain_start_task_key(
+        job, dispatch_task_key=dispatch_task_key, candidate_id=candidate_id,
+    )
+    if not start_key:
+        return {"success": False, "error": "dispatch_row_mismatch"}
+
+    base = dict(ctx or {})
+    cd = tracker._candidate_data_for_job(astral_job_id)
+    if not cd:
+        return _chain_fail_result(
+            astral_job_id,
+            f"Missing candidate_data for job {astral_job_id}",
+            task_key=start_key,
         )
-        if not result.get("success"):
-            tracker.release_job_dispatch_claim(aid)
+
+    task_ctx: Dict[str, Any] = {
+        **base,
+        "batch_entities": [job],
+        "batch_size": 1,
+        "job": job,
+        "candidate_data": cd,
+    }
+    if candidate_id:
+        task_ctx["astral_candidate_id"] = candidate_id
+    if "vector_labels" not in task_ctx:
+        task_ctx["vector_labels"] = {}
+
+    seed_chain: Optional[Dict[str, str]] = None
+    parent = agent_mod._resume_artifact_parent_hop_key(start_key)
+    if parent:
+        hydrated, err = agent_mod._hydrate_caller_chain_context(
+            "job", astral_job_id, start_key, parent, None,
+        )
+        if err:
+            return {"success": False, "error": err}
+        seed_chain = agent_mod._merge_hydrated_caller_context(None, hydrated)
+
+    result = await do_task(
+        start_key,
+        index=astral_job_id,
+        ctx=task_ctx,
+        debug=debug,
+        chain_context=seed_chain,
+    )
+    if not result.get("success"):
+        return _chain_fail_result(
+            astral_job_id,
+            str(result.get("error") or "chain hop failed"),
+            task_key=start_key,
+        )
+
+    ok, reason = _chain_graduate_to_candidate_review(astral_job_id, debug=debug)
+    if not ok:
+        logger.warning(
+            "[%s] terminal graduation failed reason=%s entry_task_key=%s",
+            astral_job_id,
+            reason,
+            dispatch_task_key,
+        )
+        return {"success": False, "error": reason}
+    return {"success": True}
+
+
+async def _run_build_artifacts_chain_batch(
+    batch_id: str,
+    entities: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]],
+    debug: bool,
+    entry_task_key: str,
+    input_state: str,
+) -> Dict[str, int]:
+    """Run BUILD_ARTIFACTS CHAIN for each job (AST-803)."""
+    passed = errors = 0
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    for job in entities:
+        aid = job["astral_job_id"]
+        row = tracker.get_job(aid) or job
+        if not _chain_dispatch_row_ok(row, entry_task_key, input_state, candidate_id):
+            continue
+        r = await do_chain_for_job(
+            aid,
+            batch_id=batch_id,
+            ctx=ctx,
+            debug=debug,
+            dispatch_task_key=entry_task_key,
+            input_state=input_state,
+        )
+        if not r.get("success"):
+            _artifact_entry_hop_failed(aid)
             errors += 1
             continue
         passed += 1
@@ -1689,6 +1906,37 @@ async def _run_dispatch_chain_job_batch(
         "total_processed": len(entities),
         "total_passed": passed,
         "total_failed": 0,
+        "total_errors": errors,
+    }
+
+
+async def _run_craft_job_cover_letter_batch(
+    batch_id: str,
+    entities: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]],
+    debug: bool,
+) -> Dict[str, int]:
+    """AST-369: cover letter for jobs that already have resume_content."""
+    from src.core.agent import run_cover_letter_artifact_chain_for_job
+
+    passed = failed = errors = 0
+    base_ctx = dict(ctx or {})
+    for job in entities:
+        aid = job["astral_job_id"]
+        row = tracker.get_job(aid) or job
+        if not tracker.get_job_artifacts(row).get("resume_content"):
+            failed += 1
+            continue
+        chain_ctx = {**base_ctx, "batch_entities": [row], "job": row, "batch_size": 1}
+        r = await run_cover_letter_artifact_chain_for_job(aid, chain_ctx, debug=debug)
+        if r.get("success"):
+            passed += 1
+        else:
+            errors += 1
+    return {
+        "total_processed": len(entities),
+        "total_passed": passed,
+        "total_failed": failed,
         "total_errors": errors,
     }
 
@@ -1725,7 +1973,7 @@ async def run_consult_task(
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
-            errors = r.get("errors", max(0, total - passed - failed))
+            errors = max(0, total - passed - failed)
             return {
                 "total_processed": total,
                 "total_passed": passed,
@@ -1745,23 +1993,8 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
-        if task_key in ("prefilter", "prefilter_company"):
+        if task_key == "prefilter":
             r = await roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug)
-            total = r.get("total", len(entities))
-            passed = r.get("passed", 0)
-            failed = r.get("failed", 0)
-            skipped = r.get("skipped", 0)
-            errors = max(0, total - passed - failed - skipped)
-            return {
-                "total_processed": total,
-                "total_passed": passed,
-                "total_failed": failed,
-                "total_errors": errors,
-            }
-        if task_key == "vet_inflow_discovery":
-            r = await roster.vet_inflow_discovery_company_batch(
-                batch_id, entities, ctx=ctx, debug=debug,
-            )
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
@@ -1819,8 +2052,10 @@ async def run_consult_task(
         r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
     elif task_key == "analysis_upshot":
         return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug)
-    elif is_dispatch_chain_trigger((input_state or "").strip()) and task_key in TASK_CONFIG:
-        return await _run_dispatch_chain_job_batch(
+    elif task_key == "draft_cover_letter":
+        return await _run_craft_job_cover_letter_batch(batch_id, entities, ctx, debug)
+    elif task_key in _JOB_ARTIFACT_ENTRY_KEYS:
+        return await _run_build_artifacts_chain_batch(
             batch_id, entities, ctx, debug, task_key, input_state,
         )
     else:
