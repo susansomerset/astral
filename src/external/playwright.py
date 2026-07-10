@@ -25,6 +25,47 @@ _log = get_logger(__name__)
 BrowserSession = BrowserContext
 PageHandle = Page
 
+PLAYWRIGHT_INFRA_FAILURE_CLASSES = frozenset({
+    "launch_failure",
+    "launch_timeout",
+    "channel_error",
+    "context_closed",
+    "connectivity_failure",
+})
+
+
+def classify_playwright_failure(exc: BaseException) -> str:
+    """Map Playwright/Firefox exceptions to a stable failure class string."""
+    msg = f"{type(exc).__name__} {exc}".lower()
+    if "channel error" in msg:
+        return "channel_error"
+    if (
+        "target page, context or browser has been closed" in msg
+        or "browser has been closed" in msg
+        or "browser closed" in msg
+    ):
+        return "context_closed"
+    if "timeout" in msg and ("launch" in msg or "firefox.launch" in msg):
+        return "launch_timeout"
+    if "could not launch firefox" in msg:
+        return "launch_failure"
+    if "timeout" in msg and ("goto" in msg or "navigation" in msg):
+        return "navigation_timeout"
+    return "unknown"
+
+
+def is_playwright_infra_failure(failure_class: str) -> bool:
+    return failure_class in PLAYWRIGHT_INFRA_FAILURE_CLASSES
+
+
+class PlaywrightInfraError(Exception):
+    """Raised when headless browser launch or session I/O fails (infra, not site)."""
+
+    def __init__(self, failure_class: str, detail: str) -> None:
+        self.failure_class = failure_class
+        self.detail = detail
+        super().__init__(f"[{failure_class}] {detail}")
+
 
 def _log_browser_env() -> None:  # pragma: no cover
     """Log environment and filesystem state for Playwright browser diagnostics (DEBUG level)."""

@@ -2200,6 +2200,22 @@ RAILWAY_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
+# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# ---------------------------------------------------------------------------
+PLAYWRIGHT_CONFIG = {
+    "launch_timeout_ms": 60_000,
+    "launch_max_attempts": 3,
+    "launch_retry_delay_seconds": 2.0,
+    "page_goto_timeout_ms": 30_000,
+    "connectivity_timeout_ms": 10_000,
+    "context_recovery_max_attempts": 2,
+    "company_scrape_timeout_seconds": 120,
+    "firefox_user_prefs": {
+        "security.sandbox.content.level": 0,
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.
 # ---------------------------------------------------------------------------
 ALLOWED_TIMESHEET_PROVIDERS = ("anthropic", "deepseek")
