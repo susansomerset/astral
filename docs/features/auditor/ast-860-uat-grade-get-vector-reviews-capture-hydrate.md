@@ -199,3 +199,19 @@ Focused UAT fix diff (7 files) — `grade_get` capture path + batch ctx wiring; 
 | UAT | Re-run Susan `grade_get` batch with debug: expect capture start + pipeline trace (or explicit skip with criteria/uuid drift); Admin Vector Feedback rows when codes match. |
 
 **Verdict:** Clean — approve for User Testing.
+
+---
+
+## Resolution
+
+**Resolved:** 2026-07-10  
+**Review:** Radia clean — no fix-now items.
+
+| Item | Outcome |
+|------|---------|
+| Product | No additional changes — shipped at `4df57b0` as reviewed |
+| Tests | Betty manifest green (6/6 on first pass) |
+| Docs | Radia review section at `2823cfa` |
+
+**Publish ref:** `origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate` @ `2823cfa`  
+**§9a:** Clean merge into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
