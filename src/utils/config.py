@@ -2163,8 +2163,11 @@ RUBRIC_FEEDBACK_CONFIG = {
     "prompt_suffix": (
         "Vector rubric review (agent_performance only — not agent_payload): include "
         "vector_reviews as a JSON list of strings. One string per rubric vector code "
-        "you were given, format CODE + R + {A|O|S|R|N} + C + {A|O|S|R|N} + V + {K|E|D} "
-        '(example: "Q1RAOCVK"). agent_performance.status reflects only whether you '
+        "you were given. Wire format: CODE then literal R, relevance letter, literal C, "
+        "clarity letter, literal V, verdict letter — relevance/clarity "
+        "{A|O|S|R|N}, verdict {K|E|D} "
+        '(example: "Q1RACOVK" = code Q1, relevance A, clarity O, verdict K). '
+        "agent_performance.status reflects only whether you "
         'could perform the task — never "failure" because grades or verdicts were harsh.'
     ),
 }
