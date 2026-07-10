@@ -200,3 +200,47 @@ No conflicts requiring plan revision.
 | 1 | `842e922` | `PLAYWRIGHT_CONFIG` + failure taxonomy |
 | 2 | `7eea584` | Launch retries, `BatchBrowserSession`, `get_page` recovery |
 | 3 | `aa8cfad` | `fetch_website_batch` wiring, scrape timeout, labeled infra logs |
+
+---
+
+## Radia review (2026-07-10)
+
+**Diff:** `origin/dev...origin/sub/AST-850/AST-853-production-playwright-browser-stability` @ `d7fe04a`  
+**Product commits:** `842e922` config + taxonomy · `7eea584` batch session + recovery · `aa8cfad` gazer/roster wiring  
+**Tests:** `5eff7eb` AST-853 manifest · `d7fe04a` merge-tests rollup
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 delivered as specified; `fetch_website_batch` only path switched to `create_batch_browser_session`; `fail_state` / dispatcher / `fetch_job_pages_batch` untouched (**AST-854** boundary respected). |
+| Config (§2.1) | `PLAYWRIGHT_CONFIG` literals cover launch, goto, recovery, scrape wall clock, sandbox prefs — no new env lookups. |
+| Layering (§2.5 / §3.3) | Browser I/O in `playwright.py`; gazer orchestrates; roster formats infra errors/logs only. Core imports external + utils. |
+| Failure taxonomy | Classifier maps production signatures (`channel error`, `context closed`, launch timeouts); `PlaywrightInfraError` + `[playwright:<fc>]` prefix on infra paths; `scrape_timeout` labeled per plan (not in infra frozenset). |
+| Recovery loop | `get_page` batch path retries with `batch_session.recover`; launch retries in `_launch_browser`; lock-serialized session recreate. |
+| Logging (§1.5) | Infra WARNING lines are operational (not debug-contract); existing gazer `debug_index` paths unchanged. |
+| Tests + bible | Betty manifest matches plan AC (classifier, `TestGetPageBatchRecovery`, gazer batch + scrape timeout, roster infra prefix, config literals). |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `src/external/playwright.py` · `BatchBrowserSession.ensure_context` (~L164–172) | When `_browser.is_connected()` is false (or raises), code calls `_open_fresh_locked()` **without** `_close_handles_best_effort()` first — stale browser/context handles are overwritten and may leak Firefox processes on Railway. `recover()` closes first; `ensure_context` should mirror that before reopen. |
+| **discuss** | `src/external/playwright.py` · `_launch_browser` | Replaced detailed install hint (`PLAYWRIGHT_BROWSERS_PATH`, `playwright install firefox`) with `PlaywrightInfraError(detail=str(last_err))`. Acceptable if ops rely on classified WARNING lines only, or should one line of install guidance remain in `detail`? |
+| **advisory** | `PLAYWRIGHT_INFRA_FAILURE_CLASSES` | Includes `connectivity_failure` but `classify_playwright_failure` never emits it — reserved for **AST-854** or dead entry? |
+| **advisory** | `src/core/gazer.py` · `_fetch_one` timeout path | `scrape_timeout` failures omit `debug_index` when `debug=True` (WARNING only). Minor observability gap vs other fail paths. |
+| **advisory** | Publish ref rollup | Branch includes `merge-tests` sibling bible rows — product diff vs `origin/dev` is AST-853 footprint only. Expected epic rollup. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | In `ensure_context`, call `_close_handles_best_effort()` before `_open_fresh_locked()` when the live session is dead (same prelude as `recover`). |
+| discuss | Confirm whether `_launch_browser` final error should retain install/path hint in `PlaywrightInfraError.detail`. |
+| advisory | Parent **AST-850** staging: exercise mid-batch channel error and confirm labeled infra logs + batch completion without poisoned context. |
+
+**Counts:** 1 fix-now · 1 discuss · 3 advisory
+
+**Outcome:** Findings — `resolve-child` for stale-handle cleanup.
+
+— Radia
