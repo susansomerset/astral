@@ -177,3 +177,17 @@ No conflicts requiring escalation.
 **Outcome:** Clean — ship.
 
 — Radia
+
+---
+
+## Resolution (2026-07-10)
+
+**Driven by:** Radia review @ `09475f7` on `origin/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug`.
+
+| Item | Change |
+|------|--------|
+| fix-now | None — review clean. |
+| discuss | None. |
+| advisory | Stage 2 manual smoke (`anticipate_scan` → `contemplate_job`, `debug=True`) deferred to parent **AST-852** UAT. |
+
+**Verify:** §9a dry-run — publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-852-contemplate-job-hop-debug-crash`.
