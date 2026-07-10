@@ -1100,6 +1100,16 @@ class TestAst701FetchWebsiteConfig:
         assert defaults["entity_type"] == "company"
 
 
+class TestAst853PlaywrightConfig:
+    """AST-853: PLAYWRIGHT_CONFIG launch/recovery/scrape limits."""
+
+    def test_playwright_config_keys(self) -> None:
+        assert cfg.PLAYWRIGHT_CONFIG["launch_max_attempts"] == 3
+        assert cfg.PLAYWRIGHT_CONFIG["context_recovery_max_attempts"] == 2
+        assert cfg.PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"] == 120
+        assert cfg.PLAYWRIGHT_CONFIG["firefox_user_prefs"]["security.sandbox.content.level"] == 0
+
+
 class TestAst507EncodedPrefilterConfig:
     """AST-507: PREFILTER_PASSED/FAILED states, transitions, grades_encoded prefilter task."""
 

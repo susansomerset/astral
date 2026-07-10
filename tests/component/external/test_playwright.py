@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -151,4 +151,89 @@ class TestPageUrlHelpers:
         dom = '<div class="jobs"><a class="posting">A</a></div>'
         assert pw_mod.extract_raw_job_listings(dom, "div.jobs", "a.posting", 2) == []
 
+
+# Branches: production log signatures → stable failure classes (AST-853).
+class TestClassifyPlaywrightFailure:
+    def test_channel_error_from_message(self) -> None:
+        exc = RuntimeError("Exiting due to channel error")
+        assert pw_mod.classify_playwright_failure(exc) == "channel_error"
+
+    def test_context_closed_variants(self) -> None:
+        assert pw_mod.classify_playwright_failure(
+            RuntimeError("Target page, context or browser has been closed"),
+        ) == "context_closed"
+        assert pw_mod.classify_playwright_failure(RuntimeError("browser has been closed")) == "context_closed"
+
+    def test_launch_timeout_and_failure(self) -> None:
+        assert pw_mod.classify_playwright_failure(
+            TimeoutError("firefox.launch timeout exceeded"),
+        ) == "launch_timeout"
+        assert pw_mod.classify_playwright_failure(
+            RuntimeError("could not launch firefox"),
+        ) == "launch_failure"
+
+    def test_navigation_timeout_not_infra(self) -> None:
+        fc = pw_mod.classify_playwright_failure(TimeoutError("page.goto timeout"))
+        assert fc == "navigation_timeout"
+        assert not pw_mod.is_playwright_infra_failure(fc)
+
+
+class TestPlaywrightInfraError:
+    def test_message_and_attributes(self) -> None:
+        err = pw_mod.PlaywrightInfraError("context_closed", "browser dead")
+        assert err.failure_class == "context_closed"
+        assert err.detail == "browser dead"
+        assert str(err) == "[context_closed] browser dead"
+
+
+# Branches: batch session recovery on infra new_page failure (AST-853).
+class TestGetPageBatchRecovery:
+    @pytest.mark.asyncio
+    async def test_recovers_once_on_context_closed_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls = {"new_page": 0}
+        page = MagicMock()
+        page.goto = AsyncMock()
+        page.wait_for_timeout = AsyncMock()
+        page.close = AsyncMock()
+        page.wait_for_load_state = AsyncMock()
+
+        ctx = MagicMock()
+
+        async def _new_page() -> MagicMock:
+            calls["new_page"] += 1
+            if calls["new_page"] == 1:
+                raise RuntimeError("Target page, context or browser has been closed")
+            return page
+
+        ctx.new_page = AsyncMock(side_effect=_new_page)
+
+        session = MagicMock()
+        session.ensure_context = AsyncMock(return_value=ctx)
+        session.recover = AsyncMock()
+        monkeypatch.setattr(pw_mod, "_try_dismiss_cookie_banner", AsyncMock(return_value=False))
+
+        result = await pw_mod.get_page(batch_session=session, url="https://example.com")
+        assert result is page
+        assert calls["new_page"] == 2
+        session.recover.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_playwright_infra_error_when_recovery_exhausted(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        ctx = MagicMock()
+        ctx.new_page = AsyncMock(
+            side_effect=RuntimeError("Target page, context or browser has been closed"),
+        )
+        session = MagicMock()
+        session.ensure_context = AsyncMock(return_value=ctx)
+        session.recover = AsyncMock()
+        monkeypatch.setattr(pw_mod, "_try_dismiss_cookie_banner", AsyncMock(return_value=False))
+        monkeypatch.setitem(pw_mod.PLAYWRIGHT_CONFIG, "context_recovery_max_attempts", 0)
+
+        with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
+            await pw_mod.get_page(batch_session=session, url="https://example.com")
+        assert exc_info.value.failure_class == "context_closed"
 
