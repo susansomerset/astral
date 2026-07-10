@@ -818,6 +818,21 @@ def _hydrate_resume_entry_chain_context(
     )
 
 
+def _dispatch_chain_hop_debug_counts(
+    ctx: Optional[Dict[str, Any]],
+    *,
+    hop_index: Optional[int] = None,
+) -> tuple[int, int]:
+    """Style D index/total for dispatch-chain hop debug when total may be unset on ctx."""
+    idx = hop_index
+    if idx is None:
+        idx = int((ctx or {}).get("_dispatch_chain_hop_index") or 1)
+    total = int((ctx or {}).get("_dispatch_chain_hop_total") or 0) if ctx else 0
+    # Unset/zero total → use current hop index (AST-855); preserve explicit total >= idx.
+    effective_total = total if total >= idx else idx
+    return idx, effective_total
+
+
 def _resume_hop_debug_index(
     task_key: str,
     *,
@@ -830,15 +845,12 @@ def _resume_hop_debug_index(
     ident = (index or task_key or "?").strip()
     trigger, _ = _dispatch_chain_ctx(ctx)
     if trigger:
-        hop_idx = 1
-        if ctx is not None:
-            hop_idx = int(ctx.get("_dispatch_chain_hop_index") or 1)
-        total = int(ctx.get("_dispatch_chain_hop_total") or 0) if ctx else 0
+        hop_idx, hop_total = _dispatch_chain_hop_debug_counts(ctx)
         dbg = get_logger(__name__, debug_flag=True)
         dbg.debug_index(
             func=f"do_task({task_key})",
             index=hop_idx,
-            total=total or hop_idx,
+            total=hop_total,
             identifier=ident,
             outcome="hop",
         )
@@ -898,11 +910,13 @@ def _write_dispatch_hop_label_on_success(
         ctx["_dispatch_chain_hop_index"] = int(ctx.get("_dispatch_chain_hop_index") or 0) + 1
     label = tracker_mod.write_job_dispatch_hop_label(index, trigger_state, task_key)
     if debug:
+        hop_idx = int((ctx or {}).get("_dispatch_chain_hop_index") or 1)
+        hop_idx, hop_total = _dispatch_chain_hop_debug_counts(ctx, hop_index=hop_idx)
         dbg = get_logger(__name__, debug_flag=True)
         dbg.debug_index(
             func=f"do_task({task_key})",
-            index=int((ctx or {}).get("_dispatch_chain_hop_index") or 1),
-            total=int((ctx or {}).get("_dispatch_chain_hop_total") or 0) or 1,
+            index=hop_idx,
+            total=hop_total,
             identifier=index or task_key,
             outcome="hop ok",
         )

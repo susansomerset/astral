@@ -124,3 +124,15 @@ Suggested node (Betty names exact path): extend `tests/component/core/test_agent
 | §3.5 naming | `_dispatch_chain_hop_debug_counts` matches existing `_dispatch_chain_*` prefix. |
 
 No conflicts requiring escalation.
+
+---
+
+## Built
+
+**Publish ref:** `origin/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug`
+
+| Stage | Summary |
+|-------|---------|
+| 1 | `_dispatch_chain_hop_debug_counts` helper; entry + success hop debug use shared index/total |
+
+**Verify:** `python3 -m py_compile src/core/agent.py` — pass.
