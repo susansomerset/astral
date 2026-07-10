@@ -200,6 +200,34 @@ External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwri
 
 ---
 
+### AST-854 · AST-850
+
+**Scope:** Infra vs site fail routing for **`fetch_website_batch`** — **`[playwright:`** prefix → **`WEBSITE_FOUND_RETRY`** on first strike, **`CANNOT_READ_WEBSITE`** on retry re-fail or site errors; resilient **`gather`** (**`errors`** count); consult **`total_errors`** reads batch **`errors`**. Prerequisite **AST-853** (prefix + batch session).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail-routing helpers | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteFailRouting` |
+| Infra retry / terminal transitions + **`errors`** in return | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteFailRouting` (async), `::TestFetchWebsiteBatch` |
+| **`retry_state`** in **`GAZER_CONFIG["fetch_website"]`** | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig`, `::TestAst854FetchWebsiteRetryConfig` |
+| Consult **`total_errors`** from batch **`errors`** | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_errors_count` |
+
+**AST-854** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchWebsiteFailRouting \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig \
+  tests/component/utils/test_config.py::TestAst854FetchWebsiteRetryConfig \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_errors_count \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

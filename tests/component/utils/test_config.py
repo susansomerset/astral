@@ -1087,6 +1087,7 @@ class TestAst701FetchWebsiteConfig:
         entry = cfg.GAZER_CONFIG["fetch_website"]
         assert entry["pass_state"] == "HOMEPAGE_READY"
         assert entry["fail_state"] == "CANNOT_READ_WEBSITE"
+        assert entry["retry_state"] == "WEBSITE_FOUND_RETRY"
         assert entry["fallback_batch_size"] == 10
 
     def test_dispatch_registry_and_homepage_text_key(self) -> None:
@@ -1098,6 +1099,13 @@ class TestAst701FetchWebsiteConfig:
         defaults = cfg.dispatch_task_admin_defaults("fetch_website")
         assert defaults["trigger_state"] == "WEBSITE_FOUND"
         assert defaults["entity_type"] == "company"
+
+
+class TestAst854FetchWebsiteRetryConfig:
+    """AST-854: GAZER_CONFIG fetch_website retry_state for infra fail routing."""
+
+    def test_retry_state_in_gazer_fetch_website(self) -> None:
+        assert cfg.GAZER_CONFIG["fetch_website"]["retry_state"] == "WEBSITE_FOUND_RETRY"
 
 
 class TestAst853PlaywrightConfig:
