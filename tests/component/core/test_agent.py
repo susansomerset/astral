@@ -5384,3 +5384,85 @@ class TestAst855DispatchChainHopDebug:
         combined = "\n".join(r.message for r in caplog.records)
         assert "do_task(contemplate_job) index 2/2 job-855 -> hop ok" in combined
         assert "index 2/1" not in combined
+
+
+class TestAst860NormalizeRubricEnvelope:
+    """AST-860: envelope normalize before capture snapshot (grade_get vector_reviews)."""
+
+    def test_defaults_status_success_when_vector_reviews_without_status(self) -> None:
+        env = {"agent_performance": {"vector_reviews": ["ATRACOVK"]}}
+        out = agent_mod._normalize_rubric_envelope_for_capture(env)
+        assert out["agent_performance"]["status"] == "success"
+
+    def test_copies_top_level_vector_reviews_into_agent_performance(self) -> None:
+        env = {"vector_reviews": ["DORACOVK"], "agent_performance": {}}
+        out = agent_mod._normalize_rubric_envelope_for_capture(env)
+        assert out["agent_performance"]["vector_reviews"] == ["DORACOVK"]
+
+    def test_preserves_explicit_failure_status(self) -> None:
+        env = {"agent_performance": {"vector_reviews": ["ATRACOVK"], "status": "failure"}}
+        out = agent_mod._normalize_rubric_envelope_for_capture(env)
+        assert out["agent_performance"]["status"] == "failure"
+
+
+class TestAst860GradeGetVectorFeedbackCapture:
+    """AST-860: criteria ∩ uuid expected_codes; grade_get RACOVK capture."""
+
+    def test_grade_get_racovk_reviews_persist_rows(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "somerset",
+            "grade_get",
+            [
+                {"code": "AT", "label": "Attr", "content": "a\nA = one", "importance": 5},
+                {"code": "DO", "label": "Domain", "content": "d\nA = one", "importance": 5},
+            ],
+        )
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="somerset",
+            batch_id="grade_get-860-batch",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["ATRACOVK", "DORACOVK"]},
+            debug=False,
+            prompt_blocks=[],
+            batch_size=2,
+        )
+        rows = db.list_vector_feedback(candidate_id="somerset", batch_id="grade_get-860-batch")
+        assert len(rows) == 6
+
+    def test_debug_empty_expected_lists_criteria_and_uuid_codes(
+        self, seeded_db, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "AT", "label": "Attr", "content": "a\nA = one", "importance": 5}],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "list_rubric_vector_uuid_by_code",
+            lambda _cid, _owner: {},
+        )
+        caplog.set_level("INFO")
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-860-drift",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["ATRACOVK"]},
+            debug=True,
+            prompt_blocks=[],
+            batch_size=1,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "skip reason=empty_expected_codes" in combined
+        assert "criteria_codes=" in combined
+        assert "uuid_codes=" in combined

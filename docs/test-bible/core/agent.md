@@ -211,6 +211,28 @@ Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.
 
 ---
 
+### AST-860 · AST-378 (UAT fix)
+
+**`_normalize_rubric_envelope_for_capture`**, **`expected_codes = criteria_codes ∩ uuid_codes`**, and **`do_task`** silent-skip debug when **`agent_performance`** missing after normalize — closes **`grade_get`** batch capture/hydrate gap (post AST-859 RACOVK).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Envelope normalize (status + top-level reviews) | `src/core/agent.py` | `TestAst860NormalizeRubricEnvelope` |
+| RACOVK capture + criteria/uuid debug | `src/core/agent.py` | `TestAst860GradeGetVectorFeedbackCapture` |
+
+**AST-860** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst860NormalizeRubricEnvelope \
+  tests/component/core/test_agent.py::TestAst860GradeGetVectorFeedbackCapture \
+  -q
+```
+
+Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
+
+---
+
 ### AST-848 · AST-847
 
 **AST-848:** Synchronous **`run_next`** chain ownership moves into **`do_task`**: after each successful hop, write runtime DB label **`{trigger_state}.{completed_task_key}`** via **`write_job_dispatch_hop_label`**; recurse via existing **`run_next`**; terminal graduation to config successor (**`BUILD_ARTIFACTS` → `CANDIDATE_REVIEW`**) in the same invocation when **`dispatch_chain_graduate_on_terminal`** is true and the last hop has empty **`run_next`**. Retires AST-803 consult **`_chain_graduate_to_candidate_review`**, persist gate, and **`chain_incomplete`** flag. Dispatch claim for runtime labels is sibling **AST-849**.
