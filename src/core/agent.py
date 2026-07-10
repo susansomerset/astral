@@ -1203,6 +1203,27 @@ def _agent_performance_status(perf: Any) -> Optional[str]:
     return None
 
 
+def _normalize_rubric_envelope_for_capture(parsed: Any) -> Any:
+    """Coerce rubric envelope shape before snapshot — vector_reviews + status for capture (AST-860)."""
+    if not isinstance(parsed, dict):
+        return parsed
+    perf = parsed.get("agent_performance")
+    if perf is None:
+        perf = {}
+        parsed["agent_performance"] = perf
+    elif not isinstance(perf, dict):
+        return parsed
+    top_reviews = parsed.get("vector_reviews")
+    if top_reviews is not None and perf.get("vector_reviews") is None:
+        perf["vector_reviews"] = top_reviews
+    if normalize_vector_reviews_raw(perf.get("vector_reviews")):
+        status = perf.get("status")
+        status_norm = str(status).strip().lower() if status is not None else ""
+        if status_norm != "failure" and not status_norm:
+            perf["status"] = "success"
+    return parsed
+
+
 def _rubric_feedback_owner_and_candidate(
     task_key: str,
     cd: Dict[str, Any],
@@ -1272,8 +1293,16 @@ def _capture_rubric_vector_feedback(
             )
             dbg.debug_detail("skip reason=empty batch_id")
         return
+    from src.core.candidate import rubric_criteria_for_task
+
     code_to_uuid = list_rubric_vector_uuid_by_code(candidate_id, owner_task_key)
-    expected_codes = frozenset(code_to_uuid.keys()) if code_to_uuid else frozenset()
+    criteria_codes = frozenset(
+        str(c.get("code")).strip().upper()
+        for c in rubric_criteria_for_task(candidate_id, owner_task_key)
+        if isinstance(c, dict) and c.get("code")
+    )
+    uuid_codes = frozenset(code_to_uuid.keys())
+    expected_codes = criteria_codes & uuid_codes
     if not expected_codes:
         if dbg:
             dbg.debug_index(
@@ -1285,7 +1314,8 @@ def _capture_rubric_vector_feedback(
             )
             dbg.debug_detail(
                 f"skip reason=empty_expected_codes candidate={candidate_id} "
-                f"owner={owner_task_key}"
+                f"owner={owner_task_key} criteria_codes={sorted(criteria_codes)} "
+                f"uuid_codes={sorted(uuid_codes)}"
             )
         return
     perf_dict = perf if isinstance(perf, dict) else {}
@@ -2127,6 +2157,10 @@ async def do_task(
     if strict_batch and not envelope_err:
         envelope_err = _strict_encoded_batch_consult_envelope_err(task_key, parsed)
 
+    if is_rubric_backed_task(task_key) and isinstance(parsed, dict):
+        parsed = _normalize_rubric_envelope_for_capture(parsed)
+        result["parsed_response"] = parsed
+
     envelope_snapshot = None
     if is_rubric_backed_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
         envelope_snapshot = copy.deepcopy(parsed)
@@ -2400,7 +2434,24 @@ async def do_task(
     # SUCCESS: store decoded/validated response block, then build agent_ref
     if envelope_snapshot is not None:
         _perf = envelope_snapshot.get("agent_performance")
-        if _perf is not None:
+        if _perf is None:
+            if (
+                debug
+                and isinstance(envelope_snapshot, dict)
+                and envelope_snapshot.get("vector_reviews") is not None
+            ):
+                _skip_dbg = _do_task_debug_logger(debug)
+                _skip_dbg.debug_index(
+                    func="do_task",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome="vector feedback capture skipped",
+                )
+                _skip_dbg.debug_detail(
+                    "skip reason=agent_performance missing after normalize"
+                )
+        else:
             _owner, _cid = _rubric_feedback_owner_and_candidate(task_key, cd, ctx)
             _perf_dict = _perf if isinstance(_perf, dict) else {}
             if (
