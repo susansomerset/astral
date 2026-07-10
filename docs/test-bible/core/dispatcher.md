@@ -142,3 +142,15 @@ Equivalent harness:
 **Regression guard:** full **`test_dispatcher.py`** + **`TestAst505InflowDiscovery`** when parent UAT runs full epic.
 
 ---
+
+### AST-849 · AST-847
+
+**Dispatch-chain claim:** **`dispatch_chain_claim_states_for_row`** passed as **`states=`** to **`get_new_job_batch`** when **`is_dispatch_chain_trigger(input_state)`**; post-claim filter via **`dispatch_chain_row_matches_job`** before **`run_consult_task`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Forward **`dispatch_task_key`** + chain claim filter | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast849_post_claim_filter_skips_row_mismatch}` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
+
+---

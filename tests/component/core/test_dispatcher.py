@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.core import dispatcher as dispatcher_mod
+from src.utils import config as cfg
 
 
 @pytest.fixture(autouse=True)
@@ -181,17 +182,23 @@ class TestRunUnified:
         assert run.await_args.kwargs["dispatch_task_key"] == "evaluate_jd"
 
     @pytest.mark.asyncio
-    async def test_ast534_forwards_dispatch_task_key_to_consult(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+    async def test_ast534_forwards_dispatch_task_key_to_consult(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        claim = MagicMock(return_value=(batch_id, [{"astral_job_id": "job-534"}]))
+        claim = MagicMock(
+            return_value=(
+                batch_id,
+                [{"astral_job_id": "job-534", "state": cfg.BUILD_ARTIFACTS_BASE_STATE}],
+            ),
+        )
         monkeypatch.setattr("src.core.tracker.get_new_job_batch", claim)
         monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
         run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        from src.utils.config import BUILD_ARTIFACTS_BASE_STATE
         task = {
             "entity_type": "job",
-            "trigger_state": BUILD_ARTIFACTS_BASE_STATE,
+            "trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
             "task_key": "anticipate_scan",
             "batch_call_mode": 0,
         }
@@ -199,23 +206,30 @@ class TestRunUnified:
         assert run.await_args.kwargs["dispatch_task_key"] == "anticipate_scan"
 
     @pytest.mark.asyncio
-    async def test_ast596_resume_hop_mismatch_skips_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_ast849_post_claim_filter_skips_row_mismatch(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    ) -> None:
+        """AST-849: claimed jobs filtered by dispatch_chain_row_matches_job before consult."""
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        claim = MagicMock()
+        claim = MagicMock(
+            return_value=(
+                batch_id,
+                [{"astral_job_id": "job-x", "state": "RECOMMENDED"}],
+            ),
+        )
         monkeypatch.setattr("src.core.tracker.get_new_job_batch", claim)
         monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
         run = AsyncMock()
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        from src.utils.config import resume_artifact_compound_state
         task = {
             "entity_type": "job",
-            "trigger_state": resume_artifact_compound_state("anticipate_scan"),
-            "task_key": "draft_job_resume",
+            "trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "task_key": "contemplate_job",
             "batch_call_mode": 0,
         }
         out = await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
         assert out == dispatcher_mod._SUMMARY_ZERO
-        claim.assert_not_called()
+        claim.assert_called_once()
         run.assert_not_awaited()
 
     @pytest.mark.asyncio

@@ -97,6 +97,11 @@ BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
 ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
 LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
 RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
+
+# Dispatch trigger_state -> JOB_STATES key when a full run_next chain completes (terminal hop, graduation enabled).
+DISPATCH_CHAIN_TERMINAL_GRADUATION: dict[str, str] = {
+    BUILD_ARTIFACTS_BASE_STATE: "CANDIDATE_REVIEW",
+}
 _RESUME_ARTIFACT_HOP_TASK_KEYS = (
     "anticipate_scan",
     "contemplate_job",
@@ -992,6 +997,7 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
         "fail_state": "CANNOT_READ_WEBSITE",
+        "retry_state": "WEBSITE_FOUND_RETRY",
     },
     "fetch_job_pages": {
         "fallback_batch_size": 10,
@@ -2195,6 +2201,22 @@ RAILWAY_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
+# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# ---------------------------------------------------------------------------
+PLAYWRIGHT_CONFIG = {
+    "launch_timeout_ms": 60_000,
+    "launch_max_attempts": 3,
+    "launch_retry_delay_seconds": 2.0,
+    "page_goto_timeout_ms": 30_000,
+    "connectivity_timeout_ms": 10_000,
+    "context_recovery_max_attempts": 2,
+    "company_scrape_timeout_seconds": 120,
+    "firefox_user_prefs": {
+        "security.sandbox.content.level": 0,
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.
 # ---------------------------------------------------------------------------
 ALLOWED_TIMESHEET_PROVIDERS = ("anthropic", "deepseek")
@@ -3004,7 +3026,101 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
         return False
     if s in JOB_STATES:
         return True
-    return legacy_build_artifacts_hop(s) is not None
+    if legacy_build_artifacts_hop(s) is not None:
+        return True
+    parsed = parse_dispatch_hop_label(s)
+    if parsed is not None and parsed[0] in DISPATCH_CHAIN_TERMINAL_GRADUATION:
+        return True
+    return False
+
+
+def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
+    ts = (trigger_state or "").strip()
+    tk = (completed_task_key or "").strip()
+    if not ts or not tk:
+        raise ValueError("dispatch_hop_label requires non-empty trigger_state and task_key")
+    return f"{ts}.{tk}"
+
+
+def parse_dispatch_hop_label(state: str) -> tuple[str, str] | None:
+    """Return (trigger_state, completed_task_key) when state matches trigger.hop pattern."""
+    st = (state or "").strip()
+    if "." not in st:
+        return None
+    trigger, hop = st.split(".", 1)
+    trigger = trigger.strip()
+    hop = hop.strip()
+    if not trigger or not hop:
+        return None
+    if hop not in TASK_CONFIG:
+        return None
+    return trigger, hop
+
+
+def dispatch_chain_graduation_target(trigger_state: str) -> str | None:
+    return DISPATCH_CHAIN_TERMINAL_GRADUATION.get((trigger_state or "").strip())
+
+
+def is_dispatch_chain_trigger(trigger_state: str) -> bool:
+    """True when trigger_state has a terminal graduation map entry (dispatch run_next chain)."""
+    return dispatch_chain_graduation_target((trigger_state or "").strip()) is not None
+
+
+def _agent_task_parents_with_run_next(child_task_key: str) -> tuple[str, ...]:
+    from src.data.database import get_agent_task
+
+    child = (child_task_key or "").strip()
+    if not child:
+        return ()
+    parents: list[str] = []
+    for tk in TASK_CONFIG:
+        row = get_agent_task(tk) or {}
+        if (row.get("run_next") or "").strip() == child:
+            parents.append(tk)
+    return tuple(sorted(set(parents)))
+
+
+def dispatch_chain_claim_states_for_row(trigger_state: str, task_key: str) -> list[str]:
+    """Job states eligible for claim on this dispatch row (bare trigger + parent hop labels)."""
+    ts = (trigger_state or "").strip()
+    tk = (task_key or "").strip()
+    if not ts or not tk or not is_dispatch_chain_trigger(ts):
+        return [ts] if ts else []
+    states: list[str] = [ts]
+    for parent in _agent_task_parents_with_run_next(tk):
+        states.append(dispatch_hop_label(ts, parent))
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in states:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def dispatch_chain_row_matches_job(
+    trigger_state: str,
+    task_key: str,
+    job_state: str,
+) -> bool:
+    """True when job_state is claimable for this dispatch chain row before do_task runs."""
+    from src.data.database import get_agent_task
+
+    ts = (trigger_state or "").strip()
+    tk = (task_key or "").strip()
+    st = (job_state or "").strip()
+    if not ts or not tk:
+        return False
+    if st == ts:
+        return True
+    parsed = parse_dispatch_hop_label(st)
+    if not parsed:
+        return False
+    label_trigger, completed_hop = parsed
+    if label_trigger != ts:
+        return False
+    parent_row = get_agent_task(completed_hop) or {}
+    return (parent_row.get("run_next") or "").strip() == tk
 
 
 parse_resume_artifact_hop = legacy_build_artifacts_hop
@@ -3030,6 +3146,7 @@ def all_resume_artifact_compound_states() -> tuple[str, ...]:
 
 _RAH = resume_artifact_hop_task_keys()
 assert len(_RAH) >= 1
+assert all(v in JOB_STATES for v in DISPATCH_CHAIN_TERMINAL_GRADUATION.values())
 assert all(tk in TASK_CONFIG for tk in _RAH)
 assert all((TASK_CONFIG[tk] or {}).get("entity_type") == "job" for tk in _RAH)
 for _tk, _tc in TASK_CONFIG.items():

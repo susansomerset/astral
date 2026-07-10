@@ -49,6 +49,7 @@ from src.utils.config import (
     ENTITY_TYPES,
     get_task_keys,
     resume_artifact_hop_task_keys,
+    dispatch_chain_graduation_target,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
     is_rubric_backed_task,
@@ -817,8 +818,44 @@ def _hydrate_resume_entry_chain_context(
     )
 
 
-def _resume_hop_debug_index(task_key: str, *, debug: bool) -> None:
-    if not debug or task_key not in resume_artifact_hop_task_keys():
+def _dispatch_chain_hop_debug_counts(
+    ctx: Optional[Dict[str, Any]],
+    *,
+    hop_index: Optional[int] = None,
+) -> tuple[int, int]:
+    """Style D index/total for dispatch-chain hop debug when total may be unset on ctx."""
+    idx = hop_index
+    if idx is None:
+        idx = int((ctx or {}).get("_dispatch_chain_hop_index") or 1)
+    total = int((ctx or {}).get("_dispatch_chain_hop_total") or 0) if ctx else 0
+    # Unset/zero total → use current hop index (AST-855); preserve explicit total >= idx.
+    effective_total = total if total >= idx else idx
+    return idx, effective_total
+
+
+def _resume_hop_debug_index(
+    task_key: str,
+    *,
+    debug: bool,
+    ctx: Optional[Dict[str, Any]] = None,
+    index: Optional[str] = None,
+) -> None:
+    if not debug:
+        return
+    ident = (index or task_key or "?").strip()
+    trigger, _ = _dispatch_chain_ctx(ctx)
+    if trigger:
+        hop_idx, hop_total = _dispatch_chain_hop_debug_counts(ctx)
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_index(
+            func=f"do_task({task_key})",
+            index=hop_idx,
+            total=hop_total,
+            identifier=ident,
+            outcome="hop",
+        )
+        return
+    if task_key not in resume_artifact_hop_task_keys():
         return
     keys = resume_artifact_hop_task_keys()
     dbg = get_logger(__name__, debug_flag=True)
@@ -829,6 +866,125 @@ def _resume_hop_debug_index(task_key: str, *, debug: bool) -> None:
         identifier=task_key,
         outcome="hop",
     )
+
+
+def _dispatch_chain_ctx(ctx: Optional[Dict[str, Any]]) -> tuple[str, bool]:
+    if not ctx:
+        return "", False
+    trigger = str(ctx.get("dispatch_trigger_state") or "").strip()
+    graduate = bool(ctx.get("dispatch_chain_graduate_on_terminal"))
+    return trigger, graduate
+
+
+def _should_write_dispatch_hop_label(
+    *,
+    entity_type: str,
+    index: Optional[str],
+    ctx: Optional[Dict[str, Any]],
+    trigger_state: str,
+) -> bool:
+    if entity_type != "job" or not index or not trigger_state:
+        return False
+    return dispatch_chain_graduation_target(trigger_state) is not None
+
+
+def _write_dispatch_hop_label_on_success(
+    *,
+    task_key: str,
+    entity_type: str,
+    index: Optional[str],
+    ctx: Optional[Dict[str, Any]],
+    trigger_state: str,
+    debug: bool,
+) -> None:
+    if not _should_write_dispatch_hop_label(
+        entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
+    ):
+        return
+    from src.core import tracker as tracker_mod
+
+    before_state = (tracker_mod.get_job(index) or {}).get("state") if index else None
+    if ctx is not None and "_dispatch_chain_hop_index" not in ctx:
+        ctx["_dispatch_chain_hop_index"] = 1
+    elif ctx is not None:
+        ctx["_dispatch_chain_hop_index"] = int(ctx.get("_dispatch_chain_hop_index") or 0) + 1
+    label = tracker_mod.write_job_dispatch_hop_label(index, trigger_state, task_key)
+    if debug:
+        hop_idx = int((ctx or {}).get("_dispatch_chain_hop_index") or 1)
+        hop_idx, hop_total = _dispatch_chain_hop_debug_counts(ctx, hop_index=hop_idx)
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_index(
+            func=f"do_task({task_key})",
+            index=hop_idx,
+            total=hop_total,
+            identifier=index or task_key,
+            outcome="hop ok",
+        )
+        dbg.debug_detail(
+            f"state_before={before_state!r} state_after={label!r} trigger={trigger_state!r}"
+        )
+
+
+def _maybe_graduate_dispatch_chain(
+    *,
+    job_id: str,
+    trigger_state: str,
+    graduate_on_terminal: bool,
+    debug: bool,
+) -> None:
+    if not graduate_on_terminal or not dispatch_chain_graduation_target(trigger_state):
+        return
+    from src.core import tracker as tracker_mod
+
+    before = (tracker_mod.get_job(job_id) or {}).get("state")
+    to_state = tracker_mod.graduate_job_from_dispatch_chain(job_id, trigger_state)
+    logger.info(
+        "dispatch chain graduated job=%s trigger=%s → %s",
+        job_id,
+        trigger_state,
+        to_state,
+    )
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_index(
+            func="do_task chain graduation",
+            index=1,
+            total=1,
+            identifier=job_id,
+            outcome="graduated",
+        )
+        dbg.debug_detail(f"from_state={before!r} to_state={to_state!r} trigger={trigger_state!r}")
+
+
+def _apply_dispatch_chain_hop_failure(
+    *,
+    entity_type: str,
+    index: Optional[str],
+    ctx: Optional[Dict[str, Any]],
+    task_config: Dict[str, Any],
+    error: str,
+    debug: bool,
+) -> None:
+    trigger_state, _ = _dispatch_chain_ctx(ctx)
+    if not _should_write_dispatch_hop_label(
+        entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
+    ):
+        return
+    err_state = (task_config.get("error_state") or "").strip()
+    hard = err_state and (
+        "Job not found" in error
+        or "Missing candidate_data" in error
+    )
+    if hard and err_state and index:
+        from src.core import tracker as tracker_mod
+        try:
+            tracker_mod.transition_job_state([index], err_state)
+        except ValueError as exc:
+            logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
+    if debug:
+        _do_task_debug_logger(debug).debug_detail(
+            f"chain_hop_failed retryable={not hard} error={error!r}"
+        )
 
 
 def _log_chain_entry(task_key: str, batch_id: Optional[str]) -> None:
@@ -1507,6 +1663,10 @@ async def do_task(
     """Run a task by key. Fetches prompts from DB, resolves tokens, calls Anthropic API.
     Stores prompt + response blocks in agent_data when store_agent_data=True.
 
+    Dispatch run_next chain ctx keys (set by consult before entry hop):
+      dispatch_trigger_state — dispatch row trigger_state (e.g. BUILD_ARTIFACTS)
+      dispatch_chain_graduate_on_terminal — True when full chain should graduate on terminal hop
+
     Args:
         task_key: Task name (e.g. "prefilter", "evaluate_jd")
         live_content: Dynamic content for the prompt (the TASK block)
@@ -1578,7 +1738,7 @@ async def do_task(
                 chain_context, hydrated
             )
     in_chain = _in_run_next_chain(chain_context=chain_context, agent_task_row=agent_task_row)
-    _resume_hop_debug_index(task_key, debug=debug)
+    _resume_hop_debug_index(task_key, debug=debug, ctx=ctx, index=index)
     hop_ledger_batch_id: Optional[str] = None
     hop_ledger_closed = False
 
@@ -1769,8 +1929,22 @@ async def do_task(
             populated = [k for k, v in _jc.items() if (v or "").strip()]
             dbg.debug_detail(f"job_context tokens={','.join(populated) if populated else 'none'}")
 
-    def _close_hop_ledger(*, success: bool, clear_log: bool = False) -> None:
+    def _close_hop_ledger(
+        *,
+        success: bool,
+        clear_log: bool = False,
+        failure_error: Optional[str] = None,
+    ) -> None:
         nonlocal hop_ledger_closed
+        if not success and failure_error:
+            _apply_dispatch_chain_hop_failure(
+                entity_type=entity_type or "",
+                index=index,
+                ctx=ctx,
+                task_config=task_config,
+                error=failure_error,
+                debug=debug,
+            )
         if hop_ledger_closed or not hop_ledger_batch_id:
             return
         _finalize_run_next_hop_ledger(
@@ -1916,7 +2090,10 @@ async def do_task(
                 f"exit provider_failed task_key={task_key} batch_id={batch_id or ''} "
                 f"error={result.get('error')!r}"
             )
-        _close_hop_ledger(success=False, clear_log=True)
+        _close_hop_ledger(
+            success=False, clear_log=True,
+            failure_error=str(result.get("error") or "provider_failed"),
+        )
         return result
 
     # Capture raw_text now; RESPONSE block storage is deferred until after validation/decode.
@@ -1973,7 +2150,7 @@ async def do_task(
                 )
             except Exception:
                 logger.debug("_store_response_block failed", exc_info=True)
-        _close_hop_ledger(success=False, clear_log=True)
+        _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
         return {"success": False, "api_response": result.get("api_response"),
                 "parsed_response": None, "error": envelope_err, "raw_response": parsed,
                 "timesheet": result.get("timesheet", {})}
@@ -2006,7 +2183,7 @@ async def do_task(
                     )
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
-            _close_hop_ledger(success=False, clear_log=True)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
             return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
                     "error": err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
 
@@ -2032,7 +2209,7 @@ async def do_task(
                         )
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
-                _close_hop_ledger(success=False, clear_log=True)
+                _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
                 return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
                         "error": cat_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
 
@@ -2053,7 +2230,7 @@ async def do_task(
                         )
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
-                _close_hop_ledger(success=False, clear_log=True)
+                _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
                 return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
                         "error": conf_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
 
@@ -2077,7 +2254,7 @@ async def do_task(
                             )
                         except Exception:
                             logger.debug("_store_response_block failed", exc_info=True)
-                    _close_hop_ledger(success=False, clear_log=True)
+                    _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
                     return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
                             "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
 
@@ -2120,7 +2297,7 @@ async def do_task(
                     )
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
-            _close_hop_ledger(success=False, clear_log=True)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
             return {"success": False, "api_response": result.get("api_response"),
                     "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
     elif "_encoded" in output_type and isinstance(parsed, str):
@@ -2144,7 +2321,7 @@ async def do_task(
                     )
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
-            _close_hop_ledger(success=False, clear_log=True)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
             return {"success": False, "api_response": result.get("api_response"),
                     "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
     if post_rubric_decode:
@@ -2174,7 +2351,7 @@ async def do_task(
                     )
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
-            _close_hop_ledger(success=False, clear_log=True)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
             return {"success": False, "api_response": result.get("api_response"),
                     "parsed_response": None, "error": err, "timesheet": result.get("timesheet", {})}
         if task_config.get("resume_section_payload") and cd:
@@ -2198,7 +2375,7 @@ async def do_task(
                         )
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
-                _close_hop_ledger(success=False, clear_log=True)
+                _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
                 return {"success": False, "api_response": result.get("api_response"),
                         "parsed_response": None, "error": cat_err, "timesheet": result.get("timesheet", {})}
         if isinstance(parsed, dict):
@@ -2216,7 +2393,7 @@ async def do_task(
                         )
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
-                _close_hop_ledger(success=False, clear_log=True)
+                _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
                 return {"success": False, "api_response": result.get("api_response"),
                         "parsed_response": None, "error": conf_err, "timesheet": result.get("timesheet", {})}
 
@@ -2287,6 +2464,16 @@ async def do_task(
 
     _store_agent_response(task_config, task_key, index, parsed, parsed, result)
 
+    trigger_state, graduate_on_terminal = _dispatch_chain_ctx(ctx)
+    _write_dispatch_hop_label_on_success(
+        task_key=task_key,
+        entity_type=entity_type or "",
+        index=index,
+        ctx=ctx,
+        trigger_state=trigger_state,
+        debug=debug,
+    )
+
     planned_next = (agent_task_row.get("run_next") or "").strip()
     effective_next = planned_next
     # AST-469: roster select_job_page chains to parse_job_list only when titles were confirmed —
@@ -2350,6 +2537,13 @@ async def do_task(
                     allow_resume=allow_resume,
                     allow_cover_letter=allow_cover,
                 )
+        if result.get("success") and index:
+            _maybe_graduate_dispatch_chain(
+                job_id=index,
+                trigger_state=trigger_state,
+                graduate_on_terminal=graduate_on_terminal,
+                debug=debug,
+            )
         if batch_id:
             logger.info(
                 "do_task(%s) completed successfully batch_id=%s index=%s",

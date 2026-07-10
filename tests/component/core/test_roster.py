@@ -1436,6 +1436,25 @@ class TestAst701ScrapeCompanyHomepageContent:
         assert out["error"] is None
         assert out["visible_text"] == "intro\n\nbody"
 
+    @pytest.mark.asyncio
+    async def test_playwright_infra_error_prefixes_failure_class(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.external.playwright import PlaywrightInfraError
+
+        session = MagicMock()
+        monkeypatch.setattr(
+            roster_mod,
+            "get_page",
+            AsyncMock(side_effect=PlaywrightInfraError("context_closed", "browser dead")),
+        )
+        monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
+        out = await roster_mod.scrape_company_homepage_content(
+            "acme", "https://acme.com", batch_session=session,
+        )
+        assert out["error"] == "[playwright:context_closed] browser dead"
+        assert out["visible_text"] == ""
+
 
 class TestPrefilterCompany:
     @pytest.mark.asyncio

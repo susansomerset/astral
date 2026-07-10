@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
@@ -5175,3 +5176,211 @@ class TestAst820VectorFeedbackDebugTrace:
         combined = "\n".join(r.message for r in caplog.records)
         assert "vector feedback capture skipped" in combined
         assert "skip reason=missing owner=" in combined
+
+
+class TestAst848DispatchChainDoTask:
+    """AST-848: per-hop DB labels + terminal graduation inside do_task."""
+
+    def _dispatch_chain_ctx(self, *, graduate: bool) -> Dict[str, Any]:
+        return {
+            "candidate_data": {"artifacts": {}},
+            "batch_entities": _batch_entities("job-848"),
+            "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "dispatch_chain_graduate_on_terminal": graduate,
+        }
+
+    @pytest.mark.asyncio
+    async def test_writes_hop_label_without_graduation_when_disabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        write_hop = MagicMock(return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan")
+        graduate = MagicMock()
+        monkeypatch.setattr("src.core.tracker.write_job_dispatch_hop_label", write_hop)
+        monkeypatch.setattr("src.core.tracker.graduate_job_from_dispatch_chain", graduate)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"title": "Role", "company": "Co"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-848",
+            ctx=self._dispatch_chain_ctx(graduate=False),
+        )
+        assert out["success"] is True
+        write_hop.assert_called_once_with(
+            "job-848", cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan",
+        )
+        graduate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_graduates_on_terminal_hop_when_enabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        write_hop = MagicMock(return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan")
+        graduate = MagicMock(return_value="CANDIDATE_REVIEW")
+        monkeypatch.setattr("src.core.tracker.write_job_dispatch_hop_label", write_hop)
+        monkeypatch.setattr("src.core.tracker.graduate_job_from_dispatch_chain", graduate)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"title": "Role", "company": "Co"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-848",
+            ctx=self._dispatch_chain_ctx(graduate=True),
+        )
+        assert out["success"] is True
+        graduate.assert_called_once_with("job-848", cfg.BUILD_ARTIFACTS_BASE_STATE)
+
+    @pytest.mark.asyncio
+    async def test_hard_failure_transitions_error_build_artifacts(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Missing candidate_data for job job-848",
+                    "api_response": _api_response("fail"),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-848",
+            ctx=self._dispatch_chain_ctx(graduate=True),
+        )
+        assert out["success"] is False
+        transition.assert_called_once_with(["job-848"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+
+    def test_dispatch_chain_ctx_reads_trigger_and_graduate_flag(self) -> None:
+        trigger, graduate = agent_mod._dispatch_chain_ctx({
+            "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "dispatch_chain_graduate_on_terminal": True,
+        })
+        assert trigger == cfg.BUILD_ARTIFACTS_BASE_STATE
+        assert graduate is True
+
+    def test_should_write_hop_label_only_for_graduation_map_trigger(self) -> None:
+        assert agent_mod._should_write_dispatch_hop_label(
+            entity_type="job",
+            index="job-1",
+            ctx={"dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+            trigger_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert not agent_mod._should_write_dispatch_hop_label(
+            entity_type="job",
+            index="job-1",
+            ctx={},
+            trigger_state="UNKNOWN",
+        )
+
+
+class TestAst855DispatchChainHopDebug:
+    """AST-855: hop ok Style D header when chain hop total unset on ctx."""
+
+    def test_dispatch_chain_hop_debug_counts_expands_unset_total(self) -> None:
+        ctx = {"_dispatch_chain_hop_index": 2}
+        assert agent_mod._dispatch_chain_hop_debug_counts(ctx, hop_index=2) == (2, 2)
+        ctx_zero = {"_dispatch_chain_hop_total": 0, "_dispatch_chain_hop_index": 2}
+        assert agent_mod._dispatch_chain_hop_debug_counts(ctx_zero, hop_index=2) == (2, 2)
+
+    def test_dispatch_chain_hop_debug_counts_preserves_explicit_total(self) -> None:
+        ctx = {"_dispatch_chain_hop_total": 5, "_dispatch_chain_hop_index": 2}
+        assert agent_mod._dispatch_chain_hop_debug_counts(ctx, hop_index=2) == (2, 5)
+
+    @pytest.mark.asyncio
+    async def test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level(logging.INFO)
+        write_hop = MagicMock(
+            return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.contemplate_job",
+        )
+        monkeypatch.setattr("src.core.tracker.write_job_dispatch_hop_label", write_hop)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"title": "Role", "company": "Co"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        ctx = {
+            "candidate_data": {"artifacts": {}},
+            "batch_entities": _batch_entities("job-855"),
+            "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "dispatch_chain_graduate_on_terminal": False,
+            "_dispatch_chain_hop_index": 1,
+        }
+        out = await agent_mod.do_task(
+            "contemplate_job",
+            index="job-855",
+            ctx=ctx,
+            debug=True,
+        )
+        assert out["success"] is True
+        write_hop.assert_called_once_with(
+            "job-855", cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job",
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "do_task(contemplate_job) index 2/2 job-855 -> hop ok" in combined
+        assert "index 2/1" not in combined
