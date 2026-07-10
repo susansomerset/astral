@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
@@ -5317,3 +5318,69 @@ class TestAst848DispatchChainDoTask:
             ctx={},
             trigger_state="UNKNOWN",
         )
+
+
+class TestAst855DispatchChainHopDebug:
+    """AST-855: hop ok Style D header when chain hop total unset on ctx."""
+
+    def test_dispatch_chain_hop_debug_counts_expands_unset_total(self) -> None:
+        ctx = {"_dispatch_chain_hop_index": 2}
+        assert agent_mod._dispatch_chain_hop_debug_counts(ctx, hop_index=2) == (2, 2)
+        ctx_zero = {"_dispatch_chain_hop_total": 0, "_dispatch_chain_hop_index": 2}
+        assert agent_mod._dispatch_chain_hop_debug_counts(ctx_zero, hop_index=2) == (2, 2)
+
+    def test_dispatch_chain_hop_debug_counts_preserves_explicit_total(self) -> None:
+        ctx = {"_dispatch_chain_hop_total": 5, "_dispatch_chain_hop_index": 2}
+        assert agent_mod._dispatch_chain_hop_debug_counts(ctx, hop_index=2) == (2, 5)
+
+    @pytest.mark.asyncio
+    async def test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level(logging.INFO)
+        write_hop = MagicMock(
+            return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.contemplate_job",
+        )
+        monkeypatch.setattr("src.core.tracker.write_job_dispatch_hop_label", write_hop)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"title": "Role", "company": "Co"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        ctx = {
+            "candidate_data": {"artifacts": {}},
+            "batch_entities": _batch_entities("job-855"),
+            "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "dispatch_chain_graduate_on_terminal": False,
+            "_dispatch_chain_hop_index": 1,
+        }
+        out = await agent_mod.do_task(
+            "contemplate_job",
+            index="job-855",
+            ctx=ctx,
+            debug=True,
+        )
+        assert out["success"] is True
+        write_hop.assert_called_once_with(
+            "job-855", cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job",
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "do_task(contemplate_job) index 2/2 job-855 -> hop ok" in combined
+        assert "index 2/1" not in combined
