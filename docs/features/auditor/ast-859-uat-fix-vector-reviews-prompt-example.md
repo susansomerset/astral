@@ -123,3 +123,12 @@ Requires literal **`R`**, **`C`**, **`V`** delimiters between code and the three
 | §3.3 imports | No layer changes |
 
 No unresolved rule conflicts.
+
+---
+
+## Review (Radia)
+
+**Branch:** `origin/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example`  
+**Built tip:** `ba84651` — `RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]` example `Q1RAOCVK` → `Q1RACOVK` with explicit `R`/`C`/`V` delimiter wording.
+
+*Awaiting Radia review after Tests Passed.*
