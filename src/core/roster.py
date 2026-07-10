@@ -31,6 +31,9 @@ from src.external.playwright import (
     BrowserSession,
     normalize_url,
     wait_for_careers_list_readiness,
+    PlaywrightInfraError,
+    classify_playwright_failure,
+    is_playwright_infra_failure,
 )
 from src.external.google_cse import GoogleCseHit, search_google_cse
 from src.core.agent import do_task
@@ -1539,6 +1542,7 @@ async def scrape_company_homepage_content(
     company_website: str,
     *,
     browser_context=None,
+    batch_session=None,
 ) -> Dict[str, Any]:
     """Scrape homepage visible text and nav_links without agent evaluation (AST-701 fetch_website)."""
     out: Dict[str, Any] = {
@@ -1548,7 +1552,13 @@ async def scrape_company_homepage_content(
         "error": None,
     }
     try:
-        if browser_context is not None:
+        if batch_session is not None:
+            pg = await get_page(batch_session=batch_session, url=company_website)
+            try:
+                contract = await scrape_loaded_page_contract(pg, debug=False)
+            finally:
+                await close_page(pg)
+        elif browser_context is not None:
             pg = await get_page(browser_context, company_website)
             try:
                 contract = await scrape_loaded_page_contract(pg, debug=False)
@@ -1562,7 +1572,22 @@ async def scrape_company_homepage_content(
                 finally:
                     await close_page(pg)
     except Exception as scrape_err:
-        out["error"] = str(scrape_err)
+        if isinstance(scrape_err, PlaywrightInfraError):
+            fc = scrape_err.failure_class
+            msg = scrape_err.detail
+        else:
+            fc = classify_playwright_failure(scrape_err)
+            msg = str(scrape_err)
+        if is_playwright_infra_failure(fc):
+            out["error"] = f"[playwright:{fc}] {msg}"
+            logger.warning(
+                "[%s] playwright infra failure failure_class=%s %s",
+                short_name,
+                fc,
+                msg,
+            )
+        else:
+            out["error"] = str(scrape_err)
         return out
     final_url = contract.get("final_url") or company_website
     if final_url and final_url != company_website:

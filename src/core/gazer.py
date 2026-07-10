@@ -24,7 +24,7 @@ from src.core.roster import (
     _pjl_scrape_ledger_keys,
     _scrape_pjl_page,
 )
-from src.utils.config import GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG
+from src.utils.config import GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG, PLAYWRIGHT_CONFIG
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
 from src.data.database import (
     get_company,
@@ -32,7 +32,7 @@ from src.data.database import (
     raw_job_listing_is_duplicate,
     update_company_last_scan_at,
 )
-from src.external.playwright import create_browser_context, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
+from src.external.playwright import create_browser_context, create_batch_browser_session, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
 from src.utils.formatting import collapse_consecutive_blank_lines, normalize_link
 from src.utils.logging import get_logger
 
@@ -296,9 +296,9 @@ async def fetch_website_batch(
             outcome=f"batch start {company_total} company/companies",
         )
 
-    async with create_browser_context() as browser_context:
+    async with create_batch_browser_session() as batch_session:
 
-        async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
+        async def _fetch_one_inner(company: Dict[str, Any], company_index: int) -> None:
             nonlocal passed, failed
             short_name = company.get("short_name") or ""
             original_website = (company.get("company_website") or "").strip()
@@ -316,7 +316,7 @@ async def fetch_website_batch(
                 failed += 1
                 return
             scrape = await scrape_company_homepage_content(
-                short_name, original_website, browser_context=browser_context
+                short_name, original_website, batch_session=batch_session
             )
             if scrape.get("error"):
                 if debug:
@@ -358,6 +358,28 @@ async def fetch_website_batch(
                     f"company_website={original_website!r} canonical={canonical!r} "
                     f"homepage_chars={len(visible_text)} nav_links={nav_count}"
                 )
+
+        async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
+            nonlocal failed
+            short_name = company.get("short_name") or ""
+            scrape_timeout = PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]
+            try:
+                await asyncio.wait_for(
+                    _fetch_one_inner(company, company_index),
+                    timeout=scrape_timeout,
+                )
+            except asyncio.TimeoutError:
+                _log.warning(
+                    "[%s] playwright infra failure failure_class=scrape_timeout batch_id=%s",
+                    short_name,
+                    batch_id,
+                )
+                err = (
+                    f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s"
+                )
+                transition_company_state(short_name, fail_state)
+                save_company_data(short_name, {notes_key: err})
+                failed += 1
 
         sem = asyncio.Semaphore(3)
 

@@ -604,18 +604,24 @@ async def close_page(page: PageHandle) -> None:  # pragma: no cover
     await page.close()
 
 
-async def check_connectivity(timeout: int = 10000) -> bool:  # pragma: no cover
+async def check_connectivity(timeout: Optional[int] = None) -> bool:  # pragma: no cover
     """Quick DNS + HTTP check via Playwright. Returns True if the browser can reach the internet."""
+    goto_timeout = timeout if timeout is not None else PLAYWRIGHT_CONFIG["connectivity_timeout_ms"]
     try:
         async with create_browser_context() as ctx:
             page = await ctx.new_page()
             try:
-                await page.goto("https://www.google.com", wait_until="commit", timeout=timeout)
+                await page.goto(
+                    "https://www.google.com",
+                    wait_until="commit",
+                    timeout=goto_timeout,
+                )
                 return True
             finally:
                 await page.close()
     except Exception as e:
-        _log.warning("check_connectivity failed: %s", e)
+        fc = classify_playwright_failure(e)
+        _log.warning("check_connectivity failed failure_class=%s: %s", fc, e)
         return False
 
 
