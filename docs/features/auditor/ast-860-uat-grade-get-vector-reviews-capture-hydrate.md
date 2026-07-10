@@ -162,3 +162,12 @@ Susan UAT 2026-07-10 23:12 (post AST-859): **`grade_get`** batch SUCCESS now ret
 | §3.3 imports | core → candidate/data/utils only |
 
 No unresolved rule conflicts.
+
+---
+
+## Review (Radia)
+
+**Branch:** `origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate`  
+**Built tip:** `4e73031` — `agent.py` envelope normalize + criteria ∩ UUID `expected_codes` + silent-skip debug; `consult.py` batch `astral_candidate_id` wiring.
+
+*Awaiting Radia review after Tests Passed.*
