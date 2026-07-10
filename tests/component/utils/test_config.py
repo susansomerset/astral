@@ -1447,6 +1447,16 @@ class TestAst724RubricBackedTask:
         assert "agent_performance" in suffix
 
 
+class TestAst859VectorReviewsPromptExample:
+    """AST-859: prompt_suffix example must use RACOVK delimiter wire format."""
+
+    def test_prompt_suffix_example_is_racovk_not_raocvk(self) -> None:
+        suffix = cfg.RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or ""
+        assert "Q1RACOVK" in suffix
+        assert "Q1RAOCVK" not in suffix
+        assert "literal C" in suffix or "literal C," in suffix
+
+
 class TestAst725RubricOwnerRunKeys:
     """AST-725: owner task_key → run task_keys for vector_feedback filters."""
 
