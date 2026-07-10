@@ -1029,8 +1029,12 @@ async def _run_batch_consult(
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     vector_labels = _vector_labels_map(rubric_criteria)
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
-    task_ctx = {**ctx, "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels} if ctx else \
-               {"batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
+    cid = _candidate_id_from_ctx(ctx)
+    task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
+    if cid:
+        task_ctx["astral_candidate_id"] = cid
+    if ctx and ctx.get("candidate_data") is not None:
+        task_ctx["candidate_data"] = ctx["candidate_data"]
     do_index = f"{task_key}_batch_{batch_id}"
     if batch_chunk_index is not None:
         do_index = f"{do_index}_c{batch_chunk_index}"
