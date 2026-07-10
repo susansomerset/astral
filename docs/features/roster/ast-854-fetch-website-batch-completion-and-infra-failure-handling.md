@@ -181,3 +181,46 @@ No conflicts requiring plan revision.
 **Dispatcher audit:** `dispatcher._run_unified` `finally` always calls `clear_company_batch(bid)` for company batches — no code change.
 
 **Tip:** `79f366d`
+
+---
+
+## Radia review (2026-07-10)
+
+**Diff:** `origin/dev...origin/sub/AST-850/AST-854-fetch-website-batch-completion-and-infra-failure-handling` @ `0779b1a`  
+**AST-854 product commits:** `fb7be4a` config + helpers · `411e212` resilient gather + routing · `79f366d` consult `total_errors`  
+**Prerequisite on branch:** AST-853 stack + `75be04f` (Radia AST-853 fix-now: stale-handle close + launch hint in `detail`)  
+**Tests:** `92cc444` AST-854 manifest · `0779b1a` merge-tests rollup
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 delivered; dispatcher `finally` audit confirmed — `clear_company_batch(bid)` always runs for company batches (~L372–378). |
+| Infra routing (§2.6) | `[playwright:` prefix gates retry; `WEBSITE_FOUND` → `WEBSITE_FOUND_RETRY` on first infra strike; `WEBSITE_FOUND_RETRY` → `CANNOT_READ_WEBSITE` on re-fail; site errors terminal immediately. `retry_state` in `GAZER_CONFIG["fetch_website"]`. |
+| Batch resilience | `return_exceptions=True` gather; unhandled exceptions log via `_log.exception`, increment `errors`, batch continues; return dict includes `errors`. |
+| Consult wiring | `run_consult_task` `fetch_website` reads `r.get("errors", …)` for `total_errors` — preserves fallback when key absent. |
+| AST-538 | Scrape-timeout path adds `debug_index` with `-> {dest}` when `debug=True`. |
+| Layering (§2.5) | No new Playwright I/O; gazer orchestrates routing only (AST-853 external work prerequisite on branch). |
+| Tests + bible | `TestFetchWebsiteFailRouting`, updated `TestFetchWebsiteBatch` (timeout → retry), consult errors count, `TestAst854FetchWebsiteRetryConfig` align with plan AC. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **advisory** | Publish ref rollup | Diff vs `origin/dev` includes full AST-853 prerequisite + `75be04f` resolve — expected per plan merge-before-Stage-1; AST-854 product footprint is `fb7be4a` / `411e212` / `79f366d`. |
+| **advisory** | `fetch_website_batch` unhandled path | Gather exception increments `errors` only — no `transition_company_state` for that company; claim release via dispatcher `finally` re-eligible per plan/Susan confirmation. Document for **AST-850** UAT. |
+| **advisory** | `docs/test-bible/core/gazer.md` AST-701 prose | Still references `_RETRY_TASK_SEED` companion rows (removed AST-745) — pre-existing bible debt, not introduced here. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | None — ready for `resolve-child`. |
+| discuss | None. |
+| advisory | Parent **AST-850** UAT: infra fail from `WEBSITE_FOUND` → retry state; second infra fail → terminal; mid-batch unhandled exception completes siblings with `errors=1`. |
+
+**Counts:** 0 fix-now · 0 discuss · 3 advisory
+
+**Outcome:** Clean — ship.
+
+— Radia
