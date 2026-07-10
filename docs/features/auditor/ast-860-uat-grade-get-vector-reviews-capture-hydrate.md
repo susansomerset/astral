@@ -167,7 +167,35 @@ No unresolved rule conflicts.
 
 ## Review (Radia)
 
-**Branch:** `origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate`  
-**Built tip:** `4e73031` — `agent.py` envelope normalize + criteria ∩ UUID `expected_codes` + silent-skip debug; `consult.py` batch `astral_candidate_id` wiring.
+**Diff:** `origin/dev...origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate` (code tip `4df57b0`)  
+**Reviewed:** 2026-07-10
 
-*Awaiting Radia review after Tests Passed.*
+Focused UAT fix diff (7 files) — `grade_get` capture path + batch ctx wiring; this review is AST-860 only.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stage 1: `_normalize_rubric_envelope_for_capture` (top-level `vector_reviews` copy, default `status=success` when reviews present, preserves explicit `failure`); criteria ∩ UUID `expected_codes` with drift debug; silent-skip debug when `agent_performance` missing after normalize. Stage 2: `_run_batch_consult` injects `astral_candidate_id` + `candidate_data`. |
+| Root cause | Closes Susan's `grade_get` gaps: envelope shape before snapshot, missing status on encoded responses, criteria/DB drift visibility, batch ctx candidate wiring. |
+| §2.7 consult | Normalize runs after strict envelope check; capture still lenient; consult batch choke-point only. |
+| §1.5.1 debug | New skip lines gated on `debug=True`; `empty_expected_codes` now logs `criteria_codes` + `uuid_codes`. |
+| expected_codes | Restores AST-724 Resolution intersection — aligns prompt rubric with DB-backed UUID map; avoids uuid-only drift when criteria ≠ DB. |
+| Tests | Normalize unit tests (status default, top-level copy, failure preserved); `grade_get` RACOVK persist; empty-expected drift debug; `_run_batch_consult` ctx wiring (manifest green). |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| **discuss** | `_normalize_rubric_envelope_for_capture` | Always materializes `agent_performance={}` when absent — rubric-backed tasks without reviews now always get `envelope_snapshot` (capture no-ops on empty perf). Low risk; slightly broader snapshot scope than pre-860. |
+| advisory | `_run_batch_consult` | `astral_candidate_id` only injected when already on dispatcher `ctx` via `_candidate_id_from_ctx` — does not derive from `candidate_data` alone; acceptable per plan defensive wiring. |
+| advisory | Strict parse | Model must still return full criteria∩UUID code set — partial lists remain FEEDBACK-only per AST-724; Susan UAT expects clean 11-vector match when DB synced. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | None required — approve for User Testing. |
+| UAT | Re-run Susan `grade_get` batch with debug: expect capture start + pipeline trace (or explicit skip with criteria/uuid drift); Admin Vector Feedback rows when codes match. |
+
+**Verdict:** Clean — approve for User Testing.
