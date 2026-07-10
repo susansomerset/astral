@@ -188,3 +188,15 @@ No conflicts requiring plan revision.
 - Do **not** change **`fail_state`** / **`pass_state`**, dispatcher claim logic, or **`fetch_job_pages_batch`** in this ticket.
 - Do **not** add or edit files under **`tests/`** — Betty owns manifest after **Code Complete**.
 - If production log signatures do not match classifier substrings during build, **stop** and comment on **AST-850** with proposed substring additions — do not guess new failure classes silently.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-850/AST-853-production-playwright-browser-stability`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `842e922` | `PLAYWRIGHT_CONFIG` + failure taxonomy |
+| 2 | `7eea584` | Launch retries, `BatchBrowserSession`, `get_page` recovery |
+| 3 | `aa8cfad` | `fetch_website_batch` wiring, scrape timeout, labeled infra logs |
