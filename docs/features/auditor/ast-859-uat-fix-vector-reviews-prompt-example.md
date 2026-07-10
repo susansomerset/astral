@@ -128,7 +128,33 @@ No unresolved rule conflicts.
 
 ## Review (Radia)
 
-**Branch:** `origin/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example`  
-**Built tip:** `ba84651` — `RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]` example `Q1RAOCVK` → `Q1RACOVK` with explicit `R`/`C`/`V` delimiter wording.
+**Diff:** `origin/dev...origin/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example` (code tip `6a83783`)  
+**Reviewed:** 2026-07-10
 
-*Awaiting Radia review after Tests Passed.*
+Minimal UAT fix diff (6 files) — config string + regression tests only; this review is AST-859 only.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Single-stage config fix: `Q1RAOCVK` → `Q1RACOVK`; explicit literal `R`/`C`/`V` delimiter wording; no regex or capture changes. |
+| Root cause | Bad example taught `RAOCVK` tails; Susan staging strings (`CLRAOCVK`, …) fail `parse_vector_review_string` — fix aligns prompt with existing regex. |
+| §2.1 config | Single source in `RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`; consumed by `agent.py` rubric-backed prompt append — no duplicate prompt text. |
+| Tests | `TestAst859VectorReviewsPromptExample` guards suffix content; `TestAst859CompactStringParseExamples` locks Q1/CLR parse matrix from plan manual verify. |
+| Scope | No lenient parse for malformed tails — correct per plan (avoids masking future drift). |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | Historical plans | `ast-724-runtime-vector-feedback-capture.md` still cites `Q1RAOCVK` — plan explicitly deferred; optional doc hygiene later, not blocking. |
+| advisory | Staging data | Existing FEEDBACK blocks with `RAOCVK`-shape strings remain unparseable until re-dispatch with corrected prompt — expected per Self-Assessment. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | None required — approve for User Testing. |
+| UAT | Re-run `evaluate_jd` (or rubric-backed task) with debug: model emits `RACOVK`-shape strings; capture/hydrate succeeds when rubric count matches. |
+
+**Verdict:** Clean — approve for User Testing.
