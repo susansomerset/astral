@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
@@ -138,12 +139,15 @@ class TestValidateTitleBatch:
         assert out["failed"] == 1
 
 
-def _mock_browser_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    @asynccontextmanager
-    async def _browser():
-        yield MagicMock()
+def _mock_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    session = MagicMock()
 
-    monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+    @asynccontextmanager
+    async def _batch():
+        yield session
+
+    monkeypatch.setattr(gazer_mod, "create_batch_browser_session", _batch)
+    return session
 
 
 class TestFetchWebsiteBatch:
@@ -158,21 +162,23 @@ class TestFetchWebsiteBatch:
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
-        _mock_browser_context(monkeypatch)
+        batch_session = _mock_batch_browser_session(monkeypatch)
         transition = MagicMock()
         save = MagicMock()
+        scrape = AsyncMock(
+            return_value={"company_website": "https://acme.com", "visible_text": "", "error": "bad scrape"},
+        )
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
         monkeypatch.setattr(gazer_mod, "save_company_data", save)
-        monkeypatch.setattr(
-            gazer_mod,
-            "scrape_company_homepage_content",
-            AsyncMock(return_value={"company_website": "https://acme.com", "visible_text": "", "error": "bad scrape"}),
-        )
+        monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", scrape)
         companies = [
             {"short_name": "co-empty", "company_website": ""},
             {"short_name": "co-bad", "company_website": "https://acme.com"},
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        scrape.assert_awaited_once_with(
+            "co-bad", "https://acme.com", batch_session=batch_session,
+        )
         assert out == {"passed": 0, "failed": 2, "total": 2}
         assert transition.call_count == 2
         assert save.call_count == 2
@@ -182,7 +188,7 @@ class TestFetchWebsiteBatch:
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
-        _mock_browser_context(monkeypatch)
+        _mock_batch_browser_session(monkeypatch)
         transition = MagicMock()
         save = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
@@ -213,7 +219,7 @@ class TestFetchWebsiteBatch:
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
-        _mock_browser_context(monkeypatch)
+        _mock_batch_browser_session(monkeypatch)
         save = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
         monkeypatch.setattr(gazer_mod, "save_company_data", save)
@@ -236,6 +242,30 @@ class TestFetchWebsiteBatch:
             "acme",
             {"homepage_text": "intro\n\nbody", "nav_links": "1. /about"},
         )
+
+    @pytest.mark.asyncio
+    async def test_scrape_timeout_fails_with_labeled_infra_error(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+
+        async def _slow_scrape(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
+            await asyncio.sleep(5)
+            return {"company_website": "https://acme.com", "visible_text": "x", "error": None}
+
+        monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", _slow_scrape)
+        monkeypatch.setitem(gazer_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
+        companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once()
+        err = save.call_args[0][1][gazer_mod.ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]]
+        assert err.startswith("[playwright:scrape_timeout]")
 
 
 class TestFetchJobPagesBatch:

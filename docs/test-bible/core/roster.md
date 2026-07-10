@@ -429,6 +429,18 @@ Gazer passthrough: **`docs/test-bible/core/gazer.md`** (**AST-715**).
 
 ---
 
+### AST-853 · AST-850
+
+**Scope:** **`scrape_company_homepage_content`** accepts optional **`batch_session`**; infra failures prefix **`[playwright:<failure_class>]`** and emit WARNING with **`failure_class=`** (site/navigation errors unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Infra error prefix via **`batch_session`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
+
+Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+
+---
+
 ### AST-702 · AST-700
 
 **AST-702:** **`prefilter_company_batch`** from **`HOMEPAGE_READY`** rows; readiness gate on **`homepage_text`**; **`_apply_prefilter_decoded_company_outcome`** shared helper; **`run_company_task`** no longer runs monolithic **`prefilter_company`** on **`WEBSITE_FOUND`**.

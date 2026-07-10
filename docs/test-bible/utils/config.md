@@ -593,6 +593,18 @@ Tracker batch API manifest: **`docs/test-bible/core/tracker.md`** (**AST-828**).
 
 ---
 
+### AST-853 · AST-850
+
+**`PLAYWRIGHT_CONFIG`:** launch timeouts/retries, page goto timeout, connectivity timeout, context recovery cap, per-company scrape wall clock, Firefox sandbox prefs (AST-853).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config literals | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` |
+
+External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.

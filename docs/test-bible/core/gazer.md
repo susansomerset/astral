@@ -177,6 +177,29 @@ Consult inline validate: **`docs/test-bible/core/consult.md`** (**AST-797**).
 
 ---
 
+### AST-853 · AST-850
+
+**Scope:** **`fetch_website_batch`** uses **`create_batch_browser_session()`** (recoverable shared session) instead of **`create_browser_context()`**; per-company **`asyncio.wait_for`** wall clock (**`PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]`**); passes **`batch_session`** into **`scrape_company_homepage_content`**. State transitions unchanged (**AST-854** owns retry routing).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch session wiring + scrape errors / pass | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch` |
+| Scrape timeout labeled infra error | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_scrape_timeout_fails_with_labeled_infra_error` |
+
+External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwright.md`** (**AST-853**). Roster infra error prefix: **`docs/test-bible/core/roster.md`** (**AST-853**).
+
+**AST-853** narrowed run (gazer lines):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
