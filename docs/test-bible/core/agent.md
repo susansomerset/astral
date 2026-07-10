@@ -270,3 +270,27 @@ Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-855 · AST-852
+
+**Scope:** Dispatch-chain hop success debug aligns Style D index/total when `_dispatch_chain_hop_total` is unset on ctx — fixes multi-hop BUILD_ARTIFACTS crash (`index 2/1`) on `_write_dispatch_hop_label_on_success`. Shared `_dispatch_chain_hop_debug_counts` helper with `_resume_hop_debug_index`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop debug index/total helper | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_dispatch_chain_hop_debug_counts_expands_unset_total`, `::test_dispatch_chain_hop_debug_counts_preserves_explicit_total` |
+| Second-hop success path (`contemplate_job`) | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop` |
+
+**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`** (full class).
+
+**AST-855** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst855DispatchChainHopDebug \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
