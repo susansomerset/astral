@@ -153,3 +153,19 @@ Minimal UAT fix diff (4 files) — single capture-hook branch; this review is AS
 | UAT | Re-run Susan `grade_like` / `grade_get` batch: Performance Monitor → agent data → FEEDBACK tab shows hydrated compact reviews; `prompt_blocks` includes FEEDBACK ref on `agent_response`. |
 
 **Verdict:** Clean — approve for User Testing.
+
+---
+
+## Resolution
+
+**Resolved:** 2026-07-11  
+**Review:** Radia clean — no fix-now items.
+
+| Item | Outcome |
+|------|---------|
+| Product | No additional changes — shipped at `0caf76b` as reviewed |
+| Tests | Betty manifest green (3/3 on first pass) @ `265b552` |
+| Docs | Radia review section at `c81cb55` |
+
+**Publish ref:** `origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope` @ `c81cb55`  
+**§9a:** Clean merge into `origin/dev` and `origin/ftr/AST-378-runtime-rubric-validation`.
