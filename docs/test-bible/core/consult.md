@@ -541,6 +541,31 @@ Primary manifest + narrowed run: **`docs/test-bible/core/agent.md`** AST-849. **
 
 ---
 
+### AST-863 · AST-752 (UAT bug)
+
+**UAT bug:** **`contemplate_job`** dispatch row with **`trigger_state=BUILD_ARTIFACTS.anticipate_scan`** claimed successfully but **`run_consult_task`** hit unhandled branch — **`is_dispatch_chain_trigger`** did not recognize hop-label row triggers. Fix routes hop-label **`input_state`** through **`_run_dispatch_chain_job_batch`**; **`dispatch_trigger_state`** on ctx is registry **`BUILD_ARTIFACTS`**, not the hop label.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Consult chain branch | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch` |
+| Registry ctx on batch | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger` |
+
+Config helpers manifest: **`docs/test-bible/utils/config.md`** (**AST-863**).
+
+**Regression (required):** **AST-849** **`TestAst534DispatchTaskKeyHonesty::test_mid_chain_hop_label_routes_dispatch_chain_batch`** (flat trigger + hop job state).
+
+**AST-863** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  -q
+```
+
+---
+
 ### AST-817 · AST-815
 
 **AST-817 (child):** Remove stale **`vet_inflow_discovery`** early-return in **`run_consult_task`** company branch that mis-routed to **`run_inflow_discovery_batch`**. Company vet dispatch falls through to **`run_company_task`** → **`vet_inflow_discovery_company`** (**AST-776**). Surgical **`consult.py`** deletion only — roster/config unchanged.

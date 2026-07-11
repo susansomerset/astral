@@ -458,6 +458,32 @@ class TestAst371ResumeArtifactDispatch:
         assert task_ctx["dispatch_chain_graduate_on_terminal"] is True
 
     @pytest.mark.asyncio
+    async def test_dispatch_chain_batch_hop_label_input_sets_registry_trigger(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-863: row trigger is hop label; ctx dispatch_trigger_state is registry key."""
+        do_task = AsyncMock(return_value={"success": True})
+        monkeypatch.setattr("src.core.consult.do_task", do_task)
+        hop_label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": hop_label},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        out = await consult_mod._run_dispatch_chain_job_batch(
+            "batch-863",
+            [{"astral_job_id": "job-863"}],
+            {},
+            False,
+            "contemplate_job",
+            hop_label,
+        )
+        assert out["total_passed"] == 1
+        task_ctx = do_task.await_args.kwargs["ctx"]
+        assert task_ctx["dispatch_trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
+
+    @pytest.mark.asyncio
     async def test_dispatch_chain_batch_failure_releases_claim(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -630,6 +656,29 @@ class TestAst534DispatchTaskKeyHonesty:
         assert out["total_passed"] == 1
         entry.assert_awaited_once()
         assert entry.await_args.args[4] == "contemplate_job"
+
+    @pytest.mark.asyncio
+    async def test_contemplate_job_hop_label_trigger_routes_chain_batch(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-863: input_state is mid-chain hop label, not bare BUILD_ARTIFACTS."""
+        entry = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0},
+        )
+        monkeypatch.setattr(consult_mod, "_run_dispatch_chain_job_batch", entry)
+        hop_label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        out = await consult_mod.run_consult_task(
+            "job",
+            hop_label,
+            [{"astral_job_id": "job-863", "state": hop_label}],
+            "batch-863",
+            {},
+            dispatch_task_key="contemplate_job",
+        )
+        assert out["total_passed"] == 1
+        entry.assert_awaited_once()
+        assert entry.await_args.args[4] == "contemplate_job"
+        assert entry.await_args.args[5] == hop_label
 
     @pytest.mark.asyncio
     async def test_compound_trigger_state_not_chain_routed_returns_zero(

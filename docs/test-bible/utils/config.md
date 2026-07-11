@@ -614,6 +614,29 @@ Tracker batch API manifest: **`docs/test-bible/core/tracker.md`** (**AST-828**).
 
 ---
 
+### AST-863 · AST-752 (UAT bug)
+
+**Mid-chain dispatch row `trigger_state`:** hop holding labels (e.g. **`BUILD_ARTIFACTS.anticipate_scan`**) normalize via **`dispatch_chain_registry_trigger`** → bare registry key; **`is_dispatch_chain_trigger`** true for hop labels; **`dispatch_chain_claim_states_for_row`** returns **`[ts]`** only for mid-chain rows (entry rows keep AST-849 parent expansion).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry trigger + claim states | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger` |
+
+Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
+
+**Regression (required):** **AST-849** **`TestAst849DispatchChainClaimStates`**.
+
+**AST-863** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  -q
+```
+
+---
+
 ### AST-853 · AST-850
 
 **`PLAYWRIGHT_CONFIG`:** launch timeouts/retries, page goto timeout, connectivity timeout, context recovery cap, per-company scrape wall clock, Firefox sandbox prefs (AST-853).

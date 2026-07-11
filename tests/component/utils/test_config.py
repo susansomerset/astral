@@ -766,6 +766,40 @@ class TestAst849DispatchChainClaimStates:
         )
 
 
+class TestAst863MidChainHopLabelChainTrigger:
+    """AST-863: mid-chain dispatch row trigger_state is a hop holding label."""
+
+    def test_is_dispatch_chain_trigger_accepts_hop_label(self) -> None:
+        hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.is_dispatch_chain_trigger(hop) is True
+
+    def test_dispatch_chain_registry_trigger_maps_hop_to_bare(self) -> None:
+        hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.dispatch_chain_registry_trigger(hop) == cfg.BUILD_ARTIFACTS_BASE_STATE
+        assert (
+            cfg.dispatch_chain_registry_trigger(cfg.BUILD_ARTIFACTS_BASE_STATE)
+            == cfg.BUILD_ARTIFACTS_BASE_STATE
+        )
+
+    def test_mid_chain_row_claim_states_only_hop_label(self) -> None:
+        hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        states = cfg.dispatch_chain_claim_states_for_row(hop, "contemplate_job")
+        assert states == [hop]
+
+    def test_entry_row_claim_states_still_expand_parents(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        states = cfg.dispatch_chain_claim_states_for_row(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job",
+        )
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
+        assert cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan") in states
+
+
 class TestAst828JobBatchClaimStateValidation:
     """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
 
