@@ -1392,6 +1392,17 @@ def _capture_rubric_vector_feedback(
             dbg.debug_detail(f"insert_vector_feedback_rows failed: {exc!r}")
         logger.debug("insert_vector_feedback_rows failed", exc_info=True)
         return
+    try:
+        fb_id = store_feedback_block(
+            entity_type,
+            task_key,
+            batch_id,
+            format_vector_reviews_raw(perf_dict),
+            index=index,
+        )
+        prompt_blocks.append({"type": "FEEDBACK", "id": fb_id})
+    except Exception:
+        logger.debug("store_feedback_block failed", exc_info=True)
     if dbg:
         total = len(parsed_rows)
         for idx, row in enumerate(parsed_rows, start=1):
