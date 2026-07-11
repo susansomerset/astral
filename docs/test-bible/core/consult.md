@@ -161,6 +161,19 @@ Gazer batch manifest: **`docs/test-bible/core/gazer.md`** (**AST-701**).
 
 ---
 
+### AST-854 · AST-850
+
+**AST-854:** **`run_consult_task`** **`fetch_website`** branch reads **`errors`** from **`fetch_website_batch`** return for **`total_errors`** (unhandled gather exceptions).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`total_errors`** from batch **`errors`** | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_errors_count` |
+| Baseline routing shape | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch` |
+
+Gazer fail-routing manifest: **`docs/test-bible/core/gazer.md`** (**AST-854**).
+
+---
+
 ### AST-702 · AST-700
 
 **AST-702:** **`dispatch_task_key=prefilter`** routes to **`prefilter_company_batch`** with **`skipped`** folded into **`total_errors`**.
@@ -262,6 +275,26 @@ Entity ref upsert + modal story: **`docs/test-bible/data/database/agent_response
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-860 · AST-378 (UAT fix)
+
+**`_run_batch_consult`** injects **`astral_candidate_id`** (and **`candidate_data`** when present) into **`do_task`** **`task_ctx`** so rubric-backed batch capture receives candidate wiring.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `task_ctx` candidate wiring | `src/core/consult.py` | `TestAst860RunBatchConsultCandidateCtx::test_passes_astral_candidate_id_and_candidate_data_to_do_task` |
+
+**AST-860** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst860RunBatchConsultCandidateCtx \
+  -q
+```
+
+Capture normalize + expected_codes: **`docs/test-bible/core/agent.md`**.
 
 ### AST-723 · AST-378
 
@@ -441,6 +474,95 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-832 · AST-788 (UAT bug)
+
+**AST-832 (UAT bug):** Scheduler **Run** for **anticipate_scan** (`run_next_chain=True`, flat **`BUILD_ARTIFACTS`** trigger) aborted at legacy compound **`BUILD_ARTIFACTS.finalize_job_resume`** with `dispatch row mismatch` because **`_resolve_chain_start_task_key`** only accepted hop-specific **`dispatch_task_key`**. Chain-entry rows must resume from the job's legacy compound hop.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Chain-entry dispatch + legacy compound → compound hop start key | `src/core/consult.py` | **`TestAst803ChainHelpers::test_chain_entry_resolves_legacy_finalize_job_resume`** |
+| 2 | Named candidate entry discovery (`anticipate_scan`) | same | **`::test_chain_entry_resolves_with_candidate_entry_discovery`** |
+| 3 | **`_chain_dispatch_row_ok`** accepts chain-entry at legacy hop | same | **`::test_chain_entry_dispatch_row_ok_for_legacy_finalize_hop`** |
+| 4 | **`_run_build_artifacts_chain_batch`** runs **`do_chain_for_job`** (no skip) | same | **`TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch`** |
+
+**Regression (required):** hop-specific legacy row still resolves (**`TestAst803ChainHelpers::test_legacy_compound_job_state_resolves_start_key`**); **AST-803** chain graduation + dispatch honesty suites unchanged.
+
+**AST-832** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + regression helper — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-844 · AST-788 (UAT bug)
+
+**AST-844 (UAT bug):** Terminal hop **`propose_application_responses`** dispatch on flat **`BUILD_ARTIFACTS`** was rejected by **`_resolve_chain_start_task_key`** (resume-hop-only set) → chain skipped → no **`CANDIDATE_REVIEW`** graduation. **`build_artifacts_chain_task_keys()`** expands hop membership; consult wrapper fixes superseded by **AST-848/849** (**`do_task`** graduation + **`dispatch_chain_row_matches_job`**).
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Full chain hop registry (excludes **`draft_cover_letter`**) | `src/utils/config.py` | **`TestAst844BuildArtifactsChainTaskKeys::test_includes_terminal_and_cover_hops_excludes_draft_cover_letter`** |
+| 2–5 | Terminal/mid-chain consult wrapper (historical) | — | **Superseded —** **`TestAst849DispatchChainClaimStates::test_terminal_hop_row_matches_flat_build_artifacts`** + **AST-849** narrowed run |
+
+**Regression (required):** item 1 + **AST-849** manifest (**`docs/test-bible/core/agent.md`**).
+
+**AST-844** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates::test_terminal_hop_row_matches_flat_build_artifacts \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–5 + regression graduation cases — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-849 · AST-847
+
+**AST-849:** Retires **`do_chain_for_job`**, **`_run_build_artifacts_chain_batch`**, and all **`_chain_*`** consult helpers. **`_run_dispatch_chain_job_batch`** is the sole BUILD_ARTIFACTS chain entry — one **`do_task(dispatch_task_key)`** per job with **`dispatch_chain_row_matches_job`** gate; failure/missing candidate releases claim. **`draft_cover_letter` @ `CANDIDATE_REVIEW`** no longer routes (cover hops run via **`run_next`** graph @ flat **`BUILD_ARTIFACTS`** when configured).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch chain batch → **`do_task`** | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch` |
+| Dispatch-key honesty + mid-chain hop label | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty` |
+| CANDIDATE_REVIEW cover unhandled | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTask::test_routes_candidate_review_cover_letter_unhandled_returns_zero` |
+
+Primary manifest + narrowed run: **`docs/test-bible/core/agent.md`** AST-849. **`do_task`** chain behavior: **AST-848** block in same file.
+
+---
+
+### AST-863 · AST-752 (UAT bug)
+
+**UAT bug:** **`contemplate_job`** dispatch row with **`trigger_state=BUILD_ARTIFACTS.anticipate_scan`** claimed successfully but **`run_consult_task`** hit unhandled branch — **`is_dispatch_chain_trigger`** did not recognize hop-label row triggers. Fix routes hop-label **`input_state`** through **`_run_dispatch_chain_job_batch`**; **`dispatch_trigger_state`** on ctx is registry **`BUILD_ARTIFACTS`**, not the hop label.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Consult chain branch | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch` |
+| Registry ctx on batch | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger` |
+
+Config helpers manifest: **`docs/test-bible/utils/config.md`** (**AST-863**).
+
+**Regression (required):** **AST-849** **`TestAst534DispatchTaskKeyHonesty::test_mid_chain_hop_label_routes_dispatch_chain_batch`** (flat trigger + hop job state).
+
+**AST-863** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  -q
+```
 
 ---
 

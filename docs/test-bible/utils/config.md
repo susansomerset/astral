@@ -464,6 +464,27 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-859 · AST-378 (UAT fix)
+
+**`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** — fix contradictory **`Q1RAOCVK`** example to **`Q1RACOVK`** so model output matches **`parse_vector_review_string`** delimiter regex.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt suffix example | `src/utils/config.py` | `TestAst859VectorReviewsPromptExample::test_prompt_suffix_example_is_racovk_not_raocvk` |
+
+Parse regression (Susan staging **`CLRAOCVK`** vs correct **`CLRRACOVK`**): **`docs/test-bible/utils/rubric_feedback.md`**.
+
+**AST-859** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst859VectorReviewsPromptExample \
+  tests/component/utils/test_rubric_feedback.py::TestAst859CompactStringParseExamples \
+  -q
+```
+
 ### AST-725 · AST-378
 
 **`task_keys_for_rubric_owner`** and **`rubric_owner_task_key_choices`** for Admin Vector Feedback task filter and data-layer owner expansion.
@@ -557,6 +578,28 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-848 · AST-847
+
+**Dispatch hop label helpers** — **`dispatch_hop_label`**, **`parse_dispatch_hop_label`**, **`DISPATCH_CHAIN_TERMINAL_GRADUATION`**, **`dispatch_chain_graduation_target`**; **`is_valid_job_batch_claim_state`** accepts runtime **`{trigger}.{hop}`** labels when trigger is in graduation map.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Label helpers + claim predicate | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst848DispatchHopLabels` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
+
+---
+
+### AST-849 · AST-847
+
+**`dispatch_chain_claim_states_for_row`**, **`dispatch_chain_row_matches_job`**, **`is_dispatch_chain_trigger`**, **`_agent_task_parents_with_run_next`** — claim states derived from live **`agent_task.run_next`** graph (not **`resume_artifact_hop_task_keys()`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Claim states + row match | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
+
 ---
 
 ### AST-828 · AST-752 (UAT bug)
@@ -568,6 +611,53 @@ cd src/ui/frontend && npm run test:component -- \
 | Helper true/false cases | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
 
 Tracker batch API manifest: **`docs/test-bible/core/tracker.md`** (**AST-828**).
+
+---
+
+### AST-863 · AST-752 (UAT bug)
+
+**Mid-chain dispatch row `trigger_state`:** hop holding labels (e.g. **`BUILD_ARTIFACTS.anticipate_scan`**) normalize via **`dispatch_chain_registry_trigger`** → bare registry key; **`is_dispatch_chain_trigger`** true for hop labels; **`dispatch_chain_claim_states_for_row`** returns **`[ts]`** only for mid-chain rows (entry rows keep AST-849 parent expansion).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry trigger + claim states | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger` |
+
+Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
+
+**Regression (required):** **AST-849** **`TestAst849DispatchChainClaimStates`**.
+
+**AST-863** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  -q
+```
+
+---
+
+### AST-853 · AST-850
+
+**`PLAYWRIGHT_CONFIG`:** launch timeouts/retries, page goto timeout, connectivity timeout, context recovery cap, per-company scrape wall clock, Firefox sandbox prefs (AST-853).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config literals | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` |
+
+External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+
+---
+
+### AST-854 · AST-850
+
+**`GAZER_CONFIG["fetch_website"]["retry_state"]`** — **`WEBSITE_FOUND_RETRY`** for infra fail routing (**AST-854**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`retry_state`** on **`fetch_website`** gazer entry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig`, `::TestAst854FetchWebsiteRetryConfig` |
+
+Gazer routing manifest: **`docs/test-bible/core/gazer.md`** (**AST-854**).
 
 ---
 

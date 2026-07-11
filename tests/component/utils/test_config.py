@@ -676,6 +676,130 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
+class TestAst844BuildArtifactsChainTaskKeys:
+    """AST-844: full BUILD_ARTIFACTS CHAIN hop set for consult resolution."""
+
+    def test_includes_terminal_and_cover_hops_excludes_draft_cover_letter(self) -> None:
+        keys = cfg.build_artifacts_chain_task_keys()
+        assert "propose_application_responses" in keys
+        assert "check_cover_letter" in keys
+        assert "finalize_cover_letter" in keys
+        assert "draft_cover_letter" not in keys
+        assert keys == cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS - frozenset({"draft_cover_letter"})
+
+
+class TestAst848DispatchHopLabels:
+    """AST-848: runtime dispatch hop labels + terminal graduation map."""
+
+    def test_dispatch_hop_label_builds_trigger_dot_hop(self) -> None:
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert label == f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"
+
+    def test_parse_dispatch_hop_label_roundtrip(self) -> None:
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job")
+        assert cfg.parse_dispatch_hop_label(label) == (cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job")
+
+    def test_parse_rejects_unknown_hop_task(self) -> None:
+        assert cfg.parse_dispatch_hop_label("BUILD_ARTIFACTS.not_a_task") is None
+
+    def test_dispatch_chain_graduation_target(self) -> None:
+        assert cfg.dispatch_chain_graduation_target(cfg.BUILD_ARTIFACTS_BASE_STATE) == "CANDIDATE_REVIEW"
+        assert cfg.dispatch_chain_graduation_target("UNKNOWN") is None
+
+    def test_runtime_hop_label_valid_for_batch_claim(self) -> None:
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.is_valid_job_batch_claim_state(label) is True
+
+
+class TestAst849DispatchChainClaimStates:
+    """AST-849: generic dispatch-chain claim states and row matching."""
+
+    def test_is_dispatch_chain_trigger(self) -> None:
+        assert cfg.is_dispatch_chain_trigger(cfg.BUILD_ARTIFACTS_BASE_STATE) is True
+        assert cfg.is_dispatch_chain_trigger("RECOMMENDED") is False
+
+    def test_claim_states_include_bare_trigger_and_parent_hop_labels(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        states = cfg.dispatch_chain_claim_states_for_row(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job",
+        )
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
+        assert cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan") in states
+
+    def test_row_matches_bare_trigger(self) -> None:
+        assert cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "anticipate_scan",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+
+    def test_row_matches_parent_hop_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job", label,
+        )
+
+    def test_row_rejects_wrong_hop_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        wrong = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "draft_job_resume")
+        assert not cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job", wrong,
+        )
+
+    def test_terminal_hop_row_matches_flat_build_artifacts(self) -> None:
+        assert cfg.dispatch_chain_row_matches_job(
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "propose_application_responses",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+
+
+class TestAst863MidChainHopLabelChainTrigger:
+    """AST-863: mid-chain dispatch row trigger_state is a hop holding label."""
+
+    def test_is_dispatch_chain_trigger_accepts_hop_label(self) -> None:
+        hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.is_dispatch_chain_trigger(hop) is True
+
+    def test_dispatch_chain_registry_trigger_maps_hop_to_bare(self) -> None:
+        hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        assert cfg.dispatch_chain_registry_trigger(hop) == cfg.BUILD_ARTIFACTS_BASE_STATE
+        assert (
+            cfg.dispatch_chain_registry_trigger(cfg.BUILD_ARTIFACTS_BASE_STATE)
+            == cfg.BUILD_ARTIFACTS_BASE_STATE
+        )
+
+    def test_mid_chain_row_claim_states_only_hop_label(self) -> None:
+        hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        states = cfg.dispatch_chain_claim_states_for_row(hop, "contemplate_job")
+        assert states == [hop]
+
+    def test_entry_row_claim_states_still_expand_parents(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"} if tk == "anticipate_scan" else {},
+        )
+        states = cfg.dispatch_chain_claim_states_for_row(
+            cfg.BUILD_ARTIFACTS_BASE_STATE, "contemplate_job",
+        )
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
+        assert cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan") in states
+
+
 class TestAst828JobBatchClaimStateValidation:
     """AST-828: legacy BUILD_ARTIFACTS.<hop> holding states claimable via get_new_job_batch."""
 
@@ -997,6 +1121,7 @@ class TestAst701FetchWebsiteConfig:
         entry = cfg.GAZER_CONFIG["fetch_website"]
         assert entry["pass_state"] == "HOMEPAGE_READY"
         assert entry["fail_state"] == "CANNOT_READ_WEBSITE"
+        assert entry["retry_state"] == "WEBSITE_FOUND_RETRY"
         assert entry["fallback_batch_size"] == 10
 
     def test_dispatch_registry_and_homepage_text_key(self) -> None:
@@ -1008,6 +1133,23 @@ class TestAst701FetchWebsiteConfig:
         defaults = cfg.dispatch_task_admin_defaults("fetch_website")
         assert defaults["trigger_state"] == "WEBSITE_FOUND"
         assert defaults["entity_type"] == "company"
+
+
+class TestAst854FetchWebsiteRetryConfig:
+    """AST-854: GAZER_CONFIG fetch_website retry_state for infra fail routing."""
+
+    def test_retry_state_in_gazer_fetch_website(self) -> None:
+        assert cfg.GAZER_CONFIG["fetch_website"]["retry_state"] == "WEBSITE_FOUND_RETRY"
+
+
+class TestAst853PlaywrightConfig:
+    """AST-853: PLAYWRIGHT_CONFIG launch/recovery/scrape limits."""
+
+    def test_playwright_config_keys(self) -> None:
+        assert cfg.PLAYWRIGHT_CONFIG["launch_max_attempts"] == 3
+        assert cfg.PLAYWRIGHT_CONFIG["context_recovery_max_attempts"] == 2
+        assert cfg.PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"] == 120
+        assert cfg.PLAYWRIGHT_CONFIG["firefox_user_prefs"]["security.sandbox.content.level"] == 0
 
 
 class TestAst507EncodedPrefilterConfig:
@@ -1337,6 +1479,16 @@ class TestAst724RubricBackedTask:
         suffix = cfg.RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or ""
         assert "vector_reviews" in suffix
         assert "agent_performance" in suffix
+
+
+class TestAst859VectorReviewsPromptExample:
+    """AST-859: prompt_suffix example must use RACOVK delimiter wire format."""
+
+    def test_prompt_suffix_example_is_racovk_not_raocvk(self) -> None:
+        suffix = cfg.RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or ""
+        assert "Q1RACOVK" in suffix
+        assert "Q1RAOCVK" not in suffix
+        assert "literal C" in suffix or "literal C," in suffix
 
 
 class TestAst725RubricOwnerRunKeys:
