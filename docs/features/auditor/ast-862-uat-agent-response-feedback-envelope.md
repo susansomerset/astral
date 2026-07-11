@@ -123,7 +123,33 @@ No unresolved rule conflicts.
 
 ## Review (Radia)
 
-**Branch:** `origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope`  
-**Built tip:** `0caf76b` — clean-parse path appends FEEDBACK block to `prompt_blocks` after `insert_vector_feedback_rows`.
+**Diff:** `origin/dev...origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope` (code tip `265b552`)  
+**Reviewed:** 2026-07-11 (FIX-UAT / AST-378)
 
-*Awaiting Radia review after Tests Passed.*
+Minimal UAT fix diff (4 files) — single capture-hook branch; this review is AST-862 only.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Clean-parse success path mirrors unparseable branch: `store_feedback_block` + `prompt_blocks` FEEDBACK ref after successful `insert_vector_feedback_rows`; RESPONSE / consult decode unchanged. |
+| Root cause | Closes Susan gap: `vector_feedback` rows persisted but no FEEDBACK ref in `agent_ref.prompt_blocks` → FEEDBACK tab / Performance Monitor had nothing to hydrate. |
+| §2.7 consult | Additive inspection only; lenient contract preserved; encoded-batch RESPONSE still stores decoded `jobs[]`. |
+| Failure handling | `insert_vector_feedback_rows` failure still returns before FEEDBACK store; FEEDBACK store failure swallowed without undoing rows (tested). |
+| Tests | `TestAst862CleanParseFeedbackBlock` asserts FEEDBACK JSON matches `vector_reviews`; AST-724 clean-parse test updated; store_feedback failure isolation test. |
+
+### Issues
+
+| Sev | Location | Finding |
+|-----|----------|---------|
+| advisory | `_capture_rubric_vector_feedback` | If `insert_vector_feedback_rows` succeeds but `store_feedback_block` fails, Admin has rows but agent_data lacks FEEDBACK — same swallow pattern as unparseable path; acceptable lenient tradeoff. |
+| advisory | Historical runs | Pre-862 batches with clean parse have `vector_feedback` rows but no FEEDBACK block until re-dispatch — expected per out-of-scope backfill. |
+
+### Recommended actions
+
+| Priority | Action |
+|----------|--------|
+| **resolve** | None required — approve for User Testing. |
+| UAT | Re-run Susan `grade_like` / `grade_get` batch: Performance Monitor → agent data → FEEDBACK tab shows hydrated compact reviews; `prompt_blocks` includes FEEDBACK ref on `agent_response`. |
+
+**Verdict:** Clean — approve for User Testing.
