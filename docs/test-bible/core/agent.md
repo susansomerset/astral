@@ -105,13 +105,13 @@ Roster passthrough manifest: **`docs/test-bible/core/roster.md`** (**AST-698**).
 
 ### AST-724 · AST-378
 
-**`do_task`** SUCCESS-path lenient capture of **`vector_reviews`** on rubric-backed tasks: clean parse → **`vector_feedback`** rows; unparseable → **`FEEDBACK`** agent_data block only. Parse failures never fail the run.
+**`do_task`** SUCCESS-path lenient capture of **`vector_reviews`** on rubric-backed tasks: clean parse → **`vector_feedback`** rows **and** **FEEDBACK** block (AST-862); unparseable → **`FEEDBACK`** agent_data block only. Parse failures never fail the run.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `agent_performance.status` normalization | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_agent_performance_status_normalizes_dict_and_string` |
 | Owner task + candidate resolution | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_rubric_feedback_owner_and_candidate_resolves_from_cd_and_ctx` |
-| Clean parse → vector_feedback rows | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
+| Clean parse → vector_feedback rows + FEEDBACK block | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
 | Unparseable → FEEDBACK block | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_unparseable_stores_feedback_block_not_rows` |
 | Non-success skips capture | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_non_success_skips_capture` |
 
@@ -230,6 +230,27 @@ Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.
 ```
 
 Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
+
+---
+
+### AST-862 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** clean-parse SUCCESS path appends **FEEDBACK** block to **`prompt_blocks`** (via **`store_feedback_block` / `format_vector_reviews_raw`**) after **`insert_vector_feedback_rows`** — so **`agent_data`** / Performance Monitor / FEEDBACK tab can inspect **`vector_reviews`** alongside **`vector_feedback`** rows. Unparseable path unchanged (AST-724).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clean parse → FEEDBACK ref + agent_data row | `src/core/agent.py` | `TestAst862CleanParseFeedbackBlock::test_clean_parse_feedback_block_has_vector_reviews_json` |
+| FEEDBACK store failure is non-fatal | `src/core/agent.py` | `TestAst862CleanParseFeedbackBlock::test_store_feedback_block_failure_still_inserts_vector_feedback_rows` |
+| AST-724 clean-parse regression (rows + FEEDBACK) | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
+
+**AST-862** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst862CleanParseFeedbackBlock \
+  tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows \
+  -q
+```
 
 ---
 

@@ -4887,7 +4887,11 @@ class TestAst724VectorFeedbackCapture:
             assert n == 3
         finally:
             conn.close()
-        assert prompt_blocks == []
+        assert len(prompt_blocks) == 1
+        assert prompt_blocks[0]["type"] == "FEEDBACK"
+        assert prompt_blocks[0]["id"]
+        rows_fb = db.get_agent_data_by_batch("batch-724-clean", block_type="FEEDBACK")
+        assert len(rows_fb) == 1
 
     def test_unparseable_stores_feedback_block_not_rows(self, seeded_db) -> None:
         db = seeded_db
@@ -5466,3 +5470,75 @@ class TestAst860GradeGetVectorFeedbackCapture:
         assert "skip reason=empty_expected_codes" in combined
         assert "criteria_codes=" in combined
         assert "uuid_codes=" in combined
+
+
+class TestAst862CleanParseFeedbackBlock:
+    """AST-862: clean vector_feedback capture also stores FEEDBACK block for agent_data inspection."""
+
+    def test_clean_parse_feedback_block_has_vector_reviews_json(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_like", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "somerset",
+            "grade_like",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        reviews = ["G1RACOVK"]
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_like",
+            owner_task_key="grade_like",
+            candidate_id="somerset",
+            batch_id="batch-862-clean",
+            entity_type="candidate",
+            index="0",
+            perf={"status": "success", "vector_reviews": reviews},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        assert len(prompt_blocks) == 1
+        fb_id = prompt_blocks[0]["id"]
+        rows = db.get_agent_data_by_batch("batch-862-clean", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert rows[0]["agent_data_id"] == fb_id
+        assert json.loads(rows[0]["block_data"]) == reviews
+
+    def test_store_feedback_block_failure_still_inserts_vector_feedback_rows(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "store_feedback_block",
+            MagicMock(side_effect=RuntimeError("db")),
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-862-fb-fail",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        assert prompt_blocks == []
+        conn = db._get_connection()
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM vector_feedback WHERE batch_id = ?",
+                ("batch-862-fb-fail",),
+            ).fetchone()[0]
+            assert n == 3
+        finally:
+            conn.close()
