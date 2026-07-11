@@ -118,3 +118,12 @@ Susan repro: `grade_like` batch `grade_like-c6c2e008-…`, job `532bf4b1-…`, c
 | §3.3 imports | No new modules |
 
 No unresolved rule conflicts.
+
+---
+
+## Review (Radia)
+
+**Branch:** `origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope`  
+**Built tip:** `0caf76b` — clean-parse path appends FEEDBACK block to `prompt_blocks` after `insert_vector_feedback_rows`.
+
+*Awaiting Radia review after Tests Passed.*
