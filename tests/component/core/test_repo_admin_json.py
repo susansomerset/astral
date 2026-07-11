@@ -310,6 +310,11 @@ class TestAst786AgentTaskRepoJsonSeed:
         finally:
             conn.close()
 
+    def test_select_job_page_run_next_empty_in_repo_json(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r["task_key"] == "select_job_page")
+        assert row["run_next"] == ""
+
 
 AST787_EXPECTED_AGENT_IDS = frozenset(
     {

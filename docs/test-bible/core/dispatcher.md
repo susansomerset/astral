@@ -119,3 +119,38 @@ Equivalent harness:
   tests/component/core/test_dispatcher.py::TestAst802InflowDiscoveryDebug \
   -q
 ```
+
+---
+
+### AST-841 · AST-838
+
+**AST-838 (parent):** Execution History Level filter (**AST-840**). **AST-841:** Align **inflow_discovery** (and all dispatch tasks sharing **`_dispatch_one`**) ledger terminal status with **ERROR**/**WARNING** **`app_log`** rows — Susan can triage FAILED/INTERRUPTED runs and COMPLETED-with-errors without INFO-only exports.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-841** | **`_dispatch_one` finally** — ERROR on FAILED/INTERRUPTED; WARNING on COMPLETED with **`total_errors > 0`**. **`run_inflow_discovery_batch`** — non-debug WARNING batch summary when **`errors > 0`**. | `src/core/dispatcher.py`, `src/core/roster.py` | **`TestAst841DispatchTerminalLogging`** in `test_dispatcher.py`; **`TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`** (caplog WARNING: per-term **`CSE failed`** + batch **`CSE term error(s)`**) |
+
+**AST-841** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_dispatcher.py::TestAst841DispatchTerminalLogging \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues \
+  -q
+```
+
+**Regression guard:** full **`test_dispatcher.py`** + **`TestAst505InflowDiscovery`** when parent UAT runs full epic.
+
+---
+
+### AST-849 · AST-847
+
+**Dispatch-chain claim:** **`dispatch_chain_claim_states_for_row`** passed as **`states=`** to **`get_new_job_batch`** when **`is_dispatch_chain_trigger(input_state)`**; post-claim filter via **`dispatch_chain_row_matches_job`** before **`run_consult_task`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Forward **`dispatch_task_key`** + chain claim filter | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast849_post_claim_filter_skips_row_mismatch}` |
+
+Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
+
+---

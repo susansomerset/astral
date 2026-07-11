@@ -52,6 +52,24 @@
 
 ---
 
+### AST-841 · AST-838
+
+**AST-841 (child):** When **`run_inflow_discovery_batch`** finishes with **`errors > 0`**, emit non-debug-gated WARNING batch summary (`N CSE term error(s)`) in addition to existing per-term **`CSE failed for term`** warnings — aligns with sibling **AST-841** dispatcher terminal logging for Execution History Level filter triage (**AST-840**).
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | CSE failure on one term → **`total_errors == 1`** + WARNING lines (**`CSE failed`**, **`CSE term error(s)`**) | `src/core/roster.py` | **`TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`** |
+
+**AST-841** narrowed run (roster leg):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues \
+  -q
+```
+
+---
+
 ### AST-621 · AST-542
 
 **AST-542 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/roster.py`** inflow paths — **`run_inflow_discovery_batch`** / **`vet_inflow_discovery`** baseline from **AST-557** on **`ftr/`**; this child adds **`resolve_company_website`** contract debug, **`_ingest_failure_reason`** ` | ` detail under vet-row headers, and empty-dedupe skip header. **No Betty log-string tests** (parent + child explicit); plan Stage 4 is manual UAT spot-check only. **`debug=False`** must stay unchanged — existing inflow behavior tests are the gate.
@@ -408,6 +426,18 @@ Gazer passthrough: **`docs/test-bible/core/gazer.md`** (**AST-715**).
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-853 · AST-850
+
+**Scope:** **`scrape_company_homepage_content`** accepts optional **`batch_session`**; infra failures prefix **`[playwright:<failure_class>]`** and emit WARNING with **`failure_class=`** (site/navigation errors unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Infra error prefix via **`batch_session`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
+
+Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/playwright.md`** (**AST-853**).
 
 ---
 

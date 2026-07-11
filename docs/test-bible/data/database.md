@@ -119,3 +119,45 @@ cd src/ui/frontend && npm run test:component -- \
 ### AST-766 · AST-757
 
 **Sunset `board_search` schema** — see `docs/test-bible/data/database/dispatch_tasks.md` § AST-766.
+
+### AST-843 · AST-842
+
+**AST-843 (parent AST-842):** `ensure_all_upsert_registry_schemas_at_startup()` iterates `_UPSERT_LAZY_SCHEMA_HANDLERS` at process bootstrap (wired from `bootstrap_runtime()` after repo admin JSON, before `sync_agent_tasks`). Schema-only — reuses AST-626 lazy ensure machinery; no upsert merge rule changes.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry-wide startup ensure | `src/data/database.py` (`ensure_all_upsert_registry_schemas_at_startup`) | `tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure::test_ensure_all_upsert_registry_schemas_at_startup_idempotent` |
+| Bootstrap wire order | `src/core/bootstrap.py` | `tests/component/core/test_bootstrap.py::TestBootstrapRuntime::test_runs_validation_sync_and_scheduler_in_order` |
+
+**AST-843** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure \
+  -q
+```
+
+### AST-846 · AST-842
+
+**AST-846 (UAT, parent AST-842):** `_ensure_job_schema` deletes board placeholder jobs and dedupes complete `(company, job_title, company_job_id)` triples (AST-729 survivor rules) **before** creating `idx_job_identity_unique` when the index is missing — fixes production bootstrap IntegrityError after AST-843. Migration script live path delegates to the same helpers (DRY).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pre-index board cleanup + identity dedupe | `src/data/database.py` (`_delete_board_placeholder_jobs`, `_dedupe_job_identity_triples`, `_ensure_job_schema`) | `tests/component/data/test_database.py::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` |
+| Bootstrap registry path on legacy duplicates | `src/data/database.py` (`ensure_all_upsert_registry_schemas_at_startup`) | `::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex::test_bootstrap_registry_path` |
+
+**Regression (reuse):** **AST-843** `TestAst843BootstrapSchemaEnsure`; **AST-729** `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py` (identity dedupe dry-run / live survivor unchanged).
+
+**Broken / obsolete (Betty revision):** `TestIdentityDedupe::test_group_error_increments_errors` — live no-filter path now calls `_dedupe_job_identity_triples` (AST-846); per-group `delete_jobs_by_astral_job_ids` error path retained under `--company` filter — test uses `company_filter="acme"`.
+
+**AST-846** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_database.py::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex \
+  tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py::TestIdentityDedupe \
+  -q
+```
+

@@ -105,13 +105,13 @@ Roster passthrough manifest: **`docs/test-bible/core/roster.md`** (**AST-698**).
 
 ### AST-724 · AST-378
 
-**`do_task`** SUCCESS-path lenient capture of **`vector_reviews`** on rubric-backed tasks: clean parse → **`vector_feedback`** rows; unparseable → **`FEEDBACK`** agent_data block only. Parse failures never fail the run.
+**`do_task`** SUCCESS-path lenient capture of **`vector_reviews`** on rubric-backed tasks: clean parse → **`vector_feedback`** rows **and** **FEEDBACK** block (AST-862); unparseable → **`FEEDBACK`** agent_data block only. Parse failures never fail the run.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `agent_performance.status` normalization | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_agent_performance_status_normalizes_dict_and_string` |
 | Owner task + candidate resolution | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_rubric_feedback_owner_and_candidate_resolves_from_cd_and_ctx` |
-| Clean parse → vector_feedback rows | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
+| Clean parse → vector_feedback rows + FEEDBACK block | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
 | Unparseable → FEEDBACK block | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_unparseable_stores_feedback_block_not_rows` |
 | Non-success skips capture | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_non_success_skips_capture` |
 
@@ -208,3 +208,132 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal le
 ```
 
 Trace builder: **`docs/test-bible/utils/rubric_feedback.md`**.
+
+---
+
+### AST-860 · AST-378 (UAT fix)
+
+**`_normalize_rubric_envelope_for_capture`**, **`expected_codes = criteria_codes ∩ uuid_codes`**, and **`do_task`** silent-skip debug when **`agent_performance`** missing after normalize — closes **`grade_get`** batch capture/hydrate gap (post AST-859 RACOVK).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Envelope normalize (status + top-level reviews) | `src/core/agent.py` | `TestAst860NormalizeRubricEnvelope` |
+| RACOVK capture + criteria/uuid debug | `src/core/agent.py` | `TestAst860GradeGetVectorFeedbackCapture` |
+
+**AST-860** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst860NormalizeRubricEnvelope \
+  tests/component/core/test_agent.py::TestAst860GradeGetVectorFeedbackCapture \
+  -q
+```
+
+Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
+
+---
+
+### AST-862 · AST-378 (UAT fix)
+
+**`_capture_rubric_vector_feedback`** clean-parse SUCCESS path appends **FEEDBACK** block to **`prompt_blocks`** (via **`store_feedback_block` / `format_vector_reviews_raw`**) after **`insert_vector_feedback_rows`** — so **`agent_data`** / Performance Monitor / FEEDBACK tab can inspect **`vector_reviews`** alongside **`vector_feedback`** rows. Unparseable path unchanged (AST-724).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clean parse → FEEDBACK ref + agent_data row | `src/core/agent.py` | `TestAst862CleanParseFeedbackBlock::test_clean_parse_feedback_block_has_vector_reviews_json` |
+| FEEDBACK store failure is non-fatal | `src/core/agent.py` | `TestAst862CleanParseFeedbackBlock::test_store_feedback_block_failure_still_inserts_vector_feedback_rows` |
+| AST-724 clean-parse regression (rows + FEEDBACK) | `src/core/agent.py` | `TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` |
+
+**AST-862** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst862CleanParseFeedbackBlock \
+  tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows \
+  -q
+```
+
+---
+
+### AST-848 · AST-847
+
+**AST-848:** Synchronous **`run_next`** chain ownership moves into **`do_task`**: after each successful hop, write runtime DB label **`{trigger_state}.{completed_task_key}`** via **`write_job_dispatch_hop_label`**; recurse via existing **`run_next`**; terminal graduation to config successor (**`BUILD_ARTIFACTS` → `CANDIDATE_REVIEW`**) in the same invocation when **`dispatch_chain_graduate_on_terminal`** is true and the last hop has empty **`run_next`**. Retires AST-803 consult **`_chain_graduate_to_candidate_review`**, persist gate, and **`chain_incomplete`** flag. Dispatch claim for runtime labels is sibling **AST-849**.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Hop label helpers + batch claim predicate | `src/utils/config.py` | **`TestAst848DispatchHopLabels`** |
+| 2 | Runtime hop write + chain graduation | `src/core/tracker.py` | **`TestAst848DispatchChainTracker`** |
+| 3 | Per-hop DB write + terminal graduation + hard failure | `src/core/agent.py` | **`TestAst848DispatchChainDoTask`** |
+
+**Regression (required):** **AST-597** mid-chain hydration without per-hop compound transitions; **AST-844** hop registry (**`TestAst844BuildArtifactsChainTaskKeys`**). Consult/dispatch claim wiring is sibling **AST-849**.
+
+**AST-848** narrowed run (agent + config + tracker slice):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/core/test_tracker.py::TestAst848DispatchChainTracker \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-849 · AST-847
+
+**AST-849:** Retires consult chain wrapper (**`do_chain_for_job`**, **`_run_build_artifacts_chain_batch`**, all **`_chain_*`** helpers). **`_run_dispatch_chain_job_batch`** invokes **`do_task`** only with **`dispatch_chain_row_matches_job`** gate. Generic **`dispatch_chain_claim_states_for_row`** + **`dispatch_chain_row_matches_job`** drive dispatcher claim/count filter and admin row validation. Depends on **AST-848** **`do_task`** ctx contract.
+
+| # | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Chain claim states + row match helpers | `src/utils/config.py` | **`TestAst849DispatchChainClaimStates`** |
+| 2 | Post-claim entity filter | `src/core/dispatcher.py` | **`TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast849_post_claim_filter_skips_row_mismatch}`** |
+| 3 | **`_run_dispatch_chain_job_batch`** → **`do_task`** | `src/core/consult.py` | **`TestAst371ResumeArtifactDispatch`**, **`TestAst534DispatchTaskKeyHonesty`** |
+| 4 | Admin hop-label row validation | `src/ui/api/api_admin.py` | **`TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key`** |
+
+**Broken / obsolete (Betty revision):** **`TestAst803ChainGraduation`**, **`TestAst803ChainHelpers`**, **`_run_build_artifacts_chain_batch`** / **`do_chain_for_job`** / **`_run_craft_job_cover_letter_batch`** consult tests; **`test_ast596_resume_hop_mismatch_skips_claim`** (pre-claim guard removed — post-claim filter in item 2).
+
+**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`**; **AST-844** **`TestAst844BuildArtifactsChainTaskKeys`**; **AST-534** dispatch-key honesty (non-chain **`grade_do`** row in **`TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`**).
+
+**AST-849** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestRunConsultTask::test_routes_candidate_review_cover_letter_unhandled_returns_zero \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast849_post_claim_filter_skips_row_mismatch \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-855 · AST-852
+
+**Scope:** Dispatch-chain hop success debug aligns Style D index/total when `_dispatch_chain_hop_total` is unset on ctx — fixes multi-hop BUILD_ARTIFACTS crash (`index 2/1`) on `_write_dispatch_hop_label_on_success`. Shared `_dispatch_chain_hop_debug_counts` helper with `_resume_hop_debug_index`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop debug index/total helper | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_dispatch_chain_hop_debug_counts_expands_unset_total`, `::test_dispatch_chain_hop_debug_counts_preserves_explicit_total` |
+| Second-hop success path (`contemplate_job`) | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop` |
+
+**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`** (full class).
+
+**AST-855** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst855DispatchChainHopDebug \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

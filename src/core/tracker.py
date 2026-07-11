@@ -23,8 +23,12 @@ from src.utils.config import (
     JOB_STATES,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     TRACKER_CONFIG,
+    dispatch_chain_graduation_target,
+    dispatch_hop_label,
+    parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
     is_valid_job_batch_claim_state,
+    legacy_build_artifacts_hop,
     validate_value,
 )
 from src.utils.logging import get_logger
@@ -380,11 +384,10 @@ def list_dispatch_tasks_for_candidate(
             continue
         row_ts = (row.get("trigger_state") or "").strip()
         if ts:
-            if row_ts != ts and not (
-                ts == BUILD_ARTIFACTS_BASE_STATE
-                and row_ts.startswith(f"{BUILD_ARTIFACTS_BASE_STATE}.")
-            ):
-                continue
+            if row_ts != ts:
+                parsed = parse_dispatch_hop_label(row_ts)
+                if not (parsed and parsed[0] == ts):
+                    continue
         out.append(dict(row))
     return out
 
@@ -500,6 +503,60 @@ def initialize_job(
 
 # ---- State transition ----
 
+def _job_state_matches_prior(current_state: str, prior_states: Optional[List[str]]) -> bool:
+    """True when current_state is allowed as a predecessor for a registered transition."""
+    if prior_states is None:
+        return True
+    st = (current_state or "").strip()
+    if st in prior_states:
+        return True
+    parsed = parse_dispatch_hop_label(st)
+    if parsed and parsed[0] in prior_states:
+        return True
+    if legacy_build_artifacts_hop(st) and BUILD_ARTIFACTS_BASE_STATE in prior_states:
+        return True
+    return False
+
+
+def write_job_dispatch_hop_label(job_id: str, trigger_state: str, completed_task_key: str) -> str:
+    """Write runtime dispatch hop label to job.state (not a JOB_STATES registry key)."""
+    label = dispatch_hop_label(trigger_state, completed_task_key)
+    job = database.get_job(job_id)
+    if not job:
+        raise ValueError(f"Job not found: {job_id}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    history = job.get("state_history", [])
+    history.append({
+        "to_state": label,
+        "timestamp": now,
+        "batch_id": job.get("batch_id"),
+    })
+    database.save_job(job_id, state=label, state_history=history, state_changed_at=now)
+    return label
+
+
+def graduate_job_from_dispatch_chain(job_id: str, trigger_state: str) -> str:
+    """Terminal chain graduation: runtime hop label or trigger → registered successor state."""
+    job = database.get_job(job_id)
+    if not job:
+        raise ValueError(f"Job not found: {job_id}")
+    ts = (trigger_state or "").strip()
+    to_state = dispatch_chain_graduation_target(ts)
+    if not to_state:
+        raise ValueError(f"No graduation target for trigger_state={trigger_state!r}")
+    from_state = (job.get("state") or "").strip()
+    parsed_hop = parse_dispatch_hop_label(from_state)
+    allowed = (
+        from_state == ts
+        or (parsed_hop is not None and parsed_hop[0] == ts)
+        or (ts == BUILD_ARTIFACTS_BASE_STATE and legacy_build_artifacts_hop(from_state) is not None)
+    )
+    if not allowed:
+        raise ValueError(f"Invalid chain graduation from {from_state!r} trigger={trigger_state!r}")
+    transition_job_state([job_id], to_state)
+    return to_state
+
+
 def transition_job_state(job_ids: List[str], to_state: str, score: Optional[float] = None) -> None:
     """Record state transition for jobs (AST-77). Appends to state_history; updates state.
     score: when provided, recorded in the state_history entry and written to latest_score column (AST-350).
@@ -511,7 +568,7 @@ def transition_job_state(job_ids: List[str], to_state: str, score: Optional[floa
         job = database.get_job(job_id)
         if not job:
             raise ValueError(f"Job not found: {job_id}")
-        if prior_states is not None and job.get("state") not in prior_states:
+        if not _job_state_matches_prior(job.get("state") or "", prior_states):
             raise ValueError(f"Invalid transition: {job.get('state')} -> {to_state}")
         history = job.get("state_history", [])
         entry: Dict[str, Any] = {"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")}

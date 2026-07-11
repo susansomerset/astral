@@ -84,3 +84,37 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 ```
 
 **test-child scope gate (required):** `git show cb7ec1f --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-790-uat-agent-task-grouping-metadata-not-applied-on-revert-startup.md` (no `data/admin/**`).
+
+---
+
+### AST-834 · AST-833 (UAT bug)
+
+**Product:** Neutralize **`_apply_ast469_select_job_page_run_next_migration`** (no re-seed); add idempotent **`_apply_ast834_clear_select_job_page_run_next_migration`**; sync **`data/admin/agent_task.json`** + **`docs/uat-fixtures/AST-756/expected-agent_task.json`** so **`select_job_page.run_next`** is **`""`**. Decomposed **`run_select_job_page_dispatch`** already passes **`chain_parse=False`** — stale DB **`run_next`** was the in-process parse hop.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AST-834 clear migration + AST-469 no-op | `src/data/database.py` | `TestAst834ClearSelectJobPageRunNextMigration` |
+| Repo/fixture **`run_next`** empty | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | `TestAst786AgentTaskRepoJsonSeed::test_select_job_page_run_next_empty_in_repo_json` |
+| Decomposed select single **`do_task`** hop | `src/core/roster.py` | `TestAst834SelectJobPageRunNextClear::test_decomposed_select_invokes_select_do_task_only` |
+| Catalog-empty **`run_next`** no LLM parse chain | `src/core/agent.py` | `TestAst834SelectJobPageEmptyRunNext::test_jblist_titles_single_hop_when_run_next_empty` |
+
+**Regression (existing — manifest lines, no new tests):**
+
+- `TestAst469ResolveRunNextLive` — explicit mock **`run_next="parse_job_list"`** + **`resolve_run_next_live`** still valid
+- `test_find_joblist_titles_routes_select_only_when_run_next_parent_missing` — JOBS_FOUND select-only fallback
+- `TestAst786AgentTaskRepoJsonSeed` — byte-identical repo/fixture pair
+
+**AST-834** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst834ClearSelectJobPageRunNextMigration \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_roster.py::TestAst834SelectJobPageRunNextClear \
+  tests/component/core/test_agent.py::TestAst834SelectJobPageEmptyRunNext \
+  tests/component/core/test_agent.py::TestAst469ResolveRunNextLive \
+  tests/component/core/test_roster.py::test_find_joblist_titles_routes_select_only_when_run_next_parent_missing \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.

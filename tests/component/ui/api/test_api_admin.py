@@ -797,6 +797,12 @@ class TestAst773UpdateDispatchTaskTaskKey:
         assert err is not None and "grade_do" in err
         assert admin_mod._dispatch_task_key_trigger_error("qualify_job_listings", "VALID_TITLE") is None
 
+    def test_dispatch_chain_hop_label_must_match_task_key(self) -> None:
+        hop_ts = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        err = admin_mod._dispatch_task_key_trigger_error("contemplate_job", hop_ts)
+        assert err is not None and "does not match hop" in err
+        assert admin_mod._dispatch_task_key_trigger_error("anticipate_scan", hop_ts) is None
+
     def test_update_dispatch_task_task_key_persists_derived_columns(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

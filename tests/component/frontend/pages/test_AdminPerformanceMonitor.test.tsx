@@ -384,6 +384,136 @@ describe("AdminPerformanceMonitor", () => {
     }, 15000)
   })
 
+  // AST-840 — client-side log level filter on expanded batch logs (parent AST-838).
+  describe("AST-840 log level filter", () => {
+    const mixedLogs = [
+      { id: "log-info", level: "INFO", logger_name: "core", message: "verbose info line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
+      { id: "log-error", level: "ERROR", logger_name: "core", message: "failure detail", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
+    ]
+
+    function mockMixedLogsApi(extraLedgerRows: typeof ledgerRow[] = [ledgerRow]) {
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger/batch-1/logs")) {
+          return { json: async () => mixedLogs } as Response
+        }
+        if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
+        if (url.startsWith("/api/admin/timesheets?batch_id=")) return { json: async () => [] } as Response
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => extraLedgerRows } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => candidateFixture } as Response
+        }
+      })
+    }
+
+    it("renders Level control defaulting to All", async () => {
+      mockMixedLogsApi()
+      renderPerformanceMonitor()
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const levelSelect = screen.getByLabelText("Level", { selector: "select" }) as HTMLSelectElement
+      expect(levelSelect.value).toBe("")
+      expect(Array.from(levelSelect.options).map(o => o.textContent)).toEqual(["All", "DEBUG", "INFO", "WARNING", "ERROR"])
+    }, 15000)
+
+    it("seeds Level from URL log_level param", async () => {
+      mockMixedLogsApi()
+      renderPerformanceMonitor("/admin/performance?log_level=ERROR")
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const levelSelect = screen.getByLabelText("Level", { selector: "select" }) as HTMLSelectElement
+      expect(levelSelect.value).toBe("ERROR")
+    }, 15000)
+
+    it("does not pass log_level to ledger fetch", async () => {
+      const calls: string[] = []
+      mockMixedLogsApi()
+      mockedApi.mockImplementation(async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?")) calls.push(url)
+        if (url.startsWith("/api/admin/dispatch_ledger/batch-1/logs")) {
+          return { json: async () => mixedLogs } as Response
+        }
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") return { json: async () => candidateFixture } as Response
+        if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
+      })
+      renderPerformanceMonitor("/admin/performance?log_level=ERROR")
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+      expect(calls.every(u => !u.includes("log_level="))).toBe(true)
+    }, 15000)
+
+    it("shows only matching severities when Level is set", async () => {
+      mockMixedLogsApi()
+      renderPerformanceMonitor("/admin/performance?log_level=ERROR")
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("failure detail")).toBeInTheDocument())
+      expect(screen.queryByText("verbose info line")).not.toBeInTheDocument()
+    }, 15000)
+
+    it("shows filtered-empty message when batch has logs but none at selected level", async () => {
+      mockMixedLogsApi()
+      renderPerformanceMonitor("/admin/performance?log_level=WARNING")
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("No 'WARNING' type log entries for this batch.")).toBeInTheDocument())
+      expect(screen.queryByText("No log entries for this batch.")).not.toBeInTheDocument()
+      expect(screen.queryByTitle("Copy logs to clipboard")).not.toBeInTheDocument()
+    }, 15000)
+
+    it("keeps FAILED ledger rows visible when Level is ERROR", async () => {
+      const failedRow = { ...ledgerRow, status: "FAILED", total_failed: 1, total_passed: 0 }
+      mockMixedLogsApi([failedRow])
+      renderPerformanceMonitor("/admin/performance?log_level=ERROR")
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      const table = screen.getByRole("table")
+      expect(within(table).getByText("FAILED")).toBeInTheDocument()
+      await userEvent.click(within(table).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("failure detail")).toBeInTheDocument())
+    }, 15000)
+
+    it("copies only filtered log lines", async () => {
+      mockMixedLogsApi()
+      renderPerformanceMonitor("/admin/performance?log_level=ERROR")
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("failure detail")).toBeInTheDocument())
+      await userEvent.click(screen.getByTitle("Copy logs to clipboard"))
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "[2026-05-01T10:00:02Z] ERROR core: failure detail",
+      )
+      expect(String((navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0])).not.toContain("verbose info line")
+    }, 15000)
+
+    it("updates expanded view when Level changes without refetching logs", async () => {
+      const logCalls: string[] = []
+      mockMixedLogsApi()
+      mockedApi.mockImplementation(async (url: string) => {
+        if (url.includes("/logs")) {
+          logCalls.push(url)
+          return { json: async () => mixedLogs } as Response
+        }
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") return { json: async () => candidateFixture } as Response
+        if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
+      })
+      renderPerformanceMonitor()
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("verbose info line")).toBeInTheDocument())
+      const before = logCalls.length
+      const levelSelect = screen.getByLabelText("Level", { selector: "select" }) as HTMLSelectElement
+      await userEvent.selectOptions(levelSelect, "ERROR")
+      await waitFor(() => expect(screen.getByText("failure detail")).toBeInTheDocument())
+      expect(screen.queryByText("verbose info line")).not.toBeInTheDocument()
+      expect(logCalls.length).toBe(before)
+    }, 20000)
+  })
+
   describe("AST-634 admin candidate filter", () => {
     it("lists global candidates even when ledger rows omit them", async () => {
       installBaseApiMocks(mockedApi, async (url: string) => {

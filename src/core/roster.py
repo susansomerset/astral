@@ -31,6 +31,9 @@ from src.external.playwright import (
     BrowserSession,
     normalize_url,
     wait_for_careers_list_readiness,
+    PlaywrightInfraError,
+    classify_playwright_failure,
+    is_playwright_infra_failure,
 )
 from src.external.google_cse import GoogleCseHit, search_google_cse
 from src.core.agent import do_task
@@ -638,33 +641,33 @@ async def resolve_company_website(
         return {"success": True, "state": "WEBSITE_FOUND", "error": None}
     name = (entity.get("company_name") or short_name or "").strip()
     query = f"{name} official website"
-    try:
-        hits = search_google_cse(
-            query=query,
-            max_results=int(cfg["max_results"]),
-            site_filters=None,
-            days=cfg["date_restrict_days"],
-        )
-    except (RuntimeError, ValueError) as exc:
-        if debug:
-            log.debug_index(
-                func="roster.resolve_company_website",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome=f"CSE failed: {exc!s}",
-            )
-            log.debug_detail(f"query={query!r}")
-        logger.warning("[%s] resolve_company_website: CSE failed: %s", short_name, exc)
-        return {"success": False, "state": None, "error": str(exc)}
     if debug:
         log.debug_index(
             func="roster.resolve_company_website",
             index=1,
             total=1,
             identifier=short_name,
-            outcome=f"{len(hits)} CSE hit(s)",
+            outcome="CSE search",
         )
+        pace_detail = log.debug_detail
+    else:
+        pace_detail = None
+    try:
+        hits = search_google_cse(
+            query=query,
+            max_results=int(cfg["max_results"]),
+            site_filters=None,
+            days=cfg["date_restrict_days"],
+            pace_detail=pace_detail,
+        )
+    except (RuntimeError, ValueError) as exc:
+        if debug:
+            log.debug_detail(f"CSE failed: {exc!s}")
+            log.debug_detail(f"query={query!r}")
+        logger.warning("[%s] resolve_company_website: CSE failed: %s", short_name, exc)
+        return {"success": False, "state": None, "error": str(exc)}
+    if debug:
+        log.debug_detail(f"search complete: {len(hits)} CSE hit(s)")
         log.debug_detail(f"query={query!r} raw_hits={len(hits)}")
         for hi, hit in enumerate(hits):
             if hi >= 20:  # UAT cap — same as discovery
@@ -777,33 +780,33 @@ async def run_inflow_discovery_batch(
     seen_urls: Set[str] = set()
     errors = 0
     for term_i, term in enumerate(terms, start=1):
-        try:
-            hits = search_google_cse(
-                query=term,
-                max_results=int(cfg["max_results_per_query"]),
-                site_filters=None,
-                days=int(cfg["date_restrict_days"]),
-            )
-        except (RuntimeError, ValueError) as exc:
-            if debug:
-                log.debug_index(
-                    func="roster.run_inflow_discovery_batch",
-                    index=term_i,
-                    total=term_total,
-                    identifier=term,
-                    outcome=f"CSE failed: {exc!s}",
-                )
-            logger.warning("run_inflow_discovery_batch: CSE failed for term %r: %s", term, exc)
-            errors += 1
-            continue
         if debug:
             log.debug_index(
                 func="roster.run_inflow_discovery_batch",
                 index=term_i,
                 total=term_total,
                 identifier=term,
-                outcome=f"{len(hits)} hit(s)",
+                outcome="CSE search",
             )
+            pace_detail = log.debug_detail
+        else:
+            pace_detail = None
+        try:
+            hits = search_google_cse(
+                query=term,
+                max_results=int(cfg["max_results_per_query"]),
+                site_filters=None,
+                days=int(cfg["date_restrict_days"]),
+                pace_detail=pace_detail,
+            )
+        except (RuntimeError, ValueError) as exc:
+            if debug:
+                log.debug_detail(f"CSE failed: {exc!s}")
+            logger.warning("run_inflow_discovery_batch: CSE failed for term %r: %s", term, exc)
+            errors += 1
+            continue
+        if debug:
+            log.debug_detail(f"search complete: {len(hits)} hit(s)")
             log.debug_detail(f"search_term={term!r} raw_hits={len(hits)}")
             for hi, hit in enumerate(hits):
                 if hi >= 20:  # UAT cap per term
@@ -860,6 +863,16 @@ async def run_inflow_discovery_batch(
         log.debug_detail(
             f"batch summary terms_searched={term_total} deduped_hits={hit_total} "
             f"recorded={recorded} skipped={skipped} errors={errors}"
+        )
+    if errors > 0:
+        logger.warning(
+            "run_inflow_discovery_batch: %d CSE term error(s) for candidate %s "
+            "(terms_searched=%d recorded=%d skipped=%d)",
+            errors,
+            candidate_id,
+            term_total,
+            recorded,
+            skipped,
         )
     return {
         "total_processed": 1,
@@ -1529,6 +1542,7 @@ async def scrape_company_homepage_content(
     company_website: str,
     *,
     browser_context=None,
+    batch_session=None,
 ) -> Dict[str, Any]:
     """Scrape homepage visible text and nav_links without agent evaluation (AST-701 fetch_website)."""
     out: Dict[str, Any] = {
@@ -1538,7 +1552,13 @@ async def scrape_company_homepage_content(
         "error": None,
     }
     try:
-        if browser_context is not None:
+        if batch_session is not None:
+            pg = await get_page(batch_session=batch_session, url=company_website)
+            try:
+                contract = await scrape_loaded_page_contract(pg, debug=False)
+            finally:
+                await close_page(pg)
+        elif browser_context is not None:
             pg = await get_page(browser_context, company_website)
             try:
                 contract = await scrape_loaded_page_contract(pg, debug=False)
@@ -1552,7 +1572,22 @@ async def scrape_company_homepage_content(
                 finally:
                     await close_page(pg)
     except Exception as scrape_err:
-        out["error"] = str(scrape_err)
+        if isinstance(scrape_err, PlaywrightInfraError):
+            fc = scrape_err.failure_class
+            msg = scrape_err.detail
+        else:
+            fc = classify_playwright_failure(scrape_err)
+            msg = str(scrape_err)
+        if is_playwright_infra_failure(fc):
+            out["error"] = f"[playwright:{fc}] {msg}"
+            logger.warning(
+                "[%s] playwright infra failure failure_class=%s %s",
+                short_name,
+                fc,
+                msg,
+            )
+        else:
+            out["error"] = str(scrape_err)
         return out
     final_url = contract.get("final_url") or company_website
     if final_url and final_url != company_website:

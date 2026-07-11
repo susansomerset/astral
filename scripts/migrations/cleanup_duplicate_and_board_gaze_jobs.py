@@ -38,7 +38,13 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.database import _ensure_job_schema, _get_connection, _run_with_retry
+from src.data.database import (
+    _dedupe_job_identity_triples,
+    _delete_board_placeholder_jobs,
+    _ensure_job_schema,
+    _get_connection,
+    _run_with_retry,
+)
 
 _BOARD_PREFIX = "__board__"
 _BOARD_LIKE = f"{_BOARD_PREFIX}%"
@@ -156,7 +162,7 @@ def run_identity_dedupe(
                         f"{'would delete' if dry_run else 'deleted'} "
                         f"{len(delete_ids)} rows: {id_list}"
                     )
-                    if not dry_run:
+                    if not dry_run and company_filter:
                         deleted = delete_jobs_by_astral_job_ids(conn, delete_ids)
                         counts["dedupe_deleted"] += deleted
                 except Exception as e:
@@ -165,6 +171,8 @@ def run_identity_dedupe(
                         f"{group.get('job_title')}, {group.get('company_job_id')}): {e}"
                     )
                     counts["errors"] += 1
+            if not dry_run and not company_filter:
+                counts["dedupe_deleted"] = _dedupe_job_identity_triples(conn)
         finally:
             conn.close()
 
@@ -192,12 +200,9 @@ def run_board_gaze_cleanup(dry_run: bool, counts: Dict[str, int]) -> None:
                 )
                 counts["board_jobs_deleted"] = scanned
                 return
-            cursor = conn.execute(
-                "DELETE FROM job WHERE company LIKE ?",
-                (_BOARD_LIKE,),
-            )
-            conn.commit()
-            counts["board_jobs_deleted"] = cursor.rowcount
+            deleted = _delete_board_placeholder_jobs(conn)
+            counts["board_jobs_deleted"] = deleted
+            counts["board_jobs_scanned"] = deleted
             print(f"[board] deleted {counts['board_jobs_deleted']} job rows")
         finally:
             conn.close()

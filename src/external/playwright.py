@@ -8,6 +8,7 @@ Provides functions for extracting visible text from web pages with timing metric
 import os
 import time
 import re
+import asyncio
 from contextlib import asynccontextmanager
 from html.parser import HTMLParser
 from pathlib import Path
@@ -15,7 +16,7 @@ from typing import Dict, Any, List, Tuple, Optional, TypedDict
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Response
 from bs4 import BeautifulSoup
-from src.utils.config import ASTRAL_CONFIG
+from src.utils.config import ASTRAL_CONFIG, PLAYWRIGHT_CONFIG
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger
 
@@ -24,6 +25,47 @@ _log = get_logger(__name__)
 # Public handle types: core/callers use these; implementation may be swapped later.
 BrowserSession = BrowserContext
 PageHandle = Page
+
+PLAYWRIGHT_INFRA_FAILURE_CLASSES = frozenset({
+    "launch_failure",
+    "launch_timeout",
+    "channel_error",
+    "context_closed",
+    "connectivity_failure",
+})
+
+
+def classify_playwright_failure(exc: BaseException) -> str:
+    """Map Playwright/Firefox exceptions to a stable failure class string."""
+    msg = f"{type(exc).__name__} {exc}".lower()
+    if "channel error" in msg:
+        return "channel_error"
+    if (
+        "target page, context or browser has been closed" in msg
+        or "browser has been closed" in msg
+        or "browser closed" in msg
+    ):
+        return "context_closed"
+    if "timeout" in msg and ("launch" in msg or "firefox.launch" in msg):
+        return "launch_timeout"
+    if "could not launch firefox" in msg:
+        return "launch_failure"
+    if "timeout" in msg and ("goto" in msg or "navigation" in msg):
+        return "navigation_timeout"
+    return "unknown"
+
+
+def is_playwright_infra_failure(failure_class: str) -> bool:
+    return failure_class in PLAYWRIGHT_INFRA_FAILURE_CLASSES
+
+
+class PlaywrightInfraError(Exception):
+    """Raised when headless browser launch or session I/O fails (infra, not site)."""
+
+    def __init__(self, failure_class: str, detail: str) -> None:
+        self.failure_class = failure_class
+        self.detail = detail
+        super().__init__(f"[{failure_class}] {detail}")
 
 
 def _log_browser_env() -> None:  # pragma: no cover
@@ -57,29 +99,41 @@ def _log_browser_env() -> None:  # pragma: no cover
 
 
 async def _launch_browser(pw, headless: bool = True) -> Browser:  # pragma: no cover
-    """Launch Firefox browser.
-    
-    Raises:
-        Exception: If Firefox cannot be launched
-    """
+    """Launch Firefox browser with config-driven retries."""
     require_controlled_external_io("playwright._launch_browser")
     _log_browser_env()
+    cfg = PLAYWRIGHT_CONFIG
+    max_attempts = cfg["launch_max_attempts"]
     _log.debug("Launching Firefox (headless=%s)...", headless)
-    try:
-        browser = await pw.firefox.launch(
-            headless=headless,
-            firefox_user_prefs={"security.sandbox.content.level": 0},  # Railway: kernel denies user namespaces
-        )
-        _log.debug("Firefox launched successfully")
-        return browser
-    except Exception as e:
-        _log.error("Firefox launch failed: %s: %s", type(e).__name__, e)
-        raise Exception(
-            f"Could not launch Firefox.\n"
-            f"  Error: {e}\n"
-            f"  PLAYWRIGHT_BROWSERS_PATH={os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '(not set)')}\n"
-            f"  Try: playwright install firefox"
-        )
+    last_err: Optional[Exception] = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            browser = await pw.firefox.launch(
+                headless=headless,
+                timeout=cfg["launch_timeout_ms"],
+                firefox_user_prefs=cfg["firefox_user_prefs"],
+            )
+            _log.debug("Firefox launched successfully (attempt %d)", attempt)
+            return browser
+        except Exception as e:
+            last_err = e
+            _log.warning(
+                "Firefox launch attempt %d/%d failed: %s: %s",
+                attempt,
+                max_attempts,
+                type(e).__name__,
+                e,
+            )
+            if attempt < max_attempts:
+                await asyncio.sleep(cfg["launch_retry_delay_seconds"])
+    fc = classify_playwright_failure(last_err) if last_err else "launch_failure"
+    detail = str(last_err) if last_err else "unknown launch error"
+    detail = (
+        f"{detail}\n"
+        f"  PLAYWRIGHT_BROWSERS_PATH={os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '(not set)')}\n"
+        f"  Try: playwright install firefox"
+    )
+    raise PlaywrightInfraError(fc, detail) from last_err
 
 
 async def _create_page_context(browser: Browser) -> Tuple[BrowserContext, Page]:  # pragma: no cover
@@ -94,6 +148,93 @@ async def _create_page_context(browser: Browser) -> Tuple[BrowserContext, Page]:
     context = await browser.new_context(viewport={"width": 1280, "height": 2000})
     page = await context.new_page()
     return context, page
+
+
+class BatchBrowserSession:
+    """Recoverable Playwright session for concurrent batch scrapes (AST-853)."""
+
+    def __init__(
+        self,
+        headless: bool = True,
+        viewport: Optional[Dict[str, int]] = None,
+    ) -> None:
+        self._headless = headless
+        self._viewport = viewport or {"width": 1280, "height": 2000}
+        self._pw = None
+        self._playwright_cm = None
+        self._browser: Optional[Browser] = None
+        self._context: Optional[BrowserContext] = None
+        self._lock = asyncio.Lock()
+
+    async def ensure_context(self) -> BrowserContext:
+        async with self._lock:
+            if self._context is not None and self._browser is not None:
+                try:
+                    if self._browser.is_connected():
+                        return self._context
+                except Exception:
+                    pass
+            await self._close_handles_best_effort()
+            await self._open_fresh_locked()
+            assert self._context is not None
+            return self._context
+
+    async def _open_fresh_locked(self) -> None:
+        if self._pw is None:
+            self._playwright_cm = async_playwright()
+            self._pw = await self._playwright_cm.__aenter__()
+        self._browser = await _launch_browser(self._pw, headless=self._headless)
+        self._context = await self._browser.new_context(viewport=self._viewport)
+
+    async def recover(self, failure_class: str, reason: str) -> None:
+        async with self._lock:
+            _log.warning(
+                "playwright batch session recover failure_class=%s reason=%s",
+                failure_class,
+                reason,
+            )
+            await self._close_handles_best_effort()
+            await self._open_fresh_locked()
+
+    async def _close_handles_best_effort(self) -> None:
+        for closer in (
+            (self._context, "close"),
+            (self._browser, "close"),
+        ):
+            handle, method = closer
+            if handle is None:
+                continue
+            try:
+                await getattr(handle, method)()
+            except Exception:
+                pass
+        self._context = None
+        self._browser = None
+
+    async def aclose(self) -> None:
+        async with self._lock:
+            await self._close_handles_best_effort()
+            if self._playwright_cm is not None:
+                try:
+                    await self._playwright_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._playwright_cm = None
+                self._pw = None
+
+
+@asynccontextmanager
+async def create_batch_browser_session(  # pragma: no cover
+    headless: bool = True,
+    viewport: Optional[Dict[str, int]] = None,
+):
+    """Batch-scoped browser session with infra recovery between companies."""
+    session = BatchBrowserSession(headless=headless, viewport=viewport)
+    try:
+        await session.ensure_context()
+        yield session
+    finally:
+        await session.aclose()
 
 
 class PageLoadArtifacts(TypedDict, total=False):
@@ -298,25 +439,64 @@ async def wait_for_page_ready_after_navigation(page: PageHandle, timeout: int = 
     await page.wait_for_timeout(2000)  # brief settle for JS
 
 
-async def get_page(context: BrowserSession, url: Optional[str] = None) -> PageHandle:  # pragma: no cover
-    """Create a page from ``context``; optionally navigate when ``url`` is non-empty."""
-    page = await context.new_page()
+async def get_page(  # pragma: no cover
+    context: Optional[BrowserSession] = None,
+    url: Optional[str] = None,
+    *,
+    batch_session: Optional[BatchBrowserSession] = None,
+) -> PageHandle:
+    """Create a page from ``context`` or ``batch_session``; optionally navigate."""
+    cfg = PLAYWRIGHT_CONFIG
+    goto_timeout = cfg["page_goto_timeout_ms"]
+    recovery_max = cfg["context_recovery_max_attempts"]
+    last_err: Optional[Exception] = None
 
-    if not url or not str(url).strip():
-        return page
+    for recovery in range(recovery_max + 1):
+        page: Optional[PageHandle] = None
+        try:
+            if batch_session is not None:
+                ctx = await batch_session.ensure_context()
+            else:
+                ctx = context
+            if ctx is None:
+                raise ValueError("get_page requires context or batch_session")
+            page = await ctx.new_page()
 
-    await page.goto(url, wait_until="load", timeout=30000)
-    await page.wait_for_timeout(1000)
+            if not url or not str(url).strip():
+                return page
 
-    await _try_dismiss_cookie_banner(page)
+            await page.goto(url, wait_until="load", timeout=goto_timeout)
+            await page.wait_for_timeout(1000)
 
-    try:
-        await page.wait_for_load_state("networkidle", timeout=5000)
-    except Exception:
-        pass
+            await _try_dismiss_cookie_banner(page)
 
-    await page.wait_for_timeout(1000)
-    return page
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass
+
+            await page.wait_for_timeout(1000)
+            return page
+        except Exception as e:
+            last_err = e
+            if page is not None:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            fc = classify_playwright_failure(e)
+            if (
+                batch_session is not None
+                and is_playwright_infra_failure(fc)
+                and recovery < recovery_max
+            ):
+                await batch_session.recover(fc, str(e))
+                continue
+            if is_playwright_infra_failure(fc):
+                raise PlaywrightInfraError(fc, str(e)) from e
+            raise
+
+    raise PlaywrightInfraError("unknown", str(last_err)) from last_err  # pragma: no cover
 
 
 async def get_page_with_artifacts(context: BrowserSession, url: str) -> PageLoadArtifacts:  # pragma: no cover
@@ -430,18 +610,24 @@ async def close_page(page: PageHandle) -> None:  # pragma: no cover
     await page.close()
 
 
-async def check_connectivity(timeout: int = 10000) -> bool:  # pragma: no cover
+async def check_connectivity(timeout: Optional[int] = None) -> bool:  # pragma: no cover
     """Quick DNS + HTTP check via Playwright. Returns True if the browser can reach the internet."""
+    goto_timeout = timeout if timeout is not None else PLAYWRIGHT_CONFIG["connectivity_timeout_ms"]
     try:
         async with create_browser_context() as ctx:
             page = await ctx.new_page()
             try:
-                await page.goto("https://www.google.com", wait_until="commit", timeout=timeout)
+                await page.goto(
+                    "https://www.google.com",
+                    wait_until="commit",
+                    timeout=goto_timeout,
+                )
                 return True
             finally:
                 await page.close()
     except Exception as e:
-        _log.warning("check_connectivity failed: %s", e)
+        fc = classify_playwright_failure(e)
+        _log.warning("check_connectivity failed failure_class=%s: %s", fc, e)
         return False
 
 

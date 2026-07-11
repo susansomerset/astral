@@ -83,6 +83,8 @@ from src.utils.config import (
     dispatch_task_admin_defaults,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
+    dispatch_chain_claim_states_for_row,
+    is_dispatch_chain_trigger,
     trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
@@ -155,6 +157,7 @@ def decrypt_value(ciphertext: str) -> str:
 _company_schema_ensured = False
 _job_schema_ensured = False
 _JOB_IDENTITY_UNIQUE_INDEX = "idx_job_identity_unique"
+_BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
 _company_candidate_fk_ensured = False
 _company_job_scan_schema_ensured = False
@@ -1330,6 +1333,60 @@ def _remove_jobs_by_company(company: str) -> int:
     finally:
         conn.close()
 
+
+
+def _delete_board_placeholder_jobs(conn: sqlite3.Connection) -> int:
+    """Remove decommissioned board-gaze placeholder job rows (AST-729 / AST-846)."""
+    cursor = conn.execute(
+        "DELETE FROM job WHERE company LIKE ?",
+        (_BOARD_PLACEHOLDER_COMPANY_LIKE,),
+    )
+    deleted = cursor.rowcount or 0
+    if deleted:
+        conn.commit()
+    return deleted
+
+
+def _dedupe_job_identity_triples(conn: sqlite3.Connection) -> int:
+    """Delete duplicate job rows sharing complete identity triples; earliest created_at survives (AST-729 / AST-846)."""
+    group_rows = conn.execute(
+        """
+        SELECT company, job_title, company_job_id
+        FROM job
+        WHERE company IS NOT NULL AND TRIM(company) != ''
+          AND job_title IS NOT NULL AND TRIM(job_title) != ''
+          AND company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+          AND company NOT LIKE ?
+        GROUP BY company, job_title, company_job_id
+        HAVING COUNT(*) > 1
+        """,
+        (_BOARD_PLACEHOLDER_COMPANY_LIKE,),
+    ).fetchall()
+
+    deleted_total = 0
+    for company, job_title, company_job_id in group_rows:
+        member_rows = conn.execute(
+            """
+            SELECT astral_job_id
+            FROM job
+            WHERE company = ? AND job_title = ? AND company_job_id = ?
+            ORDER BY created_at ASC NULLS LAST, astral_job_id ASC
+            """,
+            (company, job_title, company_job_id),
+        ).fetchall()
+        if len(member_rows) < 2:
+            continue
+        delete_ids = [row[0] for row in member_rows[1:]]
+        placeholders = ",".join("?" for _ in delete_ids)
+        cursor = conn.execute(
+            f"DELETE FROM job WHERE astral_job_id IN ({placeholders})",
+            delete_ids,
+        )
+        deleted_total += cursor.rowcount or 0
+    if deleted_total:
+        conn.commit()
+    return deleted_total
+
 def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     """Create job table for raw_job_listing ingest if not present. Idempotent."""
     global _job_schema_ensured
@@ -1376,6 +1433,9 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         (_JOB_IDENTITY_UNIQUE_INDEX,),
     ).fetchone()
     if idx_row is None:
+        # AST-846: production legacy duplicates block idx_job_identity_unique; dedupe before create (AST-729 rules).
+        _delete_board_placeholder_jobs(conn)
+        _dedupe_job_identity_triples(conn)
         conn.execute(f"""
             CREATE UNIQUE INDEX {_JOB_IDENTITY_UNIQUE_INDEX}
             ON job (company, job_title, company_job_id)
@@ -4548,7 +4608,12 @@ def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) ->
 
 
 def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
-    """AST-469: select_job_page chains to parse_job_list in roster; set run_next when blank (idempotent)."""
+    """AST-469 superseded by AST-834: decomposed dispatch — select_job_page must not chain parse via Manage Tasks run_next."""
+    return
+
+
+def _apply_ast834_clear_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
+    """AST-834: clear stale select_job_page → parse_job_list Manage Tasks link (idempotent)."""
     try:
         row = conn.execute(
             "SELECT task_key_uuid, run_next FROM agent_task WHERE task_key = 'select_job_page' AND current = 1 LIMIT 1"
@@ -4557,15 +4622,11 @@ def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -
         return
     if not row:
         return
-    if (row[1] or "").strip():
-        return
-    try:
-        _validate_run_next(conn, "select_job_page", "parse_job_list")
-    except ValueError:
+    if (row[1] or "").strip() != "parse_job_list":
         return
     conn.execute(
-        "UPDATE agent_task SET run_next = ?, updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
-        ("parse_job_list", row[0]),
+        "UPDATE agent_task SET run_next = '', updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
+        (row[0],),
     )
     conn.commit()
 
@@ -4660,6 +4721,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE agent_task ADD COLUMN {_col} {_typ}")
                 conn.commit()
     _apply_ast469_select_job_page_run_next_migration(conn)
+    _apply_ast834_clear_select_job_page_run_next_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
@@ -5965,6 +6027,21 @@ def ensure_table_schema_for_upsert(conn: sqlite3.Connection, table: str) -> None
         globals()[flag_name] = False
     handler(conn)
 
+
+def ensure_all_upsert_registry_schemas_at_startup() -> None:
+    """Run idempotent lazy schema ensure for every upsert-registry table once at process bootstrap.
+
+    Invokes existing ``_UPSERT_LAZY_SCHEMA_HANDLERS`` only — no parallel migration logic.
+    Resets per-table ``_*_schema_ensured`` flags via ``ensure_table_schema_for_upsert`` so
+    stale process-global shortcuts cannot skip DDL on a legacy DB file."""
+    conn = _get_connection()
+    try:
+        for table in sorted(_UPSERT_LAZY_SCHEMA_HANDLERS):
+            ensure_table_schema_for_upsert(conn, table)
+    finally:
+        conn.close()
+
+
 def save_dispatch_task(
     candidate_id: str, task_key: str, min_count: int,
     auto_mode: bool = False, entity_type: Optional[str] = None,
@@ -6234,6 +6311,11 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if entity_type not in ENTITY_TYPES:
         return 0
     claim_states = dispatch_claim_states(state, entity_type)
+    if entity_type == "job" and is_dispatch_chain_trigger((state or "").strip()):
+        claim_states = dispatch_chain_claim_states_for_row(
+            (state or "").strip(),
+            (task.get("task_key") or "").strip(),
+        )
     if not claim_states:
         return 0
     task_key = task.get("task_key", "")

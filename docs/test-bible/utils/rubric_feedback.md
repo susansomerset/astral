@@ -77,3 +77,25 @@ Capture + Admin wiring: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/
 ```
 
 Capture early-return + `do_task` skip debug: **`docs/test-bible/core/agent.md`**.
+
+---
+
+### AST-859 · AST-378 (UAT fix)
+
+**`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** example **`Q1RACOVK`** (not **`Q1RAOCVK`**) — models must emit literal **`R`/`C`/`V`** delimiters per **`parse_vector_review_string`** regex.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt example wire format | `src/utils/config.py` | `TestAst859VectorReviewsPromptExample` |
+| Parse regression (Susan UAT strings) | `src/utils/rubric_feedback.py` | `TestAst859CompactStringParseExamples` |
+
+**AST-859** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst859VectorReviewsPromptExample \
+  tests/component/utils/test_rubric_feedback.py::TestAst859CompactStringParseExamples \
+  -q
+```
+
+Config contract: **`docs/test-bible/utils/config.md`**.

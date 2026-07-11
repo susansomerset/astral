@@ -32,11 +32,10 @@ from src.utils.config import (
     TASK_CONFIG,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
+    dispatch_chain_claim_states_for_row,
+    dispatch_chain_row_matches_job,
     dispatch_task_key_is_scored,
-    BUILD_ARTIFACTS_BASE_STATE,
-    build_artifacts_claim_states,
-    legacy_build_artifacts_hop,
-    resume_artifact_hop_task_keys,
+    is_dispatch_chain_trigger,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -194,28 +193,6 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
     s               = dict(_SUMMARY_ZERO)
-    if entity_type == "job" and dispatch_task_key in resume_artifact_hop_task_keys():
-        ts = (input_state or "").strip()
-        legacy_ok = legacy_build_artifacts_hop(ts) == dispatch_task_key
-        flat_ok = ts == BUILD_ARTIFACTS_BASE_STATE
-        if not flat_ok and not legacy_ok:
-            if debug:
-                logger.set_debug_flag(True)
-                logger.debug_index(
-                    func="dispatcher._run_unified",
-                    index=1,
-                    total=1,
-                    identifier=dispatch_task_key,
-                    outcome="skipped — trigger_state mismatch",
-                )
-                logger.debug_detail(f"expected={BUILD_ARTIFACTS_BASE_STATE!r} or legacy hop got {ts!r}")
-            _sched_log.warning(
-                "dispatch row mismatch: task_key=%s expects trigger_state=%s or legacy hop got %s — skipping claim",
-                dispatch_task_key,
-                BUILD_ARTIFACTS_BASE_STATE,
-                ts,
-            )
-            return dict(_SUMMARY_ZERO)
     if debug:
         logger.set_debug_flag(True)
 
@@ -235,8 +212,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 )
             claim_cap = database.count_eligible_for_dispatch_task(task)
         claim_states = dispatch_claim_states(input_state, "job")
-        if (input_state or "").strip() == BUILD_ARTIFACTS_BASE_STATE:
-            claim_states = list(build_artifacts_claim_states())
+        if is_dispatch_chain_trigger((input_state or "").strip()):
+            claim_states = dispatch_chain_claim_states_for_row(
+                (input_state or "").strip(),
+                task_key_run,
+            )
         bid, entities = get_new_job_batch(
             input_state,
             limit=limit,
@@ -247,6 +227,15 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             claim_cap=claim_cap,
             states=claim_states,
         )
+        if is_dispatch_chain_trigger((input_state or "").strip()):
+            entities = [
+                e for e in entities
+                if dispatch_chain_row_matches_job(
+                    (input_state or "").strip(),
+                    dispatch_task_key,
+                    (e.get("state") or ""),
+                )
+            ]
     else:
         freq = float(task.get("freq_hrs") or 0)
         # freq_hrs on dispatch_task overrides COMPANY_STATES scan_interval for gaze (WATCH) claim + count.
@@ -269,6 +258,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         )
 
     if not entities:
+        if entity_type == "job" and bid:
+            clear_job_batch(bid)
         if debug:
             logger.debug_index(
                 func="dispatcher._run_unified",
@@ -463,6 +454,7 @@ async def _dispatch_one(task: Dict) -> None:
     timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
     is_click = not bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
+    failure_reason: Optional[str] = None
     debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
     if debug:
         logger.set_debug_flag(True)
@@ -544,14 +536,17 @@ async def _dispatch_one(task: Dict) -> None:
         await _tracked()
     except asyncio.TimeoutError:
         final_status = "INTERRUPTED"
+        failure_reason = f"dispatch timeout after {timeout}s"
         _sched_log.error("[%s/%s] killed after %ds timeout", task_key, entity_batch_id, timeout)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
+        failure_reason = "dispatch cancelled by admin"
         _sched_log.warning("[%s/%s] KILLED by admin — thread cleared from memory", task_key, entity_batch_id)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
-    except Exception:
+    except Exception as exc:
         final_status = "FAILED"
+        failure_reason = f"dispatch crashed: {type(exc).__name__}"
         _sched_log.exception("[%s/%s] crashed", task_key, entity_batch_id)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     finally:
@@ -568,6 +563,28 @@ async def _dispatch_one(task: Dict) -> None:
                     entity_cost=round(entity_cost, 7),
                     **accumulated,
                 )
+                if final_status in ("FAILED", "INTERRUPTED"):
+                    logger.error(
+                        "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
+                        task_key,
+                        dispatch_ledger_id,
+                        final_status,
+                        failure_reason or "see scheduler log",
+                        accumulated.get("total_processed", 0),
+                        accumulated.get("total_passed", 0),
+                        accumulated.get("total_failed", 0),
+                        accumulated.get("total_errors", 0),
+                    )
+                elif accumulated.get("total_errors", 0) > 0:
+                    logger.warning(
+                        "[%s/%s] batch finished COMPLETED with errors — processed=%s passed=%s failed=%s errors=%s",
+                        task_key,
+                        dispatch_ledger_id,
+                        accumulated.get("total_processed", 0),
+                        accumulated.get("total_passed", 0),
+                        accumulated.get("total_failed", 0),
+                        accumulated.get("total_errors", 0),
+                    )
             except Exception as e:
                 _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
         flush_log_buffer()
