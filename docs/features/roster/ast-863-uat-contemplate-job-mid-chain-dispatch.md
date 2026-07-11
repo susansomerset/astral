@@ -145,14 +145,14 @@ No conflicts requiring plan revision.
 
 ## Review
 
-**Diff:** `origin/ftr/AST-752-agent-data-caller-content...origin/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch` @ `05a2dc8`
+**Diff:** `origin/ftr/AST-752-agent-data-caller-content...origin/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch` @ `002156f`
 
 | Area | Notes |
 |------|-------|
 | Stage 2 | `dispatch_chain_registry_trigger`; `is_dispatch_chain_trigger` accepts hop labels; mid-chain claim `[ts]` only; `dispatch_trigger_state` ctx uses registry key |
 | Boundaries | No agent/hydration changes; entry-row `BUILD_ARTIFACTS` claim expansion preserved |
 
-Betty manifest green @ `706b117`. Awaiting Radia **review-child**.
+Betty manifest green @ `0742e21`. Awaiting Radia **review-child**.
 
 ---
 
