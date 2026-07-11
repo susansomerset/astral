@@ -145,11 +145,23 @@ No conflicts requiring plan revision.
 
 ## Review
 
-**Diff:** `origin/ftr/AST-752-agent-data-caller-content...origin/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch` @ pending
+**Diff:** `origin/ftr/AST-752-agent-data-caller-content...origin/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch` @ `05a2dc8`
 
 | Area | Notes |
 |------|-------|
 | Stage 2 | `dispatch_chain_registry_trigger`; `is_dispatch_chain_trigger` accepts hop labels; mid-chain claim `[ts]` only; `dispatch_trigger_state` ctx uses registry key |
 | Boundaries | No agent/hydration changes; entry-row `BUILD_ARTIFACTS` claim expansion preserved |
 
-Awaiting Betty **qa-child** / Radia **review-child**.
+Betty manifest green @ `706b117`. Awaiting Radia **review-child**.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-11  
+**Sub-log hygiene:** Republished from `origin/ftr/AST-752-agent-data-caller-content` — linear AST-863 commits only; no `Merge remote-tracking branch` in ftr..sub range.
+
+**Product:** mid-chain hop-label dispatch-chain trigger routing (`05a2dc8`).  
+**Tests:** Betty manifest 6/6 green (`706b117`).
+
+**§9a dry-run:** pending Radia review + merge-child.
