@@ -140,3 +140,16 @@ Manual Run on dispatch task **`contemplate_job`** with **`trigger_state='BUILD_A
 | §3.5 Naming | **`dispatch_chain_registry_trigger`** vs row hop label **`trigger_state`** distinction explicit in plan steps. |
 
 No conflicts requiring plan revision.
+
+---
+
+## Review
+
+**Diff:** `origin/ftr/AST-752-agent-data-caller-content...origin/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch` @ pending
+
+| Area | Notes |
+|------|-------|
+| Stage 2 | `dispatch_chain_registry_trigger`; `is_dispatch_chain_trigger` accepts hop labels; mid-chain claim `[ts]` only; `dispatch_trigger_state` ctx uses registry key |
+| Boundaries | No agent/hydration changes; entry-row `BUILD_ARTIFACTS` claim expansion preserved |
+
+Awaiting Betty **qa-child** / Radia **review-child**.
