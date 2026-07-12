@@ -289,3 +289,12 @@ None.
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
 
 **Outcome:** Clean — ready for `resolve-child`.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-12  
+**Driven by:** Radia review @ `2824180` — 0 fix-now · 0 discuss · 0 advisory.
+
+No product changes required. §9a dry-run: `origin/sub/AST-879/AST-880-encoded-af-link-type-vet` merges cleanly into `origin/dev` and `origin/ftr/AST-879-vet-inflow-discovery-prompt-redraft`. Betty manifest (20 passed @ `5fcb929`) green before review.
