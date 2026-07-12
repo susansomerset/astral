@@ -154,3 +154,12 @@ None.
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
 
 **Outcome:** Clean — ready for `resolve-child`.
+
+## Resolution
+
+**Date:** 2026-07-12  
+**Review:** Radia clean sign-off @ `6c3cc66` (0 fix-now · 0 discuss · 0 advisory)
+
+No product delta on resolve — catalog JSON + fixture from build; Betty 38-key tests already on publish tip.
+
+**§9a:** dry-run publish ref vs `origin/dev` and `origin/ftr/AST-872-fetch-culture-pages` — recorded with resolve commit.
