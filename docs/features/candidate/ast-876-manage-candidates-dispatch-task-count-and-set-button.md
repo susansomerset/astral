@@ -166,3 +166,29 @@ On the Manage Candidates list, show each candidate’s dispatch-task row count a
 **Verify:** `./node_modules/.bin/tsc -b --noEmit` in `src/ui/frontend` — pass; `python3 -m py_compile src/utils/config.py` — pass.
 
 **Note for Betty:** Manage Candidates calls AST-875 `GET /api/admin/dispatch_tasks/counts` and `POST /api/admin/dispatch_tasks/set_from_template`; no new backend.
+
+## Radia review
+
+**Diff:** `origin/dev...origin/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks` @ `a9f668d`
+
+### What’s solid
+
+- Plan stages 1–2 match the AST-876-owned product surface: `DATA_SHAPES` `dispatch_task_count` column; Manage Candidates loads `GET …/counts`, merges onto rows (missing → `0`), custom int render, **Set dispatch tasks** with danger confirm + `POST …/set_from_template`, optimistic count + refresh.
+- §2.1 / G1: no hardcoded template id / `somerset` in the UI; column structure config-driven.
+- §3.3: frontend calls admin API only; no data/core imports; no Run/scheduler endpoints.
+- Confirm required before prune; `settingCandidateId` disables in-flight button; mutate paths (add/edit/delete) refresh counts.
+- Self-Assessment Scope `Single-Component` matches the UI+shape footprint. Backend upsert/counts on this tip are the AST-875 merge (already reviewed) — no second implementation.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None |
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Outcome:** Clean — ready for `resolve-child`.
