@@ -263,3 +263,29 @@ Does **not** change `inflow_discovery` CSE/ingest, short_name rename, prefilter/
 - **Publish ref:** `origin/sub/AST-879/AST-880-encoded-af-link-type-vet`
 - **Tip:** `7f1a642eb51e74be8d39845d9f50f16662ab85aa`
 - **Stages:** config → decode → roster → prompt seed (4 `code(AST-880)` commits after plan)
+
+---
+
+## Radia review
+
+**Diff:** `origin/dev...origin/sub/AST-879/AST-880-encoded-af-link-type-vet` @ `5fcb929`
+
+### What’s solid
+
+- Stages 1–4 match the plan: `grades_encoded_vet_meta` + `INFLOW_CONFIG["vet"]` pass/fail/`LT`; decode → `results[{hit_index, grade, website, confidence}]`; roster A/B/C/D → `WEBSITE_FOUND` (+ website) / F → `VET_FAILED` (website debug-only); AST-880 marker migration after AST-822; repo JSON ≡ UAT fixture ≡ seed.
+- Grade sets and vector code live in config (§1.4 / §2.1); single `_apply_vet_inflow_result_row` outcome helper (§1.3); no new company states; transitions via existing helpers (§2.6).
+- Debug: per-hit `debug_index` / `debug_detail` include grade + website + recorded state when `debug=True` (§1.5.1 / §5f).
+- Boundaries held: no dispatcher / discovery ingest / `fetch_website` / UI; Betty tests + bible on publish-ref are expected post-qa.
+- Self-Assessment Scope Single-Component matches footprint; Conf high still fits.
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Outcome:** Clean — ready for `resolve-child`.
