@@ -121,3 +121,10 @@ When Google CSE discovery records a company from a hit, persist the **exact sear
 - **§2.1:** No new config behavior keys; list shapes only.
 - **§2.4 / §2.6:** No batch-claim or state-machine changes.
 - **§3.3:** No new layer imports; roster continues to call data `save_company`.
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-864/AST-877-originating-search-term`  
+**Product tip:** `3f14381` — `4508696` (column + save preserve) + `4fde7bc` (stamp through discovery/ingest + debug detail) + `3f14381` (list shapes + detail modal)
+
+**Built:** Nullable `company.originating_search_term`; discovery CSE loop keeps `(term, hit)` and stamps via `record_inflow_discovery_hit` / `ingest_new_companies`; debug `originating_search_term=` working detail; New/Inactive/Ignored list columns + CompanyDetailModal read-only row.
