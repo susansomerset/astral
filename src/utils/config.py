@@ -18,7 +18,7 @@ Config sections:
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state progression
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
-  GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, gaze)
+  GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
   TRACKER_CONFIG  — tracker-specific (ingest, jd processing)
   NAV_CONFIG      — UI navigation structure
@@ -972,7 +972,7 @@ GOOGLE_CSE_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# GAZER_CONFIG: gazer-batch steps (validate_title inline-only qualify pre-step; fetch_jd; gaze).
+# GAZER_CONFIG: gazer-batch steps (validate_title inline-only qualify pre-step; fetch_jd; fetch_culture_pages; gaze).
 # Mirrors orchestration for gazer-owned paths until gazer.py reads this block directly (AST-467).
 # ROSTER_CONFIG["gaze"] duplicates error_state intentionally — semantic twin must stay literal-identical here.
 # ---------------------------------------------------------------------------
@@ -992,6 +992,12 @@ GAZER_CONFIG = {
             "JD_SCRAPE_FAIL_MISSING",
             "JD_SCRAPE_FAIL_CLOSED",
         ],
+    },
+    "fetch_culture_pages": {
+        "fallback_batch_size": 10,
+        "pass_state": "CULTURE_READY",
+        "fail_state": "NEED_CULTURE_CONTENT",
+        "no_links_state": "NO_CULTURE_LINKS",
     },
     "fetch_website": {
         "fallback_batch_size": 10,
@@ -1139,10 +1145,14 @@ JOB_STATES = {
     "PASSED_GET":             {"prior_states": ["PASSED_DO"]},
     "FAILED_GET":             {"prior_states": ["PASSED_DO"]},
     "FAILED_TECHNICAL_GET":   {"prior_states": ["PASSED_DO"]},
-    # LIKE needs company website; scrape can fail after GET (not only from DO).
-    "NEED_WEBSITE_CONTENT":   {"prior_states": ["PASSED_DO", "PASSED_GET"]},
+    # AST-874: culture fetch gate between GET and LIKE.
+    "CULTURE_READY":          {"prior_states": ["PASSED_GET"]},
+    "NEED_CULTURE_CONTENT":   {"prior_states": ["PASSED_GET"]},
+    "NO_CULTURE_LINKS":       {"prior_states": ["PASSED_GET"]},
+    # LIKE needs company website; scrape can fail after GET / CULTURE_READY (not only from DO).
+    "NEED_WEBSITE_CONTENT":   {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
     # AST-479: consult_like success queues here for analysis_upshot (sibling); not auto-promoted to BUILD_ARTIFACTS.
-    "PASSED_LIKE":            {"prior_states": ["PASSED_GET"]},
+    "PASSED_LIKE":            {"prior_states": ["CULTURE_READY"]},
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
@@ -1156,8 +1166,8 @@ JOB_STATES = {
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
-    "FAILED_LIKE":            {"prior_states": ["PASSED_GET"]},
-    "FAILED_TECHNICAL_LIKE":  {"prior_states": ["PASSED_GET"]},
+    "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
+    "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
     "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
@@ -1237,11 +1247,14 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 # Ordered state lists for Jobs UI views (single source of truth for API, nav counts, frontend).
 IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
-    "PASSED_JD", "PASSED_DO", "PASSED_GET", "PASSED_LIKE", "PASSED_LIKE_RETRY",
+    "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
 ]
 # PASSED_* rows waiting on a scored dispatch step: claim uses latest_score >= score_floor.
 # UI treats misses as Skipped while DB state stays PASSED (see api_jobs skipped / in_review).
-PASSED_SCORE_GATED_STATES = frozenset({"PASSED_JD", "PASSED_DO", "PASSED_GET", "PASSED_LIKE"})
+# CULTURE_READY is score-gated so grade_like keeps a floor after the culture hop (AST-874).
+PASSED_SCORE_GATED_STATES = frozenset({
+    "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE",
+})
 
 # Admin Edit Dispatch Task modal — score_floor dropdown (AST-743 / AST-750).
 DISPATCH_SCORE_FLOOR_VALUES: tuple[float, ...] = tuple(i * 0.5 for i in range(21))  # 0.0 … 10.0
@@ -1296,7 +1309,7 @@ DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze",
     "inflow_discovery", "inflow_resolve_website", "vet_inflow_discovery",
-    "qualify_job_listings", "fetch_jd", "evaluate_jd",
+    "qualify_job_listings", "fetch_jd", "fetch_culture_pages", "evaluate_jd",
     "grade_do", "grade_get", "grade_like", "analysis_upshot",
     "contemplate_job", "draft_cover_letter",
     *_RESUME_ARTIFACT_HOP_TASK_KEYS,
@@ -1346,6 +1359,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
+    if task_key == "fetch_culture_pages":
+        return "PASSED_GET"
     if task_key == "fetch_job_pages":
         states = GAZER_CONFIG["fetch_job_pages"].get("fetch_job_pages_trigger_states") or ["PREFILTER_PASSED"]
         return states[0]
@@ -1358,7 +1373,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "grade_get":
         return "PASSED_DO"
     if task_key == "grade_like":
-        return "PASSED_GET"
+        return "CULTURE_READY"
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
     if task_key in resume_artifact_hop_task_keys():
@@ -1387,7 +1402,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "fetch_jd", "qualify_job_listings", "evaluate_jd",
+        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
@@ -1530,6 +1545,7 @@ SKIPPED_STATES = [
     "FAILED_DO", "FAILED_TECHNICAL_DO",
     "FAILED_GET", "FAILED_TECHNICAL_GET",
     "NEED_WEBSITE_CONTENT",
+    "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS",
     "FAILED_LIKE", "FAILED_TECHNICAL_LIKE",
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
     "CANDIDATE_SKIPPED",
@@ -1552,6 +1568,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "PASSED_JD", "label": "Passed Job Description"},
     {"state": "PASSED_DO", "label": "Passed DO"},
     {"state": "PASSED_GET", "label": "Passed GET"},
+    {"state": "CULTURE_READY", "label": "Culture Ready"},
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
 ]
@@ -1579,6 +1596,8 @@ JOBS_SKIPPED_SECTION_ORDER = [
     "FAILED_DO",
     "FAILED_TECHNICAL_DO",
     "NEED_WEBSITE_CONTENT",
+    "NEED_CULTURE_CONTENT",
+    "NO_CULTURE_LINKS",
     "FAILED_JD",
     "FAILED_TECHNICAL",
     "FAILED_JOBLIST",
@@ -1602,6 +1621,8 @@ JOBS_SKIPPED_SECTION_LABELS = {
     "FAILED_DO": "Failed DO",
     "FAILED_TECHNICAL_DO": "Failed Technical DO",
     "NEED_WEBSITE_CONTENT": "Need Website Content",
+    "NEED_CULTURE_CONTENT": "Need Culture Content",
+    "NO_CULTURE_LINKS": "No Culture Links",
     "FAILED_LIKE": "Failed LIKE",
     "FAILED_TECHNICAL_LIKE": "Failed Technical LIKE",
 }
