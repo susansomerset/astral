@@ -118,3 +118,27 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 ```
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-878 · AST-872 (UAT bug)
+
+**Product:** Add **`fetch_culture_pages`** current row to **`data/admin/agent_task.json`** (Job Review **`task_seq` 7** between **`grade_get`** and **`grade_like`**); bump **`grade_like`→8**, **`analysis_upshot`→9**; keep **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-identical (AST-786 contract). Catalog size **37 → 38**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog count + frozenset + startup apply | `data/admin/agent_task.json`, fixture | `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` |
+| Job Review placement / mechanical hop fields | same | `tests/component/core/test_repo_admin_json.py::TestAst878FetchCulturePagesCatalogRow` |
+
+**Broken / revised:** **`TestAst786AgentTaskRepoJsonSeed`** — assert **38** rows; **`AST786_EXPECTED_TASK_KEYS`** includes **`fetch_culture_pages`**.
+
+**AST-878** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst878FetchCulturePagesCatalogRow \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
