@@ -2644,6 +2644,7 @@ DATA_SHAPES = {
                 {"key": "contact_email", "label": "Email", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
                 {"key": "api_key_status", "label": "API Key", "sortable": True},
+                {"key": "dispatch_task_count", "label": "Dispatch tasks", "sortable": True, "type": "int"},
             ],
         },
         "edit": {
