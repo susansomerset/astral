@@ -192,3 +192,10 @@ On the Manage Candidates list, show each candidate’s dispatch-task row count a
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
 
 **Outcome:** Clean — ready for `resolve-child`.
+
+## Resolution
+
+**Date:** 2026-07-12  
+**Review:** Radia clean sign-off @ `e63c6c5` (0 fix-now · 0 discuss · 0 advisory).
+
+No product or plan changes required. Publish tip remains Radia’s review doc on `origin/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks`.
