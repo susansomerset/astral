@@ -5976,6 +5976,74 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'"
     )
     conn.commit()
+
+    # AST-874: seed fetch_culture_pages @ PASSED_GET; retarget grade_like PASSED_GET → CULTURE_READY.
+    like_passed_get_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'grade_like' AND trigger_state = 'PASSED_GET'
+        """
+    ).fetchall()
+    for r in like_passed_get_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'fetch_culture_pages', ?, 'PASSED_GET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'
+                  AND trigger_state = 'PASSED_GET'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'CULTURE_READY' "
+        "WHERE task_key = 'grade_like' AND trigger_state = 'PASSED_GET'"
+    )
+    # Re-seed when grade_like already at CULTURE_READY but fetch_culture_pages missing (partial apply).
+    like_culture_ready_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'grade_like' AND trigger_state = 'CULTURE_READY'
+        """
+    ).fetchall()
+    for r in like_culture_ready_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'fetch_culture_pages', ?, 'PASSED_GET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'
+                  AND trigger_state = 'PASSED_GET'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 
