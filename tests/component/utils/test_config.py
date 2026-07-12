@@ -1276,8 +1276,11 @@ class TestAst505InflowDiscoveryConfig:
         assert "seq" not in entry
         assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
+        assert entry["output_type"] == "grades_encoded_vet_meta"
         items = entry["response_schema"]["results"]["items_schema"]
-        assert items["action"]["type"] == "str"
+        assert items["grade"]["type"] == "str"
+        assert items["website"]["type"] == "str"
+        assert "action" not in items
 
     def test_new_company_state_and_transitions(self) -> None:
         assert "NEW" in cfg.COMPANY_STATES
@@ -1297,6 +1300,14 @@ class TestAst505InflowDiscoveryConfig:
         assert v["pass_state"] == "WEBSITE_FOUND"
         assert v["fail_state"] == "VET_FAILED"
         assert v["blurb_data_key"] == "inflow_discovery_blurb"
+        assert v["pass_grades"] == frozenset({"A", "B", "C", "D"})
+        assert v["fail_grades"] == frozenset({"F"})
+        assert v["grade_vector_code"] == "LT"
+
+    def test_vet_grades_encoded_vet_meta_output_type(self) -> None:
+        ot = cfg.ASTRAL_CONFIG["output_types"]["grades_encoded_vet_meta"]
+        assert "LT{grade}{conf}" in ot["payload_instructions"]
+        assert "required on every grade including F" in ot["payload_instructions"]
 
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("inflow_discovery")

@@ -337,3 +337,19 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-880 · AST-879
+
+**`grades_encoded_vet_meta`:** **`_decode_payload`** branch returns **`results[]`** with **`hit_index` / `grade` / `website` / `confidence`** — LT vector segment, website required on every grade including F; illegal grade or empty website raises **`ValueError`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| LT segment decode + validation | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode` |
+
+**AST-880** narrowed run:
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode -q
+```

@@ -234,6 +234,55 @@ class TestDecodePayload:
         assert job["job_title"] == "Sr Job Role"
 
 
+class TestAst880GradesEncodedVetMetaDecode:
+    """AST-880: grades_encoded_vet_meta → results[{hit_index, grade, website, confidence}]."""
+
+    def test_decodes_lt_grade_lines(self) -> None:
+        ctx = {"batch_entities": [{"short_name": "a"}, {"short_name": "b"}]}
+        out = agent_mod._decode_payload(
+            "vet_inflow_discovery",
+            "grades_encoded_vet_meta",
+            "000|LTA5|https://a.example\n001|LTF4|https://b.example",
+            ctx,
+        )
+        assert out["results"][0] == {
+            "hit_index": 0,
+            "grade": "A",
+            "website": "https://a.example",
+            "confidence": 5,
+        }
+        assert out["results"][1]["grade"] == "F"
+        assert out["results"][1]["hit_index"] == 1
+
+    def test_rejects_missing_website_and_illegal_grade(self) -> None:
+        ctx = {"batch_entities": [{"short_name": "a"}]}
+        with pytest.raises(ValueError, match="missing website"):
+            agent_mod._decode_payload(
+                "vet_inflow_discovery",
+                "grades_encoded_vet_meta",
+                "000|LTA5|",
+                ctx,
+            )
+        with pytest.raises(ValueError, match="illegal vet grade"):
+            agent_mod._decode_payload(
+                "vet_inflow_discovery",
+                "grades_encoded_vet_meta",
+                "000|LTX5|https://a.example",
+                ctx,
+            )
+
+    def test_skips_out_of_range_lines(self, caplog: pytest.LogCaptureFixture) -> None:
+        ctx = {"batch_entities": [{"short_name": "a"}]}
+        out = agent_mod._decode_payload(
+            "vet_inflow_discovery",
+            "grades_encoded_vet_meta",
+            "001|LTA5|https://a.example",
+            ctx,
+        )
+        assert out["results"] == []
+        assert "skipping line with pos 1" in caplog.text
+
+
 def _ast603_prefilter_task_config() -> Dict[str, Any]:
     return TASK_CONFIG["prefilter_company"]
 

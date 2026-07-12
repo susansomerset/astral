@@ -463,3 +463,50 @@ class TestAst834ClearSelectJobPageRunNextMigration:
         finally:
             conn.close()
 
+
+
+class TestAst880VetInflowEncodedPromptMigration:
+    """AST-880: encoded A-F vet prompt supersedes AST-822 prose."""
+
+    def test_ast880_migration_rewrites_vet_prompt(self, sqlite_in_memory) -> None:
+        from src.data import database as database_mod
+
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            db.save_agent_task(
+                "vet_inflow_discovery",
+                agent_id="find_company_website",
+                user_prompt="MULTI-HIT VET BATCH (AST-822) old prose",
+            )
+            database_mod._apply_ast880_vet_inflow_discovery_prompt_migration(conn)
+            row = conn.execute(
+                "SELECT user_prompt FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1",
+            ).fetchone()
+            assert row is not None
+            assert database_mod._AST880_VET_INFLOW_ENCODED_MARKER in (row[0] or "")
+        finally:
+            conn.close()
+
+    def test_ast880_migration_idempotent_when_marker_present(self, sqlite_in_memory) -> None:
+        from src.data import database as database_mod
+
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_task_schema(conn)
+            seed = database_mod._AST880_VET_INFLOW_USER_PROMPT_SEED.strip()
+            db.save_agent_task(
+                "vet_inflow_discovery",
+                agent_id="find_company_website",
+                user_prompt=seed,
+            )
+            database_mod._apply_ast880_vet_inflow_discovery_prompt_migration(conn)
+            row = conn.execute(
+                "SELECT user_prompt FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1",
+            ).fetchone()
+            assert row is not None
+            assert row[0] == seed
+        finally:
+            conn.close()
