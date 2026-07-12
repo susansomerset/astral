@@ -128,3 +128,29 @@ When Google CSE discovery records a company from a hit, persist the **exact sear
 **Product tip:** `3f14381` — `4508696` (column + save preserve) + `4fde7bc` (stamp through discovery/ingest + debug detail) + `3f14381` (list shapes + detail modal)
 
 **Built:** Nullable `company.originating_search_term`; discovery CSE loop keeps `(term, hit)` and stamps via `record_inflow_discovery_hit` / `ingest_new_companies`; debug `originating_search_term=` working detail; New/Inactive/Ignored list columns + CompanyDetailModal read-only row.
+
+## Radia review
+
+**Diff:** `origin/dev...origin/sub/AST-864/AST-877-originating-search-term` @ `189f47b`
+
+### What’s solid
+
+- Plan stages 1–3 match the tip: nullable `company.originating_search_term` (CREATE + ALTER), `save_company` preserve-on-omit (same pattern as `candidate_id`), excluded from `_UPDATE_COMPANY_ALLOWED`.
+- Discovery stamps via `(term, hit)` accumulator → `record_inflow_discovery_hit(..., search_term=term)` → `save_company`; `ingest_new_companies` accepts kwarg + `source_hit` fallback; empty/whitespace → `None`.
+- §1.5.1: `log.debug_detail(f"originating_search_term={term!r}")` only under the existing `if debug:` hit loop (recorded and skipped).
+- §2.1 / G1: list column only on `new_list` / `inactive_list` / `ignored`; CompanyDetailModal read-only Summary row; PUT body does not include the field.
+- §1.1 inventory updated; no new tables; no AST-865 FK/UI; INSERT column/`?`/bind counts align. Self-Assessment Scope `Single-Component` matches the footprint.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None |
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Outcome:** Clean — ready for `resolve-child`.
