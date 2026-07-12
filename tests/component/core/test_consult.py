@@ -1540,6 +1540,21 @@ class TestRunConsultTaskRoutes:
         assert out["total_passed"] == 1
 
     @pytest.mark.asyncio
+    async def test_routes_fetch_culture_pages_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.gazer.fetch_culture_pages_batch",
+            AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1}),
+        )
+        out = await consult_mod.run_consult_task(
+            "job", "PASSED_GET", [{"astral_job_id": "job-c1"}, {"astral_job_id": "job-c2"}],
+            "batch-1", {},
+            dispatch_task_key="fetch_culture_pages",
+        )
+        assert out["total_processed"] == 2
+        assert out["total_passed"] == 1
+        assert out["total_failed"] == 1
+
+    @pytest.mark.asyncio
     async def test_routes_fetch_website_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "src.core.gazer.fetch_website_batch",

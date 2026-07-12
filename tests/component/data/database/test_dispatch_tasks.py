@@ -935,3 +935,107 @@ class TestAst766BoardSchemaSunset:
             == 0
         )
 
+class TestAst874FetchCulturePagesDispatchMigration:
+    """AST-874: seed fetch_culture_pages @ PASSED_GET; retarget grade_like → CULTURE_READY."""
+
+    def _insert_grade_like_passed_get(
+        self, conn, candidate_id: str, *, batch_size: int = 4, freq_hrs: float = 1.5,
+        auto_mode: int = 1, score_floor: float = 0.7,
+    ) -> None:
+        # Raw insert — save_dispatch_task defaults grade_like to CULTURE_READY after AST-874.
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, trigger_state, min_count, auto_mode,
+                batch_size, freq_hrs, entity_type, sort_by, batch_call_mode, score_floor
+            ) VALUES (?, 'grade_like', 'PASSED_GET', 1, ?, ?, ?, 'job', 'updated_at', 0, ?)
+            """,
+            (candidate_id, auto_mode, batch_size, freq_hrs, score_floor),
+        )
+        conn.commit()
+
+    def test_retargets_grade_like_and_seeds_fetch_culture_pages(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_grade_like_passed_get(conn, "c874")
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            like = conn.execute(
+                "SELECT trigger_state, batch_size, score_floor FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'grade_like'",
+                ("c874",),
+            ).fetchone()
+            fetch = conn.execute(
+                "SELECT trigger_state, batch_size, freq_hrs, auto_mode, score_floor FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'",
+                ("c874",),
+            ).fetchone()
+            assert like is not None
+            assert like[0] == "CULTURE_READY"
+            assert like[1] == 4
+            assert float(like[2]) == 0.7
+            assert fetch is not None
+            assert fetch[0] == "PASSED_GET"
+            assert fetch[1] == 4
+            assert float(fetch[2]) == 1.5
+            assert fetch[3] == 1
+            assert float(fetch[4]) == 0.7
+        finally:
+            conn.close()
+
+    def test_seeds_when_grade_like_already_culture_ready(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task(
+            "c874b", "grade_like", min_count=1, trigger_state="CULTURE_READY",
+            batch_size=6, freq_hrs=2.0, score_floor=0.55,
+        )
+        conn = db._get_connection()
+        try:
+            n_before = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'",
+                ("c874b",),
+            ).fetchone()[0]
+            assert n_before == 0
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            fetch = conn.execute(
+                "SELECT trigger_state, batch_size, freq_hrs, score_floor FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'",
+                ("c874b",),
+            ).fetchone()
+            assert fetch is not None
+            assert fetch[0] == "PASSED_GET"
+            assert fetch[1] == 6
+            assert float(fetch[2]) == 2.0
+            assert float(fetch[3]) == 0.55
+        finally:
+            conn.close()
+
+    def test_idempotent_no_duplicate_fetch_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_grade_like_passed_get(conn, "c874c", batch_size=3)
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n_like = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'grade_like'",
+                ("c874c",),
+            ).fetchone()[0]
+            n_fetch = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'fetch_culture_pages' AND trigger_state = 'PASSED_GET'",
+                ("c874c",),
+            ).fetchone()[0]
+            assert n_like == 1
+            assert n_fetch == 1
+        finally:
+            conn.close()
+
