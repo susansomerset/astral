@@ -40,6 +40,7 @@ from src.utils.llm_external import extract_api_response_text
 from src.external.deepseek import send_to_deepseek
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
+    INFLOW_CONFIG,
     resolve_tokens, get_model, CHARS_PER_TOKEN, DEEPSEEK_MODEL_PRICING,
     chain_context_selected_agent,
     get_active_llm_provider,
@@ -187,6 +188,48 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     batch_entities = (ctx or {}).get("batch_entities") or []
     payload = clean_encoded_agent_payload(payload or "")
     lines = [ln for ln in payload.splitlines() if ln.strip()]
+
+    # AST-880: link-type vet → results[{hit_index, grade, website, confidence}]
+    if output_type == "grades_encoded_vet_meta":
+        vet_cfg = INFLOW_CONFIG["vet"]
+        vector_code = vet_cfg["grade_vector_code"]
+        allowed_grades = vet_cfg["pass_grades"] | vet_cfg["fail_grades"]
+        valid_letters = set(ASTRAL_CONFIG.get("valid_grades", []))
+        result_rows: List[Dict[str, Any]] = []
+        for line in lines:
+            fields = [f.strip() for f in line.split("|")]
+            try:
+                pos = int(fields[0])
+            except (ValueError, IndexError):
+                raise ValueError(f"[{task_key}] bad position field in line: {line!r}")
+            if pos < 0 or pos >= len(batch_entities):
+                logger.warning(
+                    "[%s] skipping line with pos %d out of range (batch=%d): %r",
+                    task_key, pos, len(batch_entities), line,
+                )
+                continue
+            if len(fields) < 3:
+                raise ValueError(f"[{task_key}] vet line needs pos|LT{{grade}}{{conf}}|website: {line!r}")
+            norm = "".join(ch for ch in fields[1] if ch not in " -:")
+            if not _GRADE_SEG.match(norm) or norm[:2] != vector_code:
+                raise ValueError(f"[{task_key}] bad LT grade segment in line: {line!r}")
+            grade, conf_d = norm[2], int(norm[3])
+            if conf_d not in (1, 2, 3, 4, 5):
+                raise ValueError(
+                    f"[{task_key}] non-X grade requires confidence 1-5, got {conf_d} in segment {norm!r} (line {line!r})"
+                )
+            website = "|".join(fields[2:]).strip()
+            if not website:
+                raise ValueError(f"[{task_key}] missing website on vet line: {line!r}")
+            if grade not in valid_letters or grade not in allowed_grades:
+                raise ValueError(f"[{task_key}] illegal vet grade {grade!r} in line: {line!r}")
+            result_rows.append({
+                "hit_index": pos,
+                "grade": grade,
+                "website": website,
+                "confidence": conf_d,
+            })
+        return {"results": result_rows}
 
     vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
     result_jobs = []
