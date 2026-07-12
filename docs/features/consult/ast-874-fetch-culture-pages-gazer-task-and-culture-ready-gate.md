@@ -203,3 +203,31 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 **Verify:** `python3 -m py_compile` on `config.py`, `gazer.py`, `consult.py`, `database.py` — pass. Migration SQL smoke on in-memory sqlite — pass.
 
 **Note for Betty:** new dispatch task key + job states; LIKE trigger moved off PASSED_GET.
+
+## Radia review
+
+**Diff:** `origin/dev...origin/sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate` @ `f1d80d9`
+
+### What’s solid
+
+- Plan stages 1–3 match the product diff: `JOB_STATES` / UI manifests / `GAZER_CONFIG["fetch_culture_pages"]` / dispatch registry; `fetch_culture_pages_batch` + consult route; `_ensure_dispatch_task_schema` seed + `grade_like` retarget.
+- §2.1 / §2.6: pass/fail/no_links and LIKE priors live in config; GET → CULTURE_READY → LIKE is enforced; no LIKE from `PASSED_GET`.
+- §2.8: coat-check only via `get_company_data(..., "website_content")` — no parallel scrape path.
+- §1.5.1 / §5f: per-job `debug_index` + `debug_detail` (found/recorded) gated on `debug=True`; batch summary detail present.
+- §2.4: gazer only transitions claimed jobs; sequential batch avoids same-company coat-check races; in-memory writeback covered by tests.
+- Migration bind counts match the qualify-retry seed pattern; `score_floor` cloned from LIKE (no invented default).
+- Self-Assessment Scope `Single-Component` matches the footprint.
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| advisory | `src/core/gazer.py` imports | `get_company` imported from both `tracker` and `database`; database shadows tracker. Behavior is identical (tracker is a thin delegate), but the tracker import is dead. Drop one import on a tidy-up if touching the file. |
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 1 advisory |
+
+**Outcome:** Clean — ready for `resolve-child`.
