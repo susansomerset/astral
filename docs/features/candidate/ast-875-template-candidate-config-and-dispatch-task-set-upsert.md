@@ -288,3 +288,15 @@ Define the template candidate id in product config (default `somerset`) and impl
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
 
 **Outcome:** Clean — ready for `resolve-child`.
+
+## Resolution
+
+**Date:** 2026-07-12  
+**Review:** Radia clean sign-off @ `9f6ee49` (0 fix-now · 0 discuss · 0 advisory)
+
+| Item | Action |
+|------|--------|
+| — | No product or doc fixes required. |
+
+**§9a:** dry-run publish ref vs `origin/dev` and `origin/ftr/AST-873-set-dispatch-tasks-button` — recorded on resolve commit.
+
