@@ -343,3 +343,13 @@ Assessment enrichment, **`/vector_feedback/rubric_lookup`**, and **`POST /vector
   tests/component/ui/api/test_api_admin.py::TestAst808VectorFeedbackHydration \
   -q
 ```
+
+### AST-875 · AST-873
+
+**`GET /api/admin/dispatch_tasks/counts`** → `{counts: {candidate_id: n}}`; **`POST /api/admin/dispatch_tasks/set_from_template`** with `{candidate_id}` → upsert+prune stats (400/404 on ValueError/LookupError). No **`run_task`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Counts + set_from_template | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst875DispatchTasksSetFromTemplate` |
+
+Primary data manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).

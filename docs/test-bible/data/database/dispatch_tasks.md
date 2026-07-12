@@ -166,3 +166,32 @@ Config + gazer manifest: **`docs/test-bible/utils/config.md`** · **`docs/test-b
   tests/component/data/database/test_dispatch_tasks.py::TestAst874FetchCulturePagesDispatchMigration \
   -q
 ```
+
+### AST-875 · AST-873
+
+**AST-875:** Template candidate schedule mirror — `list_dispatch_tasks_for_candidate`, `count_dispatch_tasks_by_candidate`, `delete_dispatch_task`, transactional `set_dispatch_tasks_from_template_rows` (upsert+prune; clear `last_run_at`/`batch_id`; copy schedule cols including `auto_mode`). Does not enqueue runs.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | List/count helpers + blank candidate short-circuit | `src/data/database.py` | **`TestAst875SetDispatchTasksFromTemplate::test_list_and_count_helpers`** |
+| 2 | Delete by id (noop when missing) | same | **`::test_delete_dispatch_task_noop_and_delete`** |
+| 3 | Upsert+prune copies schedule, clears runtime, idempotent re-run | same | **`::test_set_upsert_prune_clears_runtime_and_is_idempotent`** |
+| 4 | Empty template deletes all target rows | same | **`::test_empty_template_deletes_all_target_rows`** |
+| 5 | Blank target / blank task_key → `ValueError` | same | **`::test_blank_target_and_blank_task_key_raise`** |
+
+Config / core / admin: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/ui/api/api_admin.md`** (**AST-875**).
+
+**AST-875** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst875SetDispatchTasksFromTemplate \
+  tests/component/utils/test_config.py::TestAst875TemplateCandidateId \
+  tests/component/core/test_dispatcher.py::TestAst875SetCandidateDispatchTasksFromTemplate \
+  tests/component/ui/api/test_api_admin.py::TestAst875DispatchTasksSetFromTemplate \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–5 + config/core/api lines — not zero-arg harness / branch-lock gate.
+
+**Broken / obsolete:** none.
