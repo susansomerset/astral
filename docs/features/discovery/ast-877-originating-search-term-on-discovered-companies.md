@@ -154,3 +154,9 @@ When Google CSE discovery records a company from a hit, persist the **exact sear
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
 
 **Outcome:** Clean — ready for `resolve-child`.
+
+## Resolution
+
+**2026-07-12 — Hedy / resolve-child**
+
+Radia review clean (0 fix-now · 0 discuss · 0 advisory). No product delta. Publish tip already includes Radia’s `docs(AST-877): Radia review — clean` @ `a6a4756`.
