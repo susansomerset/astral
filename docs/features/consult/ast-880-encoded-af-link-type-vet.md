@@ -255,3 +255,11 @@ Does **not** change `inflow_discovery` CSE/ingest, short_name rename, prefilter/
 - **§3.3:** `agent.py` may import config for vector code / grade sets; roster stays core→agent via `do_task` only.
 - **§3.5:** Names stay `vet_inflow_discovery` / existing function names; new symbols use `ast880` / `grades_encoded_vet_meta` prefixes consistently.
 )
+
+---
+
+## Build complete
+
+- **Publish ref:** `origin/sub/AST-879/AST-880-encoded-af-link-type-vet`
+- **Tip:** `7f1a642eb51e74be8d39845d9f50f16662ab85aa`
+- **Stages:** config → decode → roster → prompt seed (4 `code(AST-880)` commits after plan)
