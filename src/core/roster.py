@@ -293,10 +293,15 @@ def _apply_vet_inflow_result_row(
     index: int,
     total: int,
 ) -> Dict[str, Any]:
-    action = (row.get("action") or "").strip().lower()
-    if action in ("ignore", "reject"):
+    grade = (row.get("grade") or "").strip().upper()
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"grade={grade!r} missing website")
+        return {"success": False, "state": None, "error": "missing website"}
+    if grade in cfg["fail_grades"]:
         transition_company_state(short_name, cfg["fail_state"])
-        outcome = f"recorded {cfg['fail_state']}"
+        outcome = f"recorded {cfg['fail_state']} grade={grade} website={website!r}"
         if debug:
             log.debug_index(
                 func="roster.vet_inflow_discovery_company",
@@ -305,16 +310,11 @@ def _apply_vet_inflow_result_row(
                 identifier=short_name,
                 outcome=outcome,
             )
-            log.debug_detail(f"action={action!r}")
+            log.debug_detail(f"grade={grade!r} website={website!r}")
         return {"success": True, "state": cfg["fail_state"], "error": None}
-    if action not in ("slug", "accept"):
-        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
-        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
-    website = (row.get("website") or "").strip()
-    if not website:
-        if debug:
-            log.debug_detail(f"action={action!r} missing website")
-        return {"success": False, "state": None, "error": "missing website on pass action"}
+    if grade not in cfg["pass_grades"]:
+        logger.warning("[%s] vet_inflow_discovery_company: unknown grade %r", short_name, row.get("grade"))
+        return {"success": False, "state": None, "error": f"unknown grade {grade!r}"}
     update_company(short_name, company_website=website)
     transition_company_state(short_name, cfg["pass_state"])
     if debug:
@@ -323,9 +323,9 @@ def _apply_vet_inflow_result_row(
             index=index,
             total=total,
             identifier=short_name,
-            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+            outcome=f"recorded {cfg['pass_state']} grade={grade} website={website!r}",
         )
-        log.debug_detail(f"action={action!r} website={website!r}")
+        log.debug_detail(f"grade={grade!r} website={website!r}")
     return {"success": True, "state": cfg["pass_state"], "error": None}
 
 
@@ -506,7 +506,11 @@ async def vet_inflow_discovery_company(
         task_key=cfg["task_key"],
         live_content=live_content,
         index=short_name,
-        ctx=ctx,
+        ctx={
+            **(ctx or {}),
+            "batch_entities": [{"astral_job_id": short_name, "short_name": short_name}],
+            "batch_size": 1,
+        },
         debug=debug,
     )
     if not api_result.get("success"):
@@ -584,11 +588,24 @@ async def vet_inflow_discovery_company_batch(
     live_content = f"{header}\n{body}"
     if debug:
         log.debug_detail_block(live_content)
+    ready_for_decode = [
+        {
+            "astral_job_id": c.get("short_name") or "?",
+            "short_name": c.get("short_name") or "?",
+            "company_data": c.get("company_data") or {},
+            "state": c.get("state"),
+        }
+        for c in ready
+    ]
     api_result = await do_task(
         task_key=cfg["task_key"],
         live_content=live_content,
         index=f"vet_inflow_discovery_batch_{batch_id}",
-        ctx={**(ctx or {}), "batch_entities": ready, "batch_size": len(ready)},
+        ctx={
+            **(ctx or {}),
+            "batch_entities": ready_for_decode,
+            "batch_size": len(ready_for_decode),
+        },
         debug=debug,
     )
     if not api_result.get("success"):
