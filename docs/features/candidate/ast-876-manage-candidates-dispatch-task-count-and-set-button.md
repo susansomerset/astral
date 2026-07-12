@@ -152,3 +152,17 @@ On the Manage Candidates list, show each candidate’s dispatch-task row count a
 | §2.6 state machine | No candidate state transitions |
 | §3.3 imports | Frontend → `/api/admin/*` only; no data/core imports |
 | §3.5 naming | Button label matches parent product string; route paths match AST-875 |
+
+## Review (build stub)
+
+**Built:** `astral-AST-873` @ `d474848` on `origin/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `3ab222c` | Plan doc |
+| 1 | `49950d8` | `dispatch_task_count` manage column shape |
+| 2 | `d474848` | counts load + Set dispatch tasks UI |
+
+**Verify:** `./node_modules/.bin/tsc -b --noEmit` in `src/ui/frontend` — pass; `python3 -m py_compile src/utils/config.py` — pass.
+
+**Note for Betty:** Manage Candidates calls AST-875 `GET /api/admin/dispatch_tasks/counts` and `POST /api/admin/dispatch_tasks/set_from_template`; no new backend.
