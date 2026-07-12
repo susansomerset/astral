@@ -69,3 +69,9 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 ### AST-878 · AST-872 (UAT bug)
 
 Repo **`agent_task.json`** catalog gains **`fetch_culture_pages`** — primary manifest in **`docs/test-bible/data/database/agent_tasks.md`** (**AST-878**).
+
+---
+
+### AST-880 · AST-879
+
+**`vet_inflow_discovery`** repo JSON + UAT fixture carry AST-880 encoded A–F rubric marker — byte identity with **`docs/uat-fixtures/AST-756/expected-agent_task.json`** unchanged (**AST-786**). DB migration: **`docs/test-bible/data/database/agent_tasks.md`** / **`TestAst880VetInflowEncodedPromptMigration`**.

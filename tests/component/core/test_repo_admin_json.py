@@ -284,6 +284,8 @@ class TestAst786AgentTaskRepoJsonSeed:
             row = by_key[task_key]
             assert str(row["agent_id"]).strip()
             assert str(row["user_prompt"]).strip()
+        vet = by_key["vet_inflow_discovery"]
+        assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
     def test_startup_apply_loads_all_38_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,

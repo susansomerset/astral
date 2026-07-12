@@ -128,6 +128,16 @@ Narrow (**`test-astral`** **AST-483** tip):
   -q
 ```
 
+### AST-880 · AST-879
+
+**AST-880:** **`TASK_CONFIG["vet_inflow_discovery"]`** → **`output_type: grades_encoded_vet_meta`**; **`response_schema.results`** items use **`grade` + `website`** (no **`action`**). **`INFLOW_CONFIG["vet"]`** exposes **`pass_grades` / `fail_grades` / `grade_vector_code`**. Registry key **`grades_encoded_vet_meta`** in **`ASTRAL_CONFIG["output_types"]`**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Encoded task contract + grade frozensets | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::{test_vet_inflow_discovery_task,test_inflow_config_vet_literals,test_vet_grades_encoded_vet_meta_output_type}` |
+
+Roster apply + batch decode: **`docs/test-bible/core/roster.md`** (**AST-880**). Agent decode: **`docs/test-bible/core/agent.md`** (**AST-880**).
+
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
 
 ---

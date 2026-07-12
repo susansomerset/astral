@@ -617,3 +617,36 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-880 · AST-879
+
+**AST-880:** **`vet_inflow_discovery`** uses **`output_type: grades_encoded_vet_meta`** — decode returns **`results[{hit_index, grade, website, confidence}]`** (not **`action: slug|ignore`**). **`INFLOW_CONFIG["vet"]`** adds **`pass_grades` / `fail_grades` / `grade_vector_code: LT`**. Roster maps **A/B/C/D → WEBSITE_FOUND** (+ **`company_website`**) and **F → VET_FAILED** (website in decode/debug only — no **`update_company`** on F). DB + repo **`agent_task.json`** seed AST-880 encoded rubric.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Encoded contract + grade sets + output type registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::{test_vet_inflow_discovery_task,test_inflow_config_vet_literals,test_vet_grades_encoded_vet_meta_output_type}` |
+| 2 | **`grades_encoded_vet_meta`** decode | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode` |
+| 3 | Grade outcomes + **`batch_entities`** ctx | `src/core/roster.py` | `tests/component/core/test_roster.py::{TestAst776VetInflowDiscoveryCompany,TestAst822VetInflowDiscoveryBatch,TestAst880VetInflowEncoded}` |
+| 4 | AST-880 prompt migration + repo JSON marker | `src/data/database.py`, `data/admin/agent_task.json` | `tests/component/data/database/test_agent_tasks.py::TestAst880VetInflowEncodedPromptMigration`; `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_spot_check_rows_have_agent_id_and_user_prompt` |
+
+**Broken / obsolete (Betty revision):** **AST-776** / **AST-822** roster mocks using **`action: slug|ignore`** — revised to **`grade` + required **`website`** in **AST-880** pass.
+
+**AST-880** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type \
+  tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch \
+  tests/component/core/test_roster.py::TestAst880VetInflowEncoded \
+  tests/component/data/database/test_agent_tasks.py::TestAst880VetInflowEncodedPromptMigration \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_spot_check_rows_have_agent_id_and_user_prompt \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

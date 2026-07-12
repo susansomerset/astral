@@ -4662,30 +4662,9 @@ class TestAst776VetInflowDiscoveryCompany:
         assert out["error"] == "missing inflow_discovery_blurb"
 
     @pytest.mark.asyncio
-    async def test_vet_ignore_transitions_vet_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {"results": [{"action": "ignore", "hit_index": 0}]},
-                }
-            ),
-        )
-        transition = MagicMock()
-        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
-        entity = _company(
-            state="NEW",
-            company_website="",
-            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
-        )
-        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-776", {}, False)
-        assert out == {"success": True, "state": "VET_FAILED", "error": None}
-        transition.assert_called_once_with("co_new", "VET_FAILED")
-
-    @pytest.mark.asyncio
-    async def test_vet_slug_sets_website_and_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_vet_grade_f_transitions_vet_failed_without_website_write(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.setattr(
             roster_mod,
             "do_task",
@@ -4695,7 +4674,41 @@ class TestAst776VetInflowDiscoveryCompany:
                     "parsed_response": {
                         "results": [
                             {
-                                "action": "slug",
+                                "grade": "F",
+                                "website": "https://reject.example",
+                                "hit_index": 0,
+                            },
+                        ],
+                    },
+                }
+            ),
+        )
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        entity = _company(
+            state="NEW",
+            company_website="",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-776", {}, False)
+        assert out == {"success": True, "state": "VET_FAILED", "error": None}
+        transition.assert_called_once_with("co_new", "VET_FAILED")
+        update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vet_grade_a_sets_website_and_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "results": [
+                            {
+                                "grade": "A",
                                 "website": "https://home.example",
                                 "hit_index": 0,
                             },
@@ -4810,8 +4823,8 @@ class TestAst822VetInflowDiscoveryBatch:
                 "success": True,
                 "parsed_response": {
                     "results": [
-                        {"hit_index": 0, "action": "slug", "website": "https://a.example"},
-                        {"hit_index": 1, "action": "ignore"},
+                        {"hit_index": 0, "grade": "A", "website": "https://a.example"},
+                        {"hit_index": 1, "grade": "F", "website": "https://b.example"},
                     ],
                 },
             },
@@ -4843,6 +4856,57 @@ class TestAst822VetInflowDiscoveryBatch:
             call("co_a", "WEBSITE_FOUND"),
             call("co_b", "VET_FAILED"),
         ]
+
+
+class TestAst880VetInflowEncoded:
+    """AST-880: grade-based vet outcomes + batch_entities decode ctx."""
+
+    @pytest.mark.asyncio
+    async def test_vet_passes_batch_entities_to_do_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "results": [{"grade": "D", "website": "https://d.example", "hit_index": 0}],
+                },
+            },
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        entity = _company(
+            state="NEW",
+            company_website="",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        out = await roster_mod.vet_inflow_discovery_company("co_d", entity, "batch-880", {}, False)
+        assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
+        ctx = do_task.await_args.kwargs["ctx"]
+        assert ctx["batch_entities"] == [{"astral_job_id": "co_d", "short_name": "co_d"}]
+        assert ctx["batch_size"] == 1
+
+    @pytest.mark.asyncio
+    async def test_vet_missing_website_in_grade_row_is_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"results": [{"grade": "A", "website": "", "hit_index": 0}]},
+                }
+            ),
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        entity = _company(
+            state="NEW",
+            company_website="",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-880", {}, False)
+        assert out == {"success": False, "state": None, "error": "missing website"}
+        transition.assert_not_called()
 
 
 class TestAst506InflowResolve:
