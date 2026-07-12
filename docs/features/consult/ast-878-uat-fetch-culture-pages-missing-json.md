@@ -117,3 +117,15 @@ The plan is binding. One stage, one product commit on the epic worktree sub chec
 - **AST-782 repo JSON:** Flat scalars only; `current: 1`; startup upsert will import the new row on next boot.
 - **§1.3 / layers:** No core/UI code; data/docs fixture only.
 - **Test ownership:** Engineer does not patch `tests/` when count assertions fail — Betty owns that delta.
+
+## Review (build stub)
+
+**Built:** `astral-AST-872` @ pending on `origin/sub/AST-872/AST-878-uat-fetch-culture-pages-missing-json`
+
+| Stage | Summary |
+|-------|---------|
+| 1 | Added `fetch_culture_pages` to `data/admin/agent_task.json` (Job Review seq 7); bumped `grade_like`→8, `analysis_upshot`→9; synced AST-756 fixture byte-identical |
+
+**Verify:** 38 rows; `cmp -s` repo JSON vs fixture — pass. Hand-check seq/agent_id — pass.
+
+**Betty note:** `TestAst786AgentTaskRepoJsonSeed` still expects 37 keys — revise to 38 + `fetch_culture_pages` at qa-child.

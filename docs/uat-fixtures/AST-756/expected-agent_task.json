@@ -300,7 +300,7 @@
     "updated_at": "2026-06-18 04:33:30",
     "task_group_order": "4000",
     "task_group_name": "Job Review",
-    "task_seq": 7,
+    "task_seq": 8,
     "task_name": "Grade Job: Like"
   },
   {
@@ -319,7 +319,7 @@
     "updated_at": "2026-06-18 23:50:46",
     "task_group_order": "4000",
     "task_group_name": "Job Review",
-    "task_seq": 8,
+    "task_seq": 9,
     "task_name": "Analysis Upshot"
   },
   {
@@ -397,6 +397,25 @@
     "task_group_name": "Job Review",
     "task_seq": 6,
     "task_name": "Grade Job: Get"
+  },
+  {
+    "task_key_uuid": "a8c3e1f2-4b5d-4e6a-9c0d-1f2a3b4c5d6e",
+    "task_key": "fetch_culture_pages",
+    "current": 1,
+    "agent_id": "n/a",
+    "user_prompt": "",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-12 22:00:00",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 7,
+    "task_name": "Fetch Culture Pages"
   },
   {
     "task_key_uuid": "812df76b-5d41-485c-81e6-d18cbba8173f",
