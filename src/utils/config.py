@@ -318,15 +318,16 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     "vet_inflow_discovery": {
+        "output_type": "grades_encoded_vet_meta",
         "response_schema": {
             "results": {
                 "type": "list",
                 "required": True,
                 "items_schema": {
                     "hit_index": {"type": "int", "required": True},
-                    "action": {"type": "str", "required": True},
-                    "short_name": {"type": "str", "required": False},
-                    "website": {"type": "str", "required": False},
+                    "grade": {"type": "str", "required": True},
+                    "website": {"type": "str", "required": True},
+                    "confidence": {"type": "int", "required": False},
                 },
             },
         },
@@ -956,6 +957,9 @@ INFLOW_CONFIG = {
         "pass_state": "WEBSITE_FOUND",
         "fail_state": "VET_FAILED",
         "blurb_data_key": "inflow_discovery_blurb",
+        "pass_grades": frozenset({"A", "B", "C", "D"}),
+        "fail_grades": frozenset({"F"}),
+        "grade_vector_code": "LT",  # fixed 2-char segment code in encoded lines
     },
 }
 
@@ -2105,6 +2109,24 @@ ASTRAL_CONFIG = {
                 "000|ERC3|MEC4|PGA5|WAX0|MWC3|KOB5|QCB3|2983982372|Mediocre Job Title|https://www.workheredummy.com/jobs/2983982372|location:Remote|salary_range:$140-160k\n"
                 "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|8398237461\n"
                 "002|ERB3|MEB4|PGB5|WAB5|MWA4|KOA5|QCB1|9823975238|Fine Job Title|https://www.workheredummy.com/jobs/9823975238|location:Remote|salary_range:$140-160k"
+            ),
+        },
+        # Vet inflow discovery: one LT{grade}{conf} segment + required website meta (AST-880).
+        "grades_encoded_vet_meta": {
+            "payload_instructions": (
+                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
+                "Put the newline-separated encoded vet lines inside \"agent_payload\" as a single string "
+                "(not a JSON results array). Never respond with bare pipe-lines only.\n\n"
+                "Inside agent_payload — one line per input hit. Format: {pos}|LT{grade}{conf}|{website}\n"
+                "  {pos}: 0-based input position, zero-padded to 3 digits (matches live-content 000/001/…)\n"
+                "  LT: fixed vector code for link-type Result Finding\n"
+                "  {grade}: exactly one letter — A B C D F\n"
+                "  {conf}: one digit 1–5 (use 5 when the page type is clear)\n"
+                "  {website}: absolute company homepage URL — required on every grade including F\n"
+                "Each grade segment is exactly 4 characters: LT{grade}{conf}.\n"
+                "\nExample:\n"
+                "000|LTA5|https://www.acme.com\n"
+                "001|LTF5|https://www.otherco.com"
             ),
         },
         # Prefilter company: grades_encoded plus JOB:/CULT: link index tails (AST-603).
