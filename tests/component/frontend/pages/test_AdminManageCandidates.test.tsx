@@ -31,6 +31,7 @@ const shapes = {
       { key: "astral_candidate_id", label: "ID" },
       { key: "first", label: "First" },
       { key: "api_key_status", label: "API Key" },
+      { key: "dispatch_task_count", label: "Dispatch tasks", type: "int" },
     ],
   },
   detail: {
@@ -66,11 +67,12 @@ describe("AdminManageCandidates", () => {
     mockedApi.mockReset()
   })
 
-  function mockApi() {
+  function mockApi(counts: Record<string, number> = { doe_jane: 3 }) {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts }) } as Response
       if (url === "/api/candidates" && init?.method === "POST") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/candidates/doe_jane" && init?.method === "DELETE") return { ok: true, json: async () => ({}) } as Response
@@ -137,6 +139,7 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       if (url === "/api/candidates" && init?.method === "POST") {
         postBody = JSON.parse(String(init.body))
         return { ok: true, json: async () => ({}) } as Response
@@ -184,6 +187,7 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       if (url === "/api/candidates" && init?.method === "POST") {
         postBody = JSON.parse(String(init.body))
         return { ok: true, json: async () => ({}) } as Response
@@ -220,6 +224,7 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: {} }) } as Response
       if (url === "/api/candidates" && init?.method === "POST") {
         postBody = JSON.parse(String(init.body))
         return { ok: true, json: async () => ({}) } as Response
@@ -234,5 +239,84 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(within(addModal as HTMLElement).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(postBody).not.toBeNull())
     expect((postBody!.candidate_data as { profile: { middle: string } }).profile.middle).toBe("")
+  }, 15000)
+
+  // AST-876: dispatch-task count column + Set dispatch tasks (confirm → set_from_template).
+  it("shows dispatch task count and sets from template after confirm", async () => {
+    let setBody: Record<string, unknown> | null = null
+    let countsCalls = 0
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        countsCalls += 1
+        const n = setBody ? 7 : 3
+        return { ok: true, json: async () => ({ counts: { doe_jane: n } }) } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/set_from_template" && init?.method === "POST") {
+        setBody = JSON.parse(String(init.body))
+        return {
+          ok: true,
+          json: async () => ({
+            candidate_id: "doe_jane",
+            template_candidate_id: "somerset",
+            inserted: 2,
+            updated: 1,
+            deleted: 0,
+            count: 7,
+          }),
+        } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    expect(screen.getByText("Dispatch tasks")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("3")).toBeInTheDocument())
+    expect(countsCalls).toBeGreaterThanOrEqual(1)
+
+    await userEvent.click(screen.getByRole("button", { name: "Set dispatch tasks for doe_jane" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Set dispatch tasks" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Set tasks" }))
+    await waitFor(() => expect(setBody).toEqual({ candidate_id: "doe_jane" }))
+    await waitFor(() => expect(screen.getByText('Dispatch tasks set for "doe_jane" (7 rows)')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument())
+    // Must not call run/execution endpoints
+    const urls = mockedApi.mock.calls.map(c => String(c[0]))
+    expect(urls.some(u => u.includes("/run") || u.includes("/stop"))).toBe(false)
+  }, 20000)
+
+  it("does not POST set_from_template when confirm is cancelled", async () => {
+    mockApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Set dispatch tasks for doe_jane" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Set dispatch tasks" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    expect(
+      mockedApi.mock.calls.some(
+        c => c[0] === "/api/admin/dispatch_tasks/set_from_template" && (c[1] as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(false)
+  }, 15000)
+
+  it("surfaces set_from_template API errors", async () => {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 1 } }) } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/set_from_template" && init?.method === "POST") {
+        return { ok: false, json: async () => ({ error: "Candidate not found: doe_jane" }) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Set dispatch tasks for doe_jane" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Set dispatch tasks" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Set tasks" }))
+    await waitFor(() => expect(screen.getByText("Candidate not found: doe_jane")).toBeInTheDocument())
   }, 15000)
 })
