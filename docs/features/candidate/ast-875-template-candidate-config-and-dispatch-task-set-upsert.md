@@ -260,3 +260,43 @@ Define the template candidate id in product config (default `somerset`) and impl
 
 **Note for Betty:** new admin contracts `GET /api/admin/dispatch_tasks/counts` and `POST /api/admin/dispatch_tasks/set_from_template`; transactional upsert+prune clears `last_run_at`/`batch_id`; no UI (AST-876).
 
+
+## Radia review
+
+**Diff:** `origin/dev...origin/sub/AST-873/AST-875-template-dispatch-task-set-upsert` @ `f907929`
+
+### What’s solid
+
+- Plan stages 1–4 match the product diff: `ASTRAL_CONFIG["template_candidate_id"]` + getter; list/count/delete + transactional `set_dispatch_tasks_from_template_rows`; core `set_candidate_dispatch_tasks_from_template`; admin `counts` + `set_from_template`.
+- §2.1: `"somerset"` only in config; core/API resolve via `template_candidate_id()`.
+- §3.3: new admin paths call core only (no new `database` imports on those routes).
+- §2.4: set clears `last_run_at`/`batch_id` and does not call `run_task` / claim helpers; dedicated writer avoids `save_dispatch_task`’s insert `last_run_at=now`.
+- Unique key `(task_key, trigger_state)` upsert+prune matches AC; empty template deletes all target rows; self-set allowed.
+- Routes registered before `/dispatch_tasks/<int:task_id>` so Flask does not coerce `counts` / `set_from_template`.
+- Self-Assessment Scope `Single-Component` matches; AST-876 UI boundary respected (no Manage Candidates edits).
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| — | — | None |
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Outcome:** Clean — ready for `resolve-child`.
+
+## Resolution
+
+**Date:** 2026-07-12  
+**Review:** Radia clean sign-off @ `9f6ee49` (0 fix-now · 0 discuss · 0 advisory)
+
+| Item | Action |
+|------|--------|
+| — | No product or doc fixes required. |
+
+**§9a:** dry-run publish ref vs `origin/dev` and `origin/ftr/AST-873-set-dispatch-tasks-button` — recorded on resolve commit.
+
