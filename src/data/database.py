@@ -6175,6 +6175,41 @@ def list_dispatch_tasks() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
+def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
+    """All dispatch_task rows for one candidate_id (any order stable by id ASC)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        return []
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM dispatch_task WHERE candidate_id = ? ORDER BY id ASC",
+                (cid,),
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def count_dispatch_tasks_by_candidate() -> Dict[str, int]:
+    """Map candidate_id → row count for all dispatch_task rows."""
+    def _with_conn() -> Dict[str, int]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT candidate_id, COUNT(*) AS n FROM dispatch_task GROUP BY candidate_id"
+            ).fetchall()
+            return {str(r[0]): int(r[1]) for r in rows}
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
 def get_dispatch_task_by_key(task_key: str) -> Optional[Dict[str, Any]]:
     """Return the first dispatch_task row for a given task_key, or None."""
     def _with_conn() -> Optional[Dict[str, Any]]:
@@ -6207,6 +6242,13 @@ _DISPATCH_TASK_UPDATE_COLS = {
     "task_key", "sort_by", "batch_call_mode",
 }
 
+# Schedule columns mirrored from a template candidate row (AST-875). Runtime fields excluded.
+_DISPATCH_TASK_TEMPLATE_COPY_COLS = frozenset({
+    "task_key", "entity_type", "trigger_state", "sort_by", "batch_call_mode",
+    "freq_hrs", "min_count", "batch_size", "auto_mode", "debug", "skip_cache",
+    "max_runs", "score_floor",
+})
+
 
 def update_dispatch_task(task_id: int, **kwargs) -> None:
     """Update fields on a dispatch_task. Column-whitelisted."""
@@ -6230,6 +6272,133 @@ def update_dispatch_task(task_id: int, **kwargs) -> None:
         finally:
             conn.close()
     _run_with_retry(_with_conn)
+
+
+def delete_dispatch_task(task_id: int) -> None:
+    """Delete one dispatch_task by primary key. No-op if missing."""
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            conn.execute("DELETE FROM dispatch_task WHERE id = ?", (task_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    _run_with_retry(_with_conn)
+
+
+def _dispatch_task_pair_key(task_key: Any, trigger_state: Any) -> tuple:
+    tk = str(task_key or "").strip()
+    ts = "" if trigger_state is None else str(trigger_state).strip()
+    return (tk, ts)
+
+
+def _dispatch_task_schedule_assign(template_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Build schedule columns from a template row; raises if task_key blank."""
+    tk = str(template_row.get("task_key") or "").strip()
+    if not tk:
+        raise ValueError("template row missing task_key")
+    assign: Dict[str, Any] = {}
+    for col in _DISPATCH_TASK_TEMPLATE_COPY_COLS:
+        if col not in template_row:
+            continue
+        val = template_row[col]
+        if col == "task_key":
+            assign[col] = tk
+        elif col == "trigger_state":
+            ts = "" if val is None else str(val).strip()
+            assign[col] = ts if ts else None
+        elif col in ("auto_mode", "debug", "skip_cache", "batch_call_mode"):
+            assign[col] = int(bool(val)) if isinstance(val, bool) else int(val or 0)
+        elif col == "min_count":
+            assign[col] = int(val)
+        elif col in ("batch_size", "max_runs"):
+            assign[col] = int(val) if val is not None else None
+        elif col == "freq_hrs":
+            assign[col] = float(val or 0)
+        elif col == "score_floor":
+            assign[col] = float(val) if val is not None else None
+        else:
+            assign[col] = val
+    if "min_count" not in assign:
+        raise ValueError(f"template row for task_key {tk!r} missing min_count")
+    return assign
+
+
+def set_dispatch_tasks_from_template_rows(
+    target_candidate_id: str,
+    template_rows: List[Dict[str, Any]],
+) -> Dict[str, int]:
+    """Upsert+prune target dispatch_task rows to match template; clear last_run_at/batch_id."""
+    target = str(target_candidate_id or "").strip()
+    if not target:
+        raise ValueError("candidate_id is required")
+
+    def _with_conn() -> Dict[str, int]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            existing = conn.execute(
+                "SELECT * FROM dispatch_task WHERE candidate_id = ?",
+                (target,),
+            ).fetchall()
+            by_key: Dict[tuple, Any] = {}
+            for row in existing:
+                d = _row_to_dict(row)
+                by_key[_dispatch_task_pair_key(d.get("task_key"), d.get("trigger_state"))] = d
+
+            template_keys: set = set()
+            inserted = updated = 0
+            now = _utc_now()
+            for trow in template_rows:
+                assign = _dispatch_task_schedule_assign(trow)
+                key = _dispatch_task_pair_key(assign["task_key"], assign.get("trigger_state"))
+                template_keys.add(key)
+                # Always clear runtime fields on write
+                assign["last_run_at"] = None
+                assign["batch_id"] = None
+                assign["updated_at"] = now
+                if key in by_key:
+                    uid = by_key[key]["id"]
+                    cols = list(assign.keys())
+                    set_clause = ", ".join(f"{c} = ?" for c in cols)
+                    vals = [assign[c] for c in cols] + [uid]
+                    conn.execute(
+                        f"UPDATE dispatch_task SET {set_clause} WHERE id = ?",
+                        vals,
+                    )
+                    updated += 1
+                else:
+                    cols = ["candidate_id"] + list(assign.keys())
+                    assign_full = {"candidate_id": target, **assign}
+                    ph = ", ".join("?" * len(cols))
+                    conn.execute(
+                        f"INSERT INTO dispatch_task ({', '.join(cols)}) VALUES ({ph})",
+                        [assign_full[c] for c in cols],
+                    )
+                    inserted += 1
+
+            deleted = 0
+            for key, d in list(by_key.items()):
+                if key not in template_keys:
+                    conn.execute("DELETE FROM dispatch_task WHERE id = ?", (d["id"],))
+                    deleted += 1
+
+            conn.commit()
+            count_row = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ?",
+                (target,),
+            ).fetchone()
+            return {
+                "inserted": inserted,
+                "updated": updated,
+                "deleted": deleted,
+                "count": int(count_row[0]),
+            }
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
 
 
 def get_due_tasks() -> List[Dict[str, Any]]:
