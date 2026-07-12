@@ -674,3 +674,15 @@ Gazer routing manifest: **`docs/test-bible/core/gazer.md`** (**AST-854**).
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Path helpers + table key order | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig` |
+
+---
+
+### AST-874 · AST-872
+
+**`CULTURE_READY` / `NEED_CULTURE_CONTENT` / `NO_CULTURE_LINKS`** job states; **`GAZER_CONFIG["fetch_culture_pages"]`**; schedulable **`fetch_culture_pages`** @ **`PASSED_GET`**; **`grade_like`** admin default trigger **`CULTURE_READY`**; **`CULTURE_READY`** in **`PASSED_SCORE_GATED_STATES`** + in-review / skipped UI manifests.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| States, gazer entry, dispatch registry, UI manifests | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig` |
+
+Gazer batch + migration: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-874**).

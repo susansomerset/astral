@@ -147,4 +147,22 @@ UAT: **`GET /api/admin/dispatch_tasks`** returned **500** when legacy `dispatch_
 
 **Pass criterion:** pytest green on manifest items 1–3 + AST-525/802 regression — not zero-arg harness / branch-lock gate.
 
+---
 
+### AST-874 · AST-872
+
+Idempotent **`_ensure_dispatch_task_schema`** migration: seed **`fetch_culture_pages`** @ **`PASSED_GET`** (clone scheduling columns from **`grade_like`**); retarget **`grade_like`** **`PASSED_GET` → `CULTURE_READY`**; re-seed when **`grade_like`** already at **`CULTURE_READY`** but fetch row missing.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retarget + seed + idempotency | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst874FetchCulturePagesDispatchMigration` |
+
+Config + gazer manifest: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/gazer.md`** (**AST-874**).
+
+**AST-874** narrowed run (dispatch line):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst874FetchCulturePagesDispatchMigration \
+  -q
+```

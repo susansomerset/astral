@@ -1135,6 +1135,51 @@ class TestAst701FetchWebsiteConfig:
         assert defaults["entity_type"] == "company"
 
 
+class TestAst874FetchCulturePagesConfig:
+    """AST-874: CULTURE_READY gate, fetch_culture_pages registry, grade_like retarget."""
+
+    def test_job_states_and_like_priors(self) -> None:
+        assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == ["PASSED_GET"]
+        assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
+        assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
+        assert cfg.JOB_STATES["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert cfg.JOB_STATES["FAILED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert cfg.JOB_STATES["FAILED_TECHNICAL_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert "CULTURE_READY" in cfg.JOB_STATES["NEED_WEBSITE_CONTENT"]["prior_states"]
+
+    def test_gazer_and_dispatch_registry(self) -> None:
+        from src.utils.config import _dispatch_trigger_state_for_task_key
+
+        entry = cfg.GAZER_CONFIG["fetch_culture_pages"]
+        assert entry["pass_state"] == "CULTURE_READY"
+        assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
+        assert entry["no_links_state"] == "NO_CULTURE_LINKS"
+        assert entry["fallback_batch_size"] == 10
+        assert "fetch_culture_pages" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert _dispatch_trigger_state_for_task_key("fetch_culture_pages") == "PASSED_GET"
+        assert _dispatch_trigger_state_for_task_key("grade_like") == "CULTURE_READY"
+        defaults = cfg.dispatch_task_admin_defaults("fetch_culture_pages")
+        assert defaults["trigger_state"] == "PASSED_GET"
+        assert defaults["entity_type"] == "job"
+        like_defaults = cfg.dispatch_task_admin_defaults("grade_like")
+        assert like_defaults["trigger_state"] == "CULTURE_READY"
+
+    def test_score_gate_and_ui_manifests(self) -> None:
+        assert "CULTURE_READY" in cfg.PASSED_SCORE_GATED_STATES
+        assert "CULTURE_READY" in cfg.IN_REVIEW_STATES
+        assert "NEED_CULTURE_CONTENT" in cfg.SKIPPED_STATES
+        assert "NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
+        review_states = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert review_states.index("PASSED_GET") < review_states.index("CULTURE_READY")
+        assert review_states.index("CULTURE_READY") < review_states.index("PASSED_LIKE")
+        assert cfg.JOBS_SKIPPED_SECTION_ORDER.index("NEED_WEBSITE_CONTENT") < cfg.JOBS_SKIPPED_SECTION_ORDER.index(
+            "NEED_CULTURE_CONTENT"
+        )
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NEED_CULTURE_CONTENT"] == "Need Culture Content"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NO_CULTURE_LINKS"] == "No Culture Links"
+
+
+
 class TestAst854FetchWebsiteRetryConfig:
     """AST-854: GAZER_CONFIG fetch_website retry_state for infra fail routing."""
 

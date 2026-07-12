@@ -574,6 +574,154 @@ class TestFetchJdBatch:
         assert saved.startswith("role summary\n\n")
 
 
+
+# Branches: connectivity; missing company; cached content; no links; coat-check pass/fail (AST-874).
+class TestWebsiteContentHelpers:
+    def test_recorded_list_string_and_empty(self) -> None:
+        assert gazer_mod._website_content_is_recorded(
+            [{"url": "https://c.example/a", "content": "culture body"}]
+        )
+        assert gazer_mod._website_content_is_recorded("  plain culture  ")
+        assert not gazer_mod._website_content_is_recorded([])
+        assert not gazer_mod._website_content_is_recorded([{"url": "x", "content": "  "}])
+        assert not gazer_mod._website_content_is_recorded("")
+        assert not gazer_mod._website_content_is_recorded(None)
+
+    def test_debug_summary_shapes(self) -> None:
+        assert "pages=1" in gazer_mod._website_content_debug_summary(
+            [{"url": "https://c.example/a", "content": "body"}]
+        )
+        assert gazer_mod._website_content_debug_summary("abcd") == "chars=4"
+        assert gazer_mod._website_content_debug_summary(None) == "empty"
+
+
+class TestFetchCulturePagesBatch:
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_culture_pages_batch("batch-1", [])
+
+    @pytest.mark.asyncio
+    async def test_missing_company_fails_need_culture_content(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", MagicMock(return_value=None))
+        jobs = [
+            {"astral_job_id": "j-empty", "company": ""},
+            {"astral_job_id": "j-miss", "company": "ghost"},
+        ]
+        out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert transition.call_args_list[0].args == (["j-empty"], "NEED_CULTURE_CONTENT")
+        assert transition.call_args_list[1].args == (["j-miss"], "NEED_CULTURE_CONTENT")
+
+    @pytest.mark.asyncio
+    async def test_cached_website_content_passes_without_coat_check(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        coat = AsyncMock()
+        company = {
+            "short_name": "acme",
+            "company_data": {
+                "website_content": [{"url": "https://acme.com/culture", "content": "values"}],
+            },
+        }
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(gazer_mod, "get_company_data", coat)
+        job = {"astral_job_id": "j-cache", "company": "acme"}
+        out = await gazer_mod.fetch_culture_pages_batch("batch-1", [job], debug=True)
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with(["j-cache"], "CULTURE_READY")
+        coat.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_culture_links_transitions_no_culture_links(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        company = {"short_name": "acme", "company_data": {"culture_links_to_explore": []}}
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(gazer_mod, "get_company_data", AsyncMock())
+        out = await gazer_mod.fetch_culture_pages_batch(
+            "batch-1", [{"astral_job_id": "j-nolink", "company": "acme"}],
+        )
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with(["j-nolink"], "NO_CULTURE_LINKS")
+
+    @pytest.mark.asyncio
+    async def test_coat_check_pass_and_empty_fail(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        co_ok = {
+            "short_name": "okco",
+            "company_data": {"culture_links_to_explore": ["https://ok.co/c"]},
+        }
+        co_bad = {
+            "short_name": "badco",
+            "company_data": {"culture_links_to_explore": ["https://bad.co/c"]},
+        }
+        companies = {"okco": co_ok, "badco": co_bad}
+
+        def _get_company(key: str):
+            return companies.get(key)
+
+        async def _coat(company: Dict[str, Any], key: str):
+            assert key == "website_content"
+            if company["short_name"] == "okco":
+                return [{"url": "https://ok.co/c", "content": "ok culture"}]
+            return None
+
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", _get_company)
+        monkeypatch.setattr(gazer_mod, "get_company_data", _coat)
+        jobs = [
+            {"astral_job_id": "j-ok", "company": "okco"},
+            {"astral_job_id": "j-bad", "company": "badco"},
+        ]
+        out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
+        assert out == {"passed": 1, "failed": 1, "total": 2}
+        assert transition.call_args_list[0].args == (["j-ok"], "CULTURE_READY")
+        assert transition.call_args_list[1].args == (["j-bad"], "NEED_CULTURE_CONTENT")
+        assert co_ok["company_data"]["website_content"][0]["content"] == "ok culture"
+
+    @pytest.mark.asyncio
+    async def test_second_job_same_company_uses_in_memory_cache(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """After coat-check writeback, later jobs for the same company skip a second scrape."""
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        company = {
+            "short_name": "acme",
+            "company_data": {"culture_links_to_explore": ["https://acme.com/c"]},
+        }
+        coat = AsyncMock(return_value=[{"url": "https://acme.com/c", "content": "body"}])
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(gazer_mod, "get_company_data", coat)
+        jobs = [
+            {"astral_job_id": "j1", "company": "acme"},
+            {"astral_job_id": "j2", "company": "acme"},
+        ]
+        out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
+        assert out == {"passed": 2, "failed": 0, "total": 2}
+        assert coat.await_count == 1
+        assert transition.call_args_list[0].args == (["j1"], "CULTURE_READY")
+        assert transition.call_args_list[1].args == (["j2"], "CULTURE_READY")
+
+
+
 class TestScrapeOne:
     @pytest.mark.asyncio
     async def test_returns_page_dom(self, monkeypatch: pytest.MonkeyPatch) -> None:
