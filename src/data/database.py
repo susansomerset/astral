@@ -4586,6 +4586,90 @@ def _apply_ast822_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection
     conn.commit()
 
 
+_AST880_VET_INFLOW_ENCODED_MARKER = "ENCODED A-F LINK-TYPE VET (AST-880)"
+
+_AST880_VET_INFLOW_USER_PROMPT_SEED = """## ENCODED A-F LINK-TYPE VET (AST-880)
+
+You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
+
+`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
+
+## Result Finding (mechanical link-type only)
+
+Classify each hit with exactly one grade:
+
+- **A** — hit URL is a company homepage
+- **B** — deeplink on a company site (e.g. product page)
+- **C** — company-hosted blog/post on that company's site
+- **D** — external to any one company but may still be worth parsing for a company pointer
+- **F** — unrelated / information-only / unlikely pointer (wiki, directories, news-only, BBB, job boards, social profiles, similar)
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps (prefilter handles D).
+
+## Response
+
+Use the standard two-key JSON envelope. Put newline-separated encoded lines in `agent_payload` as a single string — **not** a JSON `results[]` of `action` objects.
+
+One line per input hit:
+
+`{pos}|LT{grade}{conf}|{website}`
+
+- `{pos}` matches the input line index (`000` → 0, `001` → 1, …), zero-padded to 3 digits
+- `LT` is the fixed link-type vector code
+- `{grade}` is exactly one of A B C D F
+- `{conf}` is a confidence digit 1–5 (use 5 when the page type is clear)
+- `{website}` is an absolute company homepage URL — **required on every grade including F**
+
+Example:
+
+```
+000|LTA5|https://www.acme.com
+001|LTF5|https://www.otherco.com
+```
+"""
+
+
+def _apply_ast880_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-880: A–F encoded link-type vet prompt (supersedes AST-776/822 prose)."""
+    marker = _AST880_VET_INFLOW_ENCODED_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST880_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
     """AST-561: version analysis_upshot user_prompt with take_jd; seed when row exists but prose empty."""
     try:
@@ -4744,6 +4828,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast822_vet_inflow_discovery_prompt_migration(conn)
+    _apply_ast880_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
