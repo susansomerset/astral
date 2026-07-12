@@ -193,3 +193,25 @@ class TestAst820VectorReviewsPipelineTrace:
         raw_line = next(line for line in lines if line.startswith("raw type="))
         assert raw_line.endswith("…")
         assert len(raw_line) <= 140
+
+
+class TestAst859CompactStringParseExamples:
+    """AST-859: Susan UAT RAOCVK tails fail; RACOVK delimiter form parses."""
+
+    def test_correct_example_q1racovk_parses(self) -> None:
+        out = rf_mod.parse_vector_review_string("Q1RACOVK")
+        assert out is not None
+        code, vals = out
+        assert code == "Q1"
+        assert vals == {"relevance": "A", "clarity": "O", "verdict": "K"}
+
+    def test_bad_prompt_example_q1raocvk_fails(self) -> None:
+        assert rf_mod.parse_vector_review_string("Q1RAOCVK") is None
+
+    def test_susan_staging_clraocvk_fails(self) -> None:
+        assert rf_mod.parse_vector_review_string("CLRAOCVK") is None
+
+    def test_three_letter_code_clrracovk_parses(self) -> None:
+        out = rf_mod.parse_vector_review_string("CLRRACOVK")
+        assert out is not None
+        assert out[0] == "CLR"

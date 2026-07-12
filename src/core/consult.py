@@ -31,6 +31,7 @@ from src.utils.config import (
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     dispatch_chain_row_matches_job,
+    dispatch_chain_registry_trigger,
     grade_value,
     importance_multiplier,
     is_dispatch_chain_trigger,
@@ -1029,8 +1030,12 @@ async def _run_batch_consult(
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     vector_labels = _vector_labels_map(rubric_criteria)
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
-    task_ctx = {**ctx, "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels} if ctx else \
-               {"batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
+    cid = _candidate_id_from_ctx(ctx)
+    task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
+    if cid:
+        task_ctx["astral_candidate_id"] = cid
+    if ctx and ctx.get("candidate_data") is not None:
+        task_ctx["candidate_data"] = ctx["candidate_data"]
     do_index = f"{task_key}_batch_{batch_id}"
     if batch_chunk_index is not None:
         do_index = f"{do_index}_c{batch_chunk_index}"
@@ -1639,12 +1644,13 @@ async def _run_dispatch_chain_job_batch(
     from src.core.agent import _current_agent_task_run_next
 
     passed = errors = 0
-    trigger = (input_state or "").strip()
+    row_trigger = (input_state or "").strip()
+    registry_trigger = dispatch_chain_registry_trigger(row_trigger) or row_trigger
     for job in entities:
         aid = job["astral_job_id"]
         row = tracker.get_job(aid) or job
         if not dispatch_chain_row_matches_job(
-            trigger, dispatch_task_key, (row.get("state") or ""),
+            row_trigger, dispatch_task_key, (row.get("state") or ""),
         ):
             continue
         cd = tracker._candidate_data_for_job(aid)
@@ -1658,7 +1664,7 @@ async def _run_dispatch_chain_job_batch(
             "batch_size": 1,
             "job": row,
             "candidate_data": cd,
-            "dispatch_trigger_state": trigger,
+            "dispatch_trigger_state": registry_trigger,
             "dispatch_chain_graduate_on_terminal": bool(
                 _current_agent_task_run_next(dispatch_task_key)
             ),

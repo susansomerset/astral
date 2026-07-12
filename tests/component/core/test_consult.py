@@ -458,6 +458,32 @@ class TestAst371ResumeArtifactDispatch:
         assert task_ctx["dispatch_chain_graduate_on_terminal"] is True
 
     @pytest.mark.asyncio
+    async def test_dispatch_chain_batch_hop_label_input_sets_registry_trigger(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-863: row trigger is hop label; ctx dispatch_trigger_state is registry key."""
+        do_task = AsyncMock(return_value={"success": True})
+        monkeypatch.setattr("src.core.consult.do_task", do_task)
+        hop_label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": hop_label},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        out = await consult_mod._run_dispatch_chain_job_batch(
+            "batch-863",
+            [{"astral_job_id": "job-863"}],
+            {},
+            False,
+            "contemplate_job",
+            hop_label,
+        )
+        assert out["total_passed"] == 1
+        task_ctx = do_task.await_args.kwargs["ctx"]
+        assert task_ctx["dispatch_trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
+
+    @pytest.mark.asyncio
     async def test_dispatch_chain_batch_failure_releases_claim(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -630,6 +656,29 @@ class TestAst534DispatchTaskKeyHonesty:
         assert out["total_passed"] == 1
         entry.assert_awaited_once()
         assert entry.await_args.args[4] == "contemplate_job"
+
+    @pytest.mark.asyncio
+    async def test_contemplate_job_hop_label_trigger_routes_chain_batch(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-863: input_state is mid-chain hop label, not bare BUILD_ARTIFACTS."""
+        entry = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0},
+        )
+        monkeypatch.setattr(consult_mod, "_run_dispatch_chain_job_batch", entry)
+        hop_label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        out = await consult_mod.run_consult_task(
+            "job",
+            hop_label,
+            [{"astral_job_id": "job-863", "state": hop_label}],
+            "batch-863",
+            {},
+            dispatch_task_key="contemplate_job",
+        )
+        assert out["total_passed"] == 1
+        entry.assert_awaited_once()
+        assert entry.await_args.args[4] == "contemplate_job"
+        assert entry.await_args.args[5] == hop_label
 
     @pytest.mark.asyncio
     async def test_compound_trigger_state_not_chain_routed_returns_zero(
@@ -3107,3 +3156,47 @@ class TestAst726LatestOnlyConsultOutcomes:
         saved = save.call_args.args[1]
         assert "joblist_grades" in saved
         # F-grade fail path has no numeric score — joblist_score omitted per _latest_score_value gate
+
+
+class TestAst860RunBatchConsultCandidateCtx:
+    """AST-860: _run_batch_consult wires astral_candidate_id into do_task ctx."""
+
+    @pytest.mark.asyncio
+    async def test_passes_astral_candidate_id_and_candidate_data_to_do_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: Dict[str, Any] = {}
+
+        async def fake_do_task(**kwargs: Any) -> Dict[str, Any]:
+            captured.update(kwargs)
+            return {
+                "success": True,
+                "parsed_response": {
+                    "jobs": [{
+                        "astral_job_id": "job-1",
+                        "grades": [{"grade": "A", "confidence": 2, "vector": "fit"}],
+                    }],
+                },
+                "timesheet": {},
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", fake_do_task)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric)
+        rubric = [{"label": "fit", "code": "CR", "content": "a\nA = one\nB = two"}]
+        ctx = {
+            "astral_candidate_id": "somerset",
+            "candidate_data": {"artifacts": {"joblist_rubric": rubric}},
+        }
+        await consult_mod._run_batch_consult(
+            "qualify_job_listings",
+            "batch-860",
+            [{"astral_job_id": "job-1", "state": "VALID_TITLE"}],
+            lambda rows: "content",
+            lambda _ij, _rj, cfg: cfg["pass_state"],
+            ctx,
+            False,
+        )
+        task_ctx = captured["ctx"]
+        assert task_ctx["astral_candidate_id"] == "somerset"
+        assert task_ctx["candidate_data"] == ctx["candidate_data"]

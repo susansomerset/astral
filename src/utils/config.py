@@ -2163,8 +2163,11 @@ RUBRIC_FEEDBACK_CONFIG = {
     "prompt_suffix": (
         "Vector rubric review (agent_performance only — not agent_payload): include "
         "vector_reviews as a JSON list of strings. One string per rubric vector code "
-        "you were given, format CODE + R + {A|O|S|R|N} + C + {A|O|S|R|N} + V + {K|E|D} "
-        '(example: "Q1RAOCVK"). agent_performance.status reflects only whether you '
+        "you were given. Wire format: CODE then literal R, relevance letter, literal C, "
+        "clarity letter, literal V, verdict letter — relevance/clarity "
+        "{A|O|S|R|N}, verdict {K|E|D} "
+        '(example: "Q1RACOVK" = code Q1, relevance A, clarity O, verdict K). '
+        "agent_performance.status reflects only whether you "
         'could perform the task — never "failure" because grades or verdicts were harsh.'
     ),
 }
@@ -3061,9 +3064,22 @@ def dispatch_chain_graduation_target(trigger_state: str) -> str | None:
     return DISPATCH_CHAIN_TERMINAL_GRADUATION.get((trigger_state or "").strip())
 
 
+def dispatch_chain_registry_trigger(trigger_state: str) -> str | None:
+    """Registry trigger (e.g. BUILD_ARTIFACTS) for bare or hop-label dispatch row trigger_state."""
+    ts = (trigger_state or "").strip()
+    if not ts:
+        return None
+    if dispatch_chain_graduation_target(ts) is not None:
+        return ts
+    parsed = parse_dispatch_hop_label(ts)
+    if parsed and dispatch_chain_graduation_target(parsed[0]) is not None:
+        return parsed[0]
+    return None
+
+
 def is_dispatch_chain_trigger(trigger_state: str) -> bool:
     """True when trigger_state has a terminal graduation map entry (dispatch run_next chain)."""
-    return dispatch_chain_graduation_target((trigger_state or "").strip()) is not None
+    return dispatch_chain_registry_trigger((trigger_state or "").strip()) is not None
 
 
 def _agent_task_parents_with_run_next(child_task_key: str) -> tuple[str, ...]:
@@ -3084,11 +3100,14 @@ def dispatch_chain_claim_states_for_row(trigger_state: str, task_key: str) -> li
     """Job states eligible for claim on this dispatch row (bare trigger + parent hop labels)."""
     ts = (trigger_state or "").strip()
     tk = (task_key or "").strip()
-    if not ts or not tk or not is_dispatch_chain_trigger(ts):
+    registry = dispatch_chain_registry_trigger(ts)
+    if not ts or not tk or not registry:
         return [ts] if ts else []
+    if parse_dispatch_hop_label(ts) is not None:
+        return [ts]
     states: list[str] = [ts]
     for parent in _agent_task_parents_with_run_next(tk):
-        states.append(dispatch_hop_label(ts, parent))
+        states.append(dispatch_hop_label(registry, parent))
     seen: set[str] = set()
     out: list[str] = []
     for s in states:

@@ -276,6 +276,26 @@ Entity ref upsert + modal story: **`docs/test-bible/data/database/agent_response
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-860 · AST-378 (UAT fix)
+
+**`_run_batch_consult`** injects **`astral_candidate_id`** (and **`candidate_data`** when present) into **`do_task`** **`task_ctx`** so rubric-backed batch capture receives candidate wiring.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `task_ctx` candidate wiring | `src/core/consult.py` | `TestAst860RunBatchConsultCandidateCtx::test_passes_astral_candidate_id_and_candidate_data_to_do_task` |
+
+**AST-860** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst860RunBatchConsultCandidateCtx \
+  -q
+```
+
+Capture normalize + expected_codes: **`docs/test-bible/core/agent.md`**.
+
 ### AST-723 · AST-378
 
 Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria_for_task`** replace **`_rubric_criteria_from_cd`** artifact reads. **`TestRubricHelpers`** revised for table-backed criteria.
@@ -518,6 +538,31 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 | CANDIDATE_REVIEW cover unhandled | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTask::test_routes_candidate_review_cover_letter_unhandled_returns_zero` |
 
 Primary manifest + narrowed run: **`docs/test-bible/core/agent.md`** AST-849. **`do_task`** chain behavior: **AST-848** block in same file.
+
+---
+
+### AST-863 · AST-752 (UAT bug)
+
+**UAT bug:** **`contemplate_job`** dispatch row with **`trigger_state=BUILD_ARTIFACTS.anticipate_scan`** claimed successfully but **`run_consult_task`** hit unhandled branch — **`is_dispatch_chain_trigger`** did not recognize hop-label row triggers. Fix routes hop-label **`input_state`** through **`_run_dispatch_chain_job_batch`**; **`dispatch_trigger_state`** on ctx is registry **`BUILD_ARTIFACTS`**, not the hop label.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Consult chain branch | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch` |
+| Registry ctx on batch | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger` |
+
+Config helpers manifest: **`docs/test-bible/utils/config.md`** (**AST-863**).
+
+**Regression (required):** **AST-849** **`TestAst534DispatchTaskKeyHonesty::test_mid_chain_hop_label_routes_dispatch_chain_batch`** (flat trigger + hop job state).
+
+**AST-863** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  -q
+```
 
 ---
 

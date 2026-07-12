@@ -464,6 +464,27 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-859 · AST-378 (UAT fix)
+
+**`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** — fix contradictory **`Q1RAOCVK`** example to **`Q1RACOVK`** so model output matches **`parse_vector_review_string`** delimiter regex.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt suffix example | `src/utils/config.py` | `TestAst859VectorReviewsPromptExample::test_prompt_suffix_example_is_racovk_not_raocvk` |
+
+Parse regression (Susan staging **`CLRAOCVK`** vs correct **`CLRRACOVK`**): **`docs/test-bible/utils/rubric_feedback.md`**.
+
+**AST-859** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst859VectorReviewsPromptExample \
+  tests/component/utils/test_rubric_feedback.py::TestAst859CompactStringParseExamples \
+  -q
+```
+
 ### AST-725 · AST-378
 
 **`task_keys_for_rubric_owner`** and **`rubric_owner_task_key_choices`** for Admin Vector Feedback task filter and data-layer owner expansion.
@@ -590,6 +611,29 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
 | Helper true/false cases | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
 
 Tracker batch API manifest: **`docs/test-bible/core/tracker.md`** (**AST-828**).
+
+---
+
+### AST-863 · AST-752 (UAT bug)
+
+**Mid-chain dispatch row `trigger_state`:** hop holding labels (e.g. **`BUILD_ARTIFACTS.anticipate_scan`**) normalize via **`dispatch_chain_registry_trigger`** → bare registry key; **`is_dispatch_chain_trigger`** true for hop labels; **`dispatch_chain_claim_states_for_row`** returns **`[ts]`** only for mid-chain rows (entry rows keep AST-849 parent expansion).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry trigger + claim states | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger` |
+
+Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
+
+**Regression (required):** **AST-849** **`TestAst849DispatchChainClaimStates`**.
+
+**AST-863** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  -q
+```
 
 ---
 
