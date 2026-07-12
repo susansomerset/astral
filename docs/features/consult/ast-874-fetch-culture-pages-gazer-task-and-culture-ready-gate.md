@@ -231,3 +231,14 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 | none (ship) | 0 fix-now · 0 discuss · 1 advisory |
 
 **Outcome:** Clean — ready for `resolve-child`.
+
+## Resolution
+
+**Date:** 2026-07-12  
+**Review:** Radia clean sign-off @ `7df4491` (0 fix-now · 0 discuss · 1 advisory)
+
+| Item | Action |
+|------|--------|
+| advisory — dual `get_company` import | Dropped `get_company` from tracker import; keep `database.get_company` (same thin-delegate behavior). |
+
+**§9a:** dry-run publish ref vs `origin/dev` and `origin/ftr/AST-872-fetch-culture-pages` — recorded on resolve commit.

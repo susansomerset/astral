@@ -25,7 +25,7 @@ from src.core.roster import (
     _scrape_pjl_page,
 )
 from src.utils.config import GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG, PLAYWRIGHT_CONFIG
-from src.core.tracker import ingest_jobs, save_job_data, transition_job_state, get_company
+from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
 from src.data.database import (
     get_company,
     record_to_company_job_scan,
