@@ -16,6 +16,7 @@ interface CompanyDetail {
   last_scan_at?: string | null
   state_updated_at?: string | null
   prefilter_company_notes?: string
+  originating_search_term?: string | null
   state_history: Array<{ to_state?: string; timestamp?: string }>
   job_state_counts?: Record<string, number>
   agent_story?: AgentStoryEntry[]
@@ -146,6 +147,9 @@ function SummaryTab({
         {/* Left column: editable fields */}
         <div className="entity-summary-col">
           <DetailRow label="Short Name"><span>{data.short_name}</span></DetailRow>
+          <DetailRow label="Originating Search Term">
+            <span>{data.originating_search_term || "—"}</span>
+          </DetailRow>
           <DetailRow label="Company">
             {readOnly
               ? <span>{data.company_name || "—"}</span>

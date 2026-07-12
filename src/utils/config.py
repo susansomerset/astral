@@ -2762,6 +2762,7 @@ DATA_SHAPES = {
             "new_list": [
                 {"key": "company_name", "label": "Company", "sortable": True},
                 {"key": "short_name", "label": "Short Name", "sortable": True},
+                {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "company_website", "label": "Website", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
                 {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
@@ -2771,12 +2772,14 @@ DATA_SHAPES = {
             "inactive_list": [
                 {"key": "company_name", "label": "Company", "sortable": True},
                 {"key": "short_name", "label": "Short Name", "sortable": True},
+                {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
                 {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "ignored": [
                 {"key": "company_name", "label": "Company", "sortable": True},
                 {"key": "short_name", "label": "Short Name", "sortable": True},
+                {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "prefilter_company_notes", "label": "Ignore Reason", "sortable": True, "expandable": True},
                 {"key": "state_updated_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
