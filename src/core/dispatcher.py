@@ -19,6 +19,9 @@ from src.data.database import (
     save_dispatch_task as _db_save_dispatch_task,
     get_dispatch_task as _db_get_dispatch_task,
     list_dispatch_tasks as _db_list_dispatch_tasks,
+    list_dispatch_tasks_for_candidate as _db_list_dispatch_tasks_for_candidate,
+    count_dispatch_tasks_by_candidate as _db_count_dispatch_tasks_by_candidate,
+    delete_dispatch_task as _db_delete_dispatch_task,
     update_dispatch_task as _db_update_dispatch_task,
     sum_cost_by_batch as _db_sum_cost_by_batch,
 )
@@ -36,6 +39,7 @@ from src.utils.config import (
     dispatch_chain_row_matches_job,
     dispatch_task_key_is_scored,
     is_dispatch_chain_trigger,
+    template_candidate_id,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -119,8 +123,37 @@ def list_dispatch_tasks() -> List[Dict[str, Any]]:
     return _db_list_dispatch_tasks()
 
 
+def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
+    return _db_list_dispatch_tasks_for_candidate(candidate_id)
+
+
+def count_dispatch_tasks_by_candidate() -> Dict[str, int]:
+    return _db_count_dispatch_tasks_by_candidate()
+
+
+def delete_dispatch_task(task_id: int) -> None:
+    _db_delete_dispatch_task(task_id)
+
+
 def update_dispatch_task(task_id: int, **kwargs) -> None:
     _db_update_dispatch_task(task_id, **kwargs)
+
+
+def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict[str, Any]:
+    """Mirror config template candidate's dispatch_task set onto target (AST-875)."""
+    target = str(target_candidate_id or "").strip()
+    if not target:
+        raise ValueError("candidate_id is required")
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    if database.get_candidate(target) is None:
+        raise LookupError(f"Candidate not found: {target}")
+    template_rows = database.list_dispatch_tasks_for_candidate(template_id)
+    stats = database.set_dispatch_tasks_from_template_rows(target, template_rows)
+    return {"candidate_id": target, "template_candidate_id": template_id, **stats}
 
 
 # ---------------------------------------------------------------------------
