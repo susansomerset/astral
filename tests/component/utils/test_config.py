@@ -1582,3 +1582,16 @@ class TestAst875TemplateCandidateId:
     def test_template_candidate_id_defaults_to_somerset(self) -> None:
         assert cfg.ASTRAL_CONFIG["template_candidate_id"] == "somerset"
         assert cfg.template_candidate_id() == "somerset"
+
+
+class TestAst876DispatchTaskCountShape:
+    """AST-876: manage list column for per-candidate dispatch_task counts."""
+
+    def test_manage_list_includes_dispatch_task_count_column(self) -> None:
+        manage = cfg.DATA_SHAPES["candidates"]["list"]["manage"]
+        col = next(c for c in manage if c["key"] == "dispatch_task_count")
+        assert col["label"] == "Dispatch tasks"
+        assert col.get("type") == "int"
+        assert col.get("sortable") is True
+        keys = [c["key"] for c in manage]
+        assert keys.index("api_key_status") < keys.index("dispatch_task_count")

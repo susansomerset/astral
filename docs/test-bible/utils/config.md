@@ -696,3 +696,13 @@ Gazer batch + migration: **`docs/test-bible/core/gazer.md`** · **`docs/test-bib
 | Template candidate id | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst875TemplateCandidateId` |
 
 Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).
+
+### AST-876 · AST-873
+
+**`DATA_SHAPES["candidates"]["list"]["manage"]`** includes **`dispatch_task_count`** (`label` Dispatch tasks, `type` int) after **`api_key_status`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Manage list column | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst876DispatchTaskCountShape` |
+
+UI wiring: **`docs/test-bible/frontend/pages.md`** (**AST-876**).

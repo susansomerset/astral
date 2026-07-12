@@ -803,3 +803,35 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
 ```
 
+
+### AST-876 · AST-873
+
+**Manage Candidates:** shape column **`dispatch_task_count`**; load **`GET /api/admin/dispatch_tasks/counts`**; merge onto rows; **Set dispatch tasks** confirm → **`POST /api/admin/dispatch_tasks/set_from_template`**; refresh counts; no run/stop. (§6c routed page.)
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Count column + confirm set + toast + count refresh; no `/run` | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — shows count / sets from template |
+| 2 | Cancel confirm → no POST | same | **`::does not POST set_from_template when confirm is cancelled`** |
+| 3 | API error toast | same | **`::surfaces set_from_template API errors`** |
+| 4 | Regression: existing Manage Candidates flows still green (counts mock) | same | full **`test_AdminManageCandidates.test.tsx`** file |
+
+Config shape: **`docs/test-bible/utils/config.md`** (**AST-876**).
+
+**Broken / obsolete (Betty revision):** existing **`test_AdminManageCandidates`** mocks — must stub **`/api/admin/dispatch_tasks/counts`** or first-paint throws unhandled api.
+
+**AST-876** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+Plus config:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst876DispatchTaskCountShape \
+  -q
+```
+
+**Pass criterion:** Vitest green on file + config pytest green — not zero-arg harness / branch-lock gate.
