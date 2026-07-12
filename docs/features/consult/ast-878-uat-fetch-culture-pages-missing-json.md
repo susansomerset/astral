@@ -120,7 +120,7 @@ The plan is binding. One stage, one product commit on the epic worktree sub chec
 
 ## Review (build stub)
 
-**Built:** `astral-AST-872` @ pending on `origin/sub/AST-872/AST-878-uat-fetch-culture-pages-missing-json`
+**Built:** `astral-AST-872` @ d90362a on `origin/sub/AST-872/AST-878-uat-fetch-culture-pages-missing-json`
 
 | Stage | Summary |
 |-------|---------|
