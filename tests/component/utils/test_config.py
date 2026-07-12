@@ -1595,3 +1595,22 @@ class TestAst876DispatchTaskCountShape:
         assert col.get("sortable") is True
         keys = [c["key"] for c in manage]
         assert keys.index("api_key_status") < keys.index("dispatch_task_count")
+
+
+class TestAst877OriginatingSearchTermShapes:
+    """AST-877: Originating Search Term column on New/Inactive/Ignored company list shapes."""
+
+    def test_pipeline_ignore_shapes_include_originating_search_term(self) -> None:
+        companies = cfg.DATA_SHAPES["companies"]["list"]
+        for shape_key in ("new_list", "inactive_list", "ignored"):
+            col = next(c for c in companies[shape_key] if c["key"] == "originating_search_term")
+            assert col["label"] == "Originating Search Term"
+            assert col.get("sortable") is True
+            keys = [c["key"] for c in companies[shape_key]]
+            assert keys.index("short_name") < keys.index("originating_search_term")
+
+    def test_watch_shapes_omit_originating_search_term(self) -> None:
+        companies = cfg.DATA_SHAPES["companies"]["list"]
+        for shape_key in ("watch_list", "watch_history"):
+            keys = [c["key"] for c in companies[shape_key]]
+            assert "originating_search_term" not in keys

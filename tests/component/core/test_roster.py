@@ -5227,3 +5227,102 @@ class TestAst727NormalizeAgentResponsesForBackfill:
         normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
         assert normalized == entries
         assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
+
+
+class TestAst877OriginatingSearchTerm:
+    """AST-877: stamp originating search term through discovery/ingest + debug detail."""
+
+    def test_record_hit_stamps_search_term(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        hit = {"title": "Hit Co", "url": "https://hit877.example", "snippet": "about"}
+        ok, outcome = roster_mod.record_inflow_discovery_hit(
+            "c877", hit, index=0, search_term="fintech startups",
+        )
+        assert ok is True
+        assert "term='fintech startups'" in outcome
+        row = db.get_company("hit877_example")
+        assert row is not None
+        assert row["originating_search_term"] == "fintech startups"
+
+    def test_record_hit_without_term_leaves_null(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        ok, outcome = roster_mod.record_inflow_discovery_hit(
+            "c877",
+            {"title": "X", "url": "https://noterm877.example", "snippet": ""},
+        )
+        assert ok is True
+        assert "term=" not in outcome
+        row = db.get_company("noterm877_example")
+        assert row is not None
+        assert row.get("originating_search_term") is None
+
+    def test_record_hit_term_survives_vet_failed_update(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        ok, _ = roster_mod.record_inflow_discovery_hit(
+            "c877",
+            {"title": "Y", "url": "https://vet877.example", "snippet": ""},
+            search_term="robotics",
+        )
+        assert ok is True
+        assert db.update_company("vet877_example", state="VET_FAILED") == 1
+        row = db.get_company("vet877_example")
+        assert row is not None
+        assert row["state"] == "VET_FAILED"
+        assert row["originating_search_term"] == "robotics"
+
+    def test_ingest_new_companies_kwarg_and_source_hit(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        assert roster_mod.ingest_new_companies(
+            "c877", "ingest877_a", None, originating_search_term="kwarg term",
+        ) is True
+        assert db.get_company("ingest877_a")["originating_search_term"] == "kwarg term"
+        assert roster_mod.ingest_new_companies(
+            "c877",
+            "ingest877_b",
+            None,
+            source_hit={"url": "https://ingest877b.example", "search_term": "hit term"},
+        ) is True
+        assert db.get_company("ingest877_b")["originating_search_term"] == "hit term"
+
+    @pytest.mark.asyncio
+    async def test_run_batch_stamps_term_from_cse_loop(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c877", ["fintech"])
+        hits = [{"title": "Co", "url": "https://co877.example", "snippet": "snip"}]
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
+        cand = {"astral_candidate_id": "c877", "candidate_data": {}}
+        out = await roster_mod.run_inflow_discovery_batch(cand, "batch-877", cand, False)
+        assert out["total_passed"] == 1
+        row = db.get_company("co877_example")
+        assert row is not None
+        assert row["originating_search_term"] == "fintech"
+
+    @pytest.mark.asyncio
+    async def test_run_batch_debug_emits_originating_search_term(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c877", ["fintech"])
+        details: list[str] = []
+
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_detail",
+            lambda msg: details.append(msg),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "search_google_cse",
+            MagicMock(return_value=[{"title": "Co", "url": "https://dbg877.example", "snippet": ""}]),
+        )
+        cand = {"astral_candidate_id": "c877", "candidate_data": {}}
+        await roster_mod.run_inflow_discovery_batch(cand, "batch-877-dbg", cand, True)
+        assert any("originating_search_term='fintech'" in d for d in details)
