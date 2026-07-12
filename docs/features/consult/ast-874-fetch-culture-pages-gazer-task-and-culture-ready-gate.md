@@ -188,3 +188,18 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 - **§1.5.1 debug:** per-job `debug_index` + `debug_detail` only when `debug=True`.
 - **§1.3 DRY / §3.3 imports:** consult lazy-imports gazer batch (existing pattern); gazer already imports `get_company_data`.
 - **§3.5 naming:** `fetch_culture_pages` / `fetch_culture_pages_batch` align with `fetch_jd` / `fetch_website`.
+
+## Review (build stub)
+
+**Built:** `astral-AST-872` @ `4b1222e` on `origin/sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `1093ade` | Plan doc |
+| 1 | `a2ba6d6` | CULTURE_READY states, GAZER_CONFIG, dispatch registry, UI manifests |
+| 2 | `b2e8087` | `fetch_culture_pages_batch` + consult route |
+| 3 | `4b1222e` | Seed `fetch_culture_pages` @ PASSED_GET; retarget `grade_like` → CULTURE_READY |
+
+**Verify:** `python3 -m py_compile` on `config.py`, `gazer.py`, `consult.py`, `database.py` — pass. Migration SQL smoke on in-memory sqlite — pass.
+
+**Note for Betty:** new dispatch task key + job states; LIKE trigger moved off PASSED_GET.
