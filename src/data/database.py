@@ -7,7 +7,7 @@ Implements database operations directly (no imports from old code).
 Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 
 Tables used (inventory):
-- company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), etc.
+- company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc.
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
 - candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
@@ -853,7 +853,8 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
                 state_history TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_updated_at TIMESTAMP
+                state_updated_at TIMESTAMP,
+                originating_search_term TEXT
             )
         """)
         for _idx_name, sql in [
@@ -893,6 +894,13 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
         if "agent_responses_legacy" not in cols:
             try:
                 conn.execute("ALTER TABLE company ADD COLUMN agent_responses_legacy TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+        if "originating_search_term" not in cols:
+            try:
+                conn.execute("ALTER TABLE company ADD COLUMN originating_search_term TEXT")
                 conn.commit()
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
@@ -1036,6 +1044,7 @@ def save_company(
     last_scan_at: Optional[str] = None,
     state_history: Optional[List[Dict[str, Any]]] = None,
     candidate_id: Optional[str] = None,
+    originating_search_term: Optional[str] = None,
     ) -> None:
     """Save or update company in database.
 
@@ -1055,6 +1064,7 @@ def save_company(
         last_scan_at: When None, preserved from existing row (avoids wiping on full save)
         state_history: JSON array of {to_state, timestamp, batch_id}; when None, preserved from existing
         candidate_id: When None, preserved from existing row (board placeholders set on first insert).
+        originating_search_term: When None, preserved from existing row (AST-877 CSE origin string).
 
     Raises:
         ValueError: If short_name or state is missing, or state is invalid
@@ -1083,7 +1093,7 @@ def save_company(
             _ensure_company_schema(conn)
             _ensure_company_candidate_fk(conn)
             cursor = conn.execute(
-                "SELECT batch_created_at, last_scan_at, state_history, candidate_id FROM company WHERE short_name = ?",
+                "SELECT batch_created_at, last_scan_at, state_history, candidate_id, originating_search_term FROM company WHERE short_name = ?",
                 (short_name,),
             )
             existing_row = cursor.fetchone()
@@ -1097,6 +1107,12 @@ def save_company(
                 candidate_id_val = candidate_id
             else:
                 candidate_id_val = (existing_row["candidate_id"] if existing_row else None)
+            if originating_search_term is not None:
+                originating_search_term_val = originating_search_term
+            else:
+                originating_search_term_val = (
+                    existing_row["originating_search_term"] if existing_row else None
+                )
             # state_history: caller-managed (overwrite when provided), preserve from existing when not
             if state_history is not None:
                 state_history_json = json.dumps(state_history)
@@ -1108,8 +1124,9 @@ def save_company(
                 INSERT OR REPLACE INTO company
                 (short_name, state, company_name, company_website, job_site, batch_id, batch_created_at,
                  last_scan_at, company_data, agent_responses, state_history, candidate_id,
+                 originating_search_term,
                  created_at, updated_at, state_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 short_name,
                 state,
@@ -1123,6 +1140,7 @@ def save_company(
                 agent_responses_json,
                 state_history_json,
                 candidate_id_val,
+                originating_search_term_val,
                 short_name,
             ))
             conn.commit()
