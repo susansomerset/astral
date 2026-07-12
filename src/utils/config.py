@@ -1907,6 +1907,9 @@ ASTRAL_CONFIG = {
     "dispatch_network_check_url": "https://www.anthropic.com/",
     "dispatch_network_check_timeout_seconds": 30,
     "cache_warm_delay_seconds": 1.0,  # seconds to wait after first concurrent call before firing the rest, allowing cache to commit
+    # Candidate whose live dispatch_task rows are the default schedule template
+    # for Manage Candidates "Set dispatch tasks" (AST-873 / AST-875).
+    "template_candidate_id": "somerset",
 
     # --- Monitor (monitor) ---
     "support_email": "susan+astral@susansomerset.com",
@@ -2512,6 +2515,11 @@ AUTH_CONFIG = {
 def get_auth_config() -> Dict[str, Any]:
     """Return AUTH_CONFIG (shallow copy safe for read-only callers)."""
     return dict(AUTH_CONFIG)
+
+
+def template_candidate_id() -> str:
+    """Product template candidate for dispatch_task set-from-template (AST-875)."""
+    return str(ASTRAL_CONFIG["template_candidate_id"]).strip()
 
 # ---------------------------------------------------------------------------
 # UI_CONFIG: Frontend display rules served via /api/system/ui_config.
