@@ -1380,3 +1380,54 @@ class TestScheduler:
         _run_one_tick(monkeypatch)
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
+
+
+class TestAst875SetCandidateDispatchTasksFromTemplate:
+    """AST-875: core set-from-template orchestration; no run_task side effects."""
+
+    def test_set_from_template_happy_path_and_idempotent(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        monkeypatch.setattr(dispatcher_mod, "database", db)
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        run = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "run_task", run, raising=False)
+
+        db.save_candidate("tmpl", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("tgt", state="LIVE_PROMPTS", candidate_data={})
+        db.save_dispatch_task(
+            "tmpl", "fetch_website", min_count=2, trigger_state="WEBSITE_FOUND", auto_mode=True, batch_size=4,
+        )
+        db.save_dispatch_task(
+            "tgt", "evaluate_jd", min_count=1, trigger_state="JD_READY",
+        )
+
+        out = dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
+        assert out["candidate_id"] == "tgt"
+        assert out["template_candidate_id"] == "tmpl"
+        assert out["inserted"] == 1
+        assert out["updated"] == 0
+        assert out["deleted"] == 1
+        assert out["count"] == 1
+        rows = db.list_dispatch_tasks_for_candidate("tgt")
+        assert len(rows) == 1
+        assert rows[0]["task_key"] == "fetch_website"
+        assert rows[0]["auto_mode"] in (1, True)
+        assert rows[0]["last_run_at"] is None
+        assert rows[0]["batch_id"] is None
+        run.assert_not_called()
+
+        out2 = dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
+        assert out2["inserted"] == 0 and out2["updated"] == 1 and out2["deleted"] == 0
+        run.assert_not_called()
+
+    def test_missing_candidates_and_blank_target(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        monkeypatch.setattr(dispatcher_mod, "database", db)
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            dispatcher_mod.set_candidate_dispatch_tasks_from_template("  ")
+        with pytest.raises(LookupError, match="Template candidate not found"):
+            dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
+        db.save_candidate("tmpl", state="LIVE_PROMPTS", candidate_data={})
+        with pytest.raises(LookupError, match="Candidate not found"):
+            dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")

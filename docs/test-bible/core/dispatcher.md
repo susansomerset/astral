@@ -154,3 +154,13 @@ Equivalent harness:
 Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
 
 ---
+
+### AST-875 · AST-873
+
+**`set_candidate_dispatch_tasks_from_template`**: resolve template from config, require both candidates exist, call data set-from-rows; never **`run_task`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Core orchestration + LookupError / blank target | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestAst875SetCandidateDispatchTasksFromTemplate` |
+
+Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).

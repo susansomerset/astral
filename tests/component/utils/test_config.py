@@ -1574,3 +1574,11 @@ class TestAst782RepoAdminJsonConfig:
     def test_unknown_table_key_raises(self) -> None:
         with pytest.raises(KeyError, match="unknown repo admin JSON table"):
             cfg.get_repo_admin_json_path("__no_such_table__")
+
+
+class TestAst875TemplateCandidateId:
+    """AST-875: template candidate id lives on ASTRAL_CONFIG only."""
+
+    def test_template_candidate_id_defaults_to_somerset(self) -> None:
+        assert cfg.ASTRAL_CONFIG["template_candidate_id"] == "somerset"
+        assert cfg.template_candidate_id() == "somerset"

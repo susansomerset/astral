@@ -2115,3 +2115,73 @@ class TestAst783RepoJsonApi:
         assert body["ok"] is True
         assert body["table_key"] == "agent"
         assert body["row_count"] == 4
+
+
+class TestAst875DispatchTasksSetFromTemplate:
+    """AST-875: admin counts + set_from_template endpoints (no run_task)."""
+
+    def test_dispatch_task_counts(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(admin_mod, "count_dispatch_tasks_by_candidate", lambda: {"somerset": 3, "other": 1})
+        resp = admin_client.get("/api/admin/dispatch_tasks/counts", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == {"counts": {"somerset": 3, "other": 1}}
+
+    def test_set_from_template_success_and_errors(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        run = MagicMock()
+        monkeypatch.setattr(admin_mod, "run_task", run, raising=False)
+        monkeypatch.setattr(
+            admin_mod,
+            "set_candidate_dispatch_tasks_from_template",
+            lambda candidate_id: {
+                "candidate_id": candidate_id,
+                "template_candidate_id": "somerset",
+                "inserted": 2,
+                "updated": 1,
+                "deleted": 0,
+                "count": 3,
+            },
+        )
+        ok = admin_client.post(
+            "/api/admin/dispatch_tasks/set_from_template",
+            json={"candidate_id": "tgt"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        body = ok.get_json()
+        assert body["candidate_id"] == "tgt"
+        assert body["template_candidate_id"] == "somerset"
+        assert body["count"] == 3
+        run.assert_not_called()
+
+        bad = admin_client.post(
+            "/api/admin/dispatch_tasks/set_from_template",
+            json={"candidate_id": "  "},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert "candidate_id" in bad.get_json()["error"]
+
+        def _missing(candidate_id: str):
+            raise LookupError(f"Candidate not found: {candidate_id}")
+
+        monkeypatch.setattr(admin_mod, "set_candidate_dispatch_tasks_from_template", _missing)
+        missing = admin_client.post(
+            "/api/admin/dispatch_tasks/set_from_template",
+            json={"candidate_id": "nope"},
+            headers=auth_headers,
+        )
+        assert missing.status_code == 404
+        assert "nope" in missing.get_json()["error"]
+
+        def _bad_value(candidate_id: str):
+            raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+
+        monkeypatch.setattr(admin_mod, "set_candidate_dispatch_tasks_from_template", _bad_value)
+        ve = admin_client.post(
+            "/api/admin/dispatch_tasks/set_from_template",
+            json={"candidate_id": "tgt"},
+            headers=auth_headers,
+        )
+        assert ve.status_code == 400
