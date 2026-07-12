@@ -243,3 +243,20 @@ Define the template candidate id in product config (default `somerset`) and impl
 | §2.6 state machine | No entity state transitions |
 | §3.3 imports | New API paths call core only; data stays under core |
 | §3.5 naming | Routes under existing `/api/admin/dispatch_tasks/*` |
+
+## Review (build stub)
+
+**Built:** `astral-AST-873` @ `8bcd5f4` on `origin/sub/AST-873/AST-875-template-dispatch-task-set-upsert`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `6195c22` | Plan doc |
+| 1 | `5141062` | `template_candidate_id` in ASTRAL_CONFIG |
+| 2 | `200976d` | list/count/delete + set-from-template data path |
+| 3 | `112c8cc` | core `set_candidate_dispatch_tasks_from_template` |
+| 4 | `8bcd5f4` | admin `counts` + `set_from_template` endpoints |
+
+**Verify:** `python3 -m py_compile` on `config.py`, `database.py`, `dispatcher.py`, `api_admin.py` — pass.
+
+**Note for Betty:** new admin contracts `GET /api/admin/dispatch_tasks/counts` and `POST /api/admin/dispatch_tasks/set_from_template`; transactional upsert+prune clears `last_run_at`/`batch_id`; no UI (AST-876).
+
