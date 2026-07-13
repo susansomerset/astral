@@ -743,6 +743,24 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-779** (error toast diagnostics), **AST-785** (load-failure toast on same page).
 
+### AST-887 · AST-885
+
+Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. Default: not engaged. No API / Available math / column-format change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-887 Avail > 0 filter`** describe (4 cases: default All, engage hides 0/null + empty sections, AND with AUTO, clear restores) |
+
+**AST-887** narrowed Vitest run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-887"
+```
+
+**Builds on:** **AST-751** (filter bar + AUTO summary + em-dash Avail), **AST-768** (Section/Group AND intersection).
+
 ---
 
 ### AST-783 · AST-756
