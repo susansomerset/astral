@@ -1411,6 +1411,7 @@ def get_new_company_batch(
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
     states: Optional[List[str]] = None,
+    exclude_prefilter_second_strike: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim companies for batch processing. Returns (batch_id, companies).
 
@@ -1444,6 +1445,7 @@ def get_new_company_batch(
         candidate_id=candidate_id, require_empty_website=require_empty_website,
         score_floor=score_floor,
         states=states,
+        exclude_prefilter_second_strike=exclude_prefilter_second_strike,
     )
     companies = get_company_batch(bid)
     return (bid, companies)
