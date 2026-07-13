@@ -281,6 +281,7 @@ class TestBatchApi:
             require_empty_website=False,
             score_floor=None,
             states=None,
+            exclude_prefilter_second_strike=False,
         )
 
     def test_get_new_company_batch_passes_exclude_prefilter_second_strike(
