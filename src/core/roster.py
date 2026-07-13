@@ -1398,6 +1398,104 @@ async def run_parse_job_list_dispatch(
     return result
 
 
+async def parse_job_list_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Shared-browser parse_job_list for a claimed company batch (AST-891)."""
+    parse_cfg = ROSTER_CONFIG["parse_job_list"]
+    max_concurrent = int(parse_cfg["max_concurrent"])
+    scrape_timeout = PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]
+    ok_states = frozenset({
+        parse_cfg["pass_state"],
+        parse_cfg["retry_state"],
+        parse_cfg["terminal_fail_state"],
+    })
+    company_total = len(companies)
+    passed = errors = 0
+    if debug:
+        logger.set_debug_flag(True)
+
+    async with create_batch_browser_session() as batch_session:
+        async def _one(company: Dict[str, Any], company_index: int) -> None:
+            nonlocal passed, errors
+            short_name = company.get("short_name") or ""
+            company_website = company.get("company_website") or ""
+            input_state = str(company.get("state") or "").strip()
+            list_url = ""
+            if debug:
+                logger.set_debug_flag(True)
+                company_row = get_company(short_name)
+                cdata = (company_row.get("company_data") or {}) if company_row else {}
+                list_url = _resolve_selected_pjl_url(cdata)
+                logger.debug_index(
+                    func="roster.parse_job_list_batch",
+                    index=company_index,
+                    total=company_total,
+                    identifier=short_name,
+                    outcome=f"state={input_state} url={list_url}",
+                )
+            try:
+                result = await asyncio.wait_for(
+                    run_parse_job_list_dispatch(
+                        company, batch_id, ctx, debug, batch_session=batch_session,
+                    ),
+                    timeout=scrape_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[%s] playwright infra failure failure_class=scrape_timeout batch_id=%s",
+                    short_name,
+                    batch_id,
+                )
+                result = _save_parse_dispatch_failure(
+                    short_name,
+                    company_website,
+                    list_url,
+                    input_state,
+                    notes=f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s",
+                    response_type="PARSE_DISPATCH_INFRA",
+                )
+            if debug:
+                logger.set_debug_flag(True)
+                logger.debug_detail(
+                    f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}"
+                )
+            if result.get("error") or result.get("state") not in ok_states:
+                errors += 1
+            else:
+                passed += 1
+
+        sem = asyncio.Semaphore(max_concurrent)
+
+        async def _limited(company: Dict[str, Any], company_index: int) -> None:
+            async with sem:
+                await _one(company, company_index)
+
+        results = await asyncio.gather(
+            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            return_exceptions=True,
+        )
+        for r in results:
+            if isinstance(r, BaseException):
+                errors += 1
+                logger.exception(
+                    "parse_job_list_batch unhandled error batch_id=%s: %s",
+                    batch_id,
+                    r,
+                    exc_info=r,
+                )
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(
+            f"summary passed={passed} failed=0 errors={errors} total={company_total}"
+        )
+    return {"passed": passed, "failed": 0, "total": company_total, "errors": errors}
+
+
 async def process_recheck_no_openings(
     entity: Dict[str, Any],
     batch_id: str,

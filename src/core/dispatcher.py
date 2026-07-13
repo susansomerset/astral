@@ -221,10 +221,12 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     sort_by         = task.get("sort_by") or "updated_at"
     limit           = int(task["batch_size"]) if task.get("batch_size") is not None else None
     # Sole split between one consult call for all entities vs per-job _warm_then_gather; DB wins (dispatch_tasks.batch_call_mode).
+    # AST-891: parse_job_list always full-list consult — production rows stay batch_call_mode=0.
     batch_call_mode = bool(task.get("batch_call_mode", 0))
     candidate_id    = ctx.get("astral_candidate_id")
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
+    use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
     s               = dict(_SUMMARY_ZERO)
     if debug:
         logger.set_debug_flag(True)
@@ -334,7 +336,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 f"state={entity.get('state')!r}"
             )
     try:
-        if batch_call_mode:
+        if use_full_batch:
             job_tk = task.get("task_key", "") if entity_type == "job" else ""
             use_chunk_split = (
                 entity_type == "job"
