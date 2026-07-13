@@ -88,3 +88,31 @@ Add one on-page filter to Admin → Scheduled Actions that, when engaged, keeps 
 **Built:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `14c408e7b887c3e31864a3f4ed33ee5087089dd4`
 
 Stage 1: Avail filter control (`All` / `> 0`) on Scheduled Actions; `filteredRows` excludes `available_count` null/0 when engaged; sections and AUTO summaries inherit via existing `filteredRows` bucketing. Tests deferred to Betty.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ product `14c408e` + Betty `6dd3586` / race fix `21e461e`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 exact: `availGtZeroFilter` state (`""` \| `"gt0"`), `filteredRows` predicate after Debug / before Freq, dep array, Avail select between Debug and Freq. No API / `formatAvailableCount` / sections / Run-Stop-AUTO edits. |
+| AC semantics | `(r.available_count ?? 0) > 0` matches `formatAvailableCount` em-dash cases (`null` / `0`). Default All; AND with existing filters; empty sections drop via existing `filteredRows` bucketing. |
+| Self-Assessment | Scope Single-Component matches footprint (one page + Betty tests/bible). Conf high / Risk low still accurate. |
+| Rules | §1.3 / §3.5 naming as planned. Client-side triage filter justified by plan Decision + AST-751/768 precedent (§3.2 UI-in-API exception). No new imports; §5f/§5g N/A (frontend only). |
+| Tests | Betty: default All, engage hides 0/null + empty sections, AND with AUTO, clear restores; `expandFirstPhaseSection` / AST-751 race hardening for AST-785 auto-open. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | `DispatchTask.available_count` is typed `number` while runtime/`formatAvailableCount` already treat `null` — pre-existing; filter correctly uses `?? 0`. Tighten the type only if a later ticket touches the interface. |
+
+**Verdict:** Clean — `resolve-child` may proceed.
