@@ -201,3 +201,19 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.3 imports | `create_batch_browser_session` imported in core from external; config from utils; no layer violations. |
 | §3.5 naming | `parse_job_list_batch` matches `fetch_website_batch` / `prefilter_company_batch` naming. |
 | §1.5.1 debug | Per-company `debug_index` + `|` detail + batch summary only when `debug=True`; infra WARNING is always-on (same as AST-853 homepage scrape). |
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `fb3d51c` | `max_concurrent` on `ROSTER_CONFIG["parse_job_list"]` |
+| 2 | `eba17d3` | DOM scrape infra signaling + `batch_session` on `run_parse_job_list_dispatch` |
+| 3 | `e8e9a42` | `parse_job_list_batch` + consult route + dispatcher `use_full_batch` |
+
+**Dispatcher audit:** `dispatcher._run_unified` `finally` always calls `clear_company_batch(bid)` for company batches — no code change.
+
+**Tip:** `e8e9a42`
