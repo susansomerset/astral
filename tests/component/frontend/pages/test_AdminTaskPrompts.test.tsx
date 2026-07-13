@@ -332,4 +332,68 @@ describe("AdminTaskPrompts", () => {
     await waitFor(() => expect(screen.getByText(/task prompts/)).toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Revert to file" })).toBeInTheDocument()
   }, 15000)
+
+  describe("AST-893 Expand One on Manage Tasks list", () => {
+    const twoGroupTasks = [
+      tasks[0],
+      {
+        ...tasks[1],
+        task_group_order: "phase_two",
+        task_group_name: "Phase Two",
+      },
+    ]
+
+    function mockTwoGroups() {
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/repo_json/status") {
+          return {
+            ok: true,
+            json: async () => ({
+              agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+              agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+            }),
+          } as Response
+        }
+        if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") {
+          return { json: async () => twoGroupTasks } as Response
+        }
+        if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
+        if (url === "/api/admin/tasks/meta/tokens") return jsonResponse(["candidate_name"])
+        if (url === "/api/admin/tasks/meta/chain_tokens") return jsonResponse([])
+        if (url === "/api/admin/tasks/task_a" && !init?.method) {
+          return {
+            json: async () => ({
+              ...twoGroupTasks[0],
+              system_prompt: "",
+              user_prompt: "user",
+              cache_prompt: "cache",
+              cache_prompt_b: "b0",
+              cache_prompt_c: "c0",
+              cache_prompt_d: "d0",
+              nocache_prompt: "nocache",
+            }),
+          } as Response
+        }
+      })
+    }
+
+    it("opening a second list section closes the first; no Expand all chrome", async () => {
+      mockTwoGroups()
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      expect(screen.getByText(/Phase One \(1\)/)).toBeInTheDocument()
+      expect(screen.getByText(/Phase Two \(1\)/)).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Expand all" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Collapse all" })).not.toBeInTheDocument()
+
+      const phaseOne = screen.getByText(/Phase One \(1\)/).closest(".collapsible-panel") as HTMLElement
+      const phaseTwo = screen.getByText(/Phase Two \(1\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(phaseOne).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(phaseOne).getByText("task_a")).toBeVisible())
+
+      await userEvent.click(within(phaseTwo).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(phaseTwo).getByText("task_b")).toBeVisible())
+      expect(within(phaseOne).getByText("task_a")).not.toBeVisible()
+    }, 20000)
+  })
 })
