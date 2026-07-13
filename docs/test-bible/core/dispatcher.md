@@ -164,3 +164,15 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-849.
 | Core orchestration + LookupError / blank target | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestAst875SetCandidateDispatchTasksFromTemplate` |
 
 Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).
+
+---
+
+### AST-891 · AST-890
+
+**AST-891:** **`_run_unified`** sets **`use_full_batch`** when **`task_key == "parse_job_list"`** even if DB **`batch_call_mode=0`** — one **`run_consult_task`** with the full claimed company list (no **`_warm_then_gather`** Firefox fan-out). Adjacent company hops (e.g. **`gaze`**) stay on per-entity gather when **`batch_call_mode=0`**. **`clear_company_batch`** in **`finally`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Full-list consult for **`parse_job_list`** | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero` |
+
+Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/consult.md`** (**AST-891**).

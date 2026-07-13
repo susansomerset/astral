@@ -1593,6 +1593,71 @@ class TestRunConsultTaskRoutes:
         assert out["total_errors"] == 1
 
     @pytest.mark.asyncio
+    async def test_routes_fetch_website_batch_pure_skip_zero_processed(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-892: work-only total maps to total_processed=0 so dispatch loop can stop."""
+        monkeypatch.setattr(
+            "src.core.gazer.fetch_website_batch",
+            AsyncMock(return_value={"total": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": 3}),
+        )
+        out = await consult_mod.run_consult_task(
+            "company",
+            "WEBSITE_FOUND",
+            [{"short_name": "a"}, {"short_name": "b"}, {"short_name": "c"}],
+            "batch-892",
+            {},
+            dispatch_task_key="fetch_website",
+        )
+        assert out["total_processed"] == 0
+        assert out["total_passed"] == 0
+        assert out["total_failed"] == 0
+        assert out["total_errors"] == 0
+
+    @pytest.mark.asyncio
+    async def test_routes_parse_job_list_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-891: parse_job_list consult routes to parse_job_list_batch (not run_company_task)."""
+        monkeypatch.setattr(
+            "src.core.roster.parse_job_list_batch",
+            AsyncMock(return_value={"total": 2, "passed": 2, "failed": 0, "errors": 0}),
+        )
+        run_company = AsyncMock()
+        monkeypatch.setattr("src.core.roster.run_company_task", run_company)
+        out = await consult_mod.run_consult_task(
+            "company",
+            "JOBLIST_IDENTIFIED",
+            [{"short_name": "co-1"}, {"short_name": "co-2"}],
+            "batch-891",
+            {},
+            dispatch_task_key="parse_job_list",
+        )
+        assert out["total_processed"] == 2
+        assert out["total_passed"] == 2
+        assert out["total_failed"] == 0
+        assert out["total_errors"] == 0
+        run_company.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_routes_parse_job_list_batch_errors_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-891: consult total_errors reads batch errors for parse_job_list."""
+        monkeypatch.setattr(
+            "src.core.roster.parse_job_list_batch",
+            AsyncMock(return_value={"total": 3, "passed": 2, "failed": 0, "errors": 1}),
+        )
+        out = await consult_mod.run_consult_task(
+            "company",
+            "JOBLIST_IDENTIFIED",
+            [{"short_name": "co-1"}, {"short_name": "co-2"}, {"short_name": "co-3"}],
+            "batch-891",
+            {},
+            dispatch_task_key="parse_job_list",
+        )
+        assert out["total_processed"] == 3
+        assert out["total_passed"] == 2
+        assert out["total_failed"] == 0
+        assert out["total_errors"] == 1
+
+    @pytest.mark.asyncio
     async def test_routes_fetch_job_pages_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "src.core.gazer.fetch_job_pages_batch",

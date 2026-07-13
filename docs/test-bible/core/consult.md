@@ -657,3 +657,16 @@ Regression: **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMi
 | Culture-pages consult route | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_culture_pages_batch` |
 
 Primary gazer / config / migration manifest: **`docs/test-bible/core/gazer.md`** (**AST-874**).
+
+---
+
+### AST-891 · AST-890
+
+**AST-891:** Company **`entity_type`** dispatch with **`dispatch_task_key=parse_job_list`** routes to **`parse_job_list_batch`** (not **`run_company_task`**). Returns normalized **`total_processed` / `total_passed` / `total_failed` / `total_errors`** (reads batch **`errors`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`parse_job_list`** routing | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch` |
+| **`total_errors`** from batch **`errors`** | `src/core/consult.py` | `::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch_errors_count` |
+
+Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**).
