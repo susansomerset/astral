@@ -243,3 +243,28 @@ No rules conflicts requiring `conf-!!-NONE`. No ASTRAL_CODE_RULES boundary softe
 **Built:** `origin/sub/AST-886/AST-893-expand-policy-sectioned-lists` @ `85920ff7bb46d5ab98e0648dec7e5d4bc1c94de0`
 
 Stages 1–3: `useSectionExpandPolicy` + `SectionExpandChrome`; Expand One default on Manage Tasks list / In Review / Skipped; Scheduled Actions opts into Expand All with bulk chrome and first-section auto-open preserved. Tests deferred to Betty.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-886/AST-893-expand-policy-sectioned-lists`
+
+### What’s solid
+
+- Stages 1–3 match the plan: `useSectionExpandPolicy` Set semantics (Expand One vs Expand All), `SectionExpandChrome` with exact **Expand all** / **Collapse all** labels, App.css `10f`, CollapsiblePanel comment-only.
+- Opt-in wiring correct: Scheduled Actions `expandAll: true` + bulk chrome; Manage Tasks list / In Review / Skipped default Expand One, no chrome; edit-modal accordion untouched.
+- First-section auto-open + table mount-when-expanded preserved on Scheduled Actions; candidate-change reset preserved on In Review / Skipped.
+- Boundaries held — frontend-only, no API/config, no Recommended Jobs / AST-858/885 scope creep.
+- §1.1 / §1.3 / §3.3 / §3.5 satisfied; Self-Assessment Scope `Single-Component` matches the footprint. §1.5.1 / §5f / §5g N/A (UI-only).
+- Betty hook/page/chrome tests + bible rows on the publish tip cover AC 1–6.
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
