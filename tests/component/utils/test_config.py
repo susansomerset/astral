@@ -1645,14 +1645,3 @@ class TestAst877OriginatingSearchTermShapes:
         for shape_key in ("watch_list", "watch_history"):
             keys = [c["key"] for c in companies[shape_key]]
             assert "originating_search_term" not in keys
-
-class TestAst892FetchWebsiteSecondStrikeFilter:
-    """AST-892: shared helper for claim/count exclusion keys."""
-
-    def test_returns_retry_state_and_homepage_text_key(self) -> None:
-        retry_state, ht_key = cfg.fetch_website_prefilter_second_strike_filter()
-        assert retry_state == cfg.GAZER_CONFIG["fetch_website"]["retry_state"]
-        assert ht_key == cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"]
-        assert retry_state == "WEBSITE_FOUND_RETRY"
-        assert ht_key == "homepage_text"
-

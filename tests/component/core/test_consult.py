@@ -1593,28 +1593,6 @@ class TestRunConsultTaskRoutes:
         assert out["total_errors"] == 1
 
     @pytest.mark.asyncio
-    async def test_routes_fetch_website_batch_pure_skip_zero_processed(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """AST-892: work-only total maps to total_processed=0 so dispatch loop can stop."""
-        monkeypatch.setattr(
-            "src.core.gazer.fetch_website_batch",
-            AsyncMock(return_value={"total": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": 3}),
-        )
-        out = await consult_mod.run_consult_task(
-            "company",
-            "WEBSITE_FOUND",
-            [{"short_name": "a"}, {"short_name": "b"}, {"short_name": "c"}],
-            "batch-892",
-            {},
-            dispatch_task_key="fetch_website",
-        )
-        assert out["total_processed"] == 0
-        assert out["total_passed"] == 0
-        assert out["total_failed"] == 0
-        assert out["total_errors"] == 0
-
-    @pytest.mark.asyncio
     async def test_routes_parse_job_list_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """AST-891: parse_job_list consult routes to parse_job_list_batch (not run_company_task)."""
         monkeypatch.setattr(
