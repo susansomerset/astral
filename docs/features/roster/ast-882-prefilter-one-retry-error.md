@@ -231,3 +231,17 @@ None.
 
 **Outcome:** Clean — ready for `resolve-child`.
 
+---
+
+## Resolution (2026-07-13)
+
+**Driven by:** Radia review @ `e8f0414` — 0 fix-now, 0 discuss, 0 advisory.
+
+| Item | Action |
+|------|--------|
+| **fix-now** | None — no product changes. |
+| **discuss** | None. |
+| **advisory** | None. |
+
+**§9a dry-run:** `origin/sub/AST-881/AST-882-prefilter-one-retry-error` merges cleanly into `origin/dev` and `origin/ftr/AST-881-prefilter-retry-to-error` (recorded after publish tip).
+
