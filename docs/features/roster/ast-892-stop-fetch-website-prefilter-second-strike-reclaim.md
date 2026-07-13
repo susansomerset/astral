@@ -194,3 +194,25 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | 4 | `fa119e7` | Skip tally; work-only `total` from fetch_website_batch |
 
 **Tip:** `fa119e7` (product); publish tip includes build stub after this.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim`
+
+### What’s solid
+
+- Stages 1–4 match the plan: config helper for `(retry_state, homepage_text_key)`; twin claim/count SQL excluding WFR + non-empty `homepage_text`; dispatcher/roster flag only for `fetch_website`; gazer skip tally with work-only `total` (consult already maps `r.get("total")`).
+- Boundaries held — no new states, prefilter claim path untouched, AST-882 skip retained as defense-in-depth.
+- §1.3 / §2.1 / §2.4 / §2.6 / §1.5.1 / §3.3 satisfied; Self-Assessment Scope matches the footprint.
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
