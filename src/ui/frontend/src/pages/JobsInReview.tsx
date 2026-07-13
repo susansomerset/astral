@@ -4,6 +4,7 @@ import { useStateUi } from "../contexts/StateUiContext"
 import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSections"
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
 import JobDetailModal from "../components/JobDetailModal"
+import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
 import Time from "../components/Time"
 import { buildJobListRubricColumns, formatGradeDotTooltip, RUBRIC_DEFAULT_IMPORTANCE, type JobListRubricColumn } from "../lib/rubricDisplay"
@@ -106,8 +107,6 @@ export default function InReview() {
   const [rows, setRows]     = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
-  /** At most one section expanded; null = all collapsed (default). */
-  const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [sorts, setSorts]   = useState<Record<string, SortState>>({})
 
   const artifacts = useMemo(() => {
@@ -125,7 +124,6 @@ export default function InReview() {
   }, [selectedId])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setExpandedSection(null) }, [selectedId])
 
   const sections = useMemo(() => {
     if (!manifest) return []
@@ -156,6 +154,10 @@ export default function InReview() {
     return [...normal, ...legacy]
   }, [rows, manifest])
 
+  const sectionKeys = useMemo(() => sections.map(s => s.state), [sections])
+  const { isExpanded, onExpandedChange, setExpandedKeys } = useSectionExpandPolicy({ sectionKeys })
+  useEffect(() => { setExpandedKeys(new Set()) }, [selectedId, setExpandedKeys])
+
   function getRubricCols(gradeKey: string, jobs: Job[]): JobListRubricColumn[] {
     const rubricKey = manifest?.jobs.grade_rubric_by_field[gradeKey]
     return buildJobListRubricColumns({
@@ -164,10 +166,6 @@ export default function InReview() {
       gradeKey,
       jobs: jobs as Array<Record<string, unknown>>,
     })
-  }
-
-  const toggleSection = (state: string) => {
-    setExpandedSection(cur => (cur === state ? null : state))
   }
 
   function handleSort(sectionState: string, col: string) {
@@ -197,7 +195,7 @@ export default function InReview() {
         <div className="list-page-status">No jobs in review</div>
       ) : (
         sections.map(sec => {
-          const isExpanded = expandedSection === sec.state
+          const sectionOpen = isExpanded(sec.state)
           const cols = sec.gradeKey ? getRubricCols(sec.gradeKey, sec.jobs) : []
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
           const sorted = sortJobs(sec.jobs, sort.col, sort.asc, sec.gradeKey, cols)
@@ -207,17 +205,17 @@ export default function InReview() {
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <button
                 type="button"
-                onClick={() => toggleSection(sec.state)}
+                onClick={() => onExpandedChange(sec.state, !sectionOpen)}
                 style={{
                   background: "none", border: "none", cursor: "pointer", width: "100%",
                   display: "flex", alignItems: "center", gap: 8, padding: "8px 0",
                   color: "var(--text-primary)", fontSize: 15, fontWeight: 600, fontFamily: "inherit",
                 }}
               >
-                <span style={{ transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
+                <span style={{ transform: sectionOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
                 {sec.label} ({sec.jobs.length})
               </button>
-              {isExpanded && (
+              {sectionOpen && (
                 <div className="list-page-table-wrap">
                   <table className="list-page-table">
                     <thead>

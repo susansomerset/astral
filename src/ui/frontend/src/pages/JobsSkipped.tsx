@@ -8,6 +8,7 @@ import CandidateActionNotesModal from "../components/CandidateActionNotesModal"
 import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobDetailModal from "../components/JobDetailModal"
 import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
+import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
 import { buildJobListRubricColumns, formatGradeDotTooltip, RUBRIC_DEFAULT_IMPORTANCE, type JobListRubricColumn } from "../lib/rubricDisplay"
 import Time from "../components/Time"
@@ -116,8 +117,6 @@ export default function Skipped() {
   const [rows, setRows]     = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
-  /** At most one section expanded; null = all collapsed (default). */
-  const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sorts, setSorts]   = useState<Record<string, SortState>>({})
   const [toast, setToast]   = useState<ToastMessage | null>(null)
@@ -140,7 +139,6 @@ export default function Skipped() {
   const actions = useCandidateJobActions(load)
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setExpandedSection(null) }, [selectedId])
 
   useEffect(() => {
     if (actions.error) setToast({ text: actions.error, variant: "error" })
@@ -184,6 +182,10 @@ export default function Skipped() {
     }, ...withLegacy]
   }, [rows, manifest])
 
+  const sectionKeys = useMemo(() => sections.map(s => s.state), [sections])
+  const { isExpanded, onExpandedChange, setExpandedKeys } = useSectionExpandPolicy({ sectionKeys })
+  useEffect(() => { setExpandedKeys(new Set()) }, [selectedId, setExpandedKeys])
+
   function getRubricCols(gradeKey: string, jobs: Job[]): JobListRubricColumn[] {
     const rubricKey = manifest?.jobs.grade_rubric_by_field[gradeKey]
     return buildJobListRubricColumns({
@@ -192,10 +194,6 @@ export default function Skipped() {
       gradeKey,
       jobs: jobs as Array<Record<string, unknown>>,
     })
-  }
-
-  const toggleSection = (state: string) => {
-    setExpandedSection(cur => (cur === state ? null : state))
   }
 
   const toggleSelect = (id: string) => setSelected(prev => {
@@ -249,7 +247,7 @@ export default function Skipped() {
         <div className="list-page-status">No skipped jobs</div>
       ) : (
         sections.map(sec => {
-          const isExpanded = expandedSection === sec.state
+          const sectionOpen = isExpanded(sec.state)
           const isFloor = sec.state === manifest.jobs.skipped.below_dispatch_key
           const cols = sec.gradeKey ? getRubricCols(sec.gradeKey, sec.jobs) : []
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
@@ -260,17 +258,17 @@ export default function Skipped() {
               <button
                 type="button"
                 title={isFloor ? "DB state stays PASSED_*; not claimable until latest_score clears the dispatch task score floor." : undefined}
-                onClick={() => toggleSection(sec.state)}
+                onClick={() => onExpandedChange(sec.state, !sectionOpen)}
                 style={{
                   background: "none", border: "none", cursor: "pointer", width: "100%",
                   display: "flex", alignItems: "center", gap: 8, padding: "8px 0",
                   color: "var(--text-primary)", fontSize: 15, fontWeight: 600, fontFamily: "inherit",
                 }}
               >
-                <span style={{ transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
+                <span style={{ transform: sectionOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
                 {sec.label} ({sec.jobs.length})
               </button>
-              {isExpanded && (
+              {sectionOpen && (
                 <div className="list-page-table-wrap">
                   <table className="list-page-table">
                     <thead>

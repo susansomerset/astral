@@ -7,6 +7,7 @@ import { TabBar } from "../components/TabbedTextArea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
 import Time from "../components/Time"
+import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
 
 interface AgentTask {
@@ -151,7 +152,6 @@ export default function TaskPrompts() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast]   = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-  const [openSection, setOpenSection] = useState<string | null>(null)
   const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
   const [agentIds, setAgentIds]     = useState<string[]>([])
@@ -235,11 +235,24 @@ export default function TaskPrompts() {
       }))
   }, [tasks])
 
-  const resolvedOpenSection = useMemo(() => {
-    if (sections.length === 0) return null
-    if (openSection != null && sections.some(s => s.sectionKey === openSection)) return openSection
-    return null
-  }, [sections, openSection])
+  const sectionKeys = useMemo(() => sections.map(s => s.sectionKey), [sections])
+  const {
+    isExpanded,
+    onExpandedChange,
+    setExpandedKeys,
+    expandedKeys,
+  } = useSectionExpandPolicy({ sectionKeys })
+
+  // Drop ghost expanded id when the open section's group vanishes from the list
+  useEffect(() => {
+    const keySet = new Set(sectionKeys)
+    for (const k of expandedKeys) {
+      if (!keySet.has(k)) {
+        setExpandedKeys(new Set())
+        break
+      }
+    }
+  }, [sectionKeys, expandedKeys, setExpandedKeys])
 
   const taskKeyOptions = useMemo(
     () => [...new Set(tasks.map(t => t.task_key))].sort((a, b) => a.localeCompare(b)),
@@ -384,11 +397,8 @@ export default function TaskPrompts() {
           <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
             <CollapsiblePanel
               label={<>{sec.groupName} ({sec.rows.length})</>}
-              expanded={resolvedOpenSection === sec.sectionKey}
-              onExpandedChange={next => {
-                if (next) setOpenSection(sec.sectionKey)
-                else setOpenSection(null)
-              }}
+              expanded={isExpanded(sec.sectionKey)}
+              onExpandedChange={next => onExpandedChange(sec.sectionKey, next)}
             >
               <div className="list-page-table-wrap">
                 <table className="list-page-table">
