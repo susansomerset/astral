@@ -1488,11 +1488,16 @@ def _prefilter_fail(
     *,
     api_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Route retryable prefilter failures to WEBSITE_FOUND_RETRY; hard errors to ERROR_PREFILTER."""
+    """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
+    company = get_company(short_name) or {}
+    current_state = (company.get("state") or "").strip()
     retryable = api_result is None or (
         not api_result.get("success") and _prefilter_api_failure_is_retryable(api_result)
     )
-    dest = cfg["retry_state"] if retryable else cfg["error_state"]
+    if not retryable:
+        dest = cfg["error_state"]
+    else:
+        dest = _prefilter_batch_fail_dest(current_state, cfg) or cfg["error_state"]
     transition_company_state(short_name, dest)
     result["error"] = error
     result["state"] = dest
@@ -1852,7 +1857,13 @@ def _prefilter_batch_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any])
     return cfg.get("error_state")
 
 
-def _transition_prefilter_batch_failures(companies: List[Dict[str, Any]], cfg: Dict[str, Any]) -> None:
+def _transition_prefilter_batch_failures(
+    companies: List[Dict[str, Any]],
+    cfg: Dict[str, Any],
+    *,
+    debug: bool = False,
+    fail_class: str = "technical fail",
+) -> None:
     by_dest: Dict[str, List[str]] = {}
     for company in companies:
         short_name = company.get("short_name")
@@ -1862,8 +1873,17 @@ def _transition_prefilter_batch_failures(companies: List[Dict[str, Any]], cfg: D
         if dest:
             by_dest.setdefault(dest, []).append(short_name)
     for dest, names in by_dest.items():
-        for short_name in names:
+        for i, short_name in enumerate(names, start=1):
             transition_company_state(short_name, dest)
+            if debug:
+                logger.debug_index(
+                    func="roster._run_batch_company_prefilter",
+                    index=i,
+                    total=len(names),
+                    identifier=short_name,
+                    outcome=f"{fail_class} -> {dest}",
+                )
+                logger.debug_detail(f"fail_class={fail_class}")
 
 
 async def _run_batch_company_prefilter(
@@ -1955,7 +1975,9 @@ async def _run_batch_company_prefilter(
                 outcome="do_task failed — batch error transition",
             )
             logger.debug_detail(f"error={result.get('error')!r}")
-        _transition_prefilter_batch_failures(companies, cfg)
+        _transition_prefilter_batch_failures(
+            companies, cfg, debug=debug, fail_class="do_task",
+        )
         return {"passed": 0, "failed": 0, "total": len(companies)}
 
     parsed = result.get("parsed_response") or {}
@@ -1964,7 +1986,9 @@ async def _run_batch_company_prefilter(
         _hydrate_response_jobs_grade_reasons(response_jobs, rubric_list)
     except ValueError as hydrate_err:
         logger.error("[prefilter_company_batch] grade reason hydration failed: %s", hydrate_err)
-        _transition_prefilter_batch_failures(companies, cfg)
+        _transition_prefilter_batch_failures(
+            companies, cfg, debug=debug, fail_class="hydrate",
+        )
         return {"passed": 0, "failed": 0, "total": len(companies)}
 
     sent_ids = set(input_by_id.keys())
@@ -1978,7 +2002,9 @@ async def _run_batch_company_prefilter(
             "[prefilter_company_batch] batch incomplete: %d/%d IDs omitted: %s",
             len(missing), len(sent_ids), sorted(missing),
         )
-        _transition_prefilter_batch_failures(missing_rows, cfg)
+        _transition_prefilter_batch_failures(
+            missing_rows, cfg, debug=debug, fail_class="missing id",
+        )
 
     passed = failed = 0
     bad_grades: Set[str] = set()
@@ -2003,14 +2029,17 @@ async def _run_batch_company_prefilter(
         except Exception as e:
             bad_grades.add(aid)
             if debug:
+                dest = _prefilter_batch_fail_dest(input_company.get("state"), cfg)
                 logger.debug_index(
                     func="roster._run_batch_company_prefilter",
                     index=job_idx,
                     total=len(response_jobs),
                     identifier=aid,
-                    outcome="process failed",
+                    outcome=f"process exception -> {dest or '?'}",
                 )
-                logger.debug_detail(f"short_name={aid} error={e!r} grades={response_job.get('grades')!r}")
+                logger.debug_detail(
+                    f"short_name={aid} error={e!r} grades={response_job.get('grades')!r}"
+                )
             logger.warning("[%s] prefilter batch process failed: %s | grades: %s", aid, e, response_job.get("grades"))
             continue
         if new_state in pass_states:
@@ -2020,6 +2049,7 @@ async def _run_batch_company_prefilter(
 
     if bad_grades:
         bad_rows = [input_by_id[aid] for aid in bad_grades if aid in input_by_id]
+        # Per-company debug already emitted in the process-exception loop above.
         _transition_prefilter_batch_failures(bad_rows, cfg)
 
     agent_ref = result.get("agent_ref")
@@ -2032,18 +2062,6 @@ async def _run_batch_company_prefilter(
             except Exception:
                 logger.debug("append_agent_response failed for %s", aid, exc_info=True)
 
-    if debug and missing:
-        for mi, mid in enumerate(sorted(missing), start=1):
-            row = input_by_id.get(mid)
-            dest = _prefilter_batch_fail_dest(row.get("state") if row else None, cfg)
-            logger.debug_index(
-                func="roster._run_batch_company_prefilter",
-                index=mi,
-                total=len(missing),
-                identifier=mid,
-                outcome=f"missing from response -> {dest or '?'}",
-            )
-
     return {"passed": passed, "failed": failed, "total": len(companies)}
 
 
@@ -2054,6 +2072,7 @@ async def prefilter_company_batch(
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Batch company prefilter from HOMEPAGE_READY rows (AST-702)."""
+    cfg = ROSTER_CONFIG["prefilter"]
     ready: List[Dict[str, Any]] = []
     not_ready: List[Dict[str, Any]] = []
     for company in companies:
@@ -2068,10 +2087,25 @@ async def prefilter_company_batch(
             f"prefilter_company_batch batch_id={batch_id} ready={len(ready)} not_ready={len(not_ready)}"
         )
 
+    # Not-ready WFR: leave for fetch_website scrape retry; do not CANNOT_READ.
+    skipped = 0
     for ni, company in enumerate(not_ready, start=1):
         short_name = company["short_name"]
+        st = (company.get("state") or "").strip()
+        if st == cfg["retry_state"]:
+            skipped += 1
+            if debug:
+                logger.debug_index(
+                    func="roster.prefilter_company_batch",
+                    index=ni,
+                    total=len(not_ready),
+                    identifier=short_name,
+                    outcome="readiness skip — leave WEBSITE_FOUND_RETRY for fetch_website",
+                )
+            continue
         transition_company_state(short_name, "CANNOT_READ_WEBSITE")
         save_company_data(short_name, {"prefilter_company_notes": "No homepage_text in company_data"})
+        skipped += 1
         if debug:
             logger.debug_index(
                 func="roster.prefilter_company_batch",
@@ -2086,13 +2120,13 @@ async def prefilter_company_batch(
             "passed": 0,
             "failed": 0,
             "total": len(companies),
-            "skipped": len(not_ready),
+            "skipped": skipped,
         }
 
     batch_result = await _run_batch_company_prefilter(batch_id, ready, ctx=ctx, debug=debug)
     batch_result["total"] = len(companies)
-    if not_ready:
-        batch_result["skipped"] = len(not_ready)
+    if skipped:
+        batch_result["skipped"] = skipped
     return batch_result
 
 
