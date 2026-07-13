@@ -217,3 +217,45 @@ Proposed resolutions: <2-3 options, or "need guidance">
 **Dispatcher audit:** `dispatcher._run_unified` `finally` always calls `clear_company_batch(bid)` for company batches — no code change.
 
 **Tip:** `e8e9a42`
+
+---
+
+## Radia review (2026-07-13)
+
+**Diff:** `origin/dev...origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` @ `d9f1fed`  
+**Product commits:** `fb3d51c` config · `eba17d3` scrape infra + `batch_session` · `e8e9a42` batch + consult + dispatcher  
+**Tests:** `a086c95` / `f207f5b` (partial AST-892 decontamination) · `d9f1fed` merge-tests
+
+### What’s solid
+
+| Area | Notes |
+|------|-------|
+| Plan fidelity | Stages 1–3 match: `max_concurrent=3`, scrape raises infra instead of `""`, `parse_job_list_batch` + shared session/semaphore/`wait_for`/resilient gather, consult route, dispatcher `use_full_batch` for this task key only. |
+| Strike / AC | Infra + generic errors use existing `_save_parse_dispatch_failure` → `JOBLIST_IDENTIFIED` → `JOBLIST_IDENTIFIED_RETRY` → `COULD_NOT_PARSE_JOBLIST`; definite outcomes count as `passed`. |
+| §2.1 / §2.4 / §2.6 | Concurrency from `ROSTER_CONFIG`; claim/clear stay dispatcher-owned (`finally` clear unchanged); no new transition edges. |
+| §1.5.1 / §5f | Batch `debug_index` / `|` detail / end `summary` gated on `debug=True`; infra WARNING always-on (AST-853 parity). |
+| Layers (§3.3) | `create_batch_browser_session` imported in core from external; no UI/`data` bend. |
+| Self-Assessment | Scope Single-Component matches footprint; Conf high still fits. |
+
+### Issues
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| **fix-now** | `tests/component/core/test_dispatcher.py` · `test_ast892_fetch_website_excludes_prefilter_second_strike`; `tests/component/core/test_roster.py` · `test_get_new_company_batch_passes_exclude_prefilter_second_strike` | AST-892 pollution left on the AST-891 publish ref after `f207f5b` cleaned consult/config only. Both assert `exclude_prefilter_second_strike`, which is **not** on `get_new_company_batch` / dispatcher claim paths in this diff (or `origin/dev`). Manifest-scoped AST-891 nodeids stay green; class/module runs or full suite will fail. Out of AST-891 scope — delete these two tests on resolve (same decontam Betty started). |
+| **advisory** | `parse_job_list_batch` → `run_parse_job_list_dispatch` when `debug=True` | Batch emits correct `index N/M`, then dispatch still emits `index 1/1` — noisy dual headers; pattern inherits single-company debug. Optional: skip inner index when `batch_session` is set. |
+| **advisory** | `parse_job_list_batch` timeout path · `list_url` | `list_url` is resolved only inside `if debug:`; non-debug timeout saves with `list_url=""` (falls back to `company_website` in `_save_parse_dispatch_failure`). Notes still carry `[playwright:scrape_timeout]`. |
+| **advisory** | gather unhandled `BaseException` | Increments `errors` only — no strike write for that company; claim cleared in dispatcher `finally` (AST-854 parity). Rare after dispatch try/except + timeout handler. |
+
+### Recommended actions
+
+| Item | Action |
+|------|--------|
+| fix-now | Delete the two AST-892 `exclude_prefilter_second_strike` tests from this publish ref (do not implement AST-892 product here). |
+| discuss | None. |
+| advisory | Optional debug/timeout polish; UAT: mid-batch infra → retry/terminal per strike; siblings continue. |
+
+**Counts:** 1 fix-now · 0 discuss · 3 advisory
+
+**Outcome:** Findings — product path ships; clear test pollution before User Testing.
+
+— Radia
