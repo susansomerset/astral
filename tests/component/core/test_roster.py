@@ -1511,10 +1511,27 @@ class TestPrefilterCompany:
 
     @pytest.mark.asyncio
     async def test_api_failure_and_missing_parsed_response(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value=("hello", "https://acme.com")))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("nav")))
+        # AST-882: scrape via scrape_company_homepage_content; fail dest uses current state.
+        monkeypatch.setattr(
+            roster_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "hello",
+                    "enumerated_nav_links": "",
+                    "error": None,
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(state="HOMEPAGE_READY")),
+        )
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
         monkeypatch.setattr(
             roster_mod,
             "do_task",
@@ -2088,6 +2105,88 @@ class TestAst702PrefilterBatchHelpers:
         cfg = ROSTER_CONFIG["prefilter"]
         assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "WEBSITE_FOUND_RETRY"
         assert roster_mod._prefilter_batch_fail_dest("WEBSITE_FOUND_RETRY", cfg) == "ERROR_PREFILTER"
+
+
+class TestAst882PrefilterOneRetryThenError:
+    """AST-882: one-retry then ERROR_PREFILTER; leave not-ready WFR for fetch_website."""
+
+    def test_prefilter_fail_first_strike_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = ROSTER_CONFIG["prefilter"]
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(state="HOMEPAGE_READY")),
+        )
+        out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom")
+        assert out["decision"] == "RETRY"
+        assert out["state"] == "WEBSITE_FOUND_RETRY"
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+
+    def test_prefilter_fail_second_strike_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = ROSTER_CONFIG["prefilter"]
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(state="WEBSITE_FOUND_RETRY")),
+        )
+        out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom again")
+        assert out["decision"] == "ERROR"
+        assert out["state"] == "ERROR_PREFILTER"
+        transition.assert_called_once_with("acme", "ERROR_PREFILTER")
+
+    @pytest.mark.asyncio
+    async def test_batch_do_task_failure_second_strike_to_error(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "api down"}),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "WEBSITE_FOUND_RETRY",
+                "company_data": {"homepage_text": "hello"},
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-882-err", companies, debug=False)
+        assert out == {"passed": 0, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "ERROR_PREFILTER")
+
+    @pytest.mark.asyncio
+    async def test_not_ready_wfr_left_alone_for_fetch_website(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        do_task = AsyncMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        companies = [
+            {
+                "short_name": "wfr-empty",
+                "state": "WEBSITE_FOUND_RETRY",
+                "company_data": {},
+            },
+            {
+                "short_name": "hr-empty",
+                "state": "HOMEPAGE_READY",
+                "company_data": {"homepage_text": "  "},
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-882-skip", companies, debug=False)
+        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2}
+        do_task.assert_not_called()
+        transition.assert_called_once_with("hr-empty", "CANNOT_READ_WEBSITE")
+        save.assert_called_once()
 
 
 class TestAst707EmbeddedRcBatchHydration:

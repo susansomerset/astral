@@ -650,3 +650,32 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-882 · AST-881
+
+**AST-882:** Prefilter one automatic retry then terminal **`ERROR_PREFILTER`**. **`_prefilter_fail`** / batch fail dest use current state (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, `WEBSITE_FOUND_RETRY` → `ERROR_PREFILTER`). Not-ready **`WEBSITE_FOUND_RETRY`** rows are left alone for fetch_website (no **`CANNOT_READ_WEBSITE`**). Claim companion: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Gazer homepage-ready WFR skip: **`docs/test-bible/core/gazer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_prefilter_fail` first/second strike | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::{test_prefilter_fail_first_strike_retries,test_prefilter_fail_second_strike_errors}` |
+| Batch do_task fail from WFR → error | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` |
+| Not-ready WFR leave-alone | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website` |
+| Monolithic fail uses current state | `src/core/roster.py` | `::TestPrefilterCompany::test_api_failure_and_missing_parsed_response` (revised) |
+
+**Broken / obsolete (Betty revision):** **`TestPrefilterCompany::test_api_failure_and_missing_parsed_response`** — mocks **`get_company`** at **`HOMEPAGE_READY`** so first-strike retryable missing-parse still lands **`WEBSITE_FOUND_RETRY`**.
+
+**AST-882** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst882DispatchClaimStates \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError \
+  tests/component/core/test_roster.py::TestPrefilterCompany::test_api_failure_and_missing_parsed_response \
+  tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

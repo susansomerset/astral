@@ -1140,3 +1140,37 @@ class TestAst875SetDispatchTasksFromTemplate:
             db.set_dispatch_tasks_from_template_rows("", [])
         with pytest.raises(ValueError, match="task_key"):
             db.set_dispatch_tasks_from_template_rows("tgt", [{"task_key": "  ", "min_count": 1}])
+
+
+class TestAst882HomepageReadyClaimsWfr:
+    """AST-882: primary prefilter/HOMEPAGE_READY row claims WEBSITE_FOUND_RETRY via retry_state."""
+
+    def test_count_eligible_homepage_ready_unions_wfr(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c882"
+        db.save_company("hr", state="HOMEPAGE_READY", candidate_id=cid, company_name="hr")
+        db.save_company("wfr", state="WEBSITE_FOUND_RETRY", candidate_id=cid, company_name="wfr")
+        db.save_company("other", state="NEW", candidate_id=cid, company_name="other")
+        task = {
+            "entity_type": "company",
+            "trigger_state": "HOMEPAGE_READY",
+            "task_key": "prefilter",
+            "candidate_id": cid,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+
+    def test_claim_company_batch_homepage_ready_and_wfr(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c882b"
+        db.save_company("hr", state="HOMEPAGE_READY", candidate_id=cid, company_name="hr")
+        db.save_company("wfr", state="WEBSITE_FOUND_RETRY", candidate_id=cid, company_name="wfr")
+        n = db.claim_company_batch(
+            "batch-882",
+            "HOMEPAGE_READY",
+            10,
+            candidate_id=cid,
+            states=["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"],
+        )
+        assert n == 2
+        rows = db.get_company_batch("batch-882")
+        assert {r["short_name"] for r in rows} == {"hr", "wfr"}
