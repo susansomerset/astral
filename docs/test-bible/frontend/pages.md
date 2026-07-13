@@ -749,17 +749,17 @@ Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing clie
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-887 Avail > 0 filter`** describe (4 cases: default All, engage hides 0/null + empty sections, AND with AUTO, clear restores) |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-887 Avail > 0 filter`** describe (4 cases: default All, engage hides 0/null + empty sections, AND with AUTO, clear restores); revised **`expandFirstPhaseSection`** + **AST-751** em-dash case for **AST-785** auto-open race |
 
 **AST-887** narrowed Vitest run:
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
-  --testNamePattern="AST-887"
+  --testNamePattern="AST-887|AST-751|AST-768"
 ```
 
-**Builds on:** **AST-751** (filter bar + AUTO summary + em-dash Avail), **AST-768** (Section/Group AND intersection).
+**Builds on:** **AST-751** (filter bar + AUTO summary + em-dash Avail), **AST-768** (Section/Group AND intersection), **AST-785** (first-section auto-open).
 
 ---
 
