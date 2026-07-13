@@ -853,3 +853,35 @@ Plus config:
 ```
 
 **Pass criterion:** Vitest green on file + config pytest green — not zero-arg harness / branch-lock gate.
+
+### AST-893 · AST-886
+
+Optional Expand All policy on sectioned lists: **Expand One** default (Manage Tasks list, In Review, Skipped) vs **Expand All** opt-in (Scheduled Actions) with **Expand all** / **Collapse all** chrome. Hook + chrome maps: `docs/test-bible/frontend/hooks.md`, `docs/test-bible/frontend/components.md`.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Hook Expand One / Expand All policy (AC 1–5 at state layer) | `useSectionExpandPolicy.ts` | `test_useSectionExpandPolicy.test.tsx` |
+| 2 | Chrome labels + callbacks | `SectionExpandChrome.tsx` | `test_SectionExpandChrome.test.tsx` |
+| 3 | Manage Tasks list Expand One — second section closes first; no bulk chrome (§6c) | `AdminTaskPrompts.tsx` | `test_AdminTaskPrompts.test.tsx` — **`AST-893 Expand One on Manage Tasks list`** |
+| 4 | In Review Expand One — second section closes first; no bulk chrome (§6c) | `JobsInReview.tsx` | `test_JobsInReview.test.tsx` — **`AST-893 Expand One default`** |
+| 5 | Skipped Expand One — second section closes first; no bulk chrome (§6c) | `JobsSkipped.tsx` | `test_JobsSkipped.test.tsx` — **`AST-893 Expand One default`** |
+| 6 | Scheduled Actions Expand All — bulk chrome, multi-open, Expand all / Collapse all (§6c) | `AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-893 Expand All policy + bulk chrome`** |
+
+**Broken / obsolete (Betty revision):** Scheduled Actions **`groups rows… allows zero expanded`** assumed Expand One `openSection` string survived temporary section absence during nav-candidate sync; Expand All stale-key cleanup drops those keys — test now re-expands via `expandFirstPhaseSection` after All-candidates. Jobs In Review / Skipped api mocks revised to `importOriginal` so AuthContext named exports resolve under full-file runs.
+
+**Existing coverage kept:** full suite files above also re-run accordion / Scheduled Actions regressions.
+
+**AST-893** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useSectionExpandPolicy.test.tsx \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-893|useSectionExpandPolicy|SectionExpandChrome"
+```
+
+**Pass criterion:** Vitest green on narrowed pattern (and engineer `test-child` may widen to full files if wiring side-effects appear).

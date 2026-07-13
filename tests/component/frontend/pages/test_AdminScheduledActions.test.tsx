@@ -205,12 +205,19 @@ describe("AdminScheduledActions", () => {
     await selectAllCandidatesFilter()
     expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+    // AST-893: Expand All stale-key cleanup may drop auto-open after candidate-filter churn —
+    // re-expand before asserting body visibility (see expandFirstPhaseSection).
+    await expandFirstPhaseSection()
     const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+    const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+    // Prefer asserting whichever section expandFirst opened; open roster if still collapsed.
+    if (!within(rosterPanel).queryByText("watch_cos")) {
+      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+    }
     await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
     await userEvent.click(within(rosterPanel).getByRole("button", { name: "Collapse section" }))
     await waitFor(() => expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument())
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
-    const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
     await waitFor(() => expect(within(jobPanel).getByText("scan_jobs")).toBeVisible())
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Collapse section" }))
@@ -1039,6 +1046,53 @@ describe("AdminScheduledActions", () => {
       })
       renderWithProviders(<ScheduledActions />)
       await waitFor(() => expect(screen.getByText("Failed to load dispatch tasks (500)")).toBeInTheDocument())
+    }, 20000)
+  })
+
+  describe("AST-893 Expand All policy + bulk chrome", () => {
+    it("shows Expand all / Collapse all; multi-open + partial + full expand/collapse", async () => {
+      mockApi(false, {
+        tasks: [dispatchTask, sparseRow],
+        taskKeysPayload: taskKeysConfig,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+
+      const chrome = screen.getByText("Expand all").closest(".section-expand-chrome") as HTMLElement
+      expect(chrome).toBeTruthy()
+      expect(within(chrome).getByRole("button", { name: "Collapse all" })).toBeInTheDocument()
+
+      const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+
+      // Start from known zero (stale-key cleanup may have cleared AST-785 auto-open).
+      await userEvent.click(within(chrome).getByRole("button", { name: "Collapse all" }))
+      await waitFor(() => {
+        expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument()
+        expect(within(jobPanel).queryByText("scan_jobs")).not.toBeInTheDocument()
+      })
+
+      // Partial multi-open without Expand all.
+      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => {
+        expect(within(rosterPanel).getByText("watch_cos")).toBeVisible()
+        expect(within(jobPanel).getByText("scan_jobs")).toBeVisible()
+      })
+
+      await userEvent.click(within(chrome).getByRole("button", { name: "Collapse all" }))
+      await waitFor(() => {
+        expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument()
+        expect(within(jobPanel).queryByText("scan_jobs")).not.toBeInTheDocument()
+      })
+
+      await userEvent.click(within(chrome).getByRole("button", { name: "Expand all" }))
+      await waitFor(() => {
+        expect(within(rosterPanel).getByText("watch_cos")).toBeVisible()
+        expect(within(jobPanel).getByText("scan_jobs")).toBeVisible()
+      })
     }, 20000)
   })
 })
