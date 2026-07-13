@@ -7,7 +7,7 @@ Implements database operations directly (no imports from old code).
 Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 
 Tables used (inventory):
-- company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), etc.
+- company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc.
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
 - candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
@@ -853,7 +853,8 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
                 state_history TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_updated_at TIMESTAMP
+                state_updated_at TIMESTAMP,
+                originating_search_term TEXT
             )
         """)
         for _idx_name, sql in [
@@ -893,6 +894,13 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
         if "agent_responses_legacy" not in cols:
             try:
                 conn.execute("ALTER TABLE company ADD COLUMN agent_responses_legacy TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+        if "originating_search_term" not in cols:
+            try:
+                conn.execute("ALTER TABLE company ADD COLUMN originating_search_term TEXT")
                 conn.commit()
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
@@ -1036,6 +1044,7 @@ def save_company(
     last_scan_at: Optional[str] = None,
     state_history: Optional[List[Dict[str, Any]]] = None,
     candidate_id: Optional[str] = None,
+    originating_search_term: Optional[str] = None,
     ) -> None:
     """Save or update company in database.
 
@@ -1055,6 +1064,7 @@ def save_company(
         last_scan_at: When None, preserved from existing row (avoids wiping on full save)
         state_history: JSON array of {to_state, timestamp, batch_id}; when None, preserved from existing
         candidate_id: When None, preserved from existing row (board placeholders set on first insert).
+        originating_search_term: When None, preserved from existing row (AST-877 CSE origin string).
 
     Raises:
         ValueError: If short_name or state is missing, or state is invalid
@@ -1083,7 +1093,7 @@ def save_company(
             _ensure_company_schema(conn)
             _ensure_company_candidate_fk(conn)
             cursor = conn.execute(
-                "SELECT batch_created_at, last_scan_at, state_history, candidate_id FROM company WHERE short_name = ?",
+                "SELECT batch_created_at, last_scan_at, state_history, candidate_id, originating_search_term FROM company WHERE short_name = ?",
                 (short_name,),
             )
             existing_row = cursor.fetchone()
@@ -1097,6 +1107,12 @@ def save_company(
                 candidate_id_val = candidate_id
             else:
                 candidate_id_val = (existing_row["candidate_id"] if existing_row else None)
+            if originating_search_term is not None:
+                originating_search_term_val = originating_search_term
+            else:
+                originating_search_term_val = (
+                    existing_row["originating_search_term"] if existing_row else None
+                )
             # state_history: caller-managed (overwrite when provided), preserve from existing when not
             if state_history is not None:
                 state_history_json = json.dumps(state_history)
@@ -1108,8 +1124,9 @@ def save_company(
                 INSERT OR REPLACE INTO company
                 (short_name, state, company_name, company_website, job_site, batch_id, batch_created_at,
                  last_scan_at, company_data, agent_responses, state_history, candidate_id,
+                 originating_search_term,
                  created_at, updated_at, state_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 short_name,
                 state,
@@ -1123,6 +1140,7 @@ def save_company(
                 agent_responses_json,
                 state_history_json,
                 candidate_id_val,
+                originating_search_term_val,
                 short_name,
             ))
             conn.commit()
@@ -4568,6 +4586,90 @@ def _apply_ast822_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection
     conn.commit()
 
 
+_AST880_VET_INFLOW_ENCODED_MARKER = "ENCODED A-F LINK-TYPE VET (AST-880)"
+
+_AST880_VET_INFLOW_USER_PROMPT_SEED = """## ENCODED A-F LINK-TYPE VET (AST-880)
+
+You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
+
+`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
+
+## Result Finding (mechanical link-type only)
+
+Classify each hit with exactly one grade:
+
+- **A** — hit URL is a company homepage
+- **B** — deeplink on a company site (e.g. product page)
+- **C** — company-hosted blog/post on that company's site
+- **D** — external to any one company but may still be worth parsing for a company pointer
+- **F** — unrelated / information-only / unlikely pointer (wiki, directories, news-only, BBB, job boards, social profiles, similar)
+
+Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps (prefilter handles D).
+
+## Response
+
+Use the standard two-key JSON envelope. Put newline-separated encoded lines in `agent_payload` as a single string — **not** a JSON `results[]` of `action` objects.
+
+One line per input hit:
+
+`{pos}|LT{grade}{conf}|{website}`
+
+- `{pos}` matches the input line index (`000` → 0, `001` → 1, …), zero-padded to 3 digits
+- `LT` is the fixed link-type vector code
+- `{grade}` is exactly one of A B C D F
+- `{conf}` is a confidence digit 1–5 (use 5 when the page type is clear)
+- `{website}` is an absolute company homepage URL — **required on every grade including F**
+
+Example:
+
+```
+000|LTA5|https://www.acme.com
+001|LTF5|https://www.otherco.com
+```
+"""
+
+
+def _apply_ast880_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
+    """AST-880: A–F encoded link-type vet prompt (supersedes AST-776/822 prose)."""
+    marker = _AST880_VET_INFLOW_ENCODED_MARKER
+    try:
+        row = conn.execute(
+            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
+                      cache_prompt_d, nocache_prompt, system_prompt, run_next
+               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
+        ).fetchone()
+    except sqlite3.Error:
+        return
+    if not row:
+        return
+    up_raw = row[1] or ""
+    if marker in up_raw:
+        return
+    agent_id = row[0]
+    if not (agent_id or "").strip():
+        fcw = conn.execute(
+            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
+        ).fetchone()
+        if fcw and (fcw[0] or "").strip():
+            agent_id = fcw[0]
+    new_up = _AST880_VET_INFLOW_USER_PROMPT_SEED.strip()
+    _save_agent_task_on_connection(
+        conn,
+        "vet_inflow_discovery",
+        now=_utc_now(),
+        agent_id=agent_id,
+        user_prompt=new_up,
+        cache_prompt=row[2],
+        cache_prompt_b=row[3],
+        cache_prompt_c=row[4],
+        cache_prompt_d=row[5],
+        nocache_prompt=row[6],
+        run_next=row[8],
+        system_prompt=row[7],
+    )
+    conn.commit()
+
+
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
     """AST-561: version analysis_upshot user_prompt with take_jd; seed when row exists but prose empty."""
     try:
@@ -4726,6 +4828,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast822_vet_inflow_discovery_prompt_migration(conn)
+    _apply_ast880_vet_inflow_discovery_prompt_migration(conn)
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5976,6 +6079,74 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         "WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'"
     )
     conn.commit()
+
+    # AST-874: seed fetch_culture_pages @ PASSED_GET; retarget grade_like PASSED_GET → CULTURE_READY.
+    like_passed_get_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'grade_like' AND trigger_state = 'PASSED_GET'
+        """
+    ).fetchall()
+    for r in like_passed_get_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'fetch_culture_pages', ?, 'PASSED_GET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'
+                  AND trigger_state = 'PASSED_GET'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.execute(
+        "UPDATE dispatch_task SET trigger_state = 'CULTURE_READY' "
+        "WHERE task_key = 'grade_like' AND trigger_state = 'PASSED_GET'"
+    )
+    # Re-seed when grade_like already at CULTURE_READY but fetch_culture_pages missing (partial apply).
+    like_culture_ready_rows = conn.execute(
+        """
+        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
+               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
+               skip_cache, max_runs, score_floor, updated_at
+        FROM dispatch_task
+        WHERE task_key = 'grade_like' AND trigger_state = 'CULTURE_READY'
+        """
+    ).fetchall()
+    for r in like_culture_ready_rows:
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, entity_type, trigger_state, sort_by,
+                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
+                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+            )
+            SELECT ?, 'fetch_culture_pages', ?, 'PASSED_GET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dispatch_task
+                WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'
+                  AND trigger_state = 'PASSED_GET'
+            )
+            """,
+            (
+                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+                r[10], r[11], r[12], r[13], r[14],
+                r[0],
+            ),
+        )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 
@@ -6107,6 +6278,41 @@ def list_dispatch_tasks() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
+def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
+    """All dispatch_task rows for one candidate_id (any order stable by id ASC)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        return []
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM dispatch_task WHERE candidate_id = ? ORDER BY id ASC",
+                (cid,),
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def count_dispatch_tasks_by_candidate() -> Dict[str, int]:
+    """Map candidate_id → row count for all dispatch_task rows."""
+    def _with_conn() -> Dict[str, int]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT candidate_id, COUNT(*) AS n FROM dispatch_task GROUP BY candidate_id"
+            ).fetchall()
+            return {str(r[0]): int(r[1]) for r in rows}
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
 def get_dispatch_task_by_key(task_key: str) -> Optional[Dict[str, Any]]:
     """Return the first dispatch_task row for a given task_key, or None."""
     def _with_conn() -> Optional[Dict[str, Any]]:
@@ -6139,6 +6345,13 @@ _DISPATCH_TASK_UPDATE_COLS = {
     "task_key", "sort_by", "batch_call_mode",
 }
 
+# Schedule columns mirrored from a template candidate row (AST-875). Runtime fields excluded.
+_DISPATCH_TASK_TEMPLATE_COPY_COLS = frozenset({
+    "task_key", "entity_type", "trigger_state", "sort_by", "batch_call_mode",
+    "freq_hrs", "min_count", "batch_size", "auto_mode", "debug", "skip_cache",
+    "max_runs", "score_floor",
+})
+
 
 def update_dispatch_task(task_id: int, **kwargs) -> None:
     """Update fields on a dispatch_task. Column-whitelisted."""
@@ -6162,6 +6375,133 @@ def update_dispatch_task(task_id: int, **kwargs) -> None:
         finally:
             conn.close()
     _run_with_retry(_with_conn)
+
+
+def delete_dispatch_task(task_id: int) -> None:
+    """Delete one dispatch_task by primary key. No-op if missing."""
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            conn.execute("DELETE FROM dispatch_task WHERE id = ?", (task_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    _run_with_retry(_with_conn)
+
+
+def _dispatch_task_pair_key(task_key: Any, trigger_state: Any) -> tuple:
+    tk = str(task_key or "").strip()
+    ts = "" if trigger_state is None else str(trigger_state).strip()
+    return (tk, ts)
+
+
+def _dispatch_task_schedule_assign(template_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Build schedule columns from a template row; raises if task_key blank."""
+    tk = str(template_row.get("task_key") or "").strip()
+    if not tk:
+        raise ValueError("template row missing task_key")
+    assign: Dict[str, Any] = {}
+    for col in _DISPATCH_TASK_TEMPLATE_COPY_COLS:
+        if col not in template_row:
+            continue
+        val = template_row[col]
+        if col == "task_key":
+            assign[col] = tk
+        elif col == "trigger_state":
+            ts = "" if val is None else str(val).strip()
+            assign[col] = ts if ts else None
+        elif col in ("auto_mode", "debug", "skip_cache", "batch_call_mode"):
+            assign[col] = int(bool(val)) if isinstance(val, bool) else int(val or 0)
+        elif col == "min_count":
+            assign[col] = int(val)
+        elif col in ("batch_size", "max_runs"):
+            assign[col] = int(val) if val is not None else None
+        elif col == "freq_hrs":
+            assign[col] = float(val or 0)
+        elif col == "score_floor":
+            assign[col] = float(val) if val is not None else None
+        else:
+            assign[col] = val
+    if "min_count" not in assign:
+        raise ValueError(f"template row for task_key {tk!r} missing min_count")
+    return assign
+
+
+def set_dispatch_tasks_from_template_rows(
+    target_candidate_id: str,
+    template_rows: List[Dict[str, Any]],
+) -> Dict[str, int]:
+    """Upsert+prune target dispatch_task rows to match template; clear last_run_at/batch_id."""
+    target = str(target_candidate_id or "").strip()
+    if not target:
+        raise ValueError("candidate_id is required")
+
+    def _with_conn() -> Dict[str, int]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            existing = conn.execute(
+                "SELECT * FROM dispatch_task WHERE candidate_id = ?",
+                (target,),
+            ).fetchall()
+            by_key: Dict[tuple, Any] = {}
+            for row in existing:
+                d = _row_to_dict(row)
+                by_key[_dispatch_task_pair_key(d.get("task_key"), d.get("trigger_state"))] = d
+
+            template_keys: set = set()
+            inserted = updated = 0
+            now = _utc_now()
+            for trow in template_rows:
+                assign = _dispatch_task_schedule_assign(trow)
+                key = _dispatch_task_pair_key(assign["task_key"], assign.get("trigger_state"))
+                template_keys.add(key)
+                # Always clear runtime fields on write
+                assign["last_run_at"] = None
+                assign["batch_id"] = None
+                assign["updated_at"] = now
+                if key in by_key:
+                    uid = by_key[key]["id"]
+                    cols = list(assign.keys())
+                    set_clause = ", ".join(f"{c} = ?" for c in cols)
+                    vals = [assign[c] for c in cols] + [uid]
+                    conn.execute(
+                        f"UPDATE dispatch_task SET {set_clause} WHERE id = ?",
+                        vals,
+                    )
+                    updated += 1
+                else:
+                    cols = ["candidate_id"] + list(assign.keys())
+                    assign_full = {"candidate_id": target, **assign}
+                    ph = ", ".join("?" * len(cols))
+                    conn.execute(
+                        f"INSERT INTO dispatch_task ({', '.join(cols)}) VALUES ({ph})",
+                        [assign_full[c] for c in cols],
+                    )
+                    inserted += 1
+
+            deleted = 0
+            for key, d in list(by_key.items()):
+                if key not in template_keys:
+                    conn.execute("DELETE FROM dispatch_task WHERE id = ?", (d["id"],))
+                    deleted += 1
+
+            conn.commit()
+            count_row = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ?",
+                (target,),
+            ).fetchone()
+            return {
+                "inserted": inserted,
+                "updated": updated,
+                "deleted": deleted,
+                "count": int(count_row[0]),
+            }
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
 
 
 def get_due_tasks() -> List[Dict[str, Any]]:

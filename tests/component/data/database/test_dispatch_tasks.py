@@ -935,3 +935,208 @@ class TestAst766BoardSchemaSunset:
             == 0
         )
 
+class TestAst874FetchCulturePagesDispatchMigration:
+    """AST-874: seed fetch_culture_pages @ PASSED_GET; retarget grade_like → CULTURE_READY."""
+
+    def _insert_grade_like_passed_get(
+        self, conn, candidate_id: str, *, batch_size: int = 4, freq_hrs: float = 1.5,
+        auto_mode: int = 1, score_floor: float = 0.7,
+    ) -> None:
+        # Raw insert — save_dispatch_task defaults grade_like to CULTURE_READY after AST-874.
+        conn.execute(
+            """
+            INSERT INTO dispatch_task (
+                candidate_id, task_key, trigger_state, min_count, auto_mode,
+                batch_size, freq_hrs, entity_type, sort_by, batch_call_mode, score_floor
+            ) VALUES (?, 'grade_like', 'PASSED_GET', 1, ?, ?, ?, 'job', 'updated_at', 0, ?)
+            """,
+            (candidate_id, auto_mode, batch_size, freq_hrs, score_floor),
+        )
+        conn.commit()
+
+    def test_retargets_grade_like_and_seeds_fetch_culture_pages(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_grade_like_passed_get(conn, "c874")
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            like = conn.execute(
+                "SELECT trigger_state, batch_size, score_floor FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'grade_like'",
+                ("c874",),
+            ).fetchone()
+            fetch = conn.execute(
+                "SELECT trigger_state, batch_size, freq_hrs, auto_mode, score_floor FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'",
+                ("c874",),
+            ).fetchone()
+            assert like is not None
+            assert like[0] == "CULTURE_READY"
+            assert like[1] == 4
+            assert float(like[2]) == 0.7
+            assert fetch is not None
+            assert fetch[0] == "PASSED_GET"
+            assert fetch[1] == 4
+            assert float(fetch[2]) == 1.5
+            assert fetch[3] == 1
+            assert float(fetch[4]) == 0.7
+        finally:
+            conn.close()
+
+    def test_seeds_when_grade_like_already_culture_ready(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task(
+            "c874b", "grade_like", min_count=1, trigger_state="CULTURE_READY",
+            batch_size=6, freq_hrs=2.0, score_floor=0.55,
+        )
+        conn = db._get_connection()
+        try:
+            n_before = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'",
+                ("c874b",),
+            ).fetchone()[0]
+            assert n_before == 0
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            fetch = conn.execute(
+                "SELECT trigger_state, batch_size, freq_hrs, score_floor FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'",
+                ("c874b",),
+            ).fetchone()
+            assert fetch is not None
+            assert fetch[0] == "PASSED_GET"
+            assert fetch[1] == 6
+            assert float(fetch[2]) == 2.0
+            assert float(fetch[3]) == 0.55
+        finally:
+            conn.close()
+
+    def test_idempotent_no_duplicate_fetch_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_grade_like_passed_get(conn, "c874c", batch_size=3)
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n_like = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'grade_like'",
+                ("c874c",),
+            ).fetchone()[0]
+            n_fetch = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'fetch_culture_pages' AND trigger_state = 'PASSED_GET'",
+                ("c874c",),
+            ).fetchone()[0]
+            assert n_like == 1
+            assert n_fetch == 1
+        finally:
+            conn.close()
+
+
+
+class TestAst875SetDispatchTasksFromTemplate:
+    """AST-875: list/count/delete helpers + transactional set-from-template upsert+prune."""
+
+    def _stamp_runtime(self, db, task_id: int, *, last_run_at: str, batch_id: str) -> None:
+        # batch_id is not on update_dispatch_task whitelist — stamp via SQL for AC3 setup.
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE dispatch_task SET last_run_at = ?, batch_id = ? WHERE id = ?",
+                (last_run_at, batch_id, task_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_list_and_count_helpers(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.list_dispatch_tasks_for_candidate("") == []
+        assert db.list_dispatch_tasks_for_candidate("   ") == []
+        db.save_dispatch_task("tmpl", "fetch_website", min_count=1, trigger_state="WEBSITE_FOUND")
+        db.save_dispatch_task("tmpl", "fetch_website", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
+        db.save_dispatch_task("other", "qualify_job_listings", min_count=1, trigger_state="VALID_TITLE")
+        rows = db.list_dispatch_tasks_for_candidate("tmpl")
+        assert len(rows) == 2
+        assert all(r["candidate_id"] == "tmpl" for r in rows)
+        assert [r["id"] for r in rows] == sorted(r["id"] for r in rows)
+        counts = db.count_dispatch_tasks_by_candidate()
+        assert counts["tmpl"] == 2
+        assert counts["other"] == 1
+        assert "missing" not in counts
+
+    def test_delete_dispatch_task_noop_and_delete(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        tid = db.save_dispatch_task("c875", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST")
+        db.delete_dispatch_task(tid)
+        assert db.get_dispatch_task(tid) is None
+        db.delete_dispatch_task(tid)  # no-op if missing
+
+    def test_set_upsert_prune_clears_runtime_and_is_idempotent(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        # Template set: two keys; target starts with one match + one extra.
+        t1 = db.save_dispatch_task(
+            "tmpl", "fetch_website", min_count=2, trigger_state="WEBSITE_FOUND",
+            auto_mode=True, batch_size=5, freq_hrs=12.0, score_floor=None,
+        )
+        t2 = db.save_dispatch_task(
+            "tmpl", "qualify_job_listings", min_count=1, trigger_state="VALID_TITLE",
+            auto_mode=False, batch_size=3, freq_hrs=0.0,
+        )
+        db.update_dispatch_task(t1, debug=1, skip_cache=1)
+        keep = db.save_dispatch_task(
+            "tgt", "fetch_website", min_count=9, trigger_state="WEBSITE_FOUND", auto_mode=False,
+        )
+        extra = db.save_dispatch_task(
+            "tgt", "evaluate_jd", min_count=1, trigger_state="JD_READY",
+        )
+        self._stamp_runtime(db, keep, last_run_at="2020-01-01 00:00:00", batch_id="batch-old")
+        self._stamp_runtime(db, extra, last_run_at="2020-02-02 00:00:00", batch_id="batch-extra")
+
+        template_rows = db.list_dispatch_tasks_for_candidate("tmpl")
+        stats = db.set_dispatch_tasks_from_template_rows("tgt", template_rows)
+        assert stats == {"inserted": 1, "updated": 1, "deleted": 1, "count": 2}
+
+        tgt = { (r["task_key"], r["trigger_state"]): r for r in db.list_dispatch_tasks_for_candidate("tgt") }
+        assert set(tgt) == {("fetch_website", "WEBSITE_FOUND"), ("qualify_job_listings", "VALID_TITLE")}
+        fw = tgt[("fetch_website", "WEBSITE_FOUND")]
+        assert fw["auto_mode"] in (1, True)
+        assert int(fw["min_count"]) == 2
+        assert int(fw["batch_size"]) == 5
+        assert float(fw["freq_hrs"]) == 12.0
+        assert int(fw["debug"]) == 1
+        assert int(fw["skip_cache"]) == 1
+        assert fw["last_run_at"] is None
+        assert fw["batch_id"] is None
+        qjl = tgt[("qualify_job_listings", "VALID_TITLE")]
+        assert qjl["last_run_at"] is None and qjl["batch_id"] is None
+        assert db.get_dispatch_task(extra) is None
+
+        # Idempotent re-run: update both, delete none, insert none; runtime stays cleared.
+        self._stamp_runtime(db, fw["id"], last_run_at="2021-01-01 00:00:00", batch_id="batch-again")
+        stats2 = db.set_dispatch_tasks_from_template_rows("tgt", template_rows)
+        assert stats2 == {"inserted": 0, "updated": 2, "deleted": 0, "count": 2}
+        again = db.get_dispatch_task(fw["id"])
+        assert again is not None
+        assert again["last_run_at"] is None and again["batch_id"] is None
+
+    def test_empty_template_deletes_all_target_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_dispatch_task("tgt", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST")
+        stats = db.set_dispatch_tasks_from_template_rows("tgt", [])
+        assert stats == {"inserted": 0, "updated": 0, "deleted": 1, "count": 0}
+        assert db.list_dispatch_tasks_for_candidate("tgt") == []
+
+    def test_blank_target_and_blank_task_key_raise(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            db.set_dispatch_tasks_from_template_rows("", [])
+        with pytest.raises(ValueError, match="task_key"):
+            db.set_dispatch_tasks_from_template_rows("tgt", [{"task_key": "  ", "min_count": 1}])

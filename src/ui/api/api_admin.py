@@ -28,6 +28,7 @@ from src.utils.cost_calculator import sum_calc_cost_components
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
+    count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
 )
 from src.core.candidate import preview_task_prompt
@@ -954,6 +955,30 @@ def dispatch_task_state_options():
         "company": list(COMPANY_STATES.keys()),
         "candidate": list(CANDIDATE_STATES.keys()),
     })
+
+
+@admin_bp.route("/dispatch_tasks/counts")
+@require_admin
+def dispatch_task_counts():
+    """Per-candidate dispatch_task row counts for Manage Candidates (AST-875)."""
+    return jsonify({"counts": count_dispatch_tasks_by_candidate()})
+
+
+@admin_bp.route("/dispatch_tasks/set_from_template", methods=["POST"])
+@require_admin
+def set_dispatch_tasks_from_template():
+    """Mirror config template candidate schedule onto target candidate (AST-875)."""
+    data = request.get_json(force=True) or {}
+    candidate_id = str(data.get("candidate_id") or "").strip()
+    if not candidate_id:
+        return jsonify({"error": "candidate_id is required"}), 400
+    try:
+        result = set_candidate_dispatch_tasks_from_template(candidate_id)
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
 
 
 @admin_bp.route("/dispatch_tasks", methods=["POST"])

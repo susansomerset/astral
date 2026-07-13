@@ -128,6 +128,16 @@ Narrow (**`test-astral`** **AST-483** tip):
   -q
 ```
 
+### AST-880 · AST-879
+
+**AST-880:** **`TASK_CONFIG["vet_inflow_discovery"]`** → **`output_type: grades_encoded_vet_meta`**; **`response_schema.results`** items use **`grade` + `website`** (no **`action`**). **`INFLOW_CONFIG["vet"]`** exposes **`pass_grades` / `fail_grades` / `grade_vector_code`**. Registry key **`grades_encoded_vet_meta`** in **`ASTRAL_CONFIG["output_types"]`**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Encoded task contract + grade frozensets | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::{test_vet_inflow_discovery_task,test_inflow_config_vet_literals,test_vet_grades_encoded_vet_meta_output_type}` |
+
+Roster apply + batch decode: **`docs/test-bible/core/roster.md`** (**AST-880**). Agent decode: **`docs/test-bible/core/agent.md`** (**AST-880**).
+
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
 
 ---
@@ -674,3 +684,35 @@ Gazer routing manifest: **`docs/test-bible/core/gazer.md`** (**AST-854**).
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Path helpers + table key order | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig` |
+
+---
+
+### AST-874 · AST-872
+
+**`CULTURE_READY` / `NEED_CULTURE_CONTENT` / `NO_CULTURE_LINKS`** job states; **`GAZER_CONFIG["fetch_culture_pages"]`**; schedulable **`fetch_culture_pages`** @ **`PASSED_GET`**; **`grade_like`** admin default trigger **`CULTURE_READY`**; **`CULTURE_READY`** in **`PASSED_SCORE_GATED_STATES`** + in-review / skipped UI manifests.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| States, gazer entry, dispatch registry, UI manifests | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig` |
+
+Gazer batch + migration: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-874**).
+
+### AST-875 · AST-873
+
+**`ASTRAL_CONFIG["template_candidate_id"]`** default **`somerset`**; **`template_candidate_id()`** getter — no env lookup, no hardcoded id outside config.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Template candidate id | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst875TemplateCandidateId` |
+
+Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).
+
+### AST-876 · AST-873
+
+**`DATA_SHAPES["candidates"]["list"]["manage"]`** includes **`dispatch_task_count`** (`label` Dispatch tasks, `type` int) after **`api_key_status`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Manage list column | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst876DispatchTaskCountShape` |
+
+UI wiring: **`docs/test-bible/frontend/pages.md`** (**AST-876**).

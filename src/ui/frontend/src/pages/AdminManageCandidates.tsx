@@ -89,6 +89,8 @@ function DeleteIcon() {
 export default function ManageCandidates() {
   const [shapes, setShapes] = useState<CandidateShapes | null>(null)
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([])
+  const [dispatchTaskCounts, setDispatchTaskCounts] = useState<Record<string, number>>({})
+  const [settingCandidateId, setSettingCandidateId] = useState<string | null>(null)
   const [validStates, setValidStates] = useState<string[]>([])
   const [viewing, setViewing] = useState<Candidate | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -111,11 +113,30 @@ export default function ManageCandidates() {
     }).catch(() => setAllCandidates([]))
   }, [])
 
+  const loadDispatchTaskCounts = useCallback(() => {
+    api("/api/admin/dispatch_tasks/counts")
+      .then(async r => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}))
+          throw new Error((body as { error?: string }).error || "Failed to load dispatch task counts")
+        }
+        return r.json()
+      })
+      .then(data => {
+        const counts = (data && typeof data === "object" && data.counts && typeof data.counts === "object")
+          ? data.counts as Record<string, number>
+          : {}
+        setDispatchTaskCounts(counts)
+      })
+      .catch(() => setDispatchTaskCounts({}))
+  }, [])
+
   useEffect(() => {
     api("/api/shapes/candidates").then(r => r.json()).then(s => setShapes(s))
     api("/api/candidates/states").then(r => r.json()).then(s => setValidStates(Array.isArray(s) ? s : []))
     loadAll()
-  }, [loadAll])
+    loadDispatchTaskCounts()
+  }, [loadAll, loadDispatchTaskCounts])
 
   function handleAddSave() {
     const { first, last, contact_email, pronoun_preference } = addForm
@@ -148,6 +169,7 @@ export default function ManageCandidates() {
         setAddForm({ first: "", last: "", contact_email: "", pronoun_preference: "" })
         setToast({ text: `Candidate "${first} ${last}" created`, variant: "success" })
         loadAll()
+        loadDispatchTaskCounts()
         refresh()
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
@@ -198,6 +220,7 @@ export default function ManageCandidates() {
         setEditTarget(null)
         setToast({ text: "Candidate updated", variant: "success" })
         loadAll()
+        loadDispatchTaskCounts()
         refresh()
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
@@ -217,14 +240,49 @@ export default function ManageCandidates() {
       .then(() => {
         setToast({ text: `Candidate "${c.astral_candidate_id}" deleted`, variant: "success" })
         loadAll()
+        loadDispatchTaskCounts()
         refresh()
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
   }
 
+  async function handleSetDispatchTasks(c: Candidate) {
+    const ok = await confirm(
+      `Replace dispatch tasks for "${c.astral_candidate_id}" with the template candidate’s full set? Existing extras for this candidate will be removed.`,
+      { title: "Set dispatch tasks", confirmLabel: "Set tasks", variant: "danger" },
+    )
+    if (!ok) return
+    setSettingCandidateId(c.astral_candidate_id)
+    api("/api/admin/dispatch_tasks/set_from_template", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate_id: c.astral_candidate_id }),
+    })
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Set dispatch tasks failed") })
+        return r.json()
+      })
+      .then(data => {
+        const id = c.astral_candidate_id
+        const count = Number(data.count ?? 0)
+        setToast({ text: `Dispatch tasks set for "${id}" (${count} rows)`, variant: "success" })
+        setDispatchTaskCounts(prev => ({ ...prev, [id]: count }))
+        loadDispatchTaskCounts()
+      })
+      .catch(e => setToast({ text: e.message, variant: "error" }))
+      .finally(() => setSettingCandidateId(null))
+  }
+
   if (!shapes) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
 
-  const rows = allCandidates.map(flattenCandidate)
+  const rows = allCandidates.map(c => {
+    const flat = flattenCandidate(c)
+    const id = String(flat.astral_candidate_id || "")
+    return {
+      ...flat,
+      dispatch_task_count: Number(dispatchTaskCounts[id] ?? 0),
+    }
+  })
 
   const baseColumns = shapes.list.manage.map((col: Column<Candidate>) => {
     if (col.key === "api_key_status") {
@@ -237,6 +295,12 @@ export default function ManageCandidates() {
         ),
       }
     }
+    if (col.key === "dispatch_task_count") {
+      return {
+        ...col,
+        render: (val: unknown) => <>{Number(val ?? 0)}</>,
+      }
+    }
     return col
   })
 
@@ -245,7 +309,7 @@ export default function ManageCandidates() {
     {
       key: "_actions", label: "", sortable: false,
       render: (_, row) => (
-        <span style={{ display: "flex", gap: 6 }}>
+        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); setViewing(row) }} aria-label="View">
             <ViewIcon />
           </button>
@@ -254,6 +318,16 @@ export default function ManageCandidates() {
           </button>
           <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); void handleDelete(row) }} aria-label="Delete" style={{ color: "var(--danger)" }}>
             <DeleteIcon />
+          </button>
+          <button
+            type="button"
+            className="dep-btn"
+            style={{ padding: "6px 10px", fontSize: 12 }}
+            aria-label={`Set dispatch tasks for ${row.astral_candidate_id}`}
+            disabled={settingCandidateId === row.astral_candidate_id}
+            onClick={e => { e.stopPropagation(); void handleSetDispatchTasks(row) }}
+          >
+            Set dispatch tasks
           </button>
         </span>
       ),

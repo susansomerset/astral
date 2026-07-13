@@ -4662,30 +4662,9 @@ class TestAst776VetInflowDiscoveryCompany:
         assert out["error"] == "missing inflow_discovery_blurb"
 
     @pytest.mark.asyncio
-    async def test_vet_ignore_transitions_vet_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {"results": [{"action": "ignore", "hit_index": 0}]},
-                }
-            ),
-        )
-        transition = MagicMock()
-        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
-        entity = _company(
-            state="NEW",
-            company_website="",
-            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
-        )
-        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-776", {}, False)
-        assert out == {"success": True, "state": "VET_FAILED", "error": None}
-        transition.assert_called_once_with("co_new", "VET_FAILED")
-
-    @pytest.mark.asyncio
-    async def test_vet_slug_sets_website_and_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_vet_grade_f_transitions_vet_failed_without_website_write(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.setattr(
             roster_mod,
             "do_task",
@@ -4695,7 +4674,41 @@ class TestAst776VetInflowDiscoveryCompany:
                     "parsed_response": {
                         "results": [
                             {
-                                "action": "slug",
+                                "grade": "F",
+                                "website": "https://reject.example",
+                                "hit_index": 0,
+                            },
+                        ],
+                    },
+                }
+            ),
+        )
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        entity = _company(
+            state="NEW",
+            company_website="",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-776", {}, False)
+        assert out == {"success": True, "state": "VET_FAILED", "error": None}
+        transition.assert_called_once_with("co_new", "VET_FAILED")
+        update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_vet_grade_a_sets_website_and_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "results": [
+                            {
+                                "grade": "A",
                                 "website": "https://home.example",
                                 "hit_index": 0,
                             },
@@ -4810,8 +4823,8 @@ class TestAst822VetInflowDiscoveryBatch:
                 "success": True,
                 "parsed_response": {
                     "results": [
-                        {"hit_index": 0, "action": "slug", "website": "https://a.example"},
-                        {"hit_index": 1, "action": "ignore"},
+                        {"hit_index": 0, "grade": "A", "website": "https://a.example"},
+                        {"hit_index": 1, "grade": "F", "website": "https://b.example"},
                     ],
                 },
             },
@@ -4843,6 +4856,57 @@ class TestAst822VetInflowDiscoveryBatch:
             call("co_a", "WEBSITE_FOUND"),
             call("co_b", "VET_FAILED"),
         ]
+
+
+class TestAst880VetInflowEncoded:
+    """AST-880: grade-based vet outcomes + batch_entities decode ctx."""
+
+    @pytest.mark.asyncio
+    async def test_vet_passes_batch_entities_to_do_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "results": [{"grade": "D", "website": "https://d.example", "hit_index": 0}],
+                },
+            },
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "update_company", MagicMock())
+        entity = _company(
+            state="NEW",
+            company_website="",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        out = await roster_mod.vet_inflow_discovery_company("co_d", entity, "batch-880", {}, False)
+        assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
+        ctx = do_task.await_args.kwargs["ctx"]
+        assert ctx["batch_entities"] == [{"astral_job_id": "co_d", "short_name": "co_d"}]
+        assert ctx["batch_size"] == 1
+
+    @pytest.mark.asyncio
+    async def test_vet_missing_website_in_grade_row_is_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"results": [{"grade": "A", "website": "", "hit_index": 0}]},
+                }
+            ),
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        entity = _company(
+            state="NEW",
+            company_website="",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        out = await roster_mod.vet_inflow_discovery_company("co_new", entity, "batch-880", {}, False)
+        assert out == {"success": False, "state": None, "error": "missing website"}
+        transition.assert_not_called()
 
 
 class TestAst506InflowResolve:
@@ -5227,3 +5291,102 @@ class TestAst727NormalizeAgentResponsesForBackfill:
         normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
         assert normalized == entries
         assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
+
+
+class TestAst877OriginatingSearchTerm:
+    """AST-877: stamp originating search term through discovery/ingest + debug detail."""
+
+    def test_record_hit_stamps_search_term(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        hit = {"title": "Hit Co", "url": "https://hit877.example", "snippet": "about"}
+        ok, outcome = roster_mod.record_inflow_discovery_hit(
+            "c877", hit, index=0, search_term="fintech startups",
+        )
+        assert ok is True
+        assert "term='fintech startups'" in outcome
+        row = db.get_company("hit877_example")
+        assert row is not None
+        assert row["originating_search_term"] == "fintech startups"
+
+    def test_record_hit_without_term_leaves_null(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        ok, outcome = roster_mod.record_inflow_discovery_hit(
+            "c877",
+            {"title": "X", "url": "https://noterm877.example", "snippet": ""},
+        )
+        assert ok is True
+        assert "term=" not in outcome
+        row = db.get_company("noterm877_example")
+        assert row is not None
+        assert row.get("originating_search_term") is None
+
+    def test_record_hit_term_survives_vet_failed_update(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        ok, _ = roster_mod.record_inflow_discovery_hit(
+            "c877",
+            {"title": "Y", "url": "https://vet877.example", "snippet": ""},
+            search_term="robotics",
+        )
+        assert ok is True
+        assert db.update_company("vet877_example", state="VET_FAILED") == 1
+        row = db.get_company("vet877_example")
+        assert row is not None
+        assert row["state"] == "VET_FAILED"
+        assert row["originating_search_term"] == "robotics"
+
+    def test_ingest_new_companies_kwarg_and_source_hit(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        assert roster_mod.ingest_new_companies(
+            "c877", "ingest877_a", None, originating_search_term="kwarg term",
+        ) is True
+        assert db.get_company("ingest877_a")["originating_search_term"] == "kwarg term"
+        assert roster_mod.ingest_new_companies(
+            "c877",
+            "ingest877_b",
+            None,
+            source_hit={"url": "https://ingest877b.example", "search_term": "hit term"},
+        ) is True
+        assert db.get_company("ingest877_b")["originating_search_term"] == "hit term"
+
+    @pytest.mark.asyncio
+    async def test_run_batch_stamps_term_from_cse_loop(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c877", ["fintech"])
+        hits = [{"title": "Co", "url": "https://co877.example", "snippet": "snip"}]
+        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
+        cand = {"astral_candidate_id": "c877", "candidate_data": {}}
+        out = await roster_mod.run_inflow_discovery_batch(cand, "batch-877", cand, False)
+        assert out["total_passed"] == 1
+        row = db.get_company("co877_example")
+        assert row is not None
+        assert row["originating_search_term"] == "fintech"
+
+    @pytest.mark.asyncio
+    async def test_run_batch_debug_emits_originating_search_term(
+        self, seeded_db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = seeded_db
+        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.sync_company_search_terms("c877", ["fintech"])
+        details: list[str] = []
+
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_detail",
+            lambda msg: details.append(msg),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "search_google_cse",
+            MagicMock(return_value=[{"title": "Co", "url": "https://dbg877.example", "snippet": ""}]),
+        )
+        cand = {"astral_candidate_id": "c877", "candidate_data": {}}
+        await roster_mod.run_inflow_discovery_batch(cand, "batch-877-dbg", cand, True)
+        assert any("originating_search_term='fintech'" in d for d in details)

@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_culture_pages_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
 from roster for callers that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record); batch lifecycle (claim, release) is owned by CLI.
 """
@@ -278,6 +278,177 @@ async def fetch_jd_batch(
         _log.debug_detail(
             f"summary passed={passed} failed={failed} total={job_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r}"
+        )
+    return {"passed": passed, "failed": failed, "total": len(jobs)}
+
+
+def _website_content_is_recorded(website_content: Any) -> bool:
+    """True when company_data already has usable culture page bodies (AST-874 cache path)."""
+    if isinstance(website_content, list):
+        return any(
+            isinstance(p, dict) and str(p.get("content") or "").strip()
+            for p in website_content
+        )
+    if isinstance(website_content, str):
+        return bool(website_content.strip())
+    return False
+
+
+def _website_content_debug_summary(website_content: Any) -> str:
+    """Short found/recorded summary for fetch_culture_pages debug detail lines."""
+    if isinstance(website_content, list):
+        pages = [
+            p for p in website_content
+            if isinstance(p, dict) and str(p.get("content") or "").strip()
+        ]
+        urls = [str(p.get("url") or "") for p in pages[:5]]
+        return f"pages={len(pages)} urls={urls!r}"
+    if isinstance(website_content, str):
+        return f"chars={len(website_content.strip())}"
+    return "empty"
+
+
+async def fetch_culture_pages_batch(
+    batch_id: str,
+    jobs: List[Dict[str, Any]],
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Ensure culture page content via roster coat-check; gate jobs to CULTURE_READY (AST-874).
+
+    Transitions each job to CULTURE_READY (pass), NEED_CULTURE_CONTENT (coat-check fail),
+    or NO_CULTURE_LINKS (no culture_links_to_explore). Returns {"passed", "failed", "total"}.
+    """
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_culture_pages_batch: no internet connectivity, aborting batch {batch_id} "
+            f"({len(jobs)} jobs)"
+        )
+    if debug:
+        _log.set_debug_flag(True)
+    cfg = GAZER_CONFIG["fetch_culture_pages"]
+    pass_state = cfg["pass_state"]
+    fail_state = cfg["fail_state"]
+    no_links_state = cfg["no_links_state"]
+    job_total = len(jobs)
+    passed = failed = 0
+
+    if debug and job_total > 0:
+        _log.debug_index(
+            func="gazer.fetch_culture_pages_batch",
+            index=1,
+            total=1,
+            identifier=batch_id,
+            outcome=f"batch start {job_total} job(s)",
+        )
+
+    # Sequential: coat-check scrapes one company at a time; shared company rows must not race.
+    for job_index, job in enumerate(jobs, start=1):
+        aid = job.get("astral_job_id", "")
+        company_key = (job.get("company") or "").strip()
+        if not company_key:
+            if debug:
+                _log.debug_index(
+                    func="gazer.fetch_culture_pages_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — no company -> {fail_state}",
+                )
+            transition_job_state([aid], fail_state)
+            failed += 1
+            continue
+        company = get_company(company_key)
+        if company is None:
+            if debug:
+                _log.debug_index(
+                    func="gazer.fetch_culture_pages_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — no company -> {fail_state}",
+                )
+            transition_job_state([aid], fail_state)
+            failed += 1
+            continue
+
+        cd = company.get("company_data")
+        if not isinstance(cd, dict):
+            cd = {}
+            company["company_data"] = cd
+
+        recorded = cd.get("website_content")
+        if _website_content_is_recorded(recorded):
+            transition_job_state([aid], pass_state)
+            if debug:
+                _log.debug_index(
+                    func="gazer.fetch_culture_pages_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"passed -> {pass_state} (cached)",
+                )
+                _log.debug_detail(
+                    f"{_website_content_debug_summary(recorded)} recorded=cached "
+                    f"company={company_key!r}"
+                )
+            passed += 1
+            continue
+
+        links = cd.get("culture_links_to_explore") or []
+        if not links:
+            transition_job_state([aid], no_links_state)
+            if debug:
+                _log.debug_index(
+                    func="gazer.fetch_culture_pages_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"failed — no culture links -> {no_links_state}",
+                )
+                _log.debug_detail(
+                    f"culture_links_to_explore=[] company={company_key!r}"
+                )
+            failed += 1
+            continue
+
+        content = await get_company_data(company, "website_content")
+        if content:
+            company.setdefault("company_data", {})["website_content"] = content
+            transition_job_state([aid], pass_state)
+            if debug:
+                _log.debug_index(
+                    func="gazer.fetch_culture_pages_batch",
+                    index=job_index,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome=f"passed -> {pass_state}",
+                )
+                _log.debug_detail(
+                    f"{_website_content_debug_summary(content)} recorded=coat-check "
+                    f"company={company_key!r}"
+                )
+            passed += 1
+            continue
+
+        transition_job_state([aid], fail_state)
+        if debug:
+            _log.debug_index(
+                func="gazer.fetch_culture_pages_batch",
+                index=job_index,
+                total=job_total,
+                identifier=_gazer_job_identifier(job),
+                outcome=f"failed — coat-check empty -> {fail_state}",
+            )
+            _log.debug_detail(
+                f"links_present={len(links)} company={company_key!r} recorded=none"
+            )
+        failed += 1
+
+    if debug:
+        _log.debug_detail(
+            f"summary passed={passed} failed={failed} total={job_total} "
+            f"pass_state={pass_state!r} fail_state={fail_state!r} "
+            f"no_links_state={no_links_state!r}"
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 

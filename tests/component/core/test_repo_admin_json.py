@@ -235,6 +235,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "draft_cover_letter",
         "draft_job_resume",
         "evaluate_jd",
+        "fetch_culture_pages",
         "fetch_jd",
         "fetch_job_pages",
         "fetch_website",
@@ -260,7 +261,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated 37-row agent_task repo JSON from UAT fixture."""
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (38 rows after AST-878)."""
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
         repo = Path("data/admin/agent_task.json")
@@ -268,9 +269,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_37_current_catalog_keys(self) -> None:
+    def test_repo_json_has_38_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 37
+        assert len(rows) == 38
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -283,8 +284,10 @@ class TestAst786AgentTaskRepoJsonSeed:
             row = by_key[task_key]
             assert str(row["agent_id"]).strip()
             assert str(row["user_prompt"]).strip()
+        vet = by_key["vet_inflow_discovery"]
+        assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_37_current_rows(
+    def test_startup_apply_loads_all_38_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -302,7 +305,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 37
+            assert count == 38
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -314,6 +317,25 @@ class TestAst786AgentTaskRepoJsonSeed:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         row = next(r for r in rows if r["task_key"] == "select_job_page")
         assert row["run_next"] == ""
+
+
+class TestAst878FetchCulturePagesCatalogRow:
+    """AST-878: fetch_culture_pages Job Review hop in repo agent_task JSON."""
+
+    def test_fetch_culture_pages_between_get_and_like(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        assert "fetch_culture_pages" in by
+        row = by["fetch_culture_pages"]
+        assert row["task_seq"] == 7
+        assert row["task_group_name"] == "Job Review"
+        assert row["agent_id"] == "n/a"
+        assert row["task_name"] == "Fetch Culture Pages"
+        assert by["grade_get"]["task_seq"] == 6
+        assert by["grade_like"]["task_seq"] == 8
+        assert by["analysis_upshot"]["task_seq"] == 9
+
+
 
 
 AST787_EXPECTED_AGENT_IDS = frozenset(

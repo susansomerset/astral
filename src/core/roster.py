@@ -293,10 +293,15 @@ def _apply_vet_inflow_result_row(
     index: int,
     total: int,
 ) -> Dict[str, Any]:
-    action = (row.get("action") or "").strip().lower()
-    if action in ("ignore", "reject"):
+    grade = (row.get("grade") or "").strip().upper()
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"grade={grade!r} missing website")
+        return {"success": False, "state": None, "error": "missing website"}
+    if grade in cfg["fail_grades"]:
         transition_company_state(short_name, cfg["fail_state"])
-        outcome = f"recorded {cfg['fail_state']}"
+        outcome = f"recorded {cfg['fail_state']} grade={grade} website={website!r}"
         if debug:
             log.debug_index(
                 func="roster.vet_inflow_discovery_company",
@@ -305,16 +310,11 @@ def _apply_vet_inflow_result_row(
                 identifier=short_name,
                 outcome=outcome,
             )
-            log.debug_detail(f"action={action!r}")
+            log.debug_detail(f"grade={grade!r} website={website!r}")
         return {"success": True, "state": cfg["fail_state"], "error": None}
-    if action not in ("slug", "accept"):
-        logger.warning("[%s] vet_inflow_discovery_company: unknown action %r", short_name, row.get("action"))
-        return {"success": False, "state": None, "error": f"unknown action {action!r}"}
-    website = (row.get("website") or "").strip()
-    if not website:
-        if debug:
-            log.debug_detail(f"action={action!r} missing website")
-        return {"success": False, "state": None, "error": "missing website on pass action"}
+    if grade not in cfg["pass_grades"]:
+        logger.warning("[%s] vet_inflow_discovery_company: unknown grade %r", short_name, row.get("grade"))
+        return {"success": False, "state": None, "error": f"unknown grade {grade!r}"}
     update_company(short_name, company_website=website)
     transition_company_state(short_name, cfg["pass_state"])
     if debug:
@@ -323,9 +323,9 @@ def _apply_vet_inflow_result_row(
             index=index,
             total=total,
             identifier=short_name,
-            outcome=f"recorded {cfg['pass_state']} website={website!r}",
+            outcome=f"recorded {cfg['pass_state']} grade={grade} website={website!r}",
         )
-        log.debug_detail(f"action={action!r} website={website!r}")
+        log.debug_detail(f"grade={grade!r} website={website!r}")
     return {"success": True, "state": cfg["pass_state"], "error": None}
 
 
@@ -357,7 +357,13 @@ def _candidate_company_urls(candidate_id: str) -> Set[str]:
     return urls
 
 
-def record_inflow_discovery_hit(candidate_id: str, hit: dict, *, index: int = 0) -> Tuple[bool, str]:
+def record_inflow_discovery_hit(
+    candidate_id: str,
+    hit: dict,
+    *,
+    index: int = 0,
+    search_term: str = "",
+) -> Tuple[bool, str]:
     """Record one CSE hit as a NEW company row with discovery blurb stored."""
     url = (hit.get("url") or "").strip()
     if not url:
@@ -379,12 +385,14 @@ def record_inflow_discovery_hit(candidate_id: str, hit: dict, *, index: int = 0)
     if not resolved_slug:
         return False, f"slug collision for {url!r}"
     slug = resolved_slug
+    term = (search_term or "").strip() or None
     save_company(
         short_name=slug,
         state="NEW",
         company_website="",
         candidate_id=candidate_id,
         company_name=slug,
+        originating_search_term=term,
     )
     save_company_data(
         slug,
@@ -393,6 +401,8 @@ def record_inflow_discovery_hit(candidate_id: str, hit: dict, *, index: int = 0)
             "inflow_discovery_notes": url,
         },
     )
+    if term:
+        return True, f"recorded NEW slug={slug} term={term!r}"
     return True, f"recorded NEW slug={slug}"
 
 
@@ -424,6 +434,7 @@ def ingest_new_companies(
     website: Optional[str],
     *,
     source_hit: Optional[dict] = None,
+    originating_search_term: Optional[str] = None,
 ) -> bool:
     """Create NEW or WEBSITE_FOUND company row for an accepted inflow hit."""
     slug = (slug or "").strip().lower()
@@ -441,6 +452,14 @@ def ingest_new_companies(
         if norm and norm in _candidate_company_urls(candidate_id):
             logger.info("ingest_new_companies: duplicate URL for %s candidate %s", slug, candidate_id)
             return False
+    term = originating_search_term
+    if term is None and isinstance(source_hit, dict):
+        raw = source_hit.get("originating_search_term")
+        if raw is None:
+            raw = source_hit.get("search_term")
+        term = (raw or "").strip() or None
+    else:
+        term = (term or "").strip() or None
     target_state = "WEBSITE_FOUND" if site else "NEW"
     save_company(
         short_name=slug,
@@ -448,6 +467,7 @@ def ingest_new_companies(
         company_website=site,
         candidate_id=candidate_id,
         company_name=slug,
+        originating_search_term=term,
     )
     if source_hit:
         note_url = (source_hit.get("url") or "").strip()
@@ -486,7 +506,11 @@ async def vet_inflow_discovery_company(
         task_key=cfg["task_key"],
         live_content=live_content,
         index=short_name,
-        ctx=ctx,
+        ctx={
+            **(ctx or {}),
+            "batch_entities": [{"astral_job_id": short_name, "short_name": short_name}],
+            "batch_size": 1,
+        },
         debug=debug,
     )
     if not api_result.get("success"):
@@ -564,11 +588,24 @@ async def vet_inflow_discovery_company_batch(
     live_content = f"{header}\n{body}"
     if debug:
         log.debug_detail_block(live_content)
+    ready_for_decode = [
+        {
+            "astral_job_id": c.get("short_name") or "?",
+            "short_name": c.get("short_name") or "?",
+            "company_data": c.get("company_data") or {},
+            "state": c.get("state"),
+        }
+        for c in ready
+    ]
     api_result = await do_task(
         task_key=cfg["task_key"],
         live_content=live_content,
         index=f"vet_inflow_discovery_batch_{batch_id}",
-        ctx={**(ctx or {}), "batch_entities": ready, "batch_size": len(ready)},
+        ctx={
+            **(ctx or {}),
+            "batch_entities": ready_for_decode,
+            "batch_size": len(ready_for_decode),
+        },
         debug=debug,
     )
     if not api_result.get("success"):
@@ -776,7 +813,7 @@ async def run_inflow_discovery_batch(
             )
         logger.warning("run_inflow_discovery_batch: no stale search terms for %s", candidate_id)
         return {**zero, "total_errors": 0}
-    all_hits: List[GoogleCseHit] = []
+    all_hits: List[Tuple[str, GoogleCseHit]] = []
     seen_urls: Set[str] = set()
     errors = 0
     for term_i, term in enumerate(terms, start=1):
@@ -823,7 +860,7 @@ async def run_inflow_discovery_batch(
             if not norm or norm in seen_urls:
                 continue
             seen_urls.add(norm)
-            all_hits.append(hit)
+            all_hits.append((term, hit))
     if not all_hits:
         if debug:
             log.debug_index(
@@ -840,8 +877,10 @@ async def run_inflow_discovery_batch(
     hit_total = len(all_hits)
     recorded = 0
     skipped = 0
-    for hit_i, hit in enumerate(all_hits):
-        ok, outcome = record_inflow_discovery_hit(candidate_id, hit, index=hit_i)
+    for hit_i, (term, hit) in enumerate(all_hits):
+        ok, outcome = record_inflow_discovery_hit(
+            candidate_id, hit, index=hit_i, search_term=term,
+        )
         hit_url = (hit.get("url") or "").strip()
         identifier = _normalize_company_url_for_dedupe(hit_url) or hit_url or f"hit_{hit_i}"
         if debug:
@@ -855,6 +894,7 @@ async def run_inflow_discovery_batch(
             log.debug_detail(
                 f"title={hit.get('title', '')!r} url={hit_url!r}"
             )
+            log.debug_detail(f"originating_search_term={term!r}")
         if ok:
             recorded += 1
         else:

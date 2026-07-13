@@ -645,3 +645,15 @@ Regression: **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMi
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+---
+
+### AST-874 · AST-872
+
+**`run_consult_task`** routes **`dispatch_task_key=fetch_culture_pages`** to **`fetch_culture_pages_batch`** (job path, beside **`fetch_jd`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Culture-pages consult route | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_culture_pages_batch` |
+
+Primary gazer / config / migration manifest: **`docs/test-bible/core/gazer.md`** (**AST-874**).

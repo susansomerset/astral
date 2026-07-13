@@ -1796,6 +1796,9 @@ async def run_consult_task(
     if task_key == "fetch_jd":
         from src.core.gazer import fetch_jd_batch
         r = await fetch_jd_batch(batch_id, entities, debug=debug)
+    elif task_key == "fetch_culture_pages":
+        from src.core.gazer import fetch_culture_pages_batch
+        r = await fetch_culture_pages_batch(batch_id, entities, debug=debug)
     elif task_key == "qualify_job_listings":
         r = await qualify_job_listings(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,

@@ -231,3 +231,30 @@ External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwri
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Boards channel removed from product (**AST-765**) and schema (**AST-766**). No active boards manifest obligations. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+---
+
+### AST-874 · AST-872
+
+**`fetch_culture_pages_batch`** — claim **`PASSED_GET`** jobs, ensure culture bodies via roster **`get_company_data(..., "website_content")`** coat-check only; pass **`CULTURE_READY`**, fail **`NEED_CULTURE_CONTENT`**, no-links **`NO_CULTURE_LINKS`**. Cached **`website_content`** skips coat-check; sequential batch writeback avoids duplicate scrapes for the same company. Consult routes **`dispatch_task_key=fetch_culture_pages`**. Config + dispatch migration: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-874**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helpers + batch outcomes (connectivity / cache / no-links / coat-check / in-memory cache) | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestWebsiteContentHelpers`, `::TestFetchCulturePagesBatch` |
+| Consult job routing | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_culture_pages_batch` |
+| States + dispatch registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig` |
+| Seed + retarget migration | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst874FetchCulturePagesDispatchMigration` |
+
+**AST-874** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestWebsiteContentHelpers \
+  tests/component/core/test_gazer.py::TestFetchCulturePagesBatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_culture_pages_batch \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst874FetchCulturePagesDispatchMigration \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.

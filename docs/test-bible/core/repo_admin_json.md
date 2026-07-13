@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786):** populated 37-row catalog — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**).
+**UAT seed (AST-786 / AST-878):** populated **38**-row catalog (includes **`fetch_culture_pages`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**).
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
@@ -63,3 +63,15 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 ```
 
 **test-child scope gate (required):** `git show 05b4374 --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-793-uat-divergence-banner-persists-after-revert-to-file.md` (no `data/admin/**`).
+
+---
+
+### AST-878 · AST-872 (UAT bug)
+
+Repo **`agent_task.json`** catalog gains **`fetch_culture_pages`** — primary manifest in **`docs/test-bible/data/database/agent_tasks.md`** (**AST-878**).
+
+---
+
+### AST-880 · AST-879
+
+**`vet_inflow_discovery`** repo JSON + UAT fixture carry AST-880 encoded A–F rubric marker — byte identity with **`docs/uat-fixtures/AST-756/expected-agent_task.json`** unchanged (**AST-786**). DB migration: **`docs/test-bible/data/database/agent_tasks.md`** / **`TestAst880VetInflowEncodedPromptMigration`**.

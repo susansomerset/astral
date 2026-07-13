@@ -1135,6 +1135,51 @@ class TestAst701FetchWebsiteConfig:
         assert defaults["entity_type"] == "company"
 
 
+class TestAst874FetchCulturePagesConfig:
+    """AST-874: CULTURE_READY gate, fetch_culture_pages registry, grade_like retarget."""
+
+    def test_job_states_and_like_priors(self) -> None:
+        assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == ["PASSED_GET"]
+        assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
+        assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
+        assert cfg.JOB_STATES["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert cfg.JOB_STATES["FAILED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert cfg.JOB_STATES["FAILED_TECHNICAL_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert "CULTURE_READY" in cfg.JOB_STATES["NEED_WEBSITE_CONTENT"]["prior_states"]
+
+    def test_gazer_and_dispatch_registry(self) -> None:
+        from src.utils.config import _dispatch_trigger_state_for_task_key
+
+        entry = cfg.GAZER_CONFIG["fetch_culture_pages"]
+        assert entry["pass_state"] == "CULTURE_READY"
+        assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
+        assert entry["no_links_state"] == "NO_CULTURE_LINKS"
+        assert entry["fallback_batch_size"] == 10
+        assert "fetch_culture_pages" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert _dispatch_trigger_state_for_task_key("fetch_culture_pages") == "PASSED_GET"
+        assert _dispatch_trigger_state_for_task_key("grade_like") == "CULTURE_READY"
+        defaults = cfg.dispatch_task_admin_defaults("fetch_culture_pages")
+        assert defaults["trigger_state"] == "PASSED_GET"
+        assert defaults["entity_type"] == "job"
+        like_defaults = cfg.dispatch_task_admin_defaults("grade_like")
+        assert like_defaults["trigger_state"] == "CULTURE_READY"
+
+    def test_score_gate_and_ui_manifests(self) -> None:
+        assert "CULTURE_READY" in cfg.PASSED_SCORE_GATED_STATES
+        assert "CULTURE_READY" in cfg.IN_REVIEW_STATES
+        assert "NEED_CULTURE_CONTENT" in cfg.SKIPPED_STATES
+        assert "NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
+        review_states = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert review_states.index("PASSED_GET") < review_states.index("CULTURE_READY")
+        assert review_states.index("CULTURE_READY") < review_states.index("PASSED_LIKE")
+        assert cfg.JOBS_SKIPPED_SECTION_ORDER.index("NEED_WEBSITE_CONTENT") < cfg.JOBS_SKIPPED_SECTION_ORDER.index(
+            "NEED_CULTURE_CONTENT"
+        )
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NEED_CULTURE_CONTENT"] == "Need Culture Content"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NO_CULTURE_LINKS"] == "No Culture Links"
+
+
+
 class TestAst854FetchWebsiteRetryConfig:
     """AST-854: GAZER_CONFIG fetch_website retry_state for infra fail routing."""
 
@@ -1231,8 +1276,11 @@ class TestAst505InflowDiscoveryConfig:
         assert "seq" not in entry
         assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
+        assert entry["output_type"] == "grades_encoded_vet_meta"
         items = entry["response_schema"]["results"]["items_schema"]
-        assert items["action"]["type"] == "str"
+        assert items["grade"]["type"] == "str"
+        assert items["website"]["type"] == "str"
+        assert "action" not in items
 
     def test_new_company_state_and_transitions(self) -> None:
         assert "NEW" in cfg.COMPANY_STATES
@@ -1252,6 +1300,14 @@ class TestAst505InflowDiscoveryConfig:
         assert v["pass_state"] == "WEBSITE_FOUND"
         assert v["fail_state"] == "VET_FAILED"
         assert v["blurb_data_key"] == "inflow_discovery_blurb"
+        assert v["pass_grades"] == frozenset({"A", "B", "C", "D"})
+        assert v["fail_grades"] == frozenset({"F"})
+        assert v["grade_vector_code"] == "LT"
+
+    def test_vet_grades_encoded_vet_meta_output_type(self) -> None:
+        ot = cfg.ASTRAL_CONFIG["output_types"]["grades_encoded_vet_meta"]
+        assert "LT{grade}{conf}" in ot["payload_instructions"]
+        assert "required on every grade including F" in ot["payload_instructions"]
 
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("inflow_discovery")
@@ -1529,3 +1585,43 @@ class TestAst782RepoAdminJsonConfig:
     def test_unknown_table_key_raises(self) -> None:
         with pytest.raises(KeyError, match="unknown repo admin JSON table"):
             cfg.get_repo_admin_json_path("__no_such_table__")
+
+
+class TestAst875TemplateCandidateId:
+    """AST-875: template candidate id lives on ASTRAL_CONFIG only."""
+
+    def test_template_candidate_id_defaults_to_somerset(self) -> None:
+        assert cfg.ASTRAL_CONFIG["template_candidate_id"] == "somerset"
+        assert cfg.template_candidate_id() == "somerset"
+
+
+class TestAst876DispatchTaskCountShape:
+    """AST-876: manage list column for per-candidate dispatch_task counts."""
+
+    def test_manage_list_includes_dispatch_task_count_column(self) -> None:
+        manage = cfg.DATA_SHAPES["candidates"]["list"]["manage"]
+        col = next(c for c in manage if c["key"] == "dispatch_task_count")
+        assert col["label"] == "Dispatch tasks"
+        assert col.get("type") == "int"
+        assert col.get("sortable") is True
+        keys = [c["key"] for c in manage]
+        assert keys.index("api_key_status") < keys.index("dispatch_task_count")
+
+
+class TestAst877OriginatingSearchTermShapes:
+    """AST-877: Originating Search Term column on New/Inactive/Ignored company list shapes."""
+
+    def test_pipeline_ignore_shapes_include_originating_search_term(self) -> None:
+        companies = cfg.DATA_SHAPES["companies"]["list"]
+        for shape_key in ("new_list", "inactive_list", "ignored"):
+            col = next(c for c in companies[shape_key] if c["key"] == "originating_search_term")
+            assert col["label"] == "Originating Search Term"
+            assert col.get("sortable") is True
+            keys = [c["key"] for c in companies[shape_key]]
+            assert keys.index("short_name") < keys.index("originating_search_term")
+
+    def test_watch_shapes_omit_originating_search_term(self) -> None:
+        companies = cfg.DATA_SHAPES["companies"]["list"]
+        for shape_key in ("watch_list", "watch_history"):
+            keys = [c["key"] for c in companies[shape_key]]
+            assert "originating_search_term" not in keys
