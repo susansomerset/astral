@@ -460,7 +460,9 @@ async def fetch_website_batch(
 ) -> Dict[str, int]:
     """Scrape homepage + nav_links for WEBSITE_FOUND companies (AST-701).
     Transitions each company to HOMEPAGE_READY (pass), WEBSITE_FOUND_RETRY (infra retry),
-    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "total", "errors"}."""
+    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "errors", "skipped", "total"}
+    where total is work attempted (excludes intentional second-strike skips); claim-time
+    exclusion (AST-892) is the primary ownership fix for those skips."""
     if not await check_connectivity():
         raise ConnectionError(
             f"fetch_website_batch: no internet connectivity, aborting batch {batch_id} "
@@ -473,7 +475,7 @@ async def fetch_website_batch(
     fail_state = cfg["fail_state"]
     notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
     company_total = len(companies)
-    passed = failed = errors = 0
+    passed = failed = errors = skipped = 0
 
     if debug and company_total > 0:
         _log.debug_index(
@@ -487,7 +489,7 @@ async def fetch_website_batch(
     async with create_batch_browser_session() as batch_session:
 
         async def _fetch_one_inner(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, failed
+            nonlocal passed, failed, skipped
             short_name = company.get("short_name") or ""
             company_state = (company.get("state") or "").strip()
             # Prefilter second-strike pool: already scraped homepage — leave for prefilter.
@@ -496,6 +498,7 @@ async def fetch_website_batch(
                 company_state == cfg["retry_state"]
                 and len((cd.get("homepage_text") or "").strip()) > 0
             ):
+                skipped += 1
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_website_batch",
@@ -616,12 +619,19 @@ async def fetch_website_batch(
                     exc_info=r,
                 )
 
+    work_total = passed + failed + errors
     if debug:
         _log.debug_detail(
-            f"summary passed={passed} failed={failed} errors={errors} total={company_total} "
-            f"pass_state={pass_state!r} fail_state={fail_state!r}"
+            f"summary passed={passed} failed={failed} errors={errors} skipped={skipped} "
+            f"total={work_total} pass_state={pass_state!r} fail_state={fail_state!r}"
         )
-    return {"passed": passed, "failed": failed, "total": len(companies), "errors": errors}
+    return {
+        "passed": passed,
+        "failed": failed,
+        "errors": errors,
+        "skipped": skipped,
+        "total": work_total,
+    }
 
 
 async def fetch_job_pages_batch(
