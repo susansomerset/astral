@@ -116,3 +116,14 @@ None (**fix-now**).
 | **Advisory** | `DispatchTask.available_count` is typed `number` while runtime/`formatAvailableCount` already treat `null` — pre-existing; filter correctly uses `?? 0`. Tighten the type only if a later ticket touches the interface. |
 
 **Verdict:** Clean — `resolve-child` may proceed.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-13  
+**Review ref:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ Radia `docs(AST-887): Radia review — clean` (`cc9d6e8`)
+
+No **fix-now** items. Product unchanged from build @ `14c408e` + Betty `merge-tests` / race fix. Advisory (`DispatchTask.available_count` typed `number` while runtime allows `null`) accepted — pre-existing; out of scope for this ticket.
+
+**§9a dry-run:** publish tip merges cleanly into `origin/dev` and `origin/ftr/AST-885-avail-gt-zero-filter` (merge-tree clean @ `866d46840cde55cf36e7a5c1030d4f3c8412938d`).
