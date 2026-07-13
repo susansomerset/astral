@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
@@ -280,7 +281,21 @@ class TestBatchApi:
             require_empty_website=False,
             score_floor=None,
             states=None,
+            exclude_prefilter_second_strike=False,
         )
+
+    def test_get_new_company_batch_passes_exclude_prefilter_second_strike(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        claim = MagicMock()
+        monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
+        monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
+        roster_mod.get_new_company_batch(
+            "WEBSITE_FOUND",
+            context="roster",
+            exclude_prefilter_second_strike=True,
+        )
+        assert claim.call_args.kwargs["exclude_prefilter_second_strike"] is True
 
     def test_get_new_company_batch_generates_batch_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "claim_company_batch", MagicMock())
@@ -5489,3 +5504,220 @@ class TestAst877OriginatingSearchTerm:
         cand = {"astral_candidate_id": "c877", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-877-dbg", cand, True)
         assert any("originating_search_term='fintech'" in d for d in details)
+
+
+def _mock_parse_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    session = MagicMock()
+
+    @asynccontextmanager
+    async def _batch():
+        yield session
+
+    monkeypatch.setattr(roster_mod, "create_batch_browser_session", _batch)
+    return session
+
+
+class TestAst891ScrapeListPageInfra:
+    """AST-891: list-page DOM scrape surfaces Playwright infra instead of empty DOM."""
+
+    @pytest.mark.asyncio
+    async def test_infra_error_raises_playwright_infra(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.external.playwright import PlaywrightInfraError
+
+        session = MagicMock()
+        monkeypatch.setattr(
+            roster_mod,
+            "get_page",
+            AsyncMock(side_effect=PlaywrightInfraError("context_closed", "browser dead")),
+        )
+        monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
+        with pytest.raises(PlaywrightInfraError) as caught:
+            await roster_mod._scrape_list_page_dom_for_parse(
+                "https://acme.com/jobs", batch_session=session, short_name="acme",
+            )
+        assert caught.value.failure_class == "context_closed"
+
+    @pytest.mark.asyncio
+    async def test_non_infra_exception_rethrows_original(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = MagicMock()
+        monkeypatch.setattr(
+            roster_mod,
+            "get_page",
+            AsyncMock(side_effect=RuntimeError("net::ERR_NAME_NOT_RESOLVED")),
+        )
+        monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
+        with pytest.raises(RuntimeError, match="ERR_NAME_NOT_RESOLVED"):
+            await roster_mod._scrape_list_page_dom_for_parse(
+                "https://acme.com/jobs", batch_session=session, short_name="acme",
+            )
+
+
+class TestAst891ParseDispatchInfraAndBatchSession:
+    """AST-891: infra → PARSE_DISPATCH_INFRA + strike ladder; batch_session skips solo Firefox."""
+
+    @staticmethod
+    def _identified_company(state: str = "JOBLIST_IDENTIFIED") -> Dict[str, Any]:
+        return _company(
+            state=state,
+            company_website="https://acme.com",
+            company_data={
+                "selected_pjl_url": "https://acme.com/jobs",
+                "job_titles": ["Engineer"],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_infra_scrape_retries_from_identified(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.external.playwright import PlaywrightInfraError
+
+        company = self._identified_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        save_data = MagicMock()
+        save_co = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save_data)
+        monkeypatch.setattr(roster_mod, "_save_company", save_co)
+        create_browser = MagicMock()
+        monkeypatch.setattr(roster_mod, "create_browser_context", create_browser)
+        monkeypatch.setattr(
+            roster_mod,
+            "_scrape_list_page_dom_for_parse",
+            AsyncMock(side_effect=PlaywrightInfraError("context_closed", "browser dead")),
+        )
+        out = await roster_mod.run_parse_job_list_dispatch(
+            company, "batch-891", batch_session=MagicMock(),
+        )
+        assert out["state"] == "JOBLIST_IDENTIFIED_RETRY"
+        assert out["response_type"] == "PARSE_DISPATCH_INFRA"
+        notes = save_data.call_args[0][1]["parse_job_list_notes"]
+        assert notes.startswith("[playwright:context_closed]")
+        create_browser.assert_not_called()
+        assert save_co.call_args.kwargs.get("state") == "JOBLIST_IDENTIFIED_RETRY"
+
+    @pytest.mark.asyncio
+    async def test_infra_scrape_terminal_on_retry_state(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.external.playwright import PlaywrightInfraError
+
+        company = self._identified_company(state="JOBLIST_IDENTIFIED_RETRY")
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        save_co = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save_co)
+        monkeypatch.setattr(
+            roster_mod,
+            "_scrape_list_page_dom_for_parse",
+            AsyncMock(side_effect=PlaywrightInfraError("channel_error", "channel boom")),
+        )
+        out = await roster_mod.run_parse_job_list_dispatch(
+            company, "batch-891", batch_session=MagicMock(),
+        )
+        assert out["state"] == "COULD_NOT_PARSE_JOBLIST"
+        assert out["response_type"] == "PARSE_DISPATCH_INFRA"
+        assert save_co.call_args.kwargs.get("state") == "COULD_NOT_PARSE_JOBLIST"
+
+
+class TestAst891ParseJobListBatch:
+    """AST-891: shared batch session, timeouts, resilient gather, definite-outcome counters."""
+
+    @staticmethod
+    def _co(short_name: str, state: str = "JOBLIST_IDENTIFIED") -> Dict[str, Any]:
+        return {
+            "short_name": short_name,
+            "company_website": f"https://{short_name}.example",
+            "state": state,
+        }
+
+    @pytest.mark.asyncio
+    async def test_passes_batch_session_and_counts_definite_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        batch_session = _mock_parse_batch_browser_session(monkeypatch)
+        seen: list = []
+
+        async def _dispatch(company, batch_id, ctx, debug, batch_session=None):
+            seen.append(batch_session)
+            if company["short_name"] == "co-ok":
+                return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+            return {"state": "JOBLIST_IDENTIFIED_RETRY", "response_type": "PARSE_DISPATCH_INFRA"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        companies = [self._co("co-ok"), self._co("co-retry")]
+        out = await roster_mod.parse_job_list_batch("batch-891", companies)
+        assert out == {"passed": 2, "failed": 0, "total": 2, "errors": 0}
+        assert seen == [batch_session, batch_session]
+
+    @pytest.mark.asyncio
+    async def test_scrape_timeout_labeled_infra_and_counts_passed(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _mock_parse_batch_browser_session(monkeypatch)
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_parse_dispatch_failure", save)
+        save.return_value = {
+            "state": "JOBLIST_IDENTIFIED_RETRY",
+            "response_type": "PARSE_DISPATCH_INFRA",
+        }
+
+        async def _slow(*_a, **_k):
+            await asyncio.sleep(5)
+            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _slow)
+        monkeypatch.setitem(roster_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
+        out = await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")])
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert save.call_args.kwargs["response_type"] == "PARSE_DISPATCH_INFRA"
+        assert save.call_args.kwargs["notes"].startswith("[playwright:scrape_timeout]")
+
+    @pytest.mark.asyncio
+    async def test_unhandled_gather_exception_increments_errors_and_continues(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _mock_parse_batch_browser_session(monkeypatch)
+
+        async def _dispatch(company, *_a, **_k):
+            if company["short_name"] == "co-boom":
+                raise RuntimeError("unexpected parse boom")
+            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        companies = [self._co("co-ok"), self._co("co-boom"), self._co("co-also")]
+        out = await roster_mod.parse_job_list_batch("batch-891", companies)
+        assert out["total"] == 3
+        assert out["passed"] == 2
+        assert out["errors"] == 1
+        assert out["failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_debug_emits_per_company_index(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _mock_parse_batch_browser_session(monkeypatch)
+        indexes: list = []
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_index",
+            lambda **kwargs: indexes.append(kwargs),
+        )
+        monkeypatch.setattr(roster_mod.logger, "debug_detail", lambda *_a, **_k: None)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value={"company_data": {"selected_pjl_url": "https://acme.com/jobs"}}),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "run_parse_job_list_dispatch",
+            AsyncMock(return_value={"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}),
+        )
+        await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")], debug=True)
+        assert indexes
+        assert indexes[0]["func"] == "roster.parse_job_list_batch"
+        assert indexes[0]["identifier"] == "acme"
