@@ -859,6 +859,7 @@ ROSTER_CONFIG = {
         "retry_state": "JOBLIST_IDENTIFIED_RETRY",
         "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
         "selected_pjl_url_key": "selected_pjl_url",
+        "max_concurrent": 3,
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
