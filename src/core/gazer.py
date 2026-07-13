@@ -490,6 +490,21 @@ async def fetch_website_batch(
             nonlocal passed, failed
             short_name = company.get("short_name") or ""
             company_state = (company.get("state") or "").strip()
+            # Prefilter second-strike pool: already scraped homepage — leave for prefilter.
+            cd = company.get("company_data") or {}
+            if (
+                company_state == cfg["retry_state"]
+                and len((cd.get("homepage_text") or "").strip()) > 0
+            ):
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_website_batch",
+                        index=company_index,
+                        total=company_total,
+                        identifier=_gazer_company_identifier(company),
+                        outcome="skip — homepage_text present; leave for prefilter second strike",
+                    )
+                return
             original_website = (company.get("company_website") or "").strip()
             if not original_website:
                 if debug:
