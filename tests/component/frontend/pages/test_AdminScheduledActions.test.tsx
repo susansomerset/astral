@@ -716,6 +716,71 @@ describe("AdminScheduledActions", () => {
     }, 20000)
   })
 
+  describe("AST-887 Avail > 0 filter", () => {
+    // scanJobs* avail > 0; watchCosZeroAvail = 0; nullAvailRoster = null (em-dash cases)
+    const nullAvailRoster = {
+      ...sparseRow,
+      id: 13,
+      available_count: null as number | null,
+      auto_mode: 0,
+      debug: 0,
+    }
+    const multiRows = [scanJobsC1Auto, scanJobsC2Off, watchCosZeroAvail, nullAvailRoster]
+
+    it("defaults Avail to All and still shows zero/null Avail rows", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      const availSelect = within(adminFiltersRoot()).getByLabelText("Avail")
+      expect(availSelect).toHaveValue("")
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+      expect(screen.getByText(/C\. Company Roster \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+
+    it("Avail > 0 hides zero/null Avail rows and omits empty sections", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Avail", "gt0")
+      await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+      const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
+      expect(within(jobPanel).getByText("c2")).toBeVisible()
+      const availCells = within(jobPanel).getByRole("table").querySelectorAll("tbody tr")
+      for (const row of Array.from(availCells)) {
+        const cells = within(row as HTMLElement).getAllByRole("cell")
+        expect(cells[cells.length - 2]).not.toHaveTextContent("—")
+      }
+    }, 20000)
+
+    it("Avail > 0 ANDs with AUTO filter", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Avail", "gt0")
+      await selectFilterByLabel("AUTO", "on")
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
+      expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
+      const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
+      expect(within(jobPanel).queryByText("c2")).not.toBeInTheDocument()
+    }, 20000)
+
+    it("clearing Avail back to All restores zero/null Avail sections", async () => {
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await selectFilterByLabel("Avail", "gt0")
+      await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
+      await selectFilterByLabel("Avail", "")
+      await waitFor(() => expect(screen.getByText(/C\. Company Roster \(1 \/ 2 AUTO\)/)).toBeInTheDocument())
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+  })
+
   describe("AST-780 error toast replaces alert", () => {
     it("shows error toast on auto toggle failure and run failure", async () => {
       mockApi(false, { putOk: false, runOk: false, threads: {}, taskKeysPayload: taskKeysConfig })
