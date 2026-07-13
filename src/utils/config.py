@@ -1287,7 +1287,11 @@ def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
 
 
 def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> List[str]:
-    """States a dispatch row claims and counts (primary + companion *_RETRY when configured)."""
+    """States a dispatch row claims and counts (primary + companion *_RETRY when configured).
+
+    Prefer registry ``retry_state`` on the primary state (e.g. HOMEPAGE_READY →
+    WEBSITE_FOUND_RETRY for prefilter) over the ``{ts}_RETRY`` name convention.
+    """
     if trigger_state is None:
         return []
     ts = str(trigger_state).strip()
@@ -1295,11 +1299,16 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
         return []
     if ts.endswith("_RETRY"):
         return [ts]
-    companion = f"{ts}_RETRY"
-    if entity_type == "job" and companion in JOB_STATES:
-        return [ts, companion]
-    if entity_type == "company" and companion in COMPANY_STATES:
-        return [ts, companion]
+    registry = JOB_STATES if entity_type == "job" else (
+        COMPANY_STATES if entity_type == "company" else None
+    )
+    if registry is not None:
+        retry = (registry.get(ts) or {}).get("retry_state")
+        if isinstance(retry, str) and retry.strip() and retry.strip() in registry:
+            return [ts, retry.strip()]
+        companion = f"{ts}_RETRY"
+        if companion in registry:
+            return [ts, companion]
     return [ts]
 
 
