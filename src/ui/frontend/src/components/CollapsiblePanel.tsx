@@ -2,7 +2,9 @@ import { type ReactNode, useState } from "react"
 
 /**
  * Collapsible row with distinct slots for label, read-only metadata, and interactive actions.
- * Single- vs multi-open is owned by the parent: pass expanded + onExpandedChange together for coordinated groups.
+ * Group expand policy (Expand One vs Expand All) is owned by the parent via
+ * `useSectionExpandPolicy` (`expandAll` omit/false = Expand One; `expandAll={true}` = Expand All).
+ * Per-panel controlled API remains `expanded` + `onExpandedChange`.
  */
 export interface CollapsiblePanelProps {
   label: ReactNode
