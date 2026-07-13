@@ -243,5 +243,5 @@ None.
 | **discuss** | None. |
 | **advisory** | None. |
 
-**§9a dry-run:** `origin/sub/AST-881/AST-882-prefilter-one-retry-error` merges cleanly into `origin/dev` and `origin/ftr/AST-881-prefilter-retry-to-error` (recorded after publish tip).
+**§9a dry-run:** `origin/sub/AST-881/AST-882-prefilter-one-retry-error` @ `1cdabf8` merges cleanly into `origin/dev` and `origin/ftr/AST-881-prefilter-retry-to-error`.
 
