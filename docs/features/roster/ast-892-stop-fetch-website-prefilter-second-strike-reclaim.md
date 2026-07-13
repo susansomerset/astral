@@ -178,3 +178,19 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §1.5.1 debug | Skip vs scrape outcomes only when `debug=True`; style D index headers retained |
 | §3.3 imports | Data reads config only; core still owns transitions; no UI |
 | §3.5 naming | `exclude_prefilter_second_strike` names the product subset, not a vague `filter_ready` |
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `95e25f4` | Plan doc |
+| 1 | `0e47c62` | Config helper + dual-ownership comments |
+| 2 | `11388d0` | Claim/count exclude WFR + homepage_text |
+| 3 | `3c8ccec` | Dispatcher + roster wire for fetch_website |
+| 4 | `fa119e7` | Skip tally; work-only `total` from fetch_website_batch |
+
+**Tip:** `fa119e7`
