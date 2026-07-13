@@ -204,3 +204,30 @@ Prefilter technical failures already have the right *dest* map for a second stri
 | 3 | `dcb8fd1` | `fetch_website_batch` skips homepage-ready WFR |
 
 **Tip:** `dcb8fd1`
+
+---
+
+## Radia review
+
+**Diff:** `origin/dev...origin/sub/AST-881/AST-882-prefilter-one-retry-error` @ `cdcd329`
+
+### What’s solid
+
+- Stages 1–3 match the plan: `dispatch_claim_states` prefers registry `retry_state` (HOMEPAGE_READY → WEBSITE_FOUND_RETRY) with name-convention fallback for WEBSITE_FOUND; `_prefilter_fail` routes via `_prefilter_batch_fail_dest` (one retry then ERROR_PREFILTER); not-ready WFR left for fetch_website; `fetch_website_batch` skips homepage-ready WFR.
+- Boundaries held: no new states, no evaluate routing changes, no `_fetch_website_fail_destination` redesign; ERROR_PREFILTER stays without `batch_criteria`.
+- §1.3 / §2.1 / §2.6: single dest helper, config-owned strings, transitions via existing helpers; claim → process → clear unchanged.
+- §1.5.1 / §5f: batch fail paths emit `debug_index` + `debug_detail` only when `debug=True`; gazer skip header gated the same way.
+- Self-Assessment Scope Single-Component matches footprint; Conf high still fits. Betty tests + bible on publish-ref are expected post-qa.
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Outcome:** Clean — ready for `resolve-child`.
+
