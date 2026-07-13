@@ -309,6 +309,7 @@ export default function ScheduledActions() {
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
   const [debugFilter, setDebugFilter] = useState("")
+  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("") // "" | "gt0"
   const [freqFilter, setFreqFilter] = useState("")
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
@@ -428,6 +429,9 @@ export default function ScheduledActions() {
     if (autoFilter === "off") filtered = filtered.filter(r => !r.auto_mode)
     if (debugFilter === "on") filtered = filtered.filter(r => !!r.debug)
     if (debugFilter === "off") filtered = filtered.filter(r => !r.debug)
+    if (availGtZeroFilter === "gt0") {
+      filtered = filtered.filter(r => (r.available_count ?? 0) > 0)
+    }
     if (freqFilter !== "") filtered = filtered.filter(r => (r.freq_hrs ?? 0) === Number(freqFilter))
     if (minCountFilter !== "") filtered = filtered.filter(r => r.min_count === Number(minCountFilter))
     if (batchSizeFilter !== "") filtered = filtered.filter(r => r.batch_size === Number(batchSizeFilter))
@@ -443,7 +447,7 @@ export default function ScheduledActions() {
       })
     }
     return filtered
-  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
+  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, availGtZeroFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, DispatchTask[]> = {}
@@ -707,6 +711,13 @@ export default function ScheduledActions() {
             <option value="">All</option>
             <option value="on">ON</option>
             <option value="off">OFF</option>
+          </select>
+        </label>
+        <label>
+          Avail
+          <select value={availGtZeroFilter} onChange={e => setAvailGtZeroFilter(e.target.value)}>
+            <option value="">All</option>
+            <option value="gt0">&gt; 0</option>
           </select>
         </label>
         <label>

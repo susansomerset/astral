@@ -80,3 +80,11 @@ Add one on-page filter to Admin → Scheduled Actions that, when engaged, keeps 
 - §3.3 imports: no new imports.
 - §3.5 naming: `availGtZeroFilter` / `"gt0"` match the ticket’s Avail > 0 flag semantics.
 - §3.2 “UI logic in API”: deferred by ticket Boundaries + AST-751 precedent (documented Decision above).
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `ccaadad26250e907c2e20cd458f862fada5cc7c0`
+
+Stage 1: Avail filter control (`All` / `> 0`) on Scheduled Actions; `filteredRows` excludes `available_count` null/0 when engaged; sections and AUTO summaries inherit via existing `filteredRows` bucketing. Tests deferred to Betty.
