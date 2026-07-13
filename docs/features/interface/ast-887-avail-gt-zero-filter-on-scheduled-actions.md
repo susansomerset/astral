@@ -85,6 +85,6 @@ Add one on-page filter to Admin → Scheduled Actions that, when engaged, keeps 
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `ccaadad26250e907c2e20cd458f862fada5cc7c0`
+**Built:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `14c408e7b887c3e31864a3f4ed33ee5087089dd4`
 
 Stage 1: Avail filter control (`All` / `> 0`) on Scheduled Actions; `filteredRows` excludes `available_count` null/0 when engaged; sections and AUTO summaries inherit via existing `filteredRows` bucketing. Tests deferred to Betty.
