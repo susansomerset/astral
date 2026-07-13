@@ -235,3 +235,11 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.5 Naming | PascalCase components; hook `useSectionExpandPolicy`; CSS `section-expand-chrome`. |
 
 No rules conflicts requiring `conf-!!-NONE`. No ASTRAL_CODE_RULES boundary soften needed — this epic is already frontend-only and does not touch banned layers.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-886/AST-893-expand-policy-sectioned-lists` @ `85920ff7bb46d5ab98e0648dec7e5d4bc1c94de0`
+
+Stages 1–3: `useSectionExpandPolicy` + `SectionExpandChrome`; Expand One default on Manage Tasks list / In Review / Skipped; Scheduled Actions opts into Expand All with bulk chrome and first-section auto-open preserved. Tests deferred to Betty.
