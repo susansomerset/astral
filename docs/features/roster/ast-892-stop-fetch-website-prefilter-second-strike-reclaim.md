@@ -216,3 +216,9 @@ None.
 | Action | Item |
 |--------|------|
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+---
+
+## Resolution
+
+**2026-07-13** — Radia review clean (`docs(AST-892): Radia review — clean` @ `b1f3601`). No fix-now / discuss / advisory. No product delta this resolve pass.
