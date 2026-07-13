@@ -189,3 +189,18 @@ Prefilter technical failures already have the right *dest* map for a second stri
 - **§3.3:** utils change stays pure; core-only roster/gazer edits.
 - **§1.5.1:** debug lines gated on `debug=True` with index headers + ` | ` detail.
 - **§3.6:** no spike artifacts committed under `docs/features/`.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-881/AST-882-prefilter-one-retry-error`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `01c1f20` | Plan doc |
+| 1 | `df3f516` | `dispatch_claim_states` honors registry `retry_state` |
+| 2 | `7b00291` | `_prefilter_fail` second-strike; WFR not-ready leave-alone; fail debug |
+| 3 | `dcb8fd1` | `fetch_website_batch` skips homepage-ready WFR |
+
+**Tip:** `dcb8fd1`
