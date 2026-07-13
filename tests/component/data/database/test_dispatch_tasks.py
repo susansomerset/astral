@@ -1174,3 +1174,109 @@ class TestAst882HomepageReadyClaimsWfr:
         assert n == 2
         rows = db.get_company_batch("batch-882")
         assert {r["short_name"] for r in rows} == {"hr", "wfr"}
+
+class TestAst892FetchWebsiteExcludesSecondStrike:
+    """AST-892: fetch_website claim/count exclude WFR + homepage_text; prefilter still claims them."""
+
+    def test_count_excludes_second_strike_includes_scrape_retry(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c892"
+        db.save_company(
+            "second",
+            state="WEBSITE_FOUND_RETRY",
+            candidate_id=cid,
+            company_name="second",
+            company_data={"homepage_text": "already scraped"},
+        )
+        db.save_company(
+            "retry",
+            state="WEBSITE_FOUND_RETRY",
+            candidate_id=cid,
+            company_name="retry",
+            company_data={},
+        )
+        db.save_company(
+            "fresh",
+            state="WEBSITE_FOUND",
+            candidate_id=cid,
+            company_name="fresh",
+        )
+        db.save_company(
+            "whitespace",
+            state="WEBSITE_FOUND_RETRY",
+            candidate_id=cid,
+            company_name="whitespace",
+            company_data={"homepage_text": "   "},
+        )
+        fetch_task = {
+            "entity_type": "company",
+            "trigger_state": "WEBSITE_FOUND",
+            "task_key": "fetch_website",
+            "candidate_id": cid,
+        }
+        assert db.count_eligible_for_dispatch_task(fetch_task) == 3
+        prefilter_task = {
+            "entity_type": "company",
+            "trigger_state": "HOMEPAGE_READY",
+            "task_key": "prefilter",
+            "candidate_id": cid,
+        }
+        assert db.count_eligible_for_dispatch_task(prefilter_task) == 3
+
+    def test_claim_skips_second_strike_keeps_bare_wfr(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c892b"
+        db.save_company(
+            "second",
+            state="WEBSITE_FOUND_RETRY",
+            candidate_id=cid,
+            company_name="second",
+            company_data={"homepage_text": "owned by prefilter"},
+        )
+        db.save_company(
+            "retry",
+            state="WEBSITE_FOUND_RETRY",
+            candidate_id=cid,
+            company_name="retry",
+            company_data={},
+        )
+        db.save_company(
+            "fresh",
+            state="WEBSITE_FOUND",
+            candidate_id=cid,
+            company_name="fresh",
+        )
+        n = db.claim_company_batch(
+            "batch-892",
+            "WEBSITE_FOUND",
+            10,
+            candidate_id=cid,
+            states=["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"],
+            exclude_prefilter_second_strike=True,
+        )
+        assert n == 2
+        names = {r["short_name"] for r in db.get_company_batch("batch-892")}
+        assert names == {"retry", "fresh"}
+
+    def test_prefilter_claim_still_takes_second_strike(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "c892c"
+        db.save_company(
+            "second",
+            state="WEBSITE_FOUND_RETRY",
+            candidate_id=cid,
+            company_name="second",
+            company_data={"homepage_text": "owned by prefilter"},
+        )
+        n = db.claim_company_batch(
+            "batch-892-pre",
+            "HOMEPAGE_READY",
+            10,
+            candidate_id=cid,
+            states=["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"],
+            exclude_prefilter_second_strike=False,
+        )
+        assert n == 1
+        rows = db.get_company_batch("batch-892-pre")
+        assert rows[0]["short_name"] == "second"
+

@@ -727,6 +727,8 @@ UI wiring: **`docs/test-bible/frontend/pages.md`** (**AST-876**).
 
 Roster / gazer / dispatch: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-882**).
 
+**AST-892:** **`fetch_website_prefilter_second_strike_filter()`** — claim/count exclusion keys; primary manifest **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-892**).
+
 ---
 
 ### AST-891 · AST-890

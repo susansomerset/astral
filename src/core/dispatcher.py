@@ -290,6 +290,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             require_empty_website=(task.get("task_key") == resolve_key),
             score_floor=floor,
             states=claim_states,
+            exclude_prefilter_second_strike=(dispatch_task_key == "fetch_website"),
         )
 
     if not entities:

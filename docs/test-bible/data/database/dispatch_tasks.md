@@ -207,3 +207,34 @@ Primary **`prefilter`/`HOMEPAGE_READY`** dispatch row claims **`WEBSITE_FOUND_RE
 | Count + claim HOMEPAGE_READY ∪ WFR | `src/data/database.py` (+ config claim states) | `tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr` |
 
 Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
+
+### AST-892
+
+**AST-892:** `fetch_website` claim/count exclude `WEBSITE_FOUND_RETRY` rows with non-empty `homepage_text` (prefilter second strike). Bare WFR without homepage text and `WEBSITE_FOUND` still claim. Defense-in-depth: `fetch_website_batch` returns work-only `total` (excludes intentional skips) so a pure-skip race cannot inflate dispatch `total_processed`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Claim + count twin exclusion | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike` |
+| Config helper `(retry_state, homepage_text_key)` | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst892FetchWebsiteSecondStrikeFilter` |
+| Dispatcher `exclude_prefilter_second_strike` for `fetch_website` | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast892_fetch_website_excludes_prefilter_second_strike` |
+| Roster claim kwarg passthrough | `src/core/roster.py` | `tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_passes_exclude_prefilter_second_strike` |
+| Skip work-only `total` + mixed skip/scrape | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip` (revised) + `::test_mixed_skip_and_scrape_excludes_skips_from_total` |
+| Consult maps work-only `total` → `total_processed` | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_pure_skip_zero_processed` |
+
+**Broken / obsolete (Betty revision this pass):** `TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` must include `exclude_prefilter_second_strike=False`. `TestAst882HomepageReadyWfrSkip::test_skips_wfr_when_homepage_text_present` expected `total=1` for a pure skip — AST-892 work-only `total` is `0` with `skipped=1`. All `TestFetchWebsiteBatch` / `TestFetchWebsiteFailRouting` exact return dicts now include `skipped`.
+
+**AST-892** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike \
+  tests/component/utils/test_config.py::TestAst892FetchWebsiteSecondStrikeFilter \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast892_fetch_website_excludes_prefilter_second_strike \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_passes_exclude_prefilter_second_strike \
+  tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_pure_skip_zero_processed \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless `test-child` widens.
+
