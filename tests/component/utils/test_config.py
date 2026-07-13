@@ -1052,6 +1052,7 @@ class TestAst721ParseJobListConfig:
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
+        assert parse["max_concurrent"] == 3  # AST-891 batch semaphore
 
     def test_locate_job_page_jobs_found_only(self) -> None:
         locate = cfg.ROSTER_CONFIG["locate_job_page"]

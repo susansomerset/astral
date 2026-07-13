@@ -679,3 +679,37 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-891 · AST-890
+
+**Scope:** `parse_job_list` batch browser runner — config `max_concurrent`, DOM scrape infra raise (not empty DOM), `batch_session` on `run_parse_job_list_dispatch`, `parse_job_list_batch` (shared session + semaphore + scrape timeout + resilient gather), consult routing, dispatcher `use_full_batch` for this task key even when `batch_call_mode=0`. Strike destinations unchanged (`WATCH` / `JOBLIST_IDENTIFIED_RETRY` / `COULD_NOT_PARSE_JOBLIST`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List-page scrape infra raise | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst891ScrapeListPageInfra` |
+| Infra → `PARSE_DISPATCH_INFRA` + strike; `batch_session` skips solo context | `src/core/roster.py` | `::TestAst891ParseDispatchInfraAndBatchSession` |
+| Batch session / timeout / gather / debug index | `src/core/roster.py` | `::TestAst891ParseJobListBatch` |
+| Existing strike ladder (reuse) | `src/core/roster.py` | `::TestAst721ParseDispatchHelpers::test_parse_dispatch_failure_state_ladder` |
+| Existing happy / empty-DOM retry-terminal | `src/core/roster.py` | `::TestAst721ParseJobListDispatch` |
+
+Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`** (**AST-891**).
+
+**AST-891** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_job_list_roster_config \
+  tests/component/core/test_roster.py::TestAst891ScrapeListPageInfra \
+  tests/component/core/test_roster.py::TestAst891ParseDispatchInfraAndBatchSession \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers::test_parse_dispatch_failure_state_ladder \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch_errors_count \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
