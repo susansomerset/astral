@@ -193,4 +193,4 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | 3 | `3c8ccec` | Dispatcher + roster wire for fetch_website |
 | 4 | `fa119e7` | Skip tally; work-only `total` from fetch_website_batch |
 
-**Tip:** `80aa545`
+**Tip:** `fa119e7` (product); publish tip includes build stub after this.
