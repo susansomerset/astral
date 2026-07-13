@@ -259,3 +259,17 @@ Proposed resolutions: <2-3 options, or "need guidance">
 **Outcome:** Findings — product path ships; clear test pollution before User Testing.
 
 — Radia
+
+---
+
+## Resolution (2026-07-13)
+
+**Radia review tip:** `0c98279` · **Betty clear:** `fefb15c` (`test(AST-891): remove AST-892 pollution tests (Radia fix-now)`)
+
+| Item | Disposition |
+|------|-------------|
+| **fix-now** — AST-892 `exclude_prefilter_second_strike` tests on dispatcher/roster | Cleared by Betty via `[qa-handoff]` — deleted on publish-ref @ `fefb15c`. No product change. |
+| **discuss** | None. |
+| **advisory** — nested debug indices / timeout `list_url` / gather `errors`-only | Left as-is for UAT; optional polish, not blocking. |
+
+**§9a:** dry-run `origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` into `origin/dev` and `origin/ftr/AST-890-parse-job-list-infinite-loop` — recorded at resolve commit.
