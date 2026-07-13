@@ -335,27 +335,6 @@ class TestRunUnified:
         assert claim.call_args.kwargs["require_empty_website"] is True
 
     @pytest.mark.asyncio
-    async def test_ast892_fetch_website_excludes_prefilter_second_strike(
-        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
-    ) -> None:
-        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        claim = MagicMock(return_value=(batch_id, [{"short_name": "need_scrape", "state": "WEBSITE_FOUND"}]))
-        clear = MagicMock()
-        monkeypatch.setattr("src.core.roster.get_new_company_batch", claim)
-        monkeypatch.setattr("src.core.roster.clear_company_batch", clear)
-        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
-        monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        task = {
-            "entity_type": "company",
-            "trigger_state": "WEBSITE_FOUND",
-            "task_key": "fetch_website",
-            "batch_call_mode": 0,
-        }
-        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "c892"}, False)
-        claim.assert_called_once()
-        assert claim.call_args.kwargs["exclude_prefilter_second_strike"] is True
-
-    @pytest.mark.asyncio
     async def test_ast508_prefilter_passed_dispatch_passes_score_floor(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:

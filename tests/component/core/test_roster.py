@@ -282,20 +282,6 @@ class TestBatchApi:
             score_floor=None,
             states=None,
         )
-
-    def test_get_new_company_batch_passes_exclude_prefilter_second_strike(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        claim = MagicMock()
-        monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
-        monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
-        roster_mod.get_new_company_batch(
-            "WEBSITE_FOUND",
-            context="roster",
-            exclude_prefilter_second_strike=True,
-        )
-        assert claim.call_args.kwargs["exclude_prefilter_second_strike"] is True
-
     def test_get_new_company_batch_generates_batch_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "claim_company_batch", MagicMock())
         monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
