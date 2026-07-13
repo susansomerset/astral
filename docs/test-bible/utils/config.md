@@ -716,3 +716,13 @@ Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`**
 | Manage list column | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst876DispatchTaskCountShape` |
 
 UI wiring: **`docs/test-bible/frontend/pages.md`** (**AST-876**).
+
+### AST-882 · AST-881
+
+**`dispatch_claim_states`** prefers registry **`retry_state`** over **`{ts}_RETRY`** name convention — **`HOMEPAGE_READY`** claims **`WEBSITE_FOUND_RETRY`**. **`WEBSITE_FOUND`** companion claim unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| HOMEPAGE_READY → WFR claim list | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst882DispatchClaimStates` |
+
+Roster / gazer / dispatch: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-882**).

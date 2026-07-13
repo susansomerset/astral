@@ -880,6 +880,25 @@ class TestAst641DispatchClaimStates:
         assert cfg.dispatch_claim_states("", "company") == []
 
 
+class TestAst882DispatchClaimStates:
+    """AST-882: prefer registry retry_state (HOMEPAGE_READY → WEBSITE_FOUND_RETRY)."""
+
+    def test_homepage_ready_claims_website_found_retry(self) -> None:
+        assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company") == [
+            "HOMEPAGE_READY",
+            "WEBSITE_FOUND_RETRY",
+        ]
+
+    def test_website_found_companion_unchanged(self) -> None:
+        assert cfg.dispatch_claim_states("WEBSITE_FOUND", "company") == [
+            "WEBSITE_FOUND",
+            "WEBSITE_FOUND_RETRY",
+        ]
+
+    def test_job_retry_state_still_unions(self) -> None:
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+
+
 # LLM_PROVIDER_CONFIG brain tiers, Anthropic / DeepSeek tier maps, startup env parity (AST-492).
 class TestAst492LlmBrainTierConfig:
     def test_resolve_anthropic_tier_maps_to_agent_config_keys(self) -> None:
