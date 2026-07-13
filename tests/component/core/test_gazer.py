@@ -365,6 +365,66 @@ class TestFetchWebsiteFailRouting:
         assert transition.call_count == 2
 
 
+class TestAst882HomepageReadyWfrSkip:
+    """AST-882: WFR with homepage_text left for prefilter second strike; bare WFR still scrapes."""
+
+    @pytest.mark.asyncio
+    async def test_skips_wfr_when_homepage_text_present(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        scrape = AsyncMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", scrape)
+        companies = [
+            {
+                "short_name": "acme",
+                "company_website": "https://acme.com",
+                "state": "WEBSITE_FOUND_RETRY",
+                "company_data": {"homepage_text": "already scraped body"},
+            },
+        ]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
+        assert out == {"passed": 0, "failed": 0, "total": 1, "errors": 0}
+        transition.assert_not_called()
+        scrape.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_infra_retry_without_homepage_text_still_routes(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "",
+                    "error": "[playwright:context_closed] browser dead",
+                }
+            ),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "company_website": "https://acme.com",
+                "state": "WEBSITE_FOUND_RETRY",
+                "company_data": {},
+            },
+        ]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies)
+        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+
+
 class TestFetchJobPagesBatch:
     @pytest.mark.asyncio
     async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:

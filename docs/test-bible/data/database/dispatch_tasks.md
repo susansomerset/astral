@@ -195,3 +195,15 @@ Config / core / admin: **`docs/test-bible/utils/config.md`** · **`docs/test-bib
 **Pass criterion:** pytest green on items 1–5 + config/core/api lines — not zero-arg harness / branch-lock gate.
 
 **Broken / obsolete:** none.
+
+---
+
+### AST-882 · AST-881
+
+Primary **`prefilter`/`HOMEPAGE_READY`** dispatch row claims **`WEBSITE_FOUND_RETRY`** entities via **`dispatch_claim_states`** registry **`retry_state`** (no separate WFR dispatch row — **AST-745**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Count + claim HOMEPAGE_READY ∪ WFR | `src/data/database.py` (+ config claim states) | `tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr` |
+
+Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).

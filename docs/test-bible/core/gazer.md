@@ -258,3 +258,16 @@ External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwri
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-882 · AST-881
+
+**AST-882:** **`fetch_website_batch`** skips companies already in **`WEBSITE_FOUND_RETRY`** with non-empty **`homepage_text`** (leave for prefilter second strike). Infra retry without homepage text still follows **AST-854** routing.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Homepage-ready WFR skip | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip::test_skips_wfr_when_homepage_text_present` |
+| Bare WFR infra still terminals | `src/core/gazer.py` | `::TestAst882HomepageReadyWfrSkip::test_infra_retry_without_homepage_text_still_routes` |
+
+Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils/config.md`** (**AST-882**).
