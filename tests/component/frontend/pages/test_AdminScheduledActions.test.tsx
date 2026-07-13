@@ -146,11 +146,13 @@ describe("AdminScheduledActions", () => {
   }
 
   async function expandFirstPhaseSection() {
+    // AST-785 auto-opens the first section — wait for table or Expand (race-safe).
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await waitFor(() => {
+      if (screen.queryByRole("table")) return
+      expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBeGreaterThan(0)
+    })
     if (screen.queryByRole("table")) return
-    await waitFor(() =>
-      expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBeGreaterThan(0),
-    )
     await userEvent.click(screen.getAllByRole("button", { name: "Expand section" })[0])
   }
 
@@ -592,7 +594,10 @@ describe("AdminScheduledActions", () => {
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
       const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+      // AST-785 may already auto-open the sole section — click Expand only when present.
+      const expandBtn = within(rosterPanel).queryByRole("button", { name: "Expand section" })
+      if (expandBtn) await userEvent.click(expandBtn)
+      await waitFor(() => expect(within(rosterPanel).getByRole("table")).toBeInTheDocument())
       const row = within(rosterPanel).getByRole("table").querySelectorAll("tbody tr")[0]
       const cells = within(row as HTMLElement).getAllByRole("cell")
       expect(cells[cells.length - 2]).toHaveTextContent("—")
