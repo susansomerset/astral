@@ -82,3 +82,25 @@ On Admin → Scheduled Actions landing, default the existing Avail filter to `> 
 **Built:** `origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `ee974d26bb462ce06316faa3d27d930bd8a3f7b3`
 
 Stage 1: Avail initial state `"gt0"`; landing auto-open uses one-shot `expandAllSections()` behind `didAutoOpenSectionRef`. Tests deferred to Betty.
+
+---
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `e097f4d`
+
+### What’s solid
+
+- Stage 1 matches plan literally: `availGtZeroFilter` initial `"gt0"`; once-gate `didAutoOpenSectionRef` + `expandAllSections()`; prune effect / `useSectionExpandPolicy` / select options / `filteredRows` predicate untouched.
+- Betty side correctly revised AST-887 defaults + AST-894 landing/collapse/Avail→All coverage; no product scope creep.
+- §1.3 DRY (reuses hook), §3.3 / §2.1 / UI-only — OK. Self-Assessment Scope matches footprint.
+
+### Issues
+
+None.
+
+### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
