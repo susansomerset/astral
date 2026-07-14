@@ -145,8 +145,22 @@ describe("AdminScheduledActions", () => {
     await userEvent.selectOptions(candidateSelect, "")
   }
 
+  // AST-894 defaults Avail to > 0 — clear when a case needs zero/null Avail rows or those sections.
+  async function selectAvailAll() {
+    await waitFor(() => expect(document.querySelector(".admin-filters")).toBeTruthy())
+    const root = document.querySelector(".admin-filters") as HTMLElement
+    await userEvent.selectOptions(within(root).getByLabelText("Avail"), "")
+  }
+
+  async function ensureSectionExpanded(panel: HTMLElement) {
+    if (within(panel).queryByRole("table")) return
+    const expandBtn = within(panel).queryByRole("button", { name: "Expand section" })
+    if (expandBtn) await userEvent.click(expandBtn)
+    await waitFor(() => expect(within(panel).getByRole("table")).toBeInTheDocument())
+  }
+
   async function expandFirstPhaseSection() {
-    // AST-785 auto-opens the first section — wait for table or Expand (race-safe).
+    // AST-894 landing expand-all (was AST-785 first-section) — wait for table or Expand (race-safe).
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await waitFor(() => {
       if (screen.queryByRole("table")) return
@@ -203,22 +217,20 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
+    await selectAvailAll() // sparseRow avail null — visible only when Avail is All
     expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
-    // AST-893: Expand All stale-key cleanup may drop auto-open after candidate-filter churn —
-    // re-expand before asserting body visibility (see expandFirstPhaseSection).
-    await expandFirstPhaseSection()
+    // Landing expand-all + Avail clear may leave Job open while Roster appears collapsed —
+    // Collapse all so the zero-expanded path is intentional.
+    await userEvent.click(screen.getByRole("button", { name: "Collapse all" }))
     const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
     const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-    // Prefer asserting whichever section expandFirst opened; open roster if still collapsed.
-    if (!within(rosterPanel).queryByText("watch_cos")) {
-      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
-    }
+    await ensureSectionExpanded(rosterPanel)
     await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
     await userEvent.click(within(rosterPanel).getByRole("button", { name: "Collapse section" }))
     await waitFor(() => expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument())
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
-    await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+    await ensureSectionExpanded(jobPanel)
     await waitFor(() => expect(within(jobPanel).getByText("scan_jobs")).toBeVisible())
     await userEvent.click(within(jobPanel).getByRole("button", { name: "Collapse section" }))
     await waitFor(() => expect(within(jobPanel).queryByText("scan_jobs")).not.toBeInTheDocument())
@@ -234,6 +246,7 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
+    await selectAvailAll()
     expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     expect(screen.queryByText(/phase/i)).not.toBeInTheDocument()
@@ -345,12 +358,18 @@ describe("AdminScheduledActions", () => {
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await selectAllCandidatesFilter()
-    await expandFirstPhaseSection()
+    await selectAvailAll() // sparseRow null Avail (em-dash) only visible when Avail is All
+    await waitFor(() => expect(screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument())
+    const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+    const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+    await ensureSectionExpanded(jobPanel)
+    await ensureSectionExpanded(rosterPanel)
     await waitFor(() => expect(screen.getAllByText("∞").length).toBeGreaterThan(0))
     expect(screen.getAllByText("—").length).toBeGreaterThan(0)
 
     await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "scan_jobs")
-    await waitFor(() => expect(screen.queryByText(/C\. Company Roster/)).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
     await expandFirstPhaseSection()
     await waitFor(() => expect(within(screen.getByRole("table")).queryByText("watch_cos")).not.toBeInTheDocument())
 
@@ -478,8 +497,16 @@ describe("AdminScheduledActions", () => {
       expect(within(screen.getByRole("table")).queryByText("watch_cos")).not.toBeInTheDocument()
 
       await userEvent.selectOptions(candidateSelect, "")
-      await expandFirstPhaseSection()
-      await waitFor(() => expect(screen.getByText(/C\. Company Roster/)).toBeInTheDocument())
+      await selectAvailAll() // sparseRow avail null — Company Roster only under Avail All
+      const rosterHeading = await waitFor(() =>
+        screen.getByText((_, el) =>
+          !!el?.classList.contains("collapsible-panel-label-wrap") &&
+          /C\. Company Roster \(1 \/ 1 AUTO\)/.test(el.textContent || ""),
+        ),
+      )
+      const rosterPanel = rosterHeading.closest(".collapsible-panel") as HTMLElement
+      await ensureSectionExpanded(rosterPanel)
+      await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
 
       await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
       expect(candidateSelect.value).toBe("")
@@ -561,6 +588,7 @@ describe("AdminScheduledActions", () => {
       renderWithProviders(<ScheduledActions />)
       await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
       await selectAllCandidatesFilter()
+      await selectAvailAll()
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
       expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
     }, 20000)
@@ -571,7 +599,7 @@ describe("AdminScheduledActions", () => {
       await selectAllCandidatesFilter()
       await selectFilterByLabel("AUTO", "on")
       const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await ensureSectionExpanded(jobPanel)
       await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
       expect(within(jobPanel).queryByText("c2")).not.toBeInTheDocument()
     }, 20000)
@@ -580,6 +608,7 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
+      await selectAvailAll() // watch_cos Avail 0 is only visible when Avail is All
       await selectFilterByLabel("AUTO", "on")
       await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
       await waitFor(() => expect(screen.queryByText(/D\. Job Analysis \(.*AUTO\)/)).not.toBeInTheDocument())
@@ -600,11 +629,9 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: [watchCosZeroAvail], taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
+      await selectAvailAll() // zero Avail omitted under default gt0
       const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      // AST-785 may already auto-open the sole section — click Expand only when present.
-      const expandBtn = within(rosterPanel).queryByRole("button", { name: "Expand section" })
-      if (expandBtn) await userEvent.click(expandBtn)
-      await waitFor(() => expect(within(rosterPanel).getByRole("table")).toBeInTheDocument())
+      await ensureSectionExpanded(rosterPanel)
       const row = within(rosterPanel).getByRole("table").querySelectorAll("tbody tr")[0]
       const cells = within(row as HTMLElement).getAllByRole("cell")
       expect(cells[cells.length - 2]).toHaveTextContent("—")
@@ -669,10 +696,12 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
+      await selectAvailAll() // roster row Avail 0
       await selectFilterByLabel("Section/Group", rosterGroupKey)
       expect(screen.queryByText(/D\. Job Analysis \(.*AUTO\)/)).not.toBeInTheDocument()
       expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
       const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await ensureSectionExpanded(rosterPanel)
       await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
       expect(within(rosterPanel).queryByText("scan_jobs")).not.toBeInTheDocument()
     }, 20000)
@@ -681,6 +710,7 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
+      await selectAvailAll()
       await selectFilterByLabel("Section/Group", jobGroupKey)
       await userEvent.selectOptions(screen.getByLabelText(/Task/i, { selector: "select" }), "watch_cos")
       await waitFor(() =>
@@ -697,7 +727,7 @@ describe("AdminScheduledActions", () => {
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
       expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
       const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await ensureSectionExpanded(jobPanel)
       await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
       expect(within(jobPanel).queryByText("c2")).not.toBeInTheDocument()
     }, 20000)
@@ -730,6 +760,7 @@ describe("AdminScheduledActions", () => {
 
   describe("AST-887 Avail > 0 filter", () => {
     // scanJobs* avail > 0; watchCosZeroAvail = 0; nullAvailRoster = null (em-dash cases)
+    // AST-894 revised: Avail defaults to gt0 (was All). Predicate / AND / empty omit unchanged.
     const nullAvailRoster = {
       ...sparseRow,
       id: 13,
@@ -739,25 +770,25 @@ describe("AdminScheduledActions", () => {
     }
     const multiRows = [scanJobsC1Auto, scanJobsC2Off, watchCosZeroAvail, nullAvailRoster]
 
-    it("defaults Avail to All and still shows zero/null Avail rows", async () => {
+    it("defaults Avail to > 0 and omits zero/null Avail sections", async () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
       const availSelect = within(adminFiltersRoot()).getByLabelText("Avail")
-      expect(availSelect).toHaveValue("")
+      expect(availSelect).toHaveValue("gt0")
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
-      expect(screen.getByText(/C\. Company Roster \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+      expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
     }, 20000)
 
     it("Avail > 0 hides zero/null Avail rows and omits empty sections", async () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
-      await selectFilterByLabel("Avail", "gt0")
+      // default is already gt0 (AST-894)
       await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
       const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await ensureSectionExpanded(jobPanel)
       await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
       expect(within(jobPanel).getByText("c2")).toBeVisible()
       const availCells = within(jobPanel).getByRole("table").querySelectorAll("tbody tr")
@@ -771,12 +802,11 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
-      await selectFilterByLabel("Avail", "gt0")
       await selectFilterByLabel("AUTO", "on")
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/)).toBeInTheDocument()
       expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
       const jobPanel = screen.getByText(/D\. Job Analysis \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(jobPanel).getByRole("button", { name: "Expand section" }))
+      await ensureSectionExpanded(jobPanel)
       await waitFor(() => expect(within(jobPanel).getByText("c1")).toBeVisible())
       expect(within(jobPanel).queryByText("c2")).not.toBeInTheDocument()
     }, 20000)
@@ -785,10 +815,62 @@ describe("AdminScheduledActions", () => {
       mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
-      await selectFilterByLabel("Avail", "gt0")
       await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
-      await selectFilterByLabel("Avail", "")
+      await selectAvailAll()
       await waitFor(() => expect(screen.getByText(/C\. Company Roster \(1 \/ 2 AUTO\)/)).toBeInTheDocument())
+      expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
+    }, 20000)
+  })
+
+  describe("AST-894 default Avail > 0 and expand-all on landing", () => {
+    // Two sections under default candidate (c1) with Avail > 0 — landing expand-all opens both.
+    const watchCosC1Gt0 = {
+      ...sparseRow,
+      id: 21,
+      candidate_id: "c1",
+      available_count: 7,
+      auto_mode: 1,
+      debug: 0,
+    }
+    const landingRows = [scanJobsC1Auto, watchCosC1Gt0]
+
+    it("landing expands every matching section under default Avail > 0", async () => {
+      mockApi(false, { tasks: landingRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      expect(within(adminFiltersRoot()).getByLabelText("Avail")).toHaveValue("gt0")
+      const jobPanel = await waitFor(() =>
+        screen.getByText(/D\. Job Analysis \(.*AUTO\)/).closest(".collapsible-panel") as HTMLElement,
+      )
+      const rosterPanel = screen.getByText(/C\. Company Roster \(.*AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await waitFor(() => {
+        expect(within(jobPanel).getByText("scan_jobs")).toBeVisible()
+        expect(within(rosterPanel).getByText("watch_cos")).toBeVisible()
+      })
+    }, 20000)
+
+    it("operator collapse after landing is not overwritten by the once-gate", async () => {
+      mockApi(false, { tasks: landingRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      const rosterPanel = await waitFor(
+        () => screen.getByText(/C\. Company Roster \(.*AUTO\)/).closest(".collapsible-panel") as HTMLElement,
+      )
+      await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
+      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Collapse section" }))
+      await waitFor(() => expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument())
+      // Poll / filter churn must not re-open — advance timers that drive dispatch poll.
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument()
+    }, 20000)
+
+    it("Avail All restores zero Avail rows without breaking empty-section omission", async () => {
+      const multiRows = [scanJobsC1Auto, scanJobsC2Off, watchCosZeroAvail]
+      mockApi(false, { tasks: multiRows, taskKeysPayload: taskKeysConfig, threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument())
+      await selectAvailAll()
+      await waitFor(() => expect(screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/)).toBeInTheDocument())
       expect(screen.getByText(/D\. Job Analysis \(1 \/ 2 AUTO\)/)).toBeInTheDocument()
     }, 20000)
   })
@@ -906,8 +988,9 @@ describe("AdminScheduledActions", () => {
       })
       renderWithProviders(<ScheduledActions />)
       await selectAllCandidatesFilter()
+      await selectAvailAll() // sparseRow avail null
       const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
-      await userEvent.click(within(rosterPanel).getByRole("button", { name: "Expand section" }))
+      await ensureSectionExpanded(rosterPanel)
       await userEvent.click(within(rosterPanel).getByText("watch_cos"))
       expect(screen.queryByText("Edit Task")).not.toBeInTheDocument()
     }, 20000)
@@ -1010,7 +1093,8 @@ describe("AdminScheduledActions", () => {
   describe("AST-785 dispatch_tasks list UX", () => {
     const jobGroupKey = `${"D. Job Analysis"}\u0000${"D. Job Analysis"}`
 
-    it("auto-opens first section on load so table is visible without manual expand", async () => {
+    it("auto-opens visible sections on load so table is visible without manual expand", async () => {
+      // AST-894: landing expand-all (was first-section-only); single matching section still auto-opens.
       mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(<ScheduledActions />)
       await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
@@ -1059,6 +1143,7 @@ describe("AdminScheduledActions", () => {
       renderWithProviders(<ScheduledActions />)
       await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
       await selectAllCandidatesFilter()
+      await selectAvailAll() // sparseRow avail null
 
       const chrome = screen.getByText("Expand all").closest(".section-expand-chrome") as HTMLElement
       expect(chrome).toBeTruthy()
@@ -1067,7 +1152,7 @@ describe("AdminScheduledActions", () => {
       const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
       const rosterPanel = screen.getByText(/C\. Company Roster \(1 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
 
-      // Start from known zero (stale-key cleanup may have cleared AST-785 auto-open).
+      // Start from known zero (landing expand-all / stale-key may leave sections open).
       await userEvent.click(within(chrome).getByRole("button", { name: "Collapse all" }))
       await waitFor(() => {
         expect(within(rosterPanel).queryByText("watch_cos")).not.toBeInTheDocument()
