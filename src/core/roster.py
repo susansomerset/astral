@@ -28,6 +28,7 @@ from src.external.playwright import (
     get_page,
     close_page,
     create_browser_context,
+    create_batch_browser_session,
     BrowserSession,
     normalize_url,
     wait_for_careers_list_readiness,
@@ -60,6 +61,7 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     COMPANY_STATES,
     INFLOW_CONFIG,
+    PLAYWRIGHT_CONFIG,
     ROSTER_CONFIG,
     TASK_CONFIG,
     roster_scrape_readiness_config,
@@ -1143,11 +1145,19 @@ async def run_select_job_page_dispatch(
 
 
 async def _scrape_list_page_dom_for_parse(
-    url: str, browser_context: BrowserSession, debug: bool = False,
+    url: str,
+    browser_context: Optional[BrowserSession] = None,
+    debug: bool = False,
+    *,
+    batch_session=None,
+    short_name: str = "",
 ) -> str:
     """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
     try:
-        pg = await get_page(browser_context, url)
+        if batch_session is not None:
+            pg = await get_page(batch_session=batch_session, url=url)
+        else:
+            pg = await get_page(browser_context, url)
         try:
             readiness_cfg = roster_scrape_readiness_config()
             ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
@@ -1170,8 +1180,24 @@ async def _scrape_list_page_dom_for_parse(
             return (await extract_page_dom(pg)) or ""
         finally:
             await close_page(pg)
-    except Exception:
-        return ""
+    except Exception as scrape_err:
+        if isinstance(scrape_err, PlaywrightInfraError):
+            fc = scrape_err.failure_class
+            msg = scrape_err.detail
+        else:
+            fc = classify_playwright_failure(scrape_err)
+            msg = str(scrape_err)
+        if is_playwright_infra_failure(fc):
+            logger.warning(
+                "[%s] playwright infra failure failure_class=%s %s",
+                short_name or url,
+                fc,
+                msg,
+            )
+            if isinstance(scrape_err, PlaywrightInfraError):
+                raise
+            raise PlaywrightInfraError(fc, msg) from scrape_err
+        raise
 
 
 def _resolve_selected_pjl_url(cdata: dict) -> str:
@@ -1251,6 +1277,7 @@ async def run_parse_job_list_dispatch(
     batch_id: str,
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
+    batch_session=None,
 ) -> Dict[str, Any]:
     """JOBLIST_IDENTIFIED / JOBLIST_IDENTIFIED_RETRY: DOM reload + parse_job_list (AST-721)."""
     _ = batch_id
@@ -1291,8 +1318,16 @@ async def run_parse_job_list_dispatch(
             identifier=short_name,
             outcome=f"url={list_url} titles={len(job_titles)} state={input_state}",
         )
-    async with create_browser_context() as browser_context:
-        dom_html = await _scrape_list_page_dom_for_parse(list_url, browser_context, debug=debug)
+
+    async def _scrape_and_parse(browser_context=None):
+        nonlocal cull_outcome
+        dom_html = await _scrape_list_page_dom_for_parse(
+            list_url,
+            browser_context,
+            debug=debug,
+            batch_session=batch_session,
+            short_name=short_name,
+        )
         if not dom_html.strip():
             return _save_parse_dispatch_failure(
                 short_name, company_website, list_url, input_state,
@@ -1331,8 +1366,27 @@ async def run_parse_job_list_dispatch(
                 short_name, company_website, list_url, input_state,
                 raw_response=parsed, notes=err, response_type="PARSE_DISPATCH_VALIDATION",
             )
-        result = _finalize_parse_dispatch_success(
+        return _finalize_parse_dispatch_success(
             short_name, company_website, list_url, dom_html, parsed, job_titles,
+        )
+
+    try:
+        if batch_session is not None:
+            result = await _scrape_and_parse()
+        else:
+            async with create_browser_context() as browser_context:
+                result = await _scrape_and_parse(browser_context)
+    except PlaywrightInfraError as ex:
+        result = _save_parse_dispatch_failure(
+            short_name, company_website, list_url, input_state,
+            notes=f"[playwright:{ex.failure_class}] {ex.detail}",
+            response_type="PARSE_DISPATCH_INFRA",
+        )
+    except Exception as ex:
+        result = _save_parse_dispatch_failure(
+            short_name, company_website, list_url, input_state,
+            notes=str(ex),
+            response_type="PARSE_DISPATCH_ERROR",
         )
     if debug:
         log = logger
@@ -1342,6 +1396,104 @@ async def run_parse_job_list_dispatch(
             f"cull={cull_outcome!r}"
         )
     return result
+
+
+async def parse_job_list_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Shared-browser parse_job_list for a claimed company batch (AST-891)."""
+    parse_cfg = ROSTER_CONFIG["parse_job_list"]
+    max_concurrent = int(parse_cfg["max_concurrent"])
+    scrape_timeout = PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]
+    ok_states = frozenset({
+        parse_cfg["pass_state"],
+        parse_cfg["retry_state"],
+        parse_cfg["terminal_fail_state"],
+    })
+    company_total = len(companies)
+    passed = errors = 0
+    if debug:
+        logger.set_debug_flag(True)
+
+    async with create_batch_browser_session() as batch_session:
+        async def _one(company: Dict[str, Any], company_index: int) -> None:
+            nonlocal passed, errors
+            short_name = company.get("short_name") or ""
+            company_website = company.get("company_website") or ""
+            input_state = str(company.get("state") or "").strip()
+            list_url = ""
+            if debug:
+                logger.set_debug_flag(True)
+                company_row = get_company(short_name)
+                cdata = (company_row.get("company_data") or {}) if company_row else {}
+                list_url = _resolve_selected_pjl_url(cdata)
+                logger.debug_index(
+                    func="roster.parse_job_list_batch",
+                    index=company_index,
+                    total=company_total,
+                    identifier=short_name,
+                    outcome=f"state={input_state} url={list_url}",
+                )
+            try:
+                result = await asyncio.wait_for(
+                    run_parse_job_list_dispatch(
+                        company, batch_id, ctx, debug, batch_session=batch_session,
+                    ),
+                    timeout=scrape_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[%s] playwright infra failure failure_class=scrape_timeout batch_id=%s",
+                    short_name,
+                    batch_id,
+                )
+                result = _save_parse_dispatch_failure(
+                    short_name,
+                    company_website,
+                    list_url,
+                    input_state,
+                    notes=f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s",
+                    response_type="PARSE_DISPATCH_INFRA",
+                )
+            if debug:
+                logger.set_debug_flag(True)
+                logger.debug_detail(
+                    f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}"
+                )
+            if result.get("error") or result.get("state") not in ok_states:
+                errors += 1
+            else:
+                passed += 1
+
+        sem = asyncio.Semaphore(max_concurrent)
+
+        async def _limited(company: Dict[str, Any], company_index: int) -> None:
+            async with sem:
+                await _one(company, company_index)
+
+        results = await asyncio.gather(
+            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            return_exceptions=True,
+        )
+        for r in results:
+            if isinstance(r, BaseException):
+                errors += 1
+                logger.exception(
+                    "parse_job_list_batch unhandled error batch_id=%s: %s",
+                    batch_id,
+                    r,
+                    exc_info=r,
+                )
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(
+            f"summary passed={passed} failed=0 errors={errors} total={company_total}"
+        )
+    return {"passed": passed, "failed": 0, "total": company_total, "errors": errors}
 
 
 async def process_recheck_no_openings(
@@ -1411,6 +1563,7 @@ def get_new_company_batch(
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
     states: Optional[List[str]] = None,
+    exclude_prefilter_second_strike: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim companies for batch processing. Returns (batch_id, companies).
 
@@ -1444,6 +1597,7 @@ def get_new_company_batch(
         candidate_id=candidate_id, require_empty_website=require_empty_website,
         score_floor=score_floor,
         states=states,
+        exclude_prefilter_second_strike=exclude_prefilter_second_strike,
     )
     companies = get_company_batch(bid)
     return (bid, companies)

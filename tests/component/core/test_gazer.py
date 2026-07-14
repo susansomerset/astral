@@ -179,7 +179,7 @@ class TestFetchWebsiteBatch:
         scrape.assert_awaited_once_with(
             "co-bad", "https://acme.com", batch_session=batch_session,
         )
-        assert out == {"passed": 0, "failed": 2, "total": 2, "errors": 0}
+        assert out == {"passed": 0, "failed": 2, "errors": 0, "skipped": 0, "total": 2}
         assert transition.call_count == 2
         assert save.call_count == 2
         transition.assert_any_call("co-bad", "CANNOT_READ_WEBSITE")
@@ -208,7 +208,7 @@ class TestFetchWebsiteBatch:
         )
         companies = [{"short_name": "acme", "company_website": "https://old.example"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "HOMEPAGE_READY")
         save.assert_called_once_with(
             "acme",
@@ -238,7 +238,7 @@ class TestFetchWebsiteBatch:
         )
         companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1}
         save.assert_called_once_with(
             "acme",
             {"homepage_text": "intro\n\nbody", "nav_links": "1. /about"},
@@ -263,7 +263,7 @@ class TestFetchWebsiteBatch:
         monkeypatch.setitem(gazer_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
         companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
         err = save.call_args[0][1][gazer_mod.ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]]
         assert err.startswith("[playwright:scrape_timeout]")
@@ -303,7 +303,7 @@ class TestFetchWebsiteFailRouting:
         )
         companies = [{"short_name": "acme", "company_website": "https://acme.com", "state": "WEBSITE_FOUND"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
 
     @pytest.mark.asyncio
@@ -330,7 +330,7 @@ class TestFetchWebsiteFailRouting:
             {"short_name": "acme", "company_website": "https://acme.com", "state": "WEBSITE_FOUND_RETRY"},
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
 
     @pytest.mark.asyncio
@@ -361,12 +361,12 @@ class TestFetchWebsiteFailRouting:
             {"short_name": "co-also-ok", "company_website": "https://c.com"},
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 2, "failed": 0, "total": 3, "errors": 1}
+        assert out == {"passed": 2, "failed": 0, "errors": 1, "skipped": 0, "total": 3}
         assert transition.call_count == 2
 
 
 class TestAst882HomepageReadyWfrSkip:
-    """AST-882: WFR with homepage_text left for prefilter second strike; bare WFR still scrapes."""
+    """AST-882/AST-892: WFR+homepage_text skip; work-only total excludes skips; bare WFR still scrapes."""
 
     @pytest.mark.asyncio
     async def test_skips_wfr_when_homepage_text_present(
@@ -388,7 +388,7 @@ class TestAst882HomepageReadyWfrSkip:
             },
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 0, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 0, "failed": 0, "errors": 0, "skipped": 1, "total": 0}
         transition.assert_not_called()
         scrape.assert_not_called()
 
@@ -421,8 +421,48 @@ class TestAst882HomepageReadyWfrSkip:
             },
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
-        assert out == {"passed": 0, "failed": 1, "total": 1, "errors": 0}
+        assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+
+    @pytest.mark.asyncio
+    async def test_mixed_skip_and_scrape_excludes_skips_from_total(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AST-892: skipped second-strike rows do not inflate batch total / loop counters."""
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://need.example",
+                    "visible_text": "fresh homepage body",
+                    "nav_links": [],
+                    "error": None,
+                }
+            ),
+        )
+        companies = [
+            {
+                "short_name": "already",
+                "company_website": "https://already.example",
+                "state": "WEBSITE_FOUND_RETRY",
+                "company_data": {"homepage_text": "owned by prefilter"},
+            },
+            {
+                "short_name": "need",
+                "company_website": "https://need.example",
+                "state": "WEBSITE_FOUND",
+                "company_data": {},
+            },
+        ]
+        out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
+        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 1, "total": 1}
+        transition.assert_called_once_with("need", "HOMEPAGE_READY")
 
 
 class TestFetchJobPagesBatch:

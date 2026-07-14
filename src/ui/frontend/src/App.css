@@ -16,6 +16,7 @@
  *  9. Modal
  * 10. DetailsEditPage & FormFields
  * 10e. CollapsiblePanel
+ * 10f. Section expand chrome (AST-893)
  * 11. Toast
  * 12. Agent Timesheets
  * 13. Execution History
@@ -1561,6 +1562,31 @@ input.side-tab-heading-editable:focus {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* === 10f. Section expand chrome (AST-893) === */
+.section-expand-chrome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-expand-chrome button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.section-expand-chrome button:hover {
+  background: var(--bg-card);
 }
 
 /* AST-359: Code + Importance row — same select/input styling as .admin-filters (scheduled_actions Task filter) */

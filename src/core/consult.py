@@ -1775,6 +1775,18 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
+        if task_key == "parse_job_list":
+            r = await roster.parse_job_list_batch(batch_id, entities, ctx=ctx, debug=debug)
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            errors = r.get("errors", max(0, total - passed - failed))
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
         return await roster.run_company_task(
             input_state, entities[0], batch_id, ctx, debug,
             dispatch_task_key=dispatch_task_key,

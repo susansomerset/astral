@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useCandidate } from "../contexts/CandidateContext"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
+import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
 import Time from "../components/Time"
 import CollapsiblePanel from "../components/CollapsiblePanel"
+import SectionExpandChrome from "../components/SectionExpandChrome"
 import ListTableTruncatedCell from "../components/ListTableTruncatedCell"
 import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 import { resolveCellTruncateChars, resolveFrozenDataColumns, stickyLeftPx } from "../lib/listTableLayout"
@@ -266,7 +268,6 @@ export default function ScheduledActions() {
 
   const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[]; candidate: string[] }>({ job: [], company: [], candidate: [] })
-  const [openSection, setOpenSection] = useState<string | null>(null)
   const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -309,6 +310,7 @@ export default function ScheduledActions() {
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
   const [debugFilter, setDebugFilter] = useState("")
+  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("") // "" | "gt0"
   const [freqFilter, setFreqFilter] = useState("")
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
@@ -428,6 +430,9 @@ export default function ScheduledActions() {
     if (autoFilter === "off") filtered = filtered.filter(r => !r.auto_mode)
     if (debugFilter === "on") filtered = filtered.filter(r => !!r.debug)
     if (debugFilter === "off") filtered = filtered.filter(r => !r.debug)
+    if (availGtZeroFilter === "gt0") {
+      filtered = filtered.filter(r => (r.available_count ?? 0) > 0)
+    }
     if (freqFilter !== "") filtered = filtered.filter(r => (r.freq_hrs ?? 0) === Number(freqFilter))
     if (minCountFilter !== "") filtered = filtered.filter(r => r.min_count === Number(minCountFilter))
     if (batchSizeFilter !== "") filtered = filtered.filter(r => r.batch_size === Number(batchSizeFilter))
@@ -443,7 +448,7 @@ export default function ScheduledActions() {
       })
     }
     return filtered
-  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
+  }, [data, candidateFilter, sectionGroupFilter, taskKeyFilter, autoFilter, debugFilter, availGtZeroFilter, freqFilter, minCountFilter, batchSizeFilter, maxRunsFilter, floorMin, floorMax, allTaskKeys])
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, DispatchTask[]> = {}
@@ -467,17 +472,34 @@ export default function ScheduledActions() {
       })
   }, [filteredRows, allTaskKeys, sortRowsWithinSection])
 
+  const sectionKeys = useMemo(() => sections.map(s => s.sectionKey), [sections])
+  const {
+    isExpanded,
+    onExpandedChange,
+    expandAllSections,
+    collapseAllSections,
+    showBulkChrome,
+    setExpandedKeys,
+    expandedKeys,
+  } = useSectionExpandPolicy({ expandAll: true, sectionKeys })
+
   useEffect(() => {
     if (didAutoOpenSectionRef.current || sections.length === 0) return
     didAutoOpenSectionRef.current = true
-    setOpenSection(sections[0].sectionKey)
-  }, [sections])
+    setExpandedKeys(new Set([sections[0].sectionKey]))
+  }, [sections, setExpandedKeys])
 
-  const resolvedOpenSection = useMemo(() => {
-    if (sections.length === 0) return null
-    if (openSection != null && sections.some(s => s.sectionKey === openSection)) return openSection
-    return null
-  }, [sections, openSection])
+  // Drop stale keys when filters remove a group; keep still-valid expands under Expand All
+  useEffect(() => {
+    const keySet = new Set(sectionKeys)
+    let dirty = false
+    const next = new Set<string>()
+    for (const k of expandedKeys) {
+      if (keySet.has(k)) next.add(k)
+      else dirty = true
+    }
+    if (dirty) setExpandedKeys(next)
+  }, [sectionKeys, expandedKeys, setExpandedKeys])
 
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -710,6 +732,13 @@ export default function ScheduledActions() {
           </select>
         </label>
         <label>
+          Avail
+          <select value={availGtZeroFilter} onChange={e => setAvailGtZeroFilter(e.target.value)}>
+            <option value="">All</option>
+            <option value="gt0">&gt; 0</option>
+          </select>
+        </label>
+        <label>
           Freq
           <select value={freqFilter} onChange={e => setFreqFilter(e.target.value)}>
             <option value="">All</option>
@@ -749,35 +778,42 @@ export default function ScheduledActions() {
             ? "No dispatch tasks match the current filters. Try Candidate: All or clear Section/Group and Task filters."
             : "No dispatch tasks configured"}
         </div>
-      ) : sections.map(sec => (
-        <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
-          <CollapsiblePanel
-            label={<>{sec.groupName} ({sec.autoOnCount} / {sec.rows.length} AUTO)</>}
-            expanded={resolvedOpenSection === sec.sectionKey}
-            onExpandedChange={next => {
-              if (next) setOpenSection(sec.sectionKey)
-              else setOpenSection(null)
-            }}
-          >
-            {resolvedOpenSection === sec.sectionKey ? (
-              <ScheduledPhaseTable
-                rows={sec.rows}
-                frozenN={frozenN}
-                truncateChars={truncateChars}
-                threadStatus={threadStatus}
-                allTaskKeys={allTaskKeys}
-                toggleSort={toggleSort}
-                sortIcon={sortIcon}
-                openEdit={openEdit}
-                toggleAutoMode={toggleAutoMode}
-                toggleDebug={toggleDebug}
-                handleRun={handleRun}
-                handleStop={handleStop}
-              />
-            ) : null}
-          </CollapsiblePanel>
-        </div>
-      ))}
+      ) : (
+        <>
+          {showBulkChrome && (
+            <SectionExpandChrome
+              onExpandAll={expandAllSections}
+              onCollapseAll={collapseAllSections}
+            />
+          )}
+          {sections.map(sec => (
+            <div key={sec.sectionKey} style={{ marginBottom: 12 }}>
+              <CollapsiblePanel
+                label={<>{sec.groupName} ({sec.autoOnCount} / {sec.rows.length} AUTO)</>}
+                expanded={isExpanded(sec.sectionKey)}
+                onExpandedChange={next => onExpandedChange(sec.sectionKey, next)}
+              >
+                {isExpanded(sec.sectionKey) ? (
+                  <ScheduledPhaseTable
+                    rows={sec.rows}
+                    frozenN={frozenN}
+                    truncateChars={truncateChars}
+                    threadStatus={threadStatus}
+                    allTaskKeys={allTaskKeys}
+                    toggleSort={toggleSort}
+                    sortIcon={sortIcon}
+                    openEdit={openEdit}
+                    toggleAutoMode={toggleAutoMode}
+                    toggleDebug={toggleDebug}
+                    handleRun={handleRun}
+                    handleStop={handleStop}
+                  />
+                ) : null}
+              </CollapsiblePanel>
+            </div>
+          ))}
+        </>
+      )}
 
       {/* Stop All confirmation modal */}
       {showStopAll && (

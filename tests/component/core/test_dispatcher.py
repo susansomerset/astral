@@ -254,7 +254,37 @@ class TestRunUnified:
         assert out["total_processed"] == 1
         clear.assert_called_once_with(batch_id)
 
-
+    @pytest.mark.asyncio
+    async def test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    ) -> None:
+        """AST-891: parse_job_list always full-list consult — never _warm_then_gather fan-out."""
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        companies = [{"short_name": "co-a"}, {"short_name": "co-b"}]
+        claim = MagicMock(return_value=(batch_id, companies))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.roster.get_new_company_batch", claim)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear)
+        run = AsyncMock(
+            return_value={"total_processed": 2, "total_passed": 2, "total_failed": 0, "total_errors": 0},
+        )
+        warm = AsyncMock()
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", warm)
+        task = {
+            "entity_type": "company",
+            "trigger_state": "JOBLIST_IDENTIFIED",
+            "task_key": "parse_job_list",
+            "batch_size": 20,
+            "batch_call_mode": 0,
+        }
+        out = await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
+        assert out["total_processed"] == 2
+        run.assert_awaited_once()
+        assert run.await_args.args[2] == companies
+        assert run.await_args.kwargs["dispatch_task_key"] == "parse_job_list"
+        warm.assert_not_awaited()
+        clear.assert_called_once_with(batch_id)
 
     @pytest.mark.asyncio
     async def test_ast505_candidate_entity_routes_ctx_without_company_clear(

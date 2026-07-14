@@ -6,9 +6,10 @@ import JobsSkipped from "../../../../src/ui/frontend/src/pages/JobsSkipped"
 import { renderWithProviders } from "../test-utils"
 import { installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -114,5 +115,22 @@ describe("JobsSkipped", () => {
         }),
       ),
     )
+  })
+
+  describe("AST-893 Expand One default", () => {
+    it("opening a second section closes the first; no Expand all chrome", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [floorJob, failedJob]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByText(/Below dispatch score floor/)).toBeInTheDocument())
+      expect(screen.queryByRole("button", { name: "Expand all" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Collapse all" })).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole("button", { name: /Below dispatch score floor/ }))
+      expect(screen.getByText("Floor Role")).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      expect(screen.getByText("Failed Role")).toBeInTheDocument()
+      expect(screen.queryByText("Floor Role")).not.toBeInTheDocument()
+    })
   })
 })

@@ -270,4 +270,6 @@ External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwri
 | Homepage-ready WFR skip | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip::test_skips_wfr_when_homepage_text_present` |
 | Bare WFR infra still terminals | `src/core/gazer.py` | `::TestAst882HomepageReadyWfrSkip::test_infra_retry_without_homepage_text_still_routes` |
 
+**AST-892 revision:** skip path returns `skipped` + work-only `total` (pure skip → `total=0`); claim/count exclusion is primary — see **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-892**).
+
 Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils/config.md`** (**AST-882**).

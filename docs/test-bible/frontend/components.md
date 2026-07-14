@@ -14,6 +14,25 @@
 
 ---
 
+### AST-893 · AST-886
+
+**`SectionExpandChrome`** — **Expand all** / **Collapse all** row for Expand All pages. Group coordination lives in **`useSectionExpandPolicy`** (parents own Expand One vs Expand All); `CollapsiblePanel` remains the per-panel controlled API.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bulk chrome | `src/ui/frontend/src/components/SectionExpandChrome.tsx` | `tests/component/frontend/components/test_SectionExpandChrome.test.tsx` |
+| Policy hook | `src/ui/frontend/src/hooks/useSectionExpandPolicy.ts` | `docs/test-bible/frontend/hooks.md` (**AST-893**) |
+| Routed pages | Manage Tasks / In Review / Skipped / Scheduled Actions | `docs/test-bible/frontend/pages.md` (**AST-893**) |
+
+**AST-893** narrowed Vitest (chrome):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx
+```
+
+---
+
 ### AST-359
 
 Per-vector **`importance`** (1–10), **`ASTRAL_CONFIG["consult_importance"]`** multipliers (consumed later by **AST-358**), **`normalize_rubric_artifacts_on_save`**, and rubric UI labels / editor behavior. Run the full component suite (**Appendix A**); for targeted reruns, use:
