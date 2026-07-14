@@ -745,11 +745,11 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-887 · AST-885
 
-Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. Default: not engaged. No API / Available math / column-format change.
+Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. **Default engaged as `gt0` (AST-894)** — was All under AST-887 alone. No API / Available math / column-format change.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-887 Avail > 0 filter`** describe (4 cases: default All, engage hides 0/null + empty sections, AND with AUTO, clear restores); revised **`expandFirstPhaseSection`** + **AST-751** em-dash case for **AST-785** auto-open race |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-887 Avail > 0 filter`** describe (4 cases: default gt0 omits zero/null, hides + empty omit, AND with AUTO, clear restores); revised **`expandFirstPhaseSection`** + **AST-751** em-dash case for **AST-785**/**AST-894** landing expand |
 
 **AST-887** narrowed Vitest run:
 
@@ -759,7 +759,7 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-887|AST-751|AST-768"
 ```
 
-**Builds on:** **AST-751** (filter bar + AUTO summary + em-dash Avail), **AST-768** (Section/Group AND intersection), **AST-785** (first-section auto-open).
+**Builds on:** **AST-751** (filter bar + AUTO summary + em-dash Avail), **AST-768** (Section/Group AND intersection), **AST-785** (first-section auto-open → **AST-894** expand-all).
 
 ---
 
@@ -885,3 +885,28 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on narrowed pattern (and engineer `test-child` may widen to full files if wiring side-effects appear).
+
+### AST-894 · AST-888
+
+Scheduled Actions landing defaults: Avail filter initial state `"gt0"`; one-shot `expandAllSections()` behind `didAutoOpenSectionRef` (replaces AST-785 first-section-only auto-open). Operator collapse after landing is not overwritten. Avail → All restores zero/empty Avail rows; empty-section omission follows the filtered set. Frontend-only; reuses AST-886/893 Expand All policy.
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Default Avail `gt0` omits zero/null Avail (§6c) | `AdminScheduledActions.tsx` | **`AST-887 Avail > 0 filter`** — default gt0 + clear restores (revised); **`AST-894 default Avail > 0 and expand-all on landing`** — Avail All restores |
+| 2 | Landing expand-all opens every matching section under default filters (§6c) | same | **`AST-894`** — landing expands every matching section |
+| 3 | Once-gate: collapse after landing stays collapsed | same | **`AST-894`** — operator collapse not overwritten |
+| 4 | Regression: Expand All chrome + Avail predicate still green | same | **`AST-893 Expand All policy + bulk chrome`**; full **`test_AdminScheduledActions.test.tsx`** |
+
+**Broken / obsolete (Betty revision this pass):**
+- **`AST-887`** “defaults Avail to All…” → rewritten for default `gt0`.
+- Suites that expected zero/null Avail sections under prior All default (`groups rows…`, **AST-739**, **AST-751** em-dash / AUTO+Task, **AST-768** roster group, **AST-773** AUTO row, **AST-634** All-candidates roster, **AST-893** multi-section chrome) now call **`selectAvailAll()`** when they need those rows.
+
+**AST-894** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-894|AST-887|AST-893|AST-751|AST-768|AST-785"
+```
+
+**Pass criterion:** Vitest green on narrowed pattern; engineer may widen to full file.
