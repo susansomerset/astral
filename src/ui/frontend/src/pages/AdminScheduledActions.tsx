@@ -310,7 +310,7 @@ export default function ScheduledActions() {
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
   const [debugFilter, setDebugFilter] = useState("")
-  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("") // "" | "gt0"
+  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("gt0") // "" | "gt0"
   const [freqFilter, setFreqFilter] = useState("")
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
@@ -486,8 +486,8 @@ export default function ScheduledActions() {
   useEffect(() => {
     if (didAutoOpenSectionRef.current || sections.length === 0) return
     didAutoOpenSectionRef.current = true
-    setExpandedKeys(new Set([sections[0].sectionKey]))
-  }, [sections, setExpandedKeys])
+    expandAllSections()
+  }, [sections, expandAllSections])
 
   // Drop stale keys when filters remove a group; keep still-valid expands under Expand All
   useEffect(() => {
