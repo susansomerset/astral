@@ -104,3 +104,12 @@ None.
 | Action | Item |
 |--------|------|
 | none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+---
+
+## Resolution
+
+**Date:** 2026-07-14  
+**Radia review:** `docs(AST-894): Radia review — clean` @ `348e9cb` — 0 fix-now · 0 discuss · 0 advisory.
+
+No product or plan-doc code changes required. §9a dry-run clean vs `origin/dev` and vs `origin/ftr/AST-888-sa-default-avail-expand-all`.
