@@ -74,3 +74,11 @@ On Admin → Scheduled Actions landing, default the existing Avail filter to `> 
 - §3.3 imports: no new imports (`expandAllSections` already destructured).
 - §3.5 naming: keep `availGtZeroFilter` / `"gt0"` and `didAutoOpenSectionRef`.
 - §3.2 “UI logic in API”: N/A — no API work; client-side filter default only (AST-887 precedent).
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `ee974d26bb462ce06316faa3d27d930bd8a3f7b3`
+
+Stage 1: Avail initial state `"gt0"`; landing auto-open uses one-shot `expandAllSections()` behind `didAutoOpenSectionRef`. Tests deferred to Betty.
