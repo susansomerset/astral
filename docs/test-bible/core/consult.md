@@ -352,7 +352,7 @@ Runtime rubric load cutover: **`_rubric_criteria_for_cfg`** + **`rubric_criteria
 
 ### AST-797 · AST-794
 
-Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`**; **`validate_title_batch`** inline inside **`qualify_job_listings`** for **NEW** jobs; **`validate_title`** / **`scrape_jd`** retired from **`run_consult_task`**; qualify primary dispatch @ **NEW** with **VALID_TITLE_RETRY** companion row (migration).
+Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`**; **`validate_title_batch`** inline inside **`qualify_job_listings`** for **NEW** jobs; **`validate_title`** / **`scrape_jd`** retired from **`run_consult_task`**; qualify primary dispatch @ **NEW** (companion claim **NEW_RETRY** after **AST-898**; **VALID_TITLE_RETRY** drain companion remains).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -670,3 +670,30 @@ Primary gazer / config / migration manifest: **`docs/test-bible/core/gazer.md`**
 | **`total_errors`** from batch **`errors`** | `src/core/consult.py` | `::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch_errors_count` |
 
 Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**).
+
+---
+
+### AST-898 · AST-895
+
+**`NEW_RETRY`** qualify AI hop (with **`VALID_TITLE`** / drain **`VALID_TITLE_RETRY`**); title screen stays **`NEW`-only**; recoverable **`VALID_TITLE`** fail → **`NEW_RETRY`**; **`NEW_RETRY`** fail → **`ERROR_QUALIFY_JOB_LISTINGS`**; pass/fail grades from **`NEW_RETRY`** still reach **`PASSED_JOBLIST`** / **`FAILED_JOBLIST`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail dest + qualify hop | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst898QualifyNewRetry`; revised **`TestConsultBatchFailDest`** |
+| Dispatcher NEW union claim | `src/core/dispatcher.py` | revised **`TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states`** |
+
+Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
+
+**AST-898** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst641DispatchClaimStates \
+  tests/component/utils/test_config.py::TestAst797ConfigRuntimeCutover \
+  tests/component/core/test_consult.py::TestAst898QualifyNewRetry \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states \
+  -q
+```

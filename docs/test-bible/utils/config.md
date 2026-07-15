@@ -578,7 +578,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-797 · AST-794
 
-**Runtime config:** remove **`GAZER_CONFIG["scrape_jd"]`** alias; **`dispatch_task_admin_defaults("qualify_job_listings")`** → **`trigger_state=NEW`**; primary NEW row claims **NEW** only (**VALID_TITLE_RETRY** companion seeded by migration).
+**Runtime config:** remove **`GAZER_CONFIG["scrape_jd"]`** alias; **`dispatch_task_admin_defaults("qualify_job_listings")`** → **`trigger_state=NEW`**; primary NEW row claims **NEW** + companion (**AST-898:** **`NEW_RETRY`**; pre-898 migration also seeded **VALID_TITLE_RETRY** drain row).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -740,3 +740,15 @@ Roster / gazer / dispatch: **`docs/test-bible/core/roster.md`** · **`docs/test-
 | **`max_concurrent`** on parse hop | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_job_list_roster_config` |
 
 Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**).
+
+---
+
+### AST-898 · AST-895
+
+**`NEW_RETRY`** qualify holding; **`NEW`** / **`VALID_TITLE`** `retry_state` → **`NEW_RETRY`**; primary qualify claim **`["NEW","NEW_RETRY"]`**; **`VALID_TITLE_RETRY`** remains in registry for drain only (no new writes from NEW qualify path). UI: **`NEW_RETRY`** / **"New (retry)"** + grade field.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry, claim companions, UI, fail-dest matrix | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding`; revised **`TestAst641DispatchClaimStates`**, **`TestAst882DispatchClaimStates`**, **`TestAst797ConfigRuntimeCutover`** |
+
+Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).

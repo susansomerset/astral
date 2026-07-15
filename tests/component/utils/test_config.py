@@ -604,8 +604,9 @@ class TestAst797ConfigRuntimeCutover:
         assert d["entity_type"] == "job"
         assert d["batch_call_mode"] == 1
 
-    def test_dispatch_claim_states_new_primary_only(self) -> None:
-        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW"]
+    def test_dispatch_claim_states_new_includes_retry_companion(self) -> None:
+        # AST-898: NEW.retry_state → NEW_RETRY companion on primary qualify row
+        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW", "NEW_RETRY"]
 
 
 class TestAst549DispatchAdminDefaults:
@@ -859,11 +860,13 @@ class TestAst750DispatchScoreFloorCatalog:
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:
     def test_primary_job_includes_companion_retry(self) -> None:
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+        # AST-898: VALID_TITLE.retry_state → NEW_RETRY (VALID_TITLE_RETRY drain-only)
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
         assert cfg.dispatch_claim_states("JD_READY", "job") == ["JD_READY", "JD_READY_RETRY"]
 
     def test_retry_only_job_single_state(self) -> None:
         assert cfg.dispatch_claim_states("VALID_TITLE_RETRY", "job") == ["VALID_TITLE_RETRY"]
+        assert cfg.dispatch_claim_states("NEW_RETRY", "job") == ["NEW_RETRY"]
 
     def test_primary_company_includes_companion_retry(self) -> None:
         assert cfg.dispatch_claim_states("WEBSITE_FOUND", "company") == [
@@ -872,8 +875,9 @@ class TestAst641DispatchClaimStates:
         ]
 
     def test_state_without_registry_companion_stays_single(self) -> None:
-        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW"]
+        # NEW is no longer companion-less after AST-898 (see TestAst898 / TestAst797)
         assert cfg.dispatch_claim_states("NEW", "company") == ["NEW"]
+        assert cfg.dispatch_claim_states("INVALID_TITLE", "job") == ["INVALID_TITLE"]
 
     def test_guard_none_blank(self) -> None:
         assert cfg.dispatch_claim_states(None, "job") == []
@@ -896,7 +900,7 @@ class TestAst882DispatchClaimStates:
         ]
 
     def test_job_retry_state_still_unions(self) -> None:
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "VALID_TITLE_RETRY"]
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
 
 
 # LLM_PROVIDER_CONFIG brain tiers, Anthropic / DeepSeek tier maps, startup env parity (AST-492).
@@ -1665,4 +1669,42 @@ class TestAst897ProviderBalanceRefusalConfig:
         assert block["failure_class"] == "provider_balance_refusal"
         assert 402 in block["http_status_codes"]
         assert "insufficient balance" in block["message_substrings"]
+
+
+class TestAst898NewRetryQualifyHolding:
+    """AST-898: NEW_RETRY qualify holding; retire VALID_TITLE_RETRY for new traffic."""
+
+    def test_new_and_valid_title_claim_new_retry(self) -> None:
+        assert cfg.dispatch_claim_states("NEW", "job") == ["NEW", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("VALID_TITLE_RETRY", "job") == ["VALID_TITLE_RETRY"]
+        assert cfg.dispatch_claim_states("NEW_RETRY", "job") == ["NEW_RETRY"]
+
+    def test_registry_retry_pointers_and_drain(self) -> None:
+        assert cfg.JOB_STATES["NEW"]["retry_state"] == "NEW_RETRY"
+        assert cfg.JOB_STATES["VALID_TITLE"]["retry_state"] == "NEW_RETRY"
+        assert "retry_state" not in cfg.JOB_STATES["NEW_RETRY"]
+        assert "retry_state" not in cfg.JOB_STATES["VALID_TITLE_RETRY"]
+        assert "VALID_TITLE_RETRY" in cfg.JOB_STATES
+        assert cfg.JOB_STATES["NEW_RETRY"]["prior_states"] == ["NEW", "VALID_TITLE"]
+        assert "NEW_RETRY" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
+        assert "NEW_RETRY" in cfg.JOB_STATES["FAILED_JOBLIST"]["prior_states"]
+
+    def test_ui_sections_and_grade_field(self) -> None:
+        assert "NEW_RETRY" in cfg.IN_REVIEW_STATES
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert review.index("VALID_TITLE_RETRY") < review.index("NEW_RETRY")
+        row = next(r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "NEW_RETRY")
+        assert row["label"] == "New (retry)"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["NEW_RETRY"] == "joblist_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["VALID_TITLE_RETRY"] == "joblist_grades"
+
+    def test_consult_batch_fail_dest_matrix(self) -> None:
+        from src.core import consult as consult_mod
+
+        err = cfg.TASK_CONFIG["qualify_job_listings"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("NEW", err) == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
 

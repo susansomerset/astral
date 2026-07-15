@@ -2127,11 +2127,14 @@ class TestConsultBatchFailDest:
 
     def test_primary_state_routes_to_retry_holding(self) -> None:
         err = TASK_CONFIG["qualify_job_listings"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "VALID_TITLE_RETRY"
+        # AST-898: VALID_TITLE.retry_state → NEW_RETRY (not VALID_TITLE_RETRY)
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "NEW_RETRY"
         assert consult_mod._consult_batch_fail_dest("JD_READY", TASK_CONFIG["evaluate_jd"]["error_state"]) == "JD_READY_RETRY"
 
     def test_retry_holding_routes_to_terminal_error(self) -> None:
         err = TASK_CONFIG["qualify_job_listings"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
+        # Drain path: legacy VALID_TITLE_RETRY still terminals (no nested retry)
         assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
         assert (
             consult_mod._consult_batch_fail_dest("JD_READY_RETRY", TASK_CONFIG["evaluate_jd"]["error_state"])
@@ -2151,6 +2154,15 @@ class TestConsultBatchFailDest:
 
 class TestAst642PerEntityBatchRetry:
     """AST-642 — mixed primary + *_RETRY batches route failures per entity state."""
+
+    @pytest.fixture(autouse=True)
+    def _rubric_criteria(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # _run_batch_consult hydrates reasons from DB criteria; tests pass artifacts only
+        monkeypatch.setattr(
+            consult_mod,
+            "_rubric_criteria_for_cfg",
+            lambda _cid, _cfg: [_rubric_item()],
+        )
 
     @staticmethod
     def _transition_triples(transition: MagicMock) -> List[tuple]:
@@ -3386,3 +3398,202 @@ class TestAst897HoldStateOnBalanceRefusal:
         assert out["total_errors"] == 1
         assert out["total_passed"] == 0
         trans.assert_not_called()
+
+
+class TestAst898QualifyNewRetry:
+    """AST-898: NEW_RETRY AI hop + fail dest; skip title re-screen; drain VALID_TITLE_RETRY."""
+
+    @pytest.fixture(autouse=True)
+    def _rubric_criteria(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            consult_mod,
+            "_rubric_criteria_for_cfg",
+            lambda _cid, _cfg: [_rubric_item()],
+        )
+
+    @staticmethod
+    def _transition_triples(transition: MagicMock) -> List[tuple]:
+        return sorted(
+            (c.args[0], tuple(sorted(c.args[1])), c.args[2]) for c in transition.call_args_list
+        )
+
+    @pytest.mark.asyncio
+    async def test_valid_title_short_title_routes_to_new_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-vt",
+                                "grades": [_pass_grade()],
+                                "job_title": "bad",
+                                "job_link": "https://example.com/jobs/1",
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [{"astral_job_id": "job-vt", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "a"}}]
+        out = await consult_mod.qualify_job_listings(
+            "batch-898-vt",
+            jobs,
+            {"candidate_data": {"artifacts": {"joblist_rubric": [_rubric_item()]}}},
+            debug=False,
+        )
+        assert out["failed"] == 1
+        assert self._transition_triples(transition) == [
+            ("qualify_job_listings", ("job-vt",), "NEW_RETRY"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_new_retry_short_title_routes_to_qualify_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        err = TASK_CONFIG["qualify_job_listings"]["error_state"]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-nr",
+                                "grades": [_pass_grade()],
+                                "job_title": "bad",
+                                "job_link": "https://example.com/jobs/1",
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [{"astral_job_id": "job-nr", "state": "NEW_RETRY", "company": "co", "job_data": {"raw_job_listing": "a"}}]
+        out = await consult_mod.qualify_job_listings(
+            "batch-898-nr",
+            jobs,
+            {"candidate_data": {"artifacts": {"joblist_rubric": [_rubric_item()]}}},
+            debug=False,
+        )
+        assert out["failed"] == 1
+        assert self._transition_triples(transition) == [
+            ("qualify_job_listings", ("job-nr",), err),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_new_retry_skips_validate_title_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        vt = AsyncMock(return_value={"failed": 0, "passed": 0, "total": 0})
+        monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
+        batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
+        jobs = [{"astral_job_id": "job-nr", "state": "NEW_RETRY", "job_data": {"raw_job_listing": "x"}}]
+        out = await consult_mod.qualify_job_listings("batch-898-skip", jobs, {}, debug=False)
+        vt.assert_not_awaited()
+        batch.assert_awaited_once()
+        assert out["passed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_new_retry_pass_and_fail_grade_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-pass",
+                                "grades": [_pass_grade()],
+                                "job_title": "Engineer",
+                                "job_link": "https://example.com/jobs/p",
+                            },
+                            {
+                                "astral_job_id": "job-fail",
+                                "grades": [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                            },
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {"astral_job_id": "job-pass", "state": "NEW_RETRY", "company": "co", "job_data": {"raw_job_listing": "a"}},
+            {"astral_job_id": "job-fail", "state": "NEW_RETRY", "company": "co", "job_data": {"raw_job_listing": "b"}},
+        ]
+        out = await consult_mod.qualify_job_listings(
+            "batch-898-grades",
+            jobs,
+            {"candidate_data": {"artifacts": {"joblist_rubric": [_rubric_item()]}}},
+            debug=False,
+        )
+        assert out["passed"] == 1
+        assert out["failed"] == 1
+        dests = {t[1][0]: t[2] for t in self._transition_triples(transition)}
+        assert dests["job-pass"] == TASK_CONFIG["qualify_job_listings"]["pass_state"]
+        assert dests["job-fail"] == TASK_CONFIG["qualify_job_listings"]["fail_state"]
+
+    @pytest.mark.asyncio
+    async def test_valid_title_retry_missing_still_terminals(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Drain: VALID_TITLE_RETRY second-strike failures still go to qualify error_state."""
+        transition = MagicMock()
+        err = TASK_CONFIG["qualify_job_listings"]["error_state"]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [{"astral_job_id": "job-ok", "grades": [_pass_grade()]}]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {"astral_job_id": "job-ok", "state": "VALID_TITLE_RETRY", "job_title": "Ok"},
+            {"astral_job_id": "job-missing", "state": "VALID_TITLE_RETRY", "job_title": "Missing"},
+        ]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings",
+            "batch-898-drain",
+            jobs,
+            lambda rows: "content",
+            lambda input_job, response_job, cfg: cfg["pass_state"],
+            {"candidate_data": {"artifacts": {"joblist_rubric": [_rubric_item()]}},},
+            True,
+        )
+        assert out["missing"] == ["job-missing"]
+        assert self._transition_triples(transition) == [
+            ("qualify_job_listings", ("job-missing",), err),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_new_retry_in_input_state_map(self) -> None:
+        assert consult_mod._INPUT_STATE_TO_TASK["NEW_RETRY"] == "qualify_job_listings"
+        assert consult_mod._INPUT_STATE_TO_TASK["VALID_TITLE_RETRY"] == "qualify_job_listings"

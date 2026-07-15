@@ -7,6 +7,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       { state: "NEW", label: "New" },
       { state: "VALID_TITLE", label: "Valid Title" },
       { state: "VALID_TITLE_RETRY", label: "Valid Title (retry)" },
+      { state: "NEW_RETRY", label: "New (retry)" },
       { state: "PASSED_JOBLIST", label: "Passed Job List" },
       { state: "JD_READY", label: "JD Ready" },
       { state: "JD_READY_RETRY", label: "JD Ready (retry)" },
@@ -18,6 +19,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
     ],
     grade_field_by_job_state: {
       VALID_TITLE_RETRY: "joblist_grades",
+      NEW_RETRY: "joblist_grades",
       PASSED_JOBLIST: "joblist_grades",
       JD_READY: "jd_grades",
       JD_READY_RETRY: "jd_grades",
