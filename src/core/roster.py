@@ -1002,7 +1002,12 @@ async def run_company_task(
             error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
             if result.get("error"):  # pragma: no branch
                 logger.error(f"[{short_name}] jobs_found_process_job_site error: {result['error']}")
-                if error_state:  # pragma: no branch
+                # AST-897: balance/credit hold already kept loop-eligible state — do not undo with error_state
+                if (
+                    error_state
+                    and not result.get("state_held")
+                    and not is_provider_balance_refusal(result)
+                ):  # pragma: no branch
                     transition_company_state(short_name, error_state)
                 return {**zero, "total_errors": 1}
             pass_states = ROSTER_CONFIG.get("locate_job_page", {}).get("pass_states", [])
@@ -2332,6 +2337,8 @@ async def _find_job_page_from_assembled(
     """AST-469: shared select_job_page + optional TRY_LINK retry + run_next parse chain.
     chain_parse=False: select-only dispatch entry (AST-535) — no run_next parse resolver."""
 
+    if debug:
+        logger.set_debug_flag(True)
     live_sel = assembled_content
     res: Dict[str, Any] = {}
     parsed_top: Dict[str, Any] = {}

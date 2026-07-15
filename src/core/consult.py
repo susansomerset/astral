@@ -738,6 +738,8 @@ async def _run_analysis_upshot_batch(
     debug: bool,
 ) -> Dict[str, int]:
     """AST-480: synthesis at PASSED_LIKE (score_floor dispatch); persist job_data.analysis_upshot → RECOMMENDED."""
+    if debug:
+        logger.set_debug_flag(True)
     task_cfg = TASK_CONFIG["analysis_upshot"]
     processed = passed = failed = errors = 0
     base_ctx = dict(ctx or {})

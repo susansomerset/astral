@@ -227,3 +227,16 @@ Hydrate / missing-id failure transitions stay as today (not balance).
 - Scope matches Self-Assessment (`Single-Component`); no JOB_STATES / COMPANY_STATES inventory edits.
 - §5f debug contract otherwise followed on consult batch / roster batch prefilter / `run_select_job_page_dispatch` (flag set before inner call).
 - PJL_READY `select_job_page` dispatch path logs `error` but does not re-transition — hold is intact there.
+
+---
+
+## Resolution (2026-07-15 — resolve-child)
+
+**Review ref:** Radia Linear comment + plan `## Radia review` @ `bd73e0d`.
+
+| Item | Action |
+|------|--------|
+| `run_company_task` JOBS_FOUND undoes hold | Skip `transition_company_state(..., error_state)` when `result.get("state_held")` or `is_provider_balance_refusal(result)`; still log and return `total_errors: 1`. |
+| `_run_analysis_upshot_batch` debug no-op | `logger.set_debug_flag(True)` at batch start when `debug=True`. |
+| `_find_job_page_from_assembled` debug | Same `set_debug_flag(True)` when `debug=True` (Radia preferably). |
+| Outer-path component test | Product only here — **`[qa-handoff]`** to Betty for `run_company_task` JOBS_FOUND balance-hold coverage (engineer test-tree ban). |
