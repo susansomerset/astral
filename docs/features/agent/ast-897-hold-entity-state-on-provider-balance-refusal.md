@@ -195,3 +195,35 @@ Hydrate / missing-id failure transitions stay as today (not balance).
 **Product tip:** `073bea9` — Stages 1–4 (`PROVIDER_BALANCE_REFUSAL` + `llm_external` classifiers; anthropic/deepseek `failure_class` tagging; `do_task` debug detail; consult + roster state-hold gates)
 
 **Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
+---
+
+## Radia review (AST-897)
+
+**Diff:** `origin/dev...origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal` @ `fe6d6e3`
+
+### What’s solid
+
+- Plan Stages 1–2 match the diff: `PROVIDER_BALANCE_REFUSAL` in config; shared `classify_provider_balance_refusal` / `is_provider_balance_refusal` in `llm_external.py`; both Anthropic/DeepSeek exception returns tag `failure_class` without cross-external imports (§3.3 / §5g).
+- Consult gates (`render_verdict`, `_run_batch_consult`, analysis_upshot do_task failure) and roster `_prefilter_fail` / batch prefilter skip fail→error/retry transitions and keep `error` / `failure_class` on the return (§2.1 / §2.6 / AC3–4).
+- `do_task` balance detail is nested under `if debug:` via `_do_task_debug_logger` (§1.5.1). Betty bible + component coverage map to the planned call sites.
+
+### Issues
+
+| Sev | Location | Issue |
+|-----|----------|-------|
+| **fix-now** | `src/core/roster.py` `run_company_task` JOBS_FOUND branch (~1003–1007) vs `_find_job_page_from_assembled` hold return (~2353–2375) | Balance hold returns `error` + `state_held=True` without calling `_save_company`. Outer JOBS_FOUND path treats any `result.get("error")` as hard failure and calls `transition_company_state(..., error_state)`, undoing the hold (AC1–2). Ordinary SELECT_FAILED returns omit `error`, so this path only breaks the new hold shape. |
+| **fix-now** | `src/core/consult.py` `_run_analysis_upshot_batch` (~775–787) | Hold path emits `debug_index` / `debug_detail` under `if debug:` but never `logger.set_debug_flag(True)`. Module logger defaults `_debug_flag=False`, so contract lines no-op on `debug=True` (AC5 / §1.5.1). Contrast `render_verdict` / `_run_batch_consult`. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| In `run_company_task` JOBS_FOUND (and any similar outer wrapper), skip `error_state` transition when `result.get("state_held")` or `is_provider_balance_refusal(result)`; keep logging/count as error without moving state. Add a component test through `run_company_task` or `jobs_found_process_job_site` → outer handler. | Ada (`resolve-child`) |
+| At start of `_run_analysis_upshot_batch` (and preferably `_find_job_page_from_assembled` when `debug=True`), `logger.set_debug_flag(True)` before hold index/detail — same pattern as `_run_batch_consult`. | Ada (`resolve-child`) |
+
+### Rubric notes (not fix-now)
+
+- Scope matches Self-Assessment (`Single-Component`); no JOB_STATES / COMPANY_STATES inventory edits.
+- §5f debug contract otherwise followed on consult batch / roster batch prefilter / `run_select_job_page_dispatch` (flag set before inner call).
+- PJL_READY `select_job_page` dispatch path logs `error` but does not re-transition — hold is intact there.
