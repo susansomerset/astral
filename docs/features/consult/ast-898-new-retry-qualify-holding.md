@@ -164,4 +164,21 @@ No rule conflicts that would force `conf-!!-NONE`.
 
 ## Review
 
-_(Radia — review-child)_
+**Radia** · `origin/dev`…`origin/sub/AST-895/ast-898-new-retry-qualify-holding` @ `01f8564` · product `8d0a865` + `1663671`
+
+### What's solid
+
+- **Plan fidelity:** Stage 1 registry/UI + Stage 2 AI filter / fail debug match the plan line-for-line: `NEW`/`VALID_TITLE` `retry_state` → `NEW_RETRY`, `VALID_TITLE_RETRY` drain-only, title screen stays `NEW`-only, AI hop keeps `VALID_TITLE_RETRY` + adds `NEW_RETRY`.
+- **§2.1 / §2.6:** Holding dest still via `_consult_batch_fail_dest` + `JOB_STATES` (no parallel qualify dest map). Verified: `VALID_TITLE`→`NEW_RETRY`, `NEW_RETRY`→`ERROR_QUALIFY_JOB_LISTINGS`, `dispatch_claim_states("NEW","job")==["NEW","NEW_RETRY"]`.
+- **§1.5.1:** `bad_grades` and short-title fail paths emit Style D `debug_index` + `|` detail only when `debug=True`.
+- **Boundaries:** No dispatcher/DB companion-row edits; no migrate of existing `VALID_TITLE_RETRY` jobs.
+
+### Issues
+
+None (no fix-now / discuss).
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
