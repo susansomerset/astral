@@ -54,6 +54,7 @@ _INPUT_STATE_TO_TASK = {
     "NEW":                "qualify_job_listings",
     "VALID_TITLE":        "qualify_job_listings",
     "VALID_TITLE_RETRY":  "qualify_job_listings",
+    "NEW_RETRY":          "qualify_job_listings",
     "PASSED_JOBLIST":     "fetch_jd",
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
@@ -1238,6 +1239,18 @@ async def _run_batch_consult(
     error_ids = list(bad_grades)
     if error_ids:
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
+        if debug and bad_rows:
+            for bi, row in enumerate(bad_rows, start=1):
+                logger.debug_index(
+                    func=f"consult._run_batch_consult({task_key})",
+                    index=bi,
+                    total=len(bad_rows),
+                    identifier=_consult_job_identifier(row),
+                    outcome=f"bad_grades -> {_consult_batch_fail_dest(row.get('state'), error_state)}",
+                )
+                logger.debug_detail(
+                    f"astral_job_id={row.get('astral_job_id')!r} from_state={row.get('state')!r}"
+                )
         _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
     errors = []
@@ -1309,7 +1322,7 @@ async def qualify_job_listings(
                     j["state"] = fresh.get("state")
     ai_jobs = [
         j for j in jobs
-        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY")
+        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY")
     ]
     if not ai_jobs:
         return {
@@ -1387,7 +1400,17 @@ async def qualify_job_listings(
         if len(raw_title) < min_len:
             dest = _consult_batch_fail_dest(input_job.get("state"), cfg.get("error_state"))
             if debug:
-                logger.debug_detail(f"title too short: {repr(raw_title)} min_len={min_len}")
+                logger.debug_index(
+                    func="consult.qualify_job_listings",
+                    index=1,
+                    total=1,
+                    identifier=_consult_job_identifier(input_job),
+                    outcome=f"title too short -> {dest}",
+                )
+                logger.debug_detail(
+                    f"from_state={input_job.get('state')!r} "
+                    f"title too short: {repr(raw_title)} min_len={min_len}"
+                )
             logger.warning(f"  {aid} -> {dest} [title too short: {repr(raw_title)}]")
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest, score)
