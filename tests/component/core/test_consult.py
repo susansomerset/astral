@@ -3280,3 +3280,109 @@ class TestAst860RunBatchConsultCandidateCtx:
         task_ctx = captured["ctx"]
         assert task_ctx["astral_candidate_id"] == "somerset"
         assert task_ctx["candidate_data"] == ctx["candidate_data"]
+
+
+class TestAst897HoldStateOnBalanceRefusal:
+    """AST-897: provider balance refusal holds job state (no error/retry transition)."""
+
+    _FC = "provider_balance_refusal"
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "VALID_TITLE"}
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Insufficient Balance",
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        out = await consult_mod.render_verdict("grade_do", "job-1")
+        assert out["success"] is False
+        assert out["state_held"] is True
+        assert out["to_state"] == "VALID_TITLE"
+        assert out["failure_class"] == self._FC
+        assert "Insufficient Balance" in (out.get("error") or "")
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_ordinary_failure_still_transitions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "VALID_TITLE"}
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "schema boom"}),
+        )
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        out = await consult_mod.render_verdict("grade_do", "job-1")
+        assert out["success"] is False
+        assert out.get("state_held") is not True
+        transition.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_batch_consult_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "402 payment required",
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        jobs = [{"astral_job_id": "job-1", "state": "VALID_TITLE"}]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings",
+            "batch-897",
+            jobs,
+            lambda rows: "content",
+            lambda input_job, response_job, cfg: cfg["pass_state"],
+            None,
+            False,
+        )
+        assert out["success"] is False
+        assert out["state_held"] is True
+        assert out["failure_class"] == self._FC
+        assert out["total"] == 1
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_analysis_upshot_batch_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "j1", "company": "co", "job_data": {}, "state": "PASSED_LIKE"}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value=job))
+        monkeypatch.setattr(consult_mod.tracker, "get_company", MagicMock(return_value={"short_name": "co"}))
+        monkeypatch.setattr(consult_mod, "_prep_analysis_upshot_live_content", AsyncMock(return_value="x"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "out of credit",
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        out = await consult_mod._run_analysis_upshot_batch("b897", [job], {}, False)
+        assert out["total_errors"] == 1
+        assert out["total_passed"] == 0
+        trans.assert_not_called()

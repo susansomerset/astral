@@ -269,3 +269,46 @@ class TestSendToAnthropic:
             record_timesheet=_record,
         )
         assert out["success"] is True
+
+
+class TestAst897BalanceRefusalTagging:
+    """AST-897: anthropic API exceptions tag failure_class for balance/credit refusals."""
+
+    @pytest.mark.asyncio
+    async def test_status_402_tags_failure_class(self, monkeypatch, fake_anthropic_client) -> None:
+        from src.utils.config import PROVIDER_BALANCE_REFUSAL
+
+        err = type("BalanceErr", (Exception,), {"status_code": 402})("payment required")
+        client = fake_anthropic_client(raise_on_create=err)
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == PROVIDER_BALANCE_REFUSAL["failure_class"]
+        assert "payment required" in out["error"]
+
+    @pytest.mark.asyncio
+    async def test_substring_tags_failure_class(self, monkeypatch, fake_anthropic_client) -> None:
+        from src.utils.config import PROVIDER_BALANCE_REFUSAL
+
+        client = fake_anthropic_client(raise_on_create=RuntimeError("Insufficient Balance"))
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == PROVIDER_BALANCE_REFUSAL["failure_class"]
+
+    @pytest.mark.asyncio
+    async def test_ordinary_api_failure_omits_failure_class(self, monkeypatch, fake_anthropic_client) -> None:
+        client = fake_anthropic_client(raise_on_create=RuntimeError("timeout"))
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+        )
+        assert out["success"] is False
+        assert "failure_class" not in out
