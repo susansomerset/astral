@@ -36,9 +36,12 @@
 | DeepSeek tagging | `src/external/deepseek.py` | `tests/component/external/test_deepseek.py::TestAst897BalanceRefusalTagging` |
 | `do_task` debug hold detail | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst897DoTaskBalanceDebug` |
 | Consult hold (verdict / batch / upshot) | `src/core/consult.py` | `tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal` |
-| Roster hold (prefilter / batch / select) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal` |
+| Roster hold (prefilter / batch / select / JOBS_FOUND wrapper) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal` |
+| JOBS_FOUND ordinary error still → locate `error_state` | `src/core/roster.py` | `::test_run_company_task_jobs_found_error_moves_locate_error_state` |
 
 **Broken / obsolete:** none — existing fail→transition cases remain; balance path is additive.
+
+**Return pass (resolve `[qa-handoff]`):** cover `run_company_task("JOBS_FOUND")` outer gate so `state_held` / `failure_class=provider_balance_refusal` does **not** call `transition_company_state` (Radia fix-now @ `4153885`).
 
 **AST-897** narrowed run:
 
@@ -51,6 +54,7 @@
   tests/component/core/test_agent.py::TestAst897DoTaskBalanceDebug \
   tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
   tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_roster.py::test_run_company_task_jobs_found_error_moves_locate_error_state \
   -q
 ```
 
