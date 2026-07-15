@@ -182,3 +182,10 @@ None (no fix-now / discuss).
 | Action | Owner | Notes |
 |--------|-------|-------|
 | _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
+
+## Resolution
+
+**2026-07-15** — Radia clean sign-off (`docs(AST-898): Radia review — clean` @ `f441c0d`). No fix-now / discuss items. No product delta this resolve pass.
+
+- **Publish tip after resolve:** `origin/sub/AST-895/ast-898-new-retry-qualify-holding` (this commit)
+- §9a dry-run vs `origin/dev` and `origin/ftr/AST-895-new-retry-qualify-holding` — clean
