@@ -192,6 +192,6 @@ Hydrate / missing-id failure transitions stay as today (not balance).
 ## Review stub (Ada / build)
 
 **Publish ref:** `origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal`  
-**Product tip:** `8e6c5ff` — Stages 1–4 (`PROVIDER_BALANCE_REFUSAL` + `llm_external` classifiers; anthropic/deepseek `failure_class` tagging; `do_task` debug detail; consult + roster state-hold gates)
+**Product tip:** `073bea9` — Stages 1–4 (`PROVIDER_BALANCE_REFUSAL` + `llm_external` classifiers; anthropic/deepseek `failure_class` tagging; `do_task` debug detail; consult + roster state-hold gates)
 
 **Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
