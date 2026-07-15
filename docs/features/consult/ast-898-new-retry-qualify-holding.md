@@ -155,3 +155,13 @@ After **AST-797**, `qualify_job_listings` claims jobs in **NEW**, runs inline ti
 | §3.3 imports | No new cross-layer imports. |
 
 No rule conflicts that would force `conf-!!-NONE`.
+
+## Build
+
+- **Publish tip:** `origin/sub/AST-895/ast-898-new-retry-qualify-holding` @ `1663671370ba8b4d52724be7d41635f1ac87b510`
+- Stage 1: `8d0a865` — NEW_RETRY registry + NEW companion claim
+- Stage 2: `1663671` — qualify AI hop includes NEW_RETRY + fail-path debug
+
+## Review
+
+_(Radia — review-child)_
