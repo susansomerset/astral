@@ -57,6 +57,7 @@ from src.data.database import (
     COMPANY_BATCH_SORT_COLUMNS,
 )
 from src.utils.logging import get_logger
+from src.utils.llm_external import is_provider_balance_refusal
 from src.utils.config import (
     ASTRAL_CONFIG,
     COMPANY_STATES,
@@ -1645,6 +1646,14 @@ def _prefilter_fail(
     """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
     company = get_company(short_name) or {}
     current_state = (company.get("state") or "").strip()
+    # AST-897: provider balance/credit refusal — hold current loop-eligible state
+    if api_result is not None and is_provider_balance_refusal(api_result):
+        result["error"] = error
+        result["state"] = current_state
+        result["decision"] = "HOLD"
+        result["failure_class"] = api_result.get("failure_class")
+        result["state_held"] = True
+        return result
     retryable = api_result is None or (
         not api_result.get("success") and _prefilter_api_failure_is_retryable(api_result)
     )
@@ -2120,6 +2129,25 @@ async def _run_batch_company_prefilter(
     )
 
     if not result.get("success"):
+        if is_provider_balance_refusal(result):
+            if debug:
+                logger.debug_index(
+                    func="roster._run_batch_company_prefilter",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="provider_balance_refusal — batch state held",
+                )
+                logger.debug_detail(
+                    f"error={result.get('error')!r} failure_class={result.get('failure_class')!r}"
+                )
+            return {
+                "passed": 0,
+                "failed": 0,
+                "total": len(companies),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+            }
         if debug:
             logger.debug_index(
                 func="roster._run_batch_company_prefilter",
@@ -2322,6 +2350,29 @@ async def _find_job_page_from_assembled(
             debug=debug,
         )
         if not res.get("success"):  # pragma: no branch
+            if is_provider_balance_refusal(res):
+                current_state = (get_company(short_name) or {}).get("state")
+                if debug:
+                    logger.debug_index(
+                        func="roster._find_job_page_from_assembled",
+                        index=1,
+                        total=1,
+                        identifier=short_name,
+                        outcome="provider_balance_refusal — state held",
+                    )
+                    logger.debug_detail(
+                        f"failure_class={res.get('failure_class')!r} error={res.get('error')!r} "
+                        f"current_state={current_state!r}"
+                    )
+                return {
+                    "short_name": short_name,
+                    "state": current_state,
+                    "job_site": company_website,
+                    "response_type": "SELECT_FAILED",
+                    "error": res.get("error"),
+                    "failure_class": res.get("failure_class"),
+                    "state_held": True,
+                }
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})

@@ -1,8 +1,31 @@
 """Shared helpers for Anthropic- and DeepSeek-compatible external LLM clients (AST-687 / AST-538)."""
 
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
+from src.utils.config import PROVIDER_BALANCE_REFUSAL
 from src.utils.logging import get_logger
+
+
+def classify_provider_balance_refusal(exc: BaseException) -> Optional[str]:
+    """Return PROVIDER_BALANCE_REFUSAL failure_class when exc is billing/credit exhaustion."""
+    fc = PROVIDER_BALANCE_REFUSAL["failure_class"]
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in PROVIDER_BALANCE_REFUSAL["http_status_codes"]:
+        return fc
+    msg = str(exc).lower()
+    for substr in PROVIDER_BALANCE_REFUSAL["message_substrings"]:
+        if substr in msg:
+            return fc
+    return None
+
+
+def is_provider_balance_refusal(result: Optional[Dict[str, Any]]) -> bool:
+    """True when an agent/provider result dict was tagged as balance/credit refusal."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("failure_class") == PROVIDER_BALANCE_REFUSAL["failure_class"]
 
 
 def extract_api_response_text(api_response: Any) -> str:

@@ -27,6 +27,7 @@ Config sections:
   AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
+  PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
 """
 
 import json
@@ -2403,6 +2404,20 @@ LLM_PROVIDER_CONFIG = {
             },
         },
     },
+}
+
+# PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion (AST-897).
+# Used by utils.llm_external classifiers and core state-hold gates.
+PROVIDER_BALANCE_REFUSAL = {
+    "failure_class": "provider_balance_refusal",
+    "http_status_codes": (402,),
+    "message_substrings": (
+        "insufficient balance",
+        "insufficient credit",
+        "credit exhausted",
+        "out of credit",
+        "payment required",
+    ),
 }
 
 # Vendor_model strings aligned with tier_map["deepseek"] (also DEEPSEEK cost_math / AST-493).

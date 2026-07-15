@@ -186,3 +186,12 @@ Hydrate / missing-id failure transitions stay as today (not balance).
 - **§2.2 / §2.7:** `do_task` remains the agent boundary; consult `render_verdict` / batch consult hold after that boundary.  
 - **§3.3:** utils ← nothing; external ← utils; core ← utils (+ existing layers). No external↔external imports.  
 - **§1.5.1:** Debug lines only when `debug=True`; index + detail for hold outcome.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal`  
+**Product tip:** `8e6c5ff` — Stages 1–4 (`PROVIDER_BALANCE_REFUSAL` + `llm_external` classifiers; anthropic/deepseek `failure_class` tagging; `do_task` debug detail; consult + roster state-hold gates)
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.

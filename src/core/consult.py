@@ -38,6 +38,7 @@ from src.utils.config import (
 )
 from src.utils.formatting import enumerate_array
 from src.utils.logging import get_logger
+from src.utils.llm_external import is_provider_balance_refusal
 
 logger = get_logger(__name__)
 
@@ -771,6 +772,21 @@ async def _run_analysis_upshot_batch(
             debug=debug,
         )
         if not result.get("success"):
+            if is_provider_balance_refusal(result):
+                if debug:
+                    logger.debug_index(
+                        func="consult._run_analysis_upshot_batch",
+                        index=processed,
+                        total=len(entities),
+                        identifier=aid,
+                        outcome="provider_balance_refusal — state held",
+                    )
+                    logger.debug_detail(
+                        f"failure_class={result.get('failure_class')!r} error={result.get('error')!r} "
+                        f"current_state={row.get('state')!r}"
+                    )
+                errors += 1
+                continue
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task("analysis_upshot", [aid], dest)
@@ -909,6 +925,27 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     result = await do_task(task_key=agent_task, live_content=live_content, index=astral_job_id, ctx=task_ctx, debug=debug)
 
     if not result.get("success"):
+        if is_provider_balance_refusal(result):
+            current_state = (job.get("state") or (tracker.get_job(astral_job_id) or {}).get("state"))
+            if debug:
+                logger.debug_index(
+                    func="consult.render_verdict",
+                    index=1,
+                    total=1,
+                    identifier=astral_job_id,
+                    outcome="provider_balance_refusal — state held",
+                )
+                logger.debug_detail(
+                    f"failure_class={result.get('failure_class')!r} error={result.get('error')!r} "
+                    f"current_state={current_state!r}"
+                )
+            return {
+                "success": False,
+                "to_state": current_state,
+                "error": result.get("error"),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+            }
         return _fail(result.get("error", "do_task failed"))
 
     parsed = result["parsed_response"]
@@ -1042,7 +1079,28 @@ async def _run_batch_consult(
     result = await do_task(task_key=task_key, live_content=live_content, index=do_index, ctx=task_ctx, debug=debug)
 
     if not result.get("success"):
-        # Envelope failure — whole batch to error_state
+        # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
+        if is_provider_balance_refusal(result):
+            if debug:
+                logger.debug_index(
+                    func=f"consult._run_batch_consult({task_key})",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome="provider_balance_refusal — batch state held",
+                )
+                logger.debug_detail(
+                    f"error={result.get('error')!r} failure_class={result.get('failure_class')!r}"
+                )
+            return {
+                "success": False,
+                "error": result.get("error"),
+                "passed": 0,
+                "failed": 0,
+                "total": len(jobs),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+            }
         if debug:
             logger.debug_index(
                 func=f"consult._run_batch_consult({task_key})",
