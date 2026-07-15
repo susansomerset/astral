@@ -5835,3 +5835,50 @@ class TestAst897HoldStateOnBalanceRefusal:
         assert out["state_held"] is True
         assert out["failure_class"] == self._FC
         saver.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_jobs_found_balance_hold_skips_error_state(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Outer JOBS_FOUND wrapper must not undo an inner balance hold with locate error_state."""
+        ent = _company(state="JOBS_FOUND", job_site="https://jobs")
+        monkeypatch.setattr(
+            roster_mod,
+            "jobs_found_process_job_site",
+            AsyncMock(
+                return_value={
+                    "error": "Insufficient Balance",
+                    "state": "JOBS_FOUND",
+                    "state_held": True,
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-hold")
+        assert out["total_errors"] == 1
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_jobs_found_balance_failure_class_skips_error_state(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Hold also when failure_class is set without state_held (predicate path)."""
+        ent = _company(state="JOBS_FOUND", job_site="https://jobs")
+        monkeypatch.setattr(
+            roster_mod,
+            "jobs_found_process_job_site",
+            AsyncMock(
+                return_value={
+                    "error": "payment required",
+                    "state": "JOBS_FOUND",
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-fc")
+        assert out["total_errors"] == 1
+        transition.assert_not_called()
