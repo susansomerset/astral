@@ -240,3 +240,5 @@ Hydrate / missing-id failure transitions stay as today (not balance).
 | `_run_analysis_upshot_batch` debug no-op | `logger.set_debug_flag(True)` at batch start when `debug=True`. |
 | `_find_job_page_from_assembled` debug | Same `set_debug_flag(True)` when `debug=True` (Radia preferably). |
 | Outer-path component test | Product only here — **`[qa-handoff]`** to Betty for `run_company_task` JOBS_FOUND balance-hold coverage (engineer test-tree ban). |
+
+**Betty return (2026-07-15):** cleared `[qa-handoff]` @ `698119d` — `TestAst897HoldStateOnBalanceRefusal` outer JOBS_FOUND hold cases + ordinary error regression. Manifest green (23 passed). §9a clean vs `origin/dev` and `origin/ftr/AST-896-insufficient-balance-hold-state`.
