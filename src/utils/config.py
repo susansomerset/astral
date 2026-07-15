@@ -1131,12 +1131,13 @@ _LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES = _legacy_build_artifacts_compound_state
 #   retry_state:  state to hold jobs with invalid/missing output for a second attempt (batch tasks only)
 # ---------------------------------------------------------------------------
 JOB_STATES = {
-    "NEW":                    {"prior_states": None},                                            # unrestricted — ingested from job board scans
-    "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": "VALID_TITLE_RETRY"},
+    "NEW":                    {"prior_states": None,                   "retry_state": "NEW_RETRY"},  # unrestricted — ingested from job board scans
+    "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": "NEW_RETRY"},  # post–title-screen; retry → NEW_RETRY (AST-898)
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
-    "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # qualify_job_listings retry holding state
-    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "JD_READY", "JD_READY_RETRY"]},
-    "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY"]},
+    "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # drain-only; no new writes from NEW qualify path
+    "NEW_RETRY":              {"prior_states": ["NEW", "VALID_TITLE"]},                          # qualify_job_listings retry holding (post-AST-898)
+    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "JD_READY", "JD_READY_RETRY"]},
+    "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST"],    "retry_state": "JD_READY_RETRY"},
     "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
@@ -1254,7 +1255,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 
 # Ordered state lists for Jobs UI views (single source of truth for API, nav counts, frontend).
 IN_REVIEW_STATES = [
-    "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
+    "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
 ]
 # PASSED_* rows waiting on a scored dispatch step: claim uses latest_score >= score_floor.
@@ -1591,6 +1592,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "NEW", "label": "New"},
     {"state": "VALID_TITLE", "label": "Valid Title"},
     {"state": "VALID_TITLE_RETRY", "label": "Valid Title (retry)"},
+    {"state": "NEW_RETRY", "label": "New (retry)"},
     {"state": "PASSED_JOBLIST", "label": "Passed Job List"},
     {"state": "JD_READY", "label": "JD Ready"},
     {"state": "JD_READY_RETRY", "label": "JD Ready (retry)"},
@@ -1659,6 +1661,7 @@ JOBS_SKIPPED_SECTION_LABELS = {
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
 JOBS_IN_REVIEW_GRADE_FIELD = {
     "VALID_TITLE_RETRY": "joblist_grades",
+    "NEW_RETRY": "joblist_grades",
     "PASSED_JOBLIST": "joblist_grades",
     "JD_READY": "jd_grades",
     "JD_READY_RETRY": "jd_grades",
