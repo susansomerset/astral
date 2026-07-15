@@ -23,11 +23,19 @@ class FakeDeepseekMessage:
 
 
 class FakeDeepseekClient:
-    def __init__(self, *, response_text: str = "ok") -> None:
+    def __init__(
+        self,
+        *,
+        response_text: str = "ok",
+        raise_on_create: Optional[Exception] = None,
+    ) -> None:
         self._response_text = response_text
+        self._raise_on_create = raise_on_create
         self.messages = self
 
     def create(self, **_kwargs: Any) -> FakeDeepseekMessage:
+        if self._raise_on_create:
+            raise self._raise_on_create
         return FakeDeepseekMessage(self._response_text)
 
 
@@ -130,3 +138,44 @@ class TestSendToDeepseekTimesheetMapping:
             name == "src.external.deepseek" and kwargs.get("debug_flag") is True
             for name, kwargs in get_logger_calls
         )
+
+
+class TestAst897BalanceRefusalTagging:
+    """AST-897: deepseek API exceptions tag failure_class for balance/credit refusals."""
+
+    @pytest.mark.asyncio
+    async def test_status_402_tags_failure_class(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        from src.utils.config import PROVIDER_BALANCE_REFUSAL
+
+        err = type("BalanceErr", (Exception,), {"status_code": 402})("payment required")
+        client = fake_deepseek_client(raise_on_create=err)
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == PROVIDER_BALANCE_REFUSAL["failure_class"]
+
+    @pytest.mark.asyncio
+    async def test_ordinary_api_failure_omits_failure_class(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(raise_on_create=RuntimeError("timeout"))
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is False
+        assert "failure_class" not in out

@@ -1656,3 +1656,13 @@ class TestAst892FetchWebsiteSecondStrikeFilter:
         assert retry_state == "WEBSITE_FOUND_RETRY"
         assert ht_key == "homepage_text"
 
+
+class TestAst897ProviderBalanceRefusalConfig:
+    """AST-897: PROVIDER_BALANCE_REFUSAL lives in config (status + substrings)."""
+
+    def test_block_shape(self) -> None:
+        block = cfg.PROVIDER_BALANCE_REFUSAL
+        assert block["failure_class"] == "provider_balance_refusal"
+        assert 402 in block["http_status_codes"]
+        assert "insufficient balance" in block["message_substrings"]
+

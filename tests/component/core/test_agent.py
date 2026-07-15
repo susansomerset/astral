@@ -5591,3 +5591,45 @@ class TestAst862CleanParseFeedbackBlock:
             assert n == 3
         finally:
             conn.close()
+
+
+class TestAst897DoTaskBalanceDebug:
+    """AST-897: do_task debug_detail when provider result is tagged balance refusal."""
+
+    @pytest.mark.asyncio
+    async def test_debug_detail_on_balance_refusal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        from src.utils.config import PROVIDER_BALANCE_REFUSAL
+
+        fc = PROVIDER_BALANCE_REFUSAL["failure_class"]
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Insufficient Balance",
+                    "failure_class": fc,
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx=_draft_job_resume_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        assert out.get("failure_class") == fc
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any("provider_balance_refusal" in str(m) for m in detail_msgs)

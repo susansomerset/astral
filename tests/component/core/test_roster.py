@@ -5707,3 +5707,117 @@ class TestAst891ParseJobListBatch:
         assert indexes
         assert indexes[0]["func"] == "roster.parse_job_list_batch"
         assert indexes[0]["identifier"] == "acme"
+
+
+class TestAst897HoldStateOnBalanceRefusal:
+    """AST-897: provider balance refusal holds company state (no error/retry / NO_JOBLIST)."""
+
+    _FC = "provider_balance_refusal"
+
+    def test_prefilter_fail_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = ROSTER_CONFIG["prefilter"]
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(state="HOMEPAGE_READY")),
+        )
+        api_result = {
+            "success": False,
+            "error": "Insufficient Balance",
+            "failure_class": self._FC,
+        }
+        out = roster_mod._prefilter_fail(
+            "acme", cfg, {}, "Insufficient Balance", api_result=api_result
+        )
+        assert out["decision"] == "HOLD"
+        assert out["state"] == "HOMEPAGE_READY"
+        assert out["state_held"] is True
+        assert out["failure_class"] == self._FC
+        transition.assert_not_called()
+
+    def test_prefilter_fail_ordinary_api_still_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = ROSTER_CONFIG["prefilter"]
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(state="HOMEPAGE_READY")),
+        )
+        # Decode/validation failure (has api_response) stays on one-retry ladder — not a hold.
+        api_result = {"success": False, "error": "decode boom", "api_response": object()}
+        out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom", api_result=api_result)
+        assert out["decision"] == "RETRY"
+        assert out["state"] == "WEBSITE_FOUND_RETRY"
+        assert out.get("state_held") is not True
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_batch_prefilter_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Insufficient Balance",
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {"homepage_text": "hello"},
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-897", companies, debug=False)
+        assert out["passed"] == 0
+        assert out["failed"] == 0
+        assert out["total"] == 1
+        assert out.get("state_held") is True
+        assert out.get("failure_class") == self._FC
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "credit exhausted",
+                    "failure_class": self._FC,
+                }
+            ),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value=_company(state="WEBSITE_FOUND")),
+        )
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme",
+            company_website="https://cw",
+            assembled_content="asm",
+            page_url_map={1: "https://jobs"},
+            page_dom_map={1: "<motion/>"},
+            visible_map={1: ""},
+            nav_links="",
+            browser_context=MagicMock(),
+            debug=False,
+            ctx=None,
+        )
+        assert out["response_type"] == "SELECT_FAILED"
+        assert out["state"] == "WEBSITE_FOUND"
+        assert out["state_held"] is True
+        assert out["failure_class"] == self._FC
+        saver.assert_not_called()
