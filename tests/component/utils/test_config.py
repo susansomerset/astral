@@ -1681,6 +1681,13 @@ class TestAst901CraftRubricUiTaskKeys:
         assert "craft_resume_base" not in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
 
 
+class TestAst903CraftRubricMaxTokens:
+    """AST-903: CRAFT_RUBRIC_MAX_TOKENS floor for craft rubric UI generate."""
+
+    def test_craft_rubric_max_tokens_floor(self) -> None:
+        assert cfg.CRAFT_RUBRIC_MAX_TOKENS == 32000
+
+
 class TestAst898NewRetryQualifyHolding:
     """AST-898: NEW_RETRY qualify holding; retire VALID_TITLE_RETRY for new traffic."""
 
