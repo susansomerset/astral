@@ -197,4 +197,30 @@ No conflicts requiring escalation.
 
 ## Review
 
-_(stub — Radia fills after Tests Passed)_
+**Radia** · `origin/dev`…`origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate` @ `f8be916` · product through Stage 5 + Betty tests
+
+### What's solid
+
+- **Plan fidelity:** Stages 1–5 match the plan: `CRAFT_RUBRIC_UI_TASK_KEYS`, pending stash + empty-criteria → ledger `FAILED` / HTTP 500, `get_pending_craft_generation` (stash then ledger+`agent_data`), `GET …/pending`, clear pending on matching artifact Save, AST-538 `debug_index` / `debug_detail_block` gated on `debug=True`. No `ArtifactEditor` / prompt / dispatcher consult scope creep (AST-902 boundary held).
+- **§2.1:** UI task set derived from `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` — no second magic list.
+- **§3.3:** API → core helpers; recovery uses `list_dispatch_ledger` + `get_entity_response` (not data from API). Ledger fallback orders `started_at DESC` (newest first) as assumed.
+- **§1.5.1:** Success path emits Style D index + truncated criteria via `debug_detail_block`; empty-criteria path indexes `empty criteria`; INFO adds `criteria_count` without payload dump. No `[DEBUG]` info spam.
+- **Self-Assessment:** Diff footprint matches **Single-Component** / Medium risk (hot path for six craft rubrics; `craft_resume_base` untouched).
+
+### Issues
+
+**fix-now:** Nested import without B1 comment — `get_pending_craft_generation` does `from src.core.dispatcher import list_dispatch_ledger` at function scope (`src/core/candidate.py` ~886). `dispatcher` does not import `candidate`, so this is not a documented cycle break. Per §1.2 / review-child §5a B1: move the import to module top, or keep it lazy with a one-line comment stating why.
+
+**fix-now:** Silent stash skip — `_stash_pending_craft_generation` returns with no log when `get_candidate` is None (`src/core/candidate.py` ~72–74). On a multi-minute generate that is the race this ticket hardens against; success would still return HTTP 200 / ledger `COMPLETED` with no `pending_craft_generations` row and no operator signal (D2). Log at least `logger.error` (and prefer failing the craft-rubric success path if stash cannot be written).
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| Module-top (or commented) `list_dispatch_ledger` import | Ada | §1.2 B1 |
+| Log / fail when pending stash cannot write | Ada | D2 — delivery hardening must not go dark |
+| resolve-child after fixes | Ada | Leave assignee Ada |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
