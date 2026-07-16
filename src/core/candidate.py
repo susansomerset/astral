@@ -30,6 +30,7 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_STATES,
+    CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
@@ -42,6 +43,62 @@ from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 logger = get_logger(__name__)
 
 _CANDIDATE_STATE_LIST = list(CANDIDATE_STATES.keys())
+_PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
+
+
+def _ledger_task_key_for_ui_generate(task_key: str) -> str:
+    return f"user-{task_key}"
+
+
+def _is_craft_rubric_ui_task(task_key: str) -> bool:
+    return task_key in CRAFT_RUBRIC_UI_TASK_KEYS
+
+
+def _craft_rubric_criteria_count(parsed_response: Any) -> int:
+    if isinstance(parsed_response, dict):
+        return len(parsed_response.get("criteria") or [])
+    return 0
+
+
+def _stash_pending_craft_generation(
+    candidate_id: str,
+    task_key: str,
+    batch_id: Optional[str],
+    parsed_response: Any,
+) -> None:
+    """Persist successful craft rubric generate for page-return recovery (not artifact Save)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return
+    cd = candidate.get("candidate_data") or {}
+    pending = dict(cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {})
+    pending[task_key] = {
+        "batch_id": batch_id,
+        "completed_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "parsed_response": parsed_response,
+    }
+    database.save_candidate(
+        candidate_id,
+        candidate_data={_PENDING_CRAFT_GENERATIONS_KEY: pending},
+        merge=True,
+    )
+
+
+def _clear_pending_craft_generation(candidate_id: str, task_key: str) -> None:
+    """Drop one task_key from pending_craft_generations (RMW — deep_merge cannot delete keys)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return
+    cd = dict(candidate.get("candidate_data") or {})
+    pending = dict(cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {})
+    if task_key not in pending:
+        return
+    pending.pop(task_key, None)
+    if pending:
+        cd[_PENDING_CRAFT_GENERATIONS_KEY] = pending
+    else:
+        cd.pop(_PENDING_CRAFT_GENERATIONS_KEY, None)
+    database.save_candidate(candidate_id, candidate_data=cd, merge=False)
 
 
 def _normalize_importance_value(raw: Any, ci: dict) -> int:
@@ -811,7 +868,7 @@ def run_candidate_artifact_generation(
     skip_outer_ledger = bool(_current_agent_task_run_next(task_key))
     batch_id: Optional[str] = None
     if not skip_outer_ledger:
-        ledger_task_key = f"user-{task_key}"
+        ledger_task_key = _ledger_task_key_for_ui_generate(task_key)
         batch_id = f"{ledger_task_key}-{uuid.uuid4()}"
         started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         database.save_dispatch_ledger(
@@ -892,6 +949,39 @@ def run_candidate_artifact_generation(
                 500,
             )
 
+        parsed_response = result.get("parsed_response")
+        # Craft rubric: reject empty criteria; stash pending before ledger COMPLETED.
+        if _is_craft_rubric_ui_task(task_key):
+            criteria_count = _craft_rubric_criteria_count(parsed_response)
+            if criteria_count == 0:
+                logger.error(
+                    "craft rubric generate returned empty criteria task_key=%r batch_id=%s",
+                    task_key,
+                    response_batch_id,
+                )
+                if batch_id:
+                    total_cost = compute_batch_cost(batch_id)
+                    database.update_dispatch_ledger(
+                        batch_id,
+                        status="FAILED",
+                        completed_at=completed_at,
+                        total_processed=1,
+                        total_passed=0,
+                        total_failed=1,
+                        total_cost=total_cost,
+                    )
+                return (
+                    {
+                        "success": False,
+                        "error": "Generation returned no criteria",
+                        "batch_id": response_batch_id,
+                    },
+                    500,
+                )
+            _stash_pending_craft_generation(
+                candidate_id, task_key, response_batch_id, parsed_response
+            )
+
         if batch_id:
             total_cost = compute_batch_cost(batch_id)
             database.update_dispatch_ledger(
@@ -909,7 +999,6 @@ def run_candidate_artifact_generation(
                 batch_id,
                 total_cost,
             )
-        parsed_response = result.get("parsed_response")
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
             database.save_candidate(
@@ -920,7 +1009,7 @@ def run_candidate_artifact_generation(
         return (
             {
                 "success": True,
-                "parsed_response": result.get("parsed_response"),
+                "parsed_response": parsed_response,
                 "timesheet": result.get("timesheet", {}),
                 "batch_id": response_batch_id,
             },
