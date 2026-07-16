@@ -26,6 +26,7 @@ from src.core.agent import (
     preview_prompt,
     simulated_chain_context_for_preview,
 )
+from src.core import dispatcher as _dispatcher
 from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
@@ -66,11 +67,22 @@ def _stash_pending_craft_generation(
     task_key: str,
     batch_id: Optional[str],
     parsed_response: Any,
-) -> None:
-    """Persist successful craft rubric generate for page-return recovery (not artifact Save)."""
+) -> bool:
+    """Persist successful craft rubric generate for page-return recovery (not artifact Save).
+
+    Returns True when the pending stash was written; False if the candidate is gone
+    or save fails (caller must not return HTTP 200 / COMPLETED without a stash).
+    """
     candidate = database.get_candidate(candidate_id)
     if not candidate:
-        return
+        logger.error(
+            "pending craft stash skipped — candidate missing candidate_id=%s "
+            "task_key=%r batch_id=%s",
+            candidate_id,
+            task_key,
+            batch_id,
+        )
+        return False
     cd = candidate.get("candidate_data") or {}
     pending = dict(cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {})
     pending[task_key] = {
@@ -78,11 +90,23 @@ def _stash_pending_craft_generation(
         "completed_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "parsed_response": parsed_response,
     }
-    database.save_candidate(
-        candidate_id,
-        candidate_data={_PENDING_CRAFT_GENERATIONS_KEY: pending},
-        merge=True,
-    )
+    try:
+        database.save_candidate(
+            candidate_id,
+            candidate_data={_PENDING_CRAFT_GENERATIONS_KEY: pending},
+            merge=True,
+        )
+    except Exception as e:
+        logger.error(
+            "pending craft stash save failed candidate_id=%s task_key=%r "
+            "batch_id=%s error=%s",
+            candidate_id,
+            task_key,
+            batch_id,
+            e,
+        )
+        return False
+    return True
 
 
 def _clear_pending_craft_generation(candidate_id: str, task_key: str) -> None:
@@ -883,9 +907,8 @@ def get_pending_craft_generation(
             )
 
     # Fallback: newest COMPLETED user-{task_key} ledger + agent_data RESPONSE
-    from src.core.dispatcher import list_dispatch_ledger
-
-    rows = list_dispatch_ledger(
+    # Attribute lookup (not bound import) so monkeypatches on dispatcher.list_dispatch_ledger apply.
+    rows = _dispatcher.list_dispatch_ledger(
         task_key=_ledger_task_key_for_ui_generate(task_key),
         candidate_id=candidate_id,
         status="COMPLETED",
@@ -1051,9 +1074,28 @@ def run_candidate_artifact_generation(
                     },
                     500,
                 )
-            _stash_pending_craft_generation(
+            if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
-            )
+            ):
+                if batch_id:
+                    total_cost = compute_batch_cost(batch_id)
+                    database.update_dispatch_ledger(
+                        batch_id,
+                        status="FAILED",
+                        completed_at=completed_at,
+                        total_processed=1,
+                        total_passed=0,
+                        total_failed=1,
+                        total_cost=total_cost,
+                    )
+                return (
+                    {
+                        "success": False,
+                        "error": "Generation completed but could not stash for recovery",
+                        "batch_id": response_batch_id,
+                    },
+                    500,
+                )
             if debug:
                 logger.debug_index(
                     func="run_candidate_artifact_generation",

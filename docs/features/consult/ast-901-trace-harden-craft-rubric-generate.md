@@ -223,4 +223,11 @@ No conflicts requiring escalation.
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-16** — Radia fix-now addressed (`resolve(AST-901)`).
+
+| Finding | Change |
+|---------|--------|
+| Nested `list_dispatch_ledger` import | Moved to module top in `src/core/candidate.py` (no cycle; dispatcher does not import candidate). |
+| Silent stash skip | `_stash_pending_craft_generation` returns `bool`; logs `logger.error` when candidate missing or save fails; craft-rubric success path returns HTTP 500 + ledger `FAILED` if stash cannot write (no COMPLETED without recovery record). |
+
+No test-tree changes. Re-ran Betty AST-901 manifest after product fix.
