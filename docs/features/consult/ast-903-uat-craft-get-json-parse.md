@@ -132,7 +132,34 @@ No product edit in this stage if verification shows the existing path already fo
 
 ## Review
 
-_(stub — Radia fills after Tests Passed)_
+**Radia** · `origin/dev`…`origin/sub/AST-900/AST-903-uat-craft-get-json-parse` @ `a3d971c` · product `6868d6f` + `721e1bf` + `96b2200` (Stage 4 no-op verified)
+
+### What's solid
+
+- **Plan fidelity:** Stages 1–3 match. `CRAFT_RUBRIC_MAX_TOKENS = 32000` after `CRAFT_RUBRIC_UI_TASK_KEYS`; `do_task` floors with `max(agent_max_tokens, CRAFT_RUBRIC_MAX_TOKENS)` only for craft-rubric UI keys; both providers hard-fail JSON when `stop_reason == "max_tokens"` **before** heal/parse, return `failure_class: "max_tokens"` + the planned error string, record timesheet failure. Stage 4 no-op confirmed: `run_candidate_artifact_generation` already forwards `result["error"]` and marks ledger `FAILED`.
+- **§2.1 / §2.2:** Token floor is config; core raises the budget; external owns stop_reason I/O gate.
+- **§5g external cleanliness:** No cross-external imports; each module emits with its own logger / provider label (`anthropic` / `deepseek`). Duplicated gate is plan-mandated mirror of the existing parse-failure return shape (not a shared helper smuggled across providers).
+- **D2 timesheet:** `except Exception: pass` around `record_timesheet` on the truncation path matches the pre-existing parse_err branch — justified by plan Stage 3 (“same pattern”).
+- **Boundaries:** No ArtifactEditor / prompt / schema / `grade_*` scope creep. Text `max_tokens` still succeeds (tests cover).
+- **Self-Assessment:** Diff footprint matches **Single-Component** / high conf; Medium risk (cost + fail-closed) is intentional.
+
+### Issues
+
+None (no fix-now / discuss).
+
+### Advisory (not fix-now)
+
+- Truncation path calls `log_llm_batch_summary` twice (success-with-response earlier in the function, then error) — same as the existing parse_err path; operators may see a success duration line before the truncation error. Pre-existing shape; no change required for this ticket.
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
 
 ---
 
