@@ -17,3 +17,11 @@ Manifest (narrow **`AST-493`** + **`AST-494`**; includes **`AST-492`** **`do_tas
   tests/component/data/database/test_timesheets.py \
   tests/component/core/test_timesheets.py
 ```
+
+### AST-903 · AST-900 (UAT fix)
+
+JSON **`stop_reason == max_tokens`** hard-fail (no heal). Primary manifest: **`docs/test-bible/core/agent.md`** § AST-903.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail-closed truncation | `src/external/deepseek.py` | **`TestAst903JsonMaxTokensHardFail`** |

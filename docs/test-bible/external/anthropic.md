@@ -30,6 +30,14 @@ Equivalent harness:
 ./scripts/testing/run_component_tests.sh tests/component/external/test_anthropic.py
 ```
 
+### AST-903 · AST-900 (UAT fix)
+
+JSON **`stop_reason == max_tokens`** hard-fail (no heal). Primary manifest: **`docs/test-bible/core/agent.md`** § AST-903.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail-closed truncation | `src/external/anthropic.py` | **`TestAst903JsonMaxTokensHardFail`** |
+
 **Manifest focus (existing coverage — no new tests):**
 
 | Touched path | Existing tests |
