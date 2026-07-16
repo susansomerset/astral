@@ -22,6 +22,7 @@ from src.core.agent import (
     _current_agent_task_run_next,
     compute_batch_cost,
     do_task,
+    get_entity_response,
     preview_prompt,
     simulated_chain_context_for_preview,
 )
@@ -852,6 +853,68 @@ def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
 
 def clear_candidate_api_key(candidate_id: str) -> None:
     database.clear_candidate_api_key(candidate_id)
+
+
+def get_pending_craft_generation(
+    candidate_id: str,
+    task_key: str,
+) -> Tuple[Dict[str, Any], int]:
+    """Recover last successful craft_*_rubric generate: pending stash, else ledger+agent_data."""
+    if not _is_craft_rubric_ui_task(task_key):
+        return ({"error": "Not a craft rubric task"}, 400)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return ({"error": f"Candidate not found: {candidate_id}"}, 404)
+
+    cd = candidate.get("candidate_data") or {}
+    pending = (cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {}).get(task_key)
+    if isinstance(pending, dict):
+        parsed = pending.get("parsed_response")
+        if _craft_rubric_criteria_count(parsed) > 0:
+            return (
+                {
+                    "success": True,
+                    "parsed_response": parsed,
+                    "batch_id": pending.get("batch_id"),
+                    "recovered": True,
+                    "source": "pending_stash",
+                },
+                200,
+            )
+
+    # Fallback: newest COMPLETED user-{task_key} ledger + agent_data RESPONSE
+    from src.core.dispatcher import list_dispatch_ledger
+
+    rows = list_dispatch_ledger(
+        task_key=_ledger_task_key_for_ui_generate(task_key),
+        candidate_id=candidate_id,
+        status="COMPLETED",
+    )
+    if not rows:
+        return ({"error": "No recoverable generation"}, 404)
+    batch_id = rows[0].get("batch_id")
+    if not batch_id:
+        return ({"error": "No recoverable generation"}, 404)
+    resp_row = get_entity_response(batch_id, candidate_id)
+    if not resp_row:
+        return ({"error": "No recoverable generation"}, 404)
+    block = resp_row.get("block_data") or ""
+    try:
+        parsed = json.loads(block) if isinstance(block, str) else block
+    except (json.JSONDecodeError, TypeError):
+        return ({"error": "No recoverable generation"}, 404)
+    if _craft_rubric_criteria_count(parsed) == 0:
+        return ({"error": "No recoverable generation"}, 404)
+    return (
+        {
+            "success": True,
+            "parsed_response": parsed,
+            "batch_id": batch_id,
+            "recovered": True,
+            "source": "ledger_agent_data",
+        },
+        200,
+    )
 
 
 def run_candidate_artifact_generation(
