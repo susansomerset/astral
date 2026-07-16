@@ -182,3 +182,19 @@ End-to-end path for UI rubric Generate:
 | §1.5.1 debug | AST-538 helpers only when `debug=True`; truncated payloads. |
 
 No conflicts requiring escalation.
+
+---
+
+## Build
+
+- **Publish tip:** `origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate` @ `172ce988c57ebeeaeb58579fd95de36d8580ec10`
+- Stage 1: `8b2d64c` — `CRAFT_RUBRIC_UI_TASK_KEYS` frozenset
+- Stage 2: `ed23088` — pending stash + empty-criteria guard
+- Stage 3: `b561ce6` — `get_pending_craft_generation` (stash / ledger fallback)
+- Stage 4: `5b97833` — `GET …/generate/<task_key>/pending` + clear on Save
+- Stage 5: `172ce98` — AST-538 debug on generate path
+- Stage 6: root-cause Linear comment (plan-child / plan comment — no code)
+
+## Review
+
+_(stub — Radia fills after Tests Passed)_
