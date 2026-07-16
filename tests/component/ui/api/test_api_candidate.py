@@ -538,6 +538,8 @@ class TestAst901PendingCraftGenerationApi:
     def test_put_artifact_clears_matching_pending(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # AST-904: apply_rubric_vectors_save deletes artifact keys — clear must use
+        # keys captured before apply, not `if key in arts` after del.
         cleared: list[tuple[str, str]] = []
         monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
         monkeypatch.setattr(
@@ -547,7 +549,11 @@ class TestAst901PendingCraftGenerationApi:
         )
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
-        monkeypatch.setattr(candidate_mod, "apply_rubric_vectors_save", MagicMock())
+
+        def _apply_del(_cid: str, arts: dict) -> None:
+            arts.pop("get_rubric", None)
+
+        monkeypatch.setattr(candidate_mod, "apply_rubric_vectors_save", _apply_del)
         monkeypatch.setattr(
             candidate_mod,
             "_clear_pending_craft_generation",
@@ -561,3 +567,47 @@ class TestAst901PendingCraftGenerationApi:
         )
         assert resp.status_code == 200
         assert ("karfo", "craft_get_rubric") in cleared
+
+
+class TestAst904SavePendingRecovery:
+    """AST-904: failed Save re-stashes criteria; clear pending only after success."""
+
+    def test_put_save_failure_restashes_pending(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        stashed: list[tuple] = []
+        cleared: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "normalize_rubric_artifacts_on_save",
+            MagicMock(side_effect=ValueError("criterion content invalid")),
+        )
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_rubric_vectors_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "_stash_pending_craft_generation",
+            lambda cid, task_key, batch_id, parsed: stashed.append(
+                (cid, task_key, batch_id, parsed)
+            ),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "_clear_pending_craft_generation",
+            lambda cid, task_key: cleared.append((cid, task_key)),
+        )
+        criteria = [{"code": "GT", "label": "get", "content": "A == match", "importance": 5}]
+        resp = candidate_client.put(
+            "/api/candidates/karfo/data",
+            json={"artifacts": {"get_rubric": criteria}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "criterion content invalid"
+        assert cleared == []
+        assert len(stashed) == 1
+        assert stashed[0][0] == "karfo"
+        assert stashed[0][1] == "craft_get_rubric"
+        assert stashed[0][2] is None
+        assert stashed[0][3] == {"criteria": criteria}
