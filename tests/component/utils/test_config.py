@@ -1671,6 +1671,16 @@ class TestAst897ProviderBalanceRefusalConfig:
         assert "insufficient balance" in block["message_substrings"]
 
 
+class TestAst901CraftRubricUiTaskKeys:
+    """AST-901: CRAFT_RUBRIC_UI_TASK_KEYS derived from artifact-key map (no drift)."""
+
+    def test_ui_task_keys_match_artifact_map(self) -> None:
+        assert cfg.CRAFT_RUBRIC_UI_TASK_KEYS == frozenset(cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.keys())
+        assert "craft_get_rubric" in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
+        assert len(cfg.CRAFT_RUBRIC_UI_TASK_KEYS) == 6
+        assert "craft_resume_base" not in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
+
+
 class TestAst898NewRetryQualifyHolding:
     """AST-898: NEW_RETRY qualify holding; retire VALID_TITLE_RETRY for new traffic."""
 
