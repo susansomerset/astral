@@ -321,6 +321,31 @@ async def send_to_anthropic(
                 "outputtotal": output_total, "cache_creation_tokens": cache_creation_tokens,
             }
 
+            # JSON cut mid-string when output hits max_tokens — fail closed, do not heal (AST-903).
+            stop_reason = getattr(response, "stop_reason", None)
+            if response_format == "json" and stop_reason == "max_tokens":
+                trunc_err = "Generation truncated (max_tokens) before complete JSON"
+                log_llm_batch_summary(
+                    logger, "anthropic", prompt_label, duration, error=trunc_err
+                )
+                if _timesheet_kwargs is not None and record_timesheet is not None:
+                    try:
+                        record_timesheet(
+                            **_timesheet_kwargs,
+                            agent_performance="failure",
+                            failure_note=trunc_err,
+                        )
+                    except Exception:  # pragma: no cover
+                        pass
+                return {
+                    "success": False,
+                    "api_response": response,
+                    "parsed_response": None,
+                    "timesheet": timesheet,
+                    "error": trunc_err,
+                    "failure_class": "max_tokens",
+                }
+
             parsed_response = None
             if response_format:
                 if response_format not in ("text", "json", "python"):
