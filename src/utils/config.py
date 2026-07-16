@@ -1059,6 +1059,9 @@ CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY: Dict[str, str] = {
     "craft_like_rubric": "like_rubric",
 }
 CRAFT_RUBRIC_UI_TASK_KEYS: frozenset[str] = frozenset(CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.keys())
+# Output budget floor for craft_*_rubric UI generate (long per-criterion content).
+# Applied in do_task when the agent/model default is lower (AST-903).
+CRAFT_RUBRIC_MAX_TOKENS = 32000
 _RUBRIC_OWNER_TASK_BY_CONSUMER_TASK_KEY = frozenset(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values())
 
 
