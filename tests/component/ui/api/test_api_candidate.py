@@ -501,3 +501,63 @@ class TestAst723RubricVectorsApi:
         assert resp.status_code == 200
         arts = resp.get_json()["candidate_data"]["artifacts"]
         assert arts["joblist_rubric"][0]["code"] == "CR"
+
+
+class TestAst901PendingCraftGenerationApi:
+    """AST-901: GET …/generate/<task_key>/pending + clear pending on artifact Save."""
+
+    def test_get_pending_delegates_to_core(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_pending_craft_generation",
+            MagicMock(
+                return_value=(
+                    {
+                        "success": True,
+                        "parsed_response": {"criteria": [{"code": "GT"}]},
+                        "batch_id": "user-craft_get_rubric-x",
+                        "recovered": True,
+                        "source": "pending_stash",
+                    },
+                    200,
+                )
+            ),
+        )
+        resp = candidate_client.get(
+            "/api/candidates/karfo/generate/craft_get_rubric/pending",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["recovered"] is True
+        assert body["source"] == "pending_stash"
+        candidate_mod.get_pending_craft_generation.assert_called_once_with("karfo", "craft_get_rubric")
+
+    def test_put_artifact_clears_matching_pending(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        cleared: list[tuple[str, str]] = []
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_rubric_vectors_save", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "_clear_pending_craft_generation",
+            lambda cid, task_key: cleared.append((cid, task_key)),
+        )
+        criteria = [{"code": "GT", "label": "get", "content": "line", "importance": 5}]
+        resp = candidate_client.put(
+            "/api/candidates/karfo/data",
+            json={"artifacts": {"get_rubric": criteria}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert ("karfo", "craft_get_rubric") in cleared

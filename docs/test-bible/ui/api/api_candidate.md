@@ -23,3 +23,11 @@ PUT **`/api/candidates/:id/data`** with **`artifacts.company_search_terms`** syn
 | Area | Source | Component tests |
 | --- | --- | --- |
 | PUT table sync, no blob persist | `src/ui/api/api_candidate.py` | **`TestCandidateRoutes::test_put_company_search_terms_populates_table_without_persisting_blob`** |
+
+### AST-901 · AST-900
+
+**`GET /api/candidates/:id/generate/<task_key>/pending`** recovers completed craft rubric generate; PUT **`artifacts.<rubric_key>`** clears **`pending_craft_generations`** for the matching craft task. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-901.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pending GET + clear on Save | `src/ui/api/api_candidate.py` | **`TestAst901PendingCraftGenerationApi`** |

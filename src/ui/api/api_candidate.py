@@ -8,6 +8,7 @@ from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
 from src.core.candidate import (
+    _clear_pending_craft_generation,
     apply_company_search_terms_save,
     apply_rubric_vectors_save,
     clear_candidate_api_key,
@@ -17,6 +18,7 @@ from src.core.candidate import (
     enabled_resume_structure_sections,
     filter_base_resume_to_structure,
     get_candidate,
+    get_pending_craft_generation,
     hydrate_rubric_artifacts_for_response,
     initiate_candidate,
     list_candidates as core_list_candidates,
@@ -27,7 +29,12 @@ from src.core.candidate import (
     save_candidate_admin,
     save_candidate_data,
 )
-from src.utils.config import CANDIDATE_STATES, TASK_CONFIG, UI_CONFIG
+from src.utils.config import (
+    CANDIDATE_STATES,
+    CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+    TASK_CONFIG,
+    UI_CONFIG,
+)
 from src.utils.deploy_status import ui_llm_debug
 
 candidate_bp = Blueprint("candidate", __name__, url_prefix="/api/candidates")
@@ -192,6 +199,10 @@ def update_candidate_data(candidate_id):
                 else:
                     normalize_rubric_artifacts_on_save(arts)
                     apply_rubric_vectors_save(candidate_id, arts)
+                    # Clear pending generate stash when user Saves the matching artifact
+                    for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
+                        if artifact_key in arts:
+                            _clear_pending_craft_generation(candidate_id, craft_task_key)
             prof = body.get("profile")
             if isinstance(prof, dict) and "cover_letter_signature_image" in prof:
                 _validate_cover_letter_signature_image(prof.get("cover_letter_signature_image"))
@@ -264,4 +275,12 @@ def generate_artifact(candidate_id, task_key):
     body, status = run_candidate_artifact_generation(
         candidate_id, task_key, live, debug=ui_llm_debug()
     )
+    return jsonify(body), status
+
+
+@candidate_bp.route("/<candidate_id>/generate/<task_key>/pending", methods=["GET"])
+@require_auth
+def get_pending_artifact_generation(candidate_id, task_key):
+    """Recover a completed craft_*_rubric generate the browser missed (AST-901)."""
+    body, status = get_pending_craft_generation(candidate_id, task_key)
     return jsonify(body), status
