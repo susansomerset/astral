@@ -125,3 +125,14 @@
 | §1.5.1 debug | No backend debug work (AST-901). |
 
 No conflicts requiring escalation.
+
+---
+
+## Review
+
+**Branch:** `origin/sub/AST-900/AST-902-artifact-editor-recover-rubric`  
+**Commits:**
+- `9433216` — `code(AST-902): criteria mapper and empty-criteria guard on Generate`
+- `3bdef84` — `code(AST-902): pending recovery and unmount-safe Generate`
+
+*(PR URL TBD at parent PR Ready)*
