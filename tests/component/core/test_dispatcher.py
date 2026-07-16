@@ -448,7 +448,8 @@ class TestRunUnified:
             "batch_size": 10,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert claim.call_args.kwargs["states"] == ["NEW"]
+        # AST-898: NEW.retry_state → NEW_RETRY companions on primary qualify row
+        assert claim.call_args.kwargs["states"] == ["NEW", "NEW_RETRY"]
 
     @pytest.mark.asyncio
     async def test_ast641_retry_only_job_trigger_single_claim_state(

@@ -38,6 +38,7 @@ from src.utils.config import (
 )
 from src.utils.formatting import enumerate_array
 from src.utils.logging import get_logger
+from src.utils.llm_external import is_provider_balance_refusal
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,7 @@ _INPUT_STATE_TO_TASK = {
     "NEW":                "qualify_job_listings",
     "VALID_TITLE":        "qualify_job_listings",
     "VALID_TITLE_RETRY":  "qualify_job_listings",
+    "NEW_RETRY":          "qualify_job_listings",
     "PASSED_JOBLIST":     "fetch_jd",
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
@@ -737,6 +739,8 @@ async def _run_analysis_upshot_batch(
     debug: bool,
 ) -> Dict[str, int]:
     """AST-480: synthesis at PASSED_LIKE (score_floor dispatch); persist job_data.analysis_upshot → RECOMMENDED."""
+    if debug:
+        logger.set_debug_flag(True)
     task_cfg = TASK_CONFIG["analysis_upshot"]
     processed = passed = failed = errors = 0
     base_ctx = dict(ctx or {})
@@ -771,6 +775,21 @@ async def _run_analysis_upshot_batch(
             debug=debug,
         )
         if not result.get("success"):
+            if is_provider_balance_refusal(result):
+                if debug:
+                    logger.debug_index(
+                        func="consult._run_analysis_upshot_batch",
+                        index=processed,
+                        total=len(entities),
+                        identifier=aid,
+                        outcome="provider_balance_refusal — state held",
+                    )
+                    logger.debug_detail(
+                        f"failure_class={result.get('failure_class')!r} error={result.get('error')!r} "
+                        f"current_state={row.get('state')!r}"
+                    )
+                errors += 1
+                continue
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task("analysis_upshot", [aid], dest)
@@ -909,6 +928,27 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     result = await do_task(task_key=agent_task, live_content=live_content, index=astral_job_id, ctx=task_ctx, debug=debug)
 
     if not result.get("success"):
+        if is_provider_balance_refusal(result):
+            current_state = (job.get("state") or (tracker.get_job(astral_job_id) or {}).get("state"))
+            if debug:
+                logger.debug_index(
+                    func="consult.render_verdict",
+                    index=1,
+                    total=1,
+                    identifier=astral_job_id,
+                    outcome="provider_balance_refusal — state held",
+                )
+                logger.debug_detail(
+                    f"failure_class={result.get('failure_class')!r} error={result.get('error')!r} "
+                    f"current_state={current_state!r}"
+                )
+            return {
+                "success": False,
+                "to_state": current_state,
+                "error": result.get("error"),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+            }
         return _fail(result.get("error", "do_task failed"))
 
     parsed = result["parsed_response"]
@@ -1042,7 +1082,28 @@ async def _run_batch_consult(
     result = await do_task(task_key=task_key, live_content=live_content, index=do_index, ctx=task_ctx, debug=debug)
 
     if not result.get("success"):
-        # Envelope failure — whole batch to error_state
+        # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
+        if is_provider_balance_refusal(result):
+            if debug:
+                logger.debug_index(
+                    func=f"consult._run_batch_consult({task_key})",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome="provider_balance_refusal — batch state held",
+                )
+                logger.debug_detail(
+                    f"error={result.get('error')!r} failure_class={result.get('failure_class')!r}"
+                )
+            return {
+                "success": False,
+                "error": result.get("error"),
+                "passed": 0,
+                "failed": 0,
+                "total": len(jobs),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+            }
         if debug:
             logger.debug_index(
                 func=f"consult._run_batch_consult({task_key})",
@@ -1178,6 +1239,18 @@ async def _run_batch_consult(
     error_ids = list(bad_grades)
     if error_ids:
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
+        if debug and bad_rows:
+            for bi, row in enumerate(bad_rows, start=1):
+                logger.debug_index(
+                    func=f"consult._run_batch_consult({task_key})",
+                    index=bi,
+                    total=len(bad_rows),
+                    identifier=_consult_job_identifier(row),
+                    outcome=f"bad_grades -> {_consult_batch_fail_dest(row.get('state'), error_state)}",
+                )
+                logger.debug_detail(
+                    f"astral_job_id={row.get('astral_job_id')!r} from_state={row.get('state')!r}"
+                )
         _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
     errors = []
@@ -1249,7 +1322,7 @@ async def qualify_job_listings(
                     j["state"] = fresh.get("state")
     ai_jobs = [
         j for j in jobs
-        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY")
+        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY")
     ]
     if not ai_jobs:
         return {
@@ -1327,7 +1400,17 @@ async def qualify_job_listings(
         if len(raw_title) < min_len:
             dest = _consult_batch_fail_dest(input_job.get("state"), cfg.get("error_state"))
             if debug:
-                logger.debug_detail(f"title too short: {repr(raw_title)} min_len={min_len}")
+                logger.debug_index(
+                    func="consult.qualify_job_listings",
+                    index=1,
+                    total=1,
+                    identifier=_consult_job_identifier(input_job),
+                    outcome=f"title too short -> {dest}",
+                )
+                logger.debug_detail(
+                    f"from_state={input_job.get('state')!r} "
+                    f"title too short: {repr(raw_title)} min_len={min_len}"
+                )
             logger.warning(f"  {aid} -> {dest} [title too short: {repr(raw_title)}]")
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest, score)

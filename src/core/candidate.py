@@ -22,14 +22,17 @@ from src.core.agent import (
     _current_agent_task_run_next,
     compute_batch_cost,
     do_task,
+    get_entity_response,
     preview_prompt,
     simulated_chain_context_for_preview,
 )
+from src.core import dispatcher as _dispatcher
 from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_STATES,
+    CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
@@ -42,6 +45,85 @@ from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 logger = get_logger(__name__)
 
 _CANDIDATE_STATE_LIST = list(CANDIDATE_STATES.keys())
+_PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
+
+
+def _ledger_task_key_for_ui_generate(task_key: str) -> str:
+    return f"user-{task_key}"
+
+
+def _is_craft_rubric_ui_task(task_key: str) -> bool:
+    return task_key in CRAFT_RUBRIC_UI_TASK_KEYS
+
+
+def _craft_rubric_criteria_count(parsed_response: Any) -> int:
+    if isinstance(parsed_response, dict):
+        return len(parsed_response.get("criteria") or [])
+    return 0
+
+
+def _stash_pending_craft_generation(
+    candidate_id: str,
+    task_key: str,
+    batch_id: Optional[str],
+    parsed_response: Any,
+) -> bool:
+    """Persist successful craft rubric generate for page-return recovery (not artifact Save).
+
+    Returns True when the pending stash was written; False if the candidate is gone
+    or save fails (caller must not return HTTP 200 / COMPLETED without a stash).
+    """
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        logger.error(
+            "pending craft stash skipped — candidate missing candidate_id=%s "
+            "task_key=%r batch_id=%s",
+            candidate_id,
+            task_key,
+            batch_id,
+        )
+        return False
+    cd = candidate.get("candidate_data") or {}
+    pending = dict(cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {})
+    pending[task_key] = {
+        "batch_id": batch_id,
+        "completed_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "parsed_response": parsed_response,
+    }
+    try:
+        database.save_candidate(
+            candidate_id,
+            candidate_data={_PENDING_CRAFT_GENERATIONS_KEY: pending},
+            merge=True,
+        )
+    except Exception as e:
+        logger.error(
+            "pending craft stash save failed candidate_id=%s task_key=%r "
+            "batch_id=%s error=%s",
+            candidate_id,
+            task_key,
+            batch_id,
+            e,
+        )
+        return False
+    return True
+
+
+def _clear_pending_craft_generation(candidate_id: str, task_key: str) -> None:
+    """Drop one task_key from pending_craft_generations (RMW — deep_merge cannot delete keys)."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return
+    cd = dict(candidate.get("candidate_data") or {})
+    pending = dict(cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {})
+    if task_key not in pending:
+        return
+    pending.pop(task_key, None)
+    if pending:
+        cd[_PENDING_CRAFT_GENERATIONS_KEY] = pending
+    else:
+        cd.pop(_PENDING_CRAFT_GENERATIONS_KEY, None)
+    database.save_candidate(candidate_id, candidate_data=cd, merge=False)
 
 
 def _normalize_importance_value(raw: Any, ci: dict) -> int:
@@ -797,6 +879,67 @@ def clear_candidate_api_key(candidate_id: str) -> None:
     database.clear_candidate_api_key(candidate_id)
 
 
+def get_pending_craft_generation(
+    candidate_id: str,
+    task_key: str,
+) -> Tuple[Dict[str, Any], int]:
+    """Recover last successful craft_*_rubric generate: pending stash, else ledger+agent_data."""
+    if not _is_craft_rubric_ui_task(task_key):
+        return ({"error": "Not a craft rubric task"}, 400)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return ({"error": f"Candidate not found: {candidate_id}"}, 404)
+
+    cd = candidate.get("candidate_data") or {}
+    pending = (cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {}).get(task_key)
+    if isinstance(pending, dict):
+        parsed = pending.get("parsed_response")
+        if _craft_rubric_criteria_count(parsed) > 0:
+            return (
+                {
+                    "success": True,
+                    "parsed_response": parsed,
+                    "batch_id": pending.get("batch_id"),
+                    "recovered": True,
+                    "source": "pending_stash",
+                },
+                200,
+            )
+
+    # Fallback: newest COMPLETED user-{task_key} ledger + agent_data RESPONSE
+    # Attribute lookup (not bound import) so monkeypatches on dispatcher.list_dispatch_ledger apply.
+    rows = _dispatcher.list_dispatch_ledger(
+        task_key=_ledger_task_key_for_ui_generate(task_key),
+        candidate_id=candidate_id,
+        status="COMPLETED",
+    )
+    if not rows:
+        return ({"error": "No recoverable generation"}, 404)
+    batch_id = rows[0].get("batch_id")
+    if not batch_id:
+        return ({"error": "No recoverable generation"}, 404)
+    resp_row = get_entity_response(batch_id, candidate_id)
+    if not resp_row:
+        return ({"error": "No recoverable generation"}, 404)
+    block = resp_row.get("block_data") or ""
+    try:
+        parsed = json.loads(block) if isinstance(block, str) else block
+    except (json.JSONDecodeError, TypeError):
+        return ({"error": "No recoverable generation"}, 404)
+    if _craft_rubric_criteria_count(parsed) == 0:
+        return ({"error": "No recoverable generation"}, 404)
+    return (
+        {
+            "success": True,
+            "parsed_response": parsed,
+            "batch_id": batch_id,
+            "recovered": True,
+            "source": "ledger_agent_data",
+        },
+        200,
+    )
+
+
 def run_candidate_artifact_generation(
     candidate_id: str,
     task_key: str,
@@ -804,6 +947,7 @@ def run_candidate_artifact_generation(
     debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
+    logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)
@@ -811,7 +955,7 @@ def run_candidate_artifact_generation(
     skip_outer_ledger = bool(_current_agent_task_run_next(task_key))
     batch_id: Optional[str] = None
     if not skip_outer_ledger:
-        ledger_task_key = f"user-{task_key}"
+        ledger_task_key = _ledger_task_key_for_ui_generate(task_key)
         batch_id = f"{ledger_task_key}-{uuid.uuid4()}"
         started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         database.save_dispatch_ledger(
@@ -892,6 +1036,76 @@ def run_candidate_artifact_generation(
                 500,
             )
 
+        parsed_response = result.get("parsed_response")
+        # Craft rubric: reject empty criteria; stash pending before ledger COMPLETED.
+        criteria_count: Optional[int] = None
+        if _is_craft_rubric_ui_task(task_key):
+            criteria_count = _craft_rubric_criteria_count(parsed_response)
+            if criteria_count == 0:
+                if debug:
+                    logger.debug_index(
+                        func="run_candidate_artifact_generation",
+                        index=1,
+                        total=1,
+                        identifier=task_key,
+                        outcome="empty criteria",
+                    )
+                logger.error(
+                    "craft rubric generate returned empty criteria task_key=%r batch_id=%s",
+                    task_key,
+                    response_batch_id,
+                )
+                if batch_id:
+                    total_cost = compute_batch_cost(batch_id)
+                    database.update_dispatch_ledger(
+                        batch_id,
+                        status="FAILED",
+                        completed_at=completed_at,
+                        total_processed=1,
+                        total_passed=0,
+                        total_failed=1,
+                        total_cost=total_cost,
+                    )
+                return (
+                    {
+                        "success": False,
+                        "error": "Generation returned no criteria",
+                        "batch_id": response_batch_id,
+                    },
+                    500,
+                )
+            if not _stash_pending_craft_generation(
+                candidate_id, task_key, response_batch_id, parsed_response
+            ):
+                if batch_id:
+                    total_cost = compute_batch_cost(batch_id)
+                    database.update_dispatch_ledger(
+                        batch_id,
+                        status="FAILED",
+                        completed_at=completed_at,
+                        total_processed=1,
+                        total_passed=0,
+                        total_failed=1,
+                        total_cost=total_cost,
+                    )
+                return (
+                    {
+                        "success": False,
+                        "error": "Generation completed but could not stash for recovery",
+                        "batch_id": response_batch_id,
+                    },
+                    500,
+                )
+            if debug:
+                logger.debug_index(
+                    func="run_candidate_artifact_generation",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome=f"criteria_count={criteria_count}",
+                )
+                logger.debug_detail_block(json.dumps(parsed_response))
+
         if batch_id:
             total_cost = compute_batch_cost(batch_id)
             database.update_dispatch_ledger(
@@ -903,13 +1117,22 @@ def run_candidate_artifact_generation(
                 total_failed=0,
                 total_cost=total_cost,
             )
-            logger.info(
-                "UI generate completed task_key=%r batch_id=%s status=COMPLETED cost=%s",
-                task_key,
-                batch_id,
-                total_cost,
-            )
-        parsed_response = result.get("parsed_response")
+            if criteria_count is not None:
+                logger.info(
+                    "UI generate completed task_key=%r batch_id=%s status=COMPLETED "
+                    "cost=%s criteria_count=%s",
+                    task_key,
+                    batch_id,
+                    total_cost,
+                    criteria_count,
+                )
+            else:
+                logger.info(
+                    "UI generate completed task_key=%r batch_id=%s status=COMPLETED cost=%s",
+                    task_key,
+                    batch_id,
+                    total_cost,
+                )
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
             database.save_candidate(
@@ -920,7 +1143,7 @@ def run_candidate_artifact_generation(
         return (
             {
                 "success": True,
-                "parsed_response": result.get("parsed_response"),
+                "parsed_response": parsed_response,
                 "timesheet": result.get("timesheet", {}),
                 "batch_id": response_batch_id,
             },

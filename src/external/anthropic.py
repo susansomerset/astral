@@ -25,7 +25,11 @@ from src.utils.formatting import (
     looks_like_encoded_grades_text,
     clean_encoded_agent_payload,
 )
-from src.utils.llm_external import extract_api_response_text, emit_llm_call_debug
+from src.utils.llm_external import (
+    classify_provider_balance_refusal,
+    extract_api_response_text,
+    emit_llm_call_debug,
+)
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
 
@@ -374,7 +378,11 @@ async def send_to_anthropic(
                     error=str(e),
                     provider="anthropic",
                 )
-            return {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+            fc = classify_provider_balance_refusal(e)
+            if fc:
+                out["failure_class"] = fc
+            return out
     except Exception as e:  # pragma: no cover
         duration = (datetime.now() - start_time).total_seconds()
         log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=str(e))
@@ -393,4 +401,8 @@ async def send_to_anthropic(
                 error=str(e),
                 provider="anthropic",
             )
-        return {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+        fc = classify_provider_balance_refusal(e)
+        if fc:
+            out["failure_class"] = fc
+        return out

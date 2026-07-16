@@ -211,6 +211,23 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-902 · AST-900
+
+**AST-902:** Shared **`ArtifactEditor`** craft-rubric mode — empty **`criteria`** on live Generate is a user-visible error (clears review); page-return **`GET …/generate/<task_key>/pending`** (AST-901) loads recovered criteria into review-then-Save; network interrupt toast points at recovery; **`jobPersistence`** / fixed-field modes skip pending. Six rubric pages inherit via the shared component (no page-file diff — §6c routed-page rule N/A). Backend stash/API: sibling **AST-901**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty criteria / pending recovery / network interrupt / jobPersistence skip | `src/ui/frontend/src/components/ArtifactEditor.tsx` | **`tests/component/frontend/components/test_ArtifactEditor.test.tsx`** — **`AST-902:*`** cases; revised mocks for pending 404; existing regenerate/save + AST-645 + AST-553 rows |
+
+**AST-902** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx
+```
+
+---
+
 ### AST-646 · AST-651 · AST-653 · AST-679 · AST-640
 
 **AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label when `ASTRAL_DEPLOY_ENV` is any non-empty string (after strip) and server-formatted uptime (AST-679 removed commit hash/tooltip). Non-admins keep the existing footer spacer; no deploy API call.

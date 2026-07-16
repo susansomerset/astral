@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.utils import llm_external as llm_ext_mod
+from src.utils.config import PROVIDER_BALANCE_REFUSAL
 
 
 class TestExtractApiResponseText:
@@ -49,3 +50,41 @@ class TestEmitLlmCallDebug:
                 output_total=1,
             )
             mock_get.assert_called_once_with("src.external.deepseek", debug_flag=True)
+
+
+class TestAst897ProviderBalanceRefusal:
+    """AST-897: classify HTTP 402 / credit-exhausted messages; predicate on result dicts."""
+
+    def test_classify_by_status_code_attr(self) -> None:
+        exc = type("E", (Exception,), {"status_code": 402})("payment required")
+        assert (
+            llm_ext_mod.classify_provider_balance_refusal(exc)
+            == PROVIDER_BALANCE_REFUSAL["failure_class"]
+        )
+
+    def test_classify_by_response_status_code(self) -> None:
+        # Some SDK errors nest status on .response
+        exc = type("E", (Exception,), {})("nope")
+        exc.response = SimpleNamespace(status_code=402)
+        assert (
+            llm_ext_mod.classify_provider_balance_refusal(exc)
+            == PROVIDER_BALANCE_REFUSAL["failure_class"]
+        )
+
+    def test_classify_by_message_substring(self) -> None:
+        assert (
+            llm_ext_mod.classify_provider_balance_refusal(RuntimeError("Insufficient Balance"))
+            == PROVIDER_BALANCE_REFUSAL["failure_class"]
+        )
+
+    def test_classify_ignores_unrelated_errors(self) -> None:
+        assert llm_ext_mod.classify_provider_balance_refusal(RuntimeError("timeout")) is None
+        assert llm_ext_mod.classify_provider_balance_refusal(RuntimeError("429 rate limit")) is None
+
+    def test_is_provider_balance_refusal_predicate(self) -> None:
+        fc = PROVIDER_BALANCE_REFUSAL["failure_class"]
+        assert llm_ext_mod.is_provider_balance_refusal({"failure_class": fc}) is True
+        assert llm_ext_mod.is_provider_balance_refusal({"failure_class": "other"}) is False
+        assert llm_ext_mod.is_provider_balance_refusal({"success": False}) is False
+        assert llm_ext_mod.is_provider_balance_refusal(None) is False
+        assert llm_ext_mod.is_provider_balance_refusal("nope") is False  # type: ignore[arg-type]

@@ -111,6 +111,27 @@ Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-o
   tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration
 ```
 
+### AST-901 · AST-900
+
+**AST-901:** Harden craft rubric UI generate delivery — empty **`criteria`** → HTTP 500 + ledger **`FAILED`**; successful **`craft_*_rubric`** stashes **`candidate_data.pending_craft_generations[task_key]`** (not artifact Save); **`get_pending_craft_generation`** recovers from stash or ledger+`agent_data`. API: **`GET …/generate/<task_key>/pending`**; clear pending when matching rubric artifact is Saved. Config: **`CRAFT_RUBRIC_UI_TASK_KEYS`**. UI page-return wiring is sibling **AST-902**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stash + empty-criteria + recovery helpers | `src/core/candidate.py` | **`TestAst901CraftRubricGenerateDelivery`** |
+| Pending GET + clear on Save | `src/ui/api/api_candidate.py` | **`TestAst901PendingCraftGenerationApi`** (`test_api_candidate.py`) |
+| UI task-key frozenset | `src/utils/config.py` | **`TestAst901CraftRubricUiTaskKeys`** (`test_config.py`) |
+| Resume-base auto-persist unchanged | `src/core/candidate.py` | **`TestRunCandidateArtifactGeneration`** (existing) |
+
+**AST-901** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst901CraftRubricGenerateDelivery \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
+  tests/component/ui/api/test_api_candidate.py::TestAst901PendingCraftGenerationApi \
+  tests/component/utils/test_config.py::TestAst901CraftRubricUiTaskKeys
+```
+
 ### AST-723 · AST-378
 
 Rubric authority cutover: **`apply_rubric_vectors_save`**, **`hydrate_rubric_artifacts_for_response`**, **`rubric_criteria_for_task`** (table-backed; embedded RC merge for **`prefilter_company`**); preview injects **`_astral_candidate_id`** for **`{$RUBRIC_VECTORS}`**.

@@ -36,7 +36,7 @@ from src.data.database import (
 )
 from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
-from src.utils.llm_external import extract_api_response_text
+from src.utils.llm_external import extract_api_response_text, is_provider_balance_refusal
 from src.external.deepseek import send_to_deepseek
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
@@ -2174,6 +2174,11 @@ async def do_task(
                 f"exit provider_failed task_key={task_key} batch_id={batch_id or ''} "
                 f"error={result.get('error')!r}"
             )
+            if is_provider_balance_refusal(result):
+                _do_task_debug_logger(debug).debug_detail(
+                    f"provider_balance_refusal failure_class={result.get('failure_class')!r} "
+                    f"error={result.get('error')!r}"
+                )
         _close_hop_ledger(
             success=False, clear_log=True,
             failure_error=str(result.get("error") or "provider_failed"),
