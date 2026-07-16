@@ -94,6 +94,17 @@
 
 ---
 
+## Review
+
+**Branch:** `origin/sub/AST-900/AST-904-uat-get-criteria-save-lost`  
+**Commits:**
+- `2838dad` — `code(AST-904): clear pending after Save success; re-stash on failure`
+- `621cf7d` — `code(AST-904): surface Save error message; keep review on failure`
+
+*(PR URL TBD at parent PR Ready)*
+
+---
+
 ## Rules review (ASTRAL_CODE_RULES)
 
 | Rule | Compliance |
