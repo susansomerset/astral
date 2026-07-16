@@ -159,7 +159,7 @@ None (no fix-now / discuss).
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-16** — Radia clean sign-off (`docs(AST-903): Radia review — clean` @ `926dfca`). No fix-now / discuss. No product delta this resolve pass. Advisory (double `log_llm_batch_summary`) accepted as pre-existing parse_err shape.
 
 ---
 
