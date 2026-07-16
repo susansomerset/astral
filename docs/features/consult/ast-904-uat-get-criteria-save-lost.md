@@ -122,7 +122,9 @@ None (no fix-now / discuss).
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-16** — Katherine · `resolve(AST-904): — clean`
+
+Radia review clean — no fix-now / discuss. Advisories acknowledged (combined-PUT re-stash edge; stash bool return) — no product change required for UAT Save path.
 
 ---
 
