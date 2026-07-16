@@ -32,6 +32,19 @@ function genArtifactTabId() {
   return `st_${Date.now()}_${_artifactTabSeq++}`
 }
 
+/** Map craft_*_rubric `criteria[]` into editor tabs (live Generate + pending recovery). */
+function criteriaToTabs(
+  criteria: { code?: string; label?: string; content?: string; importance?: number }[],
+): SideTab[] {
+  return criteria.map((v, i) => ({
+    id: `g_${i}`,
+    code: v.code,
+    label: v.label ?? `Criterion ${i + 1}`,
+    content: v.content ?? "",
+    importance: rubricItemImportance(v),
+  }))
+}
+
 export default function ArtifactEditor({
   title,
   artifactKey,
@@ -397,15 +410,8 @@ export default function ArtifactEditor({
       } else {
         // craft_*_rubric returns { criteria: [{code?, label, content}, ...] }
         const criteria = Array.isArray(parsed.criteria) ? parsed.criteria : []
-        if (criteria.length > 0) {
-          setTabs(criteria.map((v: { code?: string; label?: string; content?: string; importance?: number }, i: number) => ({
-            id: `g_${i}`,
-            code: v.code,
-            label: v.label ?? `Criterion ${i + 1}`,
-            content: v.content ?? "",
-            importance: rubricItemImportance(v),
-          })))
-        }
+        if (criteria.length === 0) throw new Error("Generation returned no criteria")
+        setTabs(criteriaToTabs(criteria))
       }
       setDirty(true)
       setToast({ text: "Generated — review and Save or Cancel", variant: "success" })
