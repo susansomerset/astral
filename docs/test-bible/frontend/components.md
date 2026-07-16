@@ -228,6 +228,24 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-904 · AST-900 (UAT fix)
+
+**AST-904:** Save failure toast shows server **`error`** (not hardcoded `"Save failed"`); review mode (`snapshot`) retained. API re-stash/clear ordering: **`docs/test-bible/ui/api/api_candidate.md`** § AST-904.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Save error toast + keep review | `src/ui/frontend/src/components/ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-904: Save failure shows server error and keeps review mode`** |
+
+**AST-904** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t 'AST-904'
+```
+
+---
+
 ### AST-646 · AST-651 · AST-653 · AST-679 · AST-640
 
 **AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label when `ASTRAL_DEPLOY_ENV` is any non-empty string (after strip) and server-formatted uptime (AST-679 removed commit hash/tooltip). Non-admins keep the existing footer spacer; no deploy API call.
