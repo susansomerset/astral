@@ -69,6 +69,7 @@ export default function ArtifactEditor({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tabsRef = useRef(tabs)
   const dirtyRef = useRef(dirty)
+  const snapshotRef = useRef<SideTab[] | null>(null)
   const mountedRef = useRef(true)
   const generateAbortRef = useRef<AbortController | null>(null)
   tabsRef.current = tabs
@@ -76,6 +77,7 @@ export default function ArtifactEditor({
 
   // Generate/Regenerate state
   const [snapshot, setSnapshot] = useState<SideTab[] | null>(null)
+  snapshotRef.current = snapshot
   const [generating, setGenerating] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
   const [expandedTabId, setExpandedTabId] = useState("")
@@ -364,11 +366,11 @@ export default function ArtifactEditor({
     setEditingId(t.id)
   }
 
-  // Auto-save on unmount when dirty (all pages, not just criteria)
+  // Auto-save on unmount when dirty — skip while in review (no silent persist of unreviewed Generate/recovery)
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
-      if (dirtyRef.current) doSave(tabsRef.current)
+      if (dirtyRef.current && snapshotRef.current === null) doSave(tabsRef.current)
     }
   }, [doSave])
 

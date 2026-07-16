@@ -158,4 +158,10 @@ No conflicts requiring escalation.
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-16** — Katherine · `resolve(AST-902): — findings addressed`
+
+**fix-now addressed:** Unmount auto-save now skips when `snapshotRef.current !== null` (in review after Generate or pending recovery), matching `handleChange`'s `!inReview` timer gate. Navigating away without Save no longer silently persists unreviewed criteria into the stored artifact; pending stash remains for page-return recovery.
+
+**Discuss:** Treated as fix-now per ticket boundary ("Does not auto-Save without user confirmation after Generate") — no Susan confirmation needed; unmount autosave during review was the defect, not intentional.
+
+**Advisory deferred:** background `/pending` error toasts and load-path `criteriaToTabs` DRY — left as-is (plan-approved / intentional `v_` vs `g_` id split).
