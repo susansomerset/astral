@@ -187,7 +187,7 @@ No conflicts requiring escalation.
 
 ## Build
 
-- **Publish tip:** `origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate` @ `172ce988c57ebeeaeb58579fd95de36d8580ec10`
+- **Publish tip:** `origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate` @ `f8b9fe2eb7ab8370639a18e49580a96b4de4f841`
 - Stage 1: `8b2d64c` — `CRAFT_RUBRIC_UI_TASK_KEYS` frozenset
 - Stage 2: `ed23088` — pending stash + empty-criteria guard
 - Stage 3: `b561ce6` — `get_pending_craft_generation` (stash / ledger fallback)
