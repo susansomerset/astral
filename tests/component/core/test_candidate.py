@@ -1097,3 +1097,154 @@ class TestAst723RubricVectorsCutover:
         monkeypatch.setattr(candidate_mod, "preview_prompt", _pp)
         candidate_mod.preview_task_prompt("craft_joblist_rubric", candidate_id="c723")
         assert captured["cd"]["_astral_candidate_id"] == "c723"
+
+
+class TestAst901CraftRubricGenerateDelivery:
+    """AST-901: pending stash, empty-criteria guard, recovery (stash / ledger)."""
+
+    _CRITERIA = [{"code": "GT", "label": "get", "content": "line", "importance": 5}]
+
+    def _stub_generate_common(self, monkeypatch: pytest.MonkeyPatch, store: dict[str, Any]) -> list:
+        saves: list[tuple[Any, ...]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: dict(store) if store.get("astral_candidate_id") == candidate_id else None,
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        return saves
+
+    def test_craft_get_rubric_success_stashes_pending_not_artifact(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
+        saves = self._stub_generate_common(monkeypatch, store)
+        parsed = {"criteria": list(self._CRITERIA)}
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_get_rubric", None,
+        )
+        assert status == 200
+        assert body["success"] is True
+        assert body["parsed_response"] == parsed
+        assert len(saves) == 1
+        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]["craft_get_rubric"]
+        assert pending["parsed_response"] == parsed
+        assert pending["batch_id"].startswith("user-craft_get_rubric-")
+        assert "artifacts" not in saves[0][1].get("candidate_data", {})
+
+    def test_empty_criteria_fails_ledger_and_skips_stash(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
+        saves = self._stub_generate_common(monkeypatch, store)
+        updates: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "update_dispatch_ledger",
+            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": {"criteria": []}})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_get_rubric", None,
+        )
+        assert status == 500
+        assert body["success"] is False
+        assert body["error"] == "Generation returned no criteria"
+        assert saves == []
+        assert updates[-1][1]["status"] == "FAILED"
+
+    def test_get_pending_from_stash(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        parsed = {"criteria": list(self._CRITERIA)}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "candidate_data": {
+                    "pending_craft_generations": {
+                        "craft_get_rubric": {
+                            "batch_id": "user-craft_get_rubric-abc",
+                            "parsed_response": parsed,
+                        }
+                    }
+                },
+            },
+        )
+        body, status = candidate_mod.get_pending_craft_generation("karfo", "craft_get_rubric")
+        assert status == 200
+        assert body["source"] == "pending_stash"
+        assert body["recovered"] is True
+        assert body["parsed_response"] == parsed
+        assert body["batch_id"] == "user-craft_get_rubric-abc"
+
+    def test_get_pending_ledger_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        parsed = {"criteria": list(self._CRITERIA)}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {}},
+        )
+        monkeypatch.setattr(
+            "src.core.dispatcher.list_dispatch_ledger",
+            lambda **kwargs: [{"batch_id": "user-craft_get_rubric-ledger1"}],
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_entity_response",
+            lambda batch_id, entity_id: {"block_data": json.dumps(parsed)},
+        )
+        body, status = candidate_mod.get_pending_craft_generation("karfo", "craft_get_rubric")
+        assert status == 200
+        assert body["source"] == "ledger_agent_data"
+        assert body["batch_id"] == "user-craft_get_rubric-ledger1"
+        assert body["parsed_response"] == parsed
+
+    def test_get_pending_rejects_non_rubric_and_missing(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        body, status = candidate_mod.get_pending_craft_generation("karfo", "craft_resume_base")
+        assert status == 400
+        assert "craft rubric" in body["error"].lower()
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: None)
+        body, status = candidate_mod.get_pending_craft_generation("missing", "craft_get_rubric")
+        assert status == 404
+
+    def test_clear_pending_removes_task_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        store = {
+            "astral_candidate_id": "karfo",
+            "candidate_data": {
+                "pending_craft_generations": {
+                    "craft_get_rubric": {"batch_id": "b1", "parsed_response": {"criteria": self._CRITERIA}},
+                    "craft_do_rubric": {"batch_id": "b2", "parsed_response": {"criteria": self._CRITERIA}},
+                }
+            },
+        }
+        saves: list = []
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        candidate_mod._clear_pending_craft_generation("karfo", "craft_get_rubric")
+        assert len(saves) == 1
+        assert saves[0][1]["merge"] is False
+        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]
+        assert "craft_get_rubric" not in pending
+        assert "craft_do_rubric" in pending
