@@ -69,6 +69,8 @@ export default function ArtifactEditor({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tabsRef = useRef(tabs)
   const dirtyRef = useRef(dirty)
+  const mountedRef = useRef(true)
+  const generateAbortRef = useRef<AbortController | null>(null)
   tabsRef.current = tabs
   dirtyRef.current = dirty
 
@@ -78,6 +80,15 @@ export default function ArtifactEditor({
   const [confirmRegen, setConfirmRegen] = useState(false)
   const [expandedTabId, setExpandedTabId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
+
+  // Unmount: abort in-flight Generate; gate late setState
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      generateAbortRef.current?.abort()
+    }
+  }, [])
 
   const structureMode = !!useCandidateResumeStructure
   const editable = !shapesKey && !structureMode
@@ -370,6 +381,50 @@ export default function ArtifactEditor({
     return () => window.removeEventListener("beforeunload", handler)
   }, [])
 
+  // Page-return recovery: backend COMPLETED stash (AST-901) → review mode
+  useEffect(() => {
+    if (jobPersistence || fixedFields || !selectedId || !taskKey || !loaded) return
+    const ac = new AbortController()
+    ;(async () => {
+      try {
+        const resp = await api(
+          `/api/candidates/${selectedId}/generate/${taskKey}/pending`,
+          { signal: ac.signal },
+        )
+        if (ac.signal.aborted || !mountedRef.current) return
+        if (resp.status === 404 || resp.status === 400) return
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
+          setToast({ text: err.error || `HTTP ${resp.status}`, variant: "error" })
+          return
+        }
+        const data = await resp.json()
+        if (ac.signal.aborted || !mountedRef.current) return
+        if (!data.success || !data.parsed_response) {
+          if (data.error) setToast({ text: data.error, variant: "error" })
+          return
+        }
+        const criteria = Array.isArray(data.parsed_response.criteria)
+          ? data.parsed_response.criteria
+          : []
+        if (criteria.length === 0) return
+        setSnapshot(tabsRef.current.map(t => ({ ...t })))
+        setTabs(criteriaToTabs(criteria))
+        setDirty(true)
+        setToast({
+          text: "Recovered completed generation — review and Save or Cancel",
+          variant: "success",
+        })
+      } catch (e) {
+        if (ac.signal.aborted || (e as Error).name === "AbortError") return
+        if (mountedRef.current) {
+          setToast({ text: (e as Error).message || "Recovery check failed", variant: "error" })
+        }
+      }
+    })()
+    return () => { ac.abort() }
+  }, [jobPersistence, selectedId, taskKey, loaded, fixedFields])
+
   // --- Generate / Regenerate ---
 
   function handleGenerateClick() {
@@ -387,13 +442,22 @@ export default function ArtifactEditor({
     // Snapshot current state for Cancel
     setSnapshot([...tabs.map(t => ({ ...t }))])
 
+    generateAbortRef.current?.abort()
+    const ac = new AbortController()
+    generateAbortRef.current = ac
+
     try {
-      const resp = await api(`/api/candidates/${selectedId}/generate/${taskKey}`, { method: "POST" })
+      const resp = await api(`/api/candidates/${selectedId}/generate/${taskKey}`, {
+        method: "POST",
+        signal: ac.signal,
+      })
+      if (!mountedRef.current) return
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
         throw new Error(err.error || "Generation failed")
       }
       const data = await resp.json()
+      if (!mountedRef.current) return
       if (!data.success) throw new Error(data.error || "Generation failed")
 
       const parsed = data.parsed_response
@@ -416,11 +480,24 @@ export default function ArtifactEditor({
       setDirty(true)
       setToast({ text: "Generated — review and Save or Cancel", variant: "success" })
     } catch (e) {
-      // Restore snapshot on failure
+      if (!mountedRef.current) return
+      // Abort / navigate-away: silent — pending stash + recovery effect handle COMPLETED
+      if (ac.signal.aborted || (e as Error).name === "AbortError") {
+        setSnapshot(null)
+        return
+      }
       setSnapshot(null)
-      setToast({ text: (e as Error).message, variant: "error" })
+      const msg = (e as Error).message || ""
+      const networkFail =
+        (e as Error).name === "TypeError" || /failed to fetch/i.test(msg)
+      setToast({
+        text: networkFail
+          ? "Generation request interrupted — if it finished on the server, return to this page to recover"
+          : msg || "Generation failed",
+        variant: "error",
+      })
     } finally {
-      setGenerating(false)
+      if (mountedRef.current) setGenerating(false)
     }
   }
 
