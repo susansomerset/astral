@@ -130,9 +130,32 @@ No conflicts requiring escalation.
 
 ## Review
 
-**Branch:** `origin/sub/AST-900/AST-902-artifact-editor-recover-rubric`  
-**Commits:**
-- `9433216` — `code(AST-902): criteria mapper and empty-criteria guard on Generate`
-- `3bdef84` — `code(AST-902): pending recovery and unmount-safe Generate`
+**Radia** · `origin/dev`…`origin/sub/AST-900/AST-902-artifact-editor-recover-rubric` @ `98abb27` · AST-902 product delta = `src/ui/frontend/src/components/ArtifactEditor.tsx` (`9433216` + `3bdef84`); backend files in the vs-`dev` diff are AST-901 (already reviewed/resolved).
 
-*(PR URL TBD at parent PR Ready)*
+### What's solid
+
+- **Plan fidelity:** All three stages match. Stage 1 `criteriaToTabs` + empty-criteria throw (`"Generation returned no criteria"`), fixed-field branch untouched. Stage 2 recovery `useEffect` with the exact guards (`jobPersistence || fixedFields || !selectedId || !taskKey || !loaded`), 404/400 no-op, snapshot→review→Save/Cancel, deps `[jobPersistence, selectedId, taskKey, loaded, fixedFields]`. Stage 3 `AbortController` + `mountedRef`, unmount abort, silent abort branch, network-interrupt toast.
+- **§3.2 UI:** No data/external imports; renders API results; Generate visibility still from `artifact_generate_states` manifest — no hardcoded state list.
+- **Contract match:** Consumes AST-901 `GET …/pending` shape (`success`, `parsed_response.criteria`, `batch_id`) exactly; `api()` forwards `signal` via `{...options}` (no `api.ts` change needed, as planned).
+- **Boundary:** No page-wrapper, prompt, schema, or backend edits; `craft_resume_base` fixed-field path unchanged; `jobPersistence` correctly skips the pending fetch (test asserts it).
+
+### Issues
+
+**fix-now / discuss:** Unmount auto-save bypasses the review gate — `ArtifactEditor.tsx` ~368-373 saves `tabsRef.current` on unmount whenever `dirtyRef.current` is true, with **no `inReview`/`snapshot` guard**. Recovery (Stage 2) and live Generate both enter review with `setDirty(true)`, so navigating away **without clicking Save silently persists recovered/generated criteria into the stored artifact** — contradicting this ticket's boundary ("Does not auto-Save without user confirmation after Generate") and the Stage 2 decision that Cancel/leave must not commit an unreviewed COMPLETED. Note `handleChange` already skips its autosave timer while `!inReview` — the unmount handler should honor the same gate (skip auto-save, or restore snapshot, when `inReview`). Pre-existing for the live-Generate review path, but AST-902's recovery path newly lands users in dirty-review, so it's in scope. Recommend engineer confirm intended behavior with Susan if the pre-existing auto-save-on-unmount is deliberate.
+
+### Advisory (not fix-now)
+
+- **Recovery error toasts on background load:** any non-404/400 non-OK (e.g. transient 500) or network error from the page-load `/pending` check surfaces an error toast on page open. Plan-approved (Stage 2 step), but slightly noisy for a passive recovery probe — consider silent/console for background failures.
+- **§1.3 DRY:** the candidate-load effect (~233-244) still inlines the same criteria→tabs mapping (`v_` id prefix) that `criteriaToTabs` now centralizes (`g_` prefix). Could share with a prefix param; intentional id split, so low priority.
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| Gate unmount auto-save on `!inReview` (or confirm intended with Susan) | Katherine | ticket boundary — no auto-Save of unreviewed criteria |
+| (optional) Silence background `/pending` error toast | Katherine | advisory UX |
+| (optional) reuse `criteriaToTabs` in candidate-load path | Katherine | §1.3 advisory |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
