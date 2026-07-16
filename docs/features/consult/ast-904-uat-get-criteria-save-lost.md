@@ -96,12 +96,33 @@
 
 ## Review
 
-**Branch:** `origin/sub/AST-900/AST-904-uat-get-criteria-save-lost`  
-**Commits:**
-- `2838dad` — `code(AST-904): clear pending after Save success; re-stash on failure`
-- `621cf7d` — `code(AST-904): surface Save error message; keep review on failure`
+**Radia** · `origin/dev`…`origin/sub/AST-900/AST-904-uat-get-criteria-save-lost` @ `f3a8945` · AST-904 product delta = `api_candidate.py` (`2838dad`) + `ArtifactEditor.tsx` (`621cf7d`); AST-903 files in the vs-`dev` diff were already reviewed clean.
 
-*(PR URL TBD at parent PR Ready)*
+### What's solid
+
+- **Plan fidelity:** Stages 1–2 match. Captures `rubric_keys_to_clear` + `copy.deepcopy(submitted_rubric)` **before** normalize/apply; removes the broken clear-after-`apply` loop; clears pending only after `save_candidate_data`; except path re-stashes non-empty submitted criteria with `batch_id=None`. Frontend toasts `(e as Error).message || "Save failed"` on both candidate and jobPersistence paths; failure does not clear `snapshot` (review retained).
+- **Root-cause fix:** Clear uses keys captured before `apply_rubric_vectors_save` deletes artifact keys — closes the AST-901 false-green (`if artifact_key in arts` after `del`). Betty test updated to mock apply with `arts.pop("get_rubric")`.
+- **§3.2 / §3.3:** API stays thin; reuses core `_stash` / `_clear` + config maps; no data-layer import from UI; no prompt/schema/AST-903 scope creep.
+- **Self-Assessment:** Diff footprint matches **Single-Component** / high conf; Medium risk mitigated by pre-mutate capture + clear-after-persist.
+
+### Issues
+
+None (no fix-now / discuss).
+
+### Advisory (not fix-now)
+
+- Except-path re-stash runs for any exception after capture — including a rare combined PUT where artifact persist+clear already succeeded and a later `state`/`api_key` write fails. ArtifactEditor Saves only `{ artifacts: { [key]: … } }`, so the UAT path is fine; would leave stale pending after a mostly-successful admin combined PUT.
+- Re-stash ignores `_stash_pending_craft_generation`’s bool return (AST-901 resolve). If the candidate row is gone mid-request, user still gets the 400 toast but page-return recovery cannot help — same class of edge case as generate-path stash failure.
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
 
 ---
 
