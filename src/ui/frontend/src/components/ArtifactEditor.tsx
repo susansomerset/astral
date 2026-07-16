@@ -288,8 +288,8 @@ export default function ArtifactEditor({
         setSnapshot(null)
         setToast({ text: "Saved", variant: "success" })
         jobPersistence.onSaved?.()
-      } catch {
-        setToast({ text: "Save failed", variant: "error" })
+      } catch (e) {
+        setToast({ text: (e as Error).message || "Save failed", variant: "error" })
       } finally {
         setSaving(false)
       }
@@ -311,8 +311,9 @@ export default function ArtifactEditor({
       setEverSaved(true)
       setSnapshot(null)
       setToast({ text: "Saved", variant: "success" })
-    } catch {
-      setToast({ text: "Save failed", variant: "error" })
+    } catch (e) {
+      // Keep review mode (snapshot) — do not clear on failure
+      setToast({ text: (e as Error).message || "Save failed", variant: "error" })
     } finally {
       setSaving(false)
     }
