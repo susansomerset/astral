@@ -924,6 +924,7 @@ def run_candidate_artifact_generation(
     debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
+    logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)
@@ -1014,9 +1015,18 @@ def run_candidate_artifact_generation(
 
         parsed_response = result.get("parsed_response")
         # Craft rubric: reject empty criteria; stash pending before ledger COMPLETED.
+        criteria_count: Optional[int] = None
         if _is_craft_rubric_ui_task(task_key):
             criteria_count = _craft_rubric_criteria_count(parsed_response)
             if criteria_count == 0:
+                if debug:
+                    logger.debug_index(
+                        func="run_candidate_artifact_generation",
+                        index=1,
+                        total=1,
+                        identifier=task_key,
+                        outcome="empty criteria",
+                    )
                 logger.error(
                     "craft rubric generate returned empty criteria task_key=%r batch_id=%s",
                     task_key,
@@ -1044,6 +1054,15 @@ def run_candidate_artifact_generation(
             _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
             )
+            if debug:
+                logger.debug_index(
+                    func="run_candidate_artifact_generation",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome=f"criteria_count={criteria_count}",
+                )
+                logger.debug_detail_block(json.dumps(parsed_response))
 
         if batch_id:
             total_cost = compute_batch_cost(batch_id)
@@ -1056,12 +1075,22 @@ def run_candidate_artifact_generation(
                 total_failed=0,
                 total_cost=total_cost,
             )
-            logger.info(
-                "UI generate completed task_key=%r batch_id=%s status=COMPLETED cost=%s",
-                task_key,
-                batch_id,
-                total_cost,
-            )
+            if criteria_count is not None:
+                logger.info(
+                    "UI generate completed task_key=%r batch_id=%s status=COMPLETED "
+                    "cost=%s criteria_count=%s",
+                    task_key,
+                    batch_id,
+                    total_cost,
+                    criteria_count,
+                )
+            else:
+                logger.info(
+                    "UI generate completed task_key=%r batch_id=%s status=COMPLETED cost=%s",
+                    task_key,
+                    batch_id,
+                    total_cost,
+                )
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
             database.save_candidate(
