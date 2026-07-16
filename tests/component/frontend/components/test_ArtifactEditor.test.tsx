@@ -18,6 +18,19 @@ function stateUiManifestResponse(): Response {
   return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
 }
 
+/** AST-902 recovery GETs …/generate/<task>/pending after load; 404 = no-op. */
+function pendingNotFoundResponse(): Response {
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ error: "No recoverable generation" }),
+  } as Response
+}
+
+function isPendingGenerateUrl(url: string): boolean {
+  return /\/api\/candidates\/[^/]+\/generate\/[^/]+\/pending$/.test(url)
+}
+
 function mockApis(state = "CONTEXT_READY") {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
@@ -26,6 +39,7 @@ function mockApis(state = "CONTEXT_READY") {
         json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }],
       } as Response
     }
+    if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
     if (url === "/api/candidates/c1" && !init) {
       return {
         json: async () => ({
@@ -53,6 +67,7 @@ function mockApis(state = "CONTEXT_READY") {
     if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
       return {
         ok: true,
+        status: 200,
         json: async () => ({
           success: true,
           parsed_response: { criteria: [{ label: "Generated", content: "New body" }] },
@@ -88,6 +103,10 @@ describe("ArtifactEditor", () => {
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }] } as Response
       }
+      if (url === "/api/candidates/c1") {
+        return { json: async () => ({ candidate_data: { artifacts: {} } }) } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
       if (url === "/api/shapes/candidates") {
         return { json: async () => ({ detail: { resume: [] } }) } as Response
       }
@@ -123,6 +142,7 @@ describe("ArtifactEditor", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
         } as Response
       }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
       if (url === "/api/candidates/c1" && !init) {
         return {
           json: async () => ({
@@ -231,7 +251,7 @@ describe("ArtifactEditor", () => {
         taskKey="craft_resume_base"
         useCandidateResumeStructure
         structureSections={[{ id: "professional_summary", label: "Summary" }]}
-        jobPersistence={{ jobId: "j1" }}
+        jobPersistence={{ jobId: "j1", artifactKey: "resume_content" }}
       />,
     )
     await waitFor(() => expect(screen.getByText("Resume draft")).toBeInTheDocument())
@@ -248,5 +268,125 @@ describe("ArtifactEditor", () => {
       ),
     ).toBe(true)
     expect(putBodies.at(-1)?.resume_content?.professional_summary).toMatch(/updated/)
+    // AST-902: jobPersistence must not hit craft pending recovery
+    expect(mockedApi.mock.calls.some(([u]) => isPendingGenerateUrl(String(u)))).toBe(false)
+  })
+
+  it("AST-902: empty criteria on Generate shows error and clears review mode", async () => {
+    mockApis("CONTEXT_READY")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { rubric: [{ label: "Fit", content: "Body", importance: 5 }] } },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, parsed_response: { criteria: [] } }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    await waitFor(() =>
+      expect(screen.getByText("Generation returned no criteria")).toBeInTheDocument(),
+    )
+    expect(screen.queryByText("Generated — review and Save or Cancel")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+  })
+
+  it("AST-902: pending recovery loads criteria into review mode", async () => {
+    mockApis("CONTEXT_READY")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_get_rubric/pending") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            recovered: true,
+            source: "pending_stash",
+            batch_id: "user-craft_get_rubric-x",
+            parsed_response: {
+              criteria: [{ code: "GT", label: "Recovered Get", content: "From stash", importance: 7 }],
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { get_rubric: [] } },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByText("Recovered completed generation — review and Save or Cancel"),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.getByDisplayValue("From stash")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+  })
+
+  it("AST-902: network interrupt on Generate suggests page-return recovery", async () => {
+    mockApis("CONTEXT_READY")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { rubric: [{ label: "Fit", content: "Body", importance: 5 }] } },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
+        throw new TypeError("Failed to fetch")
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Generation request interrupted — if it finished on the server, return to this page to recover",
+        ),
+      ).toBeInTheDocument(),
+    )
   })
 })
