@@ -122,6 +122,20 @@ No product edit in this stage if verification shows the existing path already fo
 
 ---
 
+## Build
+
+- **Publish tip:** `origin/sub/AST-900/AST-903-uat-craft-get-json-parse` @ `96b2200643a2fcb878c115058db2261f44463bd8`
+- Stage 1: `6868d6f` — `CRAFT_RUBRIC_MAX_TOKENS = 32000`
+- Stage 2: `721e1bf` — `do_task` floor for `CRAFT_RUBRIC_UI_TASK_KEYS`
+- Stage 3: `96b2200` — DeepSeek + Anthropic hard-fail on JSON `stop_reason == max_tokens`
+- Stage 4: no-op — `run_candidate_artifact_generation` already forwards `result["error"]` and marks ledger `FAILED`
+
+## Review
+
+_(stub — Radia fills after Tests Passed)_
+
+---
+
 ## Rules review (relevant)
 
 | Rule | Compliance |
