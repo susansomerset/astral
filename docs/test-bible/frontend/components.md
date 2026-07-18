@@ -246,6 +246,25 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-905 · AST-900 (UAT fix)
+
+**AST-905:** Page-return pending recovery applies **only when loaded criterion content is empty** — if any tab has non-empty `content` (trim), skip pending fetch/apply (never overwrite existing edits). Backend empty-only gate: **`docs/test-bible/core/candidate.md`** § AST-905. Empty load still recovers via **AST-902** pending path.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip recovery when content exists | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-905: skips pending recovery when loaded criteria already have content`** |
+| Empty still recovers | `ArtifactEditor.tsx` | **AST-902** pending recovery case (unchanged) |
+
+**AST-905** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t 'AST-905'
+```
+
+---
+
 ### AST-646 · AST-651 · AST-653 · AST-679 · AST-640
 
 **AST-640 (parent):** Admin-only read-only strip at the bottom of the left nav — environment label when `ASTRAL_DEPLOY_ENV` is any non-empty string (after strip) and server-formatted uptime (AST-679 removed commit hash/tooltip). Non-admins keep the existing footer spacer; no deploy API call.

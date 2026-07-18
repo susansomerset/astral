@@ -132,6 +132,22 @@ Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-o
   tests/component/utils/test_config.py::TestAst901CraftRubricUiTaskKeys
 ```
 
+### AST-905 · AST-900 (UAT fix)
+
+**AST-905:** `get_pending_craft_generation` returns **404** `No recoverable generation` when `rubric_criteria_for_task` already has one or more criteria for the craft task's owner — do not recover over a populated stored rubric. Empty stored list still recovers (stash/ledger). UI belt: **`docs/test-bible/frontend/components.md`** § AST-905.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pending 404 when stored non-empty | `src/core/candidate.py` | **`TestAst905RecoverOnlyWhenEmpty`** |
+
+**AST-905** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst905RecoverOnlyWhenEmpty \
+  -q
+```
+
 ### AST-723 · AST-378
 
 Rubric authority cutover: **`apply_rubric_vectors_save`**, **`hydrate_rubric_artifacts_for_response`**, **`rubric_criteria_for_task`** (table-backed; embedded RC merge for **`prefilter_company`**); preview injects **`_astral_candidate_id`** for **`{$RUBRIC_VECTORS}`**.
