@@ -83,6 +83,17 @@
 
 ---
 
+## Review
+
+**Branch:** `origin/sub/AST-900/AST-905-uat-recover-only-when-empty`  
+**Commits:**
+- `f3a7252` — `code(AST-905): pending recovery 404 when stored rubric non-empty`
+- `0e1c5e3` — `code(AST-905): skip pending apply when editor already has criteria`
+
+*(PR URL TBD at parent PR Ready)*
+
+---
+
 ## Rules review (ASTRAL_CODE_RULES)
 
 | Rule | Compliance |
