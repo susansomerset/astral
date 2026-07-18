@@ -385,8 +385,11 @@ export default function ArtifactEditor({
   }, [])
 
   // Page-return recovery: backend COMPLETED stash (AST-901) → review mode
+  // AST-905: only when loaded criteria are empty — never overwrite existing/edits
   useEffect(() => {
     if (jobPersistence || fixedFields || !selectedId || !taskKey || !loaded) return
+    // Already have criterion content → skip pending fetch/apply
+    if (tabsRef.current.some(t => (t.content || "").trim() !== "")) return
     const ac = new AbortController()
     ;(async () => {
       try {
@@ -407,6 +410,8 @@ export default function ArtifactEditor({
           if (data.error) setToast({ text: data.error, variant: "error" })
           return
         }
+        // Belt: do not apply if tabs gained content since load
+        if (tabsRef.current.some(t => (t.content || "").trim() !== "")) return
         const criteria = Array.isArray(data.parsed_response.criteria)
           ? data.parsed_response.criteria
           : []
