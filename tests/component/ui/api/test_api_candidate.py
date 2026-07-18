@@ -611,3 +611,65 @@ class TestAst904SavePendingRecovery:
         assert stashed[0][1] == "craft_get_rubric"
         assert stashed[0][2] is None
         assert stashed[0][3] == {"criteria": criteria}
+
+
+class TestAst906GetRubricLiteralNewlineSave:
+    """AST-906: PUT get_rubric with craft-shaped literal \\n content → 200; empty/single grade → 400."""
+
+    def _put_mocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_rubric_vectors_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "_clear_pending_craft_generation", MagicMock())
+
+    def test_put_get_rubric_literal_n_succeeds(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._put_mocks(monkeypatch)
+        # Literal backslash-n (craft Get prompt shape) — coerce expands before grade parse.
+        criteria = [
+            {
+                "code": "GT",
+                "label": "get",
+                "content": "Fit criterion.\\nA = strong match\\nB = weak match",
+                "importance": 5,
+            }
+        ]
+        resp = candidate_client.put(
+            "/api/candidates/karfo/data",
+            json={"artifacts": {"get_rubric": criteria}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+
+    def test_put_get_rubric_empty_still_400(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._put_mocks(monkeypatch)
+        criteria = [{"code": "GT", "label": "get", "content": "", "importance": 5}]
+        resp = candidate_client.put(
+            "/api/candidates/karfo/data",
+            json={"artifacts": {"get_rubric": criteria}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "empty" in resp.get_json()["error"].lower() or "Rubric" in resp.get_json()["error"]
+
+    def test_put_get_rubric_single_grade_still_400(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._put_mocks(monkeypatch)
+        criteria = [{"code": "GT", "label": "get", "content": "A = only", "importance": 5}]
+        resp = candidate_client.put(
+            "/api/candidates/karfo/data",
+            json={"artifacts": {"get_rubric": criteria}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        err = resp.get_json()["error"]
+        assert "at least two lines" in err or "Rubric" in err
