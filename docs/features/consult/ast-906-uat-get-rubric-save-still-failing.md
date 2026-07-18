@@ -116,8 +116,29 @@
 
 ## Review
 
-**Ada build** · `origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing` @ `f2e5b53` · product: `src/utils/rubric_text.py` (`coerce_embedded_newline_escapes` + write-back in `ensure_criterion_grade_table`). Stage 1 confirmed literal-`\n` → grade-table 400 on `get_rubric` normalize; heal makes same payload pass; empty/single-grade still reject.
+**Radia** · `origin/dev`…`origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing` @ `b3553b0` · product `f2e5b53` (`src/utils/rubric_text.py` only)
 
-**Betty note:** cover `coerce_embedded_newline_escapes` / ensure with literal-`\n` content + still-reject empty and single `A ==` line; optional PUT `get_rubric` with literal-`\n` criteria → 200.
+### What's solid
 
-_(Radia fills after Tests Passed)_
+- **Plan fidelity:** Stage 2 matches. `coerce_embedded_newline_escapes` expands literal `\n` / `\r\n` only when `count("\n") < 2`; `ensure_criterion_grade_table` writes healed `content` back onto the criterion before `parse_trailing_grade_table_lines`. ≥2 trailing grade-line rule unchanged; empty / single-grade still raise. No `candidate.py` / API / ArtifactEditor / prompt edits (heal stays in utils as planned).
+- **§1.3 / §2.1 / §3.3:** One shared utils helper on the existing normalize → ensure path; pure utils (no core/data imports); applies to all rubric Saves so Get/Do/Like share the same heal without Get-only prompt patches.
+- **Self-Assessment:** Diff footprint matches **Single-Component**; Medium risk of over-eager `\n` expansion mitigated by the `< 2` real-newline gate (tested: already-multiline leaves embedded `\\n` untouched).
+- **Betty coverage:** Unit coerce/ensure cases + API PUT `get_rubric` literal-`\n` → 200 / empty & single-grade → 400 — matches Stage 3 intent.
+
+### Issues
+
+None (no fix-now / discuss).
+
+### Advisory (not fix-now)
+
+- If a criterion already has ≥2 real newlines in prose **and** still embeds literal `\n` only in the trailing grade block, coerce is skipped and Save can still 400. Craft Get prompt shape is the single-line case this ticket targets; not blocking.
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
