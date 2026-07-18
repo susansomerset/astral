@@ -116,4 +116,8 @@
 
 ## Review
 
+**Ada build** · `origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing` @ `f2e5b53` · product: `src/utils/rubric_text.py` (`coerce_embedded_newline_escapes` + write-back in `ensure_criterion_grade_table`). Stage 1 confirmed literal-`\n` → grade-table 400 on `get_rubric` normalize; heal makes same payload pass; empty/single-grade still reject.
+
+**Betty note:** cover `coerce_embedded_newline_escapes` / ensure with literal-`\n` content + still-reject empty and single `A ==` line; optional PUT `get_rubric` with literal-`\n` criteria → 200.
+
 _(Radia fills after Tests Passed)_
