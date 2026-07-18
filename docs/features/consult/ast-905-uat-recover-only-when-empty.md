@@ -85,12 +85,33 @@
 
 ## Review
 
-**Branch:** `origin/sub/AST-900/AST-905-uat-recover-only-when-empty`  
-**Commits:**
-- `f3a7252` — `code(AST-905): pending recovery 404 when stored rubric non-empty`
-- `0e1c5e3` — `code(AST-905): skip pending apply when editor already has criteria`
+**Radia** · `origin/dev`…`origin/sub/AST-900/AST-905-uat-recover-only-when-empty` @ `8d58866` · AST-905 product delta = `candidate.py` (`f3a7252`) + `ArtifactEditor.tsx` (`0e1c5e3`); AST-906 files in the vs-`dev` diff were already reviewed clean.
 
-*(PR URL TBD at parent PR Ready)*
+### What's solid
+
+- **Plan fidelity:** Stages 1–2 match. Backend gates `get_pending_craft_generation` on `rubric_owner_task_key` → `rubric_criteria_for_task` with non-empty list → same 404 body as other no-recovery cases; stash/ledger paths untouched when empty. Frontend skips pending fetch when `tabsRef` already has trimmed content, plus belt check before `setTabs`. Empty placeholder (`New Criterion` / empty content) still recovers. No Generate/Save/prompt/AST-903–906 scope creep.
+- **§1.3 / §3.2 / §3.3:** Reuses existing owner + criteria helpers; API response shape unchanged; UI only skips apply.
+- **UAT Get path:** `craft_get_rubric` → `grade_get` has no embedded merge — empty table still recovers; non-empty stored criteria 404 — matches Susan’s overwrite complaint.
+- **Betty:** core 404-when-nonempty / ok-when-empty + frontend no pending fetch when content exists.
+
+### Issues
+
+**discuss:** Company prefilter always looks “non-empty.” `rubric_criteria_for_task(..., "prefilter_company")` always prepends `EMBEDDED_COMPANY_PREFILTER_CRITERIA` (RC with content), and hydrate overlays that into `artifacts.company_prefilter`. Under this ticket’s gate, `craft_prefilter_rubric` pending recovery will **never** return 200 / never apply in the editor — even for a candidate with no saved vectors — because embedded RC counts as criteria. That matches a literal reading of “only if NONE,” and the plan explicitly chose `rubric_criteria_for_task` / hydrate parity. Confirm with Susan: is permanently disabling prefilter page-return recovery intended, or should “empty” mean no **candidate/table** vectors beyond embedded?
+
+### Advisory (not fix-now)
+
+- Skipping recovery does not clear stale `pending_craft_generations` (plan: optional later). Harmless for overwrite; stash can linger until a successful Save of that artifact.
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| Confirm prefilter embedded-RC vs empty-only gate | Katherine / Susan | discuss — Get UAT path is fine either way |
+| (optional) clear or ignore stale pending when skipping | Katherine | advisory |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
 
 ---
 
