@@ -1248,3 +1248,50 @@ class TestAst901CraftRubricGenerateDelivery:
         pending = saves[0][1]["candidate_data"]["pending_craft_generations"]
         assert "craft_get_rubric" not in pending
         assert "craft_do_rubric" in pending
+
+
+class TestAst905RecoverOnlyWhenEmpty:
+    """AST-905: pending recovery 404 when stored rubric criteria already exist."""
+
+    _CRITERIA = [{"code": "GT", "label": "get", "content": "line", "importance": 5}]
+    _STASHED = {
+        "batch_id": "user-craft_get_rubric-abc",
+        "parsed_response": {"criteria": [{"code": "GT", "label": "get", "content": "stash", "importance": 5}]},
+    }
+
+    def test_get_pending_404_when_stored_rubric_nonempty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "candidate_data": {"pending_craft_generations": {"craft_get_rubric": dict(self._STASHED)}},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "rubric_criteria_for_task",
+            lambda candidate_id, owner: list(self._CRITERIA),
+        )
+        body, status = candidate_mod.get_pending_craft_generation("karfo", "craft_get_rubric")
+        assert status == 404
+        assert body["error"] == "No recoverable generation"
+
+    def test_get_pending_ok_when_stored_rubric_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "candidate_data": {"pending_craft_generations": {"craft_get_rubric": dict(self._STASHED)}},
+            },
+        )
+        monkeypatch.setattr(candidate_mod, "rubric_criteria_for_task", lambda candidate_id, owner: [])
+        body, status = candidate_mod.get_pending_craft_generation("karfo", "craft_get_rubric")
+        assert status == 200
+        assert body["source"] == "pending_stash"
+        assert body["recovered"] is True
