@@ -141,4 +141,4 @@ None (no fix-now / discuss).
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-18** · Radia clean (no fix-now / discuss). Advisory noted — no product change. Publish tip after this resolve commit; §9a dry-run vs `origin/dev` and `origin/ftr/AST-900-craft-get-rubric-populate` before User Testing.
