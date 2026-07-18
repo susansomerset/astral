@@ -39,6 +39,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    rubric_owner_task_key,
 )
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 
@@ -889,6 +890,13 @@ def get_pending_craft_generation(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)
+
+    # AST-905: do not recover over an already-populated stored rubric
+    owner = rubric_owner_task_key(task_key)
+    if owner:
+        existing = rubric_criteria_for_task(candidate_id, owner)
+        if isinstance(existing, list) and len(existing) > 0:
+            return ({"error": "No recoverable generation"}, 404)
 
     cd = candidate.get("candidate_data") or {}
     pending = (cd.get(_PENDING_CRAFT_GENERATIONS_KEY) or {}).get(task_key)
