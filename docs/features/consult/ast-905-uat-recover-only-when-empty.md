@@ -111,7 +111,9 @@
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-18** — Katherine · `resolve(AST-905): — clean`
+
+No fix-now. **Discuss (prefilter embedded RC):** Closed without code change. Susan’s rule is restore only when there are **none** already and never overwrite existing criteria. Hydrate always surfaces embedded Reality Check on company prefilter, so that page correctly skips pending recovery under both the backend `rubric_criteria_for_task` gate and the frontend content check — same “criteria already exist” reading. Get/Do/Like/joblist/jobdesc (no embedded merge) still recover when the stored table is empty. Advisory (stale pending when skipping) deferred.
 
 ---
 
