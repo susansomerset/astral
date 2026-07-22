@@ -18,7 +18,7 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 **Local debug / spike output** (Playwright captures, scratch JSON): repo-root **`debug/spikes/<issue-id>/…`** only — never repo-root **`artifacts/`**; spike deliverables are **not** committed under **`docs/features/`** (attach on Linear). See **`orientation`** § Local debug and spike output and **`docs/ASTRAL_CODE_RULES.md`** §3.6.
 
-**Local UI dev:** repo-root **`launch.sh`** — Flask **`:5001`** + Vite **`:5173`**. Tracked; **do not delete** in merges (`prep-uat` / `merge-parent`). Restore from git if missing. Details: **`orientation`** § Local dev — `launch.sh`.
+**Local UI dev:** repo-root **`launch.sh`** — Flask **`:5001`** + Vite **`:5173`**. Tracked; **do not delete** in merges (`prep-uat` / `finish-up`). Restore from git if missing. Details: **`orientation`** § Local dev — `launch.sh`.
 
 ---
 
@@ -60,7 +60,7 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 | Review Posted | Engineer | **`resolve-child`** → **User Testing** (child keeps engineer **assignee**) |
 | User Testing (child) | Engineer | Ready for **`prep-uat`** rollup; **assignee** stays implementer |
 | User Testing (parent) | Susan | **`prep-uat`** assigns Susan; merge **`origin/ftr/<parent>`** into local **`dev`**, exercise |
-| PR Ready | Susan sets **parent** → Chuckles **`merge-parent`** | Land **`origin/ftr/<parent-segment>`** on **`origin/dev`**; **parent + children** → **PR Ready** (children keep engineer **assignee**) |
+| PR Ready | Susan sets **parent** → Chuckles **`finish-up`** | Land **`origin/ftr/<parent-segment>`** on **`origin/dev`** (PR + ref cleanup per **finish-up**); move **parent + shipped children** → **Done** (children keep engineer **assignee**) |
 | Done | Susan | Close **parent** in Linear (work on **`origin/dev`**) |
 
 **Parent epics:** **`dispatch-parent`** moves children to **Todo** and parent to **In Progress**; parent **assignee** stays **Susan** (or coordinator), **not** Chuckles. Rollup when all children reach **Review Posted** per **`rollcall`**.
