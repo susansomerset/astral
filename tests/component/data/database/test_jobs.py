@@ -142,3 +142,92 @@ class TestAst733JobIdentityHelpers:
         assert db.get_job("job-del") is None
         assert db.delete_job("") is False
         assert db.delete_job("missing") is False
+
+
+# Branches: floors map keys via dispatch_claim_uses_score_floor; list/count below-floor
+# membership for PASSED_JOBLIST + existing PASSED_SCORE_GATED states (AST-908).
+class TestAst908BelowDispatchScoreFloorViews:
+    """Jobs UI floors follow claim score-floor gate (includes PASSED_JOBLIST)."""
+
+    def _seed_candidate_company(self, db, candidate_id: str = "c908", short_name: str = "acme") -> None:
+        db.save_company(short_name, state="IMPORTED", candidate_id=candidate_id)
+
+    def _save_job_with_score(
+        self, db, astral_job_id: str, *, company: str, state: str, latest_score: float | None,
+    ) -> None:
+        # save_job INSERT omits latest_score; set score on the UPDATE path (same as dispatch_tasks tests).
+        db.save_job(astral_job_id, company=company, state=state)
+        if latest_score is not None:
+            db.save_job(astral_job_id, latest_score=latest_score)
+
+    def test_floors_map_includes_passed_joblist_excludes_pre_score_triggers(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_candidate_company(db)
+        # Claim-gated transition outcome (AST-908 gap vs PASSED_SCORE_GATED_STATES).
+        db.save_dispatch_task(
+            "c908", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST", score_floor=6.0,
+        )
+        # Still claim-gated consult state — max floor wins if duplicated later.
+        db.save_dispatch_task(
+            "c908", "evaluate_jd", min_count=1, trigger_state="PASSED_JD", score_floor=7.0,
+        )
+        # Pre-score In Review triggers must never appear in the floors map.
+        db.save_dispatch_task(
+            "c908", "qualify_job_listings", min_count=1, trigger_state="VALID_TITLE", score_floor=9.0,
+        )
+        floors = db.score_floor_by_trigger_for_candidate("c908")
+        assert floors["PASSED_JOBLIST"] == 6.0
+        assert floors["PASSED_JD"] == 7.0
+        assert "VALID_TITLE" not in floors
+        assert "JD_READY" not in floors
+
+    def test_null_score_floor_defaults_to_one(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_candidate_company(db)
+        db.save_dispatch_task(
+            "c908", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST", score_floor=None,
+        )
+        assert db.score_floor_by_trigger_for_candidate("c908") == {"PASSED_JOBLIST": 1.0}
+
+    def test_list_and_count_below_floor_for_passed_joblist(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_candidate_company(db)
+        db.save_dispatch_task(
+            "c908", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST", score_floor=6.0,
+        )
+        self._save_job_with_score(db, "below", company="acme", state="PASSED_JOBLIST", latest_score=5.0)
+        self._save_job_with_score(db, "null_score", company="acme", state="PASSED_JOBLIST", latest_score=None)
+        self._save_job_with_score(db, "at_floor", company="acme", state="PASSED_JOBLIST", latest_score=6.0)
+        self._save_job_with_score(db, "above", company="acme", state="PASSED_JOBLIST", latest_score=8.0)
+        # Real skipped / non-floor state — must not join the virtual below-floor set.
+        self._save_job_with_score(db, "failed", company="acme", state="FAILED_JOBLIST", latest_score=1.0)
+
+        below = db.list_jobs_below_dispatch_score_floor("c908")
+        below_ids = {r["astral_job_id"] for r in below}
+        assert below_ids == {"below", "null_score"}
+        assert db.count_jobs_below_dispatch_score_floor("c908") == 2
+        assert not any(r["astral_job_id"] == "failed" for r in below)
+
+    def test_passed_jd_below_floor_still_listed(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_candidate_company(db)
+        db.save_dispatch_task(
+            "c908", "evaluate_jd", min_count=1, trigger_state="PASSED_JD", score_floor=7.0,
+        )
+        self._save_job_with_score(db, "jd_below", company="acme", state="PASSED_JD", latest_score=6.5)
+        self._save_job_with_score(db, "jd_ok", company="acme", state="PASSED_JD", latest_score=7.0)
+        below_ids = {r["astral_job_id"] for r in db.list_jobs_below_dispatch_score_floor("c908")}
+        assert below_ids == {"jd_below"}
+        assert db.count_jobs_below_dispatch_score_floor("c908") == 1
+
+    def test_other_candidate_dispatch_ignored(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_candidate_company(db, candidate_id="c908")
+        db.save_company("otherco", state="IMPORTED", candidate_id="other")
+        db.save_dispatch_task(
+            "other", "fetch_jd", min_count=1, trigger_state="PASSED_JOBLIST", score_floor=9.0,
+        )
+        self._save_job_with_score(db, "job-other", company="otherco", state="PASSED_JOBLIST", latest_score=1.0)
+        assert db.score_floor_by_trigger_for_candidate("c908") == {}
+        assert db.list_jobs_below_dispatch_score_floor("c908") == []
+        assert db.count_jobs_below_dispatch_score_floor("c908") == 0
