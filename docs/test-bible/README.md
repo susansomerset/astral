@@ -174,6 +174,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/`bash -n` `install.sh` — skips installing `merge-parent`, removes stale `~/.cursor/skills/merge-parent`; finish-up remains on the generic skills loop — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
 
+### AST-946 · AST-909 (ASTRAL_GIT_WORKFLOW.md)
+
+**Docs-only** (astral law doc on publish ref). Live edit is **`docs/ASTRAL_GIT_WORKFLOW.md`** on **`origin/sub/AST-909/AST-946-astral-git-workflow`** (`code(AST-946)`); plan at `docs/features/team-chuckles/ast-946-astral-git-workflow.md`. No product `src/` and no pytest. Radia **`docs()`** commit type unchanged.
+
+**No new component tests.** **`test-child`:** grep/read `docs/ASTRAL_GIT_WORKFLOW.md` on the publish tip — operator ftr→dev = **`finish-up()`**; `merge-parent.sh` internal-only under finish-up-land — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
 
 
 ## 2. Where tests live
