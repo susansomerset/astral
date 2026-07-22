@@ -186,6 +186,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read `docs/ASTRAL_TEAM_WORKFLOW.md` on the publish tip — PR Ready row + `launch.sh` merge note name **finish-up** (not merge-parent) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
 
+### AST-923 · AST-911 (state-consumer inventory + safe-change mechanics)
+
+**Docs-only** (team-chuckles tooling + astral plan). Live edits are on **`team-chuckles` `main`** @ `89b14aa` (`state_vocabulary.json` v1 + watcher `state_vocabulary_version` load gate + `docs/linear-state-consumers.md` + `docs/linear-state-migration-checklist.md`); astral **`origin/sub/AST-911/AST-923-state-consumer-inventory`** holds the plan doc only. No product `src/` and no pytest. Does **not** add **Plan Discuss** (**AST-924**).
+
+**No new component tests.** **`test-child`:** file existence + Stage 1 `_load_rule` smoke/mismatch + name-only / inventory / checklist acceptance on `~/team-chuckles` — no pytest manifest. Sibling children under parent **AST-911** are out of scope.
+
 
 
 ## 2. Where tests live
