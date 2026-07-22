@@ -128,3 +128,28 @@ Stage 1: §7 Git branch template and §10 Engineer handoff now teach `git push o
 
 **Manifest:** Betty docs-only / no pytest. Grep gate on `skills/dispatch-parent/SKILL.md` — only deliberate bans (`Never git-store-*` / self-cherry-pick); publish path `git push origin HEAD:<publish-ref>` confirmed. Plan Stage 1 + `team-chuckles@f3dd732` spot-check OK.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-932-dispatch-parent`; skill deliverable `team-chuckles@f3dd732` (`skills/dispatch-parent/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 only: §7 Git branch template and §10 Engineer handoff now teach `git push origin HEAD:<publish-ref>` / `HEAD:sub/…`; no live Joan / `git-store-*` / cherry-pick publish. §2c `merge-parent` left per plan Decision (sibling tickets). |
+| Grep gate | Broad `rg` hits only deliberate **Never …** bans; narrowed pattern (`Publish via git-store` / `Engineers cherry-pick` / `JOAN_SESSION` / `joan-uuid`) empty. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `dispatch-parent` only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
