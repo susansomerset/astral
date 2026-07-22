@@ -226,3 +226,11 @@ None (**fix-now** / **discuss**).
 
 **Verdict:** Clean — `resolve-child` may proceed (no product fixes required beyond this `docs()` commit).
 
+
+## Resolution (2026-07-22, resolve-child)
+
+**Radia:** clean — **fix-now** / **discuss** none (`docs(AST-955): Radia review — clean` @ `2646527`).
+
+**Product:** no code changes this pass. Stages 1–3 from build remain the ship; Betty `merge-tests` @ `5f87d19` unchanged.
+
+**Outcome:** `resolve(AST-955): — clean` → **User Testing** (assignee Ada).
