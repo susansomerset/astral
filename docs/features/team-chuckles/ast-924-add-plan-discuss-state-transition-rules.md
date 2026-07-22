@@ -244,5 +244,12 @@ Consumers must **not** store the returned `id` — name-only law.
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| plan | *(this commit)* | Plan doc on astral sub |
-| 1–4 | *(build)* | Linear state + team-chuckles cutover + canary + astral workflow/§4.3 |
+| plan | `b192ccc` | Plan doc on astral sub |
+| 1 | Linear only | Created `Plan Discuss` workflow state; paused `chuck` |
+| 2 | `team-chuckles@96baecf` | vocabulary v2 + watcher gates |
+| 3 | `team-chuckles@d15a0d9` + astral `a456b82` | skills/rollcall/inventory + workflow/§4.3 |
+| 4 | `team-chuckles@99534f8` | install/resume; canary AST-954; live-run log |
+
+**Tip:** astral publish ref after stub commit below; tooling on `team-chuckles` `main` @ `99534f8`.
+
+**Canary:** AST-954 — Plan Discuss 2-round + Archie escalate path; zero stalled-watcher incidents.
