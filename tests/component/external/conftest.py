@@ -30,15 +30,22 @@ class FakeAnthropicMessage:
 
 
 class FakeAnthropicClient:
-    def __init__(self, *, response_text: str = '{"ok": true}', raise_on_create: Optional[Exception] = None) -> None:
+    def __init__(
+        self,
+        *,
+        response_text: str = '{"ok": true}',
+        raise_on_create: Optional[Exception] = None,
+        stop_reason: str = "end_turn",
+    ) -> None:
         self._response_text = response_text
         self._raise_on_create = raise_on_create
+        self._stop_reason = stop_reason
         self.messages = self
 
     def create(self, **_kwargs: Any) -> FakeAnthropicMessage:
         if self._raise_on_create:
             raise self._raise_on_create
-        return FakeAnthropicMessage(self._response_text)
+        return FakeAnthropicMessage(self._response_text, stop_reason=self._stop_reason)
 
 
 @pytest.fixture

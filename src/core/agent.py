@@ -53,6 +53,8 @@ from src.utils.config import (
     dispatch_chain_graduation_target,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
+    CRAFT_RUBRIC_MAX_TOKENS,
+    CRAFT_RUBRIC_UI_TASK_KEYS,
     is_rubric_backed_task,
     rubric_owner_task_key,
 )
@@ -1880,6 +1882,9 @@ async def do_task(
         raise ValueError(f"Unknown LLM active_provider {provider!r}")
     agent_temperature = agent_row.get("temperature") if agent_row.get("temperature") is not None else model_cfg["default_temperature"]
     agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else model_cfg["default_max_tokens"]
+    # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
+    if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
+        agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
 
     _hop_kw = dict(
         chain_entry=chain_entry,

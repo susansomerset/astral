@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import copy
 import struct
 
 from flask import Blueprint, g, jsonify, request
@@ -9,6 +10,7 @@ from flask import Blueprint, g, jsonify, request
 from ui.auth import require_auth, require_admin
 from src.core.candidate import (
     _clear_pending_craft_generation,
+    _stash_pending_craft_generation,
     apply_company_search_terms_save,
     apply_rubric_vectors_save,
     clear_candidate_api_key,
@@ -32,6 +34,7 @@ from src.core.candidate import (
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+    RUBRIC_CRITERIA_ARTIFACT_KEYS,
     TASK_CONFIG,
     UI_CONFIG,
 )
@@ -163,6 +166,9 @@ def update_candidate_data(candidate_id):
     body = request.get_json(silent=True) or {}
     if not body:
         return jsonify({"error": "No data provided"}), 400
+    # AST-904: capture submitted rubric before apply deletes keys; re-stash on failure
+    submitted_rubric = {}
+    rubric_keys_to_clear = []
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
@@ -197,17 +203,23 @@ def update_candidate_data(candidate_id):
                 if not arts:
                     body.pop("artifacts", None)
                 else:
+                    rubric_keys_to_clear = [
+                        k for k in arts if k in RUBRIC_CRITERIA_ARTIFACT_KEYS
+                    ]
+                    submitted_rubric = copy.deepcopy(
+                        {k: arts[k] for k in rubric_keys_to_clear}
+                    )
                     normalize_rubric_artifacts_on_save(arts)
                     apply_rubric_vectors_save(candidate_id, arts)
-                    # Clear pending generate stash when user Saves the matching artifact
-                    for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
-                        if artifact_key in arts:
-                            _clear_pending_craft_generation(candidate_id, craft_task_key)
             prof = body.get("profile")
             if isinstance(prof, dict) and "cover_letter_signature_image" in prof:
                 _validate_cover_letter_signature_image(prof.get("cover_letter_signature_image"))
             if body:
                 save_candidate_data(candidate_id, body, replace=False)
+                # Clear pending only after persist — keys captured before apply del
+                for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
+                    if artifact_key in rubric_keys_to_clear:
+                        _clear_pending_craft_generation(candidate_id, craft_task_key)
         if state_override is not None:
             save_candidate_admin(candidate_id, state=state_override)
         if api_key is not None:
@@ -216,6 +228,16 @@ def update_candidate_data(candidate_id):
             else:
                 clear_candidate_api_key(candidate_id)
     except Exception as e:
+        # Failed Save: keep submitted criteria recoverable via GET …/pending
+        for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
+            val = submitted_rubric.get(artifact_key)
+            if isinstance(val, list) and val:
+                _stash_pending_craft_generation(
+                    candidate_id,
+                    craft_task_key,
+                    None,
+                    {"criteria": val},
+                )
         return jsonify({"error": str(e)}), 400
     updated = get_candidate(candidate_id)
     return jsonify(_sanitize_candidate(updated) if updated else {})

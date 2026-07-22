@@ -752,3 +752,11 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 | Registry, claim companions, UI, fail-dest matrix | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding`; revised **`TestAst641DispatchClaimStates`**, **`TestAst882DispatchClaimStates`**, **`TestAst797ConfigRuntimeCutover`** |
 
 Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
+
+### AST-903 · AST-900 (UAT fix)
+
+**`CRAFT_RUBRIC_MAX_TOKENS = 32000`** floor for craft rubric UI generate. Primary manifest: **`docs/test-bible/core/agent.md`** § AST-903.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token floor literal | `src/utils/config.py` | **`TestAst903CraftRubricMaxTokens`** |

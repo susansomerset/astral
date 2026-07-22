@@ -312,3 +312,39 @@ class TestAst897BalanceRefusalTagging:
         )
         assert out["success"] is False
         assert "failure_class" not in out
+
+
+class TestAst903JsonMaxTokensHardFail:
+    """AST-903: JSON + stop_reason=max_tokens fails closed (no heal/parse success)."""
+
+    @pytest.mark.asyncio
+    async def test_json_max_tokens_returns_failure_class(self, monkeypatch, fake_anthropic_client) -> None:
+        client = fake_anthropic_client(
+            response_text='{"criteria":[{"content":"A == The JD',
+            stop_reason="max_tokens",
+        )
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        recorded: list = []
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+            response_format="json",
+            record_timesheet=lambda **kwargs: recorded.append(kwargs),
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == "max_tokens"
+        assert "max_tokens" in out["error"]
+        assert out["parsed_response"] is None
+        assert recorded and recorded[0]["agent_performance"] == "failure"
+
+    @pytest.mark.asyncio
+    async def test_text_max_tokens_still_succeeds(self, monkeypatch, fake_anthropic_client) -> None:
+        client = fake_anthropic_client(response_text="plain truncated ok", stop_reason="max_tokens")
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda: client)
+        out = await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}],
+            model_code="claude-sonnet-4-6",
+            response_format="text",
+        )
+        assert out["success"] is True
+        assert "failure_class" not in out

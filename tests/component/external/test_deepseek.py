@@ -11,9 +11,15 @@ from src.utils.cost_calculator import calculate_cost_components_deepseek_from_co
 
 
 class FakeDeepseekMessage:
-    def __init__(self, text: str, *, usage: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        text: str,
+        *,
+        stop_reason: str = "end_turn",
+        usage: Optional[Any] = None,
+    ) -> None:
         self.content = [SimpleNamespace(text=text)]
-        self.stop_reason = "end_turn"
+        self.stop_reason = stop_reason
         self.id = "msg_ds_test"
         self.usage = usage or SimpleNamespace(
             input_tokens=100,
@@ -28,15 +34,17 @@ class FakeDeepseekClient:
         *,
         response_text: str = "ok",
         raise_on_create: Optional[Exception] = None,
+        stop_reason: str = "end_turn",
     ) -> None:
         self._response_text = response_text
         self._raise_on_create = raise_on_create
+        self._stop_reason = stop_reason
         self.messages = self
 
     def create(self, **_kwargs: Any) -> FakeDeepseekMessage:
         if self._raise_on_create:
             raise self._raise_on_create
-        return FakeDeepseekMessage(self._response_text)
+        return FakeDeepseekMessage(self._response_text, stop_reason=self._stop_reason)
 
 
 @pytest.fixture
@@ -178,4 +186,51 @@ class TestAst897BalanceRefusalTagging:
             response_format="text",
         )
         assert out["success"] is False
+        assert "failure_class" not in out
+
+
+class TestAst903JsonMaxTokensHardFail:
+    """AST-903: JSON + stop_reason=max_tokens fails closed (no heal/parse success)."""
+
+    @pytest.mark.asyncio
+    async def test_json_max_tokens_returns_failure_class(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        # Truncated mid-string body — must not be healed into success
+        client = fake_deepseek_client(
+            response_text='{"criteria":[{"content":"A == The JD',
+            stop_reason="max_tokens",
+        )
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        recorded: list[dict] = []
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-pro",
+            tier_meta={"thinking": False},
+            response_format="json",
+            record_timesheet=lambda **kwargs: recorded.append(kwargs),
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == "max_tokens"
+        assert "max_tokens" in out["error"]
+        assert out["parsed_response"] is None
+        assert recorded and recorded[0]["agent_performance"] == "failure"
+
+    @pytest.mark.asyncio
+    async def test_text_max_tokens_still_succeeds(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(response_text="plain truncated ok", stop_reason="max_tokens")
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-pro",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is True
         assert "failure_class" not in out

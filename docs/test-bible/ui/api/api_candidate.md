@@ -31,3 +31,29 @@ PUT **`/api/candidates/:id/data`** with **`artifacts.company_search_terms`** syn
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Pending GET + clear on Save | `src/ui/api/api_candidate.py` | **`TestAst901PendingCraftGenerationApi`** |
+
+### AST-904 · AST-900 (UAT fix)
+
+PUT Save: clear pending **after** successful persist (keys captured before `apply_rubric_vectors_save` deletes them); on Save failure **re-stash** submitted criteria for page-return recovery. UI toast: **`docs/test-bible/frontend/components.md`** § AST-904.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clear after success (apply dels keys) | `src/ui/api/api_candidate.py` | **`TestAst901PendingCraftGenerationApi::test_put_artifact_clears_matching_pending`** (revised) |
+| Re-stash on Save failure | `src/ui/api/api_candidate.py` | **`TestAst904SavePendingRecovery::test_put_save_failure_restashes_pending`** |
+
+**AST-904** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst901PendingCraftGenerationApi::test_put_artifact_clears_matching_pending \
+  tests/component/ui/api/test_api_candidate.py::TestAst904SavePendingRecovery \
+  -q
+```
+
+### AST-906 · AST-900 (UAT fix)
+
+PUT **`artifacts.get_rubric`** with craft-shaped literal `\n` criteria coerces via **`rubric_text`** and returns **200**; empty / single-grade content still **400**. Primary: **`docs/test-bible/utils/rubric_text.md`** § AST-906.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Literal `\n` get_rubric Save | `src/ui/api/api_candidate.py` | **`TestAst906GetRubricLiteralNewlineSave`** |

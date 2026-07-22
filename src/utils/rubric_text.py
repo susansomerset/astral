@@ -15,6 +15,22 @@ from typing import Dict, List
 _GRADE_LINE = re.compile(r"^([ABCDEFX])\s*(?:==|=|:)\s*(.+)$", re.IGNORECASE)
 
 
+def coerce_embedded_newline_escapes(content: str) -> str:
+    """If content has few real newlines but contains \\n / \\r\\n escapes, expand them.
+
+    Craft rubric prompts show grade tables as one JSON string with literal ``\\n``
+    between grade lines (AST-906). Models often copy that into ``content``; Save
+    then sees a single physical line and fails trailing grade-table parse.
+    """
+    raw = content or ""
+    if raw.count("\n") >= 2:
+        return raw
+    if "\\n" not in raw and "\\r\\n" not in raw:
+        return raw
+    # Expand \\r\\n before \\n so a single pass does not leave stray \\r.
+    return raw.replace("\\r\\n", "\n").replace("\\n", "\n")
+
+
 def parse_trailing_grade_table_lines(content: str) -> List[Dict[str, str]]:
     """Return ``[{"grade": "A", "description": "..."}, ...]`` for the trailing grade block.
 
@@ -55,5 +71,9 @@ def rubric_vector_content_fingerprint(label: str, content: str) -> str:
 
 def ensure_criterion_grade_table(item: dict) -> None:
     """Parse ``item['content']`` and set ``item['grade_descriptions']``. Mutates ``item``."""
-    rows = parse_trailing_grade_table_lines(item.get("content") or "")
+    original = item.get("content") or ""
+    content = coerce_embedded_newline_escapes(original)
+    if content != original:
+        item["content"] = content
+    rows = parse_trailing_grade_table_lines(content)
     item["grade_descriptions"] = rows

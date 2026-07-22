@@ -5633,3 +5633,70 @@ class TestAst897DoTaskBalanceDebug:
         assert out.get("failure_class") == fc
         detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
         assert any("provider_balance_refusal" in str(m) for m in detail_msgs)
+
+
+class TestAst903CraftRubricMaxTokensFloor:
+    """AST-903: do_task floors max_tokens for craft_*_rubric UI tasks."""
+
+    @pytest.mark.asyncio
+    async def test_craft_get_rubric_floors_max_tokens_to_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Agent row max_tokens=100 (from _agent_rows); floor must raise to CRAFT_RUBRIC_MAX_TOKENS.
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        criteria = [
+            {"code": "GT", "label": "Get", "content": "full criterion body", "importance": 5},
+        ]
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                # Rubric-backed normalize injects agent_performance — criteria live under agent_payload.
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"criteria": criteria},
+                },
+                "api_response": _api_response('{"criteria":[]}'),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="karfo",
+            ctx={"candidate_data": {"astral_candidate_id": "karfo"}},
+        )
+        assert out["success"] is True
+        assert send.await_args is not None
+        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
+
+    @pytest.mark.asyncio
+    async def test_non_craft_task_keeps_agent_max_tokens(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"search_terms": "one\ntwo"},
+                "api_response": _api_response('{"search_terms":"one\\ntwo"}'),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        out = await agent_mod.do_task(
+            "craft_company_search_terms",
+            index="somerset",
+            ctx={"candidate_data": {"astral_candidate_id": "somerset"}},
+        )
+        assert out["success"] is True
+        assert send.await_args.kwargs.get("max_tokens") == 100

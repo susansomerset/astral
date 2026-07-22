@@ -353,3 +353,23 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 ```bash
 .venv/bin/python -m pytest tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode -q
 ```
+
+### AST-903 · AST-900 (UAT fix)
+
+**AST-903:** Craft rubric JSON truncation (`Unterminated string` mid-`criteria[].content`) — `do_task` floors **`max_tokens`** to **`CRAFT_RUBRIC_MAX_TOKENS`** (32000) for **`CRAFT_RUBRIC_UI_TASK_KEYS`**; DeepSeek/Anthropic hard-fail JSON when **`stop_reason == max_tokens`** (no heal-into-partial-success). UI/prompts/consult batches out of scope.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token floor in `do_task` | `src/core/agent.py` | **`TestAst903CraftRubricMaxTokensFloor`** |
+| Config floor literal | `src/utils/config.py` | **`TestAst903CraftRubricMaxTokens`** (`test_config.py`) |
+| JSON max_tokens hard-fail | `src/external/deepseek.py`, `src/external/anthropic.py` | **`TestAst903JsonMaxTokensHardFail`** (each provider module) |
+
+**AST-903** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst903CraftRubricMaxTokens \
+  tests/component/external/test_deepseek.py::TestAst903JsonMaxTokensHardFail \
+  tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
+```

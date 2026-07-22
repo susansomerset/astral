@@ -355,6 +355,57 @@ describe("ArtifactEditor", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
   })
 
+  it("AST-905: skips pending recovery when loaded criteria already have content", async () => {
+    mockApis("CONTEXT_READY")
+    let pendingCalls = 0
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_get_rubric/pending") {
+        pendingCalls += 1
+        // Would overwrite if applied — must not be fetched when content exists
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            recovered: true,
+            source: "pending_stash",
+            parsed_response: {
+              criteria: [{ code: "GT", label: "Overwrite", content: "SHOULD NOT APPLY", importance: 1 }],
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                get_rubric: [{ label: "Existing Get", content: "Keep me", importance: 5 }],
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Keep me")).toBeInTheDocument())
+    // Empty-only gate: no pending fetch when tabs already have content
+    expect(pendingCalls).toBe(0)
+    expect(
+      screen.queryByText("Recovered completed generation — review and Save or Cancel"),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue("SHOULD NOT APPLY")).not.toBeInTheDocument()
+  })
+
   it("AST-902: network interrupt on Generate suggests page-return recovery", async () => {
     mockApis("CONTEXT_READY")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -388,5 +439,62 @@ describe("ArtifactEditor", () => {
         ),
       ).toBeInTheDocument(),
     )
+  })
+
+  it("AST-904: Save failure shows server error and keeps review mode", async () => {
+    mockApis("CONTEXT_READY")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { get_rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_get_rubric" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            parsed_response: {
+              criteria: [{ code: "GT", label: "Generated", content: "New body", importance: 5 }],
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: "criterion content invalid" }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    await waitFor(() =>
+      expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("criterion content invalid")).toBeInTheDocument())
+    expect(screen.queryByText("Save failed")).not.toBeInTheDocument()
+    // Review mode retained — Save/Cancel still available
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
   })
 })
