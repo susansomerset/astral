@@ -168,6 +168,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** verify skill dir absent (`~/team-chuckles/skills/merge-parent` and `~/.cursor/skills/merge-parent`); confirm `merge-parent.sh` still present — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
 
+### AST-945 · AST-909 (install.sh stop merge-parent)
+
+**Docs-only** (team-chuckles install script + astral plan). Live edit is **`~/team-chuckles/install.sh`** (`code(AST-945)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-945-install-sh`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** read/`bash -n` `install.sh` — skips installing `merge-parent`, removes stale `~/.cursor/skills/merge-parent`; finish-up remains on the generic skills loop — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
 
 
 ## 2. Where tests live
