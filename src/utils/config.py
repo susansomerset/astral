@@ -1262,9 +1262,14 @@ IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
 ]
-# PASSED_* rows waiting on a scored dispatch step: claim uses latest_score >= score_floor.
-# UI treats misses as Skipped while DB state stays PASSED (see api_jobs skipped / in_review).
-# CULTURE_READY is score-gated so grade_like keeps a floor after the culture hop (AST-874).
+# Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
+# Claim uses latest_score >= score_floor on these states; UI treats misses as Skipped while DB
+# state stays PASSED (see api_jobs skipped / in_review). CULTURE_READY is score-gated so
+# grade_like keeps a floor after the culture hop (AST-874).
+# Jobs UI below-floor membership (score_floor_by_trigger_for_candidate) uses
+# dispatch_claim_uses_score_floor — which also returns True for transition outcomes such as
+# PASSED_JOBLIST via _TRANSITION_STATES_USED_BY_SCORED_TASKS (AST-908). Do not add
+# PASSED_JOBLIST here (would change claim sort_by for that trigger).
 PASSED_SCORE_GATED_STATES = frozenset({
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE",
 })
