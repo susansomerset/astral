@@ -6234,9 +6234,9 @@ def save_dispatch_task(
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted."""
     try:
-        defaults = dispatch_task_admin_defaults(task_key)
+        defaults = dispatch_task_admin_defaults(task_key, trigger_state=trigger_state)
     except KeyError as e:
-        raise ValueError(f"dispatch_task task_key not schedulable: {task_key!r}") from e
+        raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
     if not (entity_type and str(entity_type).strip()):
         entity_type = defaults["entity_type"]
     if not (trigger_state and str(trigger_state).strip()):
