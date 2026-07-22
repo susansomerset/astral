@@ -127,3 +127,7 @@ No conflicts requiring `conf-!!-NONE`.
 
 Stage 1: Who-runs / §4 sync / §6 publish bullets — drop Joan/`dev-radia`/`astral-radia`/cherry-pick handoff; parent-close sync names finish-up; mid-pipeline Radia `docs()` kept via push to publish-ref.
 
+## Tests (engineer)
+
+**Manifest:** Betty docs-only / no pytest. Grep gate on `skills/review-child/SKILL.md` — only deliberate bans (`Never Joan` / `dev-radia` / `git-store-*` / self-cherry-pick); mid-pipeline `docs()` via `git push origin HEAD:sub/…` confirmed; finish-up only post–PR Ready. Plan Stage 1 + `team-chuckles@c01bd93` spot-check OK.
+
