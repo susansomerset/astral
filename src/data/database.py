@@ -73,7 +73,6 @@ from src.utils.config import (
     COMPANY_STATES,
     ENTITY_TYPES,
     INFLOW_CONFIG,
-    PASSED_SCORE_GATED_STATES,
     ROSTER_CONFIG,
     TASK_CONFIG,
     get_active_llm_provider,
@@ -86,7 +85,6 @@ from src.utils.config import (
     fetch_website_prefilter_second_strike_filter,
     dispatch_chain_claim_states_for_row,
     is_dispatch_chain_trigger,
-    trigger_state_used_by_scored_dispatch_task,
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
@@ -1911,18 +1909,16 @@ def count_jobs(
 
 def score_floor_by_trigger_for_candidate(candidate_id: str) -> Dict[str, float]:
     """trigger_state -> numeric floor for this candidate's job dispatch_task rows.
-    Aligns with count_eligible_for_dispatch_task / claim_job_batch (scored + default 1.0).
-    When several rows share a trigger_state, the maximum floor wins (strictest gate)."""
+    Covers every job trigger where dispatch_claim_uses_score_floor is True (not only
+    PASSED_SCORE_GATED_STATES). Aligns with count_eligible_for_dispatch_task /
+    claim_job_batch (scored + default 1.0). When several rows share a trigger_state,
+    the maximum floor wins (strictest gate)."""
     floors: Dict[str, float] = {}
     for t in list_dispatch_tasks():
         if t.get("candidate_id") != candidate_id or t.get("entity_type") != "job":
             continue
         ts = t.get("trigger_state")
-        if not ts or ts not in PASSED_SCORE_GATED_STATES:
-            continue
-        task_key = t.get("task_key") or ""
-        is_scored = trigger_state_used_by_scored_dispatch_task(ts)
-        if not is_scored:
+        if not ts or not dispatch_claim_uses_score_floor(ts):
             continue
         eff = float(t["score_floor"]) if t.get("score_floor") is not None else 1.0
         floors[ts] = max(floors.get(ts, eff), eff)
@@ -1942,7 +1938,7 @@ def job_misses_dispatch_score_floor(job: Dict[str, Any], floors: Dict[str, float
 
 
 def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
-    """How many PASSED_* jobs are stuck under their next scored dispatch_task.score_floor."""
+    """How many jobs in claim-gated floor states are stuck under their dispatch_task.score_floor."""
     floors = score_floor_by_trigger_for_candidate(candidate_id)
     if not floors:
         return 0
@@ -1968,11 +1964,11 @@ def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
 
 
 def list_jobs_below_dispatch_score_floor(candidate_id: str) -> List[Dict[str, Any]]:
-    """PASSED_JD / PASSED_DO / PASSED_GET rows that would not be claimed due to score_floor."""
+    """Jobs in any claim-gated floor state (including PASSED_JOBLIST) below score_floor."""
     floors = score_floor_by_trigger_for_candidate(candidate_id)
     if not floors:
         return []
-    states = [s for s in floors if s in PASSED_SCORE_GATED_STATES]
+    states = list(floors.keys())
     if not states:
         return []
     rows = list_jobs(states=states, candidate_id=candidate_id, order_by="state_changed_at")
