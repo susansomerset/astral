@@ -124,3 +124,28 @@ Match these sources literally when choosing replacement wording (do not invent a
 - **Plan tip:** `4e6d68f` (`plan(AST-931)`)
 - **team-chuckles:** `origin/main` @ `325a987` — `code(AST-931): align build-child publish to epic sub push`
 - **Built:** `~/team-chuckles/skills/build-child/SKILL.md` — epic `astral-<parent-id>/` + `sub/*` + `git push origin HEAD:sub/…`; Joan / `git-store-*` / `dev-ada` checkout language removed (ban-list mentions of `dev-ada`/`dev-hedy`/`dev-katherine` remain as explicit “do not camp” wording).
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-931-build-child`; skill deliverable `team-chuckles@325a987` (`skills/build-child/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2: §5 worktree/publish rewritten to `$CHUCKLES_ROOT/astral-<parent-id>/` + checkout `sub/*` + merge `origin/dev` / `origin/ftr` + `git push origin HEAD:sub/…`; §9 matches; Joan / `git-store-*` / `RESULT: status=ok` / camping on nameless epic line removed. |
+| Grep gate | Acceptance `rg` hits only the Forbidden “do not camp on … `dev-ada`/`dev-hedy`/`dev-katherine`” ban (plan-allowed). Live `~/.cursor/skills/build-child` symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `build-child` only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
