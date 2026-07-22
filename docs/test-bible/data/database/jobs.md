@@ -35,3 +35,26 @@ Partial unique index **`idx_job_identity_unique`** on **`(company, job_title, co
 | Identity lookup + single-row delete | `src/data/database.py` | `tests/component/data/database/test_jobs.py::TestAst733JobIdentityHelpers` |
 
 See **`docs/test-bible/core/tracker.md`** and **`docs/test-bible/core/consult.md`** for **`initialize_job`** / **`qualify_job_listings`** wiring.
+
+
+### AST-908 · AST-907
+
+Jobs UI below-floor helpers (`score_floor_by_trigger_for_candidate`, `list_jobs_below_dispatch_score_floor`, `count_jobs_below_dispatch_score_floor`) gate on **`dispatch_claim_uses_score_floor`** so **PASSED_JOBLIST** (and every other claim-gated In Review trigger) joins the floors map. Pre-score triggers (**VALID_TITLE**, **JD_READY**) stay out. Virtual Skipped membership only — no DB skip state. Config comment documents UI vs **`PASSED_SCORE_GATED_STATES`** (claim-sort set unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Floors map + list/count below floor | `src/data/database.py` | `tests/component/data/database/test_jobs.py::TestAst908BelowDispatchScoreFloorViews` |
+| Claim helper (existing) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor` |
+| API wiring (existing mocks) | `src/ui/api/api_jobs.py` | `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor`, `test_list_skipped_view_appends_virtual_rows` |
+
+**Broken / obsolete:** none — prior floors tests did not assert **PASSED_JOBLIST** exclusion; API route tests mock the helpers.
+
+**AST-908** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst908BelowDispatchScoreFloorViews \
+  tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_skipped_view_appends_virtual_rows
+```
