@@ -106,3 +106,15 @@ rg -n -i 'joan-uuid|git-store|JOAN_SESSION|store-plan-commit|store-code-commit|s
 - §3.6 / docs placement: plan under `docs/features/team-chuckles/` — satisfied.
 - No config, batch, state-machine, or import-layer changes — N/A.
 - No conflict with orientation “what never happens” (Joan/`git-store-*`/`JOAN_SESSION`/cherry-pick publish/agent-named epic trees) — this plan removes contradictions from datt only.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-909/AST-930-do-all-the-things`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `402416b` | Plan doc on astral sub |
+| 1–3 | `team-chuckles@242cfce` | Scrub `skills/do-all-the-things/SKILL.md` on `origin/main` (prompts + procedure; finish-up; no Joan/`git-store-*`/`<joan-uuid>`) |
+
+**Tip:** astral plan `402416b` + review stub (this commit); skill live on `team-chuckles` `main` @ `242cfce`. Host needs `install.sh` only if skills are not symlinked from the repo (this host symlinks — already live).
+
