@@ -118,6 +118,35 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `6404d4187471454f59f3fbd86d472a9326a5034b`
+**Built:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `a3ebfa5`
 
 Stage 1: `score_floor_by_trigger_for_candidate` gates on `dispatch_claim_uses_score_floor` (includes **PASSED_JOBLIST**); `list_jobs_below_dispatch_score_floor` lists all floors keys; config comment documents UI vs `PASSED_SCORE_GATED_STATES`. Tests deferred to Betty.
+
+## Review
+
+**Radia** · `origin/dev`…`origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `f8f3533` · product `6404d41` (`src/data/database.py`, `src/utils/config.py` comment)
+
+### What's solid
+
+- **Plan fidelity:** Stage 1 matches. Floors map gates on `dispatch_claim_uses_score_floor(ts)` (drops redundant `PASSED_SCORE_GATED_STATES` + `trigger_state_used_by_scored_dispatch_task`); `list_jobs_below_dispatch_score_floor` uses `list(floors.keys())`; config comment documents UI vs claim-sort set without adding **PASSED_JOBLIST** to `PASSED_SCORE_GATED_STATES`. Unused imports removed. No dispatcher / API / React / claim-math edits.
+- **§1.3 / §1.4 / §2.1 / §3.3:** Reuses existing claim helper; config remains membership source of truth; pass_threshold vs score_floor untouched; no new cross-layer imports.
+- **Self-Assessment:** Diff footprint matches **Single-Component**; high Conf justified; Medium risk mitigated by shared claim gate.
+- **Betty coverage:** `TestAst908BelowDispatchScoreFloorViews` covers PASSED_JOBLIST floors + list/count; legacy VALID_TITLE graded assert rewritten post-AST-898 — bible matches.
+
+### Issues
+
+None (no fix-now / discuss).
+
+### Advisory (not fix-now)
+
+- `count_jobs_below_dispatch_score_floor` docstring still says “PASSED_* jobs”; behavior already iterates all floors keys (including **PASSED_JOBLIST**). Cosmetic only.
+
+### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
+
+## Resolution
+
+_(resolve-child fills after Review Posted)_
