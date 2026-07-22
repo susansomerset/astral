@@ -253,3 +253,31 @@ Consumers must **not** store the returned `id` — name-only law.
 **Tip:** astral publish ref after stub commit below; tooling on `team-chuckles` `main` @ `99534f8`.
 
 **Canary:** AST-954 — Plan Discuss 2-round + Archie escalate path; zero stalled-watcher incidents.
+
+---
+
+## Radia review (2026-07-22)
+
+**Diff:** `origin/dev...origin/sub/AST-911/AST-924-plan-discuss-state` (astral law/plan/bible) + `team-chuckles` `main` @ `99534f8` (cutover).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–4: Linear `Plan Discuss` (`started`, pos ≈ -814.885); vocab **v2** with name after Plan Ready; five rules `state_vocabulary_version: 2`; `check.json` lists Plan Discuss; `_CHECK_ASSIGNEE_STATES` +Plan Discuss / −In Review; not exclusive-owned; skills/rollcall/handoff/inventory + astral workflow/§4.3; live-run log + canary AST-954. |
+| Mechanical rules | validate-plan gates Plan Ready/Plan Discuss; REVISE→Plan Discuss + tags; cap 2 → `[plan-discuss] escalate` + Susan; build-child refuses Plan Discuss; rollcall `STATUS_SORT`/`action()` match plan. |
+| Smoke / canary | Five `_load_rule` ok; mismatch raises; AST-954 comments show r1/r2 concern+reply then escalate (no round=3); assignee Susan at escalate; Canceled after clear. Live-run: zero stalled-watcher incidents. |
+| Scope / bible | Astral three-dot: plan + workflow + §4.3 + bible note (plus landed AST-923 docs on tip); no `src/` / pytest. Self-Assessment `MAJOR-CHANGE` footprint matches. |
+| Rules | §1.1 in-scope; §4.3 intentionally refreshed; name-only (no state ids in configs); §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Canary comment thread on AST-954 is compressed (sub-second timestamps) — mechanical tag path is observable and meets AC; real validate-plan passes will be slower under live use. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
