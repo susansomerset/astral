@@ -52,7 +52,8 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 |---------------|----------------|---------------------|
 | Backlog | Susan + Chuckles | **`define-parent`** until definition is ready; Susan moves to **Todo** when approved for planning. |
 | Todo | Engineer | **`plan-child`** → **Plan Ready** |
-| Plan Ready | Chuckles + Susan | **`validate-plan`** → **Plan Approved** (engineer stays assignee) |
+| Plan Ready | Chuckles + Susan | **`validate-plan`** → **Plan Approved** (APPROVED) or **Plan Discuss** (REVISE); engineer stays assignee |
+| Plan Discuss | Chuckles (Joan actor) + engineer | tagged discuss loop (`validate-plan` / plan reply); cap 2 → Archie (Susan); exit Plan Approved or Todo |
 | Plan Approved | Engineer | **`build-child`** → **Code Complete** |
 | Code Complete | Betty | **`qa-child`** → **Tests Ready** |
 | Tests Ready | Engineer | **`test-child`** → **Tests Passed** |

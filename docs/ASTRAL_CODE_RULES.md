@@ -536,7 +536,7 @@ Documentation is **not** stored in `.cursor/plans/`. The `docs/features/` direct
 
 Feature-level PRs. Sub-issues track implementation; parent features track PR lifecycle.
 
-**States:** Backlog → Todo → In Progress → Code Complete → In Review → Done
+**States (Team Chuckles pipeline names):** Backlog → Discussion → Todo → In Progress → Plan Ready → Plan Discuss → Plan Approved → Code Complete → Tests Ready → Tests Passed → Review Posted → User Testing → PR Ready → Done (plus Canceled/Cancelled, Archive, Duplicate as terminal taxonomy). Name-only — never Linear state ids.
 
 **Blocked** is a label, not a state. Use when stuck on clarification, dependency, or external blocker.
 
