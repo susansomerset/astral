@@ -1938,7 +1938,7 @@ def job_misses_dispatch_score_floor(job: Dict[str, Any], floors: Dict[str, float
 
 
 def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
-    """How many PASSED_* jobs are stuck under their next scored dispatch_task.score_floor."""
+    """How many jobs in claim-gated floor states are stuck under their dispatch_task.score_floor."""
     floors = score_floor_by_trigger_for_candidate(candidate_id)
     if not floors:
         return 0

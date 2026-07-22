@@ -149,4 +149,7 @@ None (no fix-now / discuss).
 
 ## Resolution
 
-_(resolve-child fills after Review Posted)_
+**2026-07-22** · `resolve(AST-908)` — Radia review clean (0 fix-now / 0 discuss).
+
+- **Advisory addressed:** `count_jobs_below_dispatch_score_floor` docstring updated to claim-gated floor states (not “PASSED_*” only) — matches floors-map behavior including **PASSED_JOBLIST**.
+- No product logic changes beyond that docstring.
