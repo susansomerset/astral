@@ -834,9 +834,11 @@ class TestAst586DispatchClaimScoreFloor:
         assert cfg.dispatch_claim_uses_score_floor(None) is False
         assert cfg.dispatch_claim_uses_score_floor("") is False
 
-    def test_legacy_helper_may_still_classify_valid_title_graded(self) -> None:
-        # Claim helper diverges from grading metadata (AST-586); legacy helper unchanged.
-        assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is True
+    def test_legacy_helper_tracks_schedulable_defaults_not_retired_valid_title(self) -> None:
+        # AST-586: claim floor diverges from grading metadata. Post-AST-898 qualify defaults
+        # to NEW (not VALID_TITLE), so the legacy helper is False for VALID_TITLE and True for NEW.
+        assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is False
+        assert cfg.trigger_state_used_by_scored_dispatch_task("NEW") is True
 
 
 # AST-750 — admin score_floor dropdown catalog (parent AST-743).

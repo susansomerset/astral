@@ -44,7 +44,7 @@ Jobs UI below-floor helpers (`score_floor_by_trigger_for_candidate`, `list_jobs_
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Floors map + list/count below floor | `src/data/database.py` | `tests/component/data/database/test_jobs.py::TestAst908BelowDispatchScoreFloorViews` |
-| Claim helper (existing) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor` |
+| Claim helper (existing; legacy VALID_TITLE assert rewritten post-AST-898) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor` |
 | API wiring (existing mocks) | `src/ui/api/api_jobs.py` | `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor`, `test_list_skipped_view_appends_virtual_rows` |
 
 **Broken / obsolete:** none — prior floors tests did not assert **PASSED_JOBLIST** exclusion; API route tests mock the helpers.
