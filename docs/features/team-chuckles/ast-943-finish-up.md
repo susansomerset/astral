@@ -72,3 +72,10 @@
 **Conf:** `high` — as-is is a single **Replaces:** line plus one internal script step; AST-944 already removed the sibling skill.
 
 **Risk:** `low` — docs only; wrong edit could confuse whether `merge-parent.sh` still runs inside finish-up-land (Stage 1 keeps it, labeled internal).
+
+## Review
+
+- **Branch:** `origin/sub/AST-909/AST-943-finish-up`
+- **Plan tip:** `6e12b03` (`plan(AST-943)`)
+- **team-chuckles:** `origin/main` @ `7615d50` — `code(AST-943): finish-up sole operator parent-close wording`
+- **Built:** `~/team-chuckles/skills/finish-up/SKILL.md` — sole operator parent-close; `merge-parent.sh` labeled internal-only; Replaces-sibling framing removed.
