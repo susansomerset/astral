@@ -281,3 +281,15 @@ None (**fix-now**).
 | **Advisory** | Canary comment thread on AST-954 is compressed (sub-second timestamps) — mechanical tag path is observable and meets AC; real validate-plan passes will be slower under live use. |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**Date:** 2026-07-22  
+**Review:** Radia `986e623` — no **fix-now**; one **advisory** (compressed canary timestamps on AST-954).
+
+| Item | Action |
+|------|--------|
+| fix-now | None |
+| Advisory — AST-954 compressed timestamps | Deferred (AC already met; live validate-plan will be slower) |
+
+No product or team-chuckles code changes in resolve. Tooling tip remains `team-chuckles@99534f8`.
