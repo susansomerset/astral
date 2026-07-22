@@ -313,4 +313,4 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 
 - **Publish ref:** `origin/sub/AST-912/AST-920-statute-schema-authoring-guide`
 - **Build commits:** Stage 1 `code(AST-920): statute SCHEMA + AUTHORING + README`; Stage 2 `code(AST-920): exemplar statutes (universal + hook)`
-- **Tip at Code Complete:** 
+- **Tip at Code Complete:** 37541d4a00460258daa486d8264cf0b2d40c3712 (Stage 2 exemplars; SCHEMA+AUTHORING at 8657ed2)
