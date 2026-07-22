@@ -290,3 +290,19 @@ test -f ~/team-chuckles/docs/linear-state-migration-checklist.md
 - §2.6 product state machine — N/A (Linear pipeline vocabulary, not JOB_STATES).
 - §3.3 imports — `watch_linear.py` keeps local JSON load; no new astral layer imports.
 - §4.3 Linear Workflow States in astral law is stale relative to real AST statuses — inventoried as adjacent; **not** edited here (avoids scope creep into astral law docs owned by other tickets).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-911/AST-923-state-consumer-inventory`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `cf810fa` | Plan doc on astral sub |
+| 1 | `team-chuckles@c2f7b13` | `state_vocabulary.json` v1; watcher `state_vocabulary_version`; `_load_rule` mismatch gate; drop stale `In Review` from check.json |
+| 2 | (no commit) | Name-only grep clean — no state-id keyed filters |
+| 3 | `team-chuckles@b0e6716` | `docs/linear-state-consumers.md` inventory + extant transition rules |
+| 4 | `team-chuckles@89b14aa` | `docs/linear-state-migration-checklist.md` + Plan Discuss dry-run worksheet |
+
+**Tip:** astral plan + stub (this commit); tooling on `team-chuckles` `main` @ `89b14aa`.
+
+**Host note:** re-run `~/team-chuckles/./install.sh` before restarting watchers so `~/.cursor/skills/rollcall` picks up vocabulary + load gate.
