@@ -107,7 +107,7 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review (build)
 
 **Built:** `docs/ASTRAL_TEAM_WORKFLOW.md` on this publish ref
-**Publish ref:** `origin/sub/AST-909/AST-947-astral-team-workflow` (this plan + stub; tip set after push)
+**Publish ref:** `origin/sub/AST-909/AST-947-astral-team-workflow` @ `7821e25fa7a0c4efe1185bc7013fb8db4a9e06aa` (this plan + stub)
 
 Stage 1: launch.sh note and PR Ready row name finish-up (outcome Done); no live merge-parent operator naming.
 
