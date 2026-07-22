@@ -117,3 +117,10 @@ Match these sources literally when choosing replacement wording (do not invent a
 **Conf:** `high` — as-is residue is localized to §5/§9 Joan + `dev-ada`/`astral-<agent>` wording; to-be path is already spelled out in orientation merge-on-checkout + ASTRAL_GIT_WORKFLOW push examples + the ticket Description.
 
 **Risk:** `low` — docs/templates only; wrong wording could mis-teach the next build agent, but cannot change Astral runtime behavior.
+
+## Review
+
+- **Branch:** `origin/sub/AST-909/AST-931-build-child`
+- **Plan tip:** `4e6d68f` (`plan(AST-931)`)
+- **team-chuckles:** `origin/main` @ `325a987` — `code(AST-931): align build-child publish to epic sub push`
+- **Built:** `~/team-chuckles/skills/build-child/SKILL.md` — epic `astral-<parent-id>/` + `sub/*` + `git push origin HEAD:sub/…`; Joan / `git-store-*` / `dev-ada` checkout language removed (ban-list mentions of `dev-ada`/`dev-hedy`/`dev-katherine` remain as explicit “do not camp” wording).
