@@ -192,6 +192,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** file existence + Stage 1 `_load_rule` smoke/mismatch + name-only / inventory / checklist acceptance on `~/team-chuckles` — no pytest manifest. Sibling children under parent **AST-911** are out of scope.
 
+### AST-924 · AST-911 (Plan Discuss state + transition rules)
+
+**Docs-only** (team-chuckles tooling + astral law/plan). Live edits on **`team-chuckles` `main`** @ `99534f8` (vocabulary **v2** + Plan Discuss watcher/skill/rollcall/inventory + migration live-run log; canary **AST-954**); astral **`origin/sub/AST-911/AST-924-plan-discuss-state`** holds plan + `docs/ASTRAL_TEAM_WORKFLOW.md` / §4.3. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** vocabulary v2 + `_load_rule` smoke/mismatch; Linear state **Plan Discuss** exists; live-run log + canary tag path (2 rounds → escalate, no round=3); workflow/§4.3 name Plan Discuss — no pytest manifest. Sibling children under parent **AST-911** are out of scope.
+
 
 
 ## 2. Where tests live
