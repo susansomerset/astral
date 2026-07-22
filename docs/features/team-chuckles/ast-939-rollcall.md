@@ -66,3 +66,15 @@ rg -n -i 'joan|git-store|JOAN_SESSION|store-.*commit|git\.sh rollup|merge-parent
 - §1.1 in-scope only — satisfied.
 - Plan under `docs/features/team-chuckles/` — satisfied.
 - Aligns rollcall with orientation “what never happens” (no Joan/`git-store-*`/cherry-pick publish).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-909/AST-939-rollcall`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `297bc2c` | Plan doc on astral sub |
+| 1–2 | `team-chuckles@1b0564c` | Scrub `skills/rollcall/SKILL.md` §7 STALE hint → push publish-ref / merge-child |
+
+**Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `1b0564c`.
+
