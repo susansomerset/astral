@@ -89,3 +89,15 @@ rg -n -i 'joan|git-store|JOAN_SESSION|store-plan-commit|git\.sh store-plan|astra
 - Plan path `docs/features/team-chuckles/` — satisfied.
 - No config/batch/state/import changes — N/A.
 - Aligns plan-child with orientation “what never happens” (no Joan/`git-store-*`/cherry-pick publish/agent-named epic trees).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-909/AST-933-plan-child`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `37bee03` | Plan doc on astral sub |
+| 1–3 | `team-chuckles@ac108ad` | Align `skills/plan-child/SKILL.md` publish path to `astral-<parent-id>/` + push (no Joan/`store-plan-commit`/`astral-<agent>`) |
+
+**Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `ac108ad`.
+
