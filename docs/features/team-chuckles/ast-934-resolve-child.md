@@ -116,3 +116,10 @@
 **Conf:** `high` — residue is localized (Joan publish, cherry-pick §5, merge-parent in §9a, `astral-<agent>`); ticket + parent clarifications explicitly preserve Radia mid-pipeline intake while forbidding cherry-pick/Joan.
 
 **Risk:** `low` — docs/templates only; main failure mode is accidentally dropping Radia intake or mis-naming finish-up as Radia’s channel — both guarded by Stage 2 decision + AC grep.
+
+## Review
+
+- **Branch:** `origin/sub/AST-909/AST-934-resolve-child`
+- **Plan tip:** `9116482` (`plan(AST-934)`)
+- **team-chuckles:** `origin/main` @ `9fc6810` — `code(AST-934): align resolve-child intake and finish-up wording`
+- **Built:** `~/team-chuckles/skills/resolve-child/SKILL.md` — epic `astral-<parent-id>/` + `sub/*` + push; Radia `docs()` intake via merge of publish tip; §9a surprises → finish-up; Joan/cherry-pick/`merge-parent` operator language removed.
