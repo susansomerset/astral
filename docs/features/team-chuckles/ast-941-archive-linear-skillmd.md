@@ -138,3 +138,11 @@ Align `archive-linear` skill prose with the **current** `archive_linear.py` publ
 - §2.1 / §2.4 / §2.6 / §3.3 / §3.5 / §3.6: N/A — docs/skill only.
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Built:** team-chuckles `origin/main` @ `6849251c1aec5d22731f3704286f89856660b676` (`skills/archive-linear/SKILL.md`)
+**Publish ref:** `origin/sub/AST-909/AST-941-archive-linear` (this plan + stub; tip set after push)
+
+Stage 1: skill prose matches `publish_archive_commit` push to origin/dev; Joan/cherry-pick/merge-parent scrubbed.
+
