@@ -74,3 +74,15 @@ fi
 - §1.1 in-scope only — satisfied.
 - Plan under `docs/features/team-chuckles/` — satisfied.
 - Aligns host skill install with finish-up as sole Chuckles parent-close skill.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-909/AST-945-install-sh`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `403774a` | Plan doc on astral sub |
+| 1–2 | `team-chuckles@5f5f7ba` | `install.sh` skips + removes stale `merge-parent`; finish-up still installed |
+
+**Tip:** astral plan + stub (this commit); install script on `team-chuckles` `main` @ `5f5f7ba`.
+
