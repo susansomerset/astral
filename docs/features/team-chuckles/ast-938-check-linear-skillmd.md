@@ -135,3 +135,11 @@ Scrub retired Susan-`merge-parent` / Joan `git.sh rollup` / cherry-pick-pollutio
 - §2.1 / §2.4 / §2.6 / §3.3 / §3.5 / §3.6: N/A — docs/skill only.
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Built:** team-chuckles `origin/main` @ `d707c401f168d32c904167944941eb0df9f42e7d` (`skills/check-linear/SKILL.md`)
+**Publish ref:** `origin/sub/AST-909/AST-938-check-linear` (this plan + stub; tip set after push)
+
+Stage 1: §0a post-merge push, §4c narrate ban, §5c Gate C/Procedure, Handoffs parent-close → finish-up / merge-child only.
+
