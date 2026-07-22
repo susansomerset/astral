@@ -334,3 +334,15 @@ None (**fix-now**).
 | **Advisory** | `watch_linear.py` `_CHECK_ASSIGNEE_STATES` still contains dead `"In Review"` — inventory Verification section already notes it; harmless (no AST team state). Optional cleanup on a later pass / with AST-924 frozenset edits. |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**Date:** 2026-07-22  
+**Review:** Radia `942a2e0` — no **fix-now**; one **advisory** (dead `"In Review"` in `_CHECK_ASSIGNEE_STATES`).
+
+| Item | Action |
+|------|--------|
+| fix-now | None |
+| Advisory — stale `"In Review"` in `_CHECK_ASSIGNEE_STATES` | Deferred to AST-924 frozenset edits (per Radia); already noted in inventory Verification |
+
+No product or team-chuckles code changes in resolve. Tooling tip remains `team-chuckles@89b14aa`.
