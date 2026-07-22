@@ -148,3 +148,7 @@ None (**fix-now**).
 | **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `resolve-child` only (`review-child` = AST-935). |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**2026-07-22** — Radia verdict **Clean** (no fix-now). Advisory only (Linear AC repo-wide grep vs child-scoped `resolve-child`); no product/doc change. `docs(AST-934): Radia review — clean` already on tip via §4 merge. `resolve(AST-934): — clean`.
