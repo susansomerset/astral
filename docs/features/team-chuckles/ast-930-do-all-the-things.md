@@ -143,3 +143,13 @@ None (**fix-now**).
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
 
+
+## Resolution
+
+**Date:** 2026-07-22
+
+Radia review: **Clean** — no fix-now / discuss items. Advisory (ticket AC “repo-wide” vs child-scoped datt grep) left for parent UAT; no product or skill change required on this child.
+
+- Skill deliverable remains `team-chuckles@242cfce`.
+- Radia `docs(AST-930)` intake: `a0268c5` on `origin/sub/AST-909/AST-930-do-all-the-things`.
+- resolve: clean — User Testing.
