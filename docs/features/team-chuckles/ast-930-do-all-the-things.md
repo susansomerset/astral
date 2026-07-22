@@ -118,3 +118,28 @@ rg -n -i 'joan-uuid|git-store|JOAN_SESSION|store-plan-commit|store-code-commit|s
 
 **Tip:** astral plan `402416b` + review stub (this commit); skill live on `team-chuckles` `main` @ `242cfce`. Host needs `install.sh` only if skills are not symlinked from the repo (this host symlinks — already live).
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-930-do-all-the-things` @ tip; skill deliverable `team-chuckles@242cfce` (`skills/do-all-the-things/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 applied: prompt templates use `$CHUCKLES_ROOT/astral-<PARENT-ID>/` + `AGENT_SESSION` only; publish lines push to `origin/<publish-ref>`; stage 12b / §4d–§4g / §6–§7 / “does not do” name `merge-child` / `finish-up` / `refresh-ftr` without Joan/`git-store-*`/`merge-parent` operator close. |
+| Grep gate | On scrubbed file: retired live tokens absent; only remaining `self-cherry-pick` hits are explicit **Never** bans (plan allows). Live `~/.cursor/skills/do-all-the-things` symlink matches scrub. |
+| Scope / bible | Astral diff is plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment **minor** / **high** / **low** matches footprint. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; layer/debug/external §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear acceptance text still says “repo-wide” grep; this child correctly scoped to datt only (siblings / law docs = other AST-909 rows). Parent UAT should confirm sibling scrub tickets closed the broader AC. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
