@@ -79,3 +79,28 @@
 - **Plan tip:** `6e12b03` (`plan(AST-943)`)
 - **team-chuckles:** `origin/main` @ `7615d50` — `code(AST-943): finish-up sole operator parent-close wording`
 - **Built:** `~/team-chuckles/skills/finish-up/SKILL.md` — sole operator parent-close; `merge-parent.sh` labeled internal-only; Replaces-sibling framing removed.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-943-finish-up`; skill deliverable `team-chuckles@7615d50` (`skills/finish-up/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2: **Replaces:** sibling framing → sole **Operator parent-close**; §2 step keeps `merge-parent.sh` labeled internal helper of `finish-up-land.sh`. Land procedure unchanged. |
+| Grep gate | `merge-parent` hits = ban + `.sh` internal only; no `Replaces`. `skills/merge-parent/` absent (AST-944). Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide / dual-naming gone; this child correctly scoped to `finish-up` SKILL.md (install/law-doc siblings own the rest). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
