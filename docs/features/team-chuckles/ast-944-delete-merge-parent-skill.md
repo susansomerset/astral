@@ -106,7 +106,7 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review (build)
 
 **Built:** team-chuckles `origin/main` @ `02ec02c5e3f0fbdbe7df296dbdb3fe613330936a` (deleted `skills/merge-parent/`)
-**Publish ref:** `origin/sub/AST-909/AST-944-delete-merge-parent-skill` (this plan + stub; tip set after push)
+**Publish ref:** `origin/sub/AST-909/AST-944-delete-merge-parent-skill` @ `50e1238cc6615d9922e49a5c739686c9d411e7f5` (this plan + stub)
 
 Stage 1: removed deprecated merge-parent skill + host symlink; `scripts/git/merge-parent.sh` retained; `install.sh` left to AST-945.
 
