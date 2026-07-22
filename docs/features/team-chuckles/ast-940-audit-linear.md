@@ -83,3 +83,28 @@
 - **Plan tip:** `fea2a01` (`plan(AST-940)`)
 - **team-chuckles:** `origin/main` @ `d456957` — `code(AST-940): audit-linear after-land finish-up wording`
 - **Built:** `~/team-chuckles/skills/audit-linear/SKILL.md` — after-land/Done → finish-up; mid-epic audit docs() §7 preserved; astral-radia camping path dropped.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-940-audit-linear`; skill deliverable `team-chuckles@d456957` (`skills/audit-linear/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2: §3 after-land → finish-up; “does not …” → finish-up / Chuckles after Susan PR Ready; Who-runs drops `astral-radia` camping; §7 optional mid-epic `docs(<parent-id>): Radia audit` preserved. |
+| Grep gate | No live `merge-parent` / Joan / store. Only ban mention of `dev-radia` / `astral-radia`. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `audit-linear` only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
