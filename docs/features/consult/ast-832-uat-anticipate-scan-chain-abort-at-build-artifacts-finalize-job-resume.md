@@ -1,3 +1,125 @@
+<!-- linear-archive: AST-832 archived 2026-07-22 -->
+
+## Linear archive (AST-832)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-832/uat-anticipate-scan-chain-abort-at-build-artifactsfinalize-job-resume  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-788 — BUILD_ARTIFACTS substates do not graduate  
+**Blocked by / blocks / related:** parent: AST-788
+
+### Description
+
+## What failed
+
+Susan UAT on **origin/dev** (2026-06-27): **anticipate_scan** and **draft_cover_letter** Scheduled Actions show **Available > 0** but **Run** does not execute work.
+
+Server log when running **anticipate_scan** (dispatch task id 5306, candidate **somerset**):
+
+```
+dispatcher._dispatch_one index 1/1 anticipate_scan -> task start
+ | candidate_id=somerset available_count=1 entity_batch_id=anticipate_scan-... mode=CLICK run_next_chain=True entity_type='job' trigger_state='BUILD_ARTIFACTS'
+Dispatching anticipate_scan — 1 available, batch anticipate_scan-...
+artifact chain: dispatch row mismatch task_key=anticipate_scan job_state=BUILD_ARTIFACTS.finalize_job_resume
+[anticipate_scan] thread exited and cleared from registry
+```
+
+Job remains at compound `BUILD_ARTIFACTS.finalize_job_resume`; chain aborts before `do_task`. **draft_cover_letter** never becomes eligible because jobs do not reach **CANDIDATE_REVIEW**.
+
+## Expected
+
+* **AC 5:** Mid-chain resume from `BUILD_ARTIFACTS*` (including `BUILD_ARTIFACTS.finalize_job_resume`) runs remaining CHAIN hops via `do_chain_for_job` and graduates to **CANDIDATE_REVIEW** — not `dispatch row mismatch` abort.
+* Scheduler **Run** for a BUILD_ARTIFACTS CHAIN task with **available_count > 0** executes the chain (or the correct hop for the job's legacy compound state), not immediate no-op exit.
+* After graduation, **draft_cover_letter** dispatch works for jobs in **CANDIDATE_REVIEW**.
+
+## Repro
+
+1. Pull **origin/dev**; use candidate **somerset** (or any job at `BUILD_ARTIFACTS.finalize_job_resume` with chain prerequisites).
+2. Admin → **Scheduled Actions** → **anticipate_scan** — confirm **Available > 0**.
+3. Click **Run**; watch server log.
+4. Observe `artifact chain: dispatch row mismatch task_key=anticipate_scan job_state=BUILD_ARTIFACTS.finalize_job_resume` and thread exit with no state change.
+5. Confirm **draft_cover_letter** still does not fire for jobs blocked in BUILD_ARTIFACTS compound states.
+
+## Parent AC (quoted inline)
+
+> 5. Mid-chain resume from `BUILD_ARTIFACTS*` completes remaining hops and graduates without manual repair.
+
+## Boundaries
+
+* Does **not** reintroduce compound `JOB_STATES` or AST-789 graduation helper.
+* Does **not** change **AST-806** merge-ticket-log / deploy tooltip wiring.
+* Fix `_resolve_chain_start_task_key` **/** `_chain_dispatch_row_ok` **/ eligibility** so legacy compound job states resume the correct hop — not reject valid scheduler claims.
+
+### Comments
+
+#### chuckles — 2026-06-27T19:34:15.120Z
+### Plan fidelity
+
+- **`_chain_entry_dispatch_task_key`** helper matches plan — delegates to **`_build_artifacts_chain_entry_task_key`** with **`ValueError`** / empty-candidate fallback to **`resume_artifact_hop_task_keys()[0]`**.
+- **`_resolve_chain_start_task_key`**: legacy compound branch now accepts hop-specific **or** chain-entry **`dispatch_task_key`**; flat **`BUILD_ARTIFACTS`** base-state path unchanged.
+- **`_chain_dispatch_row_ok`** untouched — mismatch log path fixed via resolver only. Scope stays **`src/core/consult.py`**; no dispatcher/config/UI drift.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 DRY:** entry detection reuses existing **`_build_artifacts_chain_entry_task_key`**; no duplicate graph walk.
+- **§2.6 state machine:** read-only legacy compound hop; graduation still via existing **`do_chain_for_job`** / **`do_task`** **`run_next`** — no ad hoc state writes.
+- **§3.3 imports:** core-only change; lazy agent import in **`do_chain_for_job`** unchanged.
+- **§5f / §5g:** N/A — no new debug-contract emission or external-layer edits.
+- **Boundaries:** no compound **`JOB_STATES`** reintroduction; **AST-806** / **AST-828** scope not smuggled.
+
+### Tests / manifest
+
+- Betty manifest + **`TestAst803ChainHelpers`** / **`TestAst371ResumeArtifactDispatch`** cover chain-entry at **`finalize_job_resume`**, **`_chain_dispatch_row_ok`**, and batch non-skip — 7/7 green on publish ref.
+
+### Advisory
+
+- **`docs/test-bible/utils/config.md`**: stray **`---`** removed (formatting only; no manifest change).
+
+**Diff:** `origin/dev...origin/sub/AST-788/AST-832-uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job-resume` (1 code commit + Betty test/bible).
+
+— Radia
+
+#### betty — 2026-06-27T19:33:30.504Z
+**Bible shasum correction:** `docs/test-bible/core/consult.md` → `e7de7908de846bd7f1a40651123b796f16576c3f` (on publish ref @ `6f902ba`).
+
+#### betty — 2026-06-27T19:33:27.123Z
+## QA test manifest (AST-832)
+
+1. **Chain-entry mid-chain resume (UAT fix):**
+   - `TestAst803ChainHelpers::test_chain_entry_resolves_legacy_finalize_job_resume`
+   - `TestAst803ChainHelpers::test_chain_entry_resolves_with_candidate_entry_discovery`
+   - `TestAst803ChainHelpers::test_chain_entry_dispatch_row_ok_for_legacy_finalize_hop`
+   - `TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch`
+
+2. **Regression:** `TestAst803ChainHelpers::test_legacy_compound_job_state_resolves_start_key` (hop-specific row unchanged).
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_chain_batch_runs_legacy_compound_chain_entry_dispatch \
+  -q
+```
+
+**Publish:** `origin/sub/AST-788/AST-832-uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job-resume` @ `6f902ba` (`merge-tests(AST-832): origin/tests 217b67e`)
+
+**Bible shasum:** `docs/test-bible/core/consult.md` → `316451e20ca0201fe75a83caaa05983f0d702a55`
+
+— Betty
+
+#### ada — 2026-06-27T19:31:36.390Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-788/AST-832-uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job-resume/docs/features/consult/ast-832-uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job-resume.md
+
+Single stage: fix `_resolve_chain_start_task_key` so chain-entry dispatch (`anticipate_scan` + `BUILD_ARTIFACTS` trigger) resumes from job's legacy compound hop (`finalize_job_resume`) instead of `dispatch row mismatch` abort. AST-534 hop-specific rows unchanged.
+
+**Scope:** minor — `consult.py` only.
+**Conf:** high — log matches code; root cause reproduced in `_resolve_chain_start_task_key`.
+**Risk:** Medium — BUILD_ARTIFACTS scheduler path; entry detection uses existing `_build_artifacts_chain_entry_task_key`.
+
+---
+
 # UAT: anticipate_scan chain abort at BUILD_ARTIFACTS.finalize_job_resume (draft_cover_letter blocked)
 
 **Linear:** [AST-832 — UAT: anticipate_scan chain abort at BUILD_ARTIFACTS.finalize_job_resume](https://linear.app/astralcareermatch/issue/AST-832/uat-anticipate-scan-chain-abort-at-build-artifacts-finalize-job)
