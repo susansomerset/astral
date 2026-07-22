@@ -66,8 +66,10 @@ Manifest default ( **`test-astral`** on publish tip — dispatch/admin resolutio
   tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers
 ```
 
----
 
+**AST-908 return pass:** `test_legacy_helper_may_still_classify_valid_title_graded` rewritten — `trigger_state_used_by_scored_dispatch_task("VALID_TITLE")` is **False** after qualify defaults moved to **NEW** (AST-898); assert **NEW** True instead.
+
+---
 ### AST-483 · AST-472
 
 **`_decode_payload`** classifies pipe fields using **`norm`** (drop ASCII space, hyphen, colon before **`_GRADE_SEG.match`**). **`grades_meta`** / **`grades_encoded_notes`** metadata retains the pipe-stripped **original** fragment so **`job_title`** and **`key:value`** tails stay unchanged.
