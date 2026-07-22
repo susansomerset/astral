@@ -199,3 +199,30 @@ Expect **201** and a new `dispatch_task` row. Confirm response body is not `{"er
 - Stage 3 — `_dispatch_task_key_trigger_error` membership = `TASK_CONFIG` (not `DISPATCH_SCHEDULABLE_TASK_KEYS`); `update_dtask` passes effective trigger into defaults
 
 **Manual:** `check_cover_letter` + `CANDIDATE_REVIEW` helper returns `None` (no `Unknown or non-schedulable`); retired `consult_do` still blocked. AC5 tests → Betty.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-856/AST-955-align-scheduled-actions-save-with-task-key-picker` @ `5f87d19`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 match: `dispatch_task_admin_defaults` membership = `TASK_CONFIG` + optional `trigger_state`; schedulable gate removed from `_dispatch_trigger_state_for_task_key`; `save_dispatch_task` passes request trigger; `_dispatch_task_key_trigger_error` + `update_dtask` use registered-key / effective-trigger path. `DISPATCH_SCHEDULABLE_TASK_KEYS` left for bootstrap / form enrichment. |
+| Root cause | Save no longer maps KeyError from schedulable-only defaults to `Unknown or non-schedulable`; unknown strings use `Unknown task_key`; retired keys still blocked. |
+| Scope / Self-Assessment | Single-Component footprint (utils + data insert + admin Save). No dispatcher claim, frontend picker, or Manage Tasks / `run_next` churn. Conf high / Risk Medium still fit. |
+| Rules | §1.3 DRY / §2.1 config — one Save membership notion (`TASK_CONFIG`) shared with picker source. §3.3 — `api_admin` imports utils only for this change (`_dispatch_entity_type_for_task_key` per plan). §2.4 / §2.6 / §5f / §5g N/A. |
+| Tests (Betty) | AC5 create acceptance + schedulable regression present on tip via `merge-tests`; bible notes updated — out of Radia edit scope. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| — | None. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product fixes required beyond this `docs()` commit).
+
