@@ -85,3 +85,15 @@ rg -n -i 'joan|git-store|JOAN_SESSION|store-qa-commit|git\.sh rollup|merge-paren
 - Plan under `docs/features/team-chuckles/` — satisfied.
 - No config/batch/state/import changes — N/A.
 - Aligns qa-child with orientation “what never happens” and finish-up as sole Chuckles parent-close skill.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-909/AST-936-qa-child`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `52ee332` | Plan doc on astral sub |
+| 1–3 | `team-chuckles@bfc0188` | Scrub `skills/qa-child/SKILL.md` — finish-up land; merge-child/prep-uat rollup; Betty §9 publish without Joan/`store-qa-commit` |
+
+**Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `bfc0188`.
+
