@@ -25,4 +25,10 @@ Scope fields on universals do not exclude them from that set. Matching for `scop
 
 ## Exemplars
 
-Populated in AST-920 Stage 2.
+| id | tier | checkable | path |
+|----|------|-----------|------|
+| `orch.pipeline.plan-is-bible` | universal | judgment | `orchestration/pipeline/orch.pipeline.plan-is-bible.md` |
+| `orch.roles.archie-approves-statutes` | universal | judgment | `orchestration/roles/orch.roles.archie-approves-statutes.md` |
+| `astral.layers.import-direction` | scoped | judgment | `astral/layers/astral.layers.import-direction.md` |
+| `astral.git.engineer-test-tree-ban` | scoped | hook | `astral/git/astral.git.engineer-test-tree-ban.md` |
+| `astral.batch.batch-id-first` | scoped | ci | `astral/batch/astral.batch.batch-id-first.md` |
