@@ -118,13 +118,13 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `a3ebfa5`
+**Built:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `6404d4187471454f59f3fbd86d472a9326a5034b`
 
 Stage 1: `score_floor_by_trigger_for_candidate` gates on `dispatch_claim_uses_score_floor` (includes **PASSED_JOBLIST**); `list_jobs_below_dispatch_score_floor` lists all floors keys; config comment documents UI vs `PASSED_SCORE_GATED_STATES`. Tests deferred to Betty.
 
 ## Review
 
-**Radia** · `origin/dev`…`origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `f8f3533` · product `6404d41` (`src/data/database.py`, `src/utils/config.py` comment)
+**Radia** · `origin/dev`…`origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `63dd83a` · product `6404d41` (`src/data/database.py`, `src/utils/config.py` comment)
 
 ### What's solid
 
