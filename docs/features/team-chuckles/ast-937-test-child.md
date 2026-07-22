@@ -93,3 +93,10 @@
 **Conf:** `high` — ticket names the exact as-is (`store-qa-commit`) and to-be (orientation Betty publish); engineer push bash already exists in §7; worktree rewrite matches AST-931/AST-934 plans.
 
 **Risk:** `low` — docs/templates only; wrong Betty wording could confuse engineers about where tests land, but cannot change runtime; Stage 1 pins `merge-tests` + merge `origin/<publish-ref>`.
+
+## Review
+
+- **Branch:** `origin/sub/AST-909/AST-937-test-child`
+- **Plan tip:** `584b58d` (`plan(AST-937)`)
+- **team-chuckles:** `origin/main` @ `ac131a9` — `code(AST-937): align test-child Betty publish without Joan`
+- **Built:** `~/team-chuckles/skills/test-child/SKILL.md` — Betty delivery via `merge-tests` → `origin/<publish-ref>`; engineer on `astral-<parent-id>/` + `sub/*` + `git push`; Joan `store-qa-commit` removed.
