@@ -119,3 +119,11 @@ Scrub retired Joan / `dev-radia` / implementer-cherry-pick / merge-parent-as-ope
 - §2.1 / §2.4 / §2.6 / §3.3 / §3.5 / §3.6: N/A — docs/skill only.
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Built:** team-chuckles `origin/main` @ `c01bd93dee7601a568033e49281deff856e84ae6` (`skills/review-child/SKILL.md`)
+**Publish ref:** `origin/sub/AST-909/AST-935-review-child` (this plan + stub; tip set after push)
+
+Stage 1: Who-runs / §4 sync / §6 publish bullets — drop Joan/`dev-radia`/`astral-radia`/cherry-pick handoff; parent-close sync names finish-up; mid-pipeline Radia `docs()` kept via push to publish-ref.
+
