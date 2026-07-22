@@ -1,3 +1,135 @@
+<!-- linear-archive: AST-719 archived 2026-07-22 -->
+
+## Linear archive (AST-719)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-719/fetch-job-pages-gazer-batch-and-pjl-ready-state-find-job-page-logic  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-716 — find_job_page logic confirmation  
+**Blocked by / blocks / related:** parent: AST-716; blocks: AST-720
+
+### Description
+
+## What this implements
+
+Implement fetch_job_pages as a gazer-style batch dispatch step that scrapes each URL in possible_joblist_links additively (skip already-captured URLs, append visible text and nav links without overwriting prior PJL content). Land companies in PJL_READY when the current candidate set is scraped. Wire dispatch_tasks row and consult/roster routing mirroring fetch_website/prefilter batch pattern (AST-701/702). Honor AST-689 scrape readiness and AST-692 JOBSITE_SCRAPE_ISSUE on scrape paths.
+
+## Acceptance criteria
+
+2. `fetch_job_pages` is a separate dispatch task from `select_job_page` / `parse_job_list`; each hop appears as its own Execution History batch when run from Scheduled Actions.
+3. `fetch_job_pages` is additive: re-run does not duplicate visible text for URLs already scraped; new PJL nav links append without wiping prior PJL data; success lands in `PJL_READY`.
+4. With `debug=True`, Susan can trace each PJL URL scrape, selection outcome, and parse hop using Style D index headers and `|` detail lines without reading production-only aggregate logs.
+
+## Boundaries
+
+Does not change select_job_page agent prompts or selection state machine — sibling ticket. Does not remove monolithic find_job_page yet — sibling parse ticket.
+
+## Notes for planning
+
+[gazer.py](<http://gazer.py>) + [roster.py](<http://roster.py>) batch entry. Mirror fetch_website_batch pattern. AST-538 debug on touched debug= surfaces.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-716-find-job-page-logic-confirmation`, child `sub/AST-716/<slug>` at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T01:45:02.999Z
+**Diff:** `origin/dev...origin/sub/AST-716/fetch-job-pages-batch-scrape` @ `1002640`
+
+**Plan doc (review section):** https://github.com/susansomerset/astral/blob/sub/AST-716/fetch-job-pages-batch-scrape/docs/features/roster/ast-719-fetch-job-pages-gazer-batch-and-pjl-ready-state.md#radia-review-2026-06-18
+
+### fix-now
+
+- **`gazer.fetch_job_pages_batch` (~440):** `possible_joblist_links` entries from AST-718 are scheme-less (`acme.com/careers`). Plan Stage 2 requires `https://` prepend before navigation; `get_page` → `page.goto(url)` as-is. Real Playwright will fail; tests mock `_scrape_pjl_page` so this did not surface.
+
+### discuss
+
+- **`fail_state`:** plan `NO_JOBLIST` vs impl/bible `JOBSITE_SCRAPE_ISSUE` — tests encode latter; confirm intent.
+- **Layering:** plan `scrape_company_pjl_pages_additive` in roster; orchestration lives in gazer importing roster `_` helpers (inverts AST-701 mirror).
+- **DRY:** `_fetch_job_links_content` not refactored to share `_scrape_pjl_page` (plan Stage 2).
+- **Persistence:** new page links → `pjl_nav_links` not `possible_joblist_links` ledger append — confirm AST-720 consumer.
+
+### advisory
+
+- Per-URL debug `identifier=short_name` not `url_key`.
+
+### sign-off
+
+`PJL_READY` config, dispatch registry, consult routing, additive skip/merge, and no `job_site` writes look good. One navigation fix before merge.
+
+#### betty — 2026-06-18T01:41:59.945Z
+## QA test manifest (AST-719)
+
+**Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape` @ `f6f9b66` (`merge-tests(AST-719): origin/tests cb2daf0`)
+
+**Existing coverage (bible-backed):** AST-701 **`fetch_website_batch`** / consult routing pattern — extended, not duplicated.
+
+**Broken / obsolete:** none identified; additive PJL ledger is new surface.
+
+**Gaps (new tests):**
+
+1. `tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig`
+2. `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers`
+3. `tests/component/core/test_gazer.py::TestFetchJobPagesBatch`
+4. `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_job_pages_batch`
+
+**Narrowed run (test-child):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchJobPagesBatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_job_pages_batch \
+  tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Product note:** `fail_state` is **`JOBSITE_SCRAPE_ISSUE`** (not plan-draft **`NO_JOBLIST`**) — tests assert shipped behavior.
+
+**Bible shasum (`origin/sub/AST-716/fetch-job-pages-batch-scrape`):**
+- `docs/test-bible/core/gazer.md` `fc65e50b17a0712da9c3c4571222e6e51be47f8d1093edb964bee32cc3742489`
+- `docs/test-bible/core/roster.md` `c267fef1ff870954f77d28bec2670569826f2fd03f0832611e13a7abb193dd5e`
+- `docs/test-bible/core/consult.md` `50ac5ef96c160f5d80ce74d39d67ff9ee6fbd72befe2357fd33265e10edd1e43`
+- `docs/test-bible/utils/config.md` `3c2878e7b1e4fdc831468414102a9a04342957f7dca46d5edae9d5aeb557e1c0`
+
+— Betty
+
+#### hedy — 2026-06-18T01:17:45.380Z
+Plan: `docs/features/roster/ast-719-fetch-job-pages-gazer-batch-and-pjl-ready-state.md`
+https://github.com/susansomerset/astral/blob/sub/AST-716/fetch-job-pages-batch-scrape/docs/features/roster/ast-719-fetch-job-pages-gazer-batch-and-pjl-ready-state.md
+
+**Scope:** Single-Component — config (`PJL_READY`, `GAZER_CONFIG["fetch_job_pages"]`), roster additive PJL scrape helper extracted from `_fetch_job_links_content`, `fetch_job_pages_batch` in gazer, consult routing; no select/parse refactor.
+
+**Conf:** Medium — direct mirror of AST-701 `fetch_website_batch` + existing PJL scrape loop, but additive `pjl_scraped_pages` / `pjl_assembled_content` persistence is new; build gate on AST-718 `possible_joblist_links` + `normalize_link()`.
+
+**Risk:** Medium — skip/append ledger bugs would duplicate or drop PJL text; `fetch_job_pages` and legacy `find_job_page` must not both run auto on `PREFILTER_PASSED` until monolith is retired.
+
+#### hedy — 2026-06-18T01:17:38.964Z
+Plan ready on **`origin/sub/AST-716/fetch-job-pages-batch-scrape`**.
+
+**Doc:** [ast-719-fetch-job-pages-batch-scrape.md](https://github.com/susansomerset/astral/blob/sub/AST-716/fetch-job-pages-batch-scrape/docs/features/roster/ast-719-fetch-job-pages-batch-scrape.md)
+
+Four build stages:
+1. **Config** — `PJL_READY` + transitions; `GAZER_CONFIG["fetch_job_pages"]`; `pjl_scrape_pages` / `pjl_assembled_content` / `pjl_nav_links` data keys; dispatch registry (`trigger_state=PREFILTER_PASSED`, `batch_call_mode=0` like `fetch_website`)
+2. **Roster helpers** — `_scrape_pjl_page` (AST-689 readiness), additive merge by `normalize_link` (**AST-718**), `_assemble_pjl_content`
+3. **`fetch_job_pages_batch`** in `gazer.py` — mirror `fetch_website_batch`; success → `PJL_READY`; all-fail → `JOBSITE_SCRAPE_ISSUE`; `job_site` untouched
+4. **Consult route** — `run_consult_task` dispatches `fetch_job_pages` to gazer batch (separate Execution History hop)
+
+**Build dependency:** merge **AST-718** product commits (`possible_joblist_links`, `normalize_link`) before implementation.
+
+**Self-assessment**
+- **Scope:** Single-Component — config + gazer batch + roster scrape helpers + consult route
+- **Conf:** high — direct mirror of AST-701 `fetch_website_batch`; reuse `_fetch_job_links_content` scrape/readiness patterns
+- **Risk:** Medium — additive merge bugs would affect AST-720 `select_job_page` input shape
+
+---
+
 # AST-719 — fetch_job_pages gazer batch and PJL_READY state
 
 **Linear:** [AST-719 — fetch_job_pages gazer batch and PJL_READY state (find_job_page logic confirmation)](https://linear.app/astralcareermatch/issue/AST-719/fetch-job-pages-gazer-batch-and-pjl-ready-state-find-job-page-logic-confirmation)

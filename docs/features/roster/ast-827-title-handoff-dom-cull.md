@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-827 archived 2026-07-22 -->
+
+## Linear archive (AST-827)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-827/title-handoff-and-dom-culling-for-parse-job-list-get-parse-job-list-to  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-824 — Get parse_job_list to work  
+**Blocked by / blocks / related:** parent: AST-824
+
+### Description
+
+## What this implements
+
+Restore the decomposed roster handoff between **select_job_page** and **parse_job_list**: job titles Grace returns on the **PJL_READY** path must persist in company data for the parse hop, and **parse_job_list** dispatch must use those titles to trim rescraped careers-list DOM so the parsing agent receives a structurally complete listing fragment (all titles), not an isolated job link. Include backend debug traceability on the parse dispatch path and preserve existing failure/retry semantics.
+
+## Acceptance criteria
+
+1. Susan re-runs the [medicarerights.org](<http://medicarerights.org>) careers repro (**PJL_READY → select_job_page → JOBLIST_IDENTIFIED → parse_job_list**): after **JOBLIST_IDENTIFIED**, company data contains **both** job titles returned by select; Execution History for the **parse_job_list** hop shows live content that includes listing markup for **both** titles (not a lone `<a>` for the first job only).
+2. On that repro, **parse_job_list** succeeds: company reaches **WATCH**, `job_site` is the selected careers URL, and `parse_instructions` (container, job_tag, container_index) is persisted and validates against the culled DOM.
+3. A `debug=True` parse dispatch on the same repro logs title count, pre-cull and post-cull DOM sizes, and a clear cull outcome under the parse dispatch index header.
+4. Existing component coverage for decomposed **select_job_page** / **parse_job_list** dispatch (AST-720/721) remains green; add or extend tests that lock title persistence and multi-title cull input when two titles are saved.
+5. **JOBS_FOUND** re-parse smoke: a company with stored **job_site** that previously completed select→parse chaining still reaches **WATCH** when listings are present (no regression).
+
+## Boundaries
+
+* Does **not** change **select_job_page** or **parse_job_list** agent prompt prose.
+* Does **not** reintroduce monolithic **find_job_page** dispatch or alter **fetch_job_pages** scrape batch behavior.
+* Does **not** change careers-list readiness waits (AST-689) beyond existing parse DOM reload wiring.
+* Does **not** broaden scope to unrelated roster states (**vet_inflow_discovery**, prefilter, gaze JD scrape).
+
+## Notes for planning
+
+* Primary files: `src/core/roster.py` (decomposed select finalize + `run_parse_job_list_dispatch`), possibly `src/utils/formatting.py` (`find_job_containers`).
+* Susan's repro: [medicarerights.org](<http://medicarerights.org>) careers — two titles in select response, parse hop received only first job anchor.
+* AST-720/721 shipped the decomposed hops; this fixes the title/cull handoff gap.
+* Debug contract: AST-538 / Code Rules §1.5.1 on touched `debug=` paths.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-824-get-parse-job-list-to-work`, child `sub/AST-824/<child-id>-title-handoff-dom-cull`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-26T18:31:06.950Z
+### Review — `origin/dev...origin/sub/AST-824/AST-827-title-handoff-dom-cull` @ `40e774a`
+
+**fix-now:** none — clean sign-off for `resolve-child`.
+
+**discuss:** Plan Self-Assessment Conf **Medium** — medicarerights live DOM still needs parent **AST-824** UAT on staging; component sibling-anchor repro is green but is not a substitute for live listing confirmation.
+
+**advisory:**
+- `run_parse_job_list_dispatch` (~1234–1290): plan Stage 3 asked for `cull={cull_outcome}` on the **debug_index** outcome; implementation adds `cull=` only on terminal **debug_detail** (index header still url/titles/state only).
+- `_culled_dom_for_parse` (~126–134): single-title path runs `find_job_containers` vs plan stub’s raw full-DOM shortcut — matches pre-ticket parse behavior; improvement, not regression.
+
+**Solid:** shared `_culled_dom_for_parse` + `_normalize_job_titles`; post-cull coverage gate; Phase 2b sibling anchors; JOBS_FOUND chain parity; §1.5.1 debug gated on `debug=True`; failure ladder unchanged.
+
+**Doc:** `docs/features/roster/ast-827-title-handoff-dom-cull.md` § Radia review (2026-06-26)
+
+#### betty — 2026-06-26T18:28:07.522Z
+## QA test manifest (AST-827)
+
+**Publish ref:** `origin/sub/AST-824/AST-827-title-handoff-dom-cull` @ `fe754bb` (`merge-tests(AST-827): origin/tests 0a2890d`)
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/core/roster.md`: `696477ca0264ba1ba1fd916a0f49c71bac49ce24bd0ed6a1f0dde82766f7d3db`
+- `docs/test-bible/utils/formatting.md`: `fa1d00ec20c4d1c1944c105766e2f3598e05aacbb647249135f7836560e2e130`
+
+1. **Two-title JOBLIST_IDENTIFIED persistence** — `tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_finalize_joblist_identified_persists_two_titles` (`_normalize_job_titles` strips blanks; saves full list + `selected_pjl_url`).
+
+2. **Parse dispatch multi-title culled DOM** — `::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom` (sibling-anchor DOM; both titles in DOM passed to `_fetch_parse_job_list`).
+
+3. **Coverage failure → PARSE_DISPATCH_NO_CONTAINERS** — `::TestAst827TitleHandoffDomCull::test_parse_dispatch_cull_miss_no_containers`; helper `::test_culled_dom_for_parse_cull_miss_when_titles_absent`.
+
+4. **JOBS_FOUND chain / resolver regression** — `::TestAst827TitleHandoffDomCull::test_make_locate_parse_resolver_two_title_sibling_cull`; existing `TestAst469LocateParseResolver`, `TestMakeLocateParseResolver469`.
+
+5. **Formatting Phase 2b sibling anchors** — `tests/component/utils/test_formatting.py::TestFindJobContainers::test_sibling_anchor_links_two_titles`.
+
+**Narrowed run (test-child):**
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull   tests/component/core/test_roster.py::TestAst469LocateParseResolver   tests/component/core/test_roster.py::TestMakeLocateParseResolver469   tests/component/utils/test_formatting.py::TestFindJobContainers::test_sibling_anchor_links_two_titles   -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+#### hedy — 2026-06-26T18:23:14.032Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-824/AST-827-title-handoff-dom-cull/docs/features/roster/ast-827-title-handoff-dom-cull.md`
+
+**Scope:** Single-Component — `roster.py` title→DOM cull handoff plus `formatting.find_job_containers` sibling-anchor fix; no config/UI/prompt changes.
+
+**Conf:** Medium — shared `_culled_dom_for_parse` + post-cull title coverage directly targets Susan's single-anchor medicarerights repro; live DOM may need spike confirmation during build.
+
+**Risk:** Medium — stricter cull-miss rejection could increase `PARSE_DISPATCH_NO_CONTAINERS` on edge pages; single-title full-DOM path unchanged.
+
+---
+
 # AST-827 — Title handoff and DOM culling for parse_job_list
 
 **Linear:** [AST-827 — Title handoff and DOM culling for parse_job_list (Get parse_job_list to work)](https://linear.app/astralcareermatch/issue/AST-827/title-handoff-and-dom-culling-for-parse-job-list-get-parse-job-list)

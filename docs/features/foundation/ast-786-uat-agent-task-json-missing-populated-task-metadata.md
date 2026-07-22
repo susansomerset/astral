@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-786 archived 2026-07-22 -->
+
+## Linear archive (AST-786)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-786/uat-agent-taskjson-missing-populated-task-metadata-37-keys  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-756 — create repo json files for agent and agent_task.  
+**Blocked by / blocks / related:** parent: AST-756
+
+### Description
+
+## What failed
+
+Susan UAT on fresh deploy: `data/admin/agent_task.json` rows exist but critical fields are empty (`agent_id`, `user_prompt`, `system_prompt`, cache/nocache prompts, `task_name`, `task_group_name`, `run_next`, etc.). Only skeleton keys present — not usable as authoritative repo contract.
+
+## Expected
+
+`data/admin/agent_task.json` contains **37** `current = 1` rows (one per task key below) with full metadata populated (prompts, grouping, run-next wiring, UUIDs, timestamps). After server start, DB `agent_task` current rows match this file.
+
+**Task keys (37):** advise_job_resume, analysis_upshot, anticipate_scan, check_cover_letter, check_job_resume, contemplate_job, craft_company_search_terms, craft_do_rubric, craft_get_rubric, craft_jobdesc_rubric, craft_joblist_rubric, craft_like_rubric, craft_prefilter_rubric, craft_resume_base, draft_cover_letter, draft_job_resume, evaluate_jd, fetch_jd, fetch_job_pages, fetch_website, finalize_cover_letter, finalize_job_resume, gaze, grade_do, grade_get, grade_like, inflow_discovery, intake_build_request, intake_candidate_response, intake_initiate_candidate, parse_job_list, prefilter_company, propose_application_responses, qualify_job_listings, recheck_no_openings, select_job_page, vet_inflow_discovery
+
+**Fixture (authoritative expected export):** `docs/uat-fixtures/AST-756/expected-agent_task.json` on this ticket's publish sub (seeded at dispatch).
+
+## Repro
+
+1. Fresh clone; checkout epic `ftr/AST-756-repo-json-agent-agent-task` or sub for this bug.
+2. Open `data/admin/agent_task.json`.
+3. Observe empty/minimal fields on current rows vs fixture in `docs/uat-fixtures/AST-756/expected-agent_task.json`.
+4. Start server; confirm DB current rows still lack populated prompt metadata.
+
+## Parent AC (quoted inline)
+
+> After a fresh clone and server start, current (`current = 1`) rows in `agent` and `agent_task` match the checked-in `data/admin/` JSON files (field values for every row present in JSON).
+
+## Boundaries
+
+* This bug does **not** change: divergence warning UI, revert-to-file flow, export endpoint shape, or `agent.json` content (separate bug).
+* Copy fixture into `data/admin/agent_task.json`; do not invent alternate task keys.
+
+### Comments
+
+#### radia — 2026-06-24T21:58:10.494Z
+### Plan fidelity (AST-786) — FIX-UAT
+
+Diff `origin/dev...origin/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata` @ `0721ae2` (+ doc `3818646`).
+
+UAT bug fix verified: `code(AST-786)` @ `54ceac3` replaces skeleton **33-row** repo JSON with normalized **37-row** catalog from `docs/uat-fixtures/AST-756/expected-agent_task.json` only (scope gate PASS — no `src/**`). All rows `current = 1`; fixture and `data/admin/agent_task.json` byte-identical (129643 bytes); Betty manifest `TestAst786AgentTaskRepoJsonSeed` locks 37-key set, spot-checks (`prefilter_company`, `grade_get`, `anticipate_scan`), and startup apply smoke.
+
+**fix-now:** none.
+
+**discuss:** `data/admin/agent.json` still `[]` — explicit out of scope here; persona startup gap tracked separately (**AST-787**). This ticket closes the **task metadata** UAT item only.
+
+**advisory:** `expected-agent.json` reference fixture on branch (with legacy `model_code`) not wired to repo `agent.json`; OK as staging artifact outside `code(AST-786)`.
+
+Combined review: `docs/features/foundation/ast-786-uat-agent-task-json-missing-populated-task-metadata.md` (Radia review section).
+
+#### betty — 2026-06-24T21:53:28.068Z
+## QA test manifest (AST-786)
+
+**Publish:** `origin/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata` @ `0721ae2` (`merge-tests(AST-786): origin/tests a5a53d7`)
+
+**Scope:** Data-only UAT fix — populated **37-row** `data/admin/agent_task.json` from `docs/uat-fixtures/AST-756/expected-agent_task.json`. No `src/**` changes.
+
+### Manifest (test-child)
+
+1. **Fixture/repo parity + 37-key catalog** — `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` (full class)
+
+2. **Scope gate (required):** `git show 54ceac3 --name-only` — expect **only** `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` (no `src/`).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  -q
+```
+
+**Pass criterion:** pytest green on item 1 + scope gate item 2 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/data/database/agent_tasks.md` `5eddc0c9bb0229710f922f87d9a2e61276043039123216a5c6c458e6af32f130`
+- `docs/test-bible/core/repo_admin_json.md` `91951d4fd79db3ae8800470cde24ece6e7b94fb3379dcd60871f536281d06bbe`
+
+#### chuckles — 2026-06-24T21:50:19.804Z
+## validate-plan — APPROVED
+
+Data-only UAT fix; scope matches bug boundaries. Normalization decisions documented (`current=1`, drop `model_code`). No layer violations.
+
+— Chuckles
+
+#### ada — 2026-06-24T21:49:26.204Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-756/AST-786-agent-task-json-missing-populated-task-metadata/docs/features/foundation/ast-786-uat-agent-task-json-missing-populated-task-metadata.md
+
+**Self-assessment**
+- **Scope:** minor — normalize and install `data/admin/agent_task.json` from `docs/uat-fixtures/AST-756/expected-agent_task.json` (37 keys); update fixture `current` → 1 and PRAGMA key order; no `src/**` changes.
+- **Conf:** high — task-key set and authoritative fixture are in the ticket; AST-782 startup validation is the apply guardrail.
+- **Risk:** Medium — repo JSON drives every restart; mitigated by exact key-set check, fixture/repo parity, and startup apply smoke in build.
+
+---
+
 # AST-786 — UAT: agent_task.json missing populated task metadata (37 keys)
 
 **Linear (this ticket):** [AST-786](https://linear.app/astralcareermatch/issue/AST-786/uat-agent-taskjson-missing-populated-task-metadata-37-keys)  

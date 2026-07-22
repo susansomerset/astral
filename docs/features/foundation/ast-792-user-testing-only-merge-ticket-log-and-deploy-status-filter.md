@@ -1,3 +1,124 @@
+<!-- linear-archive: AST-792 archived 2026-07-22 -->
+
+## Linear archive (AST-792)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-792/user-testing-only-merge-ticket-log-and-deploy-status-filter-list-of  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-791 — List of UAT issues in environment tooltip is not updating  
+**Blocked by / blocks / related:** parent: AST-791
+
+### Description
+
+## What this implements
+
+The admin deploy footer environment tooltip must list only parent epics currently in Linear **User Testing** — not historical merge log entries for **Done** or **PR Ready** parents. This ticket implements the persisted log lifecycle (add on prep-uat, remove when a parent leaves **User Testing**), one-time cleanup of stale log entries on `origin/dev`, and deploy-status payload filtering so the existing AST-691 hover tooltip shows the correct set.
+
+## Acceptance criteria
+
+1. After deploy from current `origin/dev`, hovering the admin environment label on staging shows **no** parent ids that are **Done** in Linear (including **AST-741** and other previously logged finished epics).
+2. Every parent id shown in the tooltip is in Linear state **User Testing** at the time of the deploy-status request.
+3. A parent prep-uat'd to staging while in **User Testing** appears in the tooltip with an updated timestamp; re-prep-uat of the same parent updates timestamp only (no duplicate lines).
+4. When Susan moves a parent from **User Testing** to **PR Ready**, that parent disappears from the tooltip on the next deploy-status refresh without requiring a new deploy.
+5. After **finish-up** moves a parent to **Done**, that parent does not appear in the tooltip.
+6. When no logged parents are in **User Testing**, the env label is non-interactive (same as AST-691 empty-list behavior).
+7. Non-admin navigation and deploy footer behavior outside the ticket list are unchanged.
+
+## Boundaries
+
+* Does **not** change tooltip UX (500 ms hover, 20-line cap, pointer cursor, line format) — frontend unchanged unless type contract requires it.
+* Does **not** add ticket titles or other Linear fields to the tooltip.
+* Does **not** list child ticket ids.
+* Does **not** show parents in **User Testing** on Linear that were never prep-uat'd to this deploy.
+* **Chuckles skills** updates in **team-chuckles** (`prep-uat`, `finish-up`) are parent epic coordination — not this ticket's product commits.
+
+## Notes for planning
+
+* Builds on AST-681 (`merge_ticket_log.py`, `deploy_status.py`) and AST-693 (prep-uat records via `record-landed-parent.sh`).
+* Parent definition resolved open questions: entries may be **removed** when parents leave **User Testing**; enforce via log lifecycle (prep-uat add / finish-up or PR Ready remove) — prefer **no** runtime Linear API on each admin poll unless plan proves lifecycle alone cannot satisfy AC 4.
+* One-time cleanup of `data/merge_ticket_log.json` for entries no longer **User Testing**.
+* `read_merge_ticket_log` / `append_merge_ticket_log` already dedupe re-prep-uat timestamps.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/ast-791-list-of-uat-issues-in-environment-tooltip-is-not-updating**, child **sub/AST-791/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-25T01:00:03.041Z
+### Radia review — AST-792
+
+**Diff:** `origin/dev...origin/sub/AST-791/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter` @ `4cc5015`
+**Doc:** `docs/features/foundation/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter.md` (§ Radia review)
+
+**What's solid**
+- Plan Stages 1–3: Linear batch state fetch, log remove/rewrite, utils pure filter/order helpers, core orchestrator, api_system import swap, prune/remove CLIs, env.example, log prune, Betty manifest tests.
+- §3.3 layers: ui → core; core → external + utils; external stdlib-only, no logging.
+- Fail-closed: non-empty log + Linear/key failure → `merge_tickets: []`; uptime/env unchanged.
+- AC 1–7 satisfied (runtime filter handles PR Ready/Done without redeploy; empty `[]` log valid after prune).
+- Scope clean: no footer UX or Chuckles skill changes; diff vs dev is AST-792 only.
+
+**advisory:** `src/external/linear.py` `_graphql` — `URLError`/timeout/`JSONDecodeError` outside the `HTTPError → LinearApiError` path could 500 the route instead of fail-closed `[]`. Plan-conformant except tuple; optional hardening only.
+
+**fix-now:** none
+**discuss:** none
+
+#### betty — 2026-06-25T00:57:27.257Z
+## QA test manifest (AST-792)
+
+**Publish:** `origin/sub/AST-791/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter` @ `eb71bc4` (`merge-tests(AST-792): origin/tests 7e14cbc`)
+
+**Broken / revised (AST-792 layer split):** `tests/component/utils/test_deploy_status.py` — dropped utils-level `merge_tickets` payload tests; moved to core + pure helpers.
+
+### Manifest (test-child)
+
+1. **Linear client** — `tests/component/external/test_linear.py` (new): `TestFetchParentIssueStates` (4 tests) — mocked GraphQL via `urllib.request.urlopen`.
+
+2. **Log remove / rewrite** — `tests/component/utils/test_merge_ticket_log.py`: `TestRemoveMergeTicketLog`, `TestRewriteMergeTicketLog`.
+
+3. **Utils helpers + base payload** — `tests/component/utils/test_deploy_status.py`: `TestGetDeployStatusPayload` (uptime/env only, no `merge_tickets` key), `TestMergeTicketHelpers`.
+
+4. **Core orchestration** — `tests/component/core/test_deploy_status.py` (new): `TestCoreGetDeployStatusPayload` — filtered `merge_tickets`, fail-closed on Linear error, excludes Done.
+
+5. **API route** — `tests/component/ui/api/test_api_system.py::TestDeployStatus` — monkeypatch `system_mod.get_deploy_status_payload` (core import path unchanged at route).
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/external/test_linear.py \
+  tests/component/utils/test_merge_ticket_log.py \
+  tests/component/utils/test_deploy_status.py \
+  tests/component/core/test_deploy_status.py \
+  tests/component/ui/api/test_api_system.py::TestDeployStatus \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (`origin/sub/...` @ `eb71bc4`):**
+- `docs/test-bible/core/deploy_status.md`: `9ce8803fc5640b3e8e050ddb0f404b64f551b54af21e139f4acd0111d86f59c8`
+- `docs/test-bible/external/linear.md`: `348bafee5c5bb05f4669bbb6d0bd846ece2a64c5454c830e68e46f667c2ee3da`
+- `docs/test-bible/ui/api/api_system.md`: `b09bf850bb51fd186a5f11f370bd5bebf40f5d6b2df149d05b63550ad7362fb0`
+- `docs/test-bible/utils/deploy_status.md`: `efaa8bd3ac4adf436c78d1fc282b7866fd18e6643549baf02a0b59a7557e6289`
+- `docs/test-bible/utils/merge_ticket_log.md`: `b998f96a4fd19db347725ae642cd7a69fe74e9fb5c732d41a02e8645a81a6400`
+
+— Betty
+
+#### ada — 2026-06-25T00:53:00.537Z
+Plan doc: [ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter.md](https://github.com/susansomerset/astral/blob/sub/AST-791/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter/docs/features/foundation/ast-792-user-testing-only-merge-ticket-log-and-deploy-status-filter.md)
+
+**Scope:** `scope-Single-Component` — External Linear client, core deploy-status orchestrator, utils log remove/prune, two CLIs, one-time `data/merge_ticket_log.json` cleanup, and `api_system` import swap; no frontend or team-chuckles changes.
+
+**Conf:** `Medium` — Runtime Linear filter is new for deploy status but follows existing external HTTP patterns; core orchestrates utils + external per import rules; AC 4 (PR Ready without redeploy) drove filter over lifecycle-only removal.
+
+**Risk:** `risk-Medium` — Wrong filter would show stale Done ids or hide active UAT parents; mitigated by fail-closed empty `merge_tickets` on Linear errors and config-driven state name match.
+
+Three stages: (1) linear client + log remove + utils helpers, (2) core payload filter + prune CLIs + log cleanup commit, (3) Betty manifest tests.
+
+---
+
 # User Testing–only merge ticket log and deploy status filter
 
 **Linear:** [AST-792 — User Testing–only merge ticket log and deploy status filter](https://linear.app/astralcareermatch/issue/AST-792/user-testing-only-merge-ticket-log-and-deploy-status-filter-list-of-uat)

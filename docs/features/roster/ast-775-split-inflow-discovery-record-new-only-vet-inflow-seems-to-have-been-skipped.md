@@ -1,3 +1,151 @@
+<!-- linear-archive: AST-775 archived 2026-07-22 -->
+
+## Linear archive (AST-775)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-775/split-inflow-discovery-to-record-new-only-vet-inflow-seems-to-have  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-754 — vet_inflow seems to have been skipped?  
+**Blocked by / blocks / related:** parent: AST-754; blocks: AST-776
+
+### Description
+
+## What this implements
+
+Refactor **inflow_discovery** so it only runs CSE per stale term, URL-dedupes hits against the candidate's existing company URLs, and records each unique hit as a **NEW** company row with the deduped CSE blurb stored on the company record. Remove the hardcoded inline **vet_inflow_discovery** call from the discovery batch. Register **VET_FAILED** as a terminal company state for downstream vet rejects. Zero deduped hits after CSE is a successful discovery run with explicit nothing-to-record reporting.
+
+## Acceptance criteria
+
+1. **inflow_discovery** creates **NEW** rows from deduped CSE hits (candidate URL dedupe applied) and does **not** call **vet_inflow_discovery** inside that batch (no shared batch id, no inline **do_task**).
+2. Susan's example class (`inflow_discovery-24004a9a-8835-4733-97ba-64cce70fde38`) cannot recur: discovery batch logs must not show **vet_inflow_discovery** LLM activity under the discovery batch id.
+3. Zero deduped hits → **inflow_discovery** success with explicit nothing-to-record semantics.
+
+## Boundaries
+
+* Does not implement **vet_inflow_discovery** as a separate company dispatch (sibling ticket).
+* Does not update vet Admin prompts (sibling ticket).
+* Does not change Phase 0 search-term artifacts (AST-504) or per-term staleness cadence (AST-525).
+* Does not change manual **IMPORTED** import paths.
+
+## Notes for planning
+
+Primary files: `src/core/roster.py`, `src/utils/config.py` (**VET_FAILED** in **COMPANY_STATES**), `src/core/consult.py` / `src/core/dispatcher.py` if dispatch reporting changes. Debug: AST-538 Style D on discovery path only.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-754-vet-inflow-discovery-split**, child **sub/AST-754/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-06-23T21:07:21.306Z
+[check-linear]
+
+Republished \`origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only\` @ \`34a95c6\` — linear history on \`origin/ftr/AST-754-vet-inflow-discovery-split\` (no tests-branch merge ancestry).
+
+**\`validate-sub-log.sh\`:** \`RESULT: ok\` (sub-only vs ftr).
+
+**Delivery:** cherry-picked test patch from \`origin/tests\` \`6ac4e24\` as single-parent \`merge-tests(AST-775)\` (not \`git merge\` of tests SHA — avoids \`Merge remote-tracking branch\` / AST-773 bleed).
+
+**Sub-only commits (9):** \`plan\` → \`code\`×2 → \`docs\` stub → \`merge-tests\` → \`test\` → \`docs\` Radia → \`resolve\` → \`docs\` resolution.
+
+**Note:** first commit reworded to \`plan(AST-775):\` (was \`docs(AST-775): plan\`). Added bookkeeping \`resolve(AST-775): — clean\` (was missing on prior tip; ticket already User Testing).
+
+Status unchanged (**User Testing**). Chuckles may re-run \`merge-child\`.
+
+— Betty
+
+#### chuckles — 2026-06-23T21:02:59.083Z
+**[merge-child] blocked:** `validate-sub-log.sh` rejects `origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only` — **Merge remote-tracking branch** subjects in sub-only range (from `merge-tests(AST-775)` pulling `origin/tests` history). Republish sub from `origin/ftr/AST-754-vet-inflow-discovery-split` with a clean single `merge-tests(AST-775)` (no pull-merge subjects in range).
+
+@Betty White — tests/bible hygiene on **AST-775** publish ref.
+
+— Chuckles
+
+#### radia — 2026-06-23T21:01:25.634Z
+### Plan fidelity
+
+Diff `origin/dev...origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only` @ `8e78c56` (product) + review doc `bbca4da`.
+
+Stages 1–3 land as planned: **`VET_FAILED`** + **`(NEW, VET_FAILED)`**; **`record_inflow_discovery_hit`** with mechanical hostname slug, **`inflow_discovery_blurb`** / **`inflow_discovery_notes`**, expanded URL dedupe, slug suffix **`_2`…`_9`**; **`run_inflow_discovery_batch`** is record-only — no inline **`do_task(vet_inflow_discovery)`**, no **`vet_task_key`** in function; zero deduped hits is success with updated debug outcome string.
+
+### ASTRAL_CODE_RULES
+
+| Bucket | Result |
+| --- | --- |
+| §2.6 state machine | Discovery creates **`NEW`** only — never **`WEBSITE_FOUND`** from this path |
+| §1.5.1 debug | Per-hit **`debug_index`** + **`debug_detail`** when **`debug=True`**; batch summary via **`debug_detail`** |
+| §3.3 / layer | **`hashlib`** at module top; no new cross-layer violations |
+| Cross-ticket | No **`consult`**, **`dispatcher`**, or vet dispatch seed — correctly deferred to **AST-776** |
+
+### Issues
+
+**fix-now:** none
+
+**discuss:** none
+
+**Advisory:** **`_candidate_company_urls`** is rebuilt on each **`record_inflow_discovery_hit`** call — fine for typical hit counts.
+
+### Doc
+
+Review table: `docs/features/roster/ast-775-split-inflow-discovery-record-new-only-vet-inflow-seems-to-have-been-skipped.md` (Review section).
+
+**Verdict:** Clean — **`resolve-child`** may advance per §9a.
+
+#### betty — 2026-06-23T20:59:03.338Z
+## QA test manifest (AST-775)
+
+**Publish ref:** `origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only` @ `8e78c56` (`merge-tests` + bleed revert)
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/core/roster.md` — `9f4bfdffb6802f465a531bdc36e2720f900c38a7`
+- `docs/test-bible/utils/config.md` — `c640f9b76ac35868911e72476b0d90e3735a8c45`
+
+**Broken / revised (this pass):**
+- `TestAst505InflowDiscovery::test_run_batch_happy_path` — removed inline `do_task` / vet ingest mocks; asserts mechanical `co_example` **NEW** record (**AST-775**).
+- `TestAst505InflowDiscovery::{test_run_batch_cse_failure_continues,test_run_batch_searches_only_stale_terms}` — dropped obsolete `do_task` mocks.
+
+**Manifest (test-child):**
+
+1. **Config — VET_FAILED terminal state**
+   `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition`
+
+2. **Discovery hit helpers — slug, blurb, record NEW, dedupe, slug suffix**
+   `tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew`
+
+3. **Batch record-only path (no inline vet) + consult routing**
+   `tests/component/core/test_roster.py::TestAst505InflowDiscovery`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery \
+  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless widened.
+
+— Betty
+
+#### hedy — 2026-06-23T20:55:56.585Z
+[qa-handoff] tests/component/core/test_roster.py inflow discovery tests mock do_task(vet_inflow_discovery) — update for record-only discovery batch (record_inflow_discovery_hit, no inline vet). origin/sub/AST-754/AST-775-split-inflow-discovery-record-new-only @ 23fb0b2
+
+#### hedy — 2026-06-23T20:52:54.463Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-754/AST-775-split-inflow-discovery-record-new-only/docs/features/roster/ast-775-split-inflow-discovery-record-new-only-vet-inflow-seems-to-have-been-skipped.md
+
+**Scope:** Single-Component — config.py VET_FAILED registration plus roster.py discovery batch (remove inline do_task(vet_inflow_discovery), record NEW rows with inflow_discovery_blurb).
+
+**Conf:** Medium — mechanical hostname slug and expanded URL dedupe replace vet-assigned slugs at discovery time; sibling AST-776 completes vet dispatch.
+
+**Risk:** Medium — dedupe/slug collision bugs could duplicate or skip roster rows; contained to inflow discovery for one candidate, no IMPORTED or job consult impact.
+
+---
+
 # AST-775 — Split inflow_discovery to record NEW only
 
 - **Linear:** [AST-775](https://linear.app/astralcareermatch/issue/AST-775/split-inflow-discovery-to-record-new-only-vet-inflow-seems-to-have)

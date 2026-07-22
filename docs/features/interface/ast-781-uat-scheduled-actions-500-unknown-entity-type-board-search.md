@@ -1,3 +1,122 @@
+<!-- linear-archive: AST-781 archived 2026-07-22 -->
+
+## Linear archive (AST-781)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-781/uat-scheduled-actions-500-unknown-entity-type-board-search  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-763 — Cannot change task_key in the scheduled task modal  
+**Blocked by / blocks / related:** parent: AST-763
+
+### Description
+
+## What failed
+
+Opening **Admin → Scheduled Actions** (`/admin/scheduled_actions`) fails to load the dispatch task list. Browser shows loading/error; server log shows `GET /api/admin/dispatch_tasks` returning **500** with:
+
+`ValueError: Unknown entity_type: board_search`
+
+at `api_admin.list_dtasks` → `database.count_eligible_for_dispatch_task` → `count_entities_in_state`.
+
+## Expected
+
+Scheduled Actions page loads all dispatch rows (including any legacy rows) without error; Available counts show **0** or **—** for rows that cannot be counted, not a 500 for the whole page.
+
+## Repro
+
+1. Log in as admin with at least one `dispatch_task` row whose `entity_type` is `board_search` (legacy boards sunset data).
+2. Navigate to **Scheduled Actions**.
+3. Observe `GET /api/admin/dispatch_tasks` → 500 and page does not render the table.
+
+## Parent AC (quoted inline)
+
+> 7. Add Task, run/stop, AUTO/Dbg column toggles, filters, collapsible task groups, and Stop All still behave as before UAT on AST-735.
+
+## Boundaries
+
+* This bug does **not** change: edit-modal task_key selector (AST-773); scheduler tick/claim logic; re-introducing boards product features.
+* Fix should tolerate retired `entity_type` values on existing rows (count **0** / skip eligibility) or document one-time admin cleanup — not crash the list endpoint.
+
+### Comments
+
+#### radia — 2026-06-24T05:40:32.321Z
+## Radia review — AST-781
+
+**Diff:** `origin/dev...origin/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type` @ `15db572`
+**AST-781 product commits:** `2e229d6` (code), `8f64615` (tests), `15db572` (merge-tests)
+
+### Plan fidelity
+
+Stage 1 matches the plan: `ENTITY_TYPES` added to the existing config import block; `count_eligible_for_dispatch_task` returns `0` when `entity_type not in ENTITY_TYPES` before fall-through to `count_entities_in_state`. Shared callers (`list_dtasks`, `get_due_tasks`, `run_task` enrichment) get the tolerant path without UI or dispatcher changes. `count_entities_in_state` stays strict for known types.
+
+### ASTRAL_CODE_RULES
+
+| Check | Result |
+|-------|--------|
+| §2.1 config / DRY | `ENTITY_TYPES` from `config.py` — not a hardcoded allowlist |
+| §3.3 layer | Data-layer guard only; no UI/core imports |
+| D3 fallbacks | Returning `0` for retired types is the documented AC (legacy rows show Available=0), not a silent swallow |
+| B1/B2/E1 | No new imports-at-function-scope, layer bends, or logging |
+
+No **fix-now** items.
+
+### Tests / bible
+
+- `TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero` — flipped correctly.
+- `TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count` — stubs `list_dispatch_tasks` only; exercises real `count_eligible_for_dispatch_task` (no count monkeypatch). Covers the UAT 500 path.
+- Bible manifest in `docs/test-bible/ui/api/api_admin.md` and `dispatch_tasks.md` matches the narrowed pytest block.
+
+### Advisory (non-blocking)
+
+- `8f64615` also adds `AdminScheduledActions` **`AST-785`** UX describe block in the same commit as AST-781 tests — sibling scope on the sub branch, not in AST-781 product diff. Fine for epic rollup; keep resolve-child scoped to AST-781 only.
+- Three-dot diff vs `origin/dev` includes sibling test/bible rollup from `merge-tests(AST-781)` — expected on the shared sub ref; only `src/data/database.py` (+3 lines) is AST-781 product code.
+
+**Self-Assessment alignment:** Scope `minor`, Conf `high`, Risk `low` — matches the diff.
+
+Katherine: **resolve-child** when ready — no fix-now from this pass.
+
+#### betty — 2026-06-24T05:38:45.311Z
+## QA test manifest (AST-781)
+
+**Publish:** `origin/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type` @ `15db572` (`merge-tests(AST-781): origin/tests 8f64615`)
+
+1. **Existing coverage revised (AST-766 flip):** `tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero` — legacy `board_search` entity_type returns **0**, not `ValueError`.
+2. **New gap — admin list enrichment:** `tests/component/ui/api/test_api_admin.py::TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count` — real `count_eligible_for_dispatch_task` (no count monkeypatch); `GET /api/admin/dispatch_tasks` **200** with `available_count == 0`.
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst766BoardSchemaSunset::test_count_eligible_board_search_entity_returns_zero \
+  tests/component/ui/api/test_api_admin.py::TestAst781ListDtasksRetiredEntityType \
+  -q
+```
+
+**Bible shasum on publish ref:**
+- `docs/test-bible/data/database/dispatch_tasks.md` → `b3d321e305f838840f7a039be64d40509269543a`
+- `docs/test-bible/ui/api/api_admin.md` → `c4d6481e980277f0e0bee85f86bf416bf0407882`
+
+#### katherine — 2026-06-24T02:56:18.748Z
+Betty: flip `test_count_eligible_board_search_entity_raises` → expect `0`; add admin `list_dtasks` regression with legacy `board_search` row (plan QA manifest).
+
+`origin/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type` @ `628b899`
+
+#### katherine — 2026-06-24T02:55:17.409Z
+Plan: `docs/features/interface/ast-781-uat-scheduled-actions-500-unknown-entity-type-board-search.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-763/AST-781-scheduled-actions-500-board-search-entity-type/docs/features/interface/ast-781-uat-scheduled-actions-500-unknown-entity-type-board-search.md
+
+**Self-assessment**
+- **Scope:** minor — one guard + import in `database.py`
+- **Conf:** high — stack trace matches AST-766 fall-through; `ENTITY_TYPES` guard is established pattern
+- **Risk:** low — only legacy invalid entity_type rows; valid counts unchanged
+
+Single stage: early return 0 in `count_eligible_for_dispatch_task` when `entity_type not in ENTITY_TYPES`. Betty flips AST-766 regression test and adds admin list test.
+
+---
+
 # AST-781 — UAT: Scheduled Actions 500 — Unknown entity_type board_search
 
 **Linear:** [AST-781 — UAT: Scheduled Actions 500 — Unknown entity_type board_search](https://linear.app/astralcareermatch/issue/AST-781/uat-scheduled-actions-500-unknown-entity-type-board-search)  

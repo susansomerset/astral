@@ -1,3 +1,110 @@
+<!-- linear-archive: AST-839 archived 2026-07-22 -->
+
+## Linear archive (AST-839)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-839/uat-cse-debug-verbose-per-http-trace-pacing-request-outcome  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-835 — Rate limit queries for a config-driven pause  
+**Blocked by / blocks / related:** parent: AST-835
+
+### Description
+
+## What failed
+
+With `debug=True` on inflow discovery, CSE pacing lines appear in a burst at one log timestamp (many `pacing: sleeping …` lines at 6:52:48 PM with no HTTP outcome between them). Susan cannot tell whether the process slept 12s between every CSE call or what each HTTP request returned.
+
+## Expected
+
+When `debug=True`, each Google CSE HTTP request emits verbose debug under the current Style D index: pacing sleep (if any) **at the time it happens**, then the HTTP outcome (status code, pagination start, item count or rate-limit signal) before the next request — so UAT can correlate timing and results without guessing.
+
+## Repro
+
+1. Run inflow discovery with `debug=True` for a candidate with stale search terms (e.g. manual dispatch on staging).
+2. Open logs for `roster.run_inflow_discovery_batch`.
+3. Observe multiple `pacing: sleeping …` lines sharing the same timestamp and no per-request HTTP result lines.
+
+## Parent AC (quoted inline)
+
+> 2. On HTTP 429, the system pauses for the configured duration before retrying; with `debug=True`, each pause and retry is visible under the current index header.
+
+(AST-538 contract: when `debug=True`, log what was **found** and what was **recorded** per step — not only pass/fail counts.)
+
+## Boundaries
+
+* This bug does **not** change: inter-query delay / pause config literals, 429 retry semantics, or non-debug production logging.
+* Does **not** add admin UI knobs.
+
+### Comments
+
+#### radia — 2026-07-02T23:18:50.402Z
+### AST-839 review — clean (FIX-UAT)
+
+**Diff:** `origin/dev...origin/sub/AST-835/AST-839-uat-cse-debug-verbose-per-http-trace` @ `7d33e50`
+**Doc:** `docs/features/foundation/ast-839-uat-cse-debug-verbose-per-http-trace.md` § Review (Radia)
+
+**Root cause / fix:** AST-837 buffered `pace_lines` and flushed after `debug_index`. Fix streams `log.debug_detail` as live `pace_detail` (pre-search index outcome `CSE search`) and adds per-HTTP `CSE HTTP start=… status=… items=…` / `rate_limited=…` outcome lines from `_http_get_with_pacing_and_retry`.
+
+**Rules (no fix-now):**
+- §1.5.1 — debug-only emission; real-time detail under pre-emitted index; hit count moved to `search complete:` detail line (documented UAT decision)
+- §2.5 — external layer callback-only; no logging in `google_cse.py`
+- AST-837 boundary — pacing/retry semantics and config unchanged
+
+**Tests:** `TestGoogleCseAst839HttpOutcomeLines`, roster streaming order tests (discovery + resolve), bible AST-839 manifest.
+
+**Advisory:** FIX-UAT clean — no `resolve-child` product work expected; re-test CSE debug trace in browser for Susan sign-off.
+
+**Verdict:** Clean — no Radia fix-now items.
+
+#### betty — 2026-07-02T23:17:22.027Z
+## QA test manifest (AST-839)
+
+**Publish:** `origin/sub/AST-835/AST-839-uat-cse-debug-verbose-per-http-trace` @ `b3d925a` (`merge-tests(AST-839): origin/tests c54a6c2`)
+
+**Bible shasum:** `docs/test-bible/external/google_cse.md` → `79f7a2fddd7591cd3f622805dac9cc5449a6e9ce`
+
+1. **Regression (required):** full CSE module (AST-489 + AST-837 pacing unchanged):
+```bash
+./scripts/testing/run_component_tests.sh tests/component/external/test_google_cse.py
+```
+
+2. **AST-839 per-HTTP outcome lines (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/external/test_google_cse.py::TestGoogleCseAst839HttpOutcomeLines
+```
+
+3. **Roster debug streaming — discovery + resolve (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst837CsePaceDebug \
+  tests/component/core/test_roster.py::TestAst839CseDebugStreaming
+```
+
+**Pass criterion:** pytest green on items 1–3 — not zero-arg harness / branch-lock gate.
+
+**Existing coverage (bible):** `docs/test-bible/external/google_cse.md` § AST-837 + § AST-839.
+
+**Broken / obsolete (Betty revision):** `TestAst837CsePaceDebug::test_discovery_debug_flushes_pace_detail` → renamed/revised to `test_discovery_debug_streams_pace_detail_during_search` (AST-839 streaming; no `pace_lines` buffer).
+
+— Betty
+
+#### hedy — 2026-07-02T23:15:16.909Z
+Plan: `docs/features/foundation/ast-839-uat-cse-debug-verbose-per-http-trace.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-835/AST-839-uat-cse-debug-verbose-per-http-trace/docs/features/foundation/ast-839-uat-cse-debug-verbose-per-http-trace.md
+
+Published @ `bcdf72d` (+ `plan(AST-839)` marker `bffe0e3`).
+
+**Self-assessment**
+- **Scope:** Single-Component — `google_cse.py` per-HTTP `pace_detail` outcome lines + roster streaming debug at the two existing CSE call sites (remove `pace_lines` buffer).
+- **Conf:** high — Root cause is AST-837 buffered flush after `debug_index`; fix is direct `log.debug_detail` callback + explicit HTTP outcome strings in the helper.
+- **Risk:** low — Debug-only when `debug=True`; pacing config, retry semantics, and non-debug logging unchanged.
+
+---
+
 # AST-839 — UAT: CSE debug verbose per-HTTP trace (pacing + request outcome)
 
 - **Linear (this ticket):** [AST-839 — UAT: CSE debug verbose per-HTTP trace](https://linear.app/astralcareermatch/issue/AST-839/uat-cse-debug-verbose-per-http-trace-pacing-request-outcome)

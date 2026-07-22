@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-834 archived 2026-07-22 -->
+
+## Linear archive (AST-834)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-834/clear-stale-select-job-page-run-next-in-manage-tasks-json-for-manage  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-833 — json for manage tasks has a run_next set for select_job_page  
+**Blocked by / blocks / related:** parent: AST-833
+
+### Description
+
+## What this implements
+
+Clear the stale `run_next: parse_job_list` link on the `select_job_page` agent_task row (Manage Tasks JSON / `agent_task` table), add an idempotent migration so AST-469 does not re-apply the link, and ensure the PJL_READY decomposed dispatch path does not invoke `parse_job_list` in the same execution. Update UAT fixture and tests that assume the old default. If clearing agent_task `run_next` breaks the JOBS_FOUND `jobs_found_process_job_site` path, restore select→parse orchestration in roster code without re-seeding Manage Tasks `run_next`.
+
+## Acceptance criteria
+
+1. Manage Tasks / `agent_task` export for `select_job_page` shows `run_next` empty (not `parse_job_list`).
+2. Running Scheduled Actions `select_job_page` at PJL_READY for a company that returns `JOBLIST_TITLES`: company reaches `JOBLIST_IDENTIFIED`; no `parse_job_list` agent hop in the same batch/execution; `company_data` holds selection fields consumed later by parse dispatch.
+3. Running Scheduled Actions `parse_job_list` at JOBLIST_IDENTIFIED still reaches `WATCH` (or existing retry/fail states) using persisted `company_data` — no regression on the decomposed parse hop.
+4. JOBS_FOUND companies processed via `jobs_found_process_job_site` still reach the same terminal states as before this change for equivalent page content.
+5. Component tests and AST-756 fixture updated; green test run.
+
+## Boundaries
+
+* Does not change `dispatch_task` rows (Scheduled Actions).
+* Does not change `parse_job_list` dispatch behavior or `JOBLIST_IDENTIFIED` trigger.
+* Does not change `select_job_page` or `parse_job_list` prompts.
+* Sibling tickets: none — this is the sole implementation child for AST-833.
+
+## Notes for planning
+
+* Primary files: `src/data/database.py` (migration / schema ensure), `src/core/roster.py` (JOBS_FOUND path if needed), `docs/uat-fixtures/AST-756/expected-agent_task.json`, `tests/component/core/test_agent.py`, `tests/component/core/test_roster.py`.
+* AST-469 `_apply_ast469_select_job_page_run_next_migration` must be neutralized or superseded so it does not re-set `run_next`.
+* PJL_READY path already uses `chain_parse=False` in `run_select_job_page_dispatch` — verify `do_task` does not still chain via DB `run_next` when `resolve_run_next_live` is absent.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-833-select-job-page-run-next`, child `sub/AST-833/<child-segment>`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-27T20:16:09.349Z
+### Plan fidelity
+
+Stages 2–3 match plan: AST-469 migration neutralized; `_apply_ast834_clear_select_job_page_run_next_migration` clears stale `select_job_page` → `parse_job_list` link idempotently; repo JSON + AST-756 fixture byte-identical with `run_next=""`. Stage 4 skipped — no `roster.py` edits; JOBS_FOUND covered by existing select-only fallback.
+
+**Diff:** `origin/dev...origin/sub/AST-833/AST-834-clear-select-job-page-run-next` @ `38232b5` (product `705b840` · `3ce83b4`).
+
+### ASTRAL_CODE_RULES
+
+| Rule | Verdict |
+|------|---------|
+| §2.6 state machine | Decomposed PJL_READY select stays single-hop; parse remains separate JOBLIST_IDENTIFIED dispatch. |
+| §3.5 naming | `_apply_ast834_*` follows migration convention; AST-469 supersede matches AST-685 pattern. |
+| §1.5 data layer | No new logging; migration swallows `sqlite3.Error` same as adjacent migrations — bounded. |
+
+### Issues
+
+**fix-now:** None.
+
+**discuss:** None.
+
+**advisory:**
+- Publish ref rollup includes sibling test/bible commits from `merge-tests` (AST-825–832, AST-830/831) — product diff vs `origin/dev` is AST-834-only (`src/data/database.py` + JSON pair). Expected epic rollup.
+- `_apply_ast834_clear_select_job_page_run_next_migration` clears only when stripped `run_next == "parse_job_list"` — whitespace-padded values would not match (unlikely).
+
+### Doc
+
+`docs/features/roster/ast-834-clear-select-job-page-run-next.md` — Radia review section @ `38232b5`.
+
+**Outcome:** 0 fix-now · 0 discuss · 2 advisory — clean; ready for `resolve-child`.
+
+#### betty — 2026-06-27T20:13:03.078Z
+## QA test manifest (AST-834)
+
+**Publish:** `origin/sub/AST-833/AST-834-clear-select-job-page-run-next` @ `57e99c7` (`merge-tests(AST-834): origin/tests 828142e`)
+
+**Bible shasum:** `docs/test-bible/data/database/agent_tasks.md` → `f348ffe470abc6e4964b63205aba81b5c76527f3514e0b682aad4ffb311bc0ff`
+
+### Manifest (test-child)
+
+1. **Migration + schema ensure (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst834ClearSelectJobPageRunNextMigration \
+  -q
+```
+
+2. **Repo/fixture parity + empty catalog `run_next` (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  -q
+```
+
+3. **Decomposed PJL_READY select — no in-process parse hop (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst834SelectJobPageRunNextClear \
+  tests/component/core/test_agent.py::TestAst834SelectJobPageEmptyRunNext \
+  -q
+```
+
+4. **Regression — AST-469 explicit chain + JOBS_FOUND select-only fallback (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst469ResolveRunNextLive \
+  tests/component/core/test_roster.py::test_find_joblist_titles_routes_select_only_when_run_next_parent_missing \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 — not zero-arg harness / branch-lock gate.
+
+**Stage 4 (roster.py):** skipped — narrowed manifest green without product roster edits.
+
+#### hedy — 2026-06-27T20:08:54.790Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-833/AST-834-clear-select-job-page-run-next/docs/features/roster/ast-834-clear-select-job-page-run-next.md
+
+**Scope:** `Single-Component` — `database.py` migration to neutralize AST-469 re-seed and clear `select_job_page.run_next`, plus byte-identical sync of `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json`; optional narrow `roster.py` branch only if JOBS_FOUND regresses after catalog clear.
+
+**Conf:** `high` — PJL_READY dispatch already passes `chain_parse=False` but `do_task` still chains via stale DB `run_next`; fix is migration + repo JSON sync, matching AST-685 supersede / AST-786 fixture patterns.
+
+**Risk:** `Medium` — JOBS_FOUND today relies on AST-469 `run_next` chain or `_finalize_joblist_titles_select_only` fallback; Stage 4 is gated on component tests before any roster orchestration change.
+
+---
+
 # AST-834 — Clear stale select_job_page run_next in Manage Tasks
 
 **Linear:** [AST-834 — Clear stale select_job_page run_next in Manage Tasks (json for manage tasks has a run_next set for select_job_page)](https://linear.app/astralcareermatch/issue/AST-834/clear-stale-select-job-page-run-next-in-manage-tasks-json-for-manage)

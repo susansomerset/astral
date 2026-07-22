@@ -1,3 +1,127 @@
+<!-- linear-archive: AST-727 archived 2026-07-22 -->
+
+## Linear archive (AST-727)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-727/backfill-script-for-latest-only-rubric-entity-data-store-only-the  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-717 — Store only the latest rubric results in <entity>_data  
+**Blocked by / blocks / related:** parent: AST-717
+
+### Description
+
+## What this implements
+
+Ship a one-time script that cleans existing job and company entity rows: collapse accumulated rubric outcome data and duplicate `agent_responses` entries to latest-only per `task_key`, without deleting `agent_data` history.
+
+## Acceptance criteria
+
+* Backfill script: after running against the current database, entities that previously had duplicate rubric outcomes or duplicate agent_responses entries per task_key show latest-only data on the entity row; agent_data rows are untouched.
+
+## Boundaries
+
+* Does not change runtime write paths (sibling ticket owns forward behavior).
+* Does not alter rubric artifacts on candidates.
+
+## Notes for planning
+
+* Reuse the latest-only rules established by the runtime sibling; script should be idempotent where possible.
+* Susan-approved dry-run or backup guidance in plan if touching production DB shape.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-717-store-only-latest-rubric-results-in-entity-data`, child `sub/AST-717/<child-segment>`.
+
+### Comments
+
+#### radia — 2026-06-18T02:51:27.860Z
+### Review vs `origin/dev` (`63f4d3b`)
+
+**Diff:** `origin/dev...origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data`
+
+**AST-727 scope:** `normalize_agent_responses_for_backfill` + public `dedupe_agent_responses_latest` in roster; `scripts/migrations/backfill_latest_only_rubric_entity_data.py` CLI (dry-run, `--company`, `--job`); column-scoped `agent_responses` writes on job + company only; `agent_data` untouched; operator runbook in module docstring. Plan stages 1–4 delivered; Self-Assessment scope/conf match.
+
+**Layer / batch (§3, §2.4, §2.6):** Offline migration only — no batch claim/clear or state transitions; script imports `database` + `roster` per established migration pattern.
+
+**fix-now:** none.
+
+**discuss:** Branch diff vs `origin/dev` also includes **AST-726** runtime sibling changes (upsert, consult/roster saves, story dedupe) — expected epic stacking on one publish ref; AST-727 commits are script + normalizer export only.
+
+**advisory:** Job write path uses private `database._get_connection` / `_ensure_job_schema` / `_run_with_retry` — plan authorized; same precedent as `bootstrap_candidate.py`. Non-dict `agent_responses` elements dropped by normalizer without a dedicated stat counter (test covers skip).
+
+**Doc:** `docs/features/roster/ast-727-backfill-latest-only-rubric-entity-data.md` § Radia review.
+
+**Handoff:** Hedy → **resolve-child** (no code changes). Susan: backup DB, `--dry-run` full scan, spot-check, then live run per script docstring.
+
+#### hedy — 2026-06-18T02:50:04.505Z
+Manifest green (12 passed):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill \
+  tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory::test_dedupe_agent_responses_latest_wins_per_task_key \
+  tests/component/scripts/test_backfill_latest_only_rubric_entity_data.py \
+  -q
+```
+
+Product fix: `error` outcome now increments `errors` count (Betty engineer note).
+
+`origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data` @ `2446a63`
+
+#### betty — 2026-06-18T02:48:05.499Z
+**Bible shasums (`origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data`):**
+- `docs/test-bible/core/roster.md`: `848e6fab319b770c0618f7af0c5db134832838f26627b48fb893a9f1747f6eac`
+- `docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md`: `65cacefda50fe3a37d32d0ac20473aa18262e8c071bad54b07958cd384d9aaab`
+
+#### betty — 2026-06-18T02:48:01.532Z
+## QA test manifest (AST-727)
+
+**Publish:** `origin/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data` @ `fb7d5c1` (`merge-tests(AST-727): origin/tests 888d79b`)
+
+**Broken by sibling AST-727 product (revised in this pass):**
+- `TestAst726LatestOnlyRosterStory::test_dedupe_agent_responses_latest_wins_per_task_key` — AST-727 renamed private `_dedupe_agent_responses_latest` → public `dedupe_agent_responses_latest`; test updated.
+
+**New tests:**
+
+1. **Backfill normalizer** — `tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill`
+2. **Migration CLI** — `tests/component/scripts/test_backfill_latest_only_rubric_entity_data.py::{TestBackfillCompanies,TestBackfillJobs,TestRunBackfill}`
+
+**Regression (AST-726, unchanged manifest lines):**
+- `TestAst726LatestOnlyRosterStory::test_dedupe_agent_responses_latest_wins_per_task_key` (public helper name)
+
+**Narrowed run (test-child pass criterion — pytest green, not zero-arg harness / branch-lock gate):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill \
+  tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory::test_dedupe_agent_responses_latest_wins_per_task_key \
+  tests/component/scripts/test_backfill_latest_only_rubric_entity_data.py \
+  -q
+```
+
+**Bible shasums (`origin/sub/...`):**
+- `docs/test-bible/core/roster.md`: see publish ref after merge
+- `docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md`: see publish ref after merge
+
+**Engineer note (non-blocking for manifest):** `backfill_companies` / `backfill_jobs` use `counts[f"{outcome}"]` but `_backfill_one_entity` returns `"error"` while count key is `"errors"` — live write failures raise `KeyError` instead of incrementing `errors`. Fix in `test(AST-727)` product pass; omitted from manifest until fixed.
+
+**No frontend changes** — §6c N/A. **Candidates excluded** per plan — script tests company/job only.
+
+#### hedy — 2026-06-18T02:41:07.793Z
+Plan: `docs/features/roster/ast-727-backfill-latest-only-rubric-entity-data.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-717/AST-727-backfill-latest-only-rubric-entity-data/docs/features/roster/ast-727-backfill-latest-only-rubric-entity-data.md
+
+**Self-assessment**
+- **Scope:** Single-Component — one migration script plus roster dedupe export; no runtime write or UI changes.
+- **Conf:** high — AST-726 defined dedupe semantics; backfill reuses read-path helper and existing migration patterns.
+- **Risk:** Medium — column-scoped writes only; dry-run + backup runbook; agent_data never touched.
+
+---
+
 # Backfill script for latest-only rubric entity data (Store only the latest rubric results in `<entity>_data`)
 
 **Linear:** [AST-727](https://linear.app/astralcareermatch/issue/AST-727/backfill-latest-only-rubric-entity-data-store-only-the-latest-rubric-results-in)  

@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-804 archived 2026-07-22 -->
+
+## Linear archive (AST-804)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-804/dispatch-task-admin-validation-for-candidate-entity-type-over  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-799 — Over-validation on entity type for candidate  
+**Blocked by / blocks / related:** parent: AST-799
+
+### Description
+
+## What this implements
+
+Align Admin Scheduled Actions save/update validation with config dispatch defaults so candidate-scoped dispatch rows (starting with **inflow_discovery**) are accepted when task_key and trigger_state are valid per config — no spurious "unsupported entity_type" errors for types in **ENTITY_TYPES**. Validate candidate trigger_state against **CANDIDATE_STATES** the same way job and company rows use **JOB_STATES** / **COMPANY_STATES**. Expose candidate states on the admin state-options endpoint when the Scheduled Actions UI needs them for trigger_state selection.
+
+## Acceptance criteria
+
+1. **Susan's repro cleared:** PUT on an **inflow_discovery** dispatch row for a live candidate (e.g. somerset / id 5373) with trigger_state **LIVE_PROMPTS** returns success — not HTTP 400 with `unsupported entity_type 'candidate'`.
+2. **Scheduled Actions edit path:** From Admin → Scheduled Actions, an existing **inflow_discovery** row can be edited and saved without error when values match config defaults.
+3. **Invalid candidate state still rejected:** A candidate-scoped task_key with a trigger_state **not** in **CANDIDATE_STATES** is rejected with a clear error (behavior parallel to invalid job/company states).
+4. **Regression:** Job- and company-scoped dispatch task save/update behavior unchanged for representative task_keys (e.g. **grade_do**, **vet_inflow_discovery**).
+5. **Future-proofing:** A schedulable task_key whose config-derived entity_type is **candidate**, **company**, or **job** per **ENTITY_TYPES** is saveable without adding entity-type-specific branches only in the admin layer.
+
+## Boundaries
+
+* Does **not** change inflow discovery batch execution, dispatcher claim logic, or database eligibility counts.
+* Does **not** reintroduce retired entity types (e.g. legacy **board_search**) as schedulable.
+* Does **not** redesign Scheduled Actions layout or edit-modal task_key picker (AST-773).
+* Sibling scope: none — single implementation ticket for this parent.
+
+## Notes for planning
+
+* Root cause: `_dispatch_task_key_trigger_error` in admin API only validates job/company branches; **candidate** falls through to unsupported even though config and dispatcher support it.
+* Prefer deriving validation from `dispatch_task_admin_defaults` / **ENTITY_TYPES** rather than expanding inline elif chains.
+* `dispatch_task_state_options` currently returns job/company only — add candidate when UI needs it.
+* Betty owns test manifest updates; engineer posts Code Complete handoff for qa.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-799-dispatch-task-entity-type-validation`, child `sub/AST-799/<child-segment>`, standalone `ftr/<segment>`. Created at **dispatch-parent**. Engineers publish to `origin/sub/…` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-06-25T06:04:10.744Z
+[merge-child] blocked: validate-sub-log — missing plan(AST-804): on origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation (plan landed as docs(AST-804): plan — …). Republish with canonical plan(AST-804): prefix per validate-sub-log.sh (@Katherine Johnson)
+
+#### radia — 2026-06-25T06:00:20.567Z
+### AST-804 review — `origin/dev...origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation` @ `6d8691b`
+
+**fix-now:** None.
+
+**discuss:** None.
+
+**advisory:** None.
+
+**Plan fidelity:** Stage 1 + 2 match combined plan — `dispatch_entity_state_registry`, refactored `_dispatch_task_key_trigger_error` (ENTITY_TYPES + CANDIDATE_STATES), POST create + PUT trigger_state-only validation, `state_options.candidate`, Scheduled Actions `inputStateOptions` for candidate rows. Out-of-scope areas untouched (dispatcher, eligibility, AST-773 picker).
+
+**ASTRAL_CODE_RULES:** §1.3 DRY registry helper · §1.4 / §2.1 config-driven state validation · §3.2 UI resolves Input State from API · §3.3 layer imports clean. No §5f/§5g surface.
+
+**Tests:** Betty manifest covers helper paths, POST/PUT HTTP, state_options, and edit-modal candidate Input State (`TestAst804CandidateDispatchAdminValidation` + frontend describe).
+
+**Doc:** `docs/features/foundation/ast-804-dispatch-task-admin-candidate-entity-validation.md` — Radia review section @ `6d8691b`.
+
+**Outcome:** Clean — Katherine → `resolve-child`.
+
+#### betty — 2026-06-25T05:55:16.486Z
+## QA test manifest (Tests Ready)
+
+1. **Pytest (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation \
+  -q
+```
+
+2. **Vitest (required — §6c routed page):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-804"
+```
+
+**Coverage map:**
+- `_dispatch_task_key_trigger_error`: inflow_discovery + LIVE_PROMPTS → None; invalid candidate state → error; grade_do / vet_inflow_discovery regression unchanged
+- POST create + PUT trigger_state-only validation for candidate entity rows
+- `GET /api/admin/dispatch_tasks/state_options` includes candidate with LIVE_PROMPTS
+- Scheduled Actions edit modal: candidate Input State options for inflow_discovery (not job PASSED_JD)
+
+**Bible shasums (origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation):**
+- docs/test-bible/ui/api/api_admin.md — 3cb0a964fb0b12c77df5504c365d948116400c239ba32909ab70311c8dc0fffd
+- docs/test-bible/frontend/pages.md — 898a603d126ac038b307cdffb0d9279dedbb7f21f0037588d523b3ce0448c35f
+
+**Publish:** origin/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation @ 8108fc1 (merge-tests(AST-804): origin/tests d80f757)
+
+#### katherine — 2026-06-25T05:50:41.437Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-799/AST-804-dispatch-task-admin-candidate-entity-validation/docs/features/foundation/ast-804-dispatch-task-admin-candidate-entity-validation.md
+
+Two build stages — config registry + admin validation (POST/PUT + state_options), then Scheduled Actions UI candidate Input State options. Root fix: `_dispatch_task_key_trigger_error` currently rejects all non-job/company entity types; plan routes validation through `dispatch_entity_state_registry` keyed by **ENTITY_TYPES**.
+
+**Self-assessment**
+- **Scope:** Single-Component — `config.py`, `api_admin.py`, `AdminScheduledActions.tsx` only.
+- **Conf:** high — single missing candidate branch in a known helper; dispatcher/config already support **inflow_discovery** / **LIVE_PROMPTS**.
+- **Risk:** Medium — admin save path is critical for Scheduled Actions; job/company regression covered in Betty manifest.
+
+---
+
 # AST-804 — Dispatch task admin validation for candidate entity type
 
 **Linear:** [AST-804 — Dispatch task admin validation for candidate entity type (Over-validation on entity type for candidate)](https://linear.app/astralcareermatch/issue/AST-804/dispatch-task-admin-validation-for-candidate-entity-type-over)  

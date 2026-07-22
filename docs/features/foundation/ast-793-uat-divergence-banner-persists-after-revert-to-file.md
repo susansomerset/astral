@@ -1,3 +1,102 @@
+<!-- linear-archive: AST-793 archived 2026-07-22 -->
+
+## Linear archive (AST-793)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-793/uat-divergence-banner-persists-after-revert-to-file  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-756 — create repo json files for agent and agent_task.  
+**Blocked by / blocks / related:** parent: AST-756
+
+### Description
+
+## What failed
+
+Susan UAT (2026-06-25): On localhost and staging, the **task prompts** divergence banner stays visible after clicking **Revert to file**:
+
+> Local **task prompts** in the database differ from `data/admin/agent_task.json`. Changes will be overwritten on the next server restart or deploy unless you run `python3 scripts/export_repo_admin_json.py` and commit the updated JSON.
+
+Revert appears to succeed (no error), but `/api/admin/repo_json/status` still reports `agent_task.diverged: true`, so the banner never clears.
+
+## Expected
+
+After **Revert to file** for `agent_task`, DB export rows match checked-in `data/admin/agent_task.json` under the same normalization used by `get_repo_admin_json_divergence_status`. Banner clears immediately; `agent_task.diverged` is **false** until the admin edits prompts again.
+
+## Repro
+
+1. Open admin task prompts page where divergence banner shows for `agent_task`.
+2. Click **Revert to file** and confirm.
+3. Observe banner still present on localhost/staging.
+4. Optional: `GET /api/admin/repo_json/status` — `agent_task.diverged` remains true after revert.
+
+## Parent AC (quoted inline)
+
+> After a fresh clone and server start, current (`current = 1`) rows in `agent` and `agent_task` match the checked-in `data/admin/` JSON files (field values for every row present in JSON).
+
+## Boundaries
+
+* Does **not** re-seed repo JSON (AST-786/787) or re-fix grouping import (AST-790).
+* Fix divergence compare and/or revert so post-revert status is accurate; minimal UI change only if refetch wiring is wrong.
+
+### Comments
+
+#### radia — 2026-06-25T01:03:36.876Z
+### Plan fidelity (AST-793) — FIX-UAT
+
+Diff `origin/dev...origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `03e435e` (+ doc `9ea7219`).
+
+UAT bug fix verified: `code(AST-793)` @ `05b4374` replaces `apply_agent_task_copy_upsert` in `apply_agent_task_repo_json_startup` with `_apply_agent_task_repo_json_rows_exact` — upserts by `task_key_uuid` with verbatim file columns (`updated_at` included), fixing metadata-only divergence after revert. `apply_agent_task_copy_upsert` unchanged for Copy Output. Betty manifest `TestAst793AgentTaskRevertDivergence` locks divergence clear, UUID preservation, double-revert.
+
+**fix-now:** none.
+
+**advisory:** Branch diff vs `origin/dev` includes AST-792 deploy_status/linear bible rollup; AST-793 product delta is `database.py` only. Repo JSON grouping now comes from exact row write (all columns), not AST-790 copy-upsert path — correct for repo-wins.
+
+Combined review: `docs/features/foundation/ast-793-uat-divergence-banner-persists-after-revert-to-file.md` (Radia review section).
+
+#### betty — 2026-06-25T01:01:54.463Z
+## QA test manifest (AST-793)
+
+**Publish:** `origin/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file` @ `03e435e` (`merge-tests(AST-793): origin/tests 7b2051b`)
+
+**Scope:** `apply_agent_task_repo_json_startup` uses exact repo JSON apply (`_apply_agent_task_repo_json_rows_exact`) so revert clears **`agent_task.diverged`**. **`src/data/database.py` only** — no compare/UI/repo JSON seed changes.
+
+### Manifest (test-child)
+
+1. **Revert clears divergence** — `tests/component/core/test_repo_admin_json.py::TestAst793AgentTaskRevertDivergence::test_revert_clears_agent_task_divergence_after_db_edit`
+
+2. **Preserves file `task_key_uuid`** — `TestAst793AgentTaskRevertDivergence::test_revert_preserves_repo_task_key_uuid`
+
+3. **Double revert idempotent** — `TestAst793AgentTaskRevertDivergence::test_double_revert_agent_task_stays_not_diverged`
+
+4. **Scope gate (required):** `git show 05b4374 --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-793-uat-divergence-banner-persists-after-revert-to-file.md` (no `data/admin/**`).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst793AgentTaskRevertDivergence \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–3 + scope gate item 4.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/repo_admin_json.md` `77c2f0ed4493313d4d4c7b40863c17de86af56ee5b50b24e3b07853fb1b07594`
+
+#### katherine — 2026-06-25T00:58:42.805Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-756/AST-793-divergence-banner-persists-after-revert-to-file/docs/features/foundation/ast-793-uat-divergence-banner-persists-after-revert-to-file.md`
+
+**Scope:** Single-Component — fix `apply_agent_task_repo_json_startup` so revert/startup writes exact repo JSON row values (`task_key_uuid`, `updated_at`), not Manage Tasks versioning via `_save_agent_task_on_connection`.
+
+**Conf:** high — reproduced locally: all 37 rows match file content after revert but compare fails on metadata-only diff.
+
+**Risk:** Medium — repo-wins apply path for `agent_task`; mitigated by inline revert smoke + Betty divergence tests.
+
+---
+
 # AST-793 — UAT: divergence banner persists after Revert to file
 
 **Linear (this ticket):** [AST-793](https://linear.app/astralcareermatch/issue/AST-793/uat-divergence-banner-persists-after-revert-to-file)  

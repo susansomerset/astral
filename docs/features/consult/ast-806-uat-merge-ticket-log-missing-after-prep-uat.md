@@ -1,3 +1,109 @@
+<!-- linear-archive: AST-806 archived 2026-07-22 -->
+
+## Linear archive (AST-806)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-806/uat-ast-788-missing-from-deploy-env-user-testing-tooltip-after-prep  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-788 — BUILD_ARTIFACTS substates do not graduate  
+**Blocked by / blocks / related:** parent: AST-788
+
+### Description
+
+## What failed
+
+After **AST-788** prep-uat landed **AST-803** on **origin/dev**, Susan restarted from **origin/dev** and hovered the deploy env label. The User Testing tooltip did **not** list **AST-788** among parents ready for UAT (other User Testing parents appear; **AST-788** is missing).
+
+`data/merge_ticket_log.json` on **origin/dev** after land lists **AST-378**, **AST-512**, **AST-716**, **AST-752**, **AST-753**, **AST-754**, **AST-794** but **not AST-788**. Prep-uat rebuild failed with `ModuleNotFoundError: dotenv` because `record-landed-parent.sh` invokes bare `python3` instead of the repo venv.
+
+## Expected
+
+When Chuckles runs **prep-uat** for a parent and lands **ftr** on **origin/dev**, that parent appears in **merge_tickets** (deploy env tooltip) once the parent is in Linear **User Testing** and Susan pulls **origin/dev** — without manual log surgery.
+
+## Repro
+
+1. Land **AST-788** via **prep-uat** (**ftr** merged to **origin/dev**; parent moved to **User Testing**).
+2. Pull **origin/dev** locally or on staging.
+3. Hover the deploy env label (AST-791 tooltip).
+4. Observe **AST-788** is absent from the User Testing parent list.
+
+## Parent AC (quoted inline)
+
+> 1. [AST-789](https://linear.app/astralcareermatch/issue/AST-789/graduate-build-artifacts-chain-to-candidate-review-build-artifacts) reverted on `origin/dev`; [AST-789](https://linear.app/astralcareermatch/issue/AST-789/graduate-build-artifacts-chain-to-candidate-review-build-artifacts) cancelled; epic git refs retired before new child work.
+
+(Susan cannot verify BUILD_ARTIFACTS graduation on staging until the parent is visible in the UAT tooltip.)
+
+## Boundaries
+
+* This bug does **not** change: **BUILD_ARTIFACTS CHAIN** product logic (**AST-803** — already **User Testing**).
+* Does not revert **AST-800** rebuild semantics; fixes **prep-uat land** so rebuild runs reliably (venv python) and the landed parent is included.
+* No React tooltip UX changes beyond reflecting a correct log.
+
+### Comments
+
+#### chuckles — 2026-06-25T17:08:58.048Z
+### Plan fidelity
+
+- **Stage 1 (venv python):** `record-landed-parent.sh` resolves `${ASTRAL_PYTHON:-$REPO_ROOT/.venv/bin/python}`, exits **BLOCKED** when not executable, invokes `"$PYTHON" "$REBUILD"` — matches plan.
+- **Stage 2 (`--landing-parent`):** wiring already landed in **AST-805**; this diff only reformats `_collect_entries` set construction — no behavioral change.
+- **Stage 3 (log repair):** `data/merge_ticket_log.json` includes **AST-788** with valid `recorded_at`; other rows reflect rebuild against `origin/dev` at commit time.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 DRY:** venv resolution mirrors `scripts/testing/run_component_tests.sh` — no new env var.
+- **Layer / imports:** scripts + data only; no core/external/UI touch; out-of-scope boundaries respected (**AST-803** not smuggled).
+- **§5f / §5g:** N/A (no debug-contract or LLM external changes).
+
+### Tests / manifest
+
+- Betty manifest + component tests cover venv gate, `ASTRAL_PYTHON` override, and **AST-805** regression — 13/13 green on publish ref.
+
+### Advisory
+
+- Log file is a **full rebuild snapshot**, not append-only — **AST-794** dropped and **AST-799** / **AST-801** added vs prior `dev` reflects current Linear User Testing set + ftr-on-dev at rebuild; expected for Stage 3.
+
+**Diff:** `origin/dev...origin/sub/AST-788/AST-806-uat-merge-ticket-log-missing-after-prep-uat` (3 code commits + Betty test/bible).
+
+— Radia
+
+#### betty — 2026-06-25T17:06:37.712Z
+## QA test manifest (AST-806)
+
+1. **Venv python resolution (AST-806):**
+   - `TestRecordLandedParentShell::test_record_landed_parent_resolves_venv_python`
+   - `TestRecordLandedParent::test_record_landed_parent_missing_venv_python_blocks`
+   - `TestRecordLandedParent::test_record_landed_parent_honors_astral_python_override`
+   - `TestRecordLandedParent::test_record_landed_parent_missing_rebuild_script_blocks`
+
+2. **Regression (AST-805 landing-parent + AST-800 rebuild wiring):** `tests/component/scripts/test_rebuild_merge_ticket_log.py` + remaining cases in `test_record_landed_parent.py`.
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Publish:** `origin/sub/AST-788/AST-806-uat-merge-ticket-log-missing-after-prep-uat` @ `76e47a1` (`merge-tests(AST-806): origin/tests 4a906a3`)
+
+**Bible shasum:** `docs/test-bible/dev/record_landed_parent.md` → `a0f6df0e4c9a290e5ab5af179d404b18c552d6be`
+
+— Betty
+
+#### ada — 2026-06-25T17:02:38.044Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-788/AST-806-uat-merge-ticket-log-missing-after-prep-uat/docs/features/consult/ast-806-uat-merge-ticket-log-missing-after-prep-uat.md
+
+Three stages: (1) venv python in `record-landed-parent.sh` — fixes confirmed `ModuleNotFoundError: dotenv` from bare `python3`; (2) `--landing-parent` union in rebuild CLI (AST-805 pattern) so prep-uat land includes parent before Linear moves to User Testing; (3) one-time `data/merge_ticket_log.json` repair so **AST-788** appears on dev after merge.
+
+**Scope:** minor — scripts + data only.
+**Conf:** high — failure reproduced locally; venv rebuild already lists AST-788.
+**Risk:** low — prep-uat shell path only.
+
+---
+
 # UAT: AST-788 missing from deploy env User Testing tooltip after prep-uat
 
 **Linear:** [AST-806 — UAT: AST-788 missing from deploy env User Testing tooltip after prep-uat](https://linear.app/astralcareermatch/issue/AST-806/uat-ast-788-missing-from-deploy-env-user-testing-tooltip-after-prep)

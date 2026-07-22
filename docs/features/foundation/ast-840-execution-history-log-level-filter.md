@@ -1,3 +1,118 @@
+<!-- linear-archive: AST-840 archived 2026-07-22 -->
+
+## Linear archive (AST-840)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-840/execution-history-log-level-filter-filter-execution-history-log-by  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-838 — Filter Execution History Log by Level  
+**Blocked by / blocks / related:** parent: AST-838
+
+### Description
+
+## What this implements
+
+Add a URL-persisted **Level** filter to Execution History (`/admin/performance_monitor`) so Susan can expand any batch and view only log entries at the selected severity (All, DEBUG, INFO, WARNING, ERROR). Ledger row list and API fetch stay unchanged; filtering applies to the expanded log viewer and to **Copy** (exports filtered lines). Show an explicit empty message when the batch has logs but none at the selected level.
+
+## Acceptance criteria
+
+1. **Level** dropdown appears in the Execution History filter bar; default **All** preserves current expanded-log behavior; selection persists in the URL across refresh/navigation.
+2. With **Level = ERROR** and a batch containing mixed severities, the expanded log shows only ERROR rows; if the batch has logs but no ERROR lines, Susan sees the explicit no-matching-level message.
+3. With **Level = ERROR**, the ledger table still lists batches that had no ERROR lines (including FAILED rows) — only expanded log content is filtered.
+4. **Copy** exports the filtered log lines currently displayed (not the unfiltered batch).
+
+## Boundaries
+
+* Execution History UI only (`AdminPerformanceMonitor.tsx` + related CSS/hook changes).
+* Prefer client-side filtering on existing `/api/admin/dispatch_ledger/<batch_id>/logs` responses.
+* Does not change ledger columns, Skip Checks, Agent Data modal, copy-button placement (AST-670/672), or candidate-filter behavior (AST-628/662).
+* Sibling **inflow_discovery FAILED vs log alignment** ticket owns backend failure investigation — not this ticket.
+
+## Notes for planning
+
+* Existing `LogEntry.level` and log table styling already support ERROR/WARNING/INFO/DEBUG classes.
+* URL persistence should follow existing filter pattern (`searchParams` / `useAdminCandidateFilter` adjacency).
+* Parent: AST-838.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-838-filter-execution-history-log-by-level`, child `sub/AST-838/<child-id>-execution-history-log-level-filter`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-02T23:32:29.656Z
+### Code review — AST-840
+
+**Diff:** `origin/dev...origin/sub/AST-838/AST-840-execution-history-log-level-filter` @ `583d7f5` (product + tests); review doc @ `95c1833`.
+
+**Plan fidelity**
+- Stage 1: **Level** dropdown, `log_level` URL param via existing `setFilter`, correctly **not** added to `FILTER_KEYS`.
+- Stage 2: `LogViewer` `visibleLogs` memo, zero-log vs filtered-empty message order, filtered **Copy**, ledger fetch / `logCache` unchanged.
+
+**ASTRAL_CODE_RULES**
+- §3.3: UI-only; no cross-layer imports.
+- §2.1 / G1: `LOG_LEVELS` inline constant matches existing `STATUSES` pattern on this page — display filter, not entity state logic; acceptable per plan.
+- §5f / §5g: N/A (no backend or external LLM changes).
+
+**Tests / bible**
+- Betty **`AST-840 log level filter`** describe matches QA manifest (All default, URL seed, ledger isolation, severity filter, filtered-empty, FAILED row visibility, filtered Copy, no refetch on level change).
+- `docs/test-bible/frontend/pages.md` row present.
+
+**fix-now:** none.
+
+**discuss:** none.
+
+**advisory:** typo/unknown `log_level` URL values silently yield filtered-empty on every expand — plan’s strict-equality contract; no action unless Susan wants URL validation later.
+
+**Verdict:** Clean. Doc: `docs/features/foundation/ast-840-execution-history-log-level-filter.md` § Review (Radia).
+
+#### betty — 2026-07-02T23:26:40.766Z
+## QA test manifest (AST-840)
+
+**Publish:** `origin/sub/AST-838/AST-840-execution-history-log-level-filter` @ `583d7f5` (`merge-tests(AST-840): origin/tests a6485f8`)
+
+**Bible shasum:** `docs/test-bible/frontend/pages.md` → `52e457e5d6f23120322db68c317248ffb16764dc`
+
+### Manifest (test-child)
+
+1. **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — **`AST-840 log level filter`** describe:
+   - Level control renders default **All**
+   - URL `?log_level=ERROR` seeds dropdown
+   - Ledger fetch URL excludes `log_level`
+   - Mixed severities → only matching rows when **ERROR** selected
+   - Batch with logs but no rows at level → `No 'WARNING' type log entries for this batch.` (not zero-log message); no Copy toolbar
+   - **FAILED** ledger row visible when **Level = ERROR**; expand shows filtered rows
+   - **Copy** writes only filtered lines (clipboard assert)
+   - Level change updates expanded view without log refetch
+
+2. **Regression (required):** full file — **AST-532**, **AST-634**, copy-toolbar case with default **All**
+
+**Narrowed run:**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-840 log level filter"
+```
+
+**Pass criterion:** narrowed describe green + full file green on publish ref after `merge-tests`.
+
+— Betty
+
+#### katherine — 2026-07-02T23:19:57.379Z
+Plan: [ast-840-execution-history-log-level-filter.md](https://github.com/susansomerset/astral/blob/sub/AST-838/AST-840-execution-history-log-level-filter/docs/features/foundation/ast-840-execution-history-log-level-filter.md) @ `d772b38`
+
+**Scope:** `Single-Component` — one React page (`AdminPerformanceMonitor.tsx`) for URL-backed Level filter and client-side expanded-log filtering; no backend or API changes.
+
+**Conf:** `high` — AC and boundaries are explicit; Execution History already has `LogEntry.level`, log CSS, and URL filter patterns from AST-634.
+
+**Risk:** `low` — display-only filter; ledger fetch and row list unchanged; mis-filter would affect triage UX only, not dispatch execution.
+
+---
+
 # AST-840 — Execution History log level filter
 
 **Linear:** [AST-840 — Execution History log level filter](https://linear.app/astralcareermatch/issue/AST-840/execution-history-log-level-filter-filter-execution-history-log-by)  

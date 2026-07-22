@@ -1,3 +1,108 @@
+<!-- linear-archive: AST-787 archived 2026-07-22 -->
+
+## Linear archive (AST-787)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-787/uat-agentjson-empty-seed-six-agent-personas  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-756 — create repo json files for agent and agent_task.  
+**Blocked by / blocks / related:** parent: AST-756
+
+### Description
+
+## What failed
+
+Susan UAT: `data/admin/agent.json` is `[]` (empty array). No agent persona rows checked in — startup upsert has nothing to load for `agent` table.
+
+## Expected
+
+`data/admin/agent.json` contains **6** agent rows with full persona metadata (`agent_id`, `content`, `model_code`, `brain_setting`, `temperature`, `max_tokens`, `updated_at`).
+
+**Agent ids (6):** job_analyst_grace, ats_expert_atlas, content_writer_judith, web_scraper_laslo, principal_recruiter_estelle, college_intern_ruth
+
+**Fixture (authoritative expected export):** `docs/uat-fixtures/AST-756/expected-agent.json` on this ticket's publish sub (seeded at dispatch).
+
+## Repro
+
+1. Fresh clone; open `data/admin/agent.json`.
+2. Observe `[]` or missing rows.
+3. Compare to `docs/uat-fixtures/AST-756/expected-agent.json` on publish sub.
+4. Start server; `agent` current rows do not match Susan's UAT personas.
+
+## Parent AC (quoted inline)
+
+> After a fresh clone and server start, current (`current = 1`) rows in `agent` and `agent_task` match the checked-in `data/admin/` JSON files (field values for every row present in JSON).
+
+## Boundaries
+
+* This bug does **not** change: `agent_task.json` seed data (separate bug), divergence UI, or export API semantics.
+* Populate repo JSON only; no new admin UI.
+
+### Comments
+
+#### radia — 2026-06-24T21:58:47.148Z
+### Plan fidelity (AST-787) — FIX-UAT
+
+Diff `origin/dev...origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `16e2dc1` (+ doc `7e0a4f0`).
+
+UAT bug fix verified: `code(AST-787)` @ `1c8364e` replaces empty `data/admin/agent.json` with **six** persona rows mapped from `docs/uat-fixtures/AST-756/expected-agent.json` — AST-782 repo columns only (`model_code` stripped), sorted by `agent_id`, fixture `brain_setting` verbatim. Betty manifest `TestAst787AgentRepoJsonSeed` locks id set, fixture mapping, column contract, and startup apply smoke. No `src/**` changes; `agent_task.json` untouched.
+
+**fix-now:** none.
+
+**advisory:** Branch diff vs `origin/dev` includes AST-786 rollup; AST-787 product delta is `agent.json` only. `code(AST-787)` also touched plan build stub in same commit — doc-only, not scope leak.
+
+Closes empty-`agent.json` discuss from AST-782/786 reviews.
+
+Combined review: `docs/features/foundation/ast-787-uat-agent-json-empty-seed-six-agent-personas.md` (Radia review section).
+
+#### betty — 2026-06-24T21:55:00.694Z
+## QA test manifest (AST-787)
+
+**Publish:** `origin/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas` @ `16e2dc1` (`merge-tests(AST-787): origin/tests 33b821e`)
+
+**Scope:** Data-only UAT fix — six persona rows in `data/admin/agent.json` mapped from `docs/uat-fixtures/AST-756/expected-agent.json` (repo columns; `model_code` stripped). No `src/**` changes.
+
+### Manifest (test-child)
+
+1. **Fixture mapping + 6-id catalog + startup smoke** — `tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed` (full class)
+
+2. **Scope gate (required):** `git show 1c8364e --name-only` — expect **only** `data/admin/agent.json` and `docs/features/foundation/ast-787-uat-agent-json-empty-seed-six-agent-personas.md` (no `src/`).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed \
+  -q
+```
+
+**Pass criterion:** pytest green on item 1 + scope gate item 2 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/data/database/agents.md` `7528077762e2ce3b7265498310e8e423d556d2d60ddaf4c335852b29b738224e`
+- `docs/test-bible/core/repo_admin_json.md` `212909019cc084659dbc2a545ee77ce186a08ac9094558fda9cbcb5552588572`
+
+#### chuckles — 2026-06-24T21:50:20.851Z
+## validate-plan — APPROVED
+
+Data-only UAT fix; scope matches bug boundaries. Normalization decisions documented (`current=1`, drop `model_code`). No layer violations.
+
+— Chuckles
+
+#### katherine — 2026-06-24T21:49:27.433Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-756/AST-787-agent-json-empty-seed-six-agent-personas/docs/features/foundation/ast-787-uat-agent-json-empty-seed-six-agent-personas.md`
+
+**Scope:** minor — replace empty `data/admin/agent.json` with six persona rows from `docs/uat-fixtures/AST-756/expected-agent.json`, repo-shaped (strip `model_code` per AST-782 columns).
+
+**Conf:** high — authoritative UAT fixture + mechanical column map; no product code.
+
+**Risk:** low — loader validation fails loud on wrong keys/count; `agent_task.json` and divergence UI untouched.
+
+---
+
 # AST-787 — UAT: agent.json empty — seed six agent personas
 
 **Linear (this ticket):** [AST-787](https://linear.app/astralcareermatch/issue/AST-787/uat-agent-json-empty-seed-six-agent-personas)  
