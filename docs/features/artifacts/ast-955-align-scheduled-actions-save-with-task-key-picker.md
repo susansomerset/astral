@@ -187,3 +187,15 @@ Expect **201** and a new `dispatch_task` row. Confirm response body is not `{"er
 | §2.6 state machine | No new states; registry validation on trigger_state retained |
 | §3.3 imports | `api_admin` already imports config; add `_dispatch_entity_type_for_task_key` only |
 | §3.5 naming | Keep `dispatch_task_admin_defaults` name; optional `trigger_state` is additive |
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-856/AST-955-align-scheduled-actions-save-with-task-key-picker`  
+**Tip:** `0efa2bb` (`0efa2bba`)
+
+**Stages delivered:**
+- Stage 1 — `dispatch_task_admin_defaults` accepts registered `TASK_CONFIG` keys + optional `trigger_state`; dropped schedulable-only gate in `_dispatch_trigger_state_for_task_key`
+- Stage 2 — `save_dispatch_task` passes request `trigger_state` into defaults
+- Stage 3 — `_dispatch_task_key_trigger_error` membership = `TASK_CONFIG` (not `DISPATCH_SCHEDULABLE_TASK_KEYS`); `update_dtask` passes effective trigger into defaults
+
+**Manual:** `check_cover_letter` + `CANDIDATE_REVIEW` helper returns `None` (no `Unknown or non-schedulable`); retired `consult_do` still blocked. AC5 tests → Betty.
