@@ -121,3 +121,13 @@ None (**fix-now**).
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
 
+
+## Resolution
+
+**Date:** 2026-07-22
+
+Radia review: **Clean** — no fix-now / discuss items. Advisory (ticket AC “repo-wide” vs child-scoped orientation grep) left for parent UAT.
+
+- Skill deliverable remains `team-chuckles@cf7e7a5`.
+- Radia `docs(AST-942)` intake: `cdb164e` on `origin/sub/AST-909/AST-942-orientation`.
+- resolve: clean — User Testing.
