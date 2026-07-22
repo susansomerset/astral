@@ -143,3 +143,7 @@ No conflicts requiring `conf-!!-NONE`.
 
 Stage 1: §0a post-merge push, §4c narrate ban, §5c Gate C/Procedure, Handoffs parent-close → finish-up / merge-child only.
 
+## Tests (engineer)
+
+**Manifest:** Betty docs-only / no pytest. Grep gate on `skills/check-linear/SKILL.md` — only deliberate bans (`Never Joan` / `git-store-*` / rollup); Gate C = merge-child + prep-uat; parent-close = finish-up. Plan Stage 1 + `team-chuckles@d707c40` spot-check OK.
+
