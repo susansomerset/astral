@@ -146,3 +146,7 @@ No conflicts requiring `conf-!!-NONE`.
 
 Stage 1: skill prose matches `publish_archive_commit` push to origin/dev; Joan/cherry-pick/merge-parent scrubbed.
 
+## Tests (engineer)
+
+**Manifest:** Betty docs-only / no pytest. Grep gate on `skills/archive-linear/SKILL.md` — only deliberate bans; publish = `git push origin HEAD:refs/heads/dev`; does-not-do names finish-up. Plan Stage 1 + `team-chuckles@6849251` spot-check OK (script unchanged).
+
