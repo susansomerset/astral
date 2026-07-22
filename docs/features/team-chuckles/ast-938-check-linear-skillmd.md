@@ -172,3 +172,9 @@ None (**fix-now**).
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
 
+## Resolution
+
+**Date:** 2026-07-22
+**Radia:** `docs(AST-938): Radia review — clean` @ `e2e8887` — no fix-now. Advisory only (repo-wide AC vs child scope); no product/doc change required.
+**Outcome:** `resolve(AST-938): — clean`
+
