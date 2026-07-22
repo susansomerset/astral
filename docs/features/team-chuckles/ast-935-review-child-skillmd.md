@@ -123,7 +123,7 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review (build)
 
 **Built:** team-chuckles `origin/main` @ `c01bd93dee7601a568033e49281deff856e84ae6` (`skills/review-child/SKILL.md`)
-**Publish ref:** `origin/sub/AST-909/AST-935-review-child` (this plan + stub; tip set after push)
+**Publish ref:** `origin/sub/AST-909/AST-935-review-child` @ `b344cff27315fe9f719255d95175c6c279e463ac` (this plan + stub)
 
 Stage 1: Who-runs / §4 sync / §6 publish bullets — drop Joan/`dev-radia`/`astral-radia`/cherry-pick handoff; parent-close sync names finish-up; mid-pipeline Radia `docs()` kept via push to publish-ref.
 
