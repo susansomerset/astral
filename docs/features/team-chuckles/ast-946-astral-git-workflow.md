@@ -81,3 +81,9 @@
 **Conf:** `high` — ticket names exact as-is/to-be; three primary hit sites (Chuckles-owned merges, commit vocab, skills map) plus a file-wide `merge-parent` sweep.
 
 **Risk:** `low` — docs only; mis-naming could confuse Chuckles land, but Stage 1 keeps `merge-parent.sh` as the documented internal helper under finish-up-land.
+
+## Review
+
+- **Branch:** `origin/sub/AST-909/AST-946-astral-git-workflow`
+- **Plan tip:** `5873341` (`plan(AST-946)`)
+- **Built:** `docs/ASTRAL_GIT_WORKFLOW.md` — operator `merge-parent()` → `finish-up()`; `merge-parent.sh` documented internal-only under finish-up-land; Radia `docs()` conventions unchanged.

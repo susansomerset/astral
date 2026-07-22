@@ -189,7 +189,9 @@ Betty may be ahead on `origin/tests` writing tests for the next ticket. Merging 
 | Commit | Operation |
 |--------|-----------|
 | `merge-child(AST-NNN)` | sub → ftr |
-| `merge-parent(AST-NNN)` | ftr → dev |
+| `finish-up(AST-NNN)` | ftr → dev (parent close after PR Ready) |
+
+**Internal only:** `scripts/git/merge-parent.sh` is invoked by `finish-up-land.sh` as a land helper — agents and operators run the **`finish-up`** skill, not `merge-parent` as a skill or commit name.
 
 Before `merge-child()`, Chuckles validates the sub-branch log:
 
@@ -243,7 +245,7 @@ No-op if ftr unchanged; mandatory every time.
 | `docs()` | Radia | Yes | Review — clean or findings |
 | `resolve()` | Engineer | Yes | Review loop closed |
 | `merge-child()` | Chuckles | Yes | Sub → ftr |
-| `merge-parent()` | Chuckles | Yes | Ftr → dev |
+| `finish-up()` | Chuckles | Yes | Ftr → dev (parent close; after Susan sets PR Ready) |
 
 Ten commit types. One owner each.
 
@@ -294,6 +296,6 @@ Executable procedures live in global Cursor skills under `~/.cursor/skills/`. Ea
 | `plan-child` … `resolve-child` | Sub-branch commit sequence |
 | `qa-child` / Betty test stage | `origin/tests` workflow |
 | `merge-child` | Pre-merge validation; sub → ftr |
-| `merge-parent` / `prep-uat` | Ftr → dev; prep-uat pushes `origin/dev` |
+| `finish-up` / `prep-uat` | finish-up lands ftr → `origin/dev` (parent close); prep-uat pushes `origin/dev` for staging UAT |
 
 Joan `git-store-*` cherry-pick skills are **retired**.
