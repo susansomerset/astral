@@ -762,3 +762,5 @@ Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Token floor literal | `src/utils/config.py` | **`TestAst903CraftRubricMaxTokens`** |
+
+**AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).

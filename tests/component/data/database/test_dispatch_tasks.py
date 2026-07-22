@@ -1280,3 +1280,43 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
         rows = db.get_company_batch("batch-892-pre")
         assert rows[0]["short_name"] == "second"
 
+
+class TestAst955SaveDispatchTaskRegisteredKeys:
+    """AST-955: save_dispatch_task accepts registered keys when trigger_state is supplied."""
+
+    def test_check_cover_letter_insert(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        tid = db.save_dispatch_task(
+            "somerset",
+            "check_cover_letter",
+            min_count=1,
+            trigger_state="CANDIDATE_REVIEW",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["task_key"] == "check_cover_letter"
+        assert row["trigger_state"] == "CANDIDATE_REVIEW"
+        assert row["entity_type"] == "job"
+
+    def test_check_job_resume_regression(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        tid = db.save_dispatch_task(
+            "somerset",
+            "check_job_resume",
+            min_count=1,
+            trigger_state="BUILD_ARTIFACTS",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["task_key"] == "check_job_resume"
+        assert row["trigger_state"] == "BUILD_ARTIFACTS"
+
+    def test_unknown_key_rejected_wording(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="rejected"):
+            db.save_dispatch_task(
+                "somerset",
+                "not_a_registered_task_key",
+                min_count=1,
+                trigger_state="NEW",
+            )
