@@ -1095,16 +1095,27 @@ class TestDispatchTasks:
             headers=auth_headers,
         )
         assert dup.status_code == 409
+        # AST-955: membership is TASK_CONFIG — junk keys 400 before save (no fake custom/WATCH).
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(side_effect=RuntimeError("boom")))
         assert admin_client.post(
             "/api/admin/dispatch_tasks",
-            json={"candidate_id": "c1", "task_key": "custom", "trigger_state": "WATCH", "min_count": 1},
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
             headers=auth_headers,
         ).status_code == 500
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=42))
         ok = admin_client.post(
             "/api/admin/dispatch_tasks",
-            json={"candidate_id": "c1", "task_key": "custom", "trigger_state": "WATCH", "min_count": 1},
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
             headers=auth_headers,
         )
         assert ok.status_code == 201
@@ -2185,3 +2196,90 @@ class TestAst875DispatchTasksSetFromTemplate:
             headers=auth_headers,
         )
         assert ve.status_code == 400
+
+
+# AST-955: Save accepts registered TASK_CONFIG keys (picker catalog), not schedulable-only.
+class TestAst955AlignScheduledActionsSave:
+    def test_helper_accepts_check_cover_letter(self) -> None:
+        assert (
+            admin_mod._dispatch_task_key_trigger_error("check_cover_letter", "CANDIDATE_REVIEW")
+            is None
+        )
+
+    def test_helper_unknown_task_key_wording(self) -> None:
+        err = admin_mod._dispatch_task_key_trigger_error("not_a_registered_task_key", "NEW")
+        assert err is not None
+        assert "Unknown task_key" in err
+        assert "non-schedulable" not in err
+
+    def test_helper_retired_consult_still_blocked(self) -> None:
+        err = admin_mod._dispatch_task_key_trigger_error("consult_do", "PASSED_JD")
+        assert err is not None and "retired" in err
+
+    def test_create_check_cover_letter_201(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=77)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "somerset",
+                "task_key": "check_cover_letter",
+                "trigger_state": "CANDIDATE_REVIEW",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert "non-schedulable" not in (resp.get_json() or {}).get("error", "")
+        assert save.call_args.kwargs["task_key"] == "check_cover_letter"
+        assert save.call_args.kwargs["trigger_state"] == "CANDIDATE_REVIEW"
+
+    def test_create_check_job_resume_regression(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=78)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "somerset",
+                "task_key": "check_job_resume",
+                "trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["task_key"] == "check_job_resume"
+
+    def test_update_task_key_to_check_cover_letter(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "candidate_id": "somerset",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "check_cover_letter", "trigger_state": "CANDIDATE_REVIEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["task_key"] == "check_cover_letter"
+        assert kw["entity_type"] == "job"
+        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults(
+            "check_cover_letter", trigger_state="CANDIDATE_REVIEW"
+        )["sort_by"]

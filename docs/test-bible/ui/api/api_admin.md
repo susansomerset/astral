@@ -353,3 +353,33 @@ Assessment enrichment, **`/vector_feedback/rubric_lookup`**, and **`POST /vector
 | Counts + set_from_template | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst875DispatchTasksSetFromTemplate` |
 
 Primary data manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).
+
+### AST-955 · AST-856
+
+**Scope:** Scheduled Actions Save accepts any registered non-retired **`TASK_CONFIG`** key (same catalog as the picker). Drops save-time **`DISPATCH_SCHEDULABLE_TASK_KEYS`** membership gate that 400'd **`check_cover_letter`**. Optional **`trigger_state`** on **`dispatch_task_admin_defaults`**; **`save_dispatch_task`** passes request trigger; retired keys still blocked. No dispatcher / Manage Tasks / frontend picker changes.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registered-key defaults + override | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults` |
+| AST-549 unknown-key wording | same | `TestAst549DispatchAdminDefaults::test_unknown_task_key_raises` (revised — junk key / `unknown task_key`) |
+| Helper + POST/PUT Save | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave` |
+| Branch-gap create paths | same | `TestDispatchTasks::test_create_dispatch_task_paths` (revised — real `grade_do` keys) |
+| DB insert + rejected wording | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst955SaveDispatchTaskRegisteredKeys` |
+
+**Broken / obsolete (Betty revision this pass):**
+- `TestAst549DispatchAdminDefaults::test_unknown_task_key_raises` — `anticipate_scan` is registered (hop-derived `BUILD_ARTIFACTS`); assert unknown junk key + `unknown task_key`.
+- `TestDispatchTasks::test_create_dispatch_task_paths` — fake `custom`/`WATCH` now 400 before save; use `grade_do`/`PASSED_JD`.
+
+**AST-955** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults::test_unknown_task_key_raises \
+  tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_paths \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst955SaveDispatchTaskRegisteredKeys \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

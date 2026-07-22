@@ -238,3 +238,4 @@ Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless `test-child` widens.
 
+**AST-955:** **`save_dispatch_task`** passes request **`trigger_state`** into defaults; rejected wording (not "not schedulable"). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
