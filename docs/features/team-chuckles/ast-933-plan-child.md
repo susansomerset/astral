@@ -101,3 +101,28 @@ rg -n -i 'joan|git-store|JOAN_SESSION|store-plan-commit|git\.sh store-plan|astra
 
 **Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `ac108ad`.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-933-plan-child`; skill deliverable `team-chuckles@ac108ad` (`skills/plan-child/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3: §4a Forbidden allows seeded `sub/*` checkout inside `astral-<parent-id>/`; §9 + re-plan + execution-contract publish = commit + `git push origin HEAD:<publish-ref>`; Joan / `store-plan-commit` / `astral-<agent>` live publish removed; self-cherry-pick kept as ban only. |
+| Grep gate | Hits are bans only (`Do not` / Forbidden / “no Joan / self-cherry-pick”). Zero live Joan/`git-store`/`store-plan-commit` publish. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `plan-child` only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
