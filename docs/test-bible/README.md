@@ -198,6 +198,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** vocabulary v2 + `_load_rule` smoke/mismatch; Linear state **Plan Discuss** exists; live-run log + canary tag path (2 rounds → escalate, no round=3); workflow/§4.3 name Plan Discuss — no pytest manifest. Sibling children under parent **AST-911** are out of scope.
 
+### AST-920 · AST-912 (statute schema + authoring guide)
+
+**Docs-only** (statute harness under product `docs/statutes/`). Live edits on **`origin/sub/AST-912/AST-920-statute-schema-authoring-guide`**: `SCHEMA.md` + `AUTHORING.md` + `README.md` + five exemplars (`orchestration/` + `astral/`). No `src/`, no pytest, no hook/CI implementation. Plan forbids harvest (**AST-921**) and consumer wiring (**AST-910** / **AST-916**).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
+
 
 
 ## 2. Where tests live
