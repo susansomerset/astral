@@ -78,3 +78,28 @@ rg -n -i 'joan|git-store|JOAN_SESSION|store-.*commit|git\.sh rollup|merge-parent
 
 **Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `1b0564c`.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-939-rollcall`; skill deliverable `team-chuckles@1b0564c` (via `4e37851` scrub + residual-token drop) (`skills/rollcall/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2: §7 STALE hint → epic `astral-<parent-id>/` merge + `git push origin HEAD:<publish-ref>` / Chuckles **merge-child**; Joan `store-*-commit` / `git.sh rollup` removed. Scripts untouched per Decision. |
+| Grep gate | Stage 2 pattern empty. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `rollcall` SKILL.md only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
