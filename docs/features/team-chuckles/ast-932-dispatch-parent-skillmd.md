@@ -116,3 +116,10 @@ Scrub retired Joan/`git-store-*`/self-cherry-pick publish language from `dispatc
 - §3.6 spikes: N/A — no spike output.
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Built:** team-chuckles  @  ()
+**Publish ref:**  (this plan + stub)
+
+Stage 1: §7 Git branch template and §10 Engineer handoff now teach  — no Joan//cherry-pick publish. §2c  phrase left for sibling tickets.
