@@ -96,3 +96,28 @@ rg -n -i 'merge-parent|joan|git-store|JOAN_SESSION' skills/orientation/SKILL.md
 
 **Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `cf7e7a5`.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-942-orientation`; skill deliverable `team-chuckles@cf7e7a5` (`skills/orientation/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2: Flow `sub → ftr → dev` ends at **finish-up** (keeps merge-child, prep-uat); never-list still bans Joan/`git-store-*`/`JOAN_SESSION` + cherry-pick; `merge-parent.sh` clarified as finish-up-land internal helper only. |
+| Grep gate | Only never-list Joan ban + `merge-parent.sh` helper row. No operator merge-parent. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `orientation` SKILL.md only (astral law docs = siblings AST-946/947). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
