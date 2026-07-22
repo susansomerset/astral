@@ -104,3 +104,7 @@ None (**fix-now**).
 | **Advisory** | Linear AC still says repo-wide / dual-naming gone; this child correctly scoped to `finish-up` SKILL.md (install/law-doc siblings own the rest). |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**2026-07-22** — Radia verdict **Clean** (no fix-now). Advisory only (scope to finish-up SKILL.md; siblings own remaining dual-naming AC); no product/doc change. `docs(AST-943): Radia review — clean` already on tip via §4 merge. `resolve(AST-943): — clean`.
