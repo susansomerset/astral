@@ -162,6 +162,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on the skill file (sole operator parent-close skill; `merge-parent.sh` internal to finish-up-land only — do not invoke a merge-parent skill) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
 
+### AST-944 · AST-909 (delete merge-parent skill)
+
+**Docs-only** (team-chuckles skill deletion + astral plan). Live change: delete **`~/team-chuckles/skills/merge-parent/`** (`code(AST-944)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-944-delete-merge-parent-skill`** holds the plan doc only. No product `src/` and no pytest. **`scripts/git/merge-parent.sh`** remains (finish-up-land helper). **`install.sh`** owned by sibling **AST-945**.
+
+**No new component tests.** **`test-child`:** verify skill dir absent (`~/team-chuckles/skills/merge-parent` and `~/.cursor/skills/merge-parent`); confirm `merge-parent.sh` still present — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
 
 
 ## 2. Where tests live
