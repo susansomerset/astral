@@ -115,3 +115,9 @@ Expand Jobs UI below-floor classification so every In Review state that `dispatc
 - §3.5 naming: keep existing function names; docstring wording only.
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Built:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `6404d4187471454f59f3fbd86d472a9326a5034b`
+
+Stage 1: `score_floor_by_trigger_for_candidate` gates on `dispatch_claim_uses_score_floor` (includes **PASSED_JOBLIST**); `list_jobs_below_dispatch_score_floor` lists all floors keys; config comment documents UI vs `PASSED_SCORE_GATED_STATES`. Tests deferred to Betty.
