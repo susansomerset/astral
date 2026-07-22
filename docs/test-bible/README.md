@@ -150,6 +150,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on the skill file (archive publish = `git push origin HEAD:refs/heads/dev` from `$ASTRAL_MAIN`/`dev` — no Joan cherry-pick / operator merge-parent; does-not-do names **finish-up** for parent-close) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
 
+### AST-942 · AST-909 (orientation SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/orientation/SKILL.md`** (`code(AST-942)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-942-orientation`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (Flow ends at **finish-up**; never-list keeps Joan/`git-store-*`/`JOAN_SESSION`; `merge-parent.sh` noted only as finish-up-land internal helper) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
 
 
 ## 2. Where tests live
