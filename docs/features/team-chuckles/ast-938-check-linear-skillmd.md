@@ -147,3 +147,28 @@ Stage 1: §0a post-merge push, §4c narrate ban, §5c Gate C/Procedure, Handoffs
 
 **Manifest:** Betty docs-only / no pytest. Grep gate on `skills/check-linear/SKILL.md` — only deliberate bans (`Never Joan` / `git-store-*` / rollup); Gate C = merge-child + prep-uat; parent-close = finish-up. Plan Stage 1 + `team-chuckles@d707c40` spot-check OK.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-938-check-linear`; skill deliverable `team-chuckles@d707c40` (`skills/check-linear/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1: §0a post-merge → finish-up land + permanent-branch push; §4c drops cherry-picked narrate; §5c Gate C = merge-child only (no Joan rollup / ftr cherry-pick escape); Handoffs parent-close → Susan PR Ready → Chuckles finish-up. |
+| Grep gate | Live-residue patterns empty; remaining hits are deliberate **Never** bans only. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `check-linear` only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
