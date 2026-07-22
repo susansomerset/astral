@@ -119,7 +119,7 @@ No conflicts requiring `conf-!!-NONE`.
 
 ## Review (build)
 
-**Built:** team-chuckles  @  ()
-**Publish ref:**  (this plan + stub)
+**Built:** team-chuckles `origin/main` @ `f3dd732ac63c4aa36a49370a66e81a9e2cab8391` (`skills/dispatch-parent/SKILL.md`)
+**Publish ref:** `origin/sub/AST-909/AST-932-dispatch-parent` @ `2c82fbe` (this plan + stub; tip updates with this fix)
 
-Stage 1: §7 Git branch template and §10 Engineer handoff now teach  — no Joan//cherry-pick publish. §2c  phrase left for sibling tickets.
+Stage 1: §7 Git branch template and §10 Engineer handoff now teach `git push origin HEAD:<publish-ref>` — no Joan/`git-store-*`/cherry-pick publish. §2c `merge-parent` phrase left for sibling tickets.
