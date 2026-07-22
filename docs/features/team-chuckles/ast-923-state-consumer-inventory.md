@@ -306,3 +306,31 @@ test -f ~/team-chuckles/docs/linear-state-migration-checklist.md
 **Tip:** astral plan + stub (this commit); tooling on `team-chuckles` `main` @ `89b14aa`.
 
 **Host note:** re-run `~/team-chuckles/./install.sh` before restarting watchers so `~/.cursor/skills/rollcall` picks up vocabulary + load gate.
+
+---
+
+## Radia review (2026-07-22)
+
+**Diff:** `origin/dev...origin/sub/AST-911/AST-923-state-consumer-inventory` (astral docs) + `team-chuckles` `main` @ `89b14aa` (tooling).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–4 match: vocabulary v1 exact shape (no Plan Discuss); five `watch_rules` declare `state_vocabulary_version: 1`; `_load_rule` mismatch + unknown-name gates; `In Review` dropped from `check.json`; inventory + transition rules; migration checklist + Plan Discuss dry-run worksheet. |
+| Smoke | All five `_load_rule` ok; deliberate version `999` raises mismatch; name-id grep empty under `skills`/`agents`/`hooks`. |
+| Scope / bible | Astral three-dot: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment `Single-Component` matches. |
+| Boundaries | No Plan Discuss in vocab/rules; §4.3 astral law left adjacent-only; skill gate logic not rewritten. |
+| Rules | §1.1 in-scope (team-chuckles tooling); config-as-truth via `state_vocabulary.json`; §5a–§5g N/A (no astral product layers). |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | `watch_linear.py` `_CHECK_ASSIGNEE_STATES` still contains dead `"In Review"` — inventory Verification section already notes it; harmless (no AST team state). Optional cleanup on a later pass / with AST-924 frozenset edits. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
