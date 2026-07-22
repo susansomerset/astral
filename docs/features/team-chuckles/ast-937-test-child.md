@@ -100,3 +100,28 @@
 - **Plan tip:** `584b58d` (`plan(AST-937)`)
 - **team-chuckles:** `origin/main` @ `ac131a9` — `code(AST-937): align test-child Betty publish without Joan`
 - **Built:** `~/team-chuckles/skills/test-child/SKILL.md` — Betty delivery via `merge-tests` → `origin/<publish-ref>`; engineer on `astral-<parent-id>/` + `sub/*` + `git push`; Joan `store-qa-commit` removed.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-937-test-child`; skill deliverable `team-chuckles@ac131a9` (`skills/test-child/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2: Who/§5/§7 — engineer on `astral-<parent-id>/` + `sub/*`; Betty delivery = `merge-tests` → publish-ref (no Joan/`store-qa-commit`); attach order completes truncated step 4; engineer publish = `git push origin HEAD:sub/…`. |
+| Grep gate | Acceptance pattern empty. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `test-child` only (`qa-child` = AST-936). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
