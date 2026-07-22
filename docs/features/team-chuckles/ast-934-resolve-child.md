@@ -123,3 +123,28 @@
 - **Plan tip:** `9116482` (`plan(AST-934)`)
 - **team-chuckles:** `origin/main` @ `9fc6810` — `code(AST-934): align resolve-child intake and finish-up wording`
 - **Built:** `~/team-chuckles/skills/resolve-child/SKILL.md` — epic `astral-<parent-id>/` + `sub/*` + push; Radia `docs()` intake via merge of publish tip; §9a surprises → finish-up; Joan/cherry-pick/`merge-parent` operator language removed.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-934-resolve-child`; skill deliverable `team-chuckles@9fc6810` (`skills/resolve-child/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3: epic `astral-<parent-id>/` + `sub/*` + merge `dev`/`ftr`/`publish-ref` + `git push origin HEAD:sub/…`; §5 Radia intake = merge publish tip (conflict recovery via `checkout <sha> --` only); §9a surprises → **finish-up** (not merge-parent); mid-pipeline `docs()` explicitly not deferred to finish-up. |
+| Grep gate | Acceptance pattern empty (no Joan / `git-store` / `merge-parent` / `dev-ada` / `astral-<agent>`). Cherry-pick hits are Forbidden / “do not” only. Live symlink matches. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `resolve-child` only (`review-child` = AST-935). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
