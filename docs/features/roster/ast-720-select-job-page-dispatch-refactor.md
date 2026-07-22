@@ -1,3 +1,136 @@
+<!-- linear-archive: AST-720 archived 2026-07-22 -->
+
+## Linear archive (AST-720)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-720/select-job-page-dispatch-refactor-find-job-page-logic-confirmation  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-716 — find_job_page logic confirmation  
+**Blocked by / blocks / related:** parent: AST-716; blocks: AST-721
+
+### Description
+
+## What this implements
+
+Refactor select_job_page to run as an independent dispatch hop from PJL_READY: send assembled PJL visible text to the agent; on confirmed list page + titles → JOBLIST_IDENTIFIED; on new unique URLs → PREFILTER_PASSED_RETRY with dedupe against possible_joblist_links; on exhaustion → NO_PJL_SELECTED. Split from monolithic find_job_page; preserve TRY_LINKS / JOBSITE_SCRAPE_ISSUE behavior from AST-689/692.
+
+## Acceptance criteria
+
+4. `select_job_page` transitions match Susan's brief: confirmed titles → `JOBLIST_IDENTIFIED`; new links → `PREFILTER_PASSED_RETRY`; exhausted candidates → `NO_PJL_SELECTED`; proposed URLs dedupe against `possible_joblist_links`.
+5. With `debug=True`, Susan can trace each PJL URL scrape, selection outcome, and parse hop using Style D index headers and `|` detail lines without reading production-only aggregate logs.
+
+## Boundaries
+
+Does not implement parse_job_list DOM reload or final WATCH transition — sibling ticket. Does not reimplement scrape batch — prior child.
+
+## Notes for planning
+
+[roster.py](<http://roster.py>) run_select_job_page_dispatch / _find_job_page_from_assembled reuse. AST-535 task_key routing.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-716-find-job-page-logic-confirmation`, child `sub/AST-716/<slug>` at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T01:54:23.334Z
+**Diff:** `origin/dev...origin/sub/AST-716/select-job-page-dispatch-refactor` @ `d4ef7f5`
+
+**Plan doc (review section):** https://github.com/susansomerset/astral/blob/sub/AST-716/select-job-page-dispatch-refactor/docs/features/roster/ast-720-select-job-page-dispatch-refactor.md#radia-review-2026-06-18
+
+### fix-now
+
+None.
+
+### discuss
+
+- **Transitions:** plan listed `PREFILTER_PASSED_RETRY → NO_JOBLIST` — not in config; no decomposed path hits it today.
+- **`_merge_try_links_into_pjl_ledger`:** appends raw URLs into `possible_joblist_links` beside AST-718 normalized keys; dedupe works via `normalize_link` but ledger format is mixed.
+- **`run_company_task` error path:** no `locate_job_page.error_state` transition on `result.error` (plan showed one).
+
+### advisory
+
+- `_finalize_joblist_identified` debug uses `logger.test` not `debug_detail`.
+- Decomposed `SELECT_FAILED` return dict still carries `job_site=company_website` (column safe).
+
+### sign-off
+
+PJL_READY select path, decomposed routing, AST-673 `job_site` suppression, legacy TO_WATCH gate, and Betty manifest align. Ready for `resolve-child`.
+
+#### betty — 2026-06-18T01:50:03.016Z
+**Bible shasum** (`origin/sub/AST-716/select-job-page-dispatch-refactor`):
+- `docs/test-bible/core/roster.md` `392f8fc554d60e5a41e28d266d9ce1e8e609a41277a566b8d7c94fe784a1b072`
+- `docs/test-bible/utils/config.md` `2cd1385d36138cc1e838b4e64c045f08d192c3a8df1cee9b77dfc4f0ae6a10a6`
+
+#### betty — 2026-06-18T01:49:57.969Z
+## QA test manifest (AST-720)
+
+**Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor` @ `5ffabcc` (`merge-tests(AST-720): origin/tests b02c448`)
+
+**Existing coverage (bible-backed):** AST-535 **`TO_WATCH`** select dispatch (`TestAst535ToWatchDispatchTaskKeyRouting`); AST-674 batch-id audit; AST-692 agent parse suppression — unchanged for legacy path.
+
+**Broken / obsolete (revised):** `TestAst549DispatchAdminDefaults::test_ast485_roster_dispatch_trio_matches_config_defaults` — `select_job_page` admin default trigger is now **`PJL_READY`**.
+
+**Gaps (new tests):**
+
+1. `tests/component/utils/test_config.py::TestAst720SelectJobPageConfig`
+2. `tests/component/core/test_roster.py::TestAst720PjlMapsAndLedger`
+3. `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch`
+
+**Narrowed run (test-child):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst720SelectJobPageConfig \
+  tests/component/core/test_roster.py::TestAst720PjlMapsAndLedger \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/AST-716/select-job-page-dispatch-refactor`):**
+- `docs/test-bible/core/roster.md` — see publish tip
+- `docs/test-bible/utils/config.md` — see publish tip
+
+— Betty
+
+#### chuckles — 2026-06-18T01:23:08.676Z
+## Plan validation — APPROVED
+
+**Verdict:** APPROVED → Plan Approved
+
+**Summary:** PJL_READY hop, tri-state outcomes, ledger dedupe, AST-689/692 preservation, no `job_site` until parse sibling — aligned with parent AC#4–6. Reuses `_find_job_page_from_assembled` pattern.
+
+**Findings:** none blocking.
+
+— Chuckles
+
+#### hedy — 2026-06-18T01:22:33.347Z
+Plan: `docs/features/roster/ast-720-select-job-page-dispatch-refactor.md`
+https://github.com/susansomerset/astral/blob/sub/AST-716/select-job-page-dispatch-refactor/docs/features/roster/ast-720-select-job-page-dispatch-refactor.md
+
+**Scope:** Single-Component — config (`JOBLIST_IDENTIFIED`, `PREFILTER_PASSED_RETRY`, `NO_PJL_SELECTED`, `ROSTER_CONFIG["select_job_page"]`) + roster PJL_READY select path via `_find_job_page_from_assembled(decomposed=True)`; no parse or entry scrape.
+
+**Conf:** Medium — reuses existing select agent loop and `_check_parse_results`, but depends on AST-718/719 persisted PJL fields landing on ftr before build.
+
+**Risk:** Medium — incorrect TRY_LINKS dedupe or `job_site` write would break the decomposed chain; legacy TO_WATCH select path must stay untouched until AST-721.
+
+#### hedy — 2026-06-18T01:19:53.900Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-716/select-job-page-dispatch-refactor/docs/features/roster/ast-720-select-job-page-dispatch-refactor.md
+
+**Self-assessment**
+- **Scope:** Single-Component — `roster.py` select/dispatch routing + `config.py` state keys; no UI or new agent tasks.
+- **Conf:** Medium — reuses `_find_job_page_from_assembled` / `_check_parse_results`, but PJL_READY persisted data depends on AST-718/719 landing first.
+- **Risk:** Medium — wrong transitions or `job_site` write would break the decomposed chain; legacy TO_WATCH select path must stay until AST-721.
+
+Four build stages: (1) `JOBLIST_IDENTIFIED` / `PREFILTER_PASSED_RETRY` / `NO_PJL_SELECTED` + dispatch trigger `PJL_READY`; (2) map rebuild from `pjl_assembled_content` / `pjl_scrape_pages`; (3) decomposed outcomes (no entry scrape, no parse, TRY_LINKS ledger dedupe); (4) `run_company_task` PJL_READY branch + AST-538 debug.
+
+---
+
 # AST-720 — select_job_page dispatch refactor
 
 **Linear:** [AST-720 — select_job_page dispatch refactor (find_job_page logic confirmation)](https://linear.app/astralcareermatch/issue/AST-720/select-job-page-dispatch-refactor-find-job-page-logic-confirmation)

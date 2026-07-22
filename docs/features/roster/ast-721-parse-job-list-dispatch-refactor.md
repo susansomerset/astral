@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-721 archived 2026-07-22 -->
+
+## Linear archive (AST-721)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-721/parse-job-list-dispatch-refactor-and-monolith-removal-find-job-page  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-716 — find_job_page logic confirmation  
+**Blocked by / blocks / related:** parent: AST-716
+
+### Description
+
+## What this implements
+
+After JOBLIST_IDENTIFIED, run parse_job_list as its own dispatch hop: Playwright DOM reload of selected list URL, existing single/multi-title container trimming, parse_job_list agent call, success → WATCH, failure → JOBLIST_IDENTIFIED_RETRY / COULD_NOT_PARSE_JOBLIST. Retire monolithic find_job_page chain in favor of the decomposed trio; update dispatch_tasks seeds and run_company_task routing. Fold AST-666 duplicate scope into this work.
+
+## Acceptance criteria
+
+5. Post-`JOBLIST_IDENTIFIED`, parse uses Playwright DOM reload + existing single/multi-title container trimming; success → `WATCH` with parse tags as today; failure → `JOBLIST_IDENTIFIED_RETRY` / `COULD_NOT_PARSE_JOBLIST` per retry rules in config.
+6. With `debug=True`, Susan can trace each PJL URL scrape, selection outcome, and parse hop using Style D index headers and `|` detail lines without reading production-only aggregate logs.
+7. Child implementation plans cite reuse of existing roster helpers (no duplicate scrape/parse/state modules) and pass `validate-plan`.
+
+## Boundaries
+
+Does not change prefilter routing or fetch_job_pages — prior children. Does not change UI. Susan owns select_job_page prompt prose via Manage Tasks.
+
+## Notes for planning
+
+[database.py](<http://database.py>) dispatch seed rows, [roster.py](<http://roster.py>) monolith removal, consult routing. Close duplicate AST-666 when shipped.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-716-find-job-page-logic-confirmation`, child `sub/AST-716/<slug>` at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T02:11:08.986Z
+**Diff:** `origin/dev...origin/sub/AST-716/parse-job-list-dispatch-refactor` @ `bd8fa7d`
+
+**Plan doc (review section):** https://github.com/susansomerset/astral/blob/sub/AST-716/parse-job-list-dispatch-refactor/docs/features/roster/ast-721-parse-job-list-dispatch-refactor.md#radia-review-2026-06-18
+
+### fix-now
+
+None.
+
+### discuss
+
+- **Dispatch cutover:** legacy `find_job_page` / TO_WATCH monolith rows no longer route (`total_errors`). Plan table requires Susan to deactivate old rows and seed decomposed `fetch_job_pages` → `select_job_page` → `parse_job_list` before live UAT.
+
+### advisory
+
+- `_scrape_list_page_dom_for_parse`: bare `except Exception: return ""` — failures land as empty-DOM retry/terminal without scrape error log.
+- Gazer message still says "re-run find_job_page" when parse_instructions missing.
+- `parse_job_list_notes` not in `company_data_keys`.
+
+### sign-off
+
+Decomposed parse dispatch (retry ladder, WATCH + first `job_site`, AST-673 failure suppression), monolith deletion, JOBS_FOUND preservation, and Betty manifest align with plan. Ready for `resolve-child`.
+
+#### hedy — 2026-06-18T01:25:54.488Z
+Plan: `docs/features/roster/ast-721-parse-job-list-dispatch-refactor.md`
+https://github.com/susansomerset/astral/blob/sub/AST-716/parse-job-list-dispatch-refactor/docs/features/roster/ast-721-parse-job-list-dispatch-refactor.md
+
+Published @ `278bb43`.
+
+**Scope:** MAJOR-CHANGE — config (`JOBLIST_IDENTIFIED_RETRY`, `COULD_NOT_PARSE_JOBLIST`, `ROSTER_CONFIG["parse_job_list"]`), decomposed `run_parse_job_list_dispatch` from `JOBLIST_IDENTIFIED`/`JOBLIST_IDENTIFIED_RETRY`, monolith `find_job_page` dispatch removal + `find_job_page()` deletion; `JOBS_FOUND` path unchanged.
+
+**Conf:** Medium — parse finalize lifted from existing handler; depends on AST-718–720 data contracts on ftr before build.
+
+**Risk:** High — removing monolith dispatch affects all companies on legacy TO_WATCH/PREFILTER_PASSED rows; first `job_site` write must happen only at WATCH; JOBS_FOUND must stay untouched.
+
+#### chuckles — 2026-06-18T01:23:10.918Z
+## Plan validation — APPROVED
+
+**Verdict:** APPROVED → Plan Approved (HIGH risk noted — monolith removal)
+
+**Summary:** JOBLIST_IDENTIFIED parse hop, retry states, `find_job_page` retirement, JOBS_FOUND path preserved — matches AC#5–7. Explicit AST-666 fold.
+
+**Findings:** discuss — verify dispatch seed migration idempotency in build; acceptable for build with tests.
+
+— Chuckles
+
+#### hedy — 2026-06-18T01:22:28.442Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-716/parse-job-list-dispatch-refactor/docs/features/roster/ast-721-parse-job-list-dispatch-refactor.md
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — config state machine, dispatch registry, monolith deletion in roster.py, admin adhoc touch.
+- **Conf:** Medium — parse finalize lifted from existing `run_parse_job_list_dispatch`; depends on AST-718–720 on ftr first.
+- **Risk:** High — removing `find_job_page` dispatch affects TO_WATCH/PREFILTER_PASSED monolith path; JOBS_FOUND must stay untouched.
+
+Five build stages: (1) `JOBLIST_IDENTIFIED_RETRY` / `COULD_NOT_PARSE_JOBLIST` + parse dispatch trigger; (2) readiness DOM reload + shared finalize/failure helpers; (3) `run_parse_job_list_dispatch` for JOBLIST_IDENTIFIED (+ retry); (4) monolith removal — drop `find_job_page` schedulable key, delete `find_job_page()`, legacy TO_WATCH trio; (5) integration verification + AST-666 fold note.
+
+---
+
 # AST-721 — parse_job_list dispatch refactor and monolith removal
 
 **Linear:** [AST-721 — parse_job_list dispatch refactor and monolith removal (find_job_page logic confirmation)](https://linear.app/astralcareermatch/issue/AST-721/parse-job-list-dispatch-refactor-and-monolith-removal-find-job-page)

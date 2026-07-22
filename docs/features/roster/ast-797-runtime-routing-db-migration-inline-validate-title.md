@@ -1,3 +1,142 @@
+<!-- linear-archive: AST-797 archived 2026-07-22 -->
+
+## Linear archive (AST-797)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-797/runtime-routing-db-migration-and-inline-validate-title-3-task-config  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-794 — 3 task_config updates to config.py  
+**Blocked by / blocks / related:** parent: AST-794
+
+### Description
+
+## What this implements
+
+Runtime cutover after config catalogs land: rename **scrape_jd** → **fetch_jd** in consult/gazer/dispatcher routing and operator surfaces; idempotent **dispatch_task** DB migration (**scrape_jd** → **fetch_jd**, purge **validate_title** / **gaze_board** rows); fold mechanical **validate_title_batch** as an inline pre-step before **qualify_job_listings** so **NEW** jobs reach qualify without a separate **validate_title** dispatch row.
+
+## Acceptance criteria
+
+2. After migration, zero **dispatch_task** rows have **task_key** in **{scrape_jd, validate_title, gaze_board}**; equivalent **fetch_jd** rows preserve scheduling fields (**freq_hrs**, **batch_size**, **debug**, **AUTO**, etc.).
+3. **Manage Tasks** and repo **agent_task.json** list **fetch_jd** and do not list **validate_title** or **gaze_board**.
+4. **NEW** jobs still reach **qualify_job_listings**: title-regex screening runs without a separate **validate_title** dispatch row; jobs with matching patterns advance to **VALID_TITLE** (or permissive pass when no patterns) before the qualify AI hop executes.
+5. **fetch_jd** manual Run and AUTO dispatch behave as today's **scrape_jd** hop (JD text persisted, **JD_READY** / scrape-fail substates unchanged).
+
+## Boundaries
+
+* Does not rename job states or change JD scrape / qualify grading behavior beyond task-key strings and inline title screening wiring.
+* Does not revive **gaze_board** or board_search paths.
+* Config catalog changes are sibling **Ada** ticket — merge sibling **ftr** before build if needed.
+
+## Notes for planning
+
+* Primary files: `src/core/consult.py`, `src/core/gazer.py`, `src/data/database.py` (idempotent migration in `_ensure_dispatch_task_schema` or adjacent), `src/ui/api/api_admin.py` if list/run paths still reference retired keys.
+* **validate_title_batch** stays in gazer — invoked inline, not via dispatch **task_key**.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-794-task-config-key-cutover`, child `sub/AST-794/<child-segment>`. Blocked by config-catalog sibling until **Review Posted**.
+
+### Comments
+
+#### radia — 2026-06-25T01:46:26.243Z
+### Radia review — AST-797
+
+**Diff:** `origin/dev...origin/sub/AST-794/ast-797-runtime-routing-db-migration-inline-validate-title` @ `49c06c6` (doc) · product `0461cf7` (+ staged commits `ab9cbf4`–`01b1c49`–`af00bbd`)
+
+**Plan fidelity:** All four stages — idempotent dispatch migration (scrape→fetch rename, retired purge, qualify VALID_TITLE split); config alias removal + qualify @ NEW; `fetch_jd_batch` rename; inline `validate_title_batch` in `qualify_job_listings` with `claimed_total` accounting; `fetch_jd` routing cutover; tracker coat-check + admin adhoc. AST-796 config on same ref is expected epic prerequisite, not scope bleed.
+
+**ASTRAL_CODE_RULES:** §2.4 batch summaries; §2.6 transitions via existing gazer paths; §1.5.1 debug on `fetch_jd_batch` per-index headers; §3.3 lazy gazer imports match consult precedent; migration column/`?` bind counts verified.
+
+**Tests:** `TestAst797DispatchKeyCutoverMigration`, `TestAst797QualifyInlineValidateTitle`, gazer/tracker/config renames — narrowed manifest 10 passed locally.
+
+**Doc:** `docs/features/roster/ast-797-runtime-routing-db-migration-inline-validate-title.md` § Radia review
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+— Radia
+
+#### betty — 2026-06-25T01:42:29.407Z
+## QA test manifest (AST-797)
+
+**Publish ref:** `origin/sub/AST-794/ast-797-runtime-routing-db-migration-inline-validate-title` @ `1a14ea5`
+**Tests commit:** `65c7296` on `origin/tests`
+
+**Bible shasums (publish tip):**
+- `docs/test-bible/core/consult.md` — `2b222563e8097fc7fa752d37f7ea0461f6d5eeaccd192e2fae1b47e0facf4dd9`
+- `docs/test-bible/core/gazer.md` — `ddc13717c4819e864adca78db5e36ae044253b762501888497f16646a81bdda9`
+- `docs/test-bible/data/database/dispatch_tasks.md` — `1ecf00d4b9aec92df32ee3ec24bd1ae212ab6fb0b9cd6a442377b5a48f915269`
+- `docs/test-bible/utils/config.md` — `5f7f41d9985befb992875368a3976c18400a85968a2e5327d4af2d5146d326ed`
+- `docs/test-bible/ui/api/api_admin.md` — `6446b983e520ad96af03bf28226cbbae1c177e5bd66a35318a323e8835611181`
+
+### Manifest (test-child)
+
+1. **Dispatch migration (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst797DispatchKeyCutoverMigration \
+  -q
+```
+Expect: `scrape_jd`→`fetch_jd` rename + collision delete; purge `validate_title`/`gaze_board`; qualify `VALID_TITLE`→`NEW` + `VALID_TITLE_RETRY` companion; zero legacy keys.
+
+2. **Config runtime cutover (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst797ConfigRuntimeCutover \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover \
+  tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults::test_qualify_job_listings_batch_call_mode_and_sort \
+  -q
+```
+Expect: no `GAZER_CONFIG["scrape_jd"]` alias; qualify defaults @ `NEW`.
+
+3. **Consult inline validate + fetch_jd routing (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_jd_batch \
+  tests/component/core/test_consult.py::TestRunConsultTask::test_validate_title_dispatch_key_unhandled_returns_zero \
+  -q
+```
+
+4. **Gazer rename (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchJdBatch \
+  -q
+```
+
+5. **Dispatcher qualify @ NEW (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_qualify_valid_title_claim_without_score_floor \
+  -q
+```
+
+6. **Admin adhoc (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_trigger_state_helpers \
+  -q
+```
+Expect: `validate_title` adhoc empty; `qualify_job_listings` still builds batch content.
+
+**Broken / obsolete (Betty revision):** `scrape_jd_batch`→`fetch_jd_batch` across gazer/tracker/consult tests; `validate_title` dispatch routing removed; qualify primary claim @ `NEW`; AST-796 alias test updated.
+
+**Pass criterion:** items 1–6 green — narrowed run only (not zero-arg harness / branch-lock gate).
+
+#### hedy — 2026-06-25T01:37:13.584Z
+Plan: [docs/features/roster/ast-797-runtime-routing-db-migration-inline-validate-title.md](https://github.com/susansomerset/astral/blob/sub/AST-794/ast-797-runtime-routing-db-migration-inline-validate-title/docs/features/roster/ast-797-runtime-routing-db-migration-inline-validate-title.md) on origin/sub/AST-794/ast-797-runtime-routing-db-migration-inline-validate-title @ 1703dec.
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — database dispatch migration, config qualify trigger + alias removal, gazer batch rename, consult inline validate + routing, tracker coat-check, admin adhoc preview.
+- **Conf:** high — AST-748 DELETE-before-UPDATE migration pattern; AST-796 handoff defines config/runtime boundary; inline validate reuses existing validate_title_batch.
+- **Risk:** HIGH — qualify VALID_TITLE to NEW split must seed VALID_TITLE_RETRY companions; migration IntegrityError bricks Scheduled Actions; missing post-validate state refresh would run qualify AI on failed NEW jobs.
+
+---
+
 # AST-797 — Runtime routing, DB migration, and inline validate_title
 
 - **Linear (this ticket):** [AST-797](https://linear.app/astralcareermatch/issue/AST-797/runtime-routing-db-migration-and-inline-validate-title-3-task-config-updates-to)

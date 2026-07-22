@@ -1,3 +1,139 @@
+<!-- linear-archive: AST-776 archived 2026-07-22 -->
+
+## Linear archive (AST-776)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-776/vet-inflow-discovery-company-dispatch-and-mechanical-prompt-vet-inflow  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-754 — vet_inflow seems to have been skipped?  
+**Blocked by / blocks / related:** parent: AST-754
+
+### Description
+
+## What this implements
+
+Make **vet_inflow_discovery** a schedulable **company** dispatch on **trigger_state NEW**: read the stored discovery blurb, run through Admin **vet_inflow_discovery** prompts (not an in-batch call), transition pass → **WEBSITE_FOUND** or reject → **VET_FAILED**. Update the **vet_inflow_discovery** prompt text to mechanical-only link-type rejection (articles, wiki, directories, BBB, job boards — no candidate-fit filtering). Seed/update the local dev prompt row.
+
+## Acceptance criteria
+
+2. **vet_inflow_discovery** runs only as a company dispatch on **NEW** rows, using Admin **vet_inflow_discovery** prompts (observable as a distinct dispatch batch on the company entity).
+3. Vet pass → **WEBSITE_FOUND**; vet reject → **VET_FAILED**; rejected URLs are not re-recorded on later discovery runs.
+4. **vet_inflow_discovery** prompt text (Admin Task Prompts / local dev row) explicitly limits vetting to mechanical link-type rejection — articles, wiki, directories, BBB listings, job boards, etc. — and forbids candidate-fit filtering at this stage.
+5. After vet **WEBSITE_FOUND**, **fetch_website** dispatch can run and the downstream Scheduled Actions chain remains reachable.
+6. With `debug=True`, Susan can trace discovery record → separate vet dispatch → **WEBSITE_FOUND** / **VET_FAILED** per AST-538.
+
+## Boundaries
+
+* Assumes sibling has already split discovery (no inline vet).
+* Does not use **run_next** between **inflow_discovery** and **vet_inflow_discovery**.
+* **inflow_resolve_website** is out of scope.
+* Candidate-fit filtering belongs in **prefilter_company**, not here.
+
+## Notes for planning
+
+Primary files: `src/core/roster.py`, `src/core/consult.py`, `src/core/dispatcher.py`, `src/utils/config.py`, `src/data/database.py` dispatch seed. Vet task entity_type company, trigger NEW.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-754-vet-inflow-discovery-split**, child **sub/AST-754/<child-segment>**.
+
+### Comments
+
+#### betty — 2026-06-24T05:07:29.619Z
+[check-linear]
+
+Republished `origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt` @ `46ad8dc` — linear cherry-pick chain on `origin/ftr/AST-754-vet-inflow-discovery-split` (no `Merge remote-tracking branch` / no polluted `merge-resume` dev merge).
+
+**Dropped:** `merge-resume(AST-776)` (was a dev merge that re-introduced wrong `vet_inflow_discovery` → `run_inflow_discovery_batch` routing).
+
+**validate-sub-log:** `RESULT: ok` (sub-only vs ftr).
+
+**merge-tests:** `origin/tests` `17cd9b6` unchanged.
+
+— Betty
+
+#### radia — 2026-06-24T05:01:25.385Z
+### Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt` @ `60df32a`
+**Doc:** `docs/features/roster/ast-776-vet-inflow-discovery-company-dispatch-and-mechanical-prompt-vet-inflow-seems-to-have-been-skipped.md` (Review section)
+
+#### What's solid
+
+- Plan stages 1–4: **`INFLOW_CONFIG["vet"]`**, company/**`NEW`** schedulable **`vet_inflow_discovery`**, eligibility split on **`inflow_discovery_blurb`**, **`vet_inflow_discovery_company`**, **`run_company_task`** routing by **`dispatch_task_key`**, consult company vet → **`run_company_task`** (not discovery batch), mechanical prompt migration.
+- §2.6 / §2.2: state transitions and **`do_task`** path match plan; discovery batch stays record-only (AST-775).
+- §1.5.1: debug contract in **`vet_inflow_discovery_company`** gated correctly.
+- **`TestAst776VetInflowDiscoveryCompany`** + **`TestAst776InflowVetEligible`** green on publish ref.
+
+#### fix-now
+
+1. **`tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals`** — still asserts **`INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"]`**, but Stage 1 removed that key (trigger lives in **`INFLOW_CONFIG["vet"]`**). **`KeyError`** on publish ref. Point at **`INFLOW_CONFIG["vet"]["dispatch_trigger_state"]`** or drop redundant assertion (**`test_inflow_config_vet_literals`** already covers vet block).
+
+2. **`src/utils/config.py`** — three-dot diff vs **`origin/dev`** deletes **`DISPATCH_SCORE_FLOOR_VALUES`** / **`dispatch_score_floor_option_labels()`** (dev-owned AST-750). Not AST-776 scope. Restore from **`origin/dev`** at **`resolve-child`** merge-clean gate.
+
+#### Advisory
+
+- AST-775 rollup in diff vs **`origin/dev`** is expected (sibling not on dev yet).
+- **`run_company_task`** **`terminal_ok`** duplicates **`WEBSITE_FOUND`** literal alongside config pass state — harmless.
+
+**Verdict:** Findings — **`resolve-child`** after test fix + dev merge-clean restore.
+
+#### betty — 2026-06-24T04:58:22.664Z
+## Tests Ready manifest (AST-776)
+
+**Publish:** `origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt` @ `0c0b8db` (`merge-tests(AST-776): origin/tests 17cd9b6`)
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/core/roster.md` → `d0e5718a1f8427e926b63f6d2e48a45a1c6f5020a87d5f08f5e4bc54fc38b632`
+- `docs/test-bible/utils/config.md` → `503a4670b0ff8fb3961117690515523e2eda58a58fa7800e8fcccb2aedd9de9e`
+
+1. **Config — `INFLOW_CONFIG["vet"]` + schedulable company/`NEW`:** `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals`; `::test_vet_inflow_discovery_task`; `::test_vet_inflow_discovery_dispatch_admin_defaults`; `::test_vet_failed_state_and_transition`
+
+2. **Database — vet vs resolve eligibility split:** `tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible`
+
+3. **Roster — `vet_inflow_discovery_company` + `run_company_task` NEW routing + consult path:** `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany`
+
+4. **Regression (AST-775 record-only discovery):** `tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew`; `::TestAst505InflowDiscovery::test_run_batch_happy_path`; `::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_failed_state_and_transition \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_happy_path \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Obsolete (Betty):** `TestAst774VetInflowDiscoveryDispatch` removed — AST-776 routes vet to `vet_inflow_discovery_company`, not `run_inflow_discovery_batch`.
+
+— Betty
+
+#### hedy — 2026-06-23T21:13:45.573Z
+origin/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt @ 3ca4eb8 — Betty: update `test_vet_inflow_discovery_task` entity_type to company; add roster/database coverage per plan AC.
+
+#### hedy — 2026-06-23T21:10:12.042Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-754/AST-776-vet-inflow-company-dispatch-mechanical-prompt/docs/features/roster/ast-776-vet-inflow-discovery-company-dispatch-and-mechanical-prompt-vet-inflow-seems-to-have-been-skipped.md
+
+**Scope:** Single-Component — config vet dispatch wiring, database eligibility split (blurb vs resolve), roster vet_inflow_discovery_company, agent_task mechanical prompt migration.
+
+**Conf:** Medium — NEW-state routing between vet and inflow_resolve_website is the delicate piece; AST-775 blurb contract is on ftr.
+
+**Risk:** Medium — wrong eligibility could starve vet or double-route NEW rows; mitigated by json_extract blurb filter and dispatch_task_key gate.
+
+---
+
 # AST-776 — vet_inflow_discovery company dispatch and mechanical prompt
 
 - **Linear:** [AST-776](https://linear.app/astralcareermatch/issue/AST-776/vet-inflow-discovery-company-dispatch-and-mechanical-prompt-vet-inflow-seems-to-have)

@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-825 archived 2026-07-22 -->
+
+## Linear archive (AST-825)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-825/uat-prefilter-dispatch-task-missing-task-group-metadata-in-scheduled  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-821 — Get prefilter_company to work  
+**Blocked by / blocks / related:** parent: AST-821
+
+### Description
+
+## What failed
+
+In Scheduled Actions / dispatch admin JSON (`GET /api/admin/dispatch_tasks/task_keys`), the schedulable `prefilter` task key appears without `task_group_order`, `task_group_name`, `task_seq`, and related grouping metadata (empty or missing vs sibling company roster keys). Susan sees `prefilter` ungrouped or out of sequence instead of nested under **Company Roster** between `fetch_website` and `fetch_job_pages`.
+
+## Expected
+
+`prefilter` in `task_keys` (and any dispatch-row JSON that surfaces grouping) carries the same **C. Company Roster** grouping metadata as other company-roster dispatch keys, with sequence ordering **after** `fetch_website` **and before** `fetch_job_pages` in the Company Roster section.
+
+## Repro
+
+1. Open admin **Scheduled Actions** (or `GET /api/admin/dispatch_tasks/task_keys`) on staging after AST-821 ship.
+2. Inspect the `prefilter` entry in the JSON response.
+3. Observe missing/empty `task_group_*` fields while `fetch_website` and `fetch_job_pages` show **C. Company Roster** grouping and correct relative order.
+4. Confirm `prefilter` row does not appear between `fetch_website` and `fetch_job_pages` in the Company Roster group.
+
+## Parent AC (quoted inline)
+
+> 1. Given companies in **HOMEPAGE_READY** with persisted **homepage_text** (and **nav_links** when required for link decode), running the **prefilter** scheduled dispatch task produces no `unhandled input_state=HOMEPAGE_READY` warnings.
+
+(Dispatch admin metadata supports Susan configuring and running that prefilter scheduled action in the Company Roster pipeline.)
+
+## Boundaries
+
+* This bug does **not** change: prefilter consult routing, batch evaluate logic, rubric/decode (**AST-823** scope), or `fetch_website` / `fetch_job_pages` scrape behavior.
+* Does **not** re-open AST-823 product routing — grouping/sequencing metadata only.
+
+### Comments
+
+#### radia — 2026-06-26T18:21:29.084Z
+### Review — `origin/dev...origin/sub/AST-821/AST-825-uat-prefilter-dispatch-task-group-metadata` @ `59867a0`
+
+**Plan fidelity:** Single-component scope held. `dispatch_task_grouping_catalog_key` maps schedulable **`prefilter`** → **`ROSTER_CONFIG["prefilter"]["task_key"]`** (`prefilter_company`) for admin grouping lookup only. `_dispatch_task_key_form_meta` passes `grouping_key` to `_catalog_task_grouping_meta`; entity/trigger/is_scored remain dispatch-keyed via `dispatch_task_admin_defaults` — matches Susan's UAT gap (empty grouping on Scheduled Actions JSON).
+
+**Rubric (§3 / §1):** Config helper in utils; one new config import in `api_admin`. No core/dispatch/roster execution changes, no layer bends, no silent failures or debug-contract changes.
+
+**Tests:** Betty manifest covers config helper and `GET /api/admin/dispatch_tasks/task_keys` — `prefilter` returns Company Roster seq 5 with `entity_type=company`, `trigger_state=HOMEPAGE_READY`.
+
+**fix-now:** None.
+
+**advisory:** Narrow `prefilter`-only map is intentional (not a general alias table per plan). Future roster dispatch keys that diverge from `agent_task` keys should extend this helper rather than duplicating lookup in UI.
+
+**Doc:** `19ac04f` — `docs/features/roster/ast-825-uat-prefilter-dispatch-task-group-metadata.md` § Review.
+
+#### betty — 2026-06-26T18:20:12.530Z
+## QA test manifest (AST-825)
+
+**Publish:** `origin/sub/AST-821/AST-825-uat-prefilter-dispatch-task-group-metadata` @ `59867a0` (`merge-tests(AST-825): origin/tests 4d7bb40`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/ui/api/api_admin.md` → `018050282b35d8bb2ffdd4b976ec819ceb48938a`
+
+**Manifest (test-child — narrowed run):**
+
+1. `tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company`
+2. `tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping::test_dispatch_task_keys_prefilter_grouping_from_prefilter_company_catalog`
+3. `tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping` (regression)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company \
+  tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestAst739DispatchTaskKeysGrouping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Betty additions:** `dispatch_task_grouping_catalog_key` config test; `task_keys["prefilter"]` grouping resolves via `prefilter_company` agent_task catalog row.
+
+— Betty
+
+#### katherine — 2026-06-26T18:16:45.620Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-821/AST-825-uat-prefilter-dispatch-task-group-metadata/docs/features/roster/ast-825-uat-prefilter-dispatch-task-group-metadata.md`
+
+**Scope:** Single-Component — `dispatch_task_grouping_catalog_key` in config maps dispatch `prefilter` → `prefilter_company` for `_catalog_task_grouping_meta` only; entity/trigger unchanged in `api_admin.py`.
+
+**Conf:** high — seed JSON already has Company Roster seq 5 on `prefilter_company`; API today looks up nonexistent `prefilter` agent_task row.
+
+**Risk:** low — admin JSON grouping only; no consult/dispatch execution path changes.
+
+---
+
 # AST-825 — UAT: prefilter dispatch task missing task_group metadata in Scheduled Actions JSON
 
 - **Linear:** [AST-825 — UAT: prefilter dispatch task missing task_group metadata in Scheduled Actions JSON](https://linear.app/astralcareermatch/issue/AST-825/uat-prefilter-dispatch-task-missing-task-group-metadata-in-scheduled)

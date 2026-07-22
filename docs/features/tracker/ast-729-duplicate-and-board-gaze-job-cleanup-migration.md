@@ -1,3 +1,146 @@
+<!-- linear-archive: AST-729 archived 2026-07-22 -->
+
+## Linear archive (AST-729)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-729/duplicate-and-board-gaze-job-cleanup-migration-duplicate-jobs-ingested  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-728 — Duplicate jobs ingested  
+**Blocked by / blocks / related:** parent: AST-728; blocks: AST-732
+
+### Description
+
+## Boundaries
+
+* Does not add the unique index or change insert behavior — **AST-732**.
+* Does not handle post–qualify collision deletes — **AST-733**.
+* Does not re-point or delete related records (agent_data, agent_responses, timesheets, dispatch_ledger) when removing job rows.
+
+## What this implements
+
+One-time operator-run migration to clean existing bad job data before the unique identity constraint lands: dedupe job rows that share the same `(company, job_title, company_job_id)` triple (keep earliest `created_at`, delete later rows), and remove all job rows under decommissioned board-gaze placeholder companies (`__board__*`). Related records for deleted job rows are left as-is.
+
+## Acceptance criteria
+
+* After cleanup runs, at most one row remains per `(company, job_title, company_job_id)` triple among non–board-gaze company jobs; the survivor is the row with minimum `created_at` within each group.
+* No job rows remain under `__board__*` placeholder companies after board-gaze cleanup.
+
+## Notes for planning
+
+* Follow existing `scripts/migrations/` patterns (e.g. `backfill_collapse_blank_lines.py`): `--dry-run`, idempotent where possible.
+* Identity triple requires all three columns populated; rows with NULL in `company_job_id` or `job_title` are out of scope for dedupe groups (pre-Consult rows).
+* Primary layer: data migration script; may call `_ensure_job_schema` for read access only.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-728-duplicate-jobs-ingested`, child `sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration`. Created at dispatch-parent.
+
+### Comments
+
+#### hedy — 2026-06-18T05:36:53.184Z
+**Diff:** `origin/dev...origin/sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration` (4 files: migration script, plan doc, test bible, component tests)
+
+### Plan fidelity
+- Matches AST-729 + plan stages 1–3: board-gaze bulk `DELETE` by `BOARDS_CONFIG` placeholder prefix first; identity dedupe keeps earliest `created_at` / `astral_job_id` tie-break; NULL/blank identity triples excluded; related tables untouched.
+- CLI flags (`--dry-run`, `--skip-board-cleanup`, `--skip-dedupe`, `--company`) and summary keys align with plan.
+- No `src/` product changes; no unique-index or post-qualify collision logic (correct boundaries for AST-732 / AST-733).
+
+### ASTRAL_CODE_RULES
+- **§2.1 config:** Board prefix from `BOARDS_CONFIG["ingest"]["placeholder_company_prefix"]` — no inline magic string in script.
+- **§3.3 imports:** Migration imports `database` private helpers + `config` only — same precedent as `backfill_latest_only_rubric_entity_data.py`.
+- **§1.5 logging:** `print()` CLI output is appropriate for `scripts/migrations/` (not runtime modules).
+- **D2 silent failure:** Per-group `except Exception` in `run_identity_dedupe` prints `[dedupe] error …` and increments `errors` — not swallowed.
+
+### Code quality
+- `_run_with_retry` + `_ensure_job_schema` pattern matches existing backfills; parameterized `DELETE` / `IN (...)`; idempotent second-run behavior is sound.
+- Betty manifest covers group discovery, survivor ordering, board phase, dry-run vs live, phase order, and error counter.
+
+### Advisory (not blocking)
+- **Branch names:** Two remotes exist (`…duplicate-and-board-gaze-job-cleanup-migration` vs `…duplicate-board-gaze-cleanup-migration`). Plan doc cites the shorter name; publish ref used for this review is the longer one — align docs/operators on one canonical ref before operator run.
+- **SQLite `NULLS LAST`:** Required by plan for survivor ordering; codebase already uses this on Railway-shaped SQLite (3.30+). Note if anyone runs against ancient SQLite locally.
+- **Orphan refs:** Deleted `job` rows leave `agent_data` / ledger rows as-is — intentional per epic; operator runbook already mentions optional `agent_data` count check.
+
+**Verdict:** No fix-now or discuss items. Ready for `resolve-child` (operator dry-run on staging snapshot before live run).
+
+#### radia — 2026-06-18T05:36:15.953Z
+**Diff:** `origin/dev...origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration` @ `28ae93a`
+**Plan doc:** `docs/features/tracker/ast-729-duplicate-and-board-gaze-job-cleanup-migration.md` (Review section)
+
+### Plan fidelity
+Migration script matches stages 1–3: `BOARDS_CONFIG` board prefix, parameterized SQL, survivor ordering (`created_at ASC NULLS LAST`, `astral_job_id ASC`), board phase before dedupe, all CLI flags, operator runbook in module docstring. Scope clean — no `src/` changes; AST-732/733 boundaries respected.
+
+### ASTRAL_CODE_RULES
+- **§2.1 config:** Board prefix from config — good.
+- **§3.3 imports:** `database` + `config` only — matches migration precedent.
+- **§1.5 / D2:** Per-group `except Exception` in `run_identity_dedupe` — acceptable; mirrors `backfill_collapse_blank_lines.py` with visible `[dedupe] error …` print, `counts["errors"]`, and `sys.exit(1)` on live run with errors.
+- **CLI `print()`:** Standard for one-time migration scripts (not runtime modules).
+
+### Tests
+Component suite aligns with test-bible manifest — discovery/exclusions, delete helper, board dry-run/live/empty, dedupe dry-run/live/error path, phase order and skip flags.
+
+### fix-now
+None.
+
+### advisory
+- `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py`: hardcodes `"__board__"` instead of importing from `BOARDS_CONFIG` — low drift risk today.
+- Optional: component test asserting related-table row counts unchanged after live delete; operator runbook step 6 covers manual verify.
+
+#### betty — 2026-06-18T05:33:14.793Z
+## QA test manifest (AST-729)
+
+**Publish ref:** `origin/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration` @ `c6fa284`
+**Tests SHA:** `origin/tests` `3cd4a02`
+
+**Scope:** One-time migration `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` — board-gaze bulk DELETE (`__board__*`), identity dedupe (earliest `created_at` survivor), `--dry-run` / phase skip / `--company`. No `src/` changes on this ticket.
+
+**Existing coverage (bible-backed):** board placeholder prefix from `BOARDS_CONFIG` — `tests/component/utils/test_config.py`; job schema — database cluster harness.
+
+**Broken / obsolete tests:** none identified.
+
+**Manifest (test-child):**
+
+1. **Migration script (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/dev/cleanup_duplicate_and_board_gaze_jobs.md` → `f4bb0a7fd8f3eb4058e2d6895cd6929a02260d13`
+
+#### hedy — 2026-06-18T05:30:21.857Z
+Plan doc: `docs/features/tracker/ast-729-duplicate-and-board-gaze-job-cleanup-migration.md`
+
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-728/AST-729-duplicate-and-board-gaze-job-cleanup-migration/docs/features/tracker/ast-729-duplicate-and-board-gaze-job-cleanup-migration.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one new migration script under `scripts/migrations/`; no runtime Tracker/Gazer/Consult or data-layer API changes.
+- **Conf:** `high` — survivor rule, board prefix, NULL/empty identity exclusion, and phase order are fully specified in AST-729/AST-728; script follows existing migration patterns.
+- **Risk:** `Medium` — wrong survivor delete drops pipeline history for that `astral_job_id` (orphaned related rows remain by design); mitigated by `--dry-run`, deterministic ordering, and excluding incomplete identity triples.
+
+Three stages: (1) `migrate_job_identity_cleanup.py` with board cleanup then identity dedupe, (2) operator runbook in module docstring, (3) compile gate. Run cleanup before AST-732 unique index in each environment.
+
+#### chuckles — 2026-06-18T05:28:24.327Z
+Plan doc: `docs/features/tracker/ast-729-duplicate-and-board-gaze-job-cleanup-migration.md`
+
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-728/AST-729-duplicate-board-gaze-cleanup-migration/docs/features/tracker/ast-729-duplicate-and-board-gaze-job-cleanup-migration.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — one migration script under `scripts/migrations/`; no runtime Tracker/Gazer/Consult changes and no new database public APIs.
+- **Conf:** `high` — survivor rule and board prefix are fully specified in AST-729/AST-728; script follows existing backfill patterns and `_remove_jobs_by_company` DELETE precedent.
+- **Risk:** `Medium` — wrong survivor delete drops pipeline history for that `astral_job_id` (orphaned related rows remain); mitigated by `--dry-run`, deterministic ordering, and excluding incomplete identity triples.
+
+Three stages: (1) migration script with board cleanup + identity dedupe phases, (2) operator runbook in docstring, (3) compile gate. Run cleanup before AST-732 unique index in each environment.
+
+---
+
 # Duplicate and board-gaze job cleanup migration (Duplicate jobs ingested)
 
 **Linear:** [AST-729](https://linear.app/astralcareermatch/issue/AST-729/duplicate-and-board-gaze-job-cleanup-migration-duplicate-jobs-ingested)  

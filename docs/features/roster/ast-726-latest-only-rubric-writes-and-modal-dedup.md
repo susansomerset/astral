@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-726 archived 2026-07-22 -->
+
+## Linear archive (AST-726)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-726/latest-only-rubric-writes-and-modal-dedup-store-only-the-latest-rubric  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-717 — Store only the latest rubric results in <entity>_data  
+**Blocked by / blocks / related:** parent: AST-717; blocks: AST-727
+
+### Description
+
+## What this implements
+
+When rubric-backed consult or prefilter steps rerun on a job or company, replace — do not accumulate — that phase's outcome on the entity data blob (grades, score, notes). Keep one latest `agent_responses` entry per `task_key` so entity modals show a single tab per consult phase. Preserve full per-run history in `agent_data`.
+
+## Acceptance criteria
+
+* Running the same scored consult phase twice on one job leaves a single current grades payload for that phase on the job's data blob, matching the second run; associated score and notes fields for that phase match the second run only.
+* agent_data still contains distinct blocks for both runs after the scenario above.
+* The job entity modal shows one navigable result for that consult phase (e.g. one consult_get entry), not multiple tabs for reruns of the same phase.
+* Recommended Job Report JD / DO / GET / LIKE tabs display grades from the latest run only.
+* Re-running company prefilter replaces prefilter grades/score/notes on company_data without accumulation; the company entity modal shows one current prefilter result.
+* Dispatch eligibility that depends on latest consult score reflects the most recent scored run after a rerun.
+* No regression: first-time runs still persist outcomes and populate entity modals as they do today.
+
+## Boundaries
+
+* Does not ship the one-time backfill script (sibling ticket).
+* Does not change rubric authoring, runtime rubric validation (AST-378), or debug logging (AST-538).
+
+## Notes for planning
+
+* Primary surfaces: consult verdict persistence, roster prefilter saves, `append_agent_response` / `get_entity_agent_story`, job and company entity modals.
+* Dedup key for modal navigation: one latest entry per `task_key`.
+* Config-driven task keys and grades fields per ASTRAL_CODE_RULES §2.1.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-717-store-only-latest-rubric-results-in-entity-data`, child `sub/AST-717/<child-segment>`.
+
+### Comments
+
+#### radia — 2026-06-18T02:36:47.450Z
+### Review vs `origin/dev` (`cfa2ad8`)
+
+**Diff:** `origin/dev...origin/sub/AST-717/AST-726-latest-only-rubric-writes-and-modal-dedup`
+
+**Plan fidelity:** Stages 1–4 delivered — upsert by `task_key`, latest-only rubric fields on job/company blobs, `get_entity_agent_story` dedupe + company `vector_grades`, `prefilter_company` `grades_key`, §2.4.1 rules update. Self-Assessment scope/conf match diff footprint.
+
+**Layer / batch (§3, §2.4, §2.6):** No new cross-layer imports; claim/clear and transition paths unchanged; only post-success entity snapshot writes.
+
+**fix-now:** none.
+
+**discuss:** Write-path upsert appends the replaced ref at array tail — rerunning one scored phase can reorder modal tabs when other keys appeared earlier in the stored array (one entry per key still holds; cosmetic).
+
+**advisory:** `qualify_job_listings` fail path omits `joblist_score` when score is non-numeric (test documents intent); stale score could linger if a job passed joblist then fails on rerun — unlike prefilter which clears via explicit `None`. Legacy `agent_responses` rows with empty `task_key` are skipped by read dedupe; new writes fail loud — **AST-727** backfill scope.
+
+**Doc:** `docs/features/roster/ast-726-latest-only-rubric-writes-and-modal-dedup.md` § Radia review.
+
+**Handoff:** Hedy → **resolve-child** (no code changes required unless Susan wants tab-order stability or joblist fail score clear in this epic).
+
+#### betty — 2026-06-18T02:33:11.348Z
+## QA test manifest (AST-726)
+
+**Publish:** `origin/sub/AST-717/AST-726-latest-only-rubric-writes-and-modal-dedup` @ `53a4547` (`merge-tests(AST-726): origin/tests 581eac3`)
+
+**Existing coverage reused:** `TestEntityAgentStory`, `TestRenderVerdict` (notes path), AST-507 prefilter score regressions — extended, not replaced.
+
+**New / revised tests:**
+
+1. **Entity ref upsert** — `tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert`
+2. **Consult latest-only job blob fields** — `tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes`
+3. **Roster story dedup + company vector_grades + prefilter score clear** — `tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory`
+4. **Config `grades_key`** — `tests/component/utils/test_config.py::TestAst726PrefilterGradesKey`
+
+**Narrowed run (test-child pass criterion — pytest green, not zero-arg harness / branch-lock gate):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert \
+  tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes \
+  tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory \
+  tests/component/utils/test_config.py::TestAst726PrefilterGradesKey \
+  -q
+```
+
+**Bible shasums (`origin/sub/...`):**
+- `docs/test-bible/core/consult.md`: `16f3950e184ae7c391b8f269655f0a04eb71e934fdb919fb7950642609da9b70`
+- `docs/test-bible/core/roster.md`: `d6790025a5ccc166d251c4d00c29fc8bbc5db80e99dc397c566cbb32eae34e92`
+- `docs/test-bible/data/database/agent_responses.md`: `53c7eb1556fe557f75b50bebe1ce57b5efe1336beeb1f0a664185c3b5ef78e46`
+- `docs/test-bible/utils/config.md`: `7fe60ac206228a74c080a8108e8016d13c1974f644e5500e305935d60e313429`
+
+**Notes:** No frontend changes on this ticket — §6c routed-page manifest N/A. Fail-path `qualify_job_listings` omits `joblist_score` when F-grade yields no numeric score (expected). Read-path dedup covers legacy duplicate refs until sibling **AST-727** backfill.
+
+#### hedy — 2026-06-18T02:23:38.803Z
+Plan: `docs/features/roster/ast-726-latest-only-rubric-writes-and-modal-dedup.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-717/AST-726-latest-only-rubric-writes-and-modal-dedup/docs/features/roster/ast-726-latest-only-rubric-writes-and-modal-dedup.md
+
+**Self-assessment**
+- **Scope:** Single-Component — data-layer `append_agent_response` upsert, consult/roster rubric outcome saves, and `get_entity_agent_story` dedup; no UI files.
+- **Conf:** high — existing merge-replace and config keys are mapped; upsert pattern is straightforward.
+- **Risk:** Medium — wrong task_key dedup could hide non-rubric tabs; mitigated by key-scoped replace only.
+
+---
+
 # Latest-only rubric writes and modal dedup (Store only the latest rubric results in `<entity>_data`)
 
 **Linear:** [AST-726](https://linear.app/astralcareermatch/issue/AST-726/latest-only-rubric-writes-and-modal-dedup-store-only-the-latest-rubric-results-in)  

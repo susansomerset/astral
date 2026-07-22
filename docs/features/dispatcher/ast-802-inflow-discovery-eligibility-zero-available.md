@@ -1,3 +1,116 @@
+<!-- linear-archive: AST-802 archived 2026-07-22 -->
+
+## Linear archive (AST-802)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-802/inflow-discovery-eligibility-when-saved-search-terms-present-inflow  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-801 — Inflow discovery is not recognizing candidate ready for scanning  
+**Blocked by / blocks / related:** parent: AST-801
+
+### Description
+
+## What this implements
+
+Fix **inflow_discovery** dispatch eligibility and search-term persistence so a **LIVE_PROMPTS** candidate with saved company search terms (Susan confirmed Artifacts **Save** on local for **somerset**) shows **Available > 0** and manual **Run** executes discovery instead of skipping with **0 available (min_count=1)**. Reconcile the **company_search_terms** table with saved term text on the Artifacts save path (and startup migration where applicable) so eligibility reads stale table rows — not a legacy **artifacts.company_search_terms** blob alone. When eligibility is zero at dispatch time with **debug=True**, log an explicit reason per **AST-538**.
+
+## Acceptance criteria
+
+1. Susan's repro (**somerset**, **LIVE_PROMPTS**, fourteen saved terms on local): **inflow_discovery** shows **Available > 0** in Scheduled Actions and manual **Run** executes discovery instead of skipping with **0 available (min_count=1)**.
+2. After Artifacts **Save**, the **company_search_terms** table contains the saved term rows for that candidate (not artifact-only), and eligibility returns **1** when at least one row is stale.
+3. A component test covers the failure mode (saved terms present in product data but eligibility returning zero before fix) and asserts eligibility returns **1** (or batch proceeds) after the fix.
+4. With **debug=True** and **available_count=0** at dispatch time, logs include an explicit eligibility-reason line per the backend debug contract (**AST-538**).
+5. Existing **AST-525** per-term eligibility and discovery-batch tests remain green for candidates whose table rows are correctly synced and stale.
+
+## Boundaries
+
+* Does not change CSE query parameters, the discovery/vet split (**AST-775** / **AST-776**), or scan-interval config literals.
+* Does not add new dispatch tasks or change **inflow_discovery** trigger state away from **LIVE_PROMPTS**.
+* Does not revert per-term **last_scan_at** cadence (**AST-525**).
+* Must not break **vet_inflow_discovery** or **inflow_resolve_website** company-dispatch eligibility.
+* No React/UI changes unless the root cause is a broken Artifacts save/sync path.
+
+## Notes for planning
+
+* Eligibility helper: **count_candidate_inflow_discovery_eligible** / **count_stale_company_search_terms** (**AST-524**, **AST-525**). Save path: **apply_company_search_terms_save** in [**candidate.py**](<http://candidate.py>); Artifacts UI uses **PUT /data** with **artifacts.company_search_terms**.
+* Susan's dump showed fourteen terms in **candidate_data** artifact blob while **available_count=0** — likely table desync or broken save sync.
+* Primary layers: **data** (eligibility), **core/candidate** (sync), **core/dispatcher** (debug reason when zero).
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-801-inflow-discovery-eligibility-zero-available**, child **sub/AST-801/<child-id>-<slug>**. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-25T05:20:03.718Z
+### Review (`origin/dev...origin/sub/AST-801/AST-802-inflow-discovery-eligibility-zero-available` @ `e651c45`)
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:** none
+
+**Plan fidelity:** Stages 1–3 match combined plan — per-candidate `reconcile_company_search_terms_from_artifact` (migration delegates); `ensure_company_search_terms_table_synced` on table reads + eligibility path; `describe_candidate_inflow_discovery_eligibility` with `eligibility:` reason strings; dispatcher `debug_detail` on `inflow_discovery` skip when `debug=True` and `run_count==0`. `replace=True` on artifact strip is justified in-code (deep-merge cannot delete nested keys).
+
+**Rules:** §3.3 lazy import cycle break OK; §1.5.1 debug contract gated on `debug=True`; §2.4 stale predicate unchanged; no cross-layer violations in touched files.
+
+**Tests:** Betty manifest covers Stage 4 — artifact-only reconcile → eligible, blob strip, dispatch count, wrong-state reason, PUT sync, dispatcher debug substring.
+
+**Doc:** `docs/features/dispatcher/ast-802-inflow-discovery-eligibility-zero-available.md` § Radia review (2026-06-25)
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory — clean.
+
+#### betty — 2026-06-25T05:16:20.787Z
+## QA test manifest (AST-802)
+
+**Publish:** `origin/sub/AST-801/AST-802-inflow-discovery-eligibility-zero-available` @ `1d5b42c` (`merge-tests(AST-802): origin/tests 002e891`)
+
+**Scope:** Legacy `artifacts.company_search_terms` → table reconcile at eligibility/read; `describe_candidate_inflow_discovery_eligibility`; dispatcher `debug_detail` on `inflow_discovery` zero-available skip.
+
+### Manifest (test-child)
+
+1. **Artifact reconcile eligibility** — `tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible` (4 tests): artifact-only → eligible + table rows; dispatch count path; describe reason string.
+
+2. **PUT table sync** — `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_company_search_terms_populates_table_without_persisting_blob`
+
+3. **Dispatcher debug reason** — `tests/component/core/test_dispatcher.py::TestAst802InflowDiscoveryDebug::test_skip_emits_eligibility_reason_when_debug_true`
+
+4. **Regression (required)** — `tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible`
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible \
+  tests/component/core/test_dispatcher.py::TestAst802InflowDiscoveryDebug \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_company_search_terms_populates_table_without_persisting_blob \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest — not zero-arg harness / branch-lock gate.
+
+**Note for test-child:** `TestAst802InflowDiscoveryEligible::test_reconcile_strips_legacy_artifact_blob` documents Stage 2 AC (strip blob after reconcile). On current publish ref it **fails**: `save_candidate_data` deep-merge retains `artifacts.company_search_terms` — fix `ensure_company_search_terms_table_synced` persistence in `src/core/candidate.py`.
+
+**Bible shasums (`origin/sub/...` @ `1d5b42c`):**
+- `docs/test-bible/data/database/dispatch_tasks.md`: `bbf5e652a4ccffb5ac60721766a31556fd02993e0a1a0eb05af40fb06ff73836`
+- `docs/test-bible/ui/api/api_candidate.md`: `d66d1b97931b8185ee6b4da60b5bd35fa3b9fa0c9c1a575e924528defe9e4673`
+- `docs/test-bible/core/dispatcher.md`: `5ba76d0c65962061908366b8ce03713aa51246284f65ba8c6fd6f56cfe273397`
+
+— Betty
+
+#### chuckles — 2026-06-25T05:10:11.634Z
+Plan: [`docs/features/dispatcher/ast-802-inflow-discovery-eligibility-zero-available.md`](https://github.com/susansomerset/astral/blob/sub/AST-801/AST-802-inflow-discovery-eligibility-zero-available/docs/features/dispatcher/ast-802-inflow-discovery-eligibility-zero-available.md)
+
+**Self-Assessment**
+- **Scope:** Single-Component — `database.py`, `candidate.py`, and `dispatcher.py` only; artifact→table reconcile on eligibility/read paths plus `inflow_discovery` zero-available debug reason.
+- **Conf:** Medium — reuses AST-524 migration insert shape and AST-525 stale-term predicates; Susan's repro points to artifact/table desync rather than cadence config.
+- **Risk:** Medium — reconcile guarded by existing table rows; company vet/resolve eligibility paths untouched.
+
+---
+
 # AST-802 — inflow_discovery eligibility when saved search terms present
 
 - **Linear (this ticket):** [AST-802](https://linear.app/astralcareermatch/issue/AST-802/inflow-discovery-eligibility-when-saved-search-terms-present-inflow)

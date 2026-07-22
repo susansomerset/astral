@@ -1,3 +1,141 @@
+<!-- linear-archive: AST-789 archived 2026-07-22 -->
+
+## Linear archive (AST-789)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-789/graduate-build-artifacts-chain-to-candidate-review-build-artifacts  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-788 — BUILD_ARTIFACTS substates do not graduate  
+**Blocked by / blocks / related:** parent: AST-788
+
+### Description
+
+## What this implements
+
+Fix the missing terminal graduation when the resume-artifact BUILD_ARTIFACTS daisy-chain completes successfully: after the final hop (`finalize_job_resume`), the job must leave `BUILD_ARTIFACTS.finalize_job_resume` and land in `CANDIDATE_REVIEW` in the same dispatch run. Preserve existing per-hop compound progression through intermediate `BUILD_ARTIFACTS.<task_key>` states; apply the same graduation whether dispatch enters at the first compound hop or a mid-chain compound `trigger_state` row, subject to existing resume-body persist gates.
+
+## Acceptance criteria
+
+1. Susan runs a BUILD_ARTIFACTS scheduled action for a job that completes the full resume artifact chain; the job's tracker state is `CANDIDATE_REVIEW`, not any `BUILD_ARTIFACTS.*` compound state.
+2. The same job appears under **Ready** in Recommended Jobs UI sections (not **In Progress**).
+3. A run that fails before `finalize_job_resume` succeeds, or fails resume-body persist gates, does **not** promote the job to `CANDIDATE_REVIEW` — it remains at the last successful compound state (or existing failure handling).
+4. A mid-chain dispatch row whose run completes through `finalize_job_resume` graduates the same way as a first-hop entry.
+5. Component or integration coverage demonstrates terminal graduation and a regression guard against jobs left at `BUILD_ARTIFACTS.finalize_job_resume` after a successful full chain.
+
+## Boundaries
+
+* Does not change hop order, task prompts, or `BUILD_CONFIG['resume_artifact_chain']['hop_task_keys']`.
+* Does not change **Generate Artifacts** / **Cancel** on `RECOMMENDED`, cover-letter chain behavior, or Recommended Job modal actions beyond the job appearing in the correct UI section after graduation.
+* Does not alter `draft_cover_letter` dispatch at `CANDIDATE_REVIEW`.
+* Does not include one-time backfill for jobs already stuck in `BUILD_ARTIFACTS.finalize_job_resume`.
+* Sibling scope: none — this ticket carries the full fix.
+
+## Notes for planning
+
+* Primary surfaces: artifact batch exit in consult, per-hop compound transitions in agent, `tracker.transition_job_state` / `JOB_STATES` prior_states for `CANDIDATE_REVIEW`.
+* AST-595 compound states and AST-597 per-hop transitions are shipped — regression guard required.
+* Debug: AST-538 Style D on touched `debug=` paths for terminal hop graduation outcome.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-788-build-artifacts-substates-do-not-graduate`, child `sub/AST-788/<child-id>-graduate-build-artifacts-to-candidate-review`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-06-25T05:23:23.242Z
+Cancelled — superseded by AST-788 CHAIN redesign; AST-789 product approach expunged from codebase per parent definition.
+
+— Chuckles
+
+#### radia — 2026-06-24T22:10:11.147Z
+### Plan fidelity
+
+**Ref:** `origin/dev...origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` @ `131dae4` (product); Radia doc @ `adecb4d`
+
+**fix-now:** none
+
+### What's solid
+
+- Stage 1–2 implemented as specified: `_try_graduate_artifact_job_to_candidate_review` — fresh `get_job`, persist gate `job_has_persisted_resume_body(..., None)`, structured `(ok, reason)`; single `transition_job_state(..., "CANDIDATE_REVIEW")` in `consult.py`.
+- Batch loop logs `reason=` + `entry_task_key=` on failure before claim release; cover-letter path preserved for `contemplate_job`.
+- **§1.5.1:** Style D `debug_index` (`index 1/1`) + `debug_detail` on attempt/success/failure when `debug=True` only.
+- **§2.4 / §2.6:** Graduation failure → `_artifact_entry_hop_failed`; transitions via `tracker` only; no `agent.py` graduation (AST-597 boundary).
+- Betty manifest green: `TestAst789TerminalGraduation` + AST-371 persist-gate regression + AST-534 `get_job` mock fix.
+
+### advisory
+
+- Plan **Risk HIGH / Conf Medium** — code hardens batch exit; Susan UAT should confirm resume chain reaches `finalize_job_resume` and job shows **Ready**. If still stuck, check warning for `persist_gate_failed` or `transition_failed:` (run with `debug=True` on graduation path for Style D detail).
+
+**Review doc:** [`docs/features/consult/ast-789-graduate-build-artifacts-to-candidate-review.md`](https://github.com/susansomerset/astral/blob/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review/docs/features/consult/ast-789-graduate-build-artifacts-to-candidate-review.md#radia-review-2026-06-24)
+
+#### betty — 2026-06-24T22:07:03.943Z
+## QA test manifest (AST-789)
+
+**Publish:** `origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` @ `131dae4` (`merge-tests(AST-789): origin/tests 6410ea8`)
+
+1. **Terminal graduation after finalize entry** — `tests/component/core/test_consult.py::TestAst789TerminalGraduation::test_artifact_entry_batch_graduates_after_finalize_hop_entry` — chain success + persist gate pass → single `transition_job_state(..., "CANDIDATE_REVIEW")` when `entry_task_key="finalize_job_resume"`; no cover letter.
+
+2. **First-hop regression (anticipate_scan)** — `TestAst789TerminalGraduation::test_artifact_entry_batch_graduates_on_anticipate_scan_first_hop` — graduation still runs on non-terminal entry; `TestAst534DispatchTaskKeyHonesty::test_anticipate_scan_entry_skips_contemplate_job_and_cover_letter` revised for AST-789 fresh `get_job` requirement.
+
+3. **Persist gate failure** — `TestAst371ResumeArtifactDispatch::test_artifact_entry_batch_empty_persist_releases_claim` — no `CANDIDATE_REVIEW`; `release_job_dispatch_claim` (AST-596 pattern).
+
+4. **Transition failure** — `TestAst789TerminalGraduation::test_artifact_entry_batch_transition_failure_releases_claim` — `ValueError` from `transition_job_state` → warning path, no `passed`, claim released.
+
+5. **Fresh persist gate** — `TestAst789TerminalGraduation::test_try_graduate_uses_fresh_persist_gate` — `job_has_persisted_resume_body(..., None)` (not claim snapshot).
+
+6. **AST-597 regression (unchanged)** — `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions`.
+
+**Narrow run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst789TerminalGraduation \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible:** `docs/test-bible/core/consult.md` @ `origin/sub/...` shasum `f3e4d6f94f9b9028d4c0c85762bb3b5745b6220f9634d39a054bfbe942cdfb18`
+
+— Betty
+
+#### hedy — 2026-06-24T22:04:47.265Z
+## QA test manifest (AST-789)
+
+**Publish ref:** `origin/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review` @ `35326f8`
+
+| # | Area | Test (new or extend) |
+|---|------|----------------------|
+| 1 | Terminal graduation after **finalize** entry | `tests/component/core/test_consult.py` — new `test_artifact_entry_batch_graduates_after_finalize_hop_entry`: mock chain success, persist gate pass, assert `transition_job_state(["job-x"], "CANDIDATE_REVIEW")` once when `entry_task_key="finalize_job_resume"` |
+| 2 | Full-chain first-hop regression | Extend or duplicate AST-371 pattern with `entry_task_key="anticipate_scan"` — graduation still called |
+| 3 | Persist gate failure | Assert **no** `CANDIDATE_REVIEW` transition; `release_job_dispatch_claim` called (AST-596 pattern) |
+| 4 | Transition failure | Mock `transition_job_state` raising `ValueError` — assert warning path / no `passed` increment |
+| 5 | AST-597 regression | `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions` — no changes expected |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+#### hedy — 2026-06-24T22:03:03.006Z
+**Plan doc:** [`docs/features/consult/ast-789-graduate-build-artifacts-to-candidate-review.md`](https://github.com/susansomerset/astral/blob/sub/AST-788/AST-789-graduate-build-artifacts-to-candidate-review/docs/features/consult/ast-789-graduate-build-artifacts-to-candidate-review.md) @ `73e2459`
+
+**Self-assessment**
+- **Scope:** Single-Component — `consult.py` terminal graduation helper + `_run_job_artifact_entry_batch` wiring only; no agent/config/dispatcher edits.
+- **Conf:** Medium — batch-exit contract is established (AST-552/596/597); plan hardens fresh DB persist gate + transition error surfacing, but build must confirm which UAT failure mode fired before treating wiring as complete.
+- **Risk:** HIGH — wrong graduation timing breaks Ready vs In Progress UX and candidate artifact gates; must not move CANDIDATE_REVIEW transition into `agent.py` per-hop path.
+
+**Stages:** (1) `_try_graduate_artifact_job_to_candidate_review` helper with AST-538 Style D; (2) batch loop wiring + structured failure logging; (3) Betty manifest for finalize-hop graduation regression.
+
+---
+
 # Graduate BUILD_ARTIFACTS chain to CANDIDATE_REVIEW (BUILD_ARTIFACTS substates do not graduate)
 
 **Linear:** [AST-789](https://linear.app/astralcareermatch/issue/AST-789/graduate-build-artifacts-chain-to-candidate-review-build-artifacts)  
