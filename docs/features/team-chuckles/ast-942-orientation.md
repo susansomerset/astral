@@ -84,3 +84,15 @@ rg -n -i 'merge-parent|joan|git-store|JOAN_SESSION' skills/orientation/SKILL.md
 - §1.1 in-scope only — satisfied.
 - Plan under `docs/features/team-chuckles/` — satisfied.
 - Aligns orientation Flow with finish-up as sole Chuckles parent-close skill while preserving “what never happens.”
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-909/AST-942-orientation`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `88905f2` | Plan doc on astral sub |
+| 1–2 | `team-chuckles@cf7e7a5` | Flow ends at finish-up; keep never-list; `merge-parent.sh` helper-only |
+
+**Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `cf7e7a5`.
+
