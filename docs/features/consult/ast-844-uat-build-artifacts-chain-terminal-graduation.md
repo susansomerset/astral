@@ -1,3 +1,128 @@
+<!-- linear-archive: AST-844 archived 2026-07-22 -->
+
+## Linear archive (AST-844)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-844/uat-build-artifacts-chain-completes-but-job-does-not-graduate-to  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-788 — BUILD_ARTIFACTS substates do not graduate  
+**Blocked by / blocks / related:** parent: AST-788
+
+### Description
+
+## What failed
+
+Susan UAT on **origin/dev** after [AST-832](https://linear.app/astralcareermatch/issue/AST-832/uat-anticipate-scan-chain-abort-at-build-artifactsfinalize-job-resume) (2026-07-02): job still does **not** graduate from **BUILD_ARTIFACTS** to **CANDIDATE_REVIEW** when the BUILD_ARTIFACTS daisy-chain completes. Last hop `propose_application_responses` runs successfully (LLM success, `agent_performance.status=success`) but the job remains in **BUILD_ARTIFACTS** (not **Ready** in Recommended Jobs).
+
+Server log excerpt (candidate **somerset**, job `3bf41b64-1cc8-4d6c-99e8-b4df3a0c5d14`):
+
+```
+do_task index 1/1 3bf41b64-1cc8-4d6c-99e8-b4df3a0c5d14 -> task start
+ | task_key=propose_application_responses batch_id=propose_application_responses-2d5792ff-... in_run_next_chain=True
+send_to_deepseek index 1/1 propose_application_responses -> success
+```
+
+No `graduation=CANDIDATE_REVIEW` / no state transition logged after chain terminal hop.
+
+## Expected
+
+* **AC 4:** Successful chain end → `BUILD_ARTIFACTS` **→** `CANDIDATE_REVIEW`; job shows **Ready** in Recommended Jobs UI.
+* After terminal CHAIN hop (no `run_next`), `do_chain_for_job` calls `_chain_graduate_to_candidate_review` and transition persists.
+
+## Repro
+
+1. Pull **origin/dev** with [AST-832](https://linear.app/astralcareermatch/issue/AST-832/uat-anticipate-scan-chain-abort-at-build-artifactsfinalize-job-resume) landed.
+2. Run full BUILD_ARTIFACTS CHAIN for a job through to `propose_application_responses` (last hop).
+3. Confirm LLM task succeeds.
+4. Observe job state remains **BUILD_ARTIFACTS** instead of **CANDIDATE_REVIEW**.
+
+## Parent AC (quoted inline)
+
+> 4. Successful chain end: `BUILD_ARTIFACTS` **→** `CANDIDATE_REVIEW`; job under **Ready** in Recommended Jobs UI.
+
+## Boundaries
+
+* Does **not** revert [AST-832](https://linear.app/astralcareermatch/issue/AST-832/uat-anticipate-scan-chain-abort-at-build-artifactsfinalize-job-resume) mid-chain / chain-entry resume fix.
+* Does **not** reintroduce compound `JOB_STATES` or [AST-789](https://linear.app/astralcareermatch/issue/AST-789/graduate-build-artifacts-chain-to-candidate-review-build-artifacts) graduation helper.
+* Fix terminal graduation path in `do_chain_for_job` / `_chain_graduate_to_candidate_review` (persist gate, `run_next` detection, or batch exit) — not scheduler eligibility only.
+
+### Comments
+
+#### chuckles — 2026-07-03T00:09:06.015Z
+### Plan fidelity
+
+- **Stage 1:** **`build_artifacts_chain_task_keys()`** = **`JOB_ARTIFACT_ENTRY_TASK_KEYS − {draft_cover_letter}`** — matches plan.
+- **Stage 2:** **`_resolve_chain_start_task_key`** hop guard widened to full chain set; **AST-832** legacy compound + chain-entry branches preserved.
+- **Graduation guard:** implementation uses **`_chain_single_hop_dispatch_only`** (not bare **`_chain_hop_has_run_next`**) — refines plan step 4 per AST-534: chain-entry and terminal resume hops still graduate after **`do_task`** recursion; mid resume hops with **`run_next`** return **`chain_incomplete`** when **`start_key == dispatch_task_key`**.
+- **Info log** on successful **`BUILD_ARTIFACTS → CANDIDATE_REVIEW`** in **`_chain_graduate_to_candidate_review`** — matches plan.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 DRY:** single config registry for chain hop membership; entry discovery still uses **`resume_artifact_hop_task_keys()`**.
+- **§2.6 state machine:** graduation only via **`tracker.transition_job_state`**; no ad hoc state writes.
+- **§3.3 imports:** lazy **`get_agent_task`** in consult (existing pattern at **`_chain_run_next_targets`**).
+- **§5f:** new **`logger.info`** is intentional UAT observability on graduation success — not debug-contract emission; coexistence OK.
+- **Boundaries:** no compound **`JOB_STATES`** reintroduction; **AST-832** not reverted.
+
+### Tests / manifest
+
+- Betty manifest narrowed run — 13/13 green on publish ref.
+
+### Advisory
+
+- **`TestAst803ChainGraduation::test_chain_batch_transition_failure_releases_claim`** fails locally (not in **AST-844** manifest): **`contemplate_job`** batch dispatch now returns **`chain_incomplete`** success instead of attempting graduation — consistent with item 5 but stale test expectations. Flag for Betty on resolve if full **`TestAst803ChainGraduation`** suite is run.
+
+**Diff:** `origin/dev...origin/sub/AST-788/AST-844-uat-build-artifacts-chain-terminal-graduation` (2 code commits + Betty test/bible).
+
+— Radia
+
+#### betty — 2026-07-03T00:07:20.700Z
+## QA test manifest (AST-844)
+
+1. **Full chain hop registry:**
+   - `TestAst844BuildArtifactsChainTaskKeys::test_includes_terminal_and_cover_hops_excludes_draft_cover_letter`
+
+2. **Terminal hop dispatch resolution:**
+   - `TestAst803ChainHelpers::test_propose_application_responses_resolves_for_flat_build_artifacts`
+   - `TestAst803ChainHelpers::test_propose_application_responses_dispatch_row_ok`
+
+3. **Graduation / chain_incomplete guards:**
+   - `TestAst803ChainGraduation::test_do_chain_graduates_on_terminal_propose_application_responses`
+   - `TestAst803ChainGraduation::test_do_chain_returns_chain_incomplete_for_mid_chain_hop_with_run_next`
+
+4. **Regression:** `TestAst803ChainGraduation::test_do_chain_graduates_after_successful_do_task`, `::test_do_chain_graduates_on_anticipate_scan_entry`; **AST-832** chain-entry helpers.
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_graduates_on_terminal_propose_application_responses \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_returns_chain_incomplete_for_mid_chain_hop_with_run_next \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_graduates_after_successful_do_task \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation::test_do_chain_graduates_on_anticipate_scan_entry \
+  -q
+```
+
+**Publish:** `origin/sub/AST-788/AST-844-uat-build-artifacts-chain-terminal-graduation` @ `d2089b2` (`merge-tests(AST-844): origin/tests 324de26`)
+
+**Bible shasum:** `docs/test-bible/core/consult.md` → 44f4aa15fcc122310ad20f38ae8a052d26a393da
+
+— Betty
+
+#### ada — 2026-07-03T00:05:10.499Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-788/AST-844-uat-build-artifacts-chain-terminal-graduation/docs/features/consult/ast-844-uat-build-artifacts-chain-terminal-graduation.md
+
+Two stages: (1) `build_artifacts_chain_task_keys()` — full artifact pipeline including `propose_application_responses` (not just six resume hops); (2) use that set in `_resolve_chain_start_task_key` + graduate after terminal `do_task` with info-level log. Fixes terminal-hop Scheduled Action dispatch that never reached `do_chain_for_job` graduation.
+
+**Scope:** minor — config helper + consult.py.
+**Conf:** high — resolve returns None for propose today; DB run_next confirms terminal hop.
+**Risk:** Medium — guarded `chain_incomplete` early return for AST-534 mid-hop rows.
+
+---
+
 # UAT: BUILD_ARTIFACTS chain completes but job does not graduate to CANDIDATE_REVIEW
 
 **Linear:** [AST-844 — UAT: BUILD_ARTIFACTS chain completes but job does not graduate to CANDIDATE_REVIEW](https://linear.app/astralcareermatch/issue/AST-844/uat-build-artifacts-chain-completes-but-job-does-not-graduate-to-candidate)
