@@ -131,3 +131,28 @@ Stage 1: Who-runs / §4 sync / §6 publish bullets — drop Joan/`dev-radia`/`as
 
 **Manifest:** Betty docs-only / no pytest. Grep gate on `skills/review-child/SKILL.md` — only deliberate bans (`Never Joan` / `dev-radia` / `git-store-*` / self-cherry-pick); mid-pipeline `docs()` via `git push origin HEAD:sub/…` confirmed; finish-up only post–PR Ready. Plan Stage 1 + `team-chuckles@c01bd93` spot-check OK.
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-935-review-child`; skill deliverable `team-chuckles@c01bd93` (`skills/review-child/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1: Who-runs → epic `<reponame>-<parent-id>/` (never `astral-radia`/`dev-radia`); §4 sync → finish-up post–PR Ready only; §6 mid-pipeline `docs()` via push to publish-ref (explicitly not deferred to finish-up); truncated worktree/cherry-pick bullets replaced; no implementer cherry-pick handoff. |
+| Grep gate | Narrowed retired-teaching pattern empty. Ban mentions of Never Joan/`dev-radia`/`git-store-*`/cherry-pick remain (allowed). Live symlink matches scrub (this session’s skill). |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `review-child` only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
