@@ -76,3 +76,10 @@
 **Conf:** `high` — ticket names the exact as-is/to-be strings; only three `merge-parent` hits in the current file.
 
 **Risk:** `low` — docs only; wrong rename could mis-teach who closes the parent, but Stage 1 pins Chuckles finish-up after PR Ready.
+
+## Review
+
+- **Branch:** `origin/sub/AST-909/AST-940-audit-linear`
+- **Plan tip:** `fea2a01` (`plan(AST-940)`)
+- **team-chuckles:** `origin/main` @ `d456957` — `code(AST-940): audit-linear after-land finish-up wording`
+- **Built:** `~/team-chuckles/skills/audit-linear/SKILL.md` — after-land/Done → finish-up; mid-epic audit docs() §7 preserved; astral-radia camping path dropped.
