@@ -78,6 +78,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** verify docs acceptance (grep / read) — no pytest manifest. Live obligations for removal work remain sibling **AST-765** / **AST-766** manifests.
 
+### AST-930 · AST-909 (datt SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/do-all-the-things/SKILL.md`** (`code(AST-930)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-930-do-all-the-things`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (retired live Joan / `git-store-*` / `JOAN_SESSION` / operator `merge-parent` vocabulary) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
 
 
 ## 2. Where tests live
