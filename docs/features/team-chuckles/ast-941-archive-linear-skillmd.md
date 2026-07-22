@@ -150,3 +150,28 @@ Stage 1: skill prose matches `publish_archive_commit` push to origin/dev; Joan/c
 
 **Manifest:** Betty docs-only / no pytest. Grep gate on `skills/archive-linear/SKILL.md` — only deliberate bans; publish = `git push origin HEAD:refs/heads/dev`; does-not-do names finish-up. Plan Stage 1 + `team-chuckles@6849251` spot-check OK (script unchanged).
 
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-909/AST-941-archive-linear`; skill deliverable `team-chuckles@6849251` (`skills/archive-linear/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1: Who-runs / §3 publish / failure+report / Does-NOT-do match `publish_archive_commit` (`git push origin HEAD:refs/heads/dev`); Joan/`store-archive-commit`/cherry-pick teaching removed; merge-parent → finish-up denial. Script unchanged per Decision. |
+| Grep gate | Live-residue patterns empty; remaining hits are deliberate **Never** bans. Live symlink matches. Spot-check: `archive_linear.py` still pushes `HEAD:refs/heads/dev`. |
+| Scope / bible | Astral diff: plan + `docs/test-bible/README.md` docs-only note; no `src/` / pytest. Self-Assessment footprint matches. |
+| Rules | §1.1 in-scope; docs under `docs/features/team-chuckles/`; §5a–§5g N/A. |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Linear AC still says repo-wide grep; this child correctly scoped to `archive-linear` SKILL.md only (siblings = other AST-909 rows). |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
