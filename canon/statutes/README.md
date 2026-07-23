@@ -22,7 +22,7 @@ Consumers that load “the universal set” include **every** file under `canon/
 - `tier: universal`
 - `status: active`
 
-Scope fields on universals do not exclude them from that set. Matching for `scoped` statutes is owned by AST-916.
+Scope fields on universals do not exclude them from that set. Plan consumers match `scoped` statutes per [`canon/rubrics/plan/plan-rubric.v1.md`](../rubrics/plan/plan-rubric.v1.md).
 
 ## Exemplars
 
