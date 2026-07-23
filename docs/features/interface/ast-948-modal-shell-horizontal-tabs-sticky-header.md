@@ -244,6 +244,6 @@ Rebuild the Recommended Job Report chrome: replace the left `SideTabPanel` rail 
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-858/AST-948-modal-shell-horizontal-tabs-sticky-header` @ _(see tip after Stage 4 commit)_
+**Built:** `origin/sub/AST-858/AST-948-modal-shell-horizontal-tabs-sticky-header` @ `00a27e958be16afd6f78c43c20f542beb19188a8`
 
 Stages 1–4: `report_top_tabs` / `report_summary_sections` manifest; `ReportSectionList` Expand-All stack; sticky header deeplinks + Copy Application Email / LinkedIn + Print Resume/Cover; horizontal Summary/Analysis/Artifacts shell with empty section bodies; Generate/Cancel parked on Artifacts `leading` strip. Tests deferred to Betty.
