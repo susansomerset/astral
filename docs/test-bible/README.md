@@ -246,6 +246,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on both skills (+ plan on publish tip) — `UAT-thin mode` / `UAT-THIN VALIDATE` / `[validate-plan uat-thin]` / require `## UAT fitness`; fix-uat **Full** validate-plan ban + Exception thin UAT validate; `### 5.5` stacktrace gate before build; non-stacktrace skip — no pytest manifest. Sibling diagnosis template / fitness section authoring out of scope.
 
+### AST-928 · AST-916 (plan rubric — validate-plan rewrite)
+
+**Docs-only** (astral `canon/rubrics/` + statute/workflow pointers + team-chuckles skill/AGENTS). Live edits: astral **`origin/sub/AST-916/AST-928-plan-rubric-validate-plan`** (`canon/rubrics/plan/plan-rubric.v1.md` + README, SCHEMA/README pointers, `docs/ASTRAL_TEAM_WORKFLOW.md` plan-rubric gate, plan + canary stub); **`team-chuckles` `main`** @ `3bfc396` (`validate-plan` executes plan-rubric.v1; Joan AGENTS). No product `src/`, no pytest. Does **not** own code rubric (**AST-929**), test rubric (second wave), Plan Discuss state machine (**AST-924**), or UAT-thin checklist (**AST-965** — thin path must stay thin / no R1–R7).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on publish tip + `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-929** out of scope.
+
 
 ## 2. Where tests live
 
