@@ -1343,17 +1343,6 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
     "scrape_jd", "validate_title", "gaze_board",
 })
 
-# task_key values that may appear on dispatch_task rows (admin defaults + schema backfill).
-DISPATCH_SCHEDULABLE_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
-    "recheck_no_openings", "gaze",
-    "inflow_discovery", "inflow_resolve_website", "vet_inflow_discovery",
-    "qualify_job_listings", "fetch_jd", "fetch_culture_pages", "evaluate_jd",
-    "grade_do", "grade_get", "grade_like", "analysis_upshot",
-    "contemplate_job", "draft_cover_letter",
-    *_RESUME_ARTIFACT_HOP_TASK_KEYS,
-})
-
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
     "grade_like", "vet_inflow_discovery",
@@ -1574,8 +1563,14 @@ def trigger_state_used_by_scored_dispatch_task(trigger_state: Optional[str]) -> 
     if ts.endswith("_RETRY"):
         return False
 
-    for dk in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        if dispatch_task_admin_defaults(dk)["trigger_state"] == ts and dispatch_task_key_is_scored(dk):
+    for dk, tc in TASK_CONFIG.items():
+        if not tc.get("scored"):
+            continue
+        try:
+            defaults = dispatch_task_admin_defaults(dk)
+        except KeyError:
+            continue
+        if defaults["trigger_state"] == ts:
             return True
 
     # Outcomes that scored tasks emit (e.g. PASSED_JOBLIST is qualify_job_listings pass_state).
