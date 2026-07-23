@@ -101,3 +101,13 @@ npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
 ```
+
+---
+
+### AST-950 · AST-858
+
+**AST-950:** `buildPhaseSectionGradeConfidenceRow` + `gradesForHeader` for Analysis section headers / `AgentAnalysisHeader` payloads.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |

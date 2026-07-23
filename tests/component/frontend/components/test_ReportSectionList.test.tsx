@@ -35,3 +35,17 @@ describe("ReportSectionList — AST-948", () => {
     expect(screen.queryByRole("button", { name: "Collapse all" })).not.toBeInTheDocument()
   })
 })
+
+describe("ReportSectionList — AST-950 renderMetadata", () => {
+  it("passes renderMetadata into CollapsiblePanel header", () => {
+    render(
+      <ReportSectionList
+        sections={[{ section_id: "phase_jd", nav_label: "JD Analysis", default_expanded: true }]}
+        renderSection={() => <p>body</p>}
+        renderMetadata={id => <span data-testid={`meta-${id}`}>META</span>}
+      />,
+    )
+    expect(screen.getByTestId("meta-phase_jd")).toHaveTextContent("META")
+    expect(screen.getByText("body")).toBeVisible()
+  })
+})

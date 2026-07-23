@@ -455,3 +455,26 @@ cd src/ui/frontend && npx tsc -b --noEmit
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
 ```
+
+---
+
+### AST-950 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-950** fills Analysis tab: JD/DO/GET/LIKE sections (no Overview); header **grade + confidence** row via `ReportSectionList` `renderMetadata` + `buildPhaseSectionGradeConfidenceRow`; expanded body = phase `take_*` above `AgentAnalysisHeader`.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-950** | Analysis metadata + bodies; `renderMetadata` slot | `JobAnalysisReportModal.tsx`, `ReportSectionList.tsx`, `recommendedJobReport.tsx`, `App.css` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-950 Analysis tab grades and confidence`**; **`test_ReportSectionList.test.tsx`** — **`ReportSectionList — AST-950 renderMetadata`**; **`test_recommendedJobReport.test.tsx`** — **`AST-950 grade+confidence header row`** |
+
+**Sibling note:** AST-949 Summary body tests live in the same JAR file — run with `--testNamePattern="AST-950"` (plus ReportSectionList / lib files) so parallel AST-950 tips without Summary bodies stay green.
+
+**AST-950** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ReportSectionList.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-950"
+```
