@@ -151,3 +151,15 @@
 - §1.1 Scope — only the two skills + plan; siblings’ core content not rewritten.
 - §4.2 — single plan under `docs/features/team-chuckles/`.
 - Product layers N/A. No `tests/` edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-961/AST-965-validate-plan-uat-thin-fix-uat-trigger`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `ea736ac` | Plan doc on astral sub |
+| 1–3 | `team-chuckles@4ddc33b` | UAT-thin mode in validate-plan; fix-uat token-scope Exception + §5.5 trigger |
+
+**Built:** `validate-plan` UAT-thin + `fix-uat` §5/§5.5 stacktrace gate; marker contract from AST-963 preserved.
+**Tip:** astral plan + stub (this commit); skills on `team-chuckles` `main` @ `4ddc33b`.
