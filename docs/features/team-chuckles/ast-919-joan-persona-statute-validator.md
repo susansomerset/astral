@@ -237,16 +237,30 @@ rg -n 'git-store|JOAN_SESSION|no git authority' agents/joan-AGENTS.md skills/ori
 - Orientation never-list — Joan persona must restate no git / no product / no `git-store-*`.
 - Docs path `docs/features/team-chuckles/` — satisfied.
 
-## Review (build stub)
+## Review (Radia)
 
-**Publish ref:** `origin/sub/AST-910/AST-919-joan-persona-statute-validator`
+**Diff:** `origin/dev...origin/sub/AST-910/AST-919-joan-persona-statute-validator` @ `e72fc74`  
+**Live:** `team-chuckles` `main` @ `3c26552` (persona/skills; verified on host tip that still contains that commit)
 
-| Stage | Commit | Summary |
-|-------|--------|---------|
-| plan | `f58e718` | Plan doc on astral sub |
-| 1–5 | `team-chuckles@3c26552` | Joan AGENTS + config, handoff/seed, validate-plan ownership, datt §3e, orientation/MCP/env docs |
-| astral | _(this commit)_ | `ASTRAL_TEAM_WORKFLOW.md` Joan rows + this stub |
+### What’s solid
 
-**Tip:** astral publish ref after this commit; skill deliverables on `team-chuckles` `main` @ `3c26552`.
+- Plan stages 1–5 land: `joan-AGENTS.md` + `config/joan.json` (`MAX_JOAN_CONTEXT: 120000`), handoff/seed Joan override (no hook), validate-plan ownership on `linear-joan` with assignee restore table, datt §3e global session + context gate + scoped spawn prompt, orientation/consumers/MCP/env wiring, astral `ASTRAL_TEAM_WORKFLOW.md` Joan rows.
+- Boundaries held — no `src/` / pytest; never-list bans `git-store-*` / `JOAN_SESSION`; Stage 5 contradiction greps empty; siblings (AST-922 / AST-958 / AST-912 / AST-916) out of diff scope.
+- Self-Assessment **MAJOR-CHANGE** matches footprint; Active stays with Chuckles around spawn (no double-clear).
 
-**Ops:** `LINEAR_KEY_JOAN` not set on this host yet — `@susan` to add key + Cursor-team Joan before live validate-plan MCP works. `~/.cursor/mcp.json` already has `linear-joan` block.
+### Issues
+
+| Severity | Item |
+|----------|------|
+| **discuss** | datt §3e says “first-spawn prompt shape” / “first-spawn only” on create-chat and context replace, but the only spawn block always `--resume "${JOAN_THREAD}"` with a bare skill invoke — no Joan first-spawn template and no resume-spawn `--resume: scroll…` discipline for later children on the global thread. Plan text matches this thinness; risk is faster `MAX_JOAN_CONTEXT` churn / cold re-onboard. Clarify intended prompt shapes (or accept as-is). |
+| **advisory** | Build comment said `LINEAR_KEY_JOAN` unset; key is present on this host now and `linear-joan` is in `mcp.json`. Live Joan MCP validate-plan still unproven in-ticket (docs-only manifest by design). |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Optional: add Joan first-spawn + resume-spawn prompt shapes under datt §3e (mirror engineer/Betty/Radia) | Chuckles / follow-up if discuss → yes |
+| No fix-now product/docs blockers for resolve-child | — |
+
+**fix-now:** none.  
+**ASTRAL_CODE_RULES:** §1.1 / docs path satisfied; product layers N/A.
