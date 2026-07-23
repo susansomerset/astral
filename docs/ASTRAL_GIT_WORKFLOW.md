@@ -97,7 +97,7 @@ Violations fail at commit time with a clear error.
 
 ## Child sub-issue sequencing
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `git-child-strict-sequential-prose`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-child-strict-sequential-prose`
 
 Children are strictly sequential. Child N+1 is not dispatched until Child N has `merge-child()` into `ftr/`. No simultaneous children on the same parent.
 
@@ -274,7 +274,7 @@ Ten commit types. One owner each.
 
 ## Chuckles git hygiene
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `git-chuckles-hygiene-tmp-branches`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-chuckles-hygiene-tmp-branches`
 
 Chuckles merge scripts (`refresh-ftr.sh`, `merge-child.sh`) use ephemeral `tmp-refresh-*` / `tmp-merge-child-*` local branch names. Those branches must be deleted when the script exits — they must **never** appear on `origin` or linger in `git log` decorations.
 
@@ -307,7 +307,7 @@ Legacy `worktree/<IssueID>` refs on **origin** should be deleted. Only `sub/*`, 
 
 ## Reference graph
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `git-reference-graph`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-reference-graph`
 
 See team process doc or Chuckles onboarding for the full multi-sub / UAT-bug example graph. Day-to-day work uses the commit vocabulary above.
 
@@ -315,7 +315,7 @@ See team process doc or Chuckles onboarding for the full multi-sub / UAT-bug exa
 
 ## Skills map
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `git-skills-map`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-skills-map`
 
 Executable procedures live in global Cursor skills under `~/.cursor/skills/`. Each stage skill links here for law; it owns steps only.
 

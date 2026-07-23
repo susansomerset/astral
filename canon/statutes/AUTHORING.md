@@ -1,11 +1,11 @@
 # Statute authoring guide
 
-How to write, approve, and maintain statutes under `docs/statutes/`. Field definitions live in [SCHEMA.md](SCHEMA.md). Harvest completeness (crosswalk + narrative leftovers) lives in [HARVEST.md](HARVEST.md) (AST-921).
+How to write, approve, and maintain statutes under `canon/statutes/`. Field definitions live in [SCHEMA.md](SCHEMA.md). Harvest completeness (crosswalk + narrative leftovers) lives in [HARVEST.md](HARVEST.md) (AST-921).
 
 ## Folder anatomy
 
 ```
-docs/statutes/
+canon/statutes/
   README.md
   SCHEMA.md
   AUTHORING.md
@@ -25,7 +25,7 @@ docs/statutes/
 - `slug` = lowercase kebab-case, stable, meaning-bearing (not sequential numbers).
 - **Id is immutable** for the life of the statute. Amend keeps the same id. Retire keeps the file; `status` becomes `retired`.
 
-Path and id stay aligned: `docs/statutes/astral/git/astral.git.engineer-test-tree-ban.md` ↔ id `astral.git.engineer-test-tree-ban`.
+Path and id stay aligned: `canon/statutes/astral/git/astral.git.engineer-test-tree-ban.md` ↔ id `astral.git.engineer-test-tree-ban`.
 
 ## File format
 
@@ -33,11 +33,11 @@ Markdown with YAML frontmatter (all SCHEMA-required keys) then body sections in 
 
 ## Drafts are not committed
 
-`status` in-repo is only `active` or `retired`. Drafts live on the author’s branch or Linear until Archie approves. Only approved statutes land under `docs/statutes/`.
+`status` in-repo is only `active` or `retired`. Drafts live on the author’s branch or Linear until Archie approves. Only approved statutes land under `canon/statutes/`.
 
 ## Archie
 
-**Archie** is the architect alias used in public prose under `docs/statutes/**`. Linear assignee flips for approval target Susan; comments that need the architect use `@susan`. Do not put Susan’s real name in statute files.
+**Archie** is the architect alias used in public prose under `canon/statutes/**`. Linear assignee flips for approval target Susan; comments that need the architect use `@susan`. Do not put Susan’s real name in statute files.
 
 ## Lifecycle
 
@@ -52,4 +52,4 @@ Retire is **soft-retire** (file remains) so citations and history stay resolvabl
 ## Harvest and consumers
 
 - Full law-doc harvest into this tree is **AST-921** — do not redefine schema while harvesting.
-- Joan / validate-plan / Review Rubrics consumers are **AST-910** / **AST-916** — do not describe their selection algorithms here beyond: universals = every `tier: universal` + `status: active` file under `docs/statutes/**`.
+- Joan / validate-plan / Review Rubrics consumers are **AST-910** / **AST-916** — do not describe their selection algorithms here beyond: universals = every `tier: universal` + `status: active` file under `canon/statutes/**`.

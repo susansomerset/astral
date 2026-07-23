@@ -1,6 +1,6 @@
 # Statute schema
 
-Machine + human contract for every file under `docs/statutes/**` (except this file, `AUTHORING.md`, and `README.md`).
+Machine + human contract for every file under `canon/statutes/**` (except this file, `AUTHORING.md`, and `README.md`).
 
 ## Frontmatter fields
 
@@ -47,7 +47,7 @@ Do **not** add undeclared frontmatter keys. Do **not** put `statement` or `ratio
 | `active` | In force; consumers must consider it. |
 | `retired` | Soft-retired; file remains for citations/history. Not in the active set. |
 
-In-repo statutes are only `active` or `retired`. Drafts are not committed under `docs/statutes/` (see AUTHORING).
+In-repo statutes are only `active` or `retired`. Drafts are not committed under `canon/statutes/` (see AUTHORING).
 
 ## Body sections (required order)
 
@@ -71,7 +71,7 @@ checkable: judgment
 status: active
 applies_when:
   layers: []
-  paths: ["docs/statutes/**"]
+  paths: ["canon/statutes/**"]
   change_types: ["any"]
 source_docs: []
 supersedes: null

@@ -3,20 +3,20 @@
 - **Linear:** [AST-920](https://linear.app/astralcareermatch/issue/AST-920/statute-schema-authoring-guide-systemic-statutes-law-docs-graduate-to)
 - **Parent:** [AST-912](https://linear.app/astralcareermatch/issue/AST-912/systemic-statutes-law-docs-graduate-to-a-statute-harness)
 - **Publish ref:** `origin/sub/AST-912/AST-920-statute-schema-authoring-guide`
-- **Summary:** Land the statute harness foundation under product `docs/statutes/`: formal field schema, one-file-per-statute format, domain-folder anatomy with orchestration vs astral namespaces, Archie-approved add/amend/retire lifecycle, and a handful of exemplar statutes (including ≥1 `universal` and ≥1 `checkable: hook`). Does **not** harvest the law corpus (AST-921), wire Joan/validate-plan/Radia consumers (AST-910 / AST-916), or invent pattern-catalog entries (AST-913).
+- **Summary:** Land the statute harness foundation under product `canon/statutes/`: formal field schema, one-file-per-statute format, domain-folder anatomy with orchestration vs astral namespaces, Archie-approved add/amend/retire lifecycle, and a handful of exemplar statutes (including ≥1 `universal` and ≥1 `checkable: hook`). Does **not** harvest the law corpus (AST-921), wire Joan/validate-plan/Radia consumers (AST-910 / AST-916), or invent pattern-catalog entries (AST-913).
 
 ## Files Changed (planned)
 
 | File | Change | Layer |
 |------|--------|-------|
-| `docs/statutes/SCHEMA.md` | New — field definitions, enums, frontmatter contract | docs / statutes |
-| `docs/statutes/AUTHORING.md` | New — folder anatomy, id rules, lifecycle (add/amend/retire) with Archie approval | docs / statutes |
-| `docs/statutes/README.md` | New — corpus index, how to find `universal` tier, namespace map, pointer to SCHEMA + AUTHORING | docs / statutes |
-| `docs/statutes/orchestration/pipeline/orch.pipeline.plan-is-bible.md` | New exemplar — `universal` / `judgment` | docs / statutes |
-| `docs/statutes/orchestration/roles/orch.roles.archie-approves-statutes.md` | New exemplar — `universal` / `judgment` | docs / statutes |
-| `docs/statutes/astral/layers/astral.layers.import-direction.md` | New exemplar — `scoped` / `judgment` | docs / statutes |
-| `docs/statutes/astral/git/astral.git.engineer-test-tree-ban.md` | New exemplar — `scoped` / `hook` | docs / statutes |
-| `docs/statutes/astral/batch/astral.batch.batch-id-first.md` | New exemplar — `scoped` / `ci` | docs / statutes |
+| `canon/statutes/SCHEMA.md` | New — field definitions, enums, frontmatter contract | docs / statutes |
+| `canon/statutes/AUTHORING.md` | New — folder anatomy, id rules, lifecycle (add/amend/retire) with Archie approval | docs / statutes |
+| `canon/statutes/README.md` | New — corpus index, how to find `universal` tier, namespace map, pointer to SCHEMA + AUTHORING | docs / statutes |
+| `canon/statutes/orchestration/pipeline/orch.pipeline.plan-is-bible.md` | New exemplar — `universal` / `judgment` | docs / statutes |
+| `canon/statutes/orchestration/roles/orch.roles.archie-approves-statutes.md` | New exemplar — `universal` / `judgment` | docs / statutes |
+| `canon/statutes/astral/layers/astral.layers.import-direction.md` | New exemplar — `scoped` / `judgment` | docs / statutes |
+| `canon/statutes/astral/git/astral.git.engineer-test-tree-ban.md` | New exemplar — `scoped` / `hook` | docs / statutes |
+| `canon/statutes/astral/batch/astral.batch.batch-id-first.md` | New exemplar — `scoped` / `ci` | docs / statutes |
 | `docs/features/team-chuckles/ast-920-statute-schema-authoring-guide.md` | This plan | docs / features |
 
 **Out of scope (do not touch):**
@@ -34,7 +34,7 @@
 ### Layout
 
 ```
-docs/statutes/
+canon/statutes/
   README.md
   SCHEMA.md
   AUTHORING.md
@@ -44,7 +44,7 @@ docs/statutes/
 
 - **One file per statute.** Filename equals the statute `id` + `.md`.
 - **Domains are folders** under a namespace (`orchestration/` or `astral/`). Never flatten statutes as siblings of `SCHEMA.md`. Never create one-file-per-domain monoliths.
-- **Reserved top-level names under `docs/statutes/`:** `README.md`, `SCHEMA.md`, `AUTHORING.md`, `orchestration/`, `astral/`. Do not add other top-level entries in this ticket.
+- **Reserved top-level names under `canon/statutes/`:** `README.md`, `SCHEMA.md`, `AUTHORING.md`, `orchestration/`, `astral/`. Do not add other top-level entries in this ticket.
 
 ⚠️ **Decision:** Two explicit namespaces (`orchestration/` vs `astral/`) rather than “orchestration reserved + astral domains at top level.” Consumers (AST-916) can filter by path prefix; future non-astral products get a sibling namespace without reshuffling astral domains.
 
@@ -91,7 +91,7 @@ Do **not** put the statement only in frontmatter. Frontmatter is the machine con
 
 Body carries `statement` / rationale / examples — **not** duplicated as frontmatter keys named `statement` or `rationale`.
 
-⚠️ **Decision:** `status` is only `active` \| `retired` (no `draft` in-repo). Drafts live on the author’s branch or Linear until Archie approves; only approved statutes land under `docs/statutes/`.
+⚠️ **Decision:** `status` is only `active` \| `retired` (no `draft` in-repo). Drafts live on the author’s branch or Linear until Archie approves; only approved statutes land under `canon/statutes/`.
 
 ⚠️ **Decision:** `checkable: hook` means “suitable for a git/pre-commit hook later,” `ci` for CI job later, `judgment` for human/agent review. This ticket does **not** implement hooks or CI — classification only.
 
@@ -108,7 +108,7 @@ Body carries `statement` / rationale / examples — **not** duplicated as frontm
 | **Amend** | any engineer / Chuckles | Archie | same `id`/path; body and/or frontmatter updated; `approved_at` refreshed; keep `supersedes`/`superseded_by` unless the amend is a replacement retire (below) |
 | **Retire** | any engineer / Chuckles | Archie | keep file; set `status: retired`; set `superseded_by` to successor id or `null`; do not delete the file in the same change that retires it |
 
-Public prose in `docs/statutes/**` uses the alias **Archie** only — never Susan’s real name (AST-910 identity rule). Linear assignee flips for approval still target Susan; that procedure text belongs in AUTHORING as “Archie = architect alias; Linear assignee Susan.”
+Public prose in `canon/statutes/**` uses the alias **Archie** only — never Susan’s real name (AST-910 identity rule). Linear assignee flips for approval still target Susan; that procedure text belongs in AUTHORING as “Archie = architect alias; Linear assignee Susan.”
 
 ⚠️ **Decision:** Retire is soft-retire (file remains). Hard-delete is out of scope and forbidden in this ticket so citations and history stay resolvable.
 
@@ -116,7 +116,7 @@ Public prose in `docs/statutes/**` uses the alias **Archie** only — never Susa
 
 Create **exactly these five** files with the frontmatter values below. Body text must be faithful to the cited law/docs but **must not** attempt full harvest of neighboring rules.
 
-#### 1. `docs/statutes/orchestration/pipeline/orch.pipeline.plan-is-bible.md`
+#### 1. `canon/statutes/orchestration/pipeline/orch.pipeline.plan-is-bible.md`
 
 ```yaml
 id: orch.pipeline.plan-is-bible
@@ -138,7 +138,7 @@ approved_at: "<build-date YYYY-MM-DD>"
 
 Statement gist: The ticket plan doc is binding for build/test/resolve; agents do not skip, reorder, expand, or improvise steps — ambiguity stops and escalates.
 
-#### 2. `docs/statutes/orchestration/roles/orch.roles.archie-approves-statutes.md`
+#### 2. `canon/statutes/orchestration/roles/orch.roles.archie-approves-statutes.md`
 
 ```yaml
 id: orch.roles.archie-approves-statutes
@@ -148,7 +148,7 @@ checkable: judgment
 status: active
 applies_when:
   layers: ["docs"]
-  paths: ["docs/statutes/**"]
+  paths: ["canon/statutes/**"]
   change_types: ["add", "modify", "delete"]
 source_docs: []
 supersedes: null
@@ -157,9 +157,9 @@ approved_by: Archie
 approved_at: "<build-date YYYY-MM-DD>"
 ```
 
-Statement gist: No statute under `docs/statutes/` may be added, amended, or retired without Archie approval recorded in frontmatter (`approved_by` / `approved_at`).
+Statement gist: No statute under `canon/statutes/` may be added, amended, or retired without Archie approval recorded in frontmatter (`approved_by` / `approved_at`).
 
-#### 3. `docs/statutes/astral/layers/astral.layers.import-direction.md`
+#### 3. `canon/statutes/astral/layers/astral.layers.import-direction.md`
 
 ```yaml
 id: astral.layers.import-direction
@@ -181,7 +181,7 @@ approved_at: "<build-date YYYY-MM-DD>"
 
 Statement gist: Imports obey CODE_RULES §3.3 one-line-per-layer rules (ui→core+utils; core→data+external+utils; external/data→utils; utils→utils only except the documented logging late-import exception).
 
-#### 4. `docs/statutes/astral/git/astral.git.engineer-test-tree-ban.md`
+#### 4. `canon/statutes/astral/git/astral.git.engineer-test-tree-ban.md`
 
 ```yaml
 id: astral.git.engineer-test-tree-ban
@@ -208,7 +208,7 @@ approved_at: "<build-date YYYY-MM-DD>"
 
 Statement gist: Engineer commits must not add/edit/delete Betty-owned test-tree paths; defective tests go via `[qa-handoff]`. Flagged `checkable: hook` because pre-commit already enforces this class of ban.
 
-#### 5. `docs/statutes/astral/batch/astral.batch.batch-id-first.md`
+#### 5. `canon/statutes/astral/batch/astral.batch.batch-id-first.md`
 
 ```yaml
 id: astral.batch.batch-id-first
@@ -236,26 +236,26 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 
 ## Stage 1: Schema + authoring guide + README
 
-**Done when:** `docs/statutes/SCHEMA.md`, `AUTHORING.md`, and `README.md` exist on the publish ref; SCHEMA enumerates every frontmatter key/enum above; AUTHORING documents folder anatomy, id rules, and Archie add/amend/retire; README explains how to list the universal set (`tier: universal` + `status: active`) and the `orchestration/` vs `astral/` split; no statute files yet.
+**Done when:** `canon/statutes/SCHEMA.md`, `AUTHORING.md`, and `README.md` exist on the publish ref; SCHEMA enumerates every frontmatter key/enum above; AUTHORING documents folder anatomy, id rules, and Archie add/amend/retire; README explains how to list the universal set (`tier: universal` + `status: active`) and the `orchestration/` vs `astral/` split; no statute files yet.
 
-1. Create directory `docs/statutes/` (no other top-level files than the three named below).
-2. Write `docs/statutes/SCHEMA.md` containing:
+1. Create directory `canon/statutes/` (no other top-level files than the three named below).
+2. Write `canon/statutes/SCHEMA.md` containing:
    - Purpose one-liner (machine + human contract for statutes).
    - The field table from **Mechanical rules → Schema fields** (copy values exactly; do not add undeclared keys).
    - Enum definitions for `tier`, `checkable`, `status`.
    - Frontmatter example using a fictional `orch.example.demo` id (label it non-normative / not a real statute).
    - Explicit note: body sections are `# Statement`, `## Rationale`, `## Examples` (`### Conforming` / `### Violating`), optional `## Notes`.
-3. Write `docs/statutes/AUTHORING.md` containing:
+3. Write `canon/statutes/AUTHORING.md` containing:
    - Folder anatomy diagram matching **Mechanical rules → Layout**.
    - Id format rules.
    - One-file-per-statute + domain-folder rules (forbid domain monoliths).
    - Lifecycle tables for add / amend / retire with Archie approval (alias wording).
    - “Drafts are not committed” rule (`status` only `active`|`retired` in-repo).
    - Pointer: full harvest is AST-921; consumers are AST-910 / AST-916 — do not describe their algorithms here beyond tier discovery.
-4. Write `docs/statutes/README.md` containing:
+4. Write `canon/statutes/README.md` containing:
    - What this tree is (statute harness corpus).
    - Links to `SCHEMA.md` and `AUTHORING.md`.
-   - How consumers find universals: every file under `docs/statutes/**` whose frontmatter has `tier: universal` and `status: active`.
+   - How consumers find universals: every file under `canon/statutes/**` whose frontmatter has `tier: universal` and `status: active`.
    - Namespace map: `orchestration/` = generic orchestration; `astral/` = astral-specific.
    - Placeholder section `## Exemplars` stating “populated in AST-920 Stage 2” (Stage 2 will replace this with the real list).
 
@@ -296,22 +296,22 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — confined to the new `docs/statutes/` harness tree plus this plan doc; no `src/`, tests, or consumer wiring.
+**Scope:** `Single-Component` — confined to the new `canon/statutes/` harness tree plus this plan doc; no `src/`, tests, or consumer wiring.
 
-**Conf:** `high` — parent locked storage (`docs/statutes/`), schema fields, one-file-per-statute, namespace split, and exemplar requirements; this plan pins folder/id/frontmatter/lifecycle choices so build-child has no judgment calls.
+**Conf:** `high` — parent locked storage (`canon/statutes/`), schema fields, one-file-per-statute, namespace split, and exemplar requirements; this plan pins folder/id/frontmatter/lifecycle choices so build-child has no judgment calls.
 
 **Risk:** `Medium` — a wrong schema or namespace shape would force AST-921 harvest rework and slow Joan/rubric consumers (AST-910 / AST-916), but nothing in production runtime executes these files yet.
 
 ## Self-review vs ASTRAL_CODE_RULES
 
 - §1.3 DRY / §2.1 config / §2.4 batch / §2.6 state machine / §3.3 imports: N/A to product code — exemplars **cite** those rules as narrative sources only; no runtime duplication.
-- §3.6: statutes live under `docs/statutes/` (committed product docs), not `debug/spikes/` or `docs/features/` spike leftovers.
+- §3.6: statutes live under `canon/statutes/` (committed product docs), not `debug/spikes/` or `docs/features/` spike leftovers.
 - §4.2: plan lives at `docs/features/team-chuckles/ast-920-….md` per project folder mapping (Team Chuckles → `team-chuckles`).
 - No undeclared files; engineer test-tree ban respected (no `tests/` or bible edits).
 
 ## Tests (engineer)
 
-**Manifest:** Betty docs-only / no pytest. Items 1–8 on publish tip (`docs/statutes/` layout, SCHEMA/AUTHORING/README, five exemplars, frontmatter, coverage flags, scope gate) — green. No product commits from test-child.
+**Manifest:** Betty docs-only / no pytest. Items 1–8 on publish tip (`canon/statutes/` layout, SCHEMA/AUTHORING/README, five exemplars, frontmatter, coverage flags, scope gate) — green. No product commits from test-child.
 
 ## Review
 
@@ -334,7 +334,7 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 | Tier / checkable | ≥1 `universal` (2), ≥1 `hook`, ≥1 `ci`, ≥1 `judgment`; universal-set discovery prose matches SCHEMA/AUTHORING. |
 | Lifecycle | Archie alias + Linear→Susan; add/amend/soft-retire; no `draft` in-repo; no hard-delete. |
 | Boundaries | No law-doc harvest; no `src/` / pytest / hooks / CI; Betty bible note only (`docs/test-bible/README.md`). Self-Assessment `Single-Component` matches. |
-| Rules | §1.1 / §3.6 / §4.2: docs under `docs/statutes/` + plan under `team-chuckles/`. §5a–§5g N/A (no product runtime). |
+| Rules | §1.1 / §3.6 / §4.2: docs under `canon/statutes/` + plan under `team-chuckles/`. §5a–§5g N/A (no product runtime). |
 
 ### Issues
 

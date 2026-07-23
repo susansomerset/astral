@@ -18,7 +18,7 @@ Mandate for code quality and architecture. This document defines what we build a
 
 ### 1.2 Imports
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-1.2-imports-pointer`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-1.2-imports-pointer`
 
 - All code lives in the layered structure: `src/core/`, `src/data/`, `src/external/`, `src/utils/`, and `src/ui/`.
 - Import only as allowed in section 3.3. Never import from outside this structure.
@@ -79,7 +79,7 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 
 **Config blocks:**
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.1-config-block-catalog`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.1-config-block-catalog`
 
 - **TASK_CONFIG**: Task definitions (prompts, response_format, context_format, response_schema). For graded tasks, also `grading_mode`, `vectors`, scoring keys (`grades_key`), and **job-consult orchestration**: pass/fail/error states, `save_prefix`, `pass_threshold`, readiness keys (`min_job_title_length`, `min_jd_chars`, `not_ready_state`), `requires_company`, and `fallback_batch_size` as the config default (`dispatch_tasks.batch_size` overrides at runtime). Single source for Anthropic task specs plus those orchestration literals.
 - **GAZER_CONFIG**: Orchestration for gazer-batch steps (`validate_title`, `scrape_jd`, `gaze`): states, JD scrape `error_states`, and fallback batch sizes. `ROSTER_CONFIG["gaze"]["error_state"]` remains the gaze hook used by roster code until gazer reads this block (`gaze.error_state` must stay the same string).
@@ -170,7 +170,7 @@ All batch jobs that process entities by state use batch locking. The `batch_id` 
 
 **Dispatcher flow:**
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.4-dispatcher-pseudocode`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.4-dispatcher-pseudocode`
 
 ```
 batch_id = f"{task_key}-{uuid4()}"
@@ -226,7 +226,7 @@ Every company and every job has a `state`. Entities are processed in batches bas
 
 #### 2.6.0 Dispatch run_next chains (AST-848)
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.0-run-next-carveout-detail`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.0-run-next-carveout-detail`
 
 Within a **single** `do_task` invocation, when `ctx` carries `dispatch_trigger_state`, successful hops may write runtime DB labels `{trigger}.{task_key}` and recurse via `run_next` until the terminal hop. Terminal graduation to a registered `JOB_STATES` key happens in the same invocation when `dispatch_chain_graduate_on_terminal` is true and the last hop's `run_next` is empty. Runtime hop labels are **not** `JOB_STATES` registry keys; batch claim may accept them (see `is_valid_job_batch_claim_state` in `config.py`). This carve-out does **not** apply to roster/consult score transitions (`render_verdict`) or company batches.
 
@@ -234,7 +234,7 @@ State transitions are config-driven and managed by the core layer only. The data
 
 #### 2.6.1 Companies
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.1-3-entity-examples`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.1-3-entity-examples`
 
 Company states are defined in `COMPANY_STATES` and transitions in `ASTRAL_CONFIG["company_state_transitions"]`. Roster functions (e.g., `prefilter_company`, `find_job_page`) determine the outcome and pass the target state to the data layer.
 
@@ -272,7 +272,7 @@ Candidate states are defined in `CANDIDATE_STATES` and transitions in `ASTRAL_CO
 8. Transition state via tracker.
 9. Return `{"success", "to_state", "score", "grades"}` for dispatcher logging.
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.7-encoded-consult-detail`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.7-encoded-consult-detail`
 
 For encoded consult agent tasks (`grade_do` / `grade_get` / `grade_like`, `output_type` `grades_encoded_notes`), `render_verdict` passes `batch_entities` and `vector_labels` into `do_task`, flattens decoded `jobs[]`, hydrates `grades[].reason` from the candidate rubric, and may persist `{save_prefix}_notes` when the wire line includes an optional notes tail. See `docs/features/consult/ast-351-convert-consult-to-use-encoded-responses.md`.
 
@@ -294,7 +294,7 @@ Some data fields need to be lazily populated — the value may or may not exist 
 
 **Current coat-check keys:**
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.8-coat-check-key-table`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.8-coat-check-key-table`
 
 | Key | Entity | Handler | Fetch method |
 |-----|--------|---------|-------------|
@@ -329,7 +329,7 @@ UI API endpoints use `@require_auth` to enforce authentication. The decorator ch
 
 ### 3.1 Directory Layout
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.1-directory-tree`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.1-directory-tree`
 
 ```
 astral/
@@ -432,7 +432,7 @@ astral/
 | Task | PW | AI | DB |
 |------|----|----|-----|
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.2-dispatch-pipeline-table`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.2-dispatch-pipeline-table`
 
 | prefilter | X | X | X |
 | locate_job_page | X | X | X |
@@ -480,7 +480,7 @@ utils    ──► (nothing)
 
 ### 3.4 Playwright and HTML Culling
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.4-html-cull-config`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.4-html-cull-config`
 
 `src/external/playwright.py` provides navigation, DOM extraction, cookie dismissal, vendor detection. Core invokes playwright, obtains content, and processes it.
 
@@ -496,7 +496,7 @@ HTML culling is configured in `ASTRAL_CONFIG["html_cull"]`: `allowed_tags`, `ban
 
 **Dev workflow:** Two processes running in parallel:
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.5-dev-workflow-ports`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.5-dev-workflow-ports`
 - Flask API server: `cd src/ui && python server.py` (port 5001)
 - Vite dev server: `cd src/ui/frontend && npm run dev` (port 5173)
 
@@ -514,7 +514,7 @@ Vite proxies `/api/` requests to Flask during development (configured in `vite.c
 
 **In-process dispatch scheduler:**
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.5-scheduler-endpoint-list`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.5-scheduler-endpoint-list`
 
 The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside the web server. No external cron service. All batch runner logic and dispatch orchestration live in `dispatcher.py`.
 
@@ -568,7 +568,7 @@ The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside
 
 ### 3.7 Sunset — Astral Boards (AST-757)
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.7-boards-sunset`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.7-boards-sunset`
 
 The **Astral Boards** channel is **removed** from production. Roster cultivation via Google CSE and company/job dispatch replaced the boards ingest + gaze workflow. Epic siblings **AST-765** (product removal) and **AST-766** (schema drop) deleted board modules, API routes, tables, and board-only tests; **AST-767** retires active test-bible manifests.
 
@@ -593,7 +593,7 @@ The **Astral Boards** channel is **removed** from production. Roster cultivation
 
 ### 4.1 Branching Strategy
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-4.1-stale-branching`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-4.1-stale-branching`
 
 > **Stale:** The branching instructions in this section are superseded by `docs/ASTRAL_GIT_WORKFLOW.md` and the `orch.git.*` statutes (`orch.git.three-permanent-branches`, `orch.git.flow-direction-inviolable`, `orch.git.ftr-sub-topology`, `orch.git.commit-vocabulary`, `orch.git.merge-on-checkout`, `orch.git.no-cherry-pick-rebase-force`, `orch.git.no-dev-agent-branches`). Keep the prose below as historical narrative only.
 
@@ -625,7 +625,7 @@ Documentation is **not** stored in `.cursor/plans/`. The `docs/features/` direct
 
 ### 4.3 Linear Workflow States
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `code-rules-4.3-state-name-list`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-4.3-state-name-list`
 
 Feature-level PRs. Sub-issues track implementation; parent features track PR lifecycle.
 

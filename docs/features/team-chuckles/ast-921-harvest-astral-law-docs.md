@@ -3,13 +3,13 @@
 - **Linear:** [AST-921](https://linear.app/astralcareermatch/issue/AST-921/harvest-astral-law-docs-into-the-statute-corpus-systemic-statutes-law)
 - **Parent:** [AST-912](https://linear.app/astralcareermatch/issue/AST-912/systemic-statutes-law-docs-graduate-to-a-statute-harness)
 - **Publish ref:** `origin/sub/AST-912/AST-921-harvest-astral-law-docs`
-- **Summary:** Decompose `docs/ASTRAL_CODE_RULES.md`, `docs/ASTRAL_GIT_WORKFLOW.md`, and `docs/ASTRAL_TEAM_WORKFLOW.md` into one-file-per-statute entries under the AST-920 layout (`docs/statutes/orchestration|astral/<domain>/`), classify leftovers as narrative in `docs/statutes/HARVEST.md`, set `checkable` for hook/ci candidates, and update the three law docs to cite statute ids. Does **not** redefine schema/AUTHORING (AST-920), wire Joan/validate-plan/Radia consumers (AST-910 / AST-916), or implement hooks/CI.
+- **Summary:** Decompose `docs/ASTRAL_CODE_RULES.md`, `docs/ASTRAL_GIT_WORKFLOW.md`, and `docs/ASTRAL_TEAM_WORKFLOW.md` into one-file-per-statute entries under the AST-920 layout (`canon/statutes/orchestration|astral/<domain>/`), classify leftovers as narrative in `canon/statutes/HARVEST.md`, set `checkable` for hook/ci candidates, and update the three law docs to cite statute ids. Does **not** redefine schema/AUTHORING (AST-920), wire Joan/validate-plan/Radia consumers (AST-910 / AST-916), or implement hooks/CI.
 
 ## Prerequisite (binding)
 
 AST-920 must have landed its Stage 1–2 deliverables on the tree this sub builds from (normally via `git merge origin/ftr/AST-912-systemic-statutes` after Chuckles `merge-child(AST-920)`). Before Stage 1 of **this** ticket:
 
-1. Confirm these paths exist and match AST-920 plan frontmatter contract: `docs/statutes/SCHEMA.md`, `docs/statutes/AUTHORING.md`, `docs/statutes/README.md`, and the five exemplar statute files listed in AST-920.
+1. Confirm these paths exist and match AST-920 plan frontmatter contract: `canon/statutes/SCHEMA.md`, `canon/statutes/AUTHORING.md`, `canon/statutes/README.md`, and the five exemplar statute files listed in AST-920.
 2. If any are missing: **stop**. Comment on parent AST-912 with the Stage blocked template — do not invent schema, exemplars, or alternate layout.
 
 ⚠️ **Decision:** Plan this ticket now (Todo → Plan Ready) while AST-920 is still mid-pipeline; **build-child** is gated on the prerequisite above. Do not redefine or “improve” SCHEMA fields during harvest.
@@ -18,10 +18,10 @@ AST-920 must have landed its Stage 1–2 deliverables on the tree this sub build
 
 | File | Change | Layer |
 |------|--------|-------|
-| `docs/statutes/HARVEST.md` | New — crosswalk of every harvested rule + narrative leftovers register | docs / statutes |
-| `docs/statutes/README.md` | Extend corpus index: full statute table + link to HARVEST.md (keep SCHEMA/AUTHORING links; preserve exemplar section, add `## Harvested corpus`) | docs / statutes |
-| `docs/statutes/orchestration/**/*.md` | New orch.* statutes per **Statute inventory** (skip ids already created by AST-920) | docs / statutes |
-| `docs/statutes/astral/**/*.md` | New astral.* statutes per **Statute inventory** (skip AST-920 exemplars) | docs / statutes |
+| `canon/statutes/HARVEST.md` | New — crosswalk of every harvested rule + narrative leftovers register | docs / statutes |
+| `canon/statutes/README.md` | Extend corpus index: full statute table + link to HARVEST.md (keep SCHEMA/AUTHORING links; preserve exemplar section, add `## Harvested corpus`) | docs / statutes |
+| `canon/statutes/orchestration/**/*.md` | New orch.* statutes per **Statute inventory** (skip ids already created by AST-920) | docs / statutes |
+| `canon/statutes/astral/**/*.md` | New astral.* statutes per **Statute inventory** (skip AST-920 exemplars) | docs / statutes |
 | `docs/ASTRAL_CODE_RULES.md` | Cite statute ids at each harvested rule; mark narrative sections per HARVEST.md | docs |
 | `docs/ASTRAL_GIT_WORKFLOW.md` | Same citation / narrative treatment | docs |
 | `docs/ASTRAL_TEAM_WORKFLOW.md` | Same citation / narrative treatment | docs |
@@ -29,13 +29,13 @@ AST-920 must have landed its Stage 1–2 deliverables on the tree this sub build
 
 **Out of scope (do not touch):**
 
-- `docs/statutes/SCHEMA.md` field definitions / enums (read-only; AST-920).
-- `docs/statutes/AUTHORING.md` lifecycle rules (read-only except a one-line pointer at the top that harvest completeness lives in `HARVEST.md` — only if AUTHORING currently lacks any harvest pointer; if it already points at AST-921, leave body unchanged).
+- `canon/statutes/SCHEMA.md` field definitions / enums (read-only; AST-920).
+- `canon/statutes/AUTHORING.md` lifecycle rules (read-only except a one-line pointer at the top that harvest completeness lives in `HARVEST.md` — only if AUTHORING currently lacks any harvest pointer; if it already points at AST-921, leave body unchanged).
 - The five AST-920 exemplar files (do not rewrite; crosswalk only).
 - Any `src/**`, `tests/**`, hooks, CI, skills under `~/.cursor/skills/`, or consumer wiring (AST-910 / AST-916 / AST-928).
 - Pattern catalog (AST-913).
 
-⚠️ **Decision:** Extend AST-920’s reserved top-level set under `docs/statutes/` by **exactly one** new file: `HARVEST.md`. No other new top-level names.
+⚠️ **Decision:** Extend AST-920’s reserved top-level set under `canon/statutes/` by **exactly one** new file: `HARVEST.md`. No other new top-level names.
 
 ---
 
@@ -43,7 +43,7 @@ AST-920 must have landed its Stage 1–2 deliverables on the tree this sub build
 
 ### Schema / format
 
-Every new statute file MUST obey `docs/statutes/SCHEMA.md` and AST-920 file format:
+Every new statute file MUST obey `canon/statutes/SCHEMA.md` and AST-920 file format:
 
 1. YAML frontmatter with **all** required keys (`id`, `title`, `tier`, `checkable`, `status`, `applies_when` + nested keys, `source_docs`, `supersedes`, `superseded_by`, `approved_by`, `approved_at`).
 2. Body in order: `# Statement`, `## Rationale`, `## Examples` (`### Conforming`, `### Violating`), optional `## Notes`.
@@ -81,7 +81,7 @@ When updating a law doc section that maps to a statute, add a single bold citati
 Multiple statutes under one heading: one citation line per statute, adjacent to the corresponding bullet/paragraph. Do **not** bulk-delete law doc prose. Narrative-only sections get:
 
 ```markdown
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — <row key>
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — <row key>
 ```
 
 ### `checkable` assignment rules (no hook/CI implementation)
@@ -228,9 +228,9 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 
 ## Stage 1: `HARVEST.md` + README index scaffolding
 
-**Done when:** `docs/statutes/HARVEST.md` exists with (a) a full crosswalk table of every inventory row (`create` + `already-landed`) including id, source doc+§, checkable, tier, path, and (b) the **Narrative leftovers** table verbatim from this plan; `docs/statutes/README.md` links to `HARVEST.md` and has an empty or “pending Stage 2–4” `## Harvested corpus` section placeholder.
+**Done when:** `canon/statutes/HARVEST.md` exists with (a) a full crosswalk table of every inventory row (`create` + `already-landed`) including id, source doc+§, checkable, tier, path, and (b) the **Narrative leftovers** table verbatim from this plan; `canon/statutes/README.md` links to `HARVEST.md` and has an empty or “pending Stage 2–4” `## Harvested corpus` section placeholder.
 
-1. Create `docs/statutes/HARVEST.md` with short purpose blurb, then `## Crosswalk`, then `## Narrative leftovers`.
+1. Create `canon/statutes/HARVEST.md` with short purpose blurb, then `## Crosswalk`, then `## Narrative leftovers`.
 2. Update `README.md`: add link to `HARVEST.md`; add `## Harvested corpus` placeholder stating stages 2–4 fill the table.
 3. Do not create statute files yet.
 
@@ -242,7 +242,7 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 
 **Done when:** Every `create` row in inventory **section A** exists as a valid statute file; none of the AST-920 exemplar files were modified; each new file passes a manual frontmatter key presence check against SCHEMA.
 
-1. Create domain folders under `docs/statutes/astral/` as needed: `standards`, `config`, `agent`, `batch`, `layers`, `state`, `patterns`, `ui`, `debug`, `docs`.
+1. Create domain folders under `canon/statutes/astral/` as needed: `standards`, `config`, `agent`, `batch`, `layers`, `state`, `patterns`, `ui`, `debug`, `docs`.
 2. For each section A `create` row, write `{id}.md` with Statement/Rationale/Examples faithful to the cited CODE_RULES section (one enforceable rule per file). Set `source_docs: ["docs/ASTRAL_CODE_RULES.md"]`.
 3. Do not create statutes for narrative leftover keys.
 
@@ -254,7 +254,7 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 
 **Done when:** Every `create` row in inventory **sections B and C** exists; AST-920 exemplars untouched.
 
-1. Create `docs/statutes/orchestration/git/` and `orchestration/linear/` only if a create row needs them (this inventory uses `git`, `roles`, `pipeline` — **do not** create an empty `linear/` folder).
+1. Create `canon/statutes/orchestration/git/` and `orchestration/linear/` only if a create row needs them (this inventory uses `git`, `roles`, `pipeline` — **do not** create an empty `linear/` folder).
 2. Write each section B/C `create` statute. `source_docs` = the matching law doc path (`ASTRAL_GIT_WORKFLOW.md` or `ASTRAL_TEAM_WORKFLOW.md`). For dual-mentioned test-tree ownership, prefer the primary source listed in the inventory row; may list both paths in `source_docs`.
 3. Universal-tier rows in B/C must use `tier: universal`.
 
@@ -264,7 +264,7 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 
 ## Stage 4: Finalize README corpus index + HARVEST paths
 
-**Done when:** `README.md` `## Harvested corpus` lists **every** active statute under `docs/statutes/**` (AST-920 exemplars + all AST-921 creates) with columns `id | tier | checkable | path`; `HARVEST.md` crosswalk `path` column matches reality; count of `create` files on disk = 51.
+**Done when:** `README.md` `## Harvested corpus` lists **every** active statute under `canon/statutes/**` (AST-920 exemplars + all AST-921 creates) with columns `id | tier | checkable | path`; `HARVEST.md` crosswalk `path` column matches reality; count of `create` files on disk = 51.
 
 1. Replace the Stage 1 placeholder with the full table (include exemplars).
 2. Fix any HARVEST.md path typos discovered while listing files.
@@ -302,7 +302,7 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 
 ## Self-Assessment
 
-**Scope:** `MAJOR-CHANGE` — fifty-one new statute files across `docs/statutes/`, a new `HARVEST.md`, README index update, and citation edits to all three astral law docs; schema itself unchanged.
+**Scope:** `MAJOR-CHANGE` — fifty-one new statute files across `canon/statutes/`, a new `HARVEST.md`, README index update, and citation edits to all three astral law docs; schema itself unchanged.
 
 **Conf:** `Medium` — AST-920 schema/exemplars are specified and inventoried here, but AST-920 is not yet merged to ftr at plan time, and harvest grain (one rule per statute) is pinned by this inventory rather than proven against Joan consumers.
 
@@ -311,7 +311,7 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 ## Self-review vs ASTRAL_CODE_RULES
 
 - §1.3 / §2.1 / §2.4 / §2.6 / §3.3: harvested as statutes, not reimplemented in code; plan does not add runtime duplicates.
-- §3.6: corpus stays under `docs/statutes/` (committed); no `debug/spikes` or repo-root `artifacts/`.
+- §3.6: corpus stays under `canon/statutes/` (committed); no `debug/spikes` or repo-root `artifacts/`.
 - §4.1: explicitly classified narrative/stale — aligns harvest with GIT_WORKFLOW authority.
 - §4.2: plan path `docs/features/team-chuckles/ast-921-harvest-astral-law-docs.md` matches Team Chuckles → `team-chuckles`.
 - Engineer test-tree ban respected (no `tests/` or bible edits).

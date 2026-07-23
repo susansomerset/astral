@@ -6,7 +6,7 @@ checkable: judgment
 status: active
 applies_when:
   layers: ["docs"]
-  paths: ["docs/statutes/**"]
+  paths: ["canon/statutes/**"]
   change_types: ["add", "modify", "delete"]
 source_docs: []
 supersedes: null
@@ -17,7 +17,7 @@ approved_at: "2026-07-22"
 
 # Statement
 
-No statute under `docs/statutes/` may be added, amended, or retired without Archie approval recorded in frontmatter (`approved_by: Archie` and `approved_at` set). Drafts are not committed to this tree.
+No statute under `canon/statutes/` may be added, amended, or retired without Archie approval recorded in frontmatter (`approved_by: Archie` and `approved_at` set). Drafts are not committed to this tree.
 
 ## Rationale
 
@@ -31,4 +31,4 @@ The corpus is shared law for agents and future mechanical checkers. Unapproved e
 
 ### Violating
 
-- A statute file is pushed to `docs/statutes/` with no Archie approval fields, or with `approved_by` set to an engineer name.
+- A statute file is pushed to `canon/statutes/` with no Archie approval fields, or with `approved_by` set to an engineer name.

@@ -1,6 +1,6 @@
 # Statute harvest register (AST-921)
 
-Crosswalk of every enforceable mapping from the astral law docs into `docs/statutes/`, plus narrative leftovers that are **not** statutes. Schema and authoring rules live in [SCHEMA.md](SCHEMA.md) and [AUTHORING.md](AUTHORING.md) (AST-920).
+Crosswalk of every enforceable mapping from the astral law docs into `canon/statutes/`, plus narrative leftovers that are **not** statutes. Schema and authoring rules live in [SCHEMA.md](SCHEMA.md) and [AUTHORING.md](AUTHORING.md) (AST-920).
 
 ## Crosswalk
 

@@ -28,7 +28,7 @@ Structural enforcement beats prose reminders for ownership boundaries.
 
 ### Conforming
 
-- Engineer commit touching only `docs/statutes/` succeeds.
+- Engineer commit touching only `canon/statutes/` succeeds.
 
 ### Violating
 

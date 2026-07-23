@@ -17,7 +17,7 @@ Domains are folders under a namespace; one file per statute. See AUTHORING for l
 
 ## Universal set
 
-Consumers that load “the universal set” include **every** file under `docs/statutes/**` whose frontmatter has:
+Consumers that load “the universal set” include **every** file under `canon/statutes/**` whose frontmatter has:
 
 - `tier: universal`
 - `status: active`

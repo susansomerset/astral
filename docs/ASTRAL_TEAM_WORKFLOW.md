@@ -12,7 +12,7 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 ## Git and branches
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-git-and-branches-pointers`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `team-git-and-branches-pointers`
 
 **Branch law** (worktrees, `dev` / `epic worktree`, **`ftr/<ticket-id>`** on `origin` only, direct commits on sub, reading plans without checking out feature branches) is defined **only** in the global skill **`~/.cursor/skills/orientation/SKILL.md`** — **§ Branch law**. Agents read that during **`orientation`**; it is **not** duplicated here because these rules are team-wide, not repo-specific.
 
@@ -29,7 +29,7 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 **Statute:** `orch.roles.chuckles-never-ticket-assignee`
 **Statute:** `orch.roles.engineer-assignee-through-resolve`
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-roles-table-detail`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `team-roles-table-detail`
 
 | Role | Who | Notes |
 |------|-----|--------|
@@ -54,7 +54,7 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 ## Orientation
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-orientation-pointer`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `team-orientation-pointer`
 
 Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline skills. That procedure loads this document and **`docs/ASTRAL_CODE_RULES.md`**, establishes **`<session-linear-project>`** (asks Susan if needed), runs a **project survey** (Linear project description, issues in that project, skim **`docs/features/<folder>/`** per **plan-child** folder mapping), verifies **Linear MCP** identity, records token/subagent habits, and teaches **§ Branch law** (`ftr/<ticket-id>`, `epic worktree`, direct commits on sub). Orientation does not by itself produce a ticket commit; follow-up edits belong in the owning skill (usually **plan-child** or the architect).
 
@@ -64,7 +64,7 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 **Statute:** `orch.pipeline.project-scoped-queues`
 **Statute:** `orch.pipeline.plan-is-bible`
 
-**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-happy-path-table`
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `team-happy-path-table`
 
 | Linear status | Typical actor | Next skill / action |
 |---------------|----------------|---------------------|
