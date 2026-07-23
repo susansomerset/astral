@@ -239,4 +239,14 @@ rg -n 'git-store|JOAN_SESSION|no git authority' agents/joan-AGENTS.md skills/ori
 
 ## Review (build stub)
 
-_Fill during build-child._
+**Publish ref:** `origin/sub/AST-910/AST-919-joan-persona-statute-validator`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `f58e718` | Plan doc on astral sub |
+| 1–5 | `team-chuckles@3c26552` | Joan AGENTS + config, handoff/seed, validate-plan ownership, datt §3e, orientation/MCP/env docs |
+| astral | _(this commit)_ | `ASTRAL_TEAM_WORKFLOW.md` Joan rows + this stub |
+
+**Tip:** astral publish ref after this commit; skill deliverables on `team-chuckles` `main` @ `3c26552`.
+
+**Ops:** `LINEAR_KEY_JOAN` not set on this host yet — `@susan` to add key + Cursor-team Joan before live validate-plan MCP works. `~/.cursor/mcp.json` already has `linear-joan` block.

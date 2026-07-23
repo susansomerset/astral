@@ -1,6 +1,6 @@
 # Astral team — workflow (index)
 
-This file is a **one-page map**. **Executable procedures** live in global Cursor skills under **`~/.cursor/skills/`**: **`orientation`**, **`check-linear`**, **`plan-child`**, **`build-child`**, **`qa-child`**, **`test-child`**, **`review-child`**, **`resolve-child`**, plus Chuckles’ **`define-parent`**, **`dispatch-parent`**, **`validate-plan`**, **`rollcall`**. **`docs/ASTRAL_CODE_RULES.md`** is the architecture contract.
+This file is a **one-page map**. **Executable procedures** live in global Cursor skills under **`~/.cursor/skills/`**: **`orientation`**, **`check-linear`**, **`plan-child`**, **`build-child`**, **`qa-child`**, **`test-child`**, **`review-child`**, **`resolve-child`**, plus Chuckles’ **`define-parent`**, **`dispatch-parent`**, **`rollcall`**, and Joan’s **`validate-plan`**. **`docs/ASTRAL_CODE_RULES.md`** is the architecture contract.
 
 **`.cursor/skills/`** is **not** in this repository (**`origin/dev`** has only **`.cursor/settings.json`**, gitignored locally). Use the canonical skill names in the table above only (**`check-linear`**, **`test-child`**, **`qa-child`**, etc.). Removed aliases: **`check-astral`**, **`astral-test`**, **`astral-qa-plan`**. Delete stale copies under agent worktrees (e.g. **`0-agent-orientation`**, **`1-check-linear`**, **`astral-check-linear`**).
 
@@ -37,7 +37,8 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 | **Engineer** | Ada, Hedy, Katherine | Same assignee for the ticket through resolve; work in **`astral-<agent>`**. |
 | **Tester** | Betty | **`qa-child`**; inbox via **`check-linear`**; owns **test-tree** commits; may think repo-wide for *risk*; **`list_issues`** still project-scoped unless Susan says otherwise. |
 | **Reviewer** | Radia | **`review-child`** on **`Tests Passed`**; stateless across Linear programs. |
-| **Coordinator** | Chuckles | **`define-parent`**, **`dispatch-parent`**, **`review-plan`**, **`rollcall`** — **never** Linear **assignee**; see those skills. |
+| **Coordinator** | Chuckles | **`define-parent`**, **`dispatch-parent`**, **`rollcall`**, spawns Joan for **`validate-plan`** — **never** Linear **assignee**; see those skills. |
+| **Statute validator** | Joan | **`validate-plan`** on **Plan Ready** / **Plan Discuss**; no git authority. |
 
 ---
 
@@ -70,8 +71,8 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 |---------------|----------------|---------------------|
 | Backlog | Susan + Chuckles | **`define-parent`** until definition is ready; Susan moves to **Todo** when approved for planning. |
 | Todo | Engineer | **`plan-child`** → **Plan Ready** |
-| Plan Ready | Chuckles + Susan | **`validate-plan`** → **Plan Approved** (APPROVED) or **Plan Discuss** (REVISE); engineer stays assignee |
-| Plan Discuss | Chuckles (Joan actor) + engineer | tagged discuss loop (`validate-plan` / plan reply); cap 2 → Archie (Susan); exit Plan Approved or Todo |
+| Plan Ready | Joan (Chuckles assigns/spawns) | **`validate-plan`** → **Plan Approved** (APPROVED) or **Plan Discuss** (REVISE); Joan briefly assignee during the pass, then engineer |
+| Plan Discuss | Joan + engineer | tagged discuss loop (`validate-plan` / plan reply); cap 2 → Archie (Susan); exit Plan Approved or Todo |
 | Plan Approved | Engineer | **`build-child`** → **Code Complete** |
 | Code Complete | Betty | **`qa-child`** → **Tests Ready** |
 | Tests Ready | Engineer | **`test-child`** → **Tests Passed** |
