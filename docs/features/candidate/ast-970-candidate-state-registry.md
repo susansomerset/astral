@@ -254,3 +254,12 @@ Changes:
 - Added `REQUIRED_TOPICS_READY_STALE` to `ALL_TOPICS_READY.prior_states`.
 - Documented full stale→next graph check (four edges); no other missing edges found.
 - Recorded Decisions for ERROR exits (v1 closed; AST-972 may extend), hour literals as config knobs, and AC#4 helper vs AST-972 scheduler ownership.
+
+## Review
+
+| Field | Value |
+| -- | -- |
+| Ticket | AST-970 |
+| Publish ref | `origin/sub/AST-871/AST-970-candidate-state-registry` |
+| Built | pending SHA |
+| Notes | Stages 1–3 implemented per plan (registry, transitions/reap/stale, docs). |

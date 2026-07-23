@@ -90,21 +90,21 @@ Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Each
 
 ## State machine
 
-Linear progression. States defined in `CANDIDATE_STATES` in `config.py`.
+Runtime vocabulary in `CANDIDATE_STATES` (`config.py`). No `PROSPECT` (conceptual only). Transitions enforced by `transition_candidate_state()` against each state’s `prior_states` (job-style; no parallel transitions list).
+
+Happy path:
 
 ```
-NEW → PROFILE_READY → CONTEXT_READY → LIVE_PROMPTS
-                                 ↑
-                    gated by check_context_complete()
+NEW_CANDIDATE → INTAKE_INITIATED → REQUIRED_TOPICS_READY → ALL_TOPICS_READY
+  → REQUESTED_RESUME → RESUME_READY → REQUESTED_ARTIFACTS → ARTIFACTS_READY
+  → ACTIVE_SEARCH
 ```
 
-- **NEW** — Initial state on creation.
-- **PROFILE_READY** — Transitioned after `parse_candidate_resume` succeeds (resume parsed, base_resume artifact written).
-- **CONTEXT_READY** — Transitioned automatically by `check_context_complete()` when all four gating context fields (strengths, priorities, deal_breakers, backstory) are non-empty.
-- **LIVE_PROMPTS** — All artifacts generated; candidate is fully active.
-- **DELETED** — Soft delete.
+Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE` / `DELETED`. Waiting stages carry `*_STALE` companions (`stale_after_hours` / `stale_state`); `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` carry `*_RETRY` / `*_ERROR`. Topic-ready hops are manual until Topic Menu (AST-953).
 
-State transitions enforced by `transition_candidate_state()` in `src/core/candidate.py` against the `candidate_state_transitions` list in config.
+**DELETED reap:** entering `DELETED` writes `candidate_data.lifecycle.reap_started_at` + `reap_after_hours` from the registry. Hard-delete / legacy row remap is AST-973.
+
+`check_context_complete()` only reports whether the four context fields are populated — it does **not** write state.
 
 ## Relationships to other tables
 
@@ -123,6 +123,6 @@ Jobs do not have a direct `candidate_id` column; they are scoped via their paren
 
 - **DB columns:** astral_candidate_id, state, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
 - **candidate_data keys:** profile, context, artifacts, and all nested keys above.
-- **Config keys:** candidate_state_transitions, candidate_states, etc.
+- **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, etc.
 
 If a spec or external doc uses camelCase, implementation still uses snake_case.
