@@ -244,6 +244,17 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-972: dispatch orchestration for REQUESTED_* stages (not craft prompts).
+    "candidate_requested_resume": {
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": "REQUESTED_RESUME",
+    },
+    "candidate_requested_artifacts": {
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": "REQUESTED_ARTIFACTS",
+    },
 
     # Phase C. Company Roster
     # VET COMPANY PROMPT - Estelle 3
@@ -1081,6 +1092,42 @@ INFLOW_CONFIG = {
     },
 }
 
+# AST-972: candidate REQUESTED_* dispatch orchestration (claim → craft → ready/retry/error).
+CANDIDATE_STAGE_DISPATCH = {
+    "requested_resume": {
+        "task_key": "candidate_requested_resume",
+        "trigger_state": "REQUESTED_RESUME",
+        "pass_state": "RESUME_READY",
+        "craft_task_key": "craft_resume_base",
+    },
+    "requested_artifacts": {
+        "task_key": "candidate_requested_artifacts",
+        "trigger_state": "REQUESTED_ARTIFACTS",
+        "pass_state": "ARTIFACTS_READY",
+        # Sequential fan-in — not run_next daisy-chain. Title patterns stay profile/intake.
+        "craft_task_keys": [
+            "craft_company_search_terms",
+            "craft_joblist_rubric",
+            "craft_jobdesc_rubric",
+            "craft_do_rubric",
+            "craft_get_rubric",
+            "craft_like_rubric",
+            "craft_prefilter_rubric",
+        ],
+    },
+}
+assert all(
+    k in TASK_CONFIG
+    for k in (
+        [CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"]]
+        + list(CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"])
+        + [
+            CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
+            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
+        ]
+    )
+)
+
 # Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
 GOOGLE_CSE_CONFIG = {
     # Minimum spacing between successive CSE HTTP requests (including pagination pages
@@ -1429,7 +1476,9 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
     if ts.endswith("_RETRY"):
         return [ts]
     registry = JOB_STATES if entity_type == "job" else (
-        COMPANY_STATES if entity_type == "company" else None
+        COMPANY_STATES if entity_type == "company" else (
+            CANDIDATE_STATES if entity_type == "candidate" else None
+        )
     )
     if registry is not None:
         retry = (registry.get(ts) or {}).get("retry_state")
@@ -1494,6 +1543,10 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WATCH"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
+    if task_key == CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"]:
+        return CANDIDATE_STAGE_DISPATCH["requested_resume"]["trigger_state"]
+    if task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
+        return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
     if task_key == "vet_inflow_discovery":
@@ -1539,7 +1592,10 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "inflow_discovery":
+    if task_key == "inflow_discovery" or task_key in (
+        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
+    ):
         return "candidate"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
