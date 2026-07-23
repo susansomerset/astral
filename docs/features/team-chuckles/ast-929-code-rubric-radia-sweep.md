@@ -280,3 +280,10 @@ Findings route fix-now / discuss / advisory only. Radia does not edit product or
 - No `plan-rubric-verdict-AST-929.md` attachment (Joan APPROVED comment present; Excluded list used for C4).
 - README indexes plan-rubric as `pending AST-928` (file absent on this tip — coexistence OK).
 - Diff layers=`docs`; change_types=`add`+`modify`; 56 active statutes.
+
+## Resolution
+
+**2026-07-23** — Radia `docs(AST-929)` @ `af8ec37` · Overall DISCUSS · **no fix-now**.
+
+- **Ack discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded at plan time; Betty later landed `docs/test-bible/README.md` on the tip, so the statute is in-scope on the review diff. Diff **conforms** (Betty bible `docs()`; engineer `code()` stayed off test-tree). Belt-and-suspenders callout working as designed; no product change.
+- Proceeding to User Testing per Radia recommended actions.
