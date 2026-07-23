@@ -35,6 +35,14 @@ export function artifactHasContent(artifacts: unknown, key: string): boolean {
   return false
 }
 
+export function printResumeVisible(artifacts: unknown): boolean {
+  return artifactHasContent(artifacts, "resume_content")
+}
+
+export function printCoverVisible(artifacts: unknown): boolean {
+  return artifactHasContent(artifacts, "cover_letter")
+}
+
 export function materialsPreviewVisible(
   jobState: string,
   artifacts: unknown,
