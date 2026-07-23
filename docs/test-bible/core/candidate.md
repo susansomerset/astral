@@ -222,3 +222,31 @@ Persist company-shaped **`state_history`** on create seed and every successful *
   tests/component/data/database/test_candidate_migrations.py \
   -q
 ```
+
+### AST-972 · AST-871
+
+Wire **`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`** claim workers (ready / retry / error), stage **`dispatch_task`** provision, tick → **`age_stale_candidate_states`**, and **`ACTIVE_SEARCH`**-only company/job search eligibility (replacing **`LIVE_PROMPTS`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage map + claim/trigger helpers | `src/utils/config.py` | **`TestAst972CandidateStageDispatch`** (`test_config.py`) |
+| Ensure/provision rows; claim gate; tick aging; scheduler provision | `src/core/dispatcher.py` | **`TestAst972CandidateStageDispatch`**; **`TestScheduler`** (tick mock ages stale) |
+| Resume/artifacts workers | `src/core/candidate.py` | **`TestAst972RequestedStageDispatch`** |
+| Consult routing | `src/core/consult.py` | **`TestAst972CandidateStageConsultRouting`** |
+| Eligibility split (stage keys vs inflow) | `src/data/database.py` | **`TestAst972CandidateStageEligibility`**; revised AST-525/802 inflow fixtures (`ACTIVE_SEARCH` + `task_key`) |
+
+**AST-972** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible \
+  -q
+```
+

@@ -1954,3 +1954,48 @@ class TestAst970CandidateStateRegistry:
     def test_retired_four_step_names_absent(self) -> None:
         for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
             assert retired not in cfg.CANDIDATE_STATES
+
+
+class TestAst972CandidateStageDispatch:
+    """AST-972: CANDIDATE_STAGE_DISPATCH + claim/trigger helpers for REQUESTED_*."""
+
+    def test_stage_dispatch_map_and_task_config(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["task_key"] == "candidate_requested_resume"
+        assert resume["trigger_state"] == "REQUESTED_RESUME"
+        assert resume["pass_state"] == "RESUME_READY"
+        assert resume["craft_task_key"] == "craft_resume_base"
+        assert arts["task_key"] == "candidate_requested_artifacts"
+        assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
+        assert arts["pass_state"] == "ARTIFACTS_READY"
+        assert "craft_resume_base" in cfg.TASK_CONFIG
+        assert resume["task_key"] in cfg.TASK_CONFIG
+        assert arts["task_key"] in cfg.TASK_CONFIG
+        for k in arts["craft_task_keys"]:
+            assert k in cfg.TASK_CONFIG
+
+    def test_claim_states_include_retry_companions(self) -> None:
+        assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate") == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == ["ACTIVE_SEARCH"]
+
+    def test_trigger_and_entity_helpers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_resume") == "REQUESTED_RESUME"
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_artifacts") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_resume") == "candidate"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_artifacts") == "candidate"
+        d = cfg.dispatch_task_admin_defaults("candidate_requested_resume")
+        assert d["entity_type"] == "candidate"
+        assert d["trigger_state"] == "REQUESTED_RESUME"

@@ -33,6 +33,11 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(dispatcher_mod._tick_event, "wait", _wait_breaks_tick_loop)
     monkeypatch.setattr(dispatcher_mod._tick_event, "clear", MagicMock())
+    # AST-972: tick ages waiting stages before get_due_tasks — keep unit ticks DB-free
+    monkeypatch.setattr(
+        "src.core.candidate.age_stale_candidate_states",
+        MagicMock(return_value=0),
+    )
 
 
 class TestDispatchWrappers:
@@ -298,10 +303,10 @@ class TestRunUnified:
         consult_out = {"total_processed": 1, "total_passed": 2, "total_failed": 0, "total_errors": 0}
         run = AsyncMock(return_value=consult_out)
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        ctx = {"astral_candidate_id": "c505", "state": "LIVE_PROMPTS", "candidate_data": {}}
+        ctx = {"astral_candidate_id": "c505", "state": "ACTIVE_SEARCH", "candidate_data": {}}
         task = {
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "task_key": "inflow_discovery",
             "batch_call_mode": 0,
         }
@@ -310,7 +315,7 @@ class TestRunUnified:
         clear_co.assert_not_called()
         clear_job.assert_not_called()
         run.assert_awaited_once_with(
-            "candidate", "LIVE_PROMPTS", [ctx], batch_id, ctx, False, dispatch_task_key="inflow_discovery",
+            "candidate", "ACTIVE_SEARCH", [ctx], batch_id, ctx, False, dispatch_task_key="inflow_discovery",
         )
 
     @pytest.mark.asyncio
@@ -487,7 +492,7 @@ class TestRunUnified:
             "batch_size": 10,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert claim.call_args.kwargs["states"] == ["HOMEPAGE_READY"]
+        assert claim.call_args.kwargs["states"] == ["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"]
 
     @pytest.mark.asyncio
     async def test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities(
@@ -1197,7 +1202,7 @@ class TestAst802InflowDiscoveryDebug:
         self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
     ) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c802", state="NEW", candidate_data={})
+        db.save_candidate("c802", state="NEW_CANDIDATE", candidate_data={})
         log = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "logger", log)
         run = AsyncMock()
@@ -1207,7 +1212,7 @@ class TestAst802InflowDiscoveryDebug:
             "id": 802,
             "task_key": "inflow_discovery",
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c802",
             "auto_mode": 1,
             "min_count": 1,
@@ -1225,7 +1230,7 @@ class TestAst814InflowDiscoveryDebug:
         self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
     ) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c814", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c814", ["term"])
         db.update_company_search_term_last_scan_at("c814", "term")
         log = MagicMock()
@@ -1237,7 +1242,7 @@ class TestAst814InflowDiscoveryDebug:
             "id": 814,
             "task_key": "inflow_discovery",
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c814",
             "auto_mode": 1,
             "min_count": 1,
@@ -1423,10 +1428,10 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
         run = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "run_task", run, raising=False)
 
-        db.save_candidate("tmpl", state="LIVE_PROMPTS", candidate_data={})
-        db.save_candidate("tgt", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("tmpl", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_candidate("tgt", state="ACTIVE_SEARCH", candidate_data={})
         db.save_dispatch_task(
-            "tmpl", "fetch_website", min_count=2, trigger_state="WEBSITE_FOUND", auto_mode=True, batch_size=4,
+            "tmpl", "qualify_job_listings", min_count=2, trigger_state="NEW", auto_mode=True, batch_size=4,
         )
         db.save_dispatch_task(
             "tgt", "evaluate_jd", min_count=1, trigger_state="JD_READY",
@@ -1441,7 +1446,7 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
         assert out["count"] == 1
         rows = db.list_dispatch_tasks_for_candidate("tgt")
         assert len(rows) == 1
-        assert rows[0]["task_key"] == "fetch_website"
+        assert rows[0]["task_key"] == "qualify_job_listings"
         assert rows[0]["auto_mode"] in (1, True)
         assert rows[0]["last_run_at"] is None
         assert rows[0]["batch_id"] is None
@@ -1459,6 +1464,125 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("  ")
         with pytest.raises(LookupError, match="Template candidate not found"):
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
-        db.save_candidate("tmpl", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("tmpl", state="ACTIVE_SEARCH", candidate_data={})
         with pytest.raises(LookupError, match="Candidate not found"):
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
+
+
+class TestAst972CandidateStageDispatch:
+    """AST-972: provision rows, claim gate, tick aging."""
+
+    def test_ensure_stage_tasks_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        existing = [
+            {"task_key": "candidate_requested_resume", "trigger_state": "REQUESTED_RESUME"},
+        ]
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append({"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]})
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        first = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert first["added"] == 1 and first["skipped"] == 1
+        second = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert second["added"] == 0 and second["skipped"] == 2
+        assert {s["task_key"] for s in saves} == {"candidate_requested_artifacts"}
+
+    def test_provision_requires_template_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda cid: None)
+        with pytest.raises(LookupError, match="Template candidate"):
+            dispatcher_mod.provision_candidate_stage_dispatch_tasks()
+
+    def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "ACTIVE_SEARCH"},
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_candidate_ids_with_dispatch_tasks",
+            lambda: ["tmpl", "c2"],
+        )
+        calls: list[str] = []
+
+        def _ensure(cid):
+            calls.append(cid)
+            return {"candidate_id": cid, "added": 0, "skipped": 2}
+
+        monkeypatch.setattr(dispatcher_mod, "ensure_candidate_stage_dispatch_tasks", _ensure)
+        out = dispatcher_mod.provision_candidate_stage_dispatch_tasks()
+        assert calls[0] == "tmpl"
+        assert "tmpl" in calls and "c2" in calls
+        assert out["candidates_touched"] == 2
+
+    @pytest.mark.asyncio
+    async def test_run_unified_candidate_claim_gate(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        run = AsyncMock(return_value=dict(dispatcher_mod._SUMMARY_ZERO))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        task = {
+            "id": 1,
+            "task_key": "candidate_requested_resume",
+            "trigger_state": "REQUESTED_RESUME",
+            "entity_type": "candidate",
+            "batch_size": 1,
+            "batch_call_mode": 0,
+        }
+        bad = {"astral_candidate_id": "c1", "state": "ACTIVE_SEARCH"}
+        await dispatcher_mod._run_unified(task, bad, False)
+        run.assert_not_called()
+        good = {"astral_candidate_id": "c1", "state": "REQUESTED_RESUME"}
+        out = await dispatcher_mod._run_unified(task, good, False)
+        assert out == dispatcher_mod._SUMMARY_ZERO
+        run.assert_awaited_once()
+        assert run.await_args.args[0] == "candidate"
+        assert run.await_args.args[1] == "REQUESTED_RESUME"
+        assert run.await_args.args[2] == [good]
+        assert run.await_args.kwargs["dispatch_task_key"] == "candidate_requested_resume"
+
+    def test_tick_loop_invokes_stale_aging(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        aged = MagicMock(return_value=0)
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        _run_one_tick(monkeypatch)
+        monkeypatch.setattr("src.core.candidate.age_stale_candidate_states", aged)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        aged.assert_called_once_with()
+
+    def test_start_scheduler_invokes_stage_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0))
+        provision = MagicMock(
+            return_value={
+                "template_candidate_id": "tmpl",
+                "candidates_touched": 1,
+                "added": 2,
+                "skipped": 0,
+            }
+        )
+        monkeypatch.setattr(dispatcher_mod, "provision_candidate_stage_dispatch_tasks", provision)
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        dispatcher_mod.start_scheduler()
+        provision.assert_called_once_with()

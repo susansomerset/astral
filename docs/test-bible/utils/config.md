@@ -824,3 +824,8 @@ Bootstrap / admin: **`docs/test-bible/core/bootstrap.md`** · **`docs/test-bible
 ### AST-970 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config coverage: **`TestAst970CandidateStateRegistry`**; inflow discovery trigger string **`ACTIVE_SEARCH`**.
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+

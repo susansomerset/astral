@@ -3597,3 +3597,45 @@ class TestAst898QualifyNewRetry:
     async def test_new_retry_in_input_state_map(self) -> None:
         assert consult_mod._INPUT_STATE_TO_TASK["NEW_RETRY"] == "qualify_job_listings"
         assert consult_mod._INPUT_STATE_TO_TASK["VALID_TITLE_RETRY"] == "qualify_job_listings"
+
+
+class TestAst972CandidateStageConsultRouting:
+    """AST-972: run_consult_task routes REQUESTED_* keys to stage workers."""
+
+    @pytest.mark.asyncio
+    async def test_routes_requested_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        worker = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        )
+        monkeypatch.setattr("src.core.candidate.run_requested_resume_dispatch", worker)
+        entity = {"astral_candidate_id": "c1", "state": "REQUESTED_RESUME"}
+        out = await consult_mod.run_consult_task(
+            "candidate",
+            "REQUESTED_RESUME",
+            [entity],
+            "b1",
+            entity,
+            False,
+            dispatch_task_key="candidate_requested_resume",
+        )
+        assert out["total_passed"] == 1
+        worker.assert_awaited_once_with("c1", debug=False)
+
+    @pytest.mark.asyncio
+    async def test_routes_requested_artifacts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        worker = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        )
+        monkeypatch.setattr("src.core.candidate.run_requested_artifacts_dispatch", worker)
+        entity = {"astral_candidate_id": "c2", "state": "REQUESTED_ARTIFACTS"}
+        out = await consult_mod.run_consult_task(
+            "candidate",
+            "REQUESTED_ARTIFACTS",
+            [entity],
+            "b1",
+            entity,
+            False,
+            dispatch_task_key="candidate_requested_artifacts",
+        )
+        assert out["total_passed"] == 1
+        worker.assert_awaited_once_with("c2", debug=False)
