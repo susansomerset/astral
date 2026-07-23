@@ -266,3 +266,9 @@ Changes:
 - Clarified AST-973 owns **retired** trigger remaps only (LIVE_PROMPTS→ACTIVE_SEARCH), not new REQUESTED_* orchestration rows.
 - Named concrete craft helpers in Stage 4 (`do_task`, `split_craft_resume_base_payload`, persist shape from `run_candidate_artifact_generation`; no `parse_candidate_resume` / no nested `asyncio.run`).
 - Renumbered former stages 2–5 → 3–6; updated Files Changed, Out of scope, Self-Assessment Conf, Stage 6 CC note.
+
+## Review
+
+| Commit | Note |
+|--------|------|
+| _(tip)_ | Code Complete — build-child AST-972 |
