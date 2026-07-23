@@ -124,5 +124,5 @@ Changes:
 ## Review
 
 - **Publish ref:** `origin/sub/AST-871/AST-971-candidate-transition-history`
-- **Build:** `330ef04f70a15702bddc7c993733fd06687e56e3`
+- **Build:** `52ac0b996acf9af6031b5715fb5730e94aaa1bd3`
 
