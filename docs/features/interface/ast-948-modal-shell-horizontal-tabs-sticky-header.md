@@ -247,3 +247,36 @@ Rebuild the Recommended Job Report chrome: replace the left `SideTabPanel` rail 
 **Built:** `origin/sub/AST-858/AST-948-modal-shell-horizontal-tabs-sticky-header` @ `00a27e958be16afd6f78c43c20f542beb19188a8`
 
 Stages 1–4: `report_top_tabs` / `report_summary_sections` manifest; `ReportSectionList` Expand-All stack; sticky header deeplinks + Copy Application Email / LinkedIn + Print Resume/Cover; horizontal Summary/Analysis/Artifacts shell with empty section bodies; Generate/Cancel parked on Artifacts `leading` strip. Tests deferred to Betty.
+
+---
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-948
+**Publish ref:** `b4c92015195e341ce05b4ffac7cfafd9492c8000` (`origin/sub/AST-858/AST-948-modal-shell-horizontal-tabs-sticky-header`)
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–4 land on tip: manifest `report_top_tabs` / `report_summary_sections`, `ReportSectionList`, sticky chrome + horizontal `TabBar`, header deeplinks/copy/print, Artifacts `leading` Generate/Cancel, empty section bodies for siblings.
+- Cancel close-on-success uses `action_key === "cancel_build"` (matches config); corrects prior `cancel_artifact_build` mismatch on `origin/dev`.
+- Betty `test` + `merge-tests` only under tests/bible; engineer commits stay `code`/`docs`.
+- Cross-ticket boundaries respected (no Summary/Analysis/Artifacts bodies; no `JobsRecommended` edits).
+
+### Issues / findings
+
+**discuss**
+
+1. **astral.config.config-source-of-truth** — Analysis `default_expanded` (`phase_jd`) and Artifacts all-collapsed remain React-side seeds while Summary defaults live in config (Joan plan-time discuss; still true on tip). Non-blocking vs approved Stage 4.
+2. **C4 straggler** — Joan excluded `astral.debug.spikes-under-debug-dir`; code diff includes `docs/features/**` so statute is in-scope. Score: conforms (plan file, not a spike).
+3. **C4 straggler** — Joan excluded `astral.docs.features-single-file-per-ticket`; features path present. Score: conforms (single ticket file).
+4. **C4 straggler** — Joan excluded `astral.git.engineer-test-tree-ban`; tests/bible in diff via Betty. Score: conforms (engineer did not author test-tree commits).
+
+**fix-now:** none
+
+### Recommended actions
+
+- Optional: lift Analysis/Artifacts `default_expanded` into config section shape (Joan recommendation) on a sibling or small follow-up — not required to clear this review.
+- No product fix required for C4 stragglers.
