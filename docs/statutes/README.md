@@ -4,6 +4,7 @@ Discrete, id’d, scoped, citable rules for the Astral pipeline — the statute 
 
 - **Schema (fields + enums):** [SCHEMA.md](SCHEMA.md)
 - **Authoring + lifecycle:** [AUTHORING.md](AUTHORING.md)
+- **Harvest crosswalk + narrative leftovers:** [HARVEST.md](HARVEST.md)
 
 ## Namespaces
 
@@ -32,3 +33,7 @@ Scope fields on universals do not exclude them from that set. Matching for `scop
 | `astral.layers.import-direction` | scoped | judgment | `astral/layers/astral.layers.import-direction.md` |
 | `astral.git.engineer-test-tree-ban` | scoped | hook | `astral/git/astral.git.engineer-test-tree-ban.md` |
 | `astral.batch.batch-id-first` | scoped | ci | `astral/batch/astral.batch.batch-id-first.md` |
+
+## Harvested corpus
+
+Populated in AST-921 Stages 2–4 — see [HARVEST.md](HARVEST.md) for the full crosswalk while statutes land.
