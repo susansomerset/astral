@@ -533,6 +533,27 @@ def is_candidate_reap_due(candidate: dict, *, now: Optional[datetime] = None) ->
     return clock.astimezone(timezone.utc) >= due
 
 
+def hard_delete_candidate(candidate_id: str) -> Dict[str, int]:
+    """Physical delete — database.hard_delete_candidate. Not a state transition."""
+    return database.hard_delete_candidate(candidate_id)
+
+
+def purge_reap_due_candidates(*, now: Optional[datetime] = None) -> int:
+    """Hard-delete every candidate where is_candidate_reap_due(...). Return count."""
+    n = 0
+    for row in list_candidates(include_deleted=True):
+        if (row.get("state") or "") != "DELETED":
+            continue
+        if not is_candidate_reap_due(row, now=now):
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hard_delete_candidate(cid)
+        n += 1
+    return n
+
+
 def transition_candidate_state(candidate_id: str, to_state: str) -> None:
     """Validate prior_states on CANDIDATE_STATES, then update state.
     Raises ValueError if the hop is disallowed."""
