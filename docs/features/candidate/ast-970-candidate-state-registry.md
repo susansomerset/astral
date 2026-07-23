@@ -261,5 +261,5 @@ Changes:
 | -- | -- |
 | Ticket | AST-970 |
 | Publish ref | `origin/sub/AST-871/AST-970-candidate-state-registry` |
-| Built | pending SHA |
+| Built | `5e0a8856678efff89a917a4d19e3de8bc56f6406` |
 | Notes | Stages 1–3 implemented per plan (registry, transitions/reap/stale, docs). |
