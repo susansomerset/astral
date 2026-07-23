@@ -1,6 +1,9 @@
+import { render } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import {
   artifactHasContent,
+  buildPhaseSectionGradeConfidenceRow,
+  gradesForHeader,
   materialsPreviewVisible,
   primaryActionsForState,
   printCoverVisible,
@@ -51,5 +54,47 @@ describe("recommendedJobReport — AST-565", () => {
     expect(artifactHasContent({ resume_content: { professional_summary: "x" } }, "resume_content")).toBe(true)
     expect(artifactHasContent({ resume_content: { professional_summary: "   " } }, "resume_content")).toBe(false)
     expect(artifactHasContent({}, "resume_content")).toBe(false)
+  })
+})
+
+describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
+  it("buildPhaseSectionGradeConfidenceRow renders grade dots with ConfidenceBullets", () => {
+    const { container } = render(
+      <>
+        {buildPhaseSectionGradeConfidenceRow(
+          [{ vector: "JD", grade: "A", confidence: 4, reason: "ok" }],
+          "jobdesc_rubric",
+          {
+            jobdesc_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+          },
+        )}
+      </>,
+    )
+    expect(container.querySelector(".recommended-report-phase-grade-row")).toBeTruthy()
+    expect(container.querySelector(".grade-dot.dot-a")).toHaveTextContent("A")
+    expect(container.querySelector(".confidence-bullets")).toBeTruthy()
+    expect(container.querySelectorAll(".confidence-bullet--on").length).toBe(4)
+  })
+
+  it("buildPhaseSectionGradeConfidenceRow falls back to array order without rubric", () => {
+    const { container } = render(
+      <>
+        {buildPhaseSectionGradeConfidenceRow(
+          [{ vector: "X", grade: "B", confidence: 2 }],
+          undefined,
+          {},
+        )}
+      </>,
+    )
+    expect(container.querySelector(".grade-dot.dot-b")).toHaveTextContent("B")
+    expect(container.querySelectorAll(".confidence-bullet--on").length).toBe(2)
+  })
+
+  it("gradesForHeader normalizes array and object maps", () => {
+    expect(gradesForHeader([{ vector: "JD", grade: "A", confidence: 3 }])).toEqual([
+      { vector: "JD", grade: "A", confidence: 3, reason: undefined },
+    ])
+    expect(gradesForHeader({ TE: "B" })).toEqual([{ vector: "TE", grade: "B" }])
+    expect(gradesForHeader(null)).toEqual([])
   })
 })
