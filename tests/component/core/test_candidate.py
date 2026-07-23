@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.core import candidate as candidate_mod
-from src.utils.config import ASTRAL_CONFIG, BUILD_CONFIG, RESUME_STRUCTURE_CONTACT_SECTION_IDS, RESUME_STRUCTURE_KNOWN_SECTION_IDS
+from src.utils.config import (
+    ASTRAL_CONFIG,
+    BUILD_CONFIG,
+    CANDIDATE_STATES,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+)
 
 _RUBRIC_CONTENT = "body\nA = one\nB = two"
 _CI = ASTRAL_CONFIG["consult_importance"]
@@ -64,7 +71,7 @@ class TestInitiateCandidate:
         saved: list[tuple] = []
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda *args, **kwargs: saved.append((args, kwargs)))
         candidate_mod.initiate_candidate("somerset", {"context": {}})
-        assert saved[0][1]["state"] == "NEW"
+        assert saved[0][1]["state"] == "NEW_CANDIDATE"
 
 
 class TestListCandidates:
@@ -72,22 +79,34 @@ class TestListCandidates:
         monkeypatch.setattr(
             candidate_mod.database,
             "list_candidates",
-            lambda: [{"astral_candidate_id": "a", "state": "NEW"}, {"astral_candidate_id": "b", "state": "DELETED"}],
+            lambda: [
+                {"astral_candidate_id": "a", "state": "NEW_CANDIDATE"},
+                {"astral_candidate_id": "b", "state": "DELETED"},
+            ],
         )
         ids = {c["astral_candidate_id"] for c in candidate_mod.list_candidates()}
         assert ids == {"a"}
 
 
 class TestTransitionCandidateState:
-    def test_rejects_unknown_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW"})
+    def test_rejects_disallowed_hop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
+        )
         with pytest.raises(ValueError, match="Invalid candidate state transition"):
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+
+    def test_rejects_unknown_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
+        )
+        with pytest.raises(ValueError, match="Unknown candidate state"):
             candidate_mod.transition_candidate_state("somerset", "LIVE_PROMPTS")
 
     def test_rejects_missing_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: None)
         with pytest.raises(ValueError, match="Candidate not found"):
-            candidate_mod.transition_candidate_state("missing", "PROFILE_READY")
+            candidate_mod.transition_candidate_state("missing", "INTAKE_INITIATED")
 
 
 class TestNormalizeRubricArtifactsOnSave:
@@ -101,7 +120,10 @@ class TestCheckContextComplete:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "NEW", "candidate_data": {"context": {"strengths": "x"}}},
+            lambda candidate_id: {
+                "state": "NEW_CANDIDATE",
+                "candidate_data": {"context": {"strengths": "x"}},
+            },
         )
         assert candidate_mod.check_context_complete("somerset") is False
 
@@ -109,15 +131,23 @@ class TestCheckContextComplete:
 class TestParseCandidateResume:
     @pytest.mark.asyncio
     async def test_returns_error_without_resume_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW", "candidate_data": {}})
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "NEW_CANDIDATE", "candidate_data": {}},
+        )
         out = await candidate_mod.parse_candidate_resume("somerset")
         assert out["success"] is False
 
     @pytest.mark.asyncio
     async def test_persists_parsed_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        store = {"candidate_data": {"context": {"starting_resume_text": "resume body"}}, "state": "NEW"}
+        store = {
+            "candidate_data": {"context": {"starting_resume_text": "resume body"}},
+            "state": "NEW_CANDIDATE",
+        }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
         saves: list[dict] = []
+        transition = MagicMock()
 
         def _save(candidate_id: str, **kwargs):
             if kwargs.get("candidate_data"):
@@ -127,7 +157,7 @@ class TestParseCandidateResume:
             saves.append(kwargs)
 
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", lambda *args, **kwargs: None)
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
         structure = _three_section_structure()
         parsed = _craft_resume_base_payload(structure, {"professional_summary": "ok"})
         monkeypatch.setattr(
@@ -140,6 +170,9 @@ class TestParseCandidateResume:
         artifacts = store["candidate_data"]["artifacts"]
         assert artifacts["resume_structure"]["sections"]["professional_summary"]["title"] == "Custom Summary"
         assert artifacts["base_resume"]["professional_summary"] == "ok"
+        # AST-970: parse no longer auto-hops to PROFILE_READY / any state
+        transition.assert_not_called()
+        assert store["state"] == "NEW_CANDIDATE"
 
 
 class TestSaveCandidateData:
@@ -160,7 +193,7 @@ class TestGetCandidate:
 
 class TestListCandidatesIncludeDeleted:
     def test_can_include_deleted_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        rows = [{"state": "NEW"}, {"state": "DELETED"}]
+        rows = [{"state": "NEW_CANDIDATE"}, {"state": "DELETED"}]
         monkeypatch.setattr(candidate_mod.database, "list_candidates", lambda: rows)
         assert candidate_mod.list_candidates(include_deleted=True) == rows
 
@@ -332,19 +365,41 @@ class TestDeleteCandidate:
 
     def test_marks_candidate_deleted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW"})
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "NEW_CANDIDATE"},
+        )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.delete_candidate("somerset")
-        save.assert_called_once_with("somerset", state="DELETED")
+        # DELETED transition + reap timer merge
+        assert save.call_args_list[0].kwargs == {"state": "DELETED"} or save.call_args_list[0].args == (
+            "somerset",
+        )
+        assert any(
+            c.kwargs.get("state") == "DELETED" or (len(c.args) >= 2 and c.args[1] == "DELETED")
+            for c in save.call_args_list
+        )
+        # Prefer explicit kwargs form used by transition_candidate_state
+        save.assert_any_call("somerset", state="DELETED")
+        life_calls = [c for c in save.call_args_list if (c.kwargs.get("candidate_data") or {}).get("lifecycle")]
+        assert len(life_calls) == 1
+        life = life_calls[0].kwargs["candidate_data"]["lifecycle"]
+        assert life["reap_after_hours"] == 720
+        assert life["reap_started_at"]
 
 
 class TestTransitionCandidateStateSuccess:
     def test_saves_allowed_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW"})
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "NEW_CANDIDATE"},
+        )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        candidate_mod.transition_candidate_state("somerset", "PROFILE_READY")
-        save.assert_called_once_with("somerset", state="PROFILE_READY")
+        candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED")
+        save.assert_called_once_with("somerset", state="INTAKE_INITIATED")
 
 
 class TestCheckContextCompleteExtended:
@@ -352,30 +407,42 @@ class TestCheckContextCompleteExtended:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: None)
         assert candidate_mod.check_context_complete("missing") is False
 
-    def test_returns_true_when_already_past_context_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "LIVE_PROMPTS"})
+    def test_returns_true_when_already_at_or_past_all_topics_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "ACTIVE_SEARCH"},
+        )
         assert candidate_mod.check_context_complete("somerset") is True
 
-    def test_transitions_when_all_context_fields_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_returns_true_when_all_context_fields_present_without_transition(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Completeness helper no longer writes state (AST-970)
         ctx = {key: "filled" for key in candidate_mod._CONTEXT_TEXT_KEYS}
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "PROFILE_READY", "candidate_data": {"context": ctx}},
+            lambda candidate_id: {"state": "INTAKE_INITIATED", "candidate_data": {"context": ctx}},
         )
         transition = MagicMock()
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
         assert candidate_mod.check_context_complete("somerset") is True
-        transition.assert_called_once_with("somerset", "CONTEXT_READY")
+        transition.assert_not_called()
 
-    def test_returns_false_when_transition_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        ctx = {key: "filled" for key in candidate_mod._CONTEXT_TEXT_KEYS}
+    def test_returns_false_when_context_incomplete_early_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "PROFILE_READY", "candidate_data": {"context": ctx}},
+            lambda candidate_id: {
+                "state": "INTAKE_INITIATED",
+                "candidate_data": {"context": {"strengths": "only"}},
+            },
         )
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", MagicMock(side_effect=ValueError("nope")))
         assert candidate_mod.check_context_complete("somerset") is False
 
 
@@ -425,8 +492,11 @@ class TestParseCandidateResumeExtended:
         assert out["error"] == "parse_resume returned None parsed_response"
 
     @pytest.mark.asyncio
-    async def test_skips_transition_when_not_new(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        store = {"state": "PROFILE_READY", "candidate_data": {"context": {"starting_resume_text": "resume"}}}
+    async def test_never_auto_transitions_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        store = {
+            "state": "INTAKE_INITIATED",
+            "candidate_data": {"context": {"starting_resume_text": "resume"}},
+        }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda candidate_id, **kwargs: None)
         transition = MagicMock()
@@ -444,9 +514,9 @@ class TestCandidateAdminFacades:
         clear = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         monkeypatch.setattr(candidate_mod.database, "clear_candidate_api_key", clear)
-        candidate_mod.save_candidate_admin("somerset", state="LIVE_PROMPTS")
+        candidate_mod.save_candidate_admin("somerset", state="ACTIVE_SEARCH")
         candidate_mod.clear_candidate_api_key("somerset")
-        save.assert_called_once_with("somerset", state="LIVE_PROMPTS")
+        save.assert_called_once_with("somerset", state="ACTIVE_SEARCH")
         clear.assert_called_once_with("somerset")
 
 
@@ -1295,3 +1365,156 @@ class TestAst905RecoverOnlyWhenEmpty:
         assert status == 200
         assert body["source"] == "pending_stash"
         assert body["recovered"] is True
+
+
+# AST-970: prior_states enforcement, DELETED reap, stale aging helper
+class TestAst970CandidateStateMachine:
+    _HAPPY = (
+        "NEW_CANDIDATE",
+        "INTAKE_INITIATED",
+        "REQUIRED_TOPICS_READY",
+        "ALL_TOPICS_READY",
+        "REQUESTED_RESUME",
+        "RESUME_READY",
+        "REQUESTED_ARTIFACTS",
+        "ARTIFACTS_READY",
+        "ACTIVE_SEARCH",
+    )
+
+    def test_happy_path_hops_succeed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        state = {"cur": "NEW_CANDIDATE"}
+        saves: list[str] = []
+
+        def _get(_cid):
+            return {"state": state["cur"]}
+
+        def _save(_cid, **kwargs):
+            if "state" in kwargs:
+                state["cur"] = kwargs["state"]
+                saves.append(kwargs["state"])
+
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", _get)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        for nxt in self._HAPPY[1:]:
+            candidate_mod.transition_candidate_state("somerset", nxt)
+        assert saves == list(self._HAPPY[1:])
+        assert state["cur"] == "ACTIVE_SEARCH"
+
+    def test_manual_topic_ready_from_intake(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "INTAKE_INITIATED"},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "REQUIRED_TOPICS_READY")
+        save.assert_called_once_with("somerset", state="REQUIRED_TOPICS_READY")
+
+    def test_stale_companion_may_advance_to_next(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "REQUIRED_TOPICS_READY_STALE"},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "ALL_TOPICS_READY")
+        save.assert_called_once_with("somerset", state="ALL_TOPICS_READY")
+
+    def test_inactive_and_deleted_from_any_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "REQUESTED_RESUME_ERROR"},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "INACTIVE")
+        save.assert_called_once_with("somerset", state="INACTIVE")
+
+    def test_error_state_has_no_forward_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "REQUESTED_RESUME_ERROR"},
+        )
+        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+            candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
+
+    def test_deleted_starts_reap_timer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "ACTIVE_SEARCH"},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "DELETED")
+        save.assert_any_call("somerset", state="DELETED")
+        life = next(
+            c.kwargs["candidate_data"]["lifecycle"]
+            for c in save.call_args_list
+            if (c.kwargs.get("candidate_data") or {}).get("lifecycle")
+        )
+        assert life["reap_after_hours"] == CANDIDATE_STATES["DELETED"]["reap_after_hours"]
+        assert life["reap_started_at"]
+
+    def test_reap_due_helpers(self) -> None:
+        started = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        cand = {
+            "state": "DELETED",
+            "candidate_data": {
+                "lifecycle": {
+                    "reap_after_hours": 720,
+                    "reap_started_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            },
+        }
+        due = candidate_mod.candidate_reap_due_at(cand)
+        assert due == started + timedelta(hours=720)
+        assert candidate_mod.is_candidate_reap_due(cand, now=started + timedelta(hours=719)) is False
+        assert candidate_mod.is_candidate_reap_due(cand, now=started + timedelta(hours=720)) is True
+        assert candidate_mod.candidate_reap_due_at({"state": "ACTIVE_SEARCH"}) is None
+
+    def test_age_stale_moves_due_waiting_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        old = (datetime.now(timezone.utc) - timedelta(hours=80)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rows = [
+            {
+                "astral_candidate_id": "due",
+                "state": "REQUIRED_TOPICS_READY",
+                "state_changed_at": old,
+            },
+            {
+                "astral_candidate_id": "fresh",
+                "state": "REQUIRED_TOPICS_READY",
+                "state_changed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            },
+            {
+                "astral_candidate_id": "already",
+                "state": "REQUIRED_TOPICS_READY_STALE",
+                "state_changed_at": old,
+            },
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        moved: list[tuple[str, str]] = []
+
+        def _transition(cid, to_state):
+            moved.append((cid, to_state))
+
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", _transition)
+        assert candidate_mod.age_stale_candidate_states() == 1
+        assert moved == [("due", "REQUIRED_TOPICS_READY_STALE")]
+
+    def test_pause_search_round_trip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        state = {"cur": "ACTIVE_SEARCH"}
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: {"state": state["cur"]})
+
+        def _save(_cid, **kwargs):
+            if "state" in kwargs:
+                state["cur"] = kwargs["state"]
+
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        candidate_mod.transition_candidate_state("somerset", "PAUSE_SEARCH")
+        candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+        assert state["cur"] == "ACTIVE_SEARCH"

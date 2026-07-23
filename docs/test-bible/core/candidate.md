@@ -157,3 +157,45 @@ Rubric authority cutover: **`apply_rubric_vectors_save`**, **`hydrate_rubric_art
 | Save sync + GET overlay helpers | `src/core/candidate.py` | `TestAst723RubricVectorsCutover` |
 | API PUT/GET wiring | `src/ui/api/api_candidate.py` | `TestAst723RubricVectorsApi` (`test_api_candidate.py`) |
 
+
+### AST-970 · AST-871
+
+Config-backed candidate state registry (`prior_states`, companions, `progress_rank`); enforced `transition_candidate_state`; DELETED reap timer on `candidate_data.lifecycle`; `age_stale_candidate_states` helper (no scheduler — AST-972). Retired four-step names (`NEW` / `PROFILE_READY` / `CONTEXT_READY` / `LIVE_PROMPTS`). Parse / `check_context_complete` no longer write state.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + nav/inflow string gates | `src/utils/config.py` | **`TestAst970CandidateStateRegistry`** (`test_config.py`); revised **`TestAst505InflowDiscoveryConfig`** trigger → **`ACTIVE_SEARCH`** |
+| Transitions, reap, stale aging | `src/core/candidate.py` | **`TestAst970CandidateStateMachine`**; revised initiate / transition / delete / context-complete / parse classes |
+| Admin state override fail-closed | `src/ui/api/api_candidate.py` | **`TestAst970AdminStateOverride`**; revised **`TestCandidateRoutes`** state path |
+| `progress_rank` nav gates | `src/ui/api/api_system.py` | revised **`TestSystemNavHelpers`** |
+| Candidate dispatch state_options vocab | `src/ui/api/api_admin.py` | revised **`TestAst804CandidateDispatchAdminValidation`** (`ACTIVE_SEARCH` / `intake_initiate_candidate`) |
+| Frontend fixture / SA options | fixtures + Scheduled Actions | `stateUiManifestFixture.ts`; AST-804 describe in **`test_AdminScheduledActions.test.tsx`** |
+
+**AST-970** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/core/test_candidate.py::TestInitiateCandidate \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState \
+  tests/component/core/test_candidate.py::TestTransitionCandidateStateSuccess \
+  tests/component/core/test_candidate.py::TestDeleteCandidate \
+  tests/component/core/test_candidate.py::TestCheckContextComplete \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestParseCandidateResume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended \
+  tests/component/ui/api/test_api_candidate.py::TestAst970AdminStateOverride \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_merges_data_state_and_api_key \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_list_candidates_and_states \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-804"
+```
+
+**Note:** Broader opaque `LIVE_PROMPTS` / `CONTEXT_READY` fixtures in roster/dispatcher/integration remain until sibling **AST-973** consumer/migration sweep — they are not registry membership asserts.
