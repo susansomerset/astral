@@ -437,3 +437,21 @@ cd src/ui/frontend && npm run test:component -- \
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs
 ```
+
+---
+
+### AST-949 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-949** fills Summary tab section bodies left empty by **AST-948**: Job Summary (`whole_jd_upshot`), Company Upshot (`prefilter_company_notes` from company GET), Noteworthy Caveats / Questions to Ask, Raw JD (collapsed); content-aware `default_expanded`; graceful empty states.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-949** | Summary `renderSummarySection` bodies + company notes lift + content-aware expand | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-949 Summary tab sections`**; revised AST-948 empty-upshot shell case for new empty copy |
+
+**AST-949** narrowed run (modal — §6c N/A):
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
