@@ -358,3 +358,11 @@ None (**fix-now**).
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
 
+---
+
+## Resolution (2026-07-23)
+
+Radia **fix-now:** none. **discuss:** none. Advisory items left as-is (harness-native Archie statute cite; Exemplars/Harvested corpus duplication).
+
+**Resolve:** `resolve(AST-921): — clean` — no product or doc fixes required.
+
