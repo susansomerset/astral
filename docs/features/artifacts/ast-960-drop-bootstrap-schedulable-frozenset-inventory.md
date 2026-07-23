@@ -141,3 +141,29 @@ The plan is binding. Execute stages in order. Do not add files, restore the froz
 - Stage 3 — `92b9c0e` — delete `DISPATCH_SCHEDULABLE_TASK_KEYS`; `trigger_state_used_by_scored_dispatch_task` walks scored `TASK_CONFIG`
 
 **Betty:** test/bible AC4 per plan handoff note (not in this build).
+
+## Radia review (2026-07-23)
+
+**Diff:** `origin/dev...origin/sub/AST-957/AST-960-drop-bootstrap-schedulable-frozenset-inventory` (tip `1658e32` incl. Betty `merge-tests` / `test()`).
+
+### What’s solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 match commits: bootstrap drops frozenset inventory loop; `api_admin` enrich/`task_keys` from `TASK_CONFIG` + defaults (no frozenset merge); `DISPATCH_SCHEDULABLE_TASK_KEYS` deleted; `trigger_state_used_by_scored_dispatch_task` walks scored `TASK_CONFIG`. |
+| SoT / §2.1 | Zero `DISPATCH_SCHEDULABLE_TASK_KEYS` under `src/`. Gap keys stay out of `TASK_CONFIG`. Save / `dispatch_task_admin_defaults` membership unchanged. |
+| Done-when checks | Live: `trigger_state_used_by_scored_dispatch_task("NEW")` / `("PASSED_LIKE")` True; `("VALID_TITLE")` False; `check_cover_letter` override still works; `fetch_jd ∉ TASK_CONFIG`. |
+| Boundaries | No gazer/roster runtime redesign; Betty test/bible AC4 in tip as expected at Tests Passed. Scope matches Self-Assessment (Single-Component). |
+| Rubric | §5a: `except KeyError: pass` in form meta has plan-mandated comment (mid-chain fallthrough) — acceptable §5b. §5f/§5g N/A. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| — | None |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product fixes required beyond this `docs()` commit).
