@@ -163,3 +163,18 @@ Stages 1–2: `isArtifactsBuildInProgress` / `artifactsTabPrimaryActions` / `any
 ### Recommended actions
 
 - No product fix required for this review. Optional follow-up for compound-state action keys in manifest remains non-blocking.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Publish tip before resolve:** `e6f32a3` (`docs(AST-951): Radia review — findings` on `origin/sub/AST-858/AST-951-artifacts-tab-generate-cancel-edit`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss #1 — compound-state action resolve in React | **Deferred** — matches approved Stage 1 Decision; Radia/Joan mark non-blocking. Optional later: lift prefix/Cancel fallback into manifest or shared constants. |
+| discuss #2 — C4 statute stragglers (all conforms) | **No action** — informational composite-tip / plan-vs-diff predicate drift only. |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
