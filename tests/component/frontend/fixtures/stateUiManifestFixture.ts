@@ -116,20 +116,28 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
           },
         ],
       },
-      report_fixed_tabs: [
-        { tab_id: "summary", nav_label: "Job Summary" },
-        { tab_id: "jd_full", nav_label: "Job Description" },
+      report_top_tabs: [
+        { tab_id: "summary", nav_label: "Summary" },
+        { tab_id: "analysis", nav_label: "Analysis" },
+        { tab_id: "artifacts", nav_label: "Artifacts" },
+      ],
+      report_summary_sections: [
+        { section_id: "job_summary", nav_label: "Job Summary", default_expanded: true },
+        { section_id: "company_upshot", nav_label: "Company Upshot", default_expanded: true },
+        { section_id: "caveats", nav_label: "Noteworthy Caveats", default_expanded: true },
+        { section_id: "questions", nav_label: "Questions to Ask", default_expanded: true },
+        { section_id: "raw_jd", nav_label: "Raw Job Description", default_expanded: false },
       ],
       report_phase_tabs: [
-        { tab_id: "phase_jd", nav_label: "JD", grades_field: "jd_grades", take_key: "take_jd" },
-        { tab_id: "phase_do", nav_label: "DO", grades_field: "do_grades", take_key: "take_do" },
-        { tab_id: "phase_get", nav_label: "GET", grades_field: "get_grades", take_key: "take_get" },
-        { tab_id: "phase_like", nav_label: "LIKE", grades_field: "like_grades", take_key: "take_like" },
+        { tab_id: "phase_jd", nav_label: "JD Analysis", grades_field: "jd_grades", take_key: "take_jd" },
+        { tab_id: "phase_do", nav_label: "DO Analysis", grades_field: "do_grades", take_key: "take_do" },
+        { tab_id: "phase_get", nav_label: "GET Analysis", grades_field: "get_grades", take_key: "take_get" },
+        { tab_id: "phase_like", nav_label: "LIKE Analysis", grades_field: "like_grades", take_key: "take_like" },
       ],
       report_artifact_tabs: [
         {
           tab_id: "artifact_resume",
-          nav_label: "Resume",
+          nav_label: "Job Resume",
           artifact_key: "resume_content",
           shapes_key: null,
           use_resume_structure: true,
@@ -143,7 +151,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         },
         {
           tab_id: "artifact_application",
-          nav_label: "Application",
+          nav_label: "Application Questions",
           artifact_key: "application_responses",
           shapes_key: null,
           use_resume_structure: false,
@@ -151,7 +159,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       ],
     },
   },
-  candidate: { artifact_generate_states: ["CONTEXT_READY", "LIVE_PROMPTS"] },
+  candidate: { artifact_generate_states: ["RESUME_READY", "ACTIVE_SEARCH"] },
   company: {
     watch_readonly_states: ["WATCH"],
     bulk_transitions: {

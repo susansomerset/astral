@@ -448,12 +448,35 @@ class TestBuildStateUiManifest:
         assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
+        # AST-948: report_fixed_tabs → report_top_tabs + report_summary_sections;
+        # phase/artifact rows keep keys but become section chrome labels.
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
-        assert [t["tab_id"] for t in rec["report_fixed_tabs"]] == ["summary", "jd_full"]
+        assert "report_fixed_tabs" not in rec
+        assert [t["tab_id"] for t in rec["report_top_tabs"]] == ["summary", "analysis", "artifacts"]
+        assert [t["nav_label"] for t in rec["report_top_tabs"]] == ["Summary", "Analysis", "Artifacts"]
+        assert [s["section_id"] for s in rec["report_summary_sections"]] == [
+            "job_summary",
+            "company_upshot",
+            "caveats",
+            "questions",
+            "raw_jd",
+        ]
+        assert rec["report_summary_sections"][-1]["default_expanded"] is False
         assert len(rec["report_phase_tabs"]) == 4
         assert rec["report_phase_tabs"][0]["take_key"] == "take_jd"
+        assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
+            "JD Analysis",
+            "DO Analysis",
+            "GET Analysis",
+            "LIKE Analysis",
+        ]
         assert len(rec["report_artifact_tabs"]) == 3
+        assert [a["nav_label"] for a in rec["report_artifact_tabs"]] == [
+            "Job Resume",
+            "Cover Letter",
+            "Application Questions",
+        ]
         assert rec["primary_actions_by_state"]["CANDIDATE_REVIEW"][0]["action_key"] == "apply"
 
 
@@ -1314,7 +1337,7 @@ class TestAst505InflowDiscoveryConfig:
         assert d["max_results_per_query"] == 100
         assert d["date_restrict_days"] == 7
         assert "dispatch_freq_hrs" not in d
-        assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
+        assert d["dispatch_trigger_state"] == "ACTIVE_SEARCH"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
         assert d["vet_dispatch_trigger_state"] == "NEW"
@@ -1367,7 +1390,7 @@ class TestAst505InflowDiscoveryConfig:
         # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG catalog.
         assert "inflow_discovery" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_discovery") == "candidate"
-        assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "LIVE_PROMPTS"
+        assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "ACTIVE_SEARCH"
         with pytest.raises(KeyError, match="unknown task_key"):
             cfg.dispatch_task_admin_defaults("inflow_discovery")
 
@@ -1858,3 +1881,76 @@ class TestAst962CoverLetterMidHopDefaultTrigger:
             "CANDIDATE_REVIEW"
         )
         assert cfg.dispatch_task_admin_defaults("grade_do")["trigger_state"] == "PASSED_JD"
+
+
+class TestAst970CandidateStateRegistry:
+    """AST-970: job-style CANDIDATE_STATES registry (no PROSPECT; prior_states + companions)."""
+
+    def test_no_prospect_and_initial_state(self) -> None:
+        assert "PROSPECT" not in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
+        assert cfg.CANDIDATE_CONFIG["initial_state"] in cfg.CANDIDATE_STATES
+
+    def test_no_parallel_transitions_list(self) -> None:
+        assert "candidate_state_transitions" not in cfg.ASTRAL_CONFIG
+
+    def test_every_entry_has_prior_and_rank(self) -> None:
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            assert "prior_states" in entry, name
+            assert "progress_rank" in entry, name
+
+    def test_happy_path_keys_present(self) -> None:
+        for key in (
+            "NEW_CANDIDATE",
+            "INTAKE_INITIATED",
+            "REQUIRED_TOPICS_READY",
+            "ALL_TOPICS_READY",
+            "REQUESTED_RESUME",
+            "RESUME_READY",
+            "REQUESTED_ARTIFACTS",
+            "ARTIFACTS_READY",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+            "INACTIVE",
+            "DELETED",
+        ):
+            assert key in cfg.CANDIDATE_STATES
+
+    def test_stale_companions_and_hours(self) -> None:
+        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_after_hours"] == 72
+        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_state"] == "REQUIRED_TOPICS_READY_STALE"
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_after_hours"] == 168
+        assert cfg.CANDIDATE_STATES["DELETED"]["reap_after_hours"] == 720
+
+    def test_stale_to_next_priors(self) -> None:
+        assert "REQUIRED_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["ALL_TOPICS_READY"]["prior_states"]
+        assert "ALL_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"]
+        assert "RESUME_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"]
+        assert "ARTIFACTS_READY_STALE" in cfg.CANDIDATE_STATES["ACTIVE_SEARCH"]["prior_states"]
+
+    def test_terminals_unrestricted(self) -> None:
+        assert cfg.CANDIDATE_STATES["INACTIVE"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["DELETED"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["INACTIVE"]["progress_rank"] == -1
+        assert cfg.CANDIDATE_STATES["DELETED"]["progress_rank"] == -1
+
+    def test_error_states_closed_forward(self) -> None:
+        resume_priors = cfg.CANDIDATE_STATES["RESUME_READY"]["prior_states"] or []
+        assert "REQUESTED_RESUME_ERROR" not in resume_priors
+        art_priors = cfg.CANDIDATE_STATES["ARTIFACTS_READY"]["prior_states"] or []
+        assert "REQUESTED_ARTIFACTS_ERROR" not in art_priors
+
+    def test_nav_and_gen_states_use_new_vocab(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
+        assert jobs["visible"] == "ACTIVE_SEARCH"
+        assert companies["visible"] == "ACTIVE_SEARCH"
+        assert artifacts["visible"] == "RESUME_READY"
+        gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
+        assert gen == ["RESUME_READY", "ACTIVE_SEARCH"]
+        assert all(s in cfg.CANDIDATE_STATES for s in gen)
+
+    def test_retired_four_step_names_absent(self) -> None:
+        for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
+            assert retired not in cfg.CANDIDATE_STATES

@@ -412,3 +412,91 @@ cd src/ui/frontend && npm run test:component -- \
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` |
+
+---
+
+### AST-948 · AST-858
+
+**AST-858 (parent):** Redesign Recommended Job Report — horizontal **Summary** / **Analysis** / **Artifacts** tabs, collapsible section chrome, sticky header (deeplinks, copy, Print Resume/Cover). **AST-948** owns shell/header only; section bodies are siblings **AST-949** / **AST-950** / **AST-951**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-948** | Horizontal `TabBar` shell; `ReportSectionList` empty chrome; sticky header deeplinks + Copy Application Email / LinkedIn + Print Resume/Cover; Generate/Cancel on Artifacts `leading` strip; drop JAR `SideTabPanel` / Preview Materials | `JobAnalysisReportModal.tsx`, `RecommendedJobReportHeader.tsx`, `ReportSectionList.tsx`, `App.css`, `StateUiContext.tsx`, `recommendedJobReport.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-948 horizontal shell`**; **`test_ReportSectionList.test.tsx`** — **`ReportSectionList — AST-948`**; revised **`test_JobsRecommended.test.tsx`** row-click (horizontal tabs — AC3 list entry) |
+
+**Obsolete / revised this pass:** left-rail `.side-tab-list` / upshot body / Preview Materials / Apply-button / ArtifactEditor-in-JAR asserts in **`test_JobAnalysisReportModal.test.tsx`** (AST-565 / AST-581 / AST-553 body paths). **AST-645** Generate in-flight coverage kept — switch to Artifacts tab first.
+
+**AST-948** narrowed run (JAR is a modal — **§6c** routed-page rule N/A for modal-only; list entry regression is the JobsRecommended page row):
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ReportSectionList.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs
+```
+
+---
+
+### AST-949 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-949** fills Summary tab section bodies left empty by **AST-948**: Job Summary (`whole_jd_upshot`), Company Upshot (`prefilter_company_notes` from company GET), Noteworthy Caveats / Questions to Ask, Raw JD (collapsed); content-aware `default_expanded`; graceful empty states.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-949** | Summary `renderSummarySection` bodies + company notes lift + content-aware expand | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-949 Summary tab sections`**; revised AST-948 empty-upshot shell case for new empty copy |
+
+**AST-949** narrowed run (modal — §6c N/A):
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+---
+
+### AST-950 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-950** fills Analysis tab: JD/DO/GET/LIKE sections (no Overview); header **grade + confidence** row via `ReportSectionList` `renderMetadata` + `buildPhaseSectionGradeConfidenceRow`; expanded body = phase `take_*` above `AgentAnalysisHeader`.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-950** | Analysis metadata + bodies; `renderMetadata` slot | `JobAnalysisReportModal.tsx`, `ReportSectionList.tsx`, `recommendedJobReport.tsx`, `App.css` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-950 Analysis tab grades and confidence`**; **`test_ReportSectionList.test.tsx`** — **`ReportSectionList — AST-950 renderMetadata`**; **`test_recommendedJobReport.test.tsx`** — **`AST-950 grade+confidence header row`** |
+
+**Sibling note:** AST-949 Summary body tests live in the same JAR file — run with `--testNamePattern="AST-950"` (plus ReportSectionList / lib files) so parallel AST-950 tips without Summary bodies stay green.
+
+**AST-950** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ReportSectionList.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-950"
+```
+
+---
+
+### AST-951 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-951** owns Artifacts tab layouts: empty → **Generate Artifacts**; in-flight `BUILD_ARTIFACTS` / `BUILD_ARTIFACTS.<hop>` → **Generating…** + **Cancel**; populated → editable Job Resume / Cover / Application Questions via `ArtifactEditor` (no Reset/Regenerate).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-951** | Empty / in-flight / populated Artifacts; helpers; revise AST-948 empty-chrome / Working… asserts | `JobAnalysisReportModal.tsx`, `recommendedJobReport.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-951 Artifacts tab layouts`** (+ revised AST-948 Artifacts cases); **`test_recommendedJobReport.test.tsx`** — **`AST-951 Artifacts helpers`** |
+
+**Sibling note:** Run with `--testNamePattern="AST-951|AST-948"` so Summary/Analysis sibling bodies are not required on this tip.
+
+**AST-951** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-951|AST-948"
+```
