@@ -318,3 +318,32 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 - **Publish ref:** `origin/sub/AST-912/AST-920-statute-schema-authoring-guide`
 - **Build commits:** Stage 1 `code(AST-920): statute SCHEMA + AUTHORING + README`; Stage 2 `code(AST-920): exemplar statutes (universal + hook)`
 - **Tip at Code Complete:** 37541d4a00460258daa486d8264cf0b2d40c3712 (Stage 2 exemplars; SCHEMA+AUTHORING at 8657ed2)
+
+---
+
+## Radia review (2026-07-22)
+
+**Diff:** `origin/dev...origin/sub/AST-912/AST-920-statute-schema-authoring-guide` (AST-920 product tip `1838843` / Stage 2 `37541d4`; three-dot has multiple merge bases — review scoped to AST-920 commits).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 SCHEMA + AUTHORING + README; Stage 2 exactly five exemplars at planned paths/ids/frontmatter; README Exemplars table complete. |
+| Layout / ids | Reserved top-level only; `orchestration/` + `astral/` namespaces; filename stem = `id`; body order Statement → Rationale → Examples (Conforming/Violating). |
+| Tier / checkable | ≥1 `universal` (2), ≥1 `hook`, ≥1 `ci`, ≥1 `judgment`; universal-set discovery prose matches SCHEMA/AUTHORING. |
+| Lifecycle | Archie alias + Linear→Susan; add/amend/soft-retire; no `draft` in-repo; no hard-delete. |
+| Boundaries | No law-doc harvest; no `src/` / pytest / hooks / CI; Betty bible note only (`docs/test-bible/README.md`). Self-Assessment `Single-Component` matches. |
+| Rules | §1.1 / §3.6 / §4.2: docs under `docs/statutes/` + plan under `team-chuckles/`. §5a–§5g N/A (no product runtime). |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | Three-dot vs `origin/dev` is noisy (multiple merge bases / sibling history on tip). AST-920 engineer commits stay inside the plan file table — resolve against those SHAs, not the full three-dot file list. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
