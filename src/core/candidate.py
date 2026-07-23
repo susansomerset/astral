@@ -33,6 +33,8 @@ from src.utils.config import (
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
     CANDIDATE_STATES,
+    CANDIDATE_STAGE_DISPATCH,
+    CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -1073,6 +1075,129 @@ def get_pending_craft_generation(
         },
         200,
     )
+
+
+
+def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: Any) -> None:
+    """Persist craft success for REQUESTED_* dispatch (AST-972) — no nested ledger."""
+    if task_key == "craft_resume_base":
+        if not isinstance(parsed, dict):
+            raise ValueError("craft_resume_base parsed_response must be a dict")
+        structure, content = split_craft_resume_base_payload(parsed)
+        database.save_candidate(
+            candidate_id,
+            candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
+            merge=True,
+        )
+        return
+    if task_key == "craft_company_search_terms":
+        if not isinstance(parsed, dict):
+            raise ValueError("craft_company_search_terms parsed_response must be a dict")
+        terms = parsed.get("search_terms")
+        if not isinstance(terms, str):
+            raise ValueError("craft_company_search_terms search_terms must be a string")
+        apply_company_search_terms_save(candidate_id, {"company_search_terms": terms})
+        return
+    artifact_key = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+    if artifact_key:
+        if not isinstance(parsed, dict):
+            raise ValueError(f"{task_key} parsed_response must be a dict")
+        criteria = parsed.get("criteria")
+        if not isinstance(criteria, list) or len(criteria) == 0:
+            raise ValueError(f"{task_key} returned no criteria")
+        arts = {artifact_key: criteria}
+        normalize_rubric_artifacts_on_save(arts)
+        apply_rubric_vectors_save(candidate_id, arts)
+        return
+    raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
+
+
+def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
+    """Primary → retry_state; already on retry (or other) → error_state."""
+    cfg = CANDIDATE_STATES[primary_state]
+    retry = cfg["retry_state"]
+    error = cfg["error_state"]
+    if current_state == primary_state:
+        return retry
+    return error
+
+
+async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
+    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
+    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+    logger.set_debug_flag(debug)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return {**zero, "total_processed": 1, "total_errors": 1}
+    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
+    primary = stage["trigger_state"]
+    pass_state = stage["pass_state"]
+    craft_key = stage["craft_task_key"]
+    current = (candidate.get("state") or "").strip()
+    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("starting_resume_text") or ""
+    try:
+        response = await do_task(
+            task_key=craft_key,
+            live_content=live,
+            index=candidate_id,
+            ctx=candidate,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else "do_task returned None"
+            )
+        parsed = response.get("parsed_response")
+        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
+        transition_candidate_state(candidate_id, pass_state)
+        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+    except Exception as e:
+        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        target = _requested_stage_failure_target(primary, current)
+        try:
+            transition_candidate_state(candidate_id, target)
+        except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+
+
+async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
+    """Claim worker: REQUESTED_ARTIFACTS → sequential craft_* → ARTIFACTS_READY / retry / error."""
+    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+    logger.set_debug_flag(debug)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return {**zero, "total_processed": 1, "total_errors": 1}
+    stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+    primary = stage["trigger_state"]
+    pass_state = stage["pass_state"]
+    current = (candidate.get("state") or "").strip()
+    try:
+        for craft_key in stage["craft_task_keys"]:
+            # Refresh ctx each hop so later crafts see earlier persists.
+            candidate = database.get_candidate(candidate_id) or candidate
+            response = await do_task(
+                task_key=craft_key,
+                live_content="",
+                index=candidate_id,
+                ctx=candidate,
+                debug=debug,
+            )
+            if not response or not response.get("success"):
+                raise RuntimeError(
+                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
+                )
+            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
+        transition_candidate_state(candidate_id, pass_state)
+        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+    except Exception as e:
+        logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        target = _requested_stage_failure_target(primary, current)
+        try:
+            transition_candidate_state(candidate_id, target)
+        except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
 
 
 def run_candidate_artifact_generation(
