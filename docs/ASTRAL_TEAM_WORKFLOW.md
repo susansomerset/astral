@@ -12,6 +12,8 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 ## Git and branches
 
+**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-git-and-branches-pointers`
+
 **Branch law** (worktrees, `dev` / `epic worktree`, **`ftr/<ticket-id>`** on `origin` only, direct commits on sub, reading plans without checking out feature branches) is defined **only** in the global skill **`~/.cursor/skills/orientation/SKILL.md`** — **§ Branch law**. Agents read that during **`orientation`**; it is **not** duplicated here because these rules are team-wide, not repo-specific.
 
 **Integration line discipline** (merge **`origin/dev`** then **`origin/<publish-ref>`** before **`test-child`**; never push **`epic worktree`** to **`origin/dev`**; prep-uat harness gate; no hard reset on integration branches) lives in the same skill — **§ Integration line discipline**. Susan owns **`origin/dev`**; engineers own ticket publish refs.
@@ -23,6 +25,11 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 ---
 
 ## Roles (short)
+
+**Statute:** `orch.roles.chuckles-never-ticket-assignee`
+**Statute:** `orch.roles.engineer-assignee-through-resolve`
+
+**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-roles-table-detail`
 
 | Role | Who | Notes |
 |------|-----|--------|
@@ -36,6 +43,9 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 ## Test ownership
 
+**Statute:** `orch.roles.betty-owns-test-tree`
+**Statute:** `astral.git.engineer-test-tree-ban`
+
 **Betty** (`qa-child`) is the only role that commits under **`tests/`**, **`scripts/test_*.py`**, **`scripts/testing/`**, and **`docs/test-bible/**`** (new coverage, revisions, harness, bible). The monolith **`docs/ASTRAL_TEST_BIBLE.md`** remains Betty-owned until AST-598 retirement after Radia review.
 
 **Engineers** (`build-child`, `test-child`, `resolve-child`): **product** (and plan docs when the skill says so) only. If the manifest fails and you believe the **test** is wrong, or resolve needs a test change: **`[qa-handoff]`** as the **first line** of a Linear comment — **do not** patch test-tree paths yourself. Betty picks up **`Tests Ready`** + **`[qa-handoff]`** and **`Review Posted`** + **`[qa-handoff]`** (see **`qa-child`** §1 **C**).
@@ -44,9 +54,17 @@ This file is a **one-page map**. **Executable procedures** live in global Cursor
 
 ## Orientation
 
+**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-orientation-pointer`
+
 Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline skills. That procedure loads this document and **`docs/ASTRAL_CODE_RULES.md`**, establishes **`<session-linear-project>`** (asks Susan if needed), runs a **project survey** (Linear project description, issues in that project, skim **`docs/features/<folder>/`** per **plan-child** folder mapping), verifies **Linear MCP** identity, records token/subagent habits, and teaches **§ Branch law** (`ftr/<ticket-id>`, `epic worktree`, direct commits on sub). Orientation does not by itself produce a ticket commit; follow-up edits belong in the owning skill (usually **plan-child** or the architect).
 
 ## Linear status → skill (happy path)
+
+**Statute:** `orch.pipeline.status-gates-skill-entry`
+**Statute:** `orch.pipeline.project-scoped-queues`
+**Statute:** `orch.pipeline.plan-is-bible`
+
+**Narrative (not a statute):** see `docs/statutes/HARVEST.md` § Narrative leftovers — `team-happy-path-table`
 
 | Linear status | Typical actor | Next skill / action |
 |---------------|----------------|---------------------|
@@ -69,5 +87,7 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 ---
 
 ## CALL SUSAN
+
+**Statute:** `orch.pipeline.call-susan-for-product-decisions`
 
 Product, priority, and cross-feature contracts: **@susan** in Linear. Do not build on missing decisions.
