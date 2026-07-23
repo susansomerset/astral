@@ -13,6 +13,7 @@ from src.core import candidate as candidate_mod
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
+    CANDIDATE_STAGE_DISPATCH,
     CANDIDATE_STATES,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
@@ -1600,3 +1601,114 @@ class TestAst971CandidateTransitionHistory:
         kw = save.call_args.kwargs
         assert kw["state"] == "INTAKE_INITIATED"
         assert "state_history" in kw
+
+
+class TestAst972RequestedStageDispatch:
+    """AST-972: REQUESTED_* claim workers → ready / retry / error."""
+
+    @pytest.mark.asyncio
+    async def test_resume_dispatch_success_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "state": "REQUESTED_RESUME",
+                "candidate_data": {"context": {"starting_resume_text": "hello"}},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": {"ok": 1}}),
+        )
+        persist = MagicMock()
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", persist)
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_resume_dispatch("c1")
+        assert out == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        persist.assert_called_once()
+        trans.assert_called_once_with("c1", "RESUME_READY")
+
+    @pytest.mark.asyncio
+    async def test_resume_dispatch_primary_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_RESUME", "candidate_data": {}},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "boom"}),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_resume_dispatch("c1")
+        assert out["total_failed"] == 1 and out["total_passed"] == 0
+        trans.assert_called_once_with("c1", "REQUESTED_RESUME_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_resume_dispatch_retry_failure_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "state": "REQUESTED_RESUME_RETRY",
+                "candidate_data": {},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "boom"}),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_resume_dispatch("c1")
+        assert out["total_failed"] == 1
+        trans.assert_called_once_with("c1", "REQUESTED_RESUME_ERROR")
+
+    @pytest.mark.asyncio
+    async def test_artifacts_dispatch_success_runs_all_crafts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
+        )
+        keys = list(CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"])
+        do = AsyncMock(return_value={"success": True, "parsed_response": {}})
+        monkeypatch.setattr(candidate_mod, "do_task", do)
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_passed"] == 1
+        assert do.await_count == len(keys)
+        assert [c.kwargs["task_key"] for c in do.await_args_list] == keys
+        trans.assert_called_once_with("c1", "ARTIFACTS_READY")
+
+    @pytest.mark.asyncio
+    async def test_artifacts_dispatch_mid_chain_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
+        )
+        calls = {"n": 0}
+
+        async def _do(**kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return {"success": False, "error": "fail"}
+            return {"success": True, "parsed_response": {}}
+
+        monkeypatch.setattr(candidate_mod, "do_task", _do)
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_failed"] == 1
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_RETRY")

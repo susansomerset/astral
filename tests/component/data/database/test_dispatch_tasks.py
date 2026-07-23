@@ -21,7 +21,7 @@ class TestAst525InflowDiscoveryEligible:
     """AST-525: per-term last_scan_at staleness; dispatch last_run_at ignored."""
 
     def _seed_live(self, db, cid: str = "c525", terms: list[str] | None = None) -> None:
-        db.save_candidate(cid, state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate(cid, state="ACTIVE_SEARCH", candidate_data={})
         if terms:
             db.sync_company_search_terms(cid, terms)
 
@@ -32,13 +32,13 @@ class TestAst525InflowDiscoveryEligible:
 
     def test_not_eligible_wrong_state(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c525", state="NEW", candidate_data={})
+        db.save_candidate("c525", state="NEW_CANDIDATE", candidate_data={})
         db.sync_company_search_terms("c525", ["term"])
         assert db.count_candidate_inflow_discovery_eligible("c525", 168.0, None) == 0
 
     def test_not_eligible_no_table_rows(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c525", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c525", state="ACTIVE_SEARCH", candidate_data={})
         assert db.count_candidate_inflow_discovery_eligible("c525", 168.0, None) == 0
 
     def test_not_eligible_when_all_terms_fresh(self, sqlite_in_memory) -> None:
@@ -74,8 +74,9 @@ class TestAst525InflowDiscoveryEligible:
         self._seed_live(db, terms=["term"])
         task = {
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c525",
+            "task_key": "inflow_discovery",
             "freq_hrs": 168,
             "last_run_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         }
@@ -89,7 +90,7 @@ class TestAst802InflowDiscoveryEligible:
         db = sqlite_in_memory
         db.save_candidate(
             "c802",
-            state="LIVE_PROMPTS",
+            state="ACTIVE_SEARCH",
             candidate_data={"artifacts": {"company_search_terms": "fintech\nsaas"}},
         )
         assert db.count_candidate_inflow_discovery_eligible("c802", 168.0, None) == 1
@@ -101,7 +102,7 @@ class TestAst802InflowDiscoveryEligible:
         db = sqlite_in_memory
         db.save_candidate(
             "c802",
-            state="LIVE_PROMPTS",
+            state="ACTIVE_SEARCH",
             candidate_data={"artifacts": {"company_search_terms": "term1", "other": "keep"}},
         )
         db.count_candidate_inflow_discovery_eligible("c802", 168.0, None)
@@ -114,12 +115,12 @@ class TestAst802InflowDiscoveryEligible:
         db = sqlite_in_memory
         db.save_candidate(
             "c802",
-            state="LIVE_PROMPTS",
+            state="ACTIVE_SEARCH",
             candidate_data={"artifacts": {"company_search_terms": "alpha"}},
         )
         task = {
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c802",
             "task_key": "inflow_discovery",
         }
@@ -127,18 +128,18 @@ class TestAst802InflowDiscoveryEligible:
 
     def test_describe_eligibility_reason_wrong_state(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c802", state="NEW", candidate_data={})
+        db.save_candidate("c802", state="NEW_CANDIDATE", candidate_data={})
         eligible, reason = db.describe_candidate_inflow_discovery_eligibility("c802", 168.0)
         assert eligible == 0
         assert "eligibility:" in reason
-        assert "LIVE_PROMPTS" in reason
+        assert "ACTIVE_SEARCH" in reason
 
 
 class TestAst814InflowDiscoveryFreqHrs:
     """AST-814: dispatch_task.freq_hrs drives stale helpers and eligibility (not config 168)."""
 
     def _seed_live_fresh(self, db, cid: str = "c814", terms: list[str] | None = None) -> None:
-        db.save_candidate(cid, state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate(cid, state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms(cid, terms or ["alpha", "beta"])
         for term in terms or ["alpha", "beta"]:
             db.update_company_search_term_last_scan_at(cid, term)
@@ -151,7 +152,7 @@ class TestAst814InflowDiscoveryFreqHrs:
         assert db.list_stale_company_search_terms("c814", 0.0) == ["alpha", "beta"]
         task = {
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c814",
             "task_key": "inflow_discovery",
             "freq_hrs": 0,
@@ -172,7 +173,7 @@ class TestAst814InflowDiscoveryFreqHrs:
         self._seed_live_fresh(db)
         task = {
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c814",
             "task_key": "inflow_discovery",
             "freq_hrs": 0,
@@ -922,7 +923,7 @@ class TestAst766BoardSchemaSunset:
 
     def test_count_eligible_board_search_entity_returns_zero(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c766", state="NEW")
+        db.save_candidate("c766", state="NEW_CANDIDATE")
         assert (
             db.count_eligible_for_dispatch_task(
                 {
@@ -1333,3 +1334,56 @@ class TestAst962SaveDispatchTaskCoverLetterDefaults:
         assert row["task_key"] == "check_cover_letter"
         assert row["trigger_state"] == "CANDIDATE_REVIEW"
         assert row["entity_type"] == "job"
+
+
+class TestAst972CandidateStageEligibility:
+    """AST-972: count_eligible for REQUESTED_* stage keys; ACTIVE_SEARCH for inflow only."""
+
+    def test_stage_resume_eligible_when_state_matches(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c972", state="REQUESTED_RESUME", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_RESUME",
+            "candidate_id": "c972",
+            "task_key": "candidate_requested_resume",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+        db.save_candidate("c972", state="ACTIVE_SEARCH", candidate_data={})
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_stage_artifacts_eligible_includes_retry(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c972a", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c972a",
+            "task_key": "candidate_requested_artifacts",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+
+    def test_unknown_candidate_task_key_returns_zero(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c972b", state="ACTIVE_SEARCH", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "ACTIVE_SEARCH",
+            "candidate_id": "c972b",
+            "task_key": "not_a_real_candidate_task",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_list_candidate_ids_with_dispatch_tasks(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c972c", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_dispatch_task(
+            candidate_id="c972c",
+            task_key="candidate_requested_resume",
+            min_count=1,
+            auto_mode=True,
+            trigger_state="REQUESTED_RESUME",
+            batch_size=1,
+            freq_hrs=0,
+        )
+        assert "c972c" in db.list_candidate_ids_with_dispatch_tasks()
