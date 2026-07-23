@@ -6323,6 +6323,23 @@ def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]
     return _run_with_retry(_with_conn)
 
 
+
+def list_candidate_ids_with_dispatch_tasks() -> List[str]:
+    """Distinct candidate_id values that already own ≥1 dispatch_task row."""
+    def _with_conn() -> List[str]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT DISTINCT candidate_id FROM dispatch_task "
+                "WHERE candidate_id IS NOT NULL AND TRIM(candidate_id) != '' "
+                "ORDER BY candidate_id ASC"
+            ).fetchall()
+            return [str(r[0]) for r in rows if r[0] is not None]
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
 def count_dispatch_tasks_by_candidate() -> Dict[str, int]:
     """Map candidate_id → row count for all dispatch_task rows."""
     def _with_conn() -> Dict[str, int]:
@@ -6644,7 +6661,7 @@ def count_candidate_inflow_discovery_eligible(
     freq_hrs: float,
     last_run_at: Optional[str],
 ) -> int:
-    """inflow_discovery when LIVE_PROMPTS and ≥1 stale company_search_terms row (AST-525)."""
+    """inflow_discovery when candidate state matches INFLOW discovery trigger and ≥1 stale company_search_terms row (AST-525/AST-972)."""
     del last_run_at  # per-term last_scan_at, not dispatch_task.last_run_at
     eligible, _reason = describe_candidate_inflow_discovery_eligibility(
         candidate_id, float(freq_hrs or 0)
@@ -6687,9 +6704,22 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(
-            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
-        )
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH, INFLOW_CONFIG
+        stage_keys = {
+            CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
+            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
+        }
+        if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
+            return count_candidate_inflow_discovery_eligible(
+                candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+            )
+        if task_key in stage_keys:
+            cand = get_candidate(candidate_id)
+            if not cand:
+                return 0
+            cur = (cand.get("state") or "").strip()
+            return 1 if cur in claim_states else 0
+        return 0
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)
