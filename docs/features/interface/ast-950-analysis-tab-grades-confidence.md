@@ -120,3 +120,11 @@ Fill Analysis tab phase sections (no Overview): **JD Analysis** default expanded
 - **§2.4 / §2.6:** N/A — presentation only.
 - **§3.3 / §3.5:** Frontend components + `App.css` only.
 - **Tests / bible:** Betty owns.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-858/AST-950-analysis-tab-grades-confidence` @ `9bbfa70594ae9709ba7fe336a1f7379d8cdcc023`
+
+Stages 1–3: `ReportSectionList` `renderMetadata`; `buildPhaseSectionGradeConfidenceRow` + CSS; Analysis `take_*` above `AgentAnalysisHeader` with header grade+confidence. Tests deferred to Betty.
