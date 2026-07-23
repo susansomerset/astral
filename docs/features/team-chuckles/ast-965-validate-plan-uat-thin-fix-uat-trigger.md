@@ -190,3 +190,9 @@ None (**fix-now** / **discuss**).
 | — | None. |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/skill fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Radia:** Clean — no fix-now / discuss items ([Linear](https://linear.app/astralcareermatch/issue/AST-965/validate-plan-uat-thin-fix-uat-trigger-deep-think-uat-issues)).  
+**Action:** No product or skill changes. Intake Radia `docs(AST-965)` @ `db30cb6`. Publish `resolve(AST-965): — clean`.
