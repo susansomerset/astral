@@ -910,3 +910,18 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on narrowed pattern; engineer may widen to full file.
+
+---
+
+### AST-948 · AST-858
+
+**List entry regression only** — **`JobsRecommended.tsx`** unchanged this ticket. Row-click still opens JAR; Vitest updated for horizontal **Summary** / **Analysis** / **Artifacts** chrome (no `.side-tab-list`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Recommended list → JAR shell | `JobsRecommended.tsx` (untouched) + JAR shell | **`test_JobsRecommended.test.tsx`** — **`opens the report modal from a row click`** (AST-948 horizontal tabs) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```

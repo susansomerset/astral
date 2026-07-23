@@ -3,6 +3,8 @@ import {
   artifactHasContent,
   materialsPreviewVisible,
   primaryActionsForState,
+  printCoverVisible,
+  printResumeVisible,
 } from "../../../../src/ui/frontend/src/lib/recommendedJobReport"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 
@@ -21,6 +23,20 @@ describe("recommendedJobReport — AST-581 materialsPreviewVisible", () => {
         resume_content: { professional_summary: "draft" },
       }),
     ).toBe(true)
+  })
+})
+
+describe("recommendedJobReport — AST-948 print helpers", () => {
+  it("printResumeVisible follows resume_content via artifactHasContent", () => {
+    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(true)
+    expect(printResumeVisible({ resume_content: { professional_summary: "   " } })).toBe(false)
+    expect(printResumeVisible({})).toBe(false)
+  })
+
+  it("printCoverVisible follows cover_letter via artifactHasContent", () => {
+    expect(printCoverVisible({ cover_letter: { Letter: "Hello" } })).toBe(true)
+    expect(printCoverVisible({ cover_letter: { Letter: "  " } })).toBe(false)
+    expect(printCoverVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
   })
 })
 

@@ -6,9 +6,10 @@ import JobsRecommended from "../../../../src/ui/frontend/src/pages/JobsRecommend
 import { renderWithProviders } from "../test-utils"
 import { baseCandidate, installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -132,9 +133,12 @@ describe("JobsRecommended", () => {
     renderWithProviders(<JobsRecommended />)
     await waitFor(() => expect(screen.getByText("Rec Role")).toBeInTheDocument())
     await userEvent.click(screen.getByText("Rec Role"))
-    await waitFor(() => expect(screen.getByText("Summary")).toBeInTheDocument())
-    const rail = document.querySelector(".side-tab-list")!
-    expect(rail).toHaveTextContent("Job Summary")
+    // AST-948: horizontal top tabs (not left side-tab rail)
+    await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeTruthy())
+    const bar = document.querySelector(".recommended-report-tabs") as HTMLElement
+    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
+    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    expect(document.querySelector(".side-tab-list")).toBeNull()
     expect(screen.queryByText("State History")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Skip This Job" })).not.toBeInTheDocument()
   })
