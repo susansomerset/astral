@@ -448,12 +448,35 @@ class TestBuildStateUiManifest:
         assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
+        # AST-948: report_fixed_tabs → report_top_tabs + report_summary_sections;
+        # phase/artifact rows keep keys but become section chrome labels.
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
-        assert [t["tab_id"] for t in rec["report_fixed_tabs"]] == ["summary", "jd_full"]
+        assert "report_fixed_tabs" not in rec
+        assert [t["tab_id"] for t in rec["report_top_tabs"]] == ["summary", "analysis", "artifacts"]
+        assert [t["nav_label"] for t in rec["report_top_tabs"]] == ["Summary", "Analysis", "Artifacts"]
+        assert [s["section_id"] for s in rec["report_summary_sections"]] == [
+            "job_summary",
+            "company_upshot",
+            "caveats",
+            "questions",
+            "raw_jd",
+        ]
+        assert rec["report_summary_sections"][-1]["default_expanded"] is False
         assert len(rec["report_phase_tabs"]) == 4
         assert rec["report_phase_tabs"][0]["take_key"] == "take_jd"
+        assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
+            "JD Analysis",
+            "DO Analysis",
+            "GET Analysis",
+            "LIKE Analysis",
+        ]
         assert len(rec["report_artifact_tabs"]) == 3
+        assert [a["nav_label"] for a in rec["report_artifact_tabs"]] == [
+            "Job Resume",
+            "Cover Letter",
+            "Application Questions",
+        ]
         assert rec["primary_actions_by_state"]["CANDIDATE_REVIEW"][0]["action_key"] == "apply"
 
 

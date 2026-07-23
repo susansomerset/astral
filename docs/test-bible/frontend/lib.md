@@ -84,3 +84,40 @@ npm run test:component -- \
 ```
 
 **Regression guard:** **`test_stytchRedirect.test.ts`**, **`test_Login.test.tsx`** — redirect URL wiring unchanged.
+
+---
+
+### AST-948 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-948** adds **`printResumeVisible`** / **`printCoverVisible`** (wrap **`artifactHasContent`**) for sticky-header Print buttons; JAR no longer wires **`materialsPreviewVisible`** / Preview Materials (helper retained for now).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-948** | Print visibility helpers; fixture `report_top_tabs` / `report_summary_sections` | `src/ui/frontend/src/lib/recommendedJobReport.tsx`, `tests/component/frontend/fixtures/stateUiManifestFixture.ts` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-948 print helpers`** (+ retained AST-581 `materialsPreviewVisible` unit cases) |
+
+**AST-948** narrowed lib run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
+```
+
+---
+
+### AST-950 · AST-858
+
+**AST-950:** `buildPhaseSectionGradeConfidenceRow` + `gradesForHeader` for Analysis section headers / `AgentAnalysisHeader` payloads.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+
+---
+
+### AST-951 · AST-858
+
+**AST-951:** `isArtifactsBuildInProgress`, `artifactsTabPrimaryActions` (compound hop fallback), `anyReportArtifactContent`.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-951** | Artifacts action / content helpers | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-951 Artifacts helpers`** |
