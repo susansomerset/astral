@@ -163,3 +163,30 @@
 
 **Built:** `validate-plan` UAT-thin + `fix-uat` §5/§5.5 stacktrace gate; marker contract from AST-963 preserved.
 **Tip:** astral plan + stub (this commit); skills on `team-chuckles` `main` @ `4ddc33b`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-961/AST-965-validate-plan-uat-thin-fix-uat-trigger` @ `35e3b6a`  
+**Skills (reviewed SHA):** `team-chuckles@4ddc33b` (`validate-plan` + `fix-uat`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 = Drafts C/A4/D: `## UAT-thin mode` (activate via `UAT-THIN VALIDATE` or `UAT:` + marker; require `## UAT fitness`; AC/Correct-outcome checklist; `[validate-plan uat-thin]`); token-scope **Full** ban + **Exception** thin validate; §5 plan→thin→build with non-stacktrace skip; `### 5.5` before Re-prep. Marker string unchanged from AST-963. |
+| AC coverage | AC4–6 met at `4ddc33b`. AC5 enforced adversarially (Correct outcome / symptom-only REVISE); exact “no more stacktrace” phrase remains on AST-963/964 skills — in bounds. |
+| Scope / Self-Assessment | Single-Component two skills + plan; Conf high / Risk Medium match. No `src/` / `tests/` on astral tip. Does not rewrite Diagnosis template or fitness authoring. |
+| Rules | §1.1 / §4.2; product / §5f / §5g N/A. |
+| Betty | Docs-only grep/read manifest — out of Radia edit scope; bible README entry matches. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| — | None. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/skill fixes required beyond this `docs()` commit).
