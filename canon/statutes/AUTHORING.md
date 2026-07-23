@@ -37,7 +37,7 @@ Markdown with YAML frontmatter (all SCHEMA-required keys) then body sections in 
 
 ## Archie
 
-**Archie** is the architect alias used in public prose under `canon/statutes/**`. Linear assignee flips for approval target Susan; comments that need the architect use `@susan`. Do not put Susan’s real name in statute files.
+**Archie** is the architect alias used in public prose under `canon/statutes/**`. Linear assignee flips for approval target Susan; comments that need the architect use `@susan`. Do not put Susan’s real name in statute files. Runtime map: `team-chuckles/agents/identity-table.md` (Archie → Susan).
 
 ## Lifecycle
 
