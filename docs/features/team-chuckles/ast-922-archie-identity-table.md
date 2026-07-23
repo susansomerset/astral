@@ -265,3 +265,18 @@ Stage 4: Verification greps + dual-repo publish.
 | Reconcile TEAM_WORKFLOW at ftr merge (Joan + Archie) | Chuckles `merge-child` |
 
 **ASTRAL_CODE_RULES:** §1.1 / §1.3 satisfied for landed pieces; product layers N/A.
+
+## Resolution
+
+**2026-07-23** — Radia review @ `1826cd6`
+
+| Item | Action |
+|------|--------|
+| **fix-now** orientation Owner cells (`Chuckles / Susan`, `main \| Susan`) | Mirrored GIT workflow → `Chuckles / Archie`, `main \| Archie` in `~/team-chuckles/skills/orientation/SKILL.md` |
+| **discuss** define-parent Backlog intake | Dual form: “Archie-only intake (Linear: Susan)” |
+| **advisory** TEAM_WORKFLOW Joan/Archie sibling diverge | Left for Chuckles `merge-child` |
+| **advisory** WAKE_CHEATSHEET unchanged | Confirmed Category B — no change |
+
+**team-chuckles:** follow-up commit on `origin/main` (this resolve).
+**Publish:** `resolve(AST-922): — findings addressed` on `origin/sub/AST-910/AST-922-archie-identity-table`.
+
