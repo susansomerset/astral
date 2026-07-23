@@ -16,7 +16,7 @@ Config sections:
   AGENT_CONFIG    — Anthropic model catalog (pricing, defaults)
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
-  CANDIDATE_STATES — candidate state progression
+  CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
@@ -787,16 +787,131 @@ COMPANY_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# CANDIDATE_STATES: candidate state list. Linear progression through profile
-# setup, context completion, content generation, and live prompt availability.
+# CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
+# each value has prior_states (list or None), progress_rank, and optional
+# stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
+# PROSPECT is conceptual only — not a registry key.
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
-    "NEW": {},
-    "PROFILE_READY": {},
-    "CONTEXT_READY": {},
-    "LIVE_PROMPTS": {},
-    "DELETED": {},
+    "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
+    "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
+    "REQUIRED_TOPICS_READY": {
+        "prior_states": ["INTAKE_INITIATED", "REQUIRED_TOPICS_READY_STALE"],
+        "stale_after_hours": 72,
+        "stale_state": "REQUIRED_TOPICS_READY_STALE",
+        "progress_rank": 2,
+    },
+    "REQUIRED_TOPICS_READY_STALE": {
+        "prior_states": ["REQUIRED_TOPICS_READY"],
+        "progress_rank": 2,
+    },
+    "ALL_TOPICS_READY": {
+        "prior_states": [
+            "REQUIRED_TOPICS_READY",
+            "REQUIRED_TOPICS_READY_STALE",
+            "ALL_TOPICS_READY_STALE",
+        ],
+        "stale_after_hours": 72,
+        "stale_state": "ALL_TOPICS_READY_STALE",
+        "progress_rank": 3,
+    },
+    "ALL_TOPICS_READY_STALE": {
+        "prior_states": ["ALL_TOPICS_READY"],
+        "progress_rank": 3,
+    },
+    "REQUESTED_RESUME": {
+        "prior_states": [
+            "ALL_TOPICS_READY",
+            "ALL_TOPICS_READY_STALE",
+            "REQUESTED_RESUME_RETRY",
+        ],
+        "retry_state": "REQUESTED_RESUME_RETRY",
+        "error_state": "REQUESTED_RESUME_ERROR",
+        "progress_rank": 4,
+    },
+    "REQUESTED_RESUME_RETRY": {
+        "prior_states": ["REQUESTED_RESUME"],
+        "progress_rank": 4,
+    },
+    "REQUESTED_RESUME_ERROR": {
+        "prior_states": ["REQUESTED_RESUME", "REQUESTED_RESUME_RETRY"],
+        "progress_rank": 4,
+    },
+    "RESUME_READY": {
+        "prior_states": [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+            "RESUME_READY_STALE",
+        ],
+        "stale_after_hours": 168,
+        "stale_state": "RESUME_READY_STALE",
+        "progress_rank": 5,
+    },
+    "RESUME_READY_STALE": {
+        "prior_states": ["RESUME_READY"],
+        "progress_rank": 5,
+    },
+    "REQUESTED_ARTIFACTS": {
+        "prior_states": [
+            "RESUME_READY",
+            "RESUME_READY_STALE",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ],
+        "retry_state": "REQUESTED_ARTIFACTS_RETRY",
+        "error_state": "REQUESTED_ARTIFACTS_ERROR",
+        "progress_rank": 6,
+    },
+    "REQUESTED_ARTIFACTS_RETRY": {
+        "prior_states": ["REQUESTED_ARTIFACTS"],
+        "progress_rank": 6,
+    },
+    "REQUESTED_ARTIFACTS_ERROR": {
+        "prior_states": ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        "progress_rank": 6,
+    },
+    "ARTIFACTS_READY": {
+        "prior_states": [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+            "ARTIFACTS_READY_STALE",
+        ],
+        "stale_after_hours": 168,
+        "stale_state": "ARTIFACTS_READY_STALE",
+        "progress_rank": 7,
+    },
+    "ARTIFACTS_READY_STALE": {
+        "prior_states": ["ARTIFACTS_READY"],
+        "progress_rank": 7,
+    },
+    "ACTIVE_SEARCH": {
+        "prior_states": ["ARTIFACTS_READY", "ARTIFACTS_READY_STALE", "PAUSE_SEARCH"],
+        "progress_rank": 8,
+    },
+    "PAUSE_SEARCH": {"prior_states": ["ACTIVE_SEARCH"], "progress_rank": 8},
+    "INACTIVE": {"prior_states": None, "progress_rank": -1},
+    "DELETED": {"prior_states": None, "progress_rank": -1, "reap_after_hours": 720},
 }
+
+CANDIDATE_CONFIG = {
+    # Per-state stale/reap hours live on CANDIDATE_STATES entries.
+    "initial_state": "NEW_CANDIDATE",
+}
+
+assert "PROSPECT" not in CANDIDATE_STATES
+for _name, _cfg in CANDIDATE_STATES.items():
+    assert "progress_rank" in _cfg, _name
+    assert "prior_states" in _cfg, _name
+    _stale = _cfg.get("stale_state")
+    if _stale is not None:
+        assert _stale in CANDIDATE_STATES and "stale_after_hours" in _cfg, _name
+    _retry = _cfg.get("retry_state")
+    if _retry is not None:
+        assert _retry in CANDIDATE_STATES, _name
+    _err = _cfg.get("error_state")
+    if _err is not None:
+        assert _err in CANDIDATE_STATES, _name
+assert CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0) > 0
+assert CANDIDATE_CONFIG["initial_state"] in CANDIDATE_STATES
 
 INTAKE_CONFIG = {
     "estelle_agent_id": "X00_estelle_recruiter",
@@ -942,7 +1057,7 @@ INFLOW_CONFIG = {
     "discovery": {
         "max_results_per_query": 100,
         "date_restrict_days": 7,
-        "dispatch_trigger_state": "LIVE_PROMPTS",
+        "dispatch_trigger_state": "ACTIVE_SEARCH",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
         "vet_dispatch_trigger_state": "NEW",
@@ -1713,7 +1828,7 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         s: JOBS_SKIPPED_SECTION_LABELS.get(s, s.replace("_", " ").title()) for s in skipped_order
     }
 
-    gen_states = ["CONTEXT_READY", "LIVE_PROMPTS"]
+    gen_states = ["RESUME_READY", "ACTIVE_SEARCH"]
     assert all(s in CANDIDATE_STATES for s in gen_states)
 
     bulk_company = {
@@ -2050,14 +2165,7 @@ ASTRAL_CONFIG = {
         ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST"),
     ],
 
-    # --- Candidate state machine (candidate) ---
-    # Simple: NEW → PROFILE_READY → CONTEXT_READY → LIVE_PROMPTS
-    # CONTEXT_READY is gated by check_context_complete (all four context lists populated).
-    "candidate_state_transitions": [
-        ("NEW", "PROFILE_READY"),
-        ("PROFILE_READY", "CONTEXT_READY"),
-        ("CONTEXT_READY", "LIVE_PROMPTS"),
-    ],
+    # Candidate transitions: prior_states on CANDIDATE_STATES (AST-970); no parallel list.
 
     # Valid grade letters — used by agent.py to build the grade-segment regex and for UI display.
     "valid_grades": ["A", "B", "C", "D", "F", "X"],
@@ -2635,7 +2743,7 @@ UI_CONFIG = {
 NAV_CONFIG = [
     {
         "label": "Jobs",
-        "visible": "LIVE_PROMPTS",
+        "visible": "ACTIVE_SEARCH",
         "items": [
             {"label": "In Review", "path": "/jobs/in_review"},
             {"label": "Skipped", "path": "/jobs/skipped"},
@@ -2646,7 +2754,7 @@ NAV_CONFIG = [
     },
     {
         "label": "Companies",
-        "visible": "LIVE_PROMPTS",
+        "visible": "ACTIVE_SEARCH",
         "items": [
             {"label": "Watch List", "path": "/companies/watch_list"},
             {"label": "New List", "path": "/companies/new_list"},
@@ -2657,7 +2765,7 @@ NAV_CONFIG = [
     },
     {
         "label": "Artifacts",
-        "visible": "CONTEXT_READY",
+        "visible": "RESUME_READY",
         "items": [
             {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
             {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},
