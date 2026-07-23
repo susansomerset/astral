@@ -1320,3 +1320,16 @@ class TestAst955SaveDispatchTaskRegisteredKeys:
                 min_count=1,
                 trigger_state="NEW",
             )
+
+
+class TestAst962SaveDispatchTaskCoverLetterDefaults:
+    """AST-962: save_dispatch_task fills CANDIDATE_REVIEW when trigger omitted."""
+
+    def test_check_cover_letter_insert_without_trigger(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        tid = db.save_dispatch_task("karfo", "check_cover_letter", min_count=1)
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["task_key"] == "check_cover_letter"
+        assert row["trigger_state"] == "CANDIDATE_REVIEW"
+        assert row["entity_type"] == "job"
