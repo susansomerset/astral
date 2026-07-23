@@ -1779,9 +1779,13 @@ class TestAst955RegisteredKeyDispatchAdminDefaults:
         assert d["sort_by"]
         assert d["batch_call_mode"] == 0
 
-    def test_check_cover_letter_without_override_raises_no_rule(self) -> None:
-        with pytest.raises(KeyError, match="no rule for task_key"):
-            cfg.dispatch_task_admin_defaults("check_cover_letter")
+    def test_check_cover_letter_without_override_defaults_candidate_review(self) -> None:
+        # AST-962: mid-chain cover-letter hops default Input State (was KeyError no rule).
+        d = cfg.dispatch_task_admin_defaults("check_cover_letter")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "CANDIDATE_REVIEW"
+        assert d["sort_by"]
+        assert d["batch_call_mode"] == 0
 
     def test_already_schedulable_grade_do_unchanged(self) -> None:
         d = cfg.dispatch_task_admin_defaults("grade_do")
@@ -1826,3 +1830,31 @@ class TestAst960DropSchedulableFrozensetInventory:
         )
         assert d["entity_type"] == "job"
         assert d["trigger_state"] == "CANDIDATE_REVIEW"
+
+
+class TestAst962CoverLetterMidHopDefaultTrigger:
+    """AST-962: cover-letter mid-hops default to CANDIDATE_REVIEW (form/Save without override)."""
+
+    MID_HOPS = (
+        "check_cover_letter",
+        "finalize_cover_letter",
+        "propose_application_responses",
+    )
+
+    def test_dispatch_trigger_state_defaults(self) -> None:
+        for tk in self.MID_HOPS:
+            assert cfg._dispatch_trigger_state_for_task_key(tk) == "CANDIDATE_REVIEW"
+
+    def test_admin_defaults_without_override(self) -> None:
+        for tk in self.MID_HOPS:
+            d = cfg.dispatch_task_admin_defaults(tk)
+            assert d["entity_type"] == "job"
+            assert d["trigger_state"] == "CANDIDATE_REVIEW"
+            assert d["sort_by"]
+            assert d["batch_call_mode"] == 0
+
+    def test_draft_cover_letter_and_grade_do_unchanged(self) -> None:
+        assert cfg.dispatch_task_admin_defaults("draft_cover_letter")["trigger_state"] == (
+            "CANDIDATE_REVIEW"
+        )
+        assert cfg.dispatch_task_admin_defaults("grade_do")["trigger_state"] == "PASSED_JD"
