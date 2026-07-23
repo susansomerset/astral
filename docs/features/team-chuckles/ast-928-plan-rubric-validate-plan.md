@@ -221,4 +221,23 @@ REVISE with any fix-now / R3 `violates` / R5 fail enters or continues the AST-92
 - §3.3 imports / §3.5 placement: N/A for product layers; team-chuckles skills stay in `~/team-chuckles/skills/`; rubrics under `canon/rubrics/` per parent storage decision.
 - §3.6 debug spikes: N/A.
 - No test-tree edits (Betty owns tests).
+
+---
+
+## Built
+
+| Stage | Tip | Notes |
+|-------|-----|-------|
+| 1 | `628f0a6` | `canon/rubrics/plan/plan-rubric.v1.md` + SCHEMA/README pointers |
+| 2 | `team-chuckles@3bfc396` | validate-plan executes plan-rubric.v1; Joan AGENTS |
+| 3 | `d272f3f` | `ASTRAL_TEAM_WORKFLOW` plan-rubric gate |
+| 4 | `be74405` | Canary AST-967 — Plan Discuss round=1 + APPROVED + verdict attachment |
+
+**Publish ref:** `origin/sub/AST-916/AST-928-plan-rubric-validate-plan` @ `be74405`
+
+**Canary:** [AST-967](https://linear.app/astralcareermatch/issue/AST-967/ast-928-canary-plan-rubric) — `[plan-discuss] round=1 concern` → reply → Plan Approved with attachment **Plan rubric verdict (rev 1)**; Canceled after proof.
+
+## Review
+
+_(Radia)_
 )
