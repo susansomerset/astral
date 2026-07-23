@@ -35,7 +35,8 @@ REQUIRED_TOPICS_READY      prior_states=["INTAKE_INITIATED", "REQUIRED_TOPICS_RE
                            stale_after_hours=72, stale_state="REQUIRED_TOPICS_READY_STALE",
                            progress_rank=2
 REQUIRED_TOPICS_READY_STALE prior_states=["REQUIRED_TOPICS_READY"], progress_rank=2
-ALL_TOPICS_READY           prior_states=["REQUIRED_TOPICS_READY", "ALL_TOPICS_READY_STALE"],
+ALL_TOPICS_READY           prior_states=["REQUIRED_TOPICS_READY", "REQUIRED_TOPICS_READY_STALE",
+                                         "ALL_TOPICS_READY_STALE"],
                            stale_after_hours=72, stale_state="ALL_TOPICS_READY_STALE",
                            progress_rank=3
 ALL_TOPICS_READY_STALE     prior_states=["ALL_TOPICS_READY"], progress_rank=3
@@ -76,9 +77,15 @@ DELETED                    prior_states=None, progress_rank=-1,
 
 ⚠️ **Decision:** Align candidate enforcement to job-style `prior_states` on the registry (not a parallel `candidate_state_transitions` tuple list). Jobs already deleted `job_state_transitions`; candidates follow the same pattern so AST-971/972 can share mental model with `transition_job_state`.
 
-⚠️ **Decision:** Stale hours are literals in config (72h topic-ready waits, 168h resume/artifacts ready waits; DELETED reap 720h / 30d). Susan did not specify numbers — these are product defaults; change only in config later.
+⚠️ **Decision:** Stale hours are literals in config (72h topic-ready waits, 168h resume/artifacts ready waits; DELETED reap 720h / 30d). Susan did not specify numbers — these are product defaults / config knobs; change only in `config.py` later (no code change required).
 
 ⚠️ **Decision:** `INACTIVE` and `DELETED` use `prior_states=None` (unrestricted entry from any current state), matching unrestricted job terminal patterns. Disallowed hops still fail when `to_state` is missing from the registry.
+
+⚠️ **Decision (stale→next edges):** Every waiting stage’s `*_STALE` companion must appear in the **next** happy-path state’s `prior_states` (not only recover-to-primary). Graph check: `REQUIRED_TOPICS_READY_STALE` → `ALL_TOPICS_READY`; `ALL_TOPICS_READY_STALE` → `REQUESTED_RESUME`; `RESUME_READY_STALE` → `REQUESTED_ARTIFACTS`; `ARTIFACTS_READY_STALE` → `ACTIVE_SEARCH`. No other waiting stages exist in this registry.
+
+⚠️ **Decision (ERROR exits, v1):** `REQUESTED_RESUME_ERROR` / `REQUESTED_ARTIFACTS_ERROR` do **not** list forward priors into retry/ready. Escape is via unrestricted `INACTIVE` / `DELETED` only. AST-972 may propose `*_ERROR` → `*_RETRY` / re-request edges later; do not add them in AST-970.
+
+⚠️ **Decision (AC#4 vs AST-972):** `age_stale_candidate_states` lands in this ticket; do **not** register a dispatch task or scheduler hook here — AST-972 owns invocation.
 
 2. Add a small `CANDIDATE_CONFIG` dict immediately after `CANDIDATE_STATES` with a single key used as documentation/default mirror (do not fork per-state hours here):
 
@@ -238,3 +245,12 @@ Remove the old `_STATE_INDEX` enumeration if unused.
 | §3.5 naming | UPPERCASE state keys; snake_case config keys |
 
 No unresolved conflicts. Code Rules narrative update is Stage 3 (required so §2.6.3 does not contradict the shipped registry).
+
+## Revisions
+
+Revision 1 — 2026-07-23
+Driven by: Joan `[plan-discuss] round=1 concern` fix-now — `ALL_TOPICS_READY.prior_states` omitted `REQUIRED_TOPICS_READY_STALE`, so happy path broke after stale aging.
+Changes:
+- Added `REQUIRED_TOPICS_READY_STALE` to `ALL_TOPICS_READY.prior_states`.
+- Documented full stale→next graph check (four edges); no other missing edges found.
+- Recorded Decisions for ERROR exits (v1 closed; AST-972 may extend), hour literals as config knobs, and AC#4 helper vs AST-972 scheduler ownership.
