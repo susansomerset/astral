@@ -239,5 +239,33 @@ REVISE with any fix-now / R3 `violates` / R5 fail enters or continues the AST-92
 
 ## Review
 
-_(Radia)_
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 (procedure from `origin/sub/AST-916/AST-929-code-rubric-radia-sweep` — not yet on this tip / `origin/dev`)
+
+**Ticket:** AST-928
+
+**Publish ref:** `origin/sub/AST-916/AST-928-plan-rubric-validate-plan` @ `e058130`
+
+**Overall:** DISCUSS
+
+### What’s solid
+
+- `canon/rubrics/plan/plan-rubric.v1.md` + index; SCHEMA/README/workflow pointers match plan Stages 1+3.
+- Stage 2 on team-chuckles (`3bfc396`): validate-plan executes plan-rubric; Joan AGENTS updated.
+- Canary AST-967: Plan Discuss round=1 → APPROVED + verdict attachment; docs-only tip; Betty owns bible.
+
+### Findings
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded at plan time (no test-tree in Files Changed); tip now includes Betty `docs/test-bible/README.md`, so the statute is in-scope on the diff. Diff itself **conforms** (Betty `docs()`; engineer `code()` stayed off test-tree). No product fix required — note for resolve / future plans that bible registry makes this statute in-scope after qa-child.
+
+### Recommended actions
+
+- Engineer: acknowledge straggler discuss on resolve (no code change expected) → User Testing.
+- No fix-now.
+
+### Notes
+
+- No `plan-rubric-verdict-AST-928.md` attachment on this ticket (Joan APPROVED comment present; R7 attachment proven on canary AST-967).
+- Diff layers=`docs`; change_types=`add`+`modify`; 56 active statutes checked.
 )
