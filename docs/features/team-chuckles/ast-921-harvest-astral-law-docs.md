@@ -316,3 +316,17 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
 - §4.2: plan path `docs/features/team-chuckles/ast-921-harvest-astral-law-docs.md` matches Team Chuckles → `team-chuckles`.
 - Engineer test-tree ban respected (no `tests/` or bible edits).
 - No SCHEMA key invention — conflicts with AST-920 would be `conf-!!-NONE`; none found against the published AST-920 plan.
+
+---
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-912/AST-921-harvest-astral-law-docs`
+- **Build commits:**
+  - Stage 1 `code(AST-921): HARVEST crosswalk + README scaffold`
+  - Stage 2 `code(AST-921): harvest CODE_RULES into astral statutes`
+  - Stage 3 `code(AST-921): harvest GIT + TEAM workflow into orch statutes`
+  - Stage 4 `code(AST-921): index harvested statute corpus in README`
+  - Stage 5 `code(AST-921): cite statute ids from law docs`
+- **Tip at Code Complete:** 7b7a78f2643bd0ab890c4e449f916372b8058ca4
+
