@@ -57,7 +57,6 @@ from src.utils.config import (
     ADMIN_CONFIG,
     admin_hidden_dispatch_task_keys,
     CHARS_PER_TOKEN,
-    DISPATCH_SCHEDULABLE_TASK_KEYS,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
     dispatch_task_grouping_catalog_key,
@@ -890,19 +889,23 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
-    """Scheduled Actions form defaults: schedulable keys use dispatch_task_admin_defaults;
-    grouping fields from agent_task via dispatch_task_grouping_catalog_key; entity/trigger
-    keyed by dispatch task_key."""
+    """Scheduled Actions form defaults: TASK_CONFIG keys use dispatch_task_admin_defaults
+    when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
+    entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
     grouping_key = dispatch_task_grouping_catalog_key(task_key)
     cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
-    if task_key in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        derived = dispatch_task_admin_defaults(task_key)
-        entity_type = derived["entity_type"]
-        trigger_state = derived["trigger_state"]
+    # Prefer derived admin defaults when the key is registered and has a trigger rule.
+    if task_key in TASK_CONFIG:
+        try:
+            derived = dispatch_task_admin_defaults(task_key)
+            entity_type = derived["entity_type"]
+            trigger_state = derived["trigger_state"]
+        except KeyError:
+            pass  # mid-chain / no default trigger — keep TASK_CONFIG field values
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
@@ -916,14 +919,11 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
 def dispatch_task_keys():
     """task_key → entity_type / trigger_state for Scheduled Actions forms.
 
-    Every TASK_CONFIG key is selectable. Schedulable keys use config-built defaults;
-    other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
+    Every TASK_CONFIG key is selectable. Registered keys use config-built defaults when
+    available; other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
     seen: dict[str, dict] = {}
     for tk in get_task_keys():
         seen[tk] = _dispatch_task_key_form_meta(tk)
-    for tk in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        if tk not in seen:
-            seen[tk] = _dispatch_task_key_form_meta(tk)
     for r in list_dispatch_tasks():
         k = r.get("task_key", "")
         if not k:
