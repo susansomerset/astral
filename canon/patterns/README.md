@@ -19,4 +19,6 @@ Proposed and retired files are excluded from that set.
 
 ## Exemplars
 
-Populated in AST-925 Stage 2.
+| id | status | path |
+|----|--------|------|
+| `pattern.batch.entity-claim-process-release` | approved | `batch/pattern.batch.entity-claim-process-release.md` |
