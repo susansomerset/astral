@@ -6,6 +6,9 @@ import {
   gradesForHeader,
   materialsPreviewVisible,
   primaryActionsForState,
+  anyReportArtifactContent,
+  artifactsTabPrimaryActions,
+  isArtifactsBuildInProgress,
   printCoverVisible,
   printResumeVisible,
 } from "../../../../src/ui/frontend/src/lib/recommendedJobReport"
@@ -96,5 +99,30 @@ describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
     ])
     expect(gradesForHeader({ TE: "B" })).toEqual([{ vector: "TE", grade: "B" }])
     expect(gradesForHeader(null)).toEqual([])
+  })
+})
+
+describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
+  it("isArtifactsBuildInProgress covers base and hop, not ERROR", () => {
+    expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS")).toBe(true)
+    expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS.draft_job_resume")).toBe(true)
+    expect(isArtifactsBuildInProgress("ERROR_BUILD_ARTIFACTS")).toBe(false)
+    expect(isArtifactsBuildInProgress("RECOMMENDED")).toBe(false)
+  })
+
+  it("artifactsTabPrimaryActions falls back to BUILD_ARTIFACTS for hops", () => {
+    const hop = artifactsTabPrimaryActions(STATE_UI_MANIFEST_FIXTURE, "BUILD_ARTIFACTS.x")
+    expect(hop[0]?.action_key).toBe("cancel_build")
+    const rec = artifactsTabPrimaryActions(STATE_UI_MANIFEST_FIXTURE, "RECOMMENDED")
+    expect(rec[0]?.action_key).toBe("generate_artifacts")
+    expect(artifactsTabPrimaryActions(STATE_UI_MANIFEST_FIXTURE, "CANDIDATE_REVIEW")).toEqual([])
+  })
+
+  it("anyReportArtifactContent gates on report_artifact_tabs keys", () => {
+    const tabs = STATE_UI_MANIFEST_FIXTURE.jobs.recommended.report_artifact_tabs!
+    expect(anyReportArtifactContent({}, tabs)).toBe(false)
+    expect(
+      anyReportArtifactContent({ resume_content: { professional_summary: "x" } }, tabs),
+    ).toBe(true)
   })
 })
