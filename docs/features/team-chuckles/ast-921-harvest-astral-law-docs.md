@@ -330,3 +330,31 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
   - Stage 5 `code(AST-921): cite statute ids from law docs`
 - **Tip at Code Complete:** 7b7a78f2643bd0ab890c4e449f916372b8058ca4 (Stage 5 law-doc citations)
 
+---
+
+## Radia review (2026-07-23)
+
+**Diff:** `origin/dev...origin/sub/AST-912/AST-921-harvest-astral-law-docs` (product tip Stage 5 `7b7a78f`; publish before review `341ef45`). Review scoped to AST-921 commits.
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–5 landed: HARVEST crosswalk + 23 narrative leftovers; 51 create statutes (0 missing/extra); README Harvested corpus = 56 unique ids; law-doc citations + §4.1 stale banner. |
+| Schema / format | All 51 new files: required frontmatter keys, body order, filename=`id`, `approved_by: Archie`, `status: active`; tier/checkable match inventory 1:1. |
+| Boundaries | SCHEMA untouched; AUTHORING = harvest pointer + `HARVEST.md` in reserved set only; AST-920 exemplars not rewritten; no empty `linear/`; no `src/`/pytest/hooks/CI; no sequential-children statute. |
+| Scope | Self-Assessment `MAJOR-CHANGE` matches footprint. §5a–§5g N/A (docs-only). |
+
+### Issues
+
+None (**fix-now**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| **Advisory** | `orch.roles.archie-approves-statutes` has no `**Statute:**` line in the three law docs (harness-native / empty `source_docs` from AST-920). Other already-landed exemplars are cited. Acceptable unless Stage 5 is read as requiring a cite even without a harvested law-doc home. |
+| **Advisory** | README keeps Exemplars table and also lists those five under Harvested corpus (unique count still 56). Harmless duplication. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
