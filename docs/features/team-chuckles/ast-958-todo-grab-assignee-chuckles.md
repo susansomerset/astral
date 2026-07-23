@@ -185,3 +185,14 @@ git push origin HEAD:main
 - No config / batch / state-machine / import-layer product changes — N/A for astral `src/`.
 - Docs: plan under `docs/features/team-chuckles/` — satisfied.
 - No conflict with `orch.roles.chuckles-never-ticket-assignee` as child assignee law — this ticket changes **when** Chuckles may be auto-claimed onto **parents** for dispatch, not engineer child assignee rules.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `ad80edc` | Plan doc on astral sub |
+| 1–4 | `team-chuckles@c417fc0` | Datt Todo requires Chuckles assignee; no auto-assign; WAKE/consumers/datt chat gate aligned |
+
+**Tip:** astral plan + review stub on this sub; skill/watcher live on `team-chuckles` `main` @ `c417fc0`. Restart datt watcher pane on chuckles host to load `watch_linear.py`.
