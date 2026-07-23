@@ -49,3 +49,43 @@
 ```
 
 See also **`docs/test-bible/ui/server.md`** (**AST-654** pipeline row — bootstrap entry point unchanged; ordering extended by AST-782).
+
+---
+
+### AST-960 · AST-957
+
+**Scope:** Drop bootstrap inventory over deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`**. `_validate_runtime_coupling` checks LLM env + `get_task_keys()` ⊆ `TASK_CONFIG` only — gap keys (`fetch_jd`, `prefilter`, …) must not force boot failure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Coupling without frozenset | `src/core/bootstrap.py` | `tests/component/core/test_bootstrap.py::TestValidateRuntimeCoupling` (incl. `test_passes_with_live_task_config_without_gap_key_inventory`) |
+| Pipeline order unchanged | same | `::TestBootstrapRuntime::test_runs_validation_sync_and_scheduler_in_order` |
+
+**Broken / obsolete (Betty revision this pass):**
+- `test_raises_when_dispatch_key_missing_from_task_config` — deleted (inventory loop gone).
+- Frozenset monkeypatches on empty/orphan/aligned cases — removed.
+
+**AST-960** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/utils/test_config.py::TestAst960DropSchedulableFrozensetInventory \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers \
+  tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys \
+  tests/component/ui/api/test_api_admin.py::TestAst960TaskKeysNoFrozensetInventory \
+  tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+Config / admin bible: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/ui/api/api_admin.md`** (**AST-960**).

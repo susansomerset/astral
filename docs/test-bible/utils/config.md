@@ -22,7 +22,7 @@
 
 ### AST-468 · AST-376
 
-**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`DISPATCH_SCHEDULABLE_TASK_KEYS`** / **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **`pass_threshold`** vs **`score_floor`**: **`docs/ASTRAL_CODE_RULES.md`** subsection under §2.1; claim gating vs grading metadata: **§7.13zv** (**AST-586**).
+**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **`pass_threshold`** vs **`score_floor`**: **`docs/ASTRAL_CODE_RULES.md`** subsection under §2.1; claim gating vs grading metadata: **§7.13zv** (**AST-586**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -764,3 +764,19 @@ Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 | Token floor literal | `src/utils/config.py` | **`TestAst903CraftRubricMaxTokens`** |
 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
+
+---
+
+### AST-960 · AST-957
+
+**Scope:** Delete **`DISPATCH_SCHEDULABLE_TASK_KEYS`**. **`trigger_state_used_by_scored_dispatch_task`** walks scored **`TASK_CONFIG`** keys via **`dispatch_task_admin_defaults`** (KeyError → continue). Gap keys (`fetch_jd`, `prefilter`, `fetch_website`, …) remain on derivation helpers / gazer·roster·inflow config — **not** admin-defaults catalog. **AST-955** Save + optional trigger override unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Frozenset gone + scored-trigger rewrite | `src/utils/config.py` | `TestAst960DropSchedulableFrozensetInventory` |
+| Registered-key defaults (AST-955 keep) | same | `TestAst955RegisteredKeyDispatchAdminDefaults` |
+| Gap-key revisions (helpers / KeyError) | same | revised **`TestAst796FetchJdSchedulableCutover`**, **`TestAst702PrefilterBatchConfig`**, **`TestAst719FetchJobPagesConfig`**, **`TestAst701FetchWebsiteConfig`**, **`TestAst874FetchCulturePagesConfig`**, **`TestAst505InflowDiscoveryConfig`**, **`TestAst506InflowResolveConfig`**, **`TestAst471DispatchConfigHelpers`** |
+
+**Broken / obsolete (Betty revision this pass):** any assert on **`DISPATCH_SCHEDULABLE_TASK_KEYS`**; **`dispatch_task_admin_defaults(<gap_key>)`** without expecting **`unknown task_key`**.
+
+Bootstrap / admin: **`docs/test-bible/core/bootstrap.md`** · **`docs/test-bible/ui/api/api_admin.md`** (**AST-960**). Narrowed run listed on **`docs/test-bible/core/bootstrap.md`**.

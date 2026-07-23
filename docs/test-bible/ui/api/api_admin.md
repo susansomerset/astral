@@ -12,7 +12,7 @@
 
 ### AST-485 · AST-461 · AST-549 · AST-721
 
-Decomposed PJL roster hops **`select_job_page`** (**`PJL_READY`**) and **`parse_job_list`** (**`JOBLIST_IDENTIFIED`**); **`find_job_page`** monolith removed from schedulable keys (**AST-721**). **`locate_job_page`** is not schedulable (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — schedulable defaults now come from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); schedulable keys merge config derivation.
+Decomposed PJL roster hops **`select_job_page`** (**`PJL_READY`**) and **`parse_job_list`** (**`JOBLIST_IDENTIFIED`**); **`find_job_page`** monolith removed (**AST-721**). **`locate_job_page`** is not a catalog key (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — defaults from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); **AST-960** drops frozenset merge — gap keys appear only via existing DB rows.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -383,3 +383,19 @@ Primary data manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-960 · AST-957
+
+**Scope:** `GET /api/admin/dispatch_tasks/task_keys` and `_dispatch_task_key_form_meta` enrich from **`TASK_CONFIG`** + **`dispatch_task_admin_defaults`** only — no frozenset merge. Gap keys leave the picker unless a DB row exists. **AST-955** Save for **`check_cover_letter`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No frozenset inventory / gap absent | `src/ui/api/api_admin.py` | `TestAst960TaskKeysNoFrozensetInventory` |
+| fetch_jd gap + retired rejects | same | revised **`TestAst796FetchJdRetiredDispatchKeys`** |
+| AST-856/955 Save regression | same | `TestAst955AlignScheduledActionsSave` |
+
+**Broken / obsolete (Betty revision this pass):** `test_dispatch_task_keys_includes_fetch_jd_excludes_retired` assumed frozenset merge — replaced with gap-absent + DB-row merge cases.
+
+Narrowed run: **`docs/test-bible/core/bootstrap.md`** (**AST-960**).
