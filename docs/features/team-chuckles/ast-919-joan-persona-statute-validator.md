@@ -262,5 +262,13 @@ rg -n 'git-store|JOAN_SESSION|no git authority' agents/joan-AGENTS.md skills/ori
 | Optional: add Joan first-spawn + resume-spawn prompt shapes under datt §3e (mirror engineer/Betty/Radia) | Chuckles / follow-up if discuss → yes |
 | No fix-now product/docs blockers for resolve-child | — |
 
-**fix-now:** none.  
+**Fix-now:** none.  
 **ASTRAL_CODE_RULES:** §1.1 / docs path satisfied; product layers N/A.
+
+## Resolution
+
+**2026-07-23** — Ada resolve-child (Radia `daddb94`)
+
+- **fix-now:** none.
+- **discuss (addressed):** Chose **add prompt shapes** (not accept-as-is). `team-chuckles` `do-all-the-things` §3e now sets `JOAN_SPAWN=first|resume` and ships Joan first-spawn + resume-spawn templates (mirror engineer/Betty/Radia scroll discipline). Landed `team-chuckles@bb08f0411eaf59f5eb24bec9d4ae3b7a02d86bf7`
+- **advisory:** Confirmed `LINEAR_KEY_JOAN` is set on this host; `linear-joan` remains in `mcp.json`. Live Joan MCP still unproven in-ticket by design (docs-only QA). Build-era “key unset” note is stale.
