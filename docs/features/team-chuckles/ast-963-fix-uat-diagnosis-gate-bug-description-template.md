@@ -177,3 +177,30 @@ _(Becomes the **Quick re-test** block on the parent `[fix-uat]` handoff comment 
 
 **Built:** `~/team-chuckles/skills/fix-uat/SKILL.md` — Draft A1–A3 only; no thin-validate / UAT fitness.
 **Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `fb6cbbd`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-961/AST-963-fix-uat-diagnosis-gate-bug-description-template` @ `d5e421d`  
+**Skill (reviewed SHA):** `team-chuckles@fb6cbbd` (`skills/fix-uat/SKILL.md`) — not later `main` tip (AST-965 sits on top).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–3 match Draft A1–A3: token-scope Do for Purpose/AC/Boundaries/related titles; Do-not narrowed to **Full** `validate-plan` epic review; §2.5 Diagnosis gate + ambiguity escalate; Description `## Diagnosis` + “No more stacktrace” Boundaries/filing ban; marker `<!-- uat-validate: stacktrace -->` exactly. |
+| AC coverage | Child AC1–4 satisfied at `fb6cbbd`. No thin-validate / §6b / UAT-THIN procedure in that SHA (AST-965). |
+| Scope / Self-Assessment | Single-Component skills+plan; Conf high / Risk Medium match footprint. No `src/` / `tests/` on astral publish tip. |
+| Rules | §1.1 isolation + §4.2 docs; product layers / §5f / §5g N/A. |
+| Betty | Docs-only grep/read manifest — out of Radia edit scope; bible README entry matches. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| — | None. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/skill fixes required beyond this `docs()` commit).
