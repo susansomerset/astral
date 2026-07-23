@@ -71,8 +71,8 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 |---------------|----------------|---------------------|
 | Backlog | Archie + Chuckles | **`define-parent`** until definition is ready; Archie moves to **Todo** when approved for planning (Linear: Susan). |
 | Todo | Engineer | **`plan-child`** → **Plan Ready** |
-| Plan Ready | Joan (Chuckles assigns/spawns) | **`validate-plan`** → **Plan Approved** (APPROVED) or **Plan Discuss** (REVISE); Joan briefly assignee during the pass, then engineer |
-| Plan Discuss | Joan + engineer | tagged discuss loop (`validate-plan` / plan reply); cap 2 → Escalate (Linear: Susan); exit Plan Approved or Todo |
+| Plan Ready | Joan (Chuckles assigns/spawns) | **`validate-plan`** executes **`plan-rubric.v1`** → **Plan Approved** (APPROVED + verdict artifact attachment) or **Plan Discuss** (REVISE); Joan briefly assignee during the pass, then engineer |
+| Plan Discuss | Joan + engineer | tagged discuss loop (`validate-plan` / plan reply) under **`plan-rubric.v1`**; cap 2 → Escalate (Linear: Susan); Plan Approved requires Joan’s verdict artifact; exit Plan Approved or Todo |
 | Plan Approved | Engineer | **`build-child`** → **Code Complete** |
 | Code Complete | Betty | **`qa-child`** → **Tests Ready** |
 | Tests Ready | Engineer | **`test-child`** → **Tests Passed** |
