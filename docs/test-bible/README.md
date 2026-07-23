@@ -240,6 +240,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on `~/team-chuckles/skills/plan-child/SKILL.md` (+ plan on publish tip) — §0a `## UAT fitness` (AC restored / Correct outcome / Sibling check / Not sufficient / Wrong fix rejected), “do not invent AC,” Structure placement before Files Changed for `UAT:` / `FIX-UAT MODE` — no pytest manifest. Sibling tickets out of scope.
 
+### AST-965 · AST-961 (validate-plan UAT-thin + fix-uat trigger)
+
+**Docs-only** (team-chuckles skills + astral plan). Live edits on **`team-chuckles` `main`** @ `4ddc33b` (`validate-plan/SKILL.md` UAT-thin mode + `fix-uat/SKILL.md` token-scope Exception + §5/§5.5 stacktrace gate); astral **`origin/sub/AST-961/AST-965-validate-plan-uat-thin-fix-uat-trigger`** holds the plan doc only. No product `src/` and no pytest. Marker string owned by **AST-963**; **## UAT fitness** authoring by **AST-964** (thin checklist requires it — REVISE if missing).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on both skills (+ plan on publish tip) — `UAT-thin mode` / `UAT-THIN VALIDATE` / `[validate-plan uat-thin]` / require `## UAT fitness`; fix-uat **Full** validate-plan ban + Exception thin UAT validate; `### 5.5` stacktrace gate before build; non-stacktrace skip — no pytest manifest. Sibling diagnosis template / fitness section authoring out of scope.
+
 
 ## 2. Where tests live
 
