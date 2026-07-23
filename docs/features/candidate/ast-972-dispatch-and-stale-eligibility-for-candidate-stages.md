@@ -271,4 +271,4 @@ Changes:
 
 | Commit | Note |
 |--------|------|
-| `dfa30c6` on `sub/AST-871/AST-972-dispatch-stale-eligibility` | Code Complete — build-child AST-972 |
+| `bf81fda` on `sub/AST-871/AST-972-dispatch-stale-eligibility` | Code Complete — build-child AST-972 |
