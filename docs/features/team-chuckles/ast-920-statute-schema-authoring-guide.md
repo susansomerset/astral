@@ -347,3 +347,9 @@ None (**fix-now**).
 | **Advisory** | Three-dot vs `origin/dev` is noisy (multiple merge bases / sibling history on tip). AST-920 engineer commits stay inside the plan file table — resolve against those SHAs, not the full three-dot file list. |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/doc fixes required beyond this `docs()` commit).
+
+## Resolution
+
+- **Date:** 2026-07-23
+- **Radia:** fix-now none; discuss none; advisory (three-dot noise) accepted — no product or statute-doc changes.
+- **Outcome:** `resolve(AST-920): — clean`; §9a dry-run vs `origin/dev` and `origin/ftr/AST-912-systemic-statutes` before User Testing.
