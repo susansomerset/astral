@@ -216,6 +216,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
 
+### AST-922 · AST-910 (Archie identity table + alias sweep)
+
+**Docs-only** (team-chuckles identity table + skills/personas Category A alias sweep + astral law docs). Live edits on **`team-chuckles` `main`** @ `3d5d0b6` (`agents/identity-table.md`, orientation § Role alias resolution, scoped skills/agents Category A Archie prose; Category B Linear `@susan` / assignee Susan preserved); astral **`origin/sub/AST-910/AST-922-archie-identity-table`** holds plan + TEAM/GIT workflow Architect/owners/CALL ARCHIE + `canon/statutes/AUTHORING.md` identity-table pointer. No product `src/`, no pytest. Does **not** own Joan (**AST-919**), Todo-grab (**AST-958**), or residue-purge siblings.
+
+**No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
 
 
 ## 2. Where tests live
