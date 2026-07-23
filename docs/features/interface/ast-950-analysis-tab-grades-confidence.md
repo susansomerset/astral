@@ -162,3 +162,17 @@ Stages 1–3: `ReportSectionList` `renderMetadata`; `buildPhaseSectionGradeConfi
 ### Recommended actions
 
 - No product fix required.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Publish tip before resolve:** `057641f` (`docs(AST-950): Radia review — findings` on `origin/sub/AST-858/AST-950-analysis-tab-grades-confidence`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — C4 statute stragglers (all conforms) | **No action** — informational composite-tip / plan-vs-diff predicate drift only. |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
