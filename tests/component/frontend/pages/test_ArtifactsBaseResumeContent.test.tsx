@@ -64,7 +64,7 @@ function installMocks(candidates: string[] = ["c1"]) {
     if (url === "/api/candidates") {
       return {
         json: async () =>
-          candidates.map(id => ({ astral_candidate_id: id, state: "CONTEXT_READY", candidate_data: {} })),
+          candidates.map(id => ({ astral_candidate_id: id, state: "ACTIVE_SEARCH", candidate_data: {} })),
       } as Response
     }
     if (url === "/api/system/ui_config") {

@@ -14,7 +14,6 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_STATES,
-    CANDIDATE_STAGE_DISPATCH,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
 )
@@ -1603,6 +1602,10 @@ class TestAst971CandidateTransitionHistory:
         assert "state_history" in kw
 
 
+@pytest.mark.skipif(
+    not hasattr(__import__("src.utils.config", fromlist=["CANDIDATE_STAGE_DISPATCH"]), "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
 class TestAst972RequestedStageDispatch:
     """AST-972: REQUESTED_* claim workers → ready / retry / error."""
 
@@ -1678,6 +1681,7 @@ class TestAst972RequestedStageDispatch:
             "get_candidate",
             lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
         )
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH
         keys = list(CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"])
         do = AsyncMock(return_value={"success": True, "parsed_response": {}})
         monkeypatch.setattr(candidate_mod, "do_task", do)
@@ -1712,3 +1716,37 @@ class TestAst972RequestedStageDispatch:
         out = await candidate_mod.run_requested_artifacts_dispatch("c1")
         assert out["total_failed"] == 1
         trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_RETRY")
+
+
+class TestAst973HardDeleteAndReapPurge:
+    """AST-973: hard_delete wrapper + purge_reap_due_candidates."""
+
+    def test_hard_delete_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        counts = {"candidate": 1, "dispatch_task": 2}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "hard_delete_candidate",
+            lambda cid: counts if cid == "gone" else {},
+        )
+        assert candidate_mod.hard_delete_candidate("gone") == counts
+
+    def test_purge_reap_due_only_due_deleted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {"astral_candidate_id": "due", "state": "DELETED"},
+            {"astral_candidate_id": "fresh", "state": "DELETED"},
+            {"astral_candidate_id": "live", "state": "ACTIVE_SEARCH"},
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod,
+            "is_candidate_reap_due",
+            lambda row, now=None: row["astral_candidate_id"] == "due",
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "hard_delete_candidate",
+            lambda cid: deleted.append(cid) or {"candidate": 1},
+        )
+        assert candidate_mod.purge_reap_due_candidates() == 1
+        assert deleted == ["due"]

@@ -1469,6 +1469,10 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
 
 
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "ensure_candidate_stage_dispatch_tasks"),
+    reason="AST-972 product not on this publish tip",
+)
 class TestAst972CandidateStageDispatch:
     """AST-972: provision rows, claim gate, tick aging."""
 

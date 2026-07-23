@@ -4404,7 +4404,7 @@ class TestAst505InflowDiscovery:
         db = seeded_db
         db.save_candidate(
             "c505",
-            state="LIVE_PROMPTS",
+            state="ACTIVE_SEARCH",
             candidate_data={"artifacts": {"company_search_terms": "x"}},
         )
         assert roster_mod.ingest_new_companies("c505", "acme_inflow", None) is True
@@ -4415,7 +4415,7 @@ class TestAst505InflowDiscovery:
 
     def test_ingest_creates_website_found_with_url(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c505", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c505", state="ACTIVE_SEARCH", candidate_data={})
         assert roster_mod.ingest_new_companies("c505", "with_site", "https://withsite.example") is True
         row = db.get_company("with_site")
         assert row is not None
@@ -4457,7 +4457,7 @@ class TestAst505InflowDiscovery:
     @pytest.mark.asyncio
     async def test_run_batch_no_stale_terms_returns_zero_errors(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fresh"])
         db.update_company_search_term_last_scan_at("c1", "fresh")
         out = await roster_mod.run_inflow_discovery_batch(
@@ -4471,7 +4471,7 @@ class TestAst505InflowDiscovery:
     @pytest.mark.asyncio
     async def test_run_batch_happy_path(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
         hits = [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
@@ -4491,7 +4491,7 @@ class TestAst505InflowDiscovery:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["bad", "good"])
 
         def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
@@ -4515,7 +4515,7 @@ class TestAst505InflowDiscovery:
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fresh", "stale"])
         db.update_company_search_term_last_scan_at("c1", "fresh")
         searched: list[str] = []
@@ -4541,7 +4541,7 @@ class TestAst505InflowDiscovery:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c814", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c814", ["fresh"])
         db.update_company_search_term_last_scan_at("c814", "fresh")
         searched: list[str] = []
@@ -4569,7 +4569,7 @@ class TestAst505InflowDiscovery:
             "astral_candidate_id": "c505",
             "candidate_data": {"artifacts": {"company_search_terms": "fintech"}},
         }
-        out = await consult_mod.run_consult_task("candidate", "LIVE_PROMPTS", [cand], "batch-505", cand, False)
+        out = await consult_mod.run_consult_task("candidate", "ACTIVE_SEARCH", [cand], "batch-505", cand, False)
         assert out["total_passed"] == 1
         proc.assert_awaited_once_with(cand, "batch-505", cand, False)
 
@@ -4582,7 +4582,7 @@ class TestAst837CsePaceDebug:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
         events: list[str] = []
 
@@ -4671,7 +4671,7 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_creates_new_with_blurb_and_notes(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
         hit = {"title": "Hit Co", "url": "https://hit.example", "snippet": "about"}
         ok, outcome = roster_mod.record_inflow_discovery_hit("c775", hit, index=0)
         assert ok is True
@@ -4685,7 +4685,7 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_skips_duplicate_url_via_notes(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
         db.save_company(
             "existing",
             state="NEW",
@@ -4702,7 +4702,7 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_skips_duplicate_url_via_blurb(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
         db.save_company(
             "from_blurb",
             state="NEW",
@@ -4720,8 +4720,8 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_slug_collision_suffix_other_candidate(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
-        db.save_candidate("other", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_candidate("other", state="ACTIVE_SEARCH", candidate_data={})
         db.save_company(
             "shared_example",
             state="NEW",
@@ -4739,7 +4739,7 @@ class TestAst775InflowDiscoveryRecordNew:
     @pytest.mark.asyncio
     async def test_run_batch_no_deduped_hits_is_success(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["empty"])
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=[]))
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
@@ -5398,7 +5398,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_record_hit_stamps_search_term(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         hit = {"title": "Hit Co", "url": "https://hit877.example", "snippet": "about"}
         ok, outcome = roster_mod.record_inflow_discovery_hit(
             "c877", hit, index=0, search_term="fintech startups",
@@ -5411,7 +5411,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_record_hit_without_term_leaves_null(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         ok, outcome = roster_mod.record_inflow_discovery_hit(
             "c877",
             {"title": "X", "url": "https://noterm877.example", "snippet": ""},
@@ -5424,7 +5424,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_record_hit_term_survives_vet_failed_update(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         ok, _ = roster_mod.record_inflow_discovery_hit(
             "c877",
             {"title": "Y", "url": "https://vet877.example", "snippet": ""},
@@ -5439,7 +5439,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_ingest_new_companies_kwarg_and_source_hit(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         assert roster_mod.ingest_new_companies(
             "c877", "ingest877_a", None, originating_search_term="kwarg term",
         ) is True
@@ -5457,7 +5457,7 @@ class TestAst877OriginatingSearchTerm:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c877", ["fintech"])
         hits = [{"title": "Co", "url": "https://co877.example", "snippet": "snip"}]
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
@@ -5473,7 +5473,7 @@ class TestAst877OriginatingSearchTerm:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c877", ["fintech"])
         details: list[str] = []
 

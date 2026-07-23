@@ -124,3 +124,161 @@ class TestAst971CandidateStateHistoryColumn:
         finally:
             conn.close()
         assert db.get_candidate("c971")["state_history"] == []
+
+
+class TestAst973LegacyCandidateMigration:
+    """AST-973: hard_delete + migrate phases A/B/C."""
+
+    def _force_state(self, db, cid: str, state: str, *, candidate_data: str | None = None, state_changed_at: str | None = None) -> None:
+        """Bypass save_candidate validation so legacy rows can be staged for migrate."""
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+            cols = "astral_candidate_id, state, candidate_data, state_changed_at, updated_at, created_at"
+            # Upsert: delete then insert minimal row
+            conn.execute("DELETE FROM candidate WHERE astral_candidate_id = ?", (cid,))
+            cd = candidate_data if candidate_data is not None else "{}"
+            sca = state_changed_at or "2020-01-01 00:00:00"
+            now = "2026-07-23 00:00:00"
+            conn.execute(
+                f"INSERT INTO candidate ({cols}) VALUES (?, ?, ?, ?, ?, ?)",
+                (cid, state, cd, sca, now, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_hard_delete_removes_satellites(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c973", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_dispatch_task(
+            candidate_id="c973",
+            task_key="evaluate_jd",
+            min_count=1,
+            trigger_state="JD_READY",
+        )
+        db.sync_company_search_terms("c973", ["fintech"])
+        counts = db.hard_delete_candidate("c973")
+        assert counts["candidate"] == 1
+        assert counts["dispatch_task"] >= 1
+        assert counts["company_search_terms"] >= 1
+        assert db.get_candidate("c973") is None
+        assert db.list_dispatch_tasks_for_candidate("c973") == []
+
+    def test_phase_b_remaps_legacy_preserves_state_changed_at(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        stamped = "2019-06-01 12:00:00"
+        self._force_state(db, "legacy", "LIVE_PROMPTS", state_changed_at=stamped)
+        self._force_state(db, "newish", "NEW", state_changed_at=stamped)
+        self._force_state(db, "weird", "TOTALLY_UNKNOWN", state_changed_at=stamped)
+        out = db.migrate_legacy_candidate_states(dry_run=False, phases="BC")
+        assert out["states_remapped"] >= 3
+        assert any(x["astral_candidate_id"] == "weird" for x in out["states_unknown_to_new_candidate"])
+        assert db.get_candidate("legacy")["state"] == "ACTIVE_SEARCH"
+        assert db.get_candidate("newish")["state"] == "NEW_CANDIDATE"
+        assert db.get_candidate("weird")["state"] == "NEW_CANDIDATE"
+        # Preserve aging clock
+        conn = db._get_connection()
+        try:
+            row = conn.execute(
+                "SELECT state_changed_at FROM candidate WHERE astral_candidate_id = ?",
+                ("legacy",),
+            ).fetchone()
+            assert row[0] == stamped
+        finally:
+            conn.close()
+        # Idempotent
+        out2 = db.migrate_legacy_candidate_states(dry_run=False, phases="BC")
+        assert out2["states_remapped"] == 0
+
+    def test_phase_a_hard_deletes_pre_cutover_deleted_only(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        import json
+        self._force_state(db, "pre", "DELETED", candidate_data="{}")
+        self._force_state(
+            db,
+            "post",
+            "DELETED",
+            candidate_data=json.dumps({"lifecycle": {"reap_started_at": "2026-01-01T00:00:00Z"}}),
+        )
+        dry = db.migrate_legacy_candidate_states(dry_run=True, phases="A")
+        assert dry["deleted_hard_pre_cutover"] == 1
+        # Dry-run must not delete — check raw
+        conn = db._get_connection()
+        try:
+            ids = {r[0] for r in conn.execute("SELECT astral_candidate_id FROM candidate").fetchall()}
+        finally:
+            conn.close()
+        assert "pre" in ids and "post" in ids
+        live = db.migrate_legacy_candidate_states(dry_run=False, phases="A")
+        assert live["deleted_hard_pre_cutover"] == 1
+        conn = db._get_connection()
+        try:
+            ids = {r[0] for r in conn.execute("SELECT astral_candidate_id FROM candidate").fetchall()}
+        finally:
+            conn.close()
+        assert "pre" not in ids
+        assert "post" in ids
+
+    def test_phase_c_remaps_candidate_triggers_not_company_new(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c973c", state="ACTIVE_SEARCH", candidate_data={})
+        conn = db._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(conn)
+            # Candidate legacy trigger LIVE_PROMPTS → ACTIVE_SEARCH
+            conn.execute(
+                "INSERT INTO dispatch_task "
+                "(candidate_id, task_key, entity_type, trigger_state, min_count, auto_mode, "
+                "batch_size, freq_hrs, sort_by, batch_call_mode, updated_at) "
+                "VALUES (?, 'craft_resume_base', 'candidate', 'LIVE_PROMPTS', 1, 0, 1, 0, "
+                "'updated_at', 0, datetime('now'))",
+                ("c973c",),
+            )
+            # Company NEW must stay (job/company registry)
+            conn.execute(
+                "INSERT INTO dispatch_task "
+                "(candidate_id, task_key, entity_type, trigger_state, min_count, auto_mode, "
+                "batch_size, freq_hrs, sort_by, batch_call_mode, updated_at) "
+                "VALUES (?, 'evaluate_jd', 'company', 'NEW', 1, 0, 1, 0, "
+                "'updated_at', 0, datetime('now'))",
+                ("c973c",),
+            )
+            # Candidate NEW → NEW_CANDIDATE
+            conn.execute(
+                "INSERT INTO dispatch_task "
+                "(candidate_id, task_key, entity_type, trigger_state, min_count, auto_mode, "
+                "batch_size, freq_hrs, sort_by, batch_call_mode, updated_at) "
+                "VALUES (?, 'bootstrap_candidate_context', 'candidate', 'NEW', 1, 0, 1, 0, "
+                "'updated_at', 0, datetime('now'))",
+                ("c973c",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        out = db.migrate_legacy_candidate_states(dry_run=False, phases="BC")
+        assert out["dispatch_triggers_remapped"] >= 2
+        rows = {
+            (r["task_key"], r["trigger_state"], r.get("entity_type"))
+            for r in db.list_dispatch_tasks_for_candidate("c973c")
+        }
+        assert ("craft_resume_base", "ACTIVE_SEARCH", "candidate") in rows
+        assert ("evaluate_jd", "NEW", "company") in rows
+        assert ("bootstrap_candidate_context", "NEW_CANDIDATE", "candidate") in rows
+
+    def test_ensure_runs_bc_not_phase_a(self, sqlite_in_memory) -> None:
+        """Schema ensure must not hard-delete pre-cutover DELETED."""
+        db = sqlite_in_memory
+        self._force_state(db, "keep_deleted", "DELETED", candidate_data="{}")
+        db._candidate_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+        finally:
+            conn.close()
+        conn = db._get_connection()
+        try:
+            ids = {r[0] for r in conn.execute("SELECT astral_candidate_id FROM candidate").fetchall()}
+        finally:
+            conn.close()
+        assert "keep_deleted" in ids

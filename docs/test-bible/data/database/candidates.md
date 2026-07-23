@@ -7,3 +7,7 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 ### AST-971 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-971. Column coverage: **`TestAst971CandidateStateHistoryColumn`**.
+
+### AST-973 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`hard_delete_candidate`**, **`migrate_legacy_candidate_states`** (ensure = phases BC only).
