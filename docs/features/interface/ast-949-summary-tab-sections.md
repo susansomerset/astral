@@ -115,3 +115,37 @@ Fill the Summary tab section bodies left empty by AST-948: **Job Summary** (`who
 **Built:** `origin/sub/AST-858/AST-949-summary-tab-sections` @ `4881b863ef3cc20c3046e87e38ffdc9268fed191`
 
 Stages 1–3: company `prefilter_company_notes` on existing company fetch; Summary `renderSummarySection` bodies + empty states for job_summary / company_upshot / caveats / questions / raw_jd; content-aware `default_expanded`. Tests deferred to Betty.
+
+---
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-949
+**Publish ref tip (pre-docs):** `2329d10df91ba4c2d4ef30f5947e495f38082220`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3 on tip: company notes lifted from existing `/api/companies` fetch; `renderSummarySection` for all five Summary ids with planned empty copy; content-aware `default_expanded`; Analysis/Artifacts bodies still empty (sibling scope).
+- Reuses `parseAnalysisUpshot` + existing upshot/JD CSS; no parallel parser; no new API.
+- Betty `test`/`merge-tests` only for tests/bible; engineer `code`/`docs`/`plan` only.
+
+### Issues / findings
+
+**discuss** (C4 stragglers — Joan plan excluded; three-dot tip vs `origin/dev` includes AST-948 utils/docs/tests so statutes are in-scope; all score **conforms**):
+
+1. `astral.agent.confidence-bounds`
+2. `astral.config.pass-threshold-vs-score-floor`
+3. `astral.debug.spikes-under-debug-dir`
+4. `astral.docs.features-single-file-per-ticket`
+5. `astral.git.engineer-test-tree-ban`
+6. `astral.standards.utils-data-late-import-only`
+7. `astral.state.job-prior-states-enforced`
+
+**fix-now:** none
+
+### Recommended actions
+
+- No product fix required. Stragglers are composite-tip / plan-vs-diff predicate drift only.
