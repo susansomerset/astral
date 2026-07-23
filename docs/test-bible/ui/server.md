@@ -26,7 +26,7 @@
   tests/component/ui/test_server.py
 ```
 
-**test-child note:** Live **`DISPATCH_SCHEDULABLE_TASK_KEYS`** use **`grade_*`** dispatch-row keys (e.g. **`grade_do`**, **`prefilter`**) — same strings as **`TASK_CONFIG`** after **AST-747**; **`resolve_dispatch_task_config_key()`** trims only.
+**test-child note:** After **AST-960**, catalog membership is **`TASK_CONFIG`** only (no **`DISPATCH_SCHEDULABLE_TASK_KEYS`**). Dispatch-row keys such as **`grade_do`** share strings with **`TASK_CONFIG`** after **AST-747**; gazer/roster gap keys (`fetch_jd`, `prefilter`, …) are not forced into the admin catalog. **`resolve_dispatch_task_config_key()`** trims only.
 
 ### AST-758 · AST-744
 

@@ -603,18 +603,37 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
-# AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired on admin paths.
+# AST-796 / AST-960: fetch_jd gazer hop; scrape_jd / validate_title / gaze_board retired on admin paths.
 class TestAst796FetchJdRetiredDispatchKeys:
-    def test_dispatch_task_keys_includes_fetch_jd_excludes_retired(
+    def test_dispatch_task_keys_omits_fetch_jd_gap_excludes_retired(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-960: gap keys (fetch_jd ∉ TASK_CONFIG) leave the picker unless a DB row exists.
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "fetch_jd" not in keys
+        assert "grade_do" in keys
+        for retired in ("scrape_jd", "validate_title", "gaze_board"):
+            assert retired not in keys
+
+    def test_dispatch_task_keys_includes_fetch_jd_from_db_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "task_key": "fetch_jd",
+                    "entity_type": "job",
+                    "trigger_state": "PASSED_JOBLIST",
+                }
+            ],
+        )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
         assert "fetch_jd" in keys
         assert keys["fetch_jd"]["entity_type"] == "job"
         assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
-        for retired in ("scrape_jd", "validate_title", "gaze_board"):
-            assert retired not in keys
 
     def test_create_dispatch_task_rejects_retired_scrape_jd(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -2283,3 +2302,41 @@ class TestAst955AlignScheduledActionsSave:
         assert kw["sort_by"] == cfg.dispatch_task_admin_defaults(
             "check_cover_letter", trigger_state="CANDIDATE_REVIEW"
         )["sort_by"]
+
+
+# AST-960: task_keys / form meta — TASK_CONFIG only (no frozenset merge).
+class TestAst960TaskKeysNoFrozensetInventory:
+    def test_grade_do_form_meta_still_derived(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["grade_do"]["entity_type"] == "job"
+        assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
+
+    def test_check_cover_letter_form_meta_keeps_task_config_fields(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "check_cover_letter" in keys
+        # Mid-chain: no default trigger rule — form meta falls through to TASK_CONFIG fields.
+        assert keys["check_cover_letter"]["entity_type"] == "job"
+
+    def test_gap_key_absent_without_db_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        for gap in (
+            "fetch_jd",
+            "prefilter",
+            "fetch_website",
+            "fetch_job_pages",
+            "fetch_culture_pages",
+            "inflow_discovery",
+            "inflow_resolve_website",
+            "gaze",
+            "recheck_no_openings",
+        ):
+            assert gap not in keys

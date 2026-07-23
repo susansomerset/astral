@@ -336,7 +336,7 @@ Cherry-pick any ticket-local **`fix(<same ticket id>):`** product SHAs still mis
 
 | Symptom on ftr tip | Test-tree response (Betty) |
 | --- | --- |
-| **`DISPATCH_SCHEDULABLE_TASK_KEYS`**, **`RESUME_SECTION_CATALOG`**, AST-551/552/562 tracker helpers, etc. missing | **`pytest.mark.skipif`** on the asserting class or method (`tests/component/conftest.py` **`_SKIP_UNLESS_DISPATCH_SCHEDULABLE`**, local skips beside the test module) |
+| **`RESUME_SECTION_CATALOG`**, AST-551/552/562 tracker helpers, etc. missing on older ftr tips | **`pytest.mark.skipif`** on the asserting class or method (local skips beside the test module). **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — do not reinstate a global skip for that constant. |
 | Default **`active_provider`** is **deepseek**; mocks target **`send_to_anthropic`** only | **`tests/component/conftest.py`** env keys; **`tests/component/core/conftest.py`** + **`tests/component/ui/conftest.py`** autouse **`anthropic`** provider |
 | Strict **AST-501** envelope on **`evaluate_jd`** / encoded consult mocks | **`_strict_batch_llm_ok`** / **`_llm_failure_envelope`** in **`tests/component/core/test_agent.py`** |
 | **`LOCKED_AT_100`** files below 100% branch % on composite product | **`run_component_tests.sh`** sets **`ASTRAL_FTR_COVERAGE_INTEGRATION=1`** when **`HEAD`** is contained in **`origin/ftr/*`**; **`check_per_file_coverage.py`** logs and **does not gate** sub-100 locks (pytest + Vitest still must pass) |
