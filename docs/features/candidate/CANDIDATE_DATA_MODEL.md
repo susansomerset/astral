@@ -6,6 +6,7 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 
 - **astral_candidate_id** — Primary key. Lowercase last name (e.g. `somerset`), same convention as company `short_name`.
 - **state** — UPPERCASE; one of `CANDIDATE_STATES` (see state machine below).
+- **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` may be null until candidate batch claim exists; readers treat null as no batch.
 - **candidate_data** — One JSON blob; see below.
 - **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
@@ -90,7 +91,7 @@ Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Each
 
 ## State machine
 
-Runtime vocabulary in `CANDIDATE_STATES` (`config.py`). No `PROSPECT` (conceptual only). Transitions enforced by `transition_candidate_state()` against each state’s `prior_states` (job-style; no parallel transitions list).
+Runtime vocabulary in `CANDIDATE_STATES` (`config.py`). No `PROSPECT` (conceptual only). Transitions enforced by `transition_candidate_state()` against each state’s `prior_states` (job-style; no parallel transitions list). Successful transitions append `state_history` (prior/new + timestamp) for time-in-state; Progress UI remains AST-869.
 
 Happy path:
 
@@ -121,7 +122,7 @@ Jobs do not have a direct `candidate_id` column; they are scoped via their paren
 
 ## Snake_case
 
-- **DB columns:** astral_candidate_id, state, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
+- **DB columns:** astral_candidate_id, state, state_history, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
 - **candidate_data keys:** profile, context, artifacts, and all nested keys above.
 - **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, etc.
 

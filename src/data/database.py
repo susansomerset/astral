@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc.
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
-- candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
+- candidate — Candidate: state, state_history (JSON array), candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
@@ -2526,6 +2526,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
             CREATE TABLE candidate (
                 astral_candidate_id TEXT PRIMARY KEY,
                 state TEXT NOT NULL DEFAULT 'NEW',
+                state_history TEXT DEFAULT '[]',
                 candidate_data TEXT,
                 candidate_api_key TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2537,7 +2538,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     else:
         # Idempotent migration: add missing columns on existing databases
         cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate)").fetchall()}
-        for col, col_def in [("candidate_api_key", "TEXT"), ("agent_responses", "TEXT DEFAULT '[]'")]:
+        for col, col_def in [("candidate_api_key", "TEXT"), ("agent_responses", "TEXT DEFAULT '[]'"), ("state_history", "TEXT DEFAULT '[]'")]:
             if col not in cols:
                 try:
                     conn.execute(f"ALTER TABLE candidate ADD COLUMN {col} {col_def}")
@@ -2768,6 +2769,13 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["candidate_api_key"] = decrypt_value(d["candidate_api_key"])
         except (RuntimeError, ValueError):
             d["candidate_api_key"] = None
+    if d.get("state_history"):
+        try:
+            d["state_history"] = json.loads(d["state_history"])
+        except (TypeError, ValueError):
+            d["state_history"] = []
+    else:
+        d["state_history"] = []
     return d
 
 
@@ -2777,12 +2785,14 @@ def save_candidate(
     state: Optional[str] = None,
     candidate_data: Optional[Dict[str, Any]] = None,
     candidate_api_key: Optional[str] = None,
+    state_history: Optional[List[Dict[str, Any]]] = None,
     merge: bool = True,
     ) -> None:
     """Upsert a candidate row, following the save_job pattern.
     INSERT (new PK): state required. UPDATE (existing PK): only provided fields are set.
     candidate_data: merge=True deep-merges with existing; merge=False overwrites.
     candidate_api_key: if provided, Fernet-encrypted before storage.
+    state_history: caller-managed overwrite when provided; omit to preserve existing.
     Auto-sets updated_at; auto-sets state_changed_at when state changes."""
     now = _utc_now()
     encrypted_key = encrypt_value(candidate_api_key) if candidate_api_key else None
@@ -2803,10 +2813,11 @@ def save_candidate(
                 if state not in allowed:
                     raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                 cdata_str = json.dumps(candidate_data) if candidate_data else "{}"
+                hist_str = json.dumps(state_history if state_history is not None else [])
                 conn.execute(
-                    """INSERT INTO candidate (astral_candidate_id, state, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (astral_candidate_id, state, cdata_str, encrypted_key, now, now, now),
+                    """INSERT INTO candidate (astral_candidate_id, state, state_history, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (astral_candidate_id, state, hist_str, cdata_str, encrypted_key, now, now, now),
                 )
             else:
                 sets: List[str] = []
@@ -2832,6 +2843,9 @@ def save_candidate(
                 if encrypted_key is not None:
                     sets.append("candidate_api_key = ?")
                     params.append(encrypted_key)
+                if state_history is not None:
+                    sets.append("state_history = ?")
+                    params.append(json.dumps(state_history))
                 if not sets:
                     return
                 sets.append("updated_at = ?")

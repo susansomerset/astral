@@ -153,12 +153,32 @@ def _normalize_importance_value(raw: Any, ci: dict) -> int:
     return n
 
 
+def _append_candidate_state_history(
+    candidate: Dict[str, Any],
+    from_state: str,
+    to_state: str,
+    timestamp: str,
+) -> list:
+    """Return candidate state_history plus one company-shaped entry (no DB write)."""
+    history = list(candidate.get("state_history") or [])
+    history.append({
+        "from_state": from_state,
+        "to_state": to_state,
+        "timestamp": timestamp,
+        "batch_id": candidate.get("batch_id"),
+    })
+    return history
+
+
 def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[str, Any]] = None) -> None:
     """Create a new candidate record with CANDIDATE_CONFIG initial_state."""
+    initial = CANDIDATE_CONFIG["initial_state"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     database.save_candidate(
         astral_candidate_id,
-        state=CANDIDATE_CONFIG["initial_state"],
+        state=initial,
         candidate_data=candidate_data or {},
+        state_history=_append_candidate_state_history({}, "", initial, now),
     )
 
 def save_candidate_data(candidate_id: str, data: Dict[str, Any], replace: bool = False) -> None:
@@ -524,7 +544,9 @@ def transition_candidate_state(candidate_id: str, to_state: str) -> None:
         raise ValueError(
             f"Invalid candidate state transition: {from_state} -> {to_state}"
         )
-    database.save_candidate(candidate_id, state=to_state)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    history = _append_candidate_state_history(candidate, from_state, to_state, now)
+    database.save_candidate(candidate_id, state=to_state, state_history=history)
     if to_state == "DELETED":
         _start_candidate_reap_timer(candidate_id)
 

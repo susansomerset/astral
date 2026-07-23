@@ -120,3 +120,9 @@ Changes:
 - Dropped hard claim that soft-delete bypasses validation (false after AST-970).
 - Step 8 validation language points at AST-970 `prior_states` (not retired tuple list); Dependency stop-rule unchanged.
 - Noted `batch_id: null` means “no batch” for AST-869 readers.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-871/AST-971-candidate-transition-history`
+- **Build:** pending tip SHA after publish
+
