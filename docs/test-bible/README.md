@@ -210,6 +210,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
 
+### AST-925 · AST-913 (pattern schema + authoring / lifecycle)
+
+**Docs-only** (pattern harness under product `canon/patterns/`). Live edits on **`origin/sub/AST-913/AST-925-pattern-schema-authoring`**: `SCHEMA.md` + `AUTHORING.md` + `README.md` + one exemplar (`batch/pattern.batch.entity-claim-process-release.md`). No `src/`, no pytest, no hook/CI implementation. Plan forbids harvest (**AST-969**) and consumer wiring (**AST-914** / rubrics).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-913** are out of scope.
+
 ### AST-919 · AST-910 (Joan persona statute validator)
 
 **Docs-only** (team-chuckles persona + skills + astral workflow). Live edits on **`team-chuckles` `main`** @ `3c26552` (Joan AGENTS/config, handoff/seed, validate-plan ownership, datt §3e Joan spawn/`MAX_JOAN_CONTEXT`, orientation/MCP/env docs); astral **`origin/sub/AST-910/AST-919-joan-persona-statute-validator`** holds plan + `docs/ASTRAL_TEAM_WORKFLOW.md` Joan rows. No product `src/`, no pytest. Does **not** own Archie (**AST-922**), Todo-grab (**AST-958**), statute authoring (**AST-912**), or plan rubrics (**AST-916** / **AST-928**).
