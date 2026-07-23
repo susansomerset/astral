@@ -328,5 +328,5 @@ No commit for a pure no-op gate. If merges produce a merge commit, that commit i
   - Stage 3 `code(AST-921): harvest GIT + TEAM workflow into orch statutes`
   - Stage 4 `code(AST-921): index harvested statute corpus in README`
   - Stage 5 `code(AST-921): cite statute ids from law docs`
-- **Tip at Code Complete:** f6549b0b0535b2c8824c38e64dccb661144579dd
+- **Tip at Code Complete:** 7b7a78f2643bd0ab890c4e449f916372b8058ca4 (Stage 5 law-doc citations)
 
