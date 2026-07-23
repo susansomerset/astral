@@ -908,22 +908,29 @@ class TestAst773UpdateDispatchTaskTaskKey:
 
 
 # AST-804: candidate entity_type admin validation + state_options exposure.
+# AST-970: candidate registry vocab (ACTIVE_SEARCH / NEW_CANDIDATE). inflow_discovery is
+# not in TASK_CONFIG (AST-960) so trigger validation uses intake_initiate_candidate instead.
 class TestAst804CandidateDispatchAdminValidation:
     def test_dispatch_task_key_trigger_error_candidate_paths(self) -> None:
-        assert admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "LIVE_PROMPTS") is None
-        bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "NOT_A_CANDIDATE_STATE")
-        assert bad is not None and "inflow_discovery" in bad
-        job_bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "PASSED_JD")
-        assert job_bad is not None and "inflow_discovery" in job_bad
+        assert admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "ACTIVE_SEARCH") is None
+        bad = admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "NOT_A_CANDIDATE_STATE")
+        assert bad is not None and "intake_initiate_candidate" in bad
+        job_bad = admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "PASSED_JD")
+        assert job_bad is not None and "intake_initiate_candidate" in job_bad
         assert admin_mod._dispatch_task_key_trigger_error("grade_do", "PASSED_JD") is None
         assert admin_mod._dispatch_task_key_trigger_error("vet_inflow_discovery", "NEW") is None
+        # AST-960: inflow_discovery is runtime-only — helper rejects unknown TASK_CONFIG key
+        assert "Unknown task_key" in (
+            admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "ACTIVE_SEARCH") or ""
+        )
 
-    def test_state_options_includes_candidate_with_live_prompts(
+    def test_state_options_includes_candidate_with_active_search(
         self, admin_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
         states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers).get_json()
         assert "candidate" in states
-        assert "LIVE_PROMPTS" in states["candidate"]
+        assert "ACTIVE_SEARCH" in states["candidate"]
+        assert "LIVE_PROMPTS" not in states["candidate"]
 
     def test_create_dispatch_task_rejects_invalid_candidate_trigger_state(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -933,14 +940,14 @@ class TestAst804CandidateDispatchAdminValidation:
             "/api/admin/dispatch_tasks",
             json={
                 "candidate_id": "c1",
-                "task_key": "inflow_discovery",
+                "task_key": "intake_initiate_candidate",
                 "trigger_state": "PASSED_JD",
                 "min_count": 1,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 400
-        assert "inflow_discovery" in resp.get_json()["error"]
+        assert "intake_initiate_candidate" in resp.get_json()["error"]
 
     def test_create_dispatch_task_candidate_entity_success(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -952,15 +959,15 @@ class TestAst804CandidateDispatchAdminValidation:
             "/api/admin/dispatch_tasks",
             json={
                 "candidate_id": "c1",
-                "task_key": "inflow_discovery",
-                "trigger_state": "LIVE_PROMPTS",
+                "task_key": "intake_initiate_candidate",
+                "trigger_state": "ACTIVE_SEARCH",
                 "min_count": 1,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 201
-        assert save.call_args.kwargs["task_key"] == "inflow_discovery"
-        assert save.call_args.kwargs["trigger_state"] == "LIVE_PROMPTS"
+        assert save.call_args.kwargs["task_key"] == "intake_initiate_candidate"
+        assert save.call_args.kwargs["trigger_state"] == "ACTIVE_SEARCH"
 
     def test_update_dispatch_task_trigger_state_only_candidate_row(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -969,8 +976,8 @@ class TestAst804CandidateDispatchAdminValidation:
             admin_mod.database,
             "get_dispatch_task",
             lambda task_id: {
-                "task_key": "inflow_discovery",
-                "trigger_state": "LIVE_PROMPTS",
+                "task_key": "intake_initiate_candidate",
+                "trigger_state": "ACTIVE_SEARCH",
                 "candidate_id": "c1",
                 "auto_mode": 0,
             },
@@ -979,7 +986,7 @@ class TestAst804CandidateDispatchAdminValidation:
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
         ok = admin_client.put(
             "/api/admin/dispatch_tasks/1",
-            json={"trigger_state": "NEW"},
+            json={"trigger_state": "NEW_CANDIDATE"},
             headers=auth_headers,
         )
         assert ok.status_code == 200
@@ -990,7 +997,7 @@ class TestAst804CandidateDispatchAdminValidation:
             headers=auth_headers,
         )
         assert bad.status_code == 400
-        assert "inflow_discovery" in bad.get_json()["error"]
+        assert "intake_initiate_candidate" in bad.get_json()["error"]
 
 
 # Branches: timesheet list/export with optional req_dict filters.
