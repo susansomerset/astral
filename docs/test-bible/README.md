@@ -204,6 +204,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
 
+### AST-921 · AST-912 (harvest astral law docs into statute corpus)
+
+**Docs-only** (statute harvest under product `docs/statutes/`). Live edits on **`origin/sub/AST-912/AST-921-harvest-astral-law-docs`**: `HARVEST.md` crosswalk + narrative leftovers, 51 new statutes (`orchestration/` + `astral/`), README harvested corpus index, and statute citations in the three law docs. Does **not** redefine SCHEMA (**AST-920**), wire consumers (**AST-910** / **AST-916**), or implement hooks/CI. No `src/`, no pytest.
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
+
 
 
 ## 2. Where tests live
