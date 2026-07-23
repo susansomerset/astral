@@ -199,5 +199,5 @@ Changes:
 | -- | -- |
 | Ticket | AST-973 |
 | Publish ref | `origin/sub/AST-871/AST-973-legacy-candidate-migration` |
-| Built | pending SHA |
+| Built | `e5b05d77dc8be3759851953beedf47cd7a9338b5` |
 | Notes | Stages 1–4: legacy map, migrate/hard-delete (ensure=BC), reap-due, consumer sweep. |
