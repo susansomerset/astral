@@ -103,7 +103,8 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(3)
   })
 
-  it("shows Artifacts section chrome and parks Generate on the leading strip", async () => {
+  it("empty Artifacts tab shows Generate only (no section chrome)", async () => {
+    // AST-951 supersedes AST-948 always-on empty section chrome for Artifacts.
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j948/generate_artifacts" && init?.method === "POST") {
         return jsonResponse({ ok: true, state: "BUILD_ARTIFACTS" })
@@ -115,9 +116,9 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     await waitForShell()
     expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.getByText("Job Resume")).toBeInTheDocument()
-    expect(screen.getByText("Cover Letter")).toBeInTheDocument()
-    expect(screen.getByText("Application Questions")).toBeInTheDocument()
+    expect(screen.queryByText("Job Resume")).not.toBeInTheDocument()
+    expect(screen.queryByText("Cover Letter")).not.toBeInTheDocument()
+    expect(screen.queryByText("Application Questions")).not.toBeInTheDocument()
     const btn = await screen.findByRole("button", { name: "Generate Artifacts" })
     await userEvent.click(btn)
     await waitFor(() =>
@@ -126,7 +127,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
-  it("AST-645: Generate Artifacts uses in-flight class while Working", async () => {
+  it("AST-645: Generate Artifacts uses in-flight class while request pending", async () => {
     let resolveGenerate!: (value: Response) => void
     const generatePromise = new Promise<Response>((resolve) => {
       resolveGenerate = resolve
@@ -144,7 +145,8 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(btn).not.toHaveClass("in-flight")
     await userEvent.click(btn)
     await waitFor(() => expect(btn).toHaveClass("in-flight"))
-    expect(btn).toHaveTextContent("Working…")
+    // AST-951: busy label stays Generate Artifacts until close; Generating… is in-progress chrome
+    expect(btn).toHaveTextContent("Generate Artifacts")
     resolveGenerate(jsonResponse({ ok: true, state: "BUILD_ARTIFACTS" }))
     await waitFor(() => expect(btn).not.toHaveClass("in-flight"))
   })
@@ -239,13 +241,16 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryByText("No analysis upshot on file.")).not.toBeInTheDocument()
   })
 
-  it("shows Cancel on Artifacts strip for BUILD_ARTIFACTS", async () => {
+  it("shows Generating… + Cancel on Artifacts for BUILD_ARTIFACTS", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-build", { state: "BUILD_ARTIFACTS" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-build" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     const strip = document.querySelector(".recommended-report-artifacts-actions") as HTMLElement
+    expect(within(strip).getByRole("button", { name: "Generating…" })).toBeDisabled()
+    expect(within(strip).getByRole("button", { name: "Generating…" })).toHaveClass("in-flight")
     expect(within(strip).getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+    expect(screen.queryByText("Job Resume")).not.toBeInTheDocument()
   })
 })
 
@@ -458,5 +463,101 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
     expect(jdPanel).toBeTruthy()
     expect(within(jdPanel).getByText("No consult detail on file.")).toBeVisible()
     expect(document.querySelector(".recommended-report-phase-grade-row")).toBeNull()
+  })
+})
+
+describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("compound BUILD_ARTIFACTS hop shows Generating… + Cancel via base-state fallback", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-hop", { state: "BUILD_ARTIFACTS.draft_job_resume" }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-hop" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    const strip = document.querySelector(".recommended-report-artifacts-actions") as HTMLElement
+    expect(within(strip).getByRole("button", { name: "Generating…" })).toBeDisabled()
+    expect(within(strip).getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+  })
+
+  it("Cancel closes modal after cancel_build POST", async () => {
+    const onClose = vi.fn()
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j-cancel/cancel_artifact_build" && init?.method === "POST") {
+        return jsonResponse({ ok: true, state: "RECOMMENDED" })
+      }
+      return jobHandler("j-cancel", { state: "BUILD_ARTIFACTS" })(url, init)
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-cancel" onClose={onClose} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    const strip = document.querySelector(".recommended-report-artifacts-actions") as HTMLElement
+    await userEvent.click(within(strip).getByRole("button", { name: "Cancel" }))
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j-cancel/cancel_artifact_build", {
+        method: "POST",
+      }),
+    )
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it("ERROR_BUILD_ARTIFACTS is not Generating… chrome", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-err", { state: "ERROR_BUILD_ARTIFACTS" }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-err" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    expect(screen.queryByRole("button", { name: "Generating…" })).not.toBeInTheDocument()
+  })
+
+  it("populated Artifacts shows editable Job Resume section (no Generate strip)", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j-pop" && !init) {
+        return jsonResponse({
+          astral_job_id: "j-pop",
+          job_title: "Role",
+          company: "Co",
+          state: "CANDIDATE_REVIEW",
+          state_changed_at: null,
+          job_link: "https://jobs.example/apply",
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            artifacts: {
+              resume_content: { professional_summary: "Draft text" },
+              cover_letter: { Letter: "Cover body" },
+            },
+          },
+        })
+      }
+      if (url === `/api/candidates/${baseCandidate.astral_candidate_id}/resume_structure`) {
+        return jsonResponse({
+          sections: [{ id: "professional_summary", label: "Summary" }],
+          accent_color: null,
+        })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-pop" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
+    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
+    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(
+      el => el.textContent?.trim(),
+    )
+    expect(headerLabels).toContain("Job Resume")
+    expect(headerLabels).toContain("Cover Letter")
+    expect(headerLabels).not.toContain("Application Questions")
+    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
+    await waitFor(() => expect(screen.queryByText("Loading resume structure…")).not.toBeInTheDocument())
+    expect(await screen.findByDisplayValue("Draft text")).toBeInTheDocument()
+  })
+
+  it("does not show Reset or Regenerate on Artifacts tab", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j948"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    expect(screen.queryByRole("button", { name: /Reset/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Regenerate/i })).not.toBeInTheDocument()
   })
 })

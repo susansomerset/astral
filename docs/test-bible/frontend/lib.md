@@ -111,3 +111,13 @@ cd src/ui/frontend && npm run test:component -- \
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+
+---
+
+### AST-951 · AST-858
+
+**AST-951:** `isArtifactsBuildInProgress`, `artifactsTabPrimaryActions` (compound hop fallback), `anyReportArtifactContent`.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-951** | Artifacts action / content helpers | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-951 Artifacts helpers`** |

@@ -478,3 +478,25 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
   --testNamePattern="AST-950"
 ```
+
+---
+
+### AST-951 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-951** owns Artifacts tab layouts: empty → **Generate Artifacts**; in-flight `BUILD_ARTIFACTS` / `BUILD_ARTIFACTS.<hop>` → **Generating…** + **Cancel**; populated → editable Job Resume / Cover / Application Questions via `ArtifactEditor` (no Reset/Regenerate).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-951** | Empty / in-flight / populated Artifacts; helpers; revise AST-948 empty-chrome / Working… asserts | `JobAnalysisReportModal.tsx`, `recommendedJobReport.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-951 Artifacts tab layouts`** (+ revised AST-948 Artifacts cases); **`test_recommendedJobReport.test.tsx`** — **`AST-951 Artifacts helpers`** |
+
+**Sibling note:** Run with `--testNamePattern="AST-951|AST-948"` so Summary/Analysis sibling bodies are not required on this tip.
+
+**AST-951** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-951|AST-948"
+```
