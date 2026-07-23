@@ -252,6 +252,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on publish tip + `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-929** out of scope.
 
+### AST-929 · AST-916 (code rubric — Radia full-statute sweep)
+
+**Docs-only** (astral `canon/rubrics/code/` + statute/workflow pointers + team-chuckles skill/AGENTS). Live edits: astral **`origin/sub/AST-916/AST-929-code-rubric-radia-sweep`** (`canon/rubrics/code/code-rubric.v1.md` + README index row, SCHEMA/README pointers, `docs/ASTRAL_TEAM_WORKFLOW.md` Tests Passed→Review Posted gate, plan + canary stub); **`team-chuckles` `main`** @ `7ec2c9e` (`review-child` executes code-rubric.v1; Radia AGENTS). No product `src/`, no pytest. Does **not** own plan rubric (**AST-928**), test rubric (second wave), or pattern catalog authoring.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on publish tip + `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-928** out of scope.
+
 
 ## 2. Where tests live
 
