@@ -76,7 +76,7 @@ Follow **`~/.cursor/skills/orientation/SKILL.md`** in full before other pipeline
 | Plan Approved | Engineer | **`build-child`** → **Code Complete** |
 | Code Complete | Betty | **`qa-child`** → **Tests Ready** |
 | Tests Ready | Engineer | **`test-child`** → **Tests Passed** |
-| Tests Passed | Radia | **`review-child`** → **Review Posted** |
+| Tests Passed | Radia | **`review-child`** → execute `code-rubric.v1`; **Review Posted** requires statutes-checked artifact (`[code-rubric] revision=1`) |
 | Review Posted | Engineer | **`resolve-child`** → **User Testing** (child keeps engineer **assignee**) |
 | User Testing (child) | Engineer | Ready for **`prep-uat`** rollup; **assignee** stays implementer |
 | User Testing (parent) | Susan | **`prep-uat`** assigns Susan; merge **`origin/ftr/<parent>`** into local **`dev`**, exercise |
