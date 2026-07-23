@@ -63,6 +63,7 @@ from src.utils.config import (
     dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
+    _dispatch_entity_type_for_task_key,
     get_task_keys,
     dispatch_claim_uses_score_floor,
     is_dispatch_chain_trigger,
@@ -1032,14 +1033,15 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    try:
-        defaults = dispatch_task_admin_defaults(tk)
-    except KeyError:
-        return f"Unknown or non-schedulable task_key: {tk!r}"
+    if tk not in TASK_CONFIG:
+        return f"Unknown task_key: {tk!r}"
     ts = (trigger_state or "").strip()
     if not ts:
         return "trigger_state is required"
-    et = defaults["entity_type"]
+    try:
+        et = _dispatch_entity_type_for_task_key(tk)
+    except KeyError:
+        return f"task_key {tk!r} has unsupported entity_type"
     if et not in ENTITY_TYPES:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
     try:
@@ -1078,7 +1080,10 @@ def update_dtask(task_id):
         tk_err = _dispatch_task_key_trigger_error(data["task_key"], effective_trigger_state)
         if tk_err:
             return jsonify({"error": tk_err}), 400
-        defaults = dispatch_task_admin_defaults((data["task_key"] or "").strip())
+        defaults = dispatch_task_admin_defaults(
+            (data["task_key"] or "").strip(),
+            trigger_state=effective_trigger_state,
+        )
         updates["task_key"] = (data["task_key"] or "").strip()
         updates["entity_type"] = defaults["entity_type"]
         updates["sort_by"] = defaults["sort_by"]

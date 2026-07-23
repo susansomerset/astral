@@ -613,8 +613,10 @@ class TestAst549DispatchAdminDefaults:
     """AST-549: config-built dispatch_task admin defaults; no parallel seed dicts."""
 
     def test_unknown_task_key_raises(self) -> None:
-        with pytest.raises(KeyError, match="not schedulable"):
-            cfg.dispatch_task_admin_defaults("anticipate_scan")
+        # AST-955: Save membership is TASK_CONFIG — not DISPATCH_SCHEDULABLE_TASK_KEYS.
+        # anticipate_scan is registered (hop-derived BUILD_ARTIFACTS); use a junk key.
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
 
     def test_qualify_job_listings_batch_call_mode_and_sort(self) -> None:
         d = cfg.dispatch_task_admin_defaults("qualify_job_listings")
@@ -1726,4 +1728,41 @@ class TestAst898NewRetryQualifyHolding:
         assert consult_mod._consult_batch_fail_dest("NEW", err) == "NEW_RETRY"
         assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
         assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
+
+
+class TestAst955RegisteredKeyDispatchAdminDefaults:
+    """AST-955: admin defaults for any registered TASK_CONFIG key (+ optional trigger)."""
+
+    def test_check_cover_letter_with_trigger_override(self) -> None:
+        assert "check_cover_letter" in cfg.TASK_CONFIG
+        assert "check_cover_letter" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        d = cfg.dispatch_task_admin_defaults(
+            "check_cover_letter", trigger_state="CANDIDATE_REVIEW"
+        )
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "CANDIDATE_REVIEW"
+        assert d["sort_by"]
+        assert d["batch_call_mode"] == 0
+
+    def test_check_cover_letter_without_override_raises_no_rule(self) -> None:
+        with pytest.raises(KeyError, match="no rule for task_key"):
+            cfg.dispatch_task_admin_defaults("check_cover_letter")
+
+    def test_already_schedulable_grade_do_unchanged(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("grade_do")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_JD"
+        assert d["batch_call_mode"] == 1
+
+    def test_resume_hops_still_derive_build_artifacts(self) -> None:
+        assert cfg.dispatch_task_admin_defaults("check_job_resume")["trigger_state"] == (
+            cfg.BUILD_ARTIFACTS_BASE_STATE
+        )
+        assert cfg.dispatch_task_admin_defaults("finalize_job_resume")["trigger_state"] == (
+            cfg.BUILD_ARTIFACTS_BASE_STATE
+        )
+
+    def test_retired_consult_still_rejected(self) -> None:
+        with pytest.raises(KeyError, match="retired"):
+            cfg.dispatch_task_admin_defaults("consult_do")
 

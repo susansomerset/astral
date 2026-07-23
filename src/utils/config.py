@@ -1419,8 +1419,6 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
         return "CANDIDATE_REVIEW"
-    if task_key not in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        raise KeyError(f"dispatch trigger_state: unknown task_key {task_key!r}")
     cfg = TASK_CONFIG.get(task_key)
     if cfg and cfg.get("trigger_state") is not None:
         return str(cfg["trigger_state"])
@@ -1515,20 +1513,28 @@ def dispatch_entity_state_registry(entity_type: str) -> Dict[str, Any]:
     return registries[entity_type]
 
 
-def dispatch_task_admin_defaults(task_key: str) -> Dict[str, Any]:
-    """Admin + DB insert defaults for dispatch_task columns. Raises KeyError if task_key is not schedulable."""
+def dispatch_task_admin_defaults(
+    task_key: str,
+    trigger_state: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Admin + DB insert defaults for any registered non-retired TASK_CONFIG key.
+
+    Optional ``trigger_state`` overrides derivation when the key has no default
+    trigger rule (e.g. mid-chain hops with TASK_CONFIG.trigger_state None).
+    """
     tk = (task_key or "").strip()
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         raise KeyError(retired)
-    if tk not in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        raise KeyError(f"dispatch_task_admin_defaults: task_key {tk!r} not schedulable")
+    if tk not in TASK_CONFIG:
+        raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}")
     entity_type = _dispatch_entity_type_for_task_key(tk)
-    trigger_state = _dispatch_trigger_state_for_task_key(tk)
+    override = (trigger_state or "").strip()
+    effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
     return {
         "entity_type": entity_type,
-        "trigger_state": trigger_state,
-        "sort_by": _dispatch_sort_by_for(entity_type, trigger_state),
+        "trigger_state": effective_ts,
+        "sort_by": _dispatch_sort_by_for(entity_type, effective_ts),
         "batch_call_mode": _dispatch_batch_call_mode_for(tk),
     }
 
