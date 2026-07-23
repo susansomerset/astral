@@ -1408,6 +1408,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
         return "CANDIDATE_REVIEW"
+    # Mid-chain cover-letter hops: same Input State as draft (AST-962 form/Save defaults).
+    if task_key in ("check_cover_letter", "finalize_cover_letter", "propose_application_responses"):
+        return "CANDIDATE_REVIEW"
     cfg = TASK_CONFIG.get(task_key)
     if cfg and cfg.get("trigger_state") is not None:
         return str(cfg["trigger_state"])
