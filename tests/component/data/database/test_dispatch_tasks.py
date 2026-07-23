@@ -1336,6 +1336,10 @@ class TestAst962SaveDispatchTaskCoverLetterDefaults:
         assert row["entity_type"] == "job"
 
 
+@pytest.mark.skipif(
+    not hasattr(__import__("src.utils.config", fromlist=["CANDIDATE_STAGE_DISPATCH"]), "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
 class TestAst972CandidateStageEligibility:
     """AST-972: count_eligible for REQUESTED_* stage keys; ACTIVE_SEARCH for inflow only."""
 

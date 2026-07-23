@@ -198,7 +198,7 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-804"
 ```
 
-**Note:** Opaque `LIVE_PROMPTS` / `CONTEXT_READY` fixtures in **roster/integration** remain until sibling **AST-973**. **AST-972** revised dispatcher + `test_dispatch_tasks` inflow fixtures to **`ACTIVE_SEARCH`** (search eligibility gate).
+**Note:** **AST-972** revised dispatcher + `test_dispatch_tasks` inflow fixtures to **`ACTIVE_SEARCH`**. **AST-973** sweeps remaining roster/integration/frontend legacy vocab fixtures.
 
 ### AST-971 · AST-871
 
@@ -248,5 +248,27 @@ Wire **`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`** claim workers (ready / retry
   tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
   tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible \
   tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible \
+  -q
+```
+
+
+### AST-973 · AST-871
+
+Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch trigger remap; reap-due purge; consumer fixture sweep off retired four-step names.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Legacy map + remap helper | `src/utils/config.py` | **`TestAst973LegacyCandidateRemap`** |
+| hard_delete + migrate A/B/C; ensure = BC only | `src/data/database.py` | **`TestAst973LegacyCandidateMigration`** |
+| Core wrappers | `src/core/candidate.py` | **`TestAst973HardDeleteAndReapPurge`** |
+| Fixture vocab sweep | roster / integration / frontend | `LIVE_PROMPTS`→`ACTIVE_SEARCH`; `CONTEXT_READY`→`ACTIVE_SEARCH` |
+
+**AST-973** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/core/test_candidate.py::TestAst973HardDeleteAndReapPurge \
+  tests/component/data/database/test_candidates.py::TestAst973LegacyCandidateMigration \
   -q
 ```

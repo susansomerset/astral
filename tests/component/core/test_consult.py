@@ -3599,6 +3599,10 @@ class TestAst898QualifyNewRetry:
         assert consult_mod._INPUT_STATE_TO_TASK["VALID_TITLE_RETRY"] == "qualify_job_listings"
 
 
+@pytest.mark.skipif(
+    not hasattr(__import__("src.utils.config", fromlist=["CANDIDATE_STAGE_DISPATCH"]), "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
 class TestAst972CandidateStageConsultRouting:
     """AST-972: run_consult_task routes REQUESTED_* keys to stage workers."""
 
