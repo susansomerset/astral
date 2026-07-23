@@ -229,3 +229,9 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 - §4.2: plan lives at `docs/features/team-chuckles/ast-925-….md` per project folder mapping (Team Chuckles → `team-chuckles`).
 - No undeclared files; engineer test-tree ban respected (no `tests/` or bible edits).
 - Boundaries honored: no statute redefinition; no AST-969 harvest; no consumer procedure edits.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-913/AST-925-pattern-schema-authoring`
+- **Build commits:** Stage 1 `code(AST-925): pattern SCHEMA + AUTHORING + README` (`02556e7`); Stage 2 `code(AST-925): exemplar pattern (batch claim-process-release)` (`d8afb5d`)
+- **Tip at Code Complete:** `d8afb5d1bdb8037937219e9bb360918b5c8caea1` (Stage 2 exemplar; SCHEMA+AUTHORING at `02556e7`; plan at `4e0dce1`)
