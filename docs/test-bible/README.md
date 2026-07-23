@@ -222,6 +222,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
 
+### AST-958 · AST-910 (Todo-grab requires assignee Chuckles)
+
+**Docs-only** (team-chuckles watcher/skill). Live edits on **`team-chuckles` `main`** @ `c417fc0` (`skills/rollcall/watch_linear.py` datt Todo requires Chuckles assignee — no auto-assign; WAKE cheatsheet + `linear-state-consumers` + datt skill chat gate aligned); astral **`origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles`** holds the plan doc only. No product `src/`, no pytest. Does **not** own Joan (**AST-919**), Archie (**AST-922**), or wrap PR Ready auto-assign.
+
+**No new component tests.** **`test-child`:** read/grep (+ optional `py_compile`) acceptance on `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
 
 
 ## 2. Where tests live
