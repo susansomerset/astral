@@ -167,3 +167,11 @@ None (**fix-now** / **discuss**).
 | — | None |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**Resolved:** 2026-07-23 (Ada)
+
+- Radia **fix-now:** none · **discuss:** none · advisory KeyError fallthrough left as-is (plan-mandated).
+- No product delta this pass. Radia `docs(AST-960): Radia review — clean` @ `c64566f` already on publish tip via §4 merge.
+- §9a dry-run vs `origin/dev` and `origin/ftr/AST-957-local-host-server-doesnt-load` before User Testing.
