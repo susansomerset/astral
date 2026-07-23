@@ -268,4 +268,12 @@ REVISE with any fix-now / R3 `violates` / R5 fail enters or continues the AST-92
 
 - No `plan-rubric-verdict-AST-928.md` attachment on this ticket (Joan APPROVED comment present; R7 attachment proven on canary AST-967).
 - Diff layers=`docs`; change_types=`add`+`modify`; 56 active statutes checked.
+
+## Resolution
+
+**2026-07-23** — Radia Overall DISCUSS; **no fix-now**.
+
+- **discuss (C4 straggler) `astral.git.engineer-test-tree-ban`:** Acknowledged. Joan correctly excluded at plan time (Files Changed had no test-tree paths). After Betty’s bible registry, the three-dot diff brings the statute in-scope; tip still **conforms** (Betty `docs()` only; engineer `code()` never touched test-tree). No product or plan-stage change. Future plans that expect Betty bible rows can note this statute may land in-scope post-qa.
+- **fix-now:** none.
+- Proceeding to **User Testing**.
 )
