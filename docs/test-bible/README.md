@@ -210,6 +210,24 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
 
+### AST-919 · AST-910 (Joan persona statute validator)
+
+**Docs-only** (team-chuckles persona + skills + astral workflow). Live edits on **`team-chuckles` `main`** @ `3c26552` (Joan AGENTS/config, handoff/seed, validate-plan ownership, datt §3e Joan spawn/`MAX_JOAN_CONTEXT`, orientation/MCP/env docs); astral **`origin/sub/AST-910/AST-919-joan-persona-statute-validator`** holds plan + `docs/ASTRAL_TEAM_WORKFLOW.md` Joan rows. No product `src/`, no pytest. Does **not** own Archie (**AST-922**), Todo-grab (**AST-958**), statute authoring (**AST-912**), or plan rubrics (**AST-916** / **AST-928**).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
+### AST-922 · AST-910 (Archie identity table + alias sweep)
+
+**Docs-only** (team-chuckles identity table + skills/personas Category A alias sweep + astral law docs). Live edits on **`team-chuckles` `main`** @ `3d5d0b6` (`agents/identity-table.md`, orientation § Role alias resolution, scoped skills/agents Category A Archie prose; Category B Linear `@susan` / assignee Susan preserved); astral **`origin/sub/AST-910/AST-922-archie-identity-table`** holds plan + TEAM/GIT workflow Architect/owners/CALL ARCHIE + `canon/statutes/AUTHORING.md` identity-table pointer. No product `src/`, no pytest. Does **not** own Joan (**AST-919**), Todo-grab (**AST-958**), or residue-purge siblings.
+
+**No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
+### AST-958 · AST-910 (Todo-grab requires assignee Chuckles)
+
+**Docs-only** (team-chuckles watcher/skill). Live edits on **`team-chuckles` `main`** @ `c417fc0` (`skills/rollcall/watch_linear.py` datt Todo requires Chuckles assignee — no auto-assign; WAKE cheatsheet + `linear-state-consumers` + datt skill chat gate aligned); astral **`origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles`** holds the plan doc only. No product `src/`, no pytest. Does **not** own Joan (**AST-919**), Archie (**AST-922**), or wrap PR Ready auto-assign.
+
+**No new component tests.** **`test-child`:** read/grep (+ optional `py_compile`) acceptance on `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
 
 
 ## 2. Where tests live
