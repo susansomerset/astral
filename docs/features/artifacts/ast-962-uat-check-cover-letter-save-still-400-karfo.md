@@ -80,3 +80,14 @@ assert d["entity_type"] == "job" and d["trigger_state"] == "CANDIDATE_REVIEW"
 | §2.1 config | Trigger default lives in `config.py` |
 | §2.4 / §2.6 | Untouched |
 | §3.3 | Utils only |
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-856/AST-962-uat-check-cover-letter-save-still-400-karfo`  
+**Tip:** `b3b016a`
+
+**Stages delivered:**
+- Stage 1 — `_dispatch_trigger_state_for_task_key` defaults `check_cover_letter` / `finalize_cover_letter` / `propose_application_responses` → `CANDIDATE_REVIEW`
+- Stage 2 — tip smoke: defaults without override; `non-schedulable` absent from `src/`
+
+**Betty:** default-trigger-without-override coverage for `check_cover_letter`.
