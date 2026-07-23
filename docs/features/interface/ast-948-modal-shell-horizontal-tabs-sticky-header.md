@@ -280,3 +280,18 @@ Stages 1–4: `report_top_tabs` / `report_summary_sections` manifest; `ReportSec
 
 - Optional: lift Analysis/Artifacts `default_expanded` into config section shape (Joan recommendation) on a sibling or small follow-up — not required to clear this review.
 - No product fix required for C4 stragglers.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Publish tip before resolve:** `dedf666` (`docs(AST-948): Radia review — findings` on `origin/sub/AST-858/AST-948-modal-shell-horizontal-tabs-sticky-header`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss #1 — Analysis/Artifacts `default_expanded` React seeds vs config SoT | **Deferred** — Radia Recommended actions: optional lift into config on sibling/follow-up; **not required to clear this review**. Stage 4 seed (`phase_jd` / Artifacts collapsed) stays as approved plan. |
+| discuss #2–4 — C4 statute stragglers | **No action** — Radia scored conforms; informational only. |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
