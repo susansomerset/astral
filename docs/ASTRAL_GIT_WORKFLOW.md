@@ -15,7 +15,7 @@ Three permanent branches on `origin`. Nothing else is permanent.
 
 | Branch | Owner | Purpose |
 |--------|-------|---------|
-| `main` | Susan | Production |
+| `main` | Archie | Production |
 | `dev` | Chuckles | Integration |
 | `tests` | Betty | Cumulative test corpus |
 
@@ -56,7 +56,7 @@ Assume repo folder name **`<reponame>`** (today: `astral`). Siblings under the p
 
 | Pattern | Example | Branch context | Owner | Lifespan |
 |---------|---------|----------------|-------|----------|
-| `<reponame>/` | `astral/` | `dev` | Chuckles / Susan | Permanent |
+| `<reponame>/` | `astral/` | `dev` | Chuckles / Archie | Permanent |
 | `<reponame>-tests/` | `astral-tests/` | `tests` | Betty | Permanent |
 | `<reponame>-<IssueID>/` | `astral-AST-593/` | active `sub/*` | child assignee | Ephemeral — per parent epic |
 
@@ -264,7 +264,7 @@ No-op if ftr unchanged; mandatory every time.
 | `docs()` | Radia | Yes | Review — clean or findings |
 | `resolve()` | Engineer | Yes | Review loop closed |
 | `merge-child()` | Chuckles | Yes | Sub → ftr |
-| `finish-up()` | Chuckles | Yes | Ftr → dev (parent close; after Susan sets PR Ready) |
+| `finish-up()` | Chuckles | Yes | Ftr → dev (parent close; after Archie sets PR Ready (Linear: Susan)) |
 
 Ten commit types. One owner each.
 

@@ -224,3 +224,13 @@ code(AST-922): Archie alias in TEAM/GIT workflow + AUTHORING pointer
 - §3.5 naming: N/A for React; skill/doc paths follow existing team-chuckles layout.
 - §3.6: no spike artifacts under `docs/features/`.
 - Git: publish astral plan/law to `origin/sub/AST-910/AST-922-archie-identity-table` only; team-chuckles to `origin/main`; never push `origin/dev`.
+
+## Built
+
+**team-chuckles:** `origin/main` @ `3d5d0b622fd7be2727ff5f866f073cd00eb8c39d`
+**astral publish ref:** `origin/sub/AST-910/AST-922-archie-identity-table` (this commit)
+
+Stage 1: `agents/identity-table.md` + orientation § Role alias resolution + README row.
+Stage 2: TEAM/GIT workflow Architect/owners/CALL ARCHIE + AUTHORING identity-table pointer.
+Stage 3: Personas + scoped skills Category A sweep; Category B Linear assignee/`@susan` preserved.
+Stage 4: Verification greps + dual-repo publish.
