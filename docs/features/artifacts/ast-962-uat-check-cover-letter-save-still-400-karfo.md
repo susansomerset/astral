@@ -91,3 +91,29 @@ assert d["entity_type"] == "job" and d["trigger_state"] == "CANDIDATE_REVIEW"
 - Stage 2 — tip smoke: defaults without override; `non-schedulable` absent from `src/`
 
 **Betty:** default-trigger-without-override coverage for `check_cover_letter`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-856/AST-962-uat-check-cover-letter-save-still-400-karfo` @ `db8cfcd`
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stage 1 exact: after `draft_cover_letter`, mid-hops `check_cover_letter` / `finalize_cover_letter` / `propose_application_responses` → `CANDIDATE_REVIEW`. No Save membership rework, no schedulable frozenset, no API/frontend churn. |
+| UAT diagnosis | Tip already lacks `non-schedulable` in `src/`; residual gap was empty default trigger so form meta KeyError-swallowed blank Input State. Defaults-without-override now resolve; `_dispatch_task_key_form_meta` prefers `dispatch_task_admin_defaults` for `TASK_CONFIG` keys. |
+| Scope / Self-Assessment | Single-Component utils branch; Conf Medium / Risk low match the three-line footprint. |
+| Rules | §1.3 DRY / §2.1 config — one helper branch beside draft. §2.4 / §2.6 / §5f / §5g N/A. |
+| Tests (Betty) | AST-955 override test flipped + AST-962 mid-hop class — out of Radia edit scope. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| — | None. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product fixes required beyond this `docs()` commit).
