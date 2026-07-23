@@ -118,3 +118,30 @@ Planner rule: if the bug Description lacks Diagnosis / Parent AC quotes, **stop*
 
 **Built:** `~/team-chuckles/skills/plan-child/SKILL.md` — Draft B only; no fix-uat / validate-plan edits.
 **Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `8a74376`.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-961/AST-964-plan-child-uat-fitness` @ `3eb58b4`  
+**Skill (reviewed SHA):** `team-chuckles@8a74376` (`skills/plan-child/SKILL.md`).
+
+### What's solid
+
+| Area | Notes |
+| --- | --- |
+| Plan fidelity | Stages 1–2 = Draft B: §0a “— continued” with mandatory `## UAT fitness` (AC restored / Correct outcome / Sibling check / Not sufficient / Wrong fix rejected) + re-file / do-not-invent-AC; Structure placement after summary before Files Changed; Plan Ready without it invalid. Existing §0a five bullets untouched. |
+| AC coverage | Child AC3–4 met at `8a74376` (“stacktrace alone ≠ done” via **Not sufficient**). No fix-uat / validate-plan / thin-validate smuggle (AST-963/965). |
+| Scope / Self-Assessment | Single-Component skills+plan; Conf high / Risk Medium match +18-line skill footprint. No `src/` / `tests/` on astral tip. |
+| Rules | §1.1 / §4.2; product / §5f / §5g N/A. |
+| Betty | Docs-only grep/read manifest — out of Radia edit scope; bible README entry matches. |
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Recommended actions
+
+| Severity | Item |
+| --- | --- |
+| — | None. |
+
+**Verdict:** Clean — `resolve-child` may proceed (no product/skill fixes required beyond this `docs()` commit).
