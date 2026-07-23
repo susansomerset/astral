@@ -234,3 +234,34 @@ Stage 1: `agents/identity-table.md` + orientation § Role alias resolution + REA
 Stage 2: TEAM/GIT workflow Architect/owners/CALL ARCHIE + AUTHORING identity-table pointer.
 Stage 3: Personas + scoped skills Category A sweep; Category B Linear assignee/`@susan` preserved.
 Stage 4: Verification greps + dual-repo publish.
+
+## Review (Radia)
+
+**Diff:** `origin/dev...origin/sub/AST-910/AST-922-archie-identity-table` @ `ab7a772`  
+**Live:** `team-chuckles` `main` @ `3d5d0b6`
+
+### What’s solid
+
+- Identity table + Linear mention contract; orientation § Role alias resolution; README row; install exposes `~/.cursor/agents/identity-table.md`.
+- Astral Category A: Architect → Archie, CALL ARCHIE, GIT `main`/worktree owners → Archie with Linear Susan dual; AUTHORING pointer only (no statute rewrite).
+- Category B preserved (`@susan` / `assignee → Susan`); no `Susan (Archie)` leftovers; betty/radia AGENTS correctly skipped (no Category A hits); no `src/` / pytest; boundaries vs AST-919 / AST-958 held in this tip’s intent.
+- Self-Assessment **Single-Component** matches footprint.
+
+### Issues
+
+| Severity | Item |
+|----------|------|
+| **fix-now** | `~/team-chuckles/skills/orientation/SKILL.md` still has Category A owner cells that Stage 2 already fixed in `docs/ASTRAL_GIT_WORKFLOW.md`: worktree Owner `Chuckles / Susan` (→ `Chuckles / Archie`) and permanent-branch `main \| Susan` (→ `Archie`). File was in scope and edited for § Role alias resolution; Stage 4 required classifying every `\bSusan\b` hit in orientation. |
+| **discuss** | `define-parent`: “Backlog is Susan-only intake” vs `linear-state-consumers` “Archie (intake; Linear: Susan)”. Dual-contract form preferred if Backlog ownership is architect-role. |
+| **advisory** | Sibling merge: this tip’s `ASTRAL_TEAM_WORKFLOW` still has Plan Ready `Chuckles + Archie`, Plan Discuss `Chuckles (Joan actor)`, Coordinator `review-plan`; AST-919 tip has Joan rows + CALL SUSAN / Architect Susan. `merge-child` must reconcile both alias + Joan ownership — not Joan scope for this ticket, but both touched the same file. |
+| **advisory** | `WAKE_CHEATSHEET.md` listed in Files Changed / Stage 4 `git add` but unchanged — remaining Susan hits are Category B (last commenter / assignee facts); OK. |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Flip orientation worktree + `main` Owner cells to Archie (mirror GIT workflow) | Engineer (`resolve-child`) on `team-chuckles` `main` + note on publish tip if needed |
+| Optional dual wording on define-parent Backlog intake | Engineer if discuss → yes |
+| Reconcile TEAM_WORKFLOW at ftr merge (Joan + Archie) | Chuckles `merge-child` |
+
+**ASTRAL_CODE_RULES:** §1.1 / §1.3 satisfied for landed pieces; product layers N/A.
