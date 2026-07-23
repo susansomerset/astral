@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc.
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
-- candidate — Candidate: state, state_history (JSON array), candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
+- candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
@@ -69,7 +69,10 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BLOCK_TYPES,
     CHARS_PER_TOKEN,
+    CANDIDATE_LEGACY_STATE_MAP,
+    CANDIDATE_LEGACY_TRIGGER_STATES,
     CANDIDATE_STATES,
+    remap_legacy_candidate_state,
     COMPANY_STATES,
     ENTITY_TYPES,
     INFLOW_CONFIG,
@@ -2525,8 +2528,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
         conn.execute("""
             CREATE TABLE candidate (
                 astral_candidate_id TEXT PRIMARY KEY,
-                state TEXT NOT NULL DEFAULT 'NEW',
-                state_history TEXT DEFAULT '[]',
+                state TEXT NOT NULL DEFAULT 'NEW_CANDIDATE',
                 candidate_data TEXT,
                 candidate_api_key TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2538,7 +2540,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     else:
         # Idempotent migration: add missing columns on existing databases
         cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate)").fetchall()}
-        for col, col_def in [("candidate_api_key", "TEXT"), ("agent_responses", "TEXT DEFAULT '[]'"), ("state_history", "TEXT DEFAULT '[]'")]:
+        for col, col_def in [("candidate_api_key", "TEXT"), ("agent_responses", "TEXT DEFAULT '[]'")]:
             if col not in cols:
                 try:
                     conn.execute(f"ALTER TABLE candidate ADD COLUMN {col} {col_def}")
@@ -2549,6 +2551,8 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     _migrate_candidate_data_structure(conn)
     _migrate_pronoun_preference_backfill(conn)
     _migrate_context_arrays_to_text(conn)
+    # AST-973: remap legacy states/triggers only (never Phase A hard-delete on ensure)
+    _legacy_candidate_migrate_conn(conn, dry_run=False, phases="BC")
     _candidate_schema_ensured = True
 
 
@@ -2724,6 +2728,220 @@ def _migrate_context_arrays_to_text(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+
+def hard_delete_candidate(astral_candidate_id: str) -> Dict[str, int]:
+    """Physical delete of a candidate and candidate-scoped satellites (AST-973)."""
+    cid = str(astral_candidate_id or "").strip()
+    if not cid:
+        raise ValueError("astral_candidate_id is required")
+
+    def _with_conn() -> Dict[str, int]:
+        conn = _get_connection()
+        try:
+            counts = {
+                "dispatch_task": 0,
+                "candidate_intake_session": 0,
+                "company_search_terms": 0,
+                "vector_feedback": 0,
+                "rubric_vector": 0,
+                "agent_responses": 0,
+                "candidate": 0,
+            }
+            _ensure_candidate_schema(conn)
+            try:
+                _ensure_candidate_intake_session_table(conn)
+            except Exception:
+                pass
+            for table, sql in (
+                ("dispatch_task", "DELETE FROM dispatch_task WHERE candidate_id = ?"),
+                ("candidate_intake_session", "DELETE FROM candidate_intake_session WHERE candidate_id = ?"),
+                ("company_search_terms", "DELETE FROM company_search_terms WHERE candidate_id = ?"),
+                ("vector_feedback", "DELETE FROM vector_feedback WHERE candidate_id = ?"),
+                ("rubric_vector", "DELETE FROM rubric_vector WHERE candidate_id = ?"),
+                (
+                    "agent_responses",
+                    "DELETE FROM agent_responses WHERE entity_type = 'candidate' AND entity_id = ?",
+                ),
+            ):
+                try:
+                    cur = conn.execute(sql, (cid,))
+                    counts[table] = cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
+                except sqlite3.OperationalError:
+                    counts[table] = 0
+            cur = conn.execute("DELETE FROM candidate WHERE astral_candidate_id = ?", (cid,))
+            counts["candidate"] = cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
+            conn.commit()
+            return counts
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def _lifecycle_reap_started(candidate_data_raw: Any) -> bool:
+    """True when candidate_data.lifecycle.reap_started_at is non-empty."""
+    if not candidate_data_raw:
+        return False
+    try:
+        cd = json.loads(candidate_data_raw) if isinstance(candidate_data_raw, str) else candidate_data_raw
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(cd, dict):
+        return False
+    life = cd.get("lifecycle") or {}
+    if not isinstance(life, dict):
+        return False
+    started = life.get("reap_started_at")
+    return bool(isinstance(started, str) and started.strip())
+
+
+def _legacy_candidate_migrate_conn(
+    conn: sqlite3.Connection,
+    *,
+    dry_run: bool,
+    phases: str,
+) -> Dict[str, Any]:
+    """Conn-bound migrate (AST-973). Does not call schema ensure."""
+    phases = (phases or "BC").upper()
+    if phases not in ("A", "BC", "ABC"):
+        raise ValueError(f"phases must be A, BC, or ABC; got {phases!r}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    out: Dict[str, Any] = {
+        "deleted_hard_pre_cutover": 0,
+        "states_remapped": 0,
+        "states_unknown_to_new_candidate": [],
+        "dispatch_triggers_remapped": 0,
+        "dispatch_trigger_dupes_removed": 0,
+        "dry_run": dry_run,
+        "phases": phases,
+    }
+
+    if "A" in phases:
+        rows = conn.execute(
+            "SELECT astral_candidate_id, candidate_data FROM candidate WHERE state = 'DELETED'"
+        ).fetchall()
+        for row in rows:
+            cid, raw = row[0], row[1]
+            if _lifecycle_reap_started(raw):
+                continue  # post-cutover soft delete — Stage 2 reap-due
+            out["deleted_hard_pre_cutover"] += 1
+            if dry_run:
+                continue
+            # Inline cascade (same conn) — avoid nested _run_with_retry
+            for sql in (
+                "DELETE FROM dispatch_task WHERE candidate_id = ?",
+                "DELETE FROM candidate_intake_session WHERE candidate_id = ?",
+                "DELETE FROM company_search_terms WHERE candidate_id = ?",
+                "DELETE FROM vector_feedback WHERE candidate_id = ?",
+                "DELETE FROM rubric_vector WHERE candidate_id = ?",
+                "DELETE FROM agent_responses WHERE entity_type = 'candidate' AND entity_id = ?",
+            ):
+                try:
+                    conn.execute(sql, (cid,))
+                except sqlite3.OperationalError:
+                    pass
+            conn.execute("DELETE FROM candidate WHERE astral_candidate_id = ?", (cid,))
+        if not dry_run and out["deleted_hard_pre_cutover"]:
+            conn.commit()
+
+    if "B" in phases:
+        rows = conn.execute(
+            "SELECT astral_candidate_id, state FROM candidate WHERE state != 'DELETED'"
+        ).fetchall()
+        for cid, old_state in rows:
+            old = old_state or ""
+            try:
+                new_state = remap_legacy_candidate_state(old)
+            except ValueError:
+                continue
+            if new_state == old:
+                continue
+            if old not in CANDIDATE_STATES and old not in CANDIDATE_LEGACY_STATE_MAP:
+                out["states_unknown_to_new_candidate"].append(
+                    {"astral_candidate_id": cid, "old_state": old}
+                )
+            out["states_remapped"] += 1
+            if dry_run:
+                continue
+            # Preserve state_changed_at on remap
+            conn.execute(
+                "UPDATE candidate SET state = ?, updated_at = ? WHERE astral_candidate_id = ?",
+                (new_state, now, cid),
+            )
+        if not dry_run and out["states_remapped"]:
+            conn.commit()
+
+    if "C" in phases:
+        try:
+            drows = conn.execute(
+                "SELECT id, candidate_id, task_key, entity_type, trigger_state "
+                "FROM dispatch_task"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            drows = []
+        # Gather remaps then apply; handle unique collisions
+        remaps = []  # (id, new_ts)
+        for row in drows:
+            did, cand_id, task_key, entity_type, ts = row
+            ts_s = (ts or "").strip()
+            new_ts = None
+            if ts_s in CANDIDATE_LEGACY_TRIGGER_STATES:
+                new_ts = CANDIDATE_LEGACY_STATE_MAP[ts_s]
+            elif (entity_type or "") == "candidate" and ts_s == "NEW":
+                new_ts = "NEW_CANDIDATE"
+            elif (entity_type or "") == "candidate" and ts_s and ts_s not in CANDIDATE_STATES:
+                try:
+                    new_ts = remap_legacy_candidate_state(ts_s)
+                except ValueError:
+                    new_ts = None
+            if new_ts is None or new_ts == ts_s:
+                continue
+            remaps.append((did, cand_id, task_key, new_ts, ts_s))
+        out["dispatch_triggers_remapped"] = len(remaps)
+        if not dry_run and remaps:
+            for did, cand_id, task_key, new_ts, _old in remaps:
+                # Prefer keeping an existing row already at target key
+                existing = conn.execute(
+                    "SELECT id FROM dispatch_task "
+                    "WHERE candidate_id = ? AND task_key = ? AND trigger_state = ? AND id != ?",
+                    (cand_id, task_key, new_ts, did),
+                ).fetchone()
+                if existing:
+                    conn.execute("DELETE FROM dispatch_task WHERE id = ?", (did,))
+                    out["dispatch_trigger_dupes_removed"] += 1
+                    continue
+                try:
+                    conn.execute(
+                        "UPDATE dispatch_task SET trigger_state = ? WHERE id = ?",
+                        (new_ts, did),
+                    )
+                except sqlite3.IntegrityError:
+                    # Collision: drop this remapped row
+                    conn.execute("DELETE FROM dispatch_task WHERE id = ?", (did,))
+                    out["dispatch_trigger_dupes_removed"] += 1
+            conn.commit()
+
+    return out
+
+
+def migrate_legacy_candidate_states(
+    *,
+    dry_run: bool = False,
+    phases: str = "BC",
+) -> Dict[str, Any]:
+    """Idempotent legacy candidate state / dispatch_task trigger remap (AST-973)."""
+
+    def _with_conn() -> Dict[str, Any]:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            return _legacy_candidate_migrate_conn(conn, dry_run=dry_run, phases=phases)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def _ensure_company_candidate_fk(conn: sqlite3.Connection) -> None:
     """Add candidate_id column to company table if missing. Idempotent."""
     global _company_candidate_fk_ensured
@@ -2769,13 +2987,6 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["candidate_api_key"] = decrypt_value(d["candidate_api_key"])
         except (RuntimeError, ValueError):
             d["candidate_api_key"] = None
-    if d.get("state_history"):
-        try:
-            d["state_history"] = json.loads(d["state_history"])
-        except (TypeError, ValueError):
-            d["state_history"] = []
-    else:
-        d["state_history"] = []
     return d
 
 
@@ -2785,14 +2996,12 @@ def save_candidate(
     state: Optional[str] = None,
     candidate_data: Optional[Dict[str, Any]] = None,
     candidate_api_key: Optional[str] = None,
-    state_history: Optional[List[Dict[str, Any]]] = None,
     merge: bool = True,
     ) -> None:
     """Upsert a candidate row, following the save_job pattern.
     INSERT (new PK): state required. UPDATE (existing PK): only provided fields are set.
     candidate_data: merge=True deep-merges with existing; merge=False overwrites.
     candidate_api_key: if provided, Fernet-encrypted before storage.
-    state_history: caller-managed overwrite when provided; omit to preserve existing.
     Auto-sets updated_at; auto-sets state_changed_at when state changes."""
     now = _utc_now()
     encrypted_key = encrypt_value(candidate_api_key) if candidate_api_key else None
@@ -2813,11 +3022,10 @@ def save_candidate(
                 if state not in allowed:
                     raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                 cdata_str = json.dumps(candidate_data) if candidate_data else "{}"
-                hist_str = json.dumps(state_history if state_history is not None else [])
                 conn.execute(
-                    """INSERT INTO candidate (astral_candidate_id, state, state_history, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (astral_candidate_id, state, hist_str, cdata_str, encrypted_key, now, now, now),
+                    """INSERT INTO candidate (astral_candidate_id, state, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (astral_candidate_id, state, cdata_str, encrypted_key, now, now, now),
                 )
             else:
                 sets: List[str] = []
@@ -2843,9 +3051,6 @@ def save_candidate(
                 if encrypted_key is not None:
                     sets.append("candidate_api_key = ?")
                     params.append(encrypted_key)
-                if state_history is not None:
-                    sets.append("state_history = ?")
-                    params.append(json.dumps(state_history))
                 if not sets:
                     return
                 sets.append("updated_at = ?")
@@ -6323,23 +6528,6 @@ def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]
     return _run_with_retry(_with_conn)
 
 
-
-def list_candidate_ids_with_dispatch_tasks() -> List[str]:
-    """Distinct candidate_id values that already own ≥1 dispatch_task row."""
-    def _with_conn() -> List[str]:
-        conn = _get_connection()
-        try:
-            _ensure_dispatch_task_schema(conn)
-            rows = conn.execute(
-                "SELECT DISTINCT candidate_id FROM dispatch_task "
-                "WHERE candidate_id IS NOT NULL AND TRIM(candidate_id) != '' "
-                "ORDER BY candidate_id ASC"
-            ).fetchall()
-            return [str(r[0]) for r in rows if r[0] is not None]
-        finally:
-            conn.close()
-    return _run_with_retry(_with_conn)
-
 def count_dispatch_tasks_by_candidate() -> Dict[str, int]:
     """Map candidate_id → row count for all dispatch_task rows."""
     def _with_conn() -> Dict[str, int]:
@@ -6661,7 +6849,7 @@ def count_candidate_inflow_discovery_eligible(
     freq_hrs: float,
     last_run_at: Optional[str],
 ) -> int:
-    """inflow_discovery when candidate state matches INFLOW discovery trigger and ≥1 stale company_search_terms row (AST-525/AST-972)."""
+    """inflow_discovery when ACTIVE_SEARCH and ≥1 stale company_search_terms row (AST-525 / AST-973)."""
     del last_run_at  # per-term last_scan_at, not dispatch_task.last_run_at
     eligible, _reason = describe_candidate_inflow_discovery_eligibility(
         candidate_id, float(freq_hrs or 0)
@@ -6704,22 +6892,9 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        from src.utils.config import CANDIDATE_STAGE_DISPATCH, INFLOW_CONFIG
-        stage_keys = {
-            CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-        }
-        if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
-            return count_candidate_inflow_discovery_eligible(
-                candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
-            )
-        if task_key in stage_keys:
-            cand = get_candidate(candidate_id)
-            if not cand:
-                return 0
-            cur = (cand.get("state") or "").strip()
-            return 1 if cur in claim_states else 0
-        return 0
+        return count_candidate_inflow_discovery_eligible(
+            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+        )
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)

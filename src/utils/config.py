@@ -924,6 +924,36 @@ for _name, _cfg in CANDIDATE_STATES.items():
 assert CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0) > 0
 assert CANDIDATE_CONFIG["initial_state"] in CANDIDATE_STATES
 
+# Retired four-step names → AST-970 registry. DELETED is not remapped (hard-deleted).
+CANDIDATE_LEGACY_STATE_MAP = {
+    "LIVE_PROMPTS": "ACTIVE_SEARCH",
+    "NEW": "NEW_CANDIDATE",
+    "PROFILE_READY": "NEW_CANDIDATE",
+    "CONTEXT_READY": "NEW_CANDIDATE",
+}
+
+# Candidate-only legacy labels (never job/company registry keys).
+CANDIDATE_LEGACY_TRIGGER_STATES = frozenset({
+    "LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY",
+})
+
+
+def remap_legacy_candidate_state(state: str) -> str:
+    """Map a persisted candidate.state onto CANDIDATE_STATES keys (AST-973)."""
+    if not state:
+        return CANDIDATE_CONFIG["initial_state"]
+    if state in CANDIDATE_STATES:
+        return state
+    if state in CANDIDATE_LEGACY_STATE_MAP:
+        return CANDIDATE_LEGACY_STATE_MAP[state]
+    if state == "DELETED":
+        raise ValueError("DELETED must be hard-deleted, not remapped")
+    return CANDIDATE_CONFIG["initial_state"]
+
+
+assert "DELETED" not in CANDIDATE_LEGACY_STATE_MAP
+assert all(v in CANDIDATE_STATES for v in CANDIDATE_LEGACY_STATE_MAP.values())
+
 INTAKE_CONFIG = {
     "estelle_agent_id": "X00_estelle_recruiter",
     "session_status_active": "ACTIVE",
