@@ -309,6 +309,10 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 - §4.2: plan lives at `docs/features/team-chuckles/ast-920-….md` per project folder mapping (Team Chuckles → `team-chuckles`).
 - No undeclared files; engineer test-tree ban respected (no `tests/` or bible edits).
 
+## Tests (engineer)
+
+**Manifest:** Betty docs-only / no pytest. Items 1–8 on publish tip (`docs/statutes/` layout, SCHEMA/AUTHORING/README, five exemplars, frontmatter, coverage flags, scope gate) — green. No product commits from test-child.
+
 ## Review
 
 - **Publish ref:** `origin/sub/AST-912/AST-920-statute-schema-authoring-guide`
