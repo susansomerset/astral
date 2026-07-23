@@ -248,3 +248,35 @@ Findings route fix-now / discuss / advisory only. Radia does not edit product or
 - Canary: AST-968
 - Verdict: `[code-rubric] revision=1` on AST-968 with 56-row Statutes checked (CLEAN)
 - Stub left on publish tip
+
+## Review
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+
+**Ticket:** AST-929
+
+**Publish ref:** `origin/sub/AST-916/AST-929-code-rubric-radia-sweep` @ `ebba296` (pre-docs tip; docs() follows)
+
+**Overall:** DISCUSS
+
+### What’s solid
+
+- `canon/rubrics/code/code-rubric.v1.md` + index row; SCHEMA/README/workflow C7 gate match Stages 1+3.
+- Stage 2 team-chuckles `7ec2c9e`: review-child + Radia AGENTS execute full-set sweep.
+- Canary AST-968: 56-row Statutes checked → CLEAN → Review Posted; docs-only tip; Betty owns bible.
+
+### Findings
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded at plan time; tip includes Betty `docs/test-bible/README.md`, so in-scope on diff. Diff itself **conforms** (Betty `docs()`; engineer `code()` off test-tree). No product fix — ack on resolve.
+
+### Recommended actions
+
+- Engineer: acknowledge straggler discuss → User Testing. No fix-now.
+
+### Notes
+
+- No `plan-rubric-verdict-AST-929.md` attachment (Joan APPROVED comment present; Excluded list used for C4).
+- README indexes plan-rubric as `pending AST-928` (file absent on this tip — coexistence OK).
+- Diff layers=`docs`; change_types=`add`+`modify`; 56 active statutes.
