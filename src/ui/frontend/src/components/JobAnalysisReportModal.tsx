@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
@@ -6,6 +6,7 @@ import { TabBar } from "./TabbedTextArea"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
+import { parseAnalysisUpshot } from "../lib/analysisUpshot"
 import {
   emailWithJobPlusTag,
   primaryActionsForState,
@@ -34,12 +35,13 @@ interface Props {
   onRefresh?: () => void
 }
 
-/** AST-948: horizontal-tab Recommended Job Report shell (section bodies = siblings). */
+/** Recommended Job Report — shell AST-948; Summary bodies AST-949. */
 export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Props) {
   const { manifest } = useStateUi()
   const { selectedId, candidates } = useCandidate()
   const [job, setJob] = useState<JobDetail | null>(null)
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null)
+  const [companyNotes, setCompanyNotes] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
@@ -56,6 +58,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setLoading(true)
     setError(null)
     setCompanyWebsite(null)
+    setCompanyNotes(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (!res.ok) throw new Error("Job not found")
@@ -67,8 +70,13 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           .then(co => {
             const site = co?.company_website
             setCompanyWebsite(typeof site === "string" && site.trim() ? site.trim() : null)
+            const notes = co?.prefilter_company_notes
+            setCompanyNotes(typeof notes === "string" && notes.trim() ? notes.trim() : null)
           })
-          .catch(() => setCompanyWebsite(null))
+          .catch(() => {
+            setCompanyWebsite(null)
+            setCompanyNotes(null)
+          })
       }
     } catch (e) {
       setJob(null)
@@ -97,13 +105,30 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
   }, [topTabs, activeTopTab])
 
+  const upshot = useMemo(
+    () => parseAnalysisUpshot(job?.job_data?.analysis_upshot),
+    [job?.job_data?.analysis_upshot],
+  )
+
+  const hasCaveats = !!(upshot?.caveats.some(c => c.text.trim()))
+  const hasQuestions = !!(upshot?.candidate_questions.some(q => q.text.trim()))
+
+  // Content-aware expand overrides (AST-949 Stage 3) — emptiness is data-dependent.
   const summarySections = useMemo((): ReportSectionDef[] => {
-    return (manifest?.jobs.recommended.report_summary_sections ?? []).map(s => ({
-      section_id: s.section_id,
-      nav_label: s.nav_label,
-      default_expanded: s.default_expanded,
-    }))
-  }, [manifest])
+    return (manifest?.jobs.recommended.report_summary_sections ?? []).map(s => {
+      let default_expanded = s.default_expanded
+      if (s.section_id === "job_summary") default_expanded = true
+      else if (s.section_id === "company_upshot") default_expanded = !!companyNotes
+      else if (s.section_id === "caveats") default_expanded = hasCaveats
+      else if (s.section_id === "questions") default_expanded = hasQuestions
+      else if (s.section_id === "raw_jd") default_expanded = false
+      return {
+        section_id: s.section_id,
+        nav_label: s.nav_label,
+        default_expanded,
+      }
+    })
+  }, [manifest, companyNotes, hasCaveats, hasQuestions])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
     return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => ({
@@ -160,6 +185,58 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (typeof ext === "string" && ext.trim()) return ext.trim()
     return job.astral_job_id || jobId || ""
   }, [job, jobId])
+
+  function renderSummarySection(sectionId: string): ReactNode {
+    if (!job) return null
+    const jobData = job.job_data ?? {}
+
+    if (sectionId === "job_summary") {
+      const body = upshot?.whole_jd_upshot?.trim() ?? ""
+      if (body) return <p className="job-analysis-upshot-body">{body}</p>
+      return <p className="recommended-report-empty">No job summary on file.</p>
+    }
+
+    if (sectionId === "company_upshot") {
+      if (companyNotes) return <p className="job-analysis-upshot-body">{companyNotes}</p>
+      return <p className="recommended-report-empty">No company upshot on file.</p>
+    }
+
+    if (sectionId === "caveats") {
+      const rows = (upshot?.caveats ?? []).map(c => c.text.trim()).filter(Boolean)
+      if (rows.length === 0) {
+        return <p className="recommended-report-empty">No noteworthy caveats on file.</p>
+      }
+      return (
+        <ul className="job-analysis-upshot-list">
+          {rows.map((text, i) => (
+            <li key={`c-${i}`}>{text}</li>
+          ))}
+        </ul>
+      )
+    }
+
+    if (sectionId === "questions") {
+      const rows = (upshot?.candidate_questions ?? []).map(q => q.text.trim()).filter(Boolean)
+      if (rows.length === 0) {
+        return <p className="recommended-report-empty">No questions to ask on file.</p>
+      }
+      return (
+        <ul className="job-analysis-upshot-list">
+          {rows.map((text, i) => (
+            <li key={`q-${i}`}>{text}</li>
+          ))}
+        </ul>
+      )
+    }
+
+    if (sectionId === "raw_jd") {
+      const jd = String(jobData.job_description ?? "").trim().replace(/\n{3,}/g, "\n\n")
+      if (jd) return <div className="entity-jd-content">{jd}</div>
+      return <p className="recommended-report-empty">No job description on file.</p>
+    }
+
+    return null
+  }
 
   async function runPrimaryAction(action: ReportPrimaryAction) {
     if (!jobId || !job || primaryBusy) return
@@ -288,7 +365,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               {activeTopTab === "summary" && (
                 <ReportSectionList
                   sections={summarySections}
-                  renderSection={() => null}
+                  renderSection={renderSummarySection}
                 />
               )}
               {activeTopTab === "analysis" && (
