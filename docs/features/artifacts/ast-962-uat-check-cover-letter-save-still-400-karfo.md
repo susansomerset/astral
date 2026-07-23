@@ -117,3 +117,11 @@ None (**fix-now** / **discuss**).
 | — | None. |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product fixes required beyond this `docs()` commit).
+
+## Resolution (2026-07-23, resolve-child)
+
+**Radia:** clean — **fix-now** / **discuss** none (`docs(AST-962): Radia review — clean` @ `028d7e9`).
+
+**Product:** no code changes this pass. Stage 1 mid-hop `CANDIDATE_REVIEW` defaults from build remain the ship; Betty `merge-tests` @ `db8cfcd` unchanged.
+
+**Outcome:** `resolve(AST-962): — clean` → **User Testing** (assignee Ada).
