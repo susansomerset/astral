@@ -106,3 +106,15 @@ Planner rule: if the bug Description lacks Diagnosis / Parent AC quotes, **stop*
 - §4.2 Documentation — single plan under `docs/features/team-chuckles/`.
 - Product layer rules (§2–3) N/A for skill markdown.
 - No `tests/` edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-961/AST-964-plan-child-uat-fitness`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `8ff3854` | Plan doc on astral sub |
+| 1–2 | `team-chuckles@8a74376` | §0a UAT fitness continued + Structure placement before Files Changed |
+
+**Built:** `~/team-chuckles/skills/plan-child/SKILL.md` — Draft B only; no fix-uat / validate-plan edits.
+**Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `8a74376`.
