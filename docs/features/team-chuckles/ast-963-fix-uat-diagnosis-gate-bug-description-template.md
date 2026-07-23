@@ -204,3 +204,9 @@ None (**fix-now** / **discuss**).
 | — | None. |
 
 **Verdict:** Clean — `resolve-child` may proceed (no product/skill fixes required beyond this `docs()` commit).
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Radia:** Clean — no fix-now / discuss items ([Linear](https://linear.app/astralcareermatch/issue/AST-963/fix-uat-diagnosis-gate-bug-description-template-deep-think-uat-issues)).  
+**Action:** No product or skill changes. Intake Radia `docs(AST-963)` @ `c718d76`. Publish `resolve(AST-963): — clean`.
