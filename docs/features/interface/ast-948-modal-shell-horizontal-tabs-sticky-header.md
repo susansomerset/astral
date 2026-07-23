@@ -239,3 +239,11 @@ Rebuild the Recommended Job Report chrome: replace the left `SideTabPanel` rail 
 - **§3.3:** UI edits stay in `src/ui/frontend` + `config.py` manifest; no `data`/`external` imports from React.
 - **§3.5:** New component flat under `components/`; styles only in `App.css`.
 - **Tests / bible:** Not touched by engineer (Betty).
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-858/AST-948-modal-shell-horizontal-tabs-sticky-header` @ _(see tip after Stage 4 commit)_
+
+Stages 1–4: `report_top_tabs` / `report_summary_sections` manifest; `ReportSectionList` Expand-All stack; sticky header deeplinks + Copy Application Email / LinkedIn + Print Resume/Cover; horizontal Summary/Analysis/Artifacts shell with empty section bodies; Generate/Cancel parked on Artifacts `leading` strip. Tests deferred to Betty.
