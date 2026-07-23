@@ -192,3 +192,12 @@ Changes:
 - `agent_data`: leave orphans (no `entity_id`); cascade `agent_responses` by `(entity_type, entity_id)`.
 - Confirm orphan company/job `candidate_id` FK posture for UAT.
 - Count/list unknown legacy states remapped to `NEW_CANDIDATE` for auditability.
+
+## Review
+
+| Field | Value |
+| -- | -- |
+| Ticket | AST-973 |
+| Publish ref | `origin/sub/AST-871/AST-973-legacy-candidate-migration` |
+| Built | pending SHA |
+| Notes | Stages 1–4: legacy map, migrate/hard-delete (ensure=BC), reap-due, consumer sweep. |

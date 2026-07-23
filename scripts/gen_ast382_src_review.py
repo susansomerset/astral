@@ -855,7 +855,7 @@ def main() -> None:
         (
             "src/ui/frontend/src/components/ArtifactEditor.tsx",
             "21",
-            '`const GENERATE_STATES = new Set(["CONTEXT_READY", "LIVE_PROMPTS"])`',
+            '`const GENERATE_STATES = new Set(["RESUME_READY", "ACTIVE_SEARCH"])`  # AST-973',
             "B/2",
         ),
         (

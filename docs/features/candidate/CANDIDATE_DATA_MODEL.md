@@ -107,6 +107,21 @@ Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE`
 
 `check_context_complete()` only reports whether the four context fields are populated — it does **not** write state.
 
+
+### Legacy cutover (AST-973)
+
+| Legacy state | Remap |
+| -- | -- |
+| `LIVE_PROMPTS` | `ACTIVE_SEARCH` |
+| `NEW` | `NEW_CANDIDATE` |
+| `PROFILE_READY` | `NEW_CANDIDATE` |
+| `CONTEXT_READY` | `NEW_CANDIDATE` |
+
+- Pre-cutover `DELETED` (no `candidate_data.lifecycle.reap_started_at`) → hard-deleted by CLI Phase A only (`scripts/migrations/migrate_legacy_candidate_states.py --execute`). Not remapped.
+- Post-cutover `DELETED` (with reap metadata) kept until reap-due purge.
+- `dispatch_task.trigger_state`: `LIVE_PROMPTS` / `PROFILE_READY` / `CONTEXT_READY` remapped on any `entity_type`; `NEW` → `NEW_CANDIDATE` only when `entity_type='candidate'`.
+- Schema-ensure runs Phase B/C remaps only; operator CLI runs Phase ABC after Susan OK.
+
 ## Relationships to other tables
 
 - **company.candidate_id** — FK to `astral_candidate_id`. Scopes companies to a candidate. Batch claims and list queries accept `candidate_id` to filter.
