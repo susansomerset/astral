@@ -128,3 +128,37 @@ Fill Analysis tab phase sections (no Overview): **JD Analysis** default expanded
 **Built:** `origin/sub/AST-858/AST-950-analysis-tab-grades-confidence` @ `9bbfa70594ae9709ba7fe336a1f7379d8cdcc023`
 
 Stages 1–3: `ReportSectionList` `renderMetadata`; `buildPhaseSectionGradeConfidenceRow` + CSS; Analysis `take_*` above `AgentAnalysisHeader` with header grade+confidence. Tests deferred to Betty.
+
+---
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-950
+**Publish ref tip (pre-docs):** `fe49e3cf39480689c8b67060dd4e0dcb847c804f`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3: optional `renderMetadata` on `ReportSectionList`; `buildPhaseSectionGradeConfidenceRow` with `ConfidenceBullets` (not letter-only dots); Analysis `take_*` above `AgentAnalysisHeader`; four phase sections always; Summary/Artifacts bodies untouched on this tip.
+- Manifest-driven `grades_field` / `take_key` / rubric keys; no scoring/dispatch changes.
+- Betty `test`/`merge-tests`; engineer `code`/`docs`/`plan`.
+
+### Issues / findings
+
+**discuss** (C4 stragglers — Joan plan excluded; three-dot tip vs `origin/dev` includes AST-948 utils/docs/tests so in-scope; all **conforms**):
+
+1. `astral.agent.confidence-bounds`
+2. `astral.config.pass-threshold-vs-score-floor`
+3. `astral.debug.spikes-under-debug-dir`
+4. `astral.docs.features-single-file-per-ticket`
+5. `astral.git.engineer-test-tree-ban`
+6. `astral.standards.utils-data-late-import-only`
+7. `astral.state.job-prior-states-enforced`
+
+**fix-now:** none
+
+### Recommended actions
+
+- No product fix required.
