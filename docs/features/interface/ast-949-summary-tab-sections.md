@@ -149,3 +149,17 @@ Stages 1–3: company `prefilter_company_notes` on existing company fetch; Summa
 ### Recommended actions
 
 - No product fix required. Stragglers are composite-tip / plan-vs-diff predicate drift only.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Publish tip before resolve:** `3c4e387` (`docs(AST-949): Radia review — findings` on `origin/sub/AST-858/AST-949-summary-tab-sections`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — C4 statute stragglers (all conforms) | **No action** — informational composite-tip / plan-vs-diff predicate drift only. |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
