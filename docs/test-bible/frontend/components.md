@@ -412,3 +412,28 @@ cd src/ui/frontend && npm run test:component -- \
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` |
+
+---
+
+### AST-948 · AST-858
+
+**AST-858 (parent):** Redesign Recommended Job Report — horizontal **Summary** / **Analysis** / **Artifacts** tabs, collapsible section chrome, sticky header (deeplinks, copy, Print Resume/Cover). **AST-948** owns shell/header only; section bodies are siblings **AST-949** / **AST-950** / **AST-951**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-948** | Horizontal `TabBar` shell; `ReportSectionList` empty chrome; sticky header deeplinks + Copy Application Email / LinkedIn + Print Resume/Cover; Generate/Cancel on Artifacts `leading` strip; drop JAR `SideTabPanel` / Preview Materials | `JobAnalysisReportModal.tsx`, `RecommendedJobReportHeader.tsx`, `ReportSectionList.tsx`, `App.css`, `StateUiContext.tsx`, `recommendedJobReport.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-948 horizontal shell`**; **`test_ReportSectionList.test.tsx`** — **`ReportSectionList — AST-948`**; revised **`test_JobsRecommended.test.tsx`** row-click (horizontal tabs — AC3 list entry) |
+
+**Obsolete / revised this pass:** left-rail `.side-tab-list` / upshot body / Preview Materials / Apply-button / ArtifactEditor-in-JAR asserts in **`test_JobAnalysisReportModal.test.tsx`** (AST-565 / AST-581 / AST-553 body paths). **AST-645** Generate in-flight coverage kept — switch to Artifacts tab first.
+
+**AST-948** narrowed run (JAR is a modal — **§6c** routed-page rule N/A for modal-only; list entry regression is the JobsRecommended page row):
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ReportSectionList.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs
+```

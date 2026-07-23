@@ -805,3 +805,18 @@ Bootstrap / admin: **`docs/test-bible/core/bootstrap.md`** · **`docs/test-bible
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-948 · AST-858
+
+**AST-948:** `build_state_ui_manifest()["jobs"]["recommended"]` drops **`report_fixed_tabs`**; adds **`report_top_tabs`** (Summary / Analysis / Artifacts) and **`report_summary_sections`**; phase/artifact `nav_label`s become section chrome labels.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Recommended report manifest keys | `src/utils/config.py` | **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** (revised for AST-948) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs
+```
