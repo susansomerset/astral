@@ -165,3 +165,15 @@ _(Becomes the **Quick re-test** block on the parent `[fix-uat]` handoff comment 
 - §4.2 Documentation — single plan file under `docs/features/team-chuckles/`.
 - No product layers (§2–3) touched; DRY/config/batch/state-machine rules N/A for skill markdown.
 - No conflict with engineer test-tree ban — no `tests/` edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-961/AST-963-fix-uat-diagnosis-gate-bug-description-template`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `f26eadf` | Plan doc on astral sub |
+| 1–3 | `team-chuckles@fb6cbbd` | Token-scope AC diagnosis; §2.5 Diagnosis gate + stacktrace marker; Description template + filing rules |
+
+**Built:** `~/team-chuckles/skills/fix-uat/SKILL.md` — Draft A1–A3 only; no thin-validate / UAT fitness.
+**Tip:** astral plan + stub (this commit); skill on `team-chuckles` `main` @ `fb6cbbd`.
