@@ -199,3 +199,26 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Note:** Broader opaque `LIVE_PROMPTS` / `CONTEXT_READY` fixtures in roster/dispatcher/integration remain until sibling **AST-973** consumer/migration sweep — they are not registry membership asserts.
+
+### AST-971 · AST-871
+
+Persist company-shaped **`state_history`** on create seed and every successful **`transition_candidate_state`** (sole path — delete/admin do not double-append). Data column + parse/preserve-when-omitted on **`save_candidate`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Append helper + sole-path write | `src/core/candidate.py` | **`TestAst971CandidateTransitionHistory`**; revised initiate / transition / delete / AST-970 asserts for `state_history` kwarg |
+| Column persist / preserve / parse | `src/data/database.py` | **`TestAst971CandidateStateHistoryColumn`** (`test_candidates.py`); revised vocab in **`TestSaveCandidate`** / migrations |
+
+**AST-971** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst971CandidateTransitionHistory \
+  tests/component/core/test_candidate.py::TestInitiateCandidate \
+  tests/component/core/test_candidate.py::TestTransitionCandidateStateSuccess \
+  tests/component/core/test_candidate.py::TestDeleteCandidate \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/data/database/test_candidates.py \
+  tests/component/data/database/test_candidate_migrations.py \
+  -q
+```
