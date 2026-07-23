@@ -399,3 +399,5 @@ Primary data manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**
 **Broken / obsolete (Betty revision this pass):** `test_dispatch_task_keys_includes_fetch_jd_excludes_retired` assumed frozenset merge — replaced with gap-absent + DB-row merge cases.
 
 Narrowed run: **`docs/test-bible/core/bootstrap.md`** (**AST-960**).
+
+**AST-962 (UAT):** cover-letter mid-hop default Input State — primary manifest **`docs/test-bible/utils/config.md`** (**AST-962**).

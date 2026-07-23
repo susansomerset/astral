@@ -780,3 +780,28 @@ Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 **Broken / obsolete (Betty revision this pass):** any assert on **`DISPATCH_SCHEDULABLE_TASK_KEYS`**; **`dispatch_task_admin_defaults(<gap_key>)`** without expecting **`unknown task_key`**.
 
 Bootstrap / admin: **`docs/test-bible/core/bootstrap.md`** · **`docs/test-bible/ui/api/api_admin.md`** (**AST-960**). Narrowed run listed on **`docs/test-bible/core/bootstrap.md`**.
+
+
+### AST-962 · AST-856 (UAT fix)
+
+**Scope:** `_dispatch_trigger_state_for_task_key` defaults **`check_cover_letter`** / **`finalize_cover_letter`** / **`propose_application_responses`** → **`CANDIDATE_REVIEW`** (same as **`draft_cover_letter`**) so form meta + **`dispatch_task_admin_defaults`** / **`save_dispatch_task`** succeed without a hand-picked Input State. AST-955 Save membership unchanged; no schedulable frozenset (AST-960).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Mid-hop default trigger + admin defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst962CoverLetterMidHopDefaultTrigger` |
+| AST-955 obsolete revise | same | `TestAst955RegisteredKeyDispatchAdminDefaults::test_check_cover_letter_without_override_defaults_candidate_review` |
+| DB insert omits trigger | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst962SaveDispatchTaskCoverLetterDefaults` |
+
+**Broken / obsolete (Betty revision this pass):** `TestAst955RegisteredKeyDispatchAdminDefaults::test_check_cover_letter_without_override_raises_no_rule` — now defaults to **`CANDIDATE_REVIEW`**.
+
+**AST-962** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst962CoverLetterMidHopDefaultTrigger \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst962SaveDispatchTaskCoverLetterDefaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
