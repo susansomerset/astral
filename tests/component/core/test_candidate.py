@@ -72,6 +72,12 @@ class TestInitiateCandidate:
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda *args, **kwargs: saved.append((args, kwargs)))
         candidate_mod.initiate_candidate("somerset", {"context": {}})
         assert saved[0][1]["state"] == "NEW_CANDIDATE"
+        hist = saved[0][1]["state_history"]
+        assert len(hist) == 1
+        assert hist[0]["from_state"] == ""
+        assert hist[0]["to_state"] == "NEW_CANDIDATE"
+        assert hist[0]["batch_id"] is None
+        assert "timestamp" in hist[0]
 
 
 class TestListCandidates:
@@ -368,20 +374,15 @@ class TestDeleteCandidate:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "NEW_CANDIDATE"},
+            lambda candidate_id: {"state": "NEW_CANDIDATE", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.delete_candidate("somerset")
-        # DELETED transition + reap timer merge
-        assert save.call_args_list[0].kwargs == {"state": "DELETED"} or save.call_args_list[0].args == (
-            "somerset",
-        )
-        assert any(
-            c.kwargs.get("state") == "DELETED" or (len(c.args) >= 2 and c.args[1] == "DELETED")
-            for c in save.call_args_list
-        )
-        # Prefer explicit kwargs form used by transition_candidate_state
-        save.assert_any_call("somerset", state="DELETED")
+        # DELETED transition (state + history) + reap timer merge
+        deleted = [c for c in save.call_args_list if c.kwargs.get("state") == "DELETED"]
+        assert len(deleted) == 1
+        assert deleted[0].kwargs["state_history"][-1]["to_state"] == "DELETED"
+        assert deleted[0].kwargs["state_history"][-1]["from_state"] == "NEW_CANDIDATE"
         life_calls = [c for c in save.call_args_list if (c.kwargs.get("candidate_data") or {}).get("lifecycle")]
         assert len(life_calls) == 1
         life = life_calls[0].kwargs["candidate_data"]["lifecycle"]
@@ -395,11 +396,14 @@ class TestTransitionCandidateStateSuccess:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "NEW_CANDIDATE"},
+            lambda candidate_id: {"state": "NEW_CANDIDATE", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED")
-        save.assert_called_once_with("somerset", state="INTAKE_INITIATED")
+        assert save.call_count == 1
+        assert save.call_args.kwargs["state"] == "INTAKE_INITIATED"
+        assert save.call_args.kwargs["state_history"][-1]["from_state"] == "NEW_CANDIDATE"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INTAKE_INITIATED"
 
 
 class TestCheckContextCompleteExtended:
@@ -1382,16 +1386,18 @@ class TestAst970CandidateStateMachine:
     )
 
     def test_happy_path_hops_succeed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        state = {"cur": "NEW_CANDIDATE"}
+        state = {"cur": "NEW_CANDIDATE", "hist": []}
         saves: list[str] = []
 
         def _get(_cid):
-            return {"state": state["cur"]}
+            return {"state": state["cur"], "state_history": list(state["hist"])}
 
         def _save(_cid, **kwargs):
             if "state" in kwargs:
                 state["cur"] = kwargs["state"]
                 saves.append(kwargs["state"])
+            if "state_history" in kwargs:
+                state["hist"] = list(kwargs["state_history"])
 
         monkeypatch.setattr(candidate_mod.database, "get_candidate", _get)
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
@@ -1405,39 +1411,42 @@ class TestAst970CandidateStateMachine:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "INTAKE_INITIATED"},
+            lambda _cid: {"state": "INTAKE_INITIATED", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "REQUIRED_TOPICS_READY")
-        save.assert_called_once_with("somerset", state="REQUIRED_TOPICS_READY")
+        assert save.call_args.kwargs["state"] == "REQUIRED_TOPICS_READY"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "REQUIRED_TOPICS_READY"
 
     def test_stale_companion_may_advance_to_next(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUIRED_TOPICS_READY_STALE"},
+            lambda _cid: {"state": "REQUIRED_TOPICS_READY_STALE", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "ALL_TOPICS_READY")
-        save.assert_called_once_with("somerset", state="ALL_TOPICS_READY")
+        assert save.call_args.kwargs["state"] == "ALL_TOPICS_READY"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "ALL_TOPICS_READY"
 
     def test_inactive_and_deleted_from_any_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUESTED_RESUME_ERROR"},
+            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "INACTIVE")
-        save.assert_called_once_with("somerset", state="INACTIVE")
+        assert save.call_args.kwargs["state"] == "INACTIVE"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INACTIVE"
 
     def test_error_state_has_no_forward_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUESTED_RESUME_ERROR"},
+            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
         )
         with pytest.raises(ValueError, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
@@ -1447,11 +1456,13 @@ class TestAst970CandidateStateMachine:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "ACTIVE_SEARCH"},
+            lambda _cid: {"state": "ACTIVE_SEARCH", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "DELETED")
-        save.assert_any_call("somerset", state="DELETED")
+        deleted = [c for c in save.call_args_list if c.kwargs.get("state") == "DELETED"]
+        assert len(deleted) == 1
+        assert deleted[0].kwargs["state_history"][-1]["to_state"] == "DELETED"
         life = next(
             c.kwargs["candidate_data"]["lifecycle"]
             for c in save.call_args_list
@@ -1507,14 +1518,85 @@ class TestAst970CandidateStateMachine:
         assert moved == [("due", "REQUIRED_TOPICS_READY_STALE")]
 
     def test_pause_search_round_trip(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        state = {"cur": "ACTIVE_SEARCH"}
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: {"state": state["cur"]})
+        state = {"cur": "ACTIVE_SEARCH", "hist": []}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": state["cur"], "state_history": list(state["hist"])},
+        )
 
         def _save(_cid, **kwargs):
             if "state" in kwargs:
                 state["cur"] = kwargs["state"]
+            if "state_history" in kwargs:
+                state["hist"] = list(kwargs["state_history"])
 
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
         candidate_mod.transition_candidate_state("somerset", "PAUSE_SEARCH")
         candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
         assert state["cur"] == "ACTIVE_SEARCH"
+
+
+class TestAst971CandidateTransitionHistory:
+    """AST-971: company-shaped state_history on initiate + sole transition path."""
+
+    def test_helper_appends_company_shaped_entry(self) -> None:
+        out = candidate_mod._append_candidate_state_history(
+            {"state_history": [{"from_state": "", "to_state": "NEW_CANDIDATE", "timestamp": "t0", "batch_id": None}],
+             "batch_id": "b1"},
+            "NEW_CANDIDATE",
+            "INTAKE_INITIATED",
+            "t1",
+        )
+        assert len(out) == 2
+        assert out[-1] == {
+            "from_state": "NEW_CANDIDATE",
+            "to_state": "INTAKE_INITIATED",
+            "timestamp": "t1",
+            "batch_id": "b1",
+        }
+
+    def test_illegal_hop_writes_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+        save.assert_not_called()
+
+    def test_delete_appends_exactly_once_via_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """delete_candidate must not double-append — history only inside transition."""
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "ACTIVE_SEARCH", "state_history": [
+                {"from_state": "", "to_state": "NEW_CANDIDATE", "timestamp": "t0", "batch_id": None},
+            ]},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.delete_candidate("somerset")
+        deleted = [c for c in save.call_args_list if c.kwargs.get("state") == "DELETED"]
+        assert len(deleted) == 1
+        hist = deleted[0].kwargs["state_history"]
+        assert hist[-1]["from_state"] == "ACTIVE_SEARCH"
+        assert hist[-1]["to_state"] == "DELETED"
+        assert sum(1 for e in hist if e["to_state"] == "DELETED") == 1
+
+    def test_same_save_writes_state_and_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED")
+        assert save.call_count == 1
+        kw = save.call_args.kwargs
+        assert kw["state"] == "INTAKE_INITIATED"
+        assert "state_history" in kw
