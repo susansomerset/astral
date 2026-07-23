@@ -271,4 +271,4 @@ Changes:
 
 | Commit | Note |
 |--------|------|
-| _(tip)_ | Code Complete — build-child AST-972 |
+| `0c3345f` on `sub/AST-871/AST-972-dispatch-stale-eligibility` | Code Complete — build-child AST-972 |
