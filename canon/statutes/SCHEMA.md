@@ -31,7 +31,6 @@ Do **not** add undeclared frontmatter keys. Do **not** put `statement` or `ratio
 |-------|---------|
 | `universal` | Consumers that load the universal set **must** include every `tier: universal` + `status: active` statute regardless of path/layer filters. Scope fields may still be present for documentation but do not exclude universals from that set. |
 | `scoped` | Included only when the consumer’s change set matches `applies_when`. Plan-validation matching is defined in `canon/rubrics/plan/plan-rubric.v1.md` (AST-928); code-review full-set sweep is defined in `canon/rubrics/code/code-rubric.v1.md` (AST-929). This schema only labels the fields. |
-
 ### `checkable`
 
 | Value | Meaning |

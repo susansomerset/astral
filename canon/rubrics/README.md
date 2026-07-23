@@ -10,7 +10,7 @@ Review artifacts (Linear comments / attachments / review docs) must name the rub
 
 | id | path | executor | status |
 |----|------|----------|--------|
-| `plan-rubric.v1` | [`plan/plan-rubric.v1.md`](plan/plan-rubric.v1.md) | Joan / `validate-plan` | pending AST-928 |
+| `plan-rubric.v1` | [`plan/plan-rubric.v1.md`](plan/plan-rubric.v1.md) | Joan / `validate-plan` | active |
 | `code-rubric.v1` | [`code/code-rubric.v1.md`](code/code-rubric.v1.md) | Radia / `review-child` | active |
 
 Test rubric: deferred second wave (Betty).

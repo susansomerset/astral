@@ -23,7 +23,6 @@ Consumers that load “the universal set” include **every** file under `canon/
 - `status: active`
 
 Scope fields on universals do not exclude them from that set. Plan consumers match `scoped` statutes per [`canon/rubrics/plan/plan-rubric.v1.md`](../rubrics/plan/plan-rubric.v1.md) (AST-928). Code-review consumers load the **full** active set (universal + scoped) per [`canon/rubrics/code/code-rubric.v1.md`](../rubrics/code/code-rubric.v1.md) (AST-929); scoped `not-applicable` rows still appear on the checked-list.
-
 ## Exemplars
 
 | id | tier | checkable | path |
