@@ -186,13 +186,31 @@ git push origin HEAD:main
 - Docs: plan under `docs/features/team-chuckles/` — satisfied.
 - No conflict with `orch.roles.chuckles-never-ticket-assignee` as child assignee law — this ticket changes **when** Chuckles may be auto-claimed onto **parents** for dispatch, not engineer child assignee rules.
 
-## Review (build stub)
+## Review (Radia)
 
-**Publish ref:** `origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles`
+**Diff:** `origin/dev...origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles` @ `19be0ab`  
+**Live:** `team-chuckles` `main` @ `c417fc0`
 
-| Stage | Commit | Summary |
-|-------|--------|---------|
-| plan | `ad80edc` | Plan doc on astral sub |
-| 1–4 | `team-chuckles@c417fc0` | Datt Todo requires Chuckles assignee; no auto-assign; WAKE/consumers/datt chat gate aligned |
+### What’s solid
 
-**Tip:** astral plan + review stub on this sub; skill/watcher live on `team-chuckles` `main` @ `c417fc0`. Restart datt watcher pane on chuckles host to load `watch_linear.py`.
+- Stage 2 gates land exactly as planned: `_issue_in_silo` Todo → `_is_chuckles_assignee`; fetch keeps `assignee: "me"` for Todo + In Progress; `_datt_prepare_todo_parent` no longer calls `_prepare_susan_status_parent` / never auto-assigns; docstring updated.
+- Stage 3: WAKE ownership row, consumers Todo enter/gates, datt Chat bullet aligned; Stage 3 old-phrasing greps empty; wrap PR Ready path untouched; `py_compile` clean.
+- Boundaries held (Joan / Archie / product `src/` out); Self-Assessment **Single-Component** matches; fail-closed on Todo≠Chuckles is the intended risk tradeoff.
+- Astral tip is plan (+ Betty bible entry) only — correct commit-home split.
+
+### Issues
+
+| Severity | Item |
+|----------|------|
+| **advisory** | `WAKE_CHEATSHEET.md` short wake-tag row still says `` `**Todo** → dispatch` `` without “+ assignee Chuckles”; the ownership table row (Stage 3 target) is correct. Optional one-line tighten. |
+| **advisory** | Ops: restart datt watcher pane on chuckles host so running Python loads `watch_linear.py` (Betty + build stub already note this). |
+
+### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| Optional WAKE short-tag wording | Engineer / Chuckles if desired |
+| Restart datt pane after land | Ops / Chuckles |
+
+**fix-now:** none.  
+**ASTRAL_CODE_RULES:** §1.1 / §1.3 (datt-specific prepare vs wrap helper) satisfied; product layers N/A.
