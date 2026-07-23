@@ -129,3 +129,15 @@ The plan is binding. Execute stages in order. Do not add files, restore the froz
 | §3.3 imports | Bootstrap/admin drop frozenset import; no new cross-layer imports |
 | §3.5 naming | No new public names; delete one constant |
 | Test-tree ban | Product files only; Betty owns test/bible AC4 |
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-957/AST-960-drop-bootstrap-schedulable-frozenset-inventory`  
+**Tip:** `92b9c0e`
+
+**Stages delivered:**
+- Stage 1 — `f7e3aa9` — bootstrap drops `DISPATCH_SCHEDULABLE_TASK_KEYS` inventory loop
+- Stage 2 — `b61de9d` — `api_admin` form/`task_keys` enrich from `TASK_CONFIG` + defaults; no frozenset merge
+- Stage 3 — `92b9c0e` — delete `DISPATCH_SCHEDULABLE_TASK_KEYS`; `trigger_state_used_by_scored_dispatch_task` walks scored `TASK_CONFIG`
+
+**Betty:** test/bible AC4 per plan handoff note (not in this build).
