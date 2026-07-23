@@ -107,3 +107,11 @@ Fill the Summary tab section bodies left empty by AST-948: **Job Summary** (`who
 - **§3.3:** Frontend-only; company notes via existing UI API response.
 - **§3.5:** No new page file required; optional small helpers stay in the modal or `lib/` only if extraction is needed for clarity — prefer keeping render switch in the modal unless it exceeds readable size.
 - **Tests / bible:** Not touched by engineer (Betty).
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-858/AST-949-summary-tab-sections` @ `4881b863ef3cc20c3046e87e38ffdc9268fed191`
+
+Stages 1–3: company `prefilter_company_notes` on existing company fetch; Summary `renderSummarySection` bodies + empty states for job_summary / company_upshot / caveats / questions / raw_jd; content-aware `default_expanded`. Tests deferred to Betty.
