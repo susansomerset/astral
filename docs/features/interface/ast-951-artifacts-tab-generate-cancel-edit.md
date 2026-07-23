@@ -126,3 +126,11 @@ Own the Artifacts tab UX: empty → **Generate Artifacts**; in-flight **BUILD_AR
 - **§2.4 / §2.6:** N/A — no dispatch/state-machine changes; POSTs already exist.
 - **§3.3 / §3.5:** Frontend only.
 - **Tests / bible:** Betty owns.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-858/AST-951-artifacts-tab-generate-cancel-edit` @ `e0c6344ee3fd26889f45f5cf57ccb2e034057345`
+
+Stages 1–2: `isArtifactsBuildInProgress` / `artifactsTabPrimaryActions` / `anyReportArtifactContent`; Artifacts empty Generate, in-flight Generating…+Cancel, populated `ArtifactEditor` sections with resume-structure fetch. Tests deferred to Betty.
