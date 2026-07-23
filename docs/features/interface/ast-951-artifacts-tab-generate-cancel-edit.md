@@ -134,3 +134,32 @@ Own the Artifacts tab UX: empty → **Generate Artifacts**; in-flight **BUILD_AR
 **Built:** `origin/sub/AST-858/AST-951-artifacts-tab-generate-cancel-edit` @ `e0c6344ee3fd26889f45f5cf57ccb2e034057345`
 
 Stages 1–2: `isArtifactsBuildInProgress` / `artifactsTabPrimaryActions` / `anyReportArtifactContent`; Artifacts empty Generate, in-flight Generating…+Cancel, populated `ArtifactEditor` sections with resume-structure fetch. Tests deferred to Betty.
+
+---
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-951
+**Publish ref tip (pre-docs):** `44a0bb22c9dd099f25f0397f19c5ec417bf55eb9`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–2: three exclusive Artifacts layouts (in-flight Generating…+Cancel; empty Generate-only; populated `ArtifactEditor` sections); resume-structure fetch restored; close-on-action uses `cancel_build` / `generate_artifacts`.
+- Helpers match plan names/behavior; `ERROR_BUILD_ARTIFACTS` excluded from Generating… chrome; no Reset/Regenerate; Summary/Analysis bodies untouched on tip.
+- Betty `test`/`merge-tests`; engineer `code`/`docs`/`plan`.
+
+### Issues / findings
+
+**discuss**
+
+1. **astral.config.config-source-of-truth / astral.layers.ui-config-driven-business-logic / astral.standards.no-hardcoded-sets** — Compound in-progress detect (`BUILD_ARTIFACTS` / `BUILD_ARTIFACTS.*`) and fallback to base-state Cancel actions remain in React (`isArtifactsBuildInProgress` / `artifactsTabPrimaryActions`). Same Joan plan-time discuss; matches approved Stage 1 Decision (non-blocking). Optional later: expose via manifest / shared constants.
+2. **C4 stragglers** (Joan excluded; tip includes AST-948 utils/docs/tests; all **conforms**): `astral.agent.confidence-bounds`, `astral.config.pass-threshold-vs-score-floor`, `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.standards.utils-data-late-import-only`, `astral.state.job-prior-states-enforced`.
+
+**fix-now:** none
+
+### Recommended actions
+
+- No product fix required for this review. Optional follow-up for compound-state action keys in manifest remains non-blocking.
