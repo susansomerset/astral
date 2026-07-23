@@ -228,6 +228,11 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep (+ optional `py_compile`) acceptance on `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
 
+### AST-963 · AST-961 (fix-uat diagnosis gate + bug Description template)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/fix-uat/SKILL.md`** (`code(AST-963)` on team-chuckles `main` @ `fb6cbbd`); astral **`origin/sub/AST-961/AST-963-fix-uat-diagnosis-gate-bug-description-template`** holds the plan doc only. No product `src/` and no pytest. Does **not** own plan-child UAT fitness (**AST-964**) or thin-validate wiring (**AST-965**).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on `~/team-chuckles/skills/fix-uat/SKILL.md` (+ plan on publish tip) — §2.5 Diagnosis gate, Description `## Diagnosis`, `<!-- uat-validate: stacktrace -->`, “No more stacktrace” ban, token-scope Purpose/AC/Boundaries for diagnosis, **Full** `validate-plan` epic review Do-not — no pytest manifest. Sibling thin-validate text on the same skill file (**AST-965**) is out of scope for this ticket.
 
 
 ## 2. Where tests live
