@@ -214,3 +214,16 @@ git push origin HEAD:main
 
 **fix-now:** none.  
 **ASTRAL_CODE_RULES:** §1.1 / §1.3 (datt-specific prepare vs wrap helper) satisfied; product layers N/A.
+
+## Resolution
+
+**Date:** 2026-07-23  
+**Review tip:** Radia `docs(AST-958): Radia review — clean` @ `fb188ac` on `origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles`. Live code remains `team-chuckles@c417fc0` (+ advisory doc follow-up below).
+
+| Severity | Disposition |
+|----------|-------------|
+| **fix-now** | none — no product changes |
+| **advisory** WAKE short wake-tag row | Addressed — `[datt]` row now **Todo** + assignee **Chuckles** → dispatch (`team-chuckles` commit after resolve) |
+| **advisory** restart datt pane | Ops note only — not code; still required on chuckles host after land |
+
+No discuss items. No test-tree changes.
