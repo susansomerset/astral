@@ -12,6 +12,8 @@ export type ReportSectionListProps = {
   sections: readonly ReportSectionDef[]
   /** Body for one section — AST-948 passes empty/null; siblings replace. */
   renderSection: (sectionId: string) => ReactNode
+  /** Optional header metadata (e.g. Analysis grade+confidence row). */
+  renderMetadata?: (sectionId: string) => ReactNode
   /** Optional slot above the stack (e.g. Artifacts Generate/Cancel strip). */
   leading?: ReactNode
 }
@@ -20,6 +22,7 @@ export type ReportSectionListProps = {
 export default function ReportSectionList({
   sections,
   renderSection,
+  renderMetadata,
   leading,
 }: ReportSectionListProps) {
   const sectionKeys = useMemo(() => sections.map(s => s.section_id), [sections])
@@ -44,6 +47,7 @@ export default function ReportSectionList({
         <CollapsiblePanel
           key={section.section_id}
           label={section.nav_label}
+          metadata={renderMetadata?.(section.section_id)}
           expanded={isExpanded(section.section_id)}
           onExpandedChange={next => onExpandedChange(section.section_id, next)}
         >

@@ -798,6 +798,26 @@ body {
   margin-left: 2px;
 }
 
+/* AST-950: Analysis section header — grade + confidence glance row */
+.recommended-report-phase-grade-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+}
+
+.recommended-report-phase-grade-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.recommended-report-phase-grade-cell .grade-dot {
+  font-size: 11px;
+}
+
 .recommended-report-empty {
   color: var(--text-secondary);
   font-size: 13px;

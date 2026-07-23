@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { ConfidenceBullets } from "../components/ConfidenceBullets"
 import {
   buildJobListRubricColumnsFromArtifact,
   formatGradeDotTooltip,
@@ -57,6 +58,8 @@ export function materialsPreviewVisible(
 interface GradeCell {
   grade: string
   gradeTooltip: string
+  /** Present on array grade rows; omitted for object-map grades (bullets dim). */
+  confidence?: number
 }
 
 function gradeAndConfidenceForCol(
@@ -68,14 +71,18 @@ function gradeAndConfidenceForCol(
   const colLabel = normalizeRubricVectorKey(col.label)
   if (Array.isArray(gradesRaw)) {
     const row = (
-      gradesRaw as Array<{ vector: string; grade: string; reason?: string }>
+      gradesRaw as Array<{ vector: string; grade: string; reason?: string; confidence?: number }>
     ).find(i => {
       const vector = normalizeRubricVectorKey(i.vector || "")
       return vector === colCode || vector === colLabel
     })
     if (!row) return { grade: "", gradeTooltip: "" }
     const grade = row.grade || ""
-    return { grade, gradeTooltip: formatGradeDotTooltip(col, grade, row.reason) }
+    return {
+      grade,
+      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason),
+      confidence: row.confidence,
+    }
   }
   if (typeof gradesRaw === "object") {
     const obj = gradesRaw as Record<string, string>
@@ -89,6 +96,27 @@ function gradeAndConfidenceForCol(
     }
   }
   return { grade: "", gradeTooltip: "" }
+}
+
+/** Normalize job grade payloads for AgentAnalysisHeader (array or letter map). */
+export function gradesForHeader(
+  raw: unknown,
+): Array<{ vector: string; grade: string; confidence?: number; reason?: string }> {
+  if (!raw) return []
+  if (Array.isArray(raw)) {
+    return (raw as Array<{ vector?: string; grade?: string; confidence?: number; reason?: string }>)
+      .filter(row => row.vector && row.grade)
+      .map(row => ({
+        vector: row.vector!,
+        grade: row.grade!,
+        confidence: row.confidence,
+        reason: row.reason,
+      }))
+  }
+  if (typeof raw === "object") {
+    return Object.entries(raw as Record<string, string>).map(([vector, grade]) => ({ vector, grade }))
+  }
+  return []
 }
 
 function gradeDot(grade: string, tooltip: string) {
@@ -121,6 +149,57 @@ export function buildPhaseTabGradeDots(
     .filter(Boolean)
   if (!dots.length) return null
   return <>{dots}</>
+}
+
+/** Horizontal grade + confidence row for Analysis section headers (AST-950). */
+export function buildPhaseSectionGradeConfidenceRow(
+  gradesRaw: unknown,
+  rubricArtifactKey: string | undefined,
+  candidateArtifacts: Record<string, unknown>,
+): ReactNode {
+  const cells: ReactNode[] = []
+
+  const rubricItems =
+    rubricArtifactKey && Array.isArray(candidateArtifacts[rubricArtifactKey])
+      ? (candidateArtifacts[rubricArtifactKey] as Array<{
+          code?: string
+          label?: string
+          importance?: unknown
+        }>)
+      : null
+
+  if (rubricItems && rubricItems.length > 0) {
+    const cols = sortJobListRubricColumns(buildJobListRubricColumnsFromArtifact(rubricItems))
+    for (const col of cols) {
+      const { grade, gradeTooltip, confidence } = gradeAndConfidenceForCol(gradesRaw, col)
+      if (!grade) continue
+      cells.push(
+        <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
+          {gradeDot(grade, gradeTooltip)}
+          <ConfidenceBullets confidence={confidence} />
+        </span>,
+      )
+    }
+  } else if (Array.isArray(gradesRaw) && gradesRaw.length > 0) {
+    // Rubric missing — still show graded vectors in array order.
+    for (const row of gradesRaw as Array<{
+      vector?: string
+      grade?: string
+      reason?: string
+      confidence?: number
+    }>) {
+      if (!row.vector || !row.grade) continue
+      cells.push(
+        <span key={row.vector} className="recommended-report-phase-grade-cell">
+          {gradeDot(row.grade, row.reason?.trim() || "")}
+          <ConfidenceBullets confidence={row.confidence} />
+        </span>,
+      )
+    }
+  }
+
+  if (!cells.length) return null
+  return <div className="recommended-report-phase-grade-row">{cells}</div>
 }
 
 export function formatPhaseTabNavLabel(prefix: string, dots: ReactNode): ReactNode {

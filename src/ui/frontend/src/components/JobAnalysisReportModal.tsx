@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import AgentAnalysisHeader from "./AgentAnalysisHeader"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
@@ -6,9 +7,12 @@ import { TabBar } from "./TabbedTextArea"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
-import { parseAnalysisUpshot } from "../lib/analysisUpshot"
+import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
+  buildPhaseSectionGradeConfidenceRow,
   emailWithJobPlusTag,
+  gradesForHeader,
+  jobGradesForField,
   primaryActionsForState,
   printCoverVisible,
   printResumeVisible,
@@ -35,7 +39,7 @@ interface Props {
   onRefresh?: () => void
 }
 
-/** Recommended Job Report — shell AST-948; Summary bodies AST-949. */
+/** Shell AST-948; Summary AST-949; Analysis grades AST-950. */
 export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Props) {
   const { manifest } = useStateUi()
   const { selectedId, candidates } = useCandidate()
@@ -51,6 +55,13 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
     [candidates, selectedId],
+  )
+  const candidateArtifacts = useMemo(
+    () =>
+      ((candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as
+        | Record<string, unknown>
+        | undefined) ?? {},
+    [candidate],
   )
 
   const load = useCallback(async () => {
@@ -238,6 +249,37 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return null
   }
 
+  function renderAnalysisMetadata(sectionId: string): ReactNode {
+    if (!job || !manifest) return null
+    const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
+    if (!phase) return null
+    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
+    return buildPhaseSectionGradeConfidenceRow(gradesRaw, rubricKey, candidateArtifacts)
+  }
+
+  function renderAnalysisSection(sectionId: string): ReactNode {
+    if (!job || !manifest) return null
+    const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
+    if (!phase) return null
+    const parsed = parseAnalysisUpshot(job.job_data?.analysis_upshot)
+    const takeRaw = parsed?.[phase.take_key as keyof AnalysisUpshot]
+    const takeBody = typeof takeRaw === "string" ? takeRaw.trim() : ""
+    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
+    const grades = gradesForHeader(gradesRaw)
+    return (
+      <div>
+        {takeBody ? <p className="job-analysis-upshot-body">{takeBody}</p> : null}
+        {grades.length > 0 ? (
+          <AgentAnalysisHeader grades={grades} rubricArtifact={rubricKey} />
+        ) : (
+          <p className="recommended-report-empty">No consult detail on file.</p>
+        )}
+      </div>
+    )
+  }
+
   async function runPrimaryAction(action: ReportPrimaryAction) {
     if (!jobId || !job || primaryBusy) return
     setPrimaryBusy(true)
@@ -371,7 +413,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               {activeTopTab === "analysis" && (
                 <ReportSectionList
                   sections={analysisSections}
-                  renderSection={() => null}
+                  renderMetadata={renderAnalysisMetadata}
+                  renderSection={renderAnalysisSection}
                 />
               )}
               {activeTopTab === "artifacts" && (
