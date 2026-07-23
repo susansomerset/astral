@@ -80,13 +80,12 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(within(bar).getByRole("button", { name: "Analysis" })).toBeInTheDocument()
     expect(within(bar).getByRole("button", { name: "Artifacts" })).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
-    // Summary section chrome (empty bodies — siblings own content)
+    // Summary section chrome (bodies filled by AST-949)
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
     expect(screen.getByText("Company Upshot")).toBeInTheDocument()
     expect(screen.getByText("Noteworthy Caveats")).toBeInTheDocument()
     expect(screen.getByText("Questions to Ask")).toBeInTheDocument()
     expect(screen.getByText("Raw Job Description")).toBeInTheDocument()
-    expect(screen.queryByText("Strong thematic fit.")).not.toBeInTheDocument()
   })
 
   it("shows Analysis section chrome with JD Analysis expanded by default", async () => {
@@ -228,12 +227,16 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
           job_data: { job_description: "txt" },
         })
       }
+      if (url === "/api/companies/Co") {
+        return jsonResponse({ company_website: null })
+      }
       return undefined
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j-empty" onClose={() => {}} />)
     await waitForShell()
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
-    expect(screen.queryByText("No analysis upshot on file.")).not.toBeInTheDocument()
+    // AST-949: job_summary always expanded → empty copy visible; other empties start collapsed
+    expect(await screen.findByText("No job summary on file.")).toBeInTheDocument()
   })
 
   it("shows Cancel on Artifacts strip for BUILD_ARTIFACTS", async () => {
@@ -243,5 +246,108 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     const strip = document.querySelector(".recommended-report-artifacts-actions") as HTMLElement
     expect(within(strip).getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+  })
+})
+
+describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  function companyWithNotes(url: string, init?: RequestInit) {
+    if (url === "/api/companies/Globex") {
+      return jsonResponse({
+        company_website: "https://globex.example",
+        prefilter_company_notes: "Steady growth, remote-friendly.",
+      })
+    }
+    return jobHandler("j949")(url, init)
+  }
+
+  it("fills Summary section bodies from upshot, company notes, and JD", async () => {
+    installBaseApiMocks(mockedApi, companyWithNotes)
+    renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
+    await waitForShell()
+    expect(await screen.findByText("Strong thematic fit.")).toBeInTheDocument()
+    expect(await screen.findByText("Steady growth, remote-friendly.")).toBeInTheDocument()
+    expect(screen.getByText("Remote only")).toBeInTheDocument()
+    expect(screen.getByText("What is the team size?")).toBeInTheDocument()
+    // Raw JD starts collapsed — expand to read body
+    expect(screen.queryByText("Full JD body text")).not.toBeVisible()
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    expect(screen.getByText("Full JD body text")).toBeVisible()
+  })
+
+  it("content-aware expand: Raw JD collapsed; populated sections open", async () => {
+    installBaseApiMocks(mockedApi, companyWithNotes)
+    renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
+    await waitForShell()
+    await waitFor(() => expect(screen.getByText("Steady growth, remote-friendly.")).toBeInTheDocument())
+    // job_summary + company + caveats + questions expanded; raw_jd collapsed
+    expect(screen.getAllByRole("button", { name: "Collapse section" }).length).toBe(4)
+    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(1)
+  })
+
+  it("shows empty-state copy when upshot and company notes are missing", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j949-empty" && !init) {
+        return jsonResponse({
+          astral_job_id: "j949-empty",
+          job_title: "X",
+          company: "Co",
+          state: "RECOMMENDED",
+          state_changed_at: null,
+          job_data: {},
+        })
+      }
+      if (url === "/api/companies/Co") {
+        return jsonResponse({ company_website: null, prefilter_company_notes: "   " })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j949-empty" onClose={() => {}} />)
+    await waitForShell()
+    expect(await screen.findByText("No job summary on file.")).toBeInTheDocument()
+    // company / caveats / questions / raw_jd start collapsed when empty — expand to read copy
+    const expands = screen.getAllByRole("button", { name: "Expand section" })
+    expect(expands.length).toBe(4)
+    await userEvent.click(expands[0])
+    expect(screen.getByText("No company upshot on file.")).toBeVisible()
+    await userEvent.click(expands[1])
+    expect(screen.getByText("No noteworthy caveats on file.")).toBeVisible()
+    await userEvent.click(expands[2])
+    expect(screen.getByText("No questions to ask on file.")).toBeVisible()
+    await userEvent.click(expands[3])
+    expect(screen.getByText("No job description on file.")).toBeVisible()
+  })
+
+  it("company notes come from company API, not job_data", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j949-notes" && !init) {
+        return jsonResponse({
+          astral_job_id: "j949-notes",
+          job_title: "Analyst",
+          company: "Globex",
+          state: "RECOMMENDED",
+          state_changed_at: null,
+          job_link: "https://jobs.example/apply",
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            // decoy — must not be used
+            prefilter_company_notes: "FROM_JOB_DATA",
+          },
+        })
+      }
+      if (url === "/api/companies/Globex") {
+        return jsonResponse({
+          company_website: "https://globex.example",
+          prefilter_company_notes: "FROM_COMPANY_API",
+        })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j949-notes" onClose={() => {}} />)
+    await waitForShell()
+    expect(await screen.findByText("FROM_COMPANY_API")).toBeInTheDocument()
+    expect(screen.queryByText("FROM_JOB_DATA")).not.toBeInTheDocument()
   })
 })
