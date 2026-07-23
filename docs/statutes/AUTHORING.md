@@ -1,6 +1,6 @@
 # Statute authoring guide
 
-How to write, approve, and maintain statutes under `docs/statutes/`. Field definitions live in [SCHEMA.md](SCHEMA.md).
+How to write, approve, and maintain statutes under `docs/statutes/`. Field definitions live in [SCHEMA.md](SCHEMA.md). Harvest completeness (crosswalk + narrative leftovers) lives in [HARVEST.md](HARVEST.md) (AST-921).
 
 ## Folder anatomy
 
@@ -15,7 +15,7 @@ docs/statutes/
 
 - **One file per statute.** Filename equals the statute `id` + `.md`.
 - **Domains are folders** under a namespace (`orchestration/` or `astral/`). Never flatten statutes as siblings of `SCHEMA.md`. Never create one-file-per-domain monoliths.
-- **Reserved top-level names:** `README.md`, `SCHEMA.md`, `AUTHORING.md`, `orchestration/`, `astral/`. Do not invent other top-level entries without Archie approval and a schema/authoring update.
+- **Reserved top-level names:** `README.md`, `SCHEMA.md`, `AUTHORING.md`, `HARVEST.md`, `orchestration/`, `astral/`. Do not invent other top-level entries without Archie approval and a schema/authoring update.
 
 ## Id format
 
