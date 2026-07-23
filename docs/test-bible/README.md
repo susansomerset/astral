@@ -210,6 +210,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
 
+### AST-919 · AST-910 (Joan persona statute validator)
+
+**Docs-only** (team-chuckles persona + skills + astral workflow). Live edits on **`team-chuckles` `main`** @ `3c26552` (Joan AGENTS/config, handoff/seed, validate-plan ownership, datt §3e Joan spawn/`MAX_JOAN_CONTEXT`, orientation/MCP/env docs); astral **`origin/sub/AST-910/AST-919-joan-persona-statute-validator`** holds plan + `docs/ASTRAL_TEAM_WORKFLOW.md` Joan rows. No product `src/`, no pytest. Does **not** own Archie (**AST-922**), Todo-grab (**AST-958**), statute authoring (**AST-912**), or plan rubrics (**AST-916** / **AST-928**).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
 
 
 ## 2. Where tests live
