@@ -277,6 +277,6 @@ Stage 4: Verification greps + dual-repo publish.
 | **advisory** TEAM_WORKFLOW Joan/Archie sibling diverge | Left for Chuckles `merge-child` |
 | **advisory** WAKE_CHEATSHEET unchanged | Confirmed Category B — no change |
 
-**team-chuckles:** follow-up commit on `origin/main` (this resolve).
-**Publish:** `resolve(AST-922): — findings addressed` on `origin/sub/AST-910/AST-922-archie-identity-table`.
+**team-chuckles:** `origin/main` @ `4b04d605d8b4e37f677347150fad9b2fcf7cc833`
+**Publish:** `origin/sub/AST-910/AST-922-archie-identity-table` @ `a15f6badcae6d7dd15e90a5ce564914b85c074ca`
 
