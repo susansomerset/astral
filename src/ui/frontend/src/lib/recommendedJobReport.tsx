@@ -23,6 +23,36 @@ export function primaryActionsForState(
   return manifest?.jobs.recommended.primary_actions_by_state?.[state] ?? []
 }
 
+/** True for BUILD_ARTIFACTS and legacy daisy-chain BUILD_ARTIFACTS.<hop> (not ERROR_BUILD_ARTIFACTS). */
+export function isArtifactsBuildInProgress(jobState: string): boolean {
+  return jobState === "BUILD_ARTIFACTS" || jobState.startsWith("BUILD_ARTIFACTS.")
+}
+
+/**
+ * Primary actions for the Artifacts strip.
+ * Looks up manifest actions for jobState; if empty while build-in-progress,
+ * fall back to BUILD_ARTIFACTS (compound hops share Cancel). Filters out apply.
+ */
+export function artifactsTabPrimaryActions(
+  manifest: StateUiManifest | null,
+  jobState: string,
+): ReportPrimaryAction[] {
+  let actions = primaryActionsForState(manifest, jobState)
+  if (actions.length === 0 && isArtifactsBuildInProgress(jobState)) {
+    actions = primaryActionsForState(manifest, "BUILD_ARTIFACTS")
+  }
+  return actions.filter(a => a.action_key !== "apply")
+}
+
+/** True if any report_artifact_tabs artifact_key has content on job artifacts blob. */
+export function anyReportArtifactContent(
+  artifacts: unknown,
+  artifactTabs: Array<{ artifact_key: string }> | undefined,
+): boolean {
+  if (!artifactTabs?.length) return false
+  return artifactTabs.some(t => artifactHasContent(artifacts, t.artifact_key))
+}
+
 export function artifactHasContent(artifacts: unknown, key: string): boolean {
   if (!artifacts || typeof artifacts !== "object" || Array.isArray(artifacts)) return false
   const raw = (artifacts as Record<string, unknown>)[key]

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import AgentAnalysisHeader from "./AgentAnalysisHeader"
+import ArtifactEditor from "./ArtifactEditor"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
@@ -9,11 +10,14 @@ import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
 import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
+  anyReportArtifactContent,
+  artifactHasContent,
+  artifactsTabPrimaryActions,
   buildPhaseSectionGradeConfidenceRow,
   emailWithJobPlusTag,
   gradesForHeader,
+  isArtifactsBuildInProgress,
   jobGradesForField,
-  primaryActionsForState,
   printCoverVisible,
   printResumeVisible,
   type ReportPrimaryAction,
@@ -39,7 +43,7 @@ interface Props {
   onRefresh?: () => void
 }
 
-/** Shell AST-948; Summary AST-949; Analysis grades AST-950. */
+/** Shell AST-948; Summary AST-949; Analysis AST-950; Artifacts AST-951. */
 export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Props) {
   const { manifest } = useStateUi()
   const { selectedId, candidates } = useCandidate()
@@ -51,6 +55,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [activeTopTab, setActiveTopTab] = useState("summary")
+  const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
+  const [structureError, setStructureError] = useState(false)
 
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
@@ -98,6 +104,27 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   }, [jobId])
 
   useEffect(() => { load() }, [load])
+
+  // Resume section labels for Job Resume ArtifactEditor (mirrors candidate structure).
+  useEffect(() => {
+    if (!selectedId) {
+      setStructureSections(null)
+      setStructureError(false)
+      return
+    }
+    setStructureSections(null)
+    setStructureError(false)
+    api(`/api/candidates/${selectedId}/resume_structure`)
+      .then(r => r.json())
+      .then(data => {
+        const sections = Array.isArray(data.sections) ? data.sections : []
+        setStructureSections(sections.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
+      })
+      .catch(() => {
+        setStructureSections(null)
+        setStructureError(true)
+      })
+  }, [selectedId])
 
   // Reset top tab when opening a different job.
   useEffect(() => {
@@ -149,17 +176,25 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }))
   }, [manifest])
 
-  const artifactSections = useMemo((): ReportSectionDef[] => {
-    return (manifest?.jobs.recommended.report_artifact_tabs ?? []).map(a => ({
-      section_id: a.tab_id,
-      nav_label: a.nav_label,
-      default_expanded: false,
-    }))
-  }, [manifest])
+  const artifactTabs = manifest?.jobs.recommended.report_artifact_tabs
+  const artifacts = job?.job_data?.artifacts
+  const buildInProgress = !!(job && isArtifactsBuildInProgress(job.state))
+  const hasArtifactContent = anyReportArtifactContent(artifacts, artifactTabs)
 
-  const artifactStripActions = useMemo((): ReportPrimaryAction[] => {
+  const populatedArtifactSections = useMemo((): ReportSectionDef[] => {
+    if (!artifactTabs) return []
+    return artifactTabs
+      .filter(a => artifactHasContent(artifacts, a.artifact_key))
+      .map(a => ({
+        section_id: a.tab_id,
+        nav_label: a.nav_label,
+        default_expanded: false,
+      }))
+  }, [artifactTabs, artifacts])
+
+  const artifactActions = useMemo((): ReportPrimaryAction[] => {
     if (!job) return []
-    return primaryActionsForState(manifest, job.state).filter(a => a.action_key !== "apply")
+    return artifactsTabPrimaryActions(manifest, job.state)
   }, [manifest, job])
 
   const profile = useMemo(() => {
@@ -182,7 +217,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return typeof v === "string" && v.trim() ? v.trim() : null
   }, [profile])
 
-  const artifacts = job?.job_data?.artifacts
   const showPrintResume = printResumeVisible(artifacts)
   const showPrintCover = printCoverVisible(artifacts)
 
@@ -280,7 +314,96 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     )
   }
 
+  function renderArtifactSection(sectionId: string): ReactNode {
+    if (!jobId || !artifactTabs) return null
+    const artTab = artifactTabs.find(a => a.tab_id === sectionId)
+    if (!artTab) return null
+    if (artTab.use_resume_structure) {
+      if (structureError) return <p className="entity-error">Failed to load resume structure.</p>
+      if (!structureSections?.length) {
+        return <p className="recommended-report-empty">Loading resume structure…</p>
+      }
+      return (
+        <ArtifactEditor
+          title={artTab.nav_label}
+          artifactKey={artTab.artifact_key}
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={structureSections}
+          jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
+        />
+      )
+    }
+    const taskKey =
+      artTab.artifact_key === "cover_letter"
+        ? "craft_cover_letter"
+        : "propose_application_responses"
+    return (
+      <ArtifactEditor
+        title={artTab.nav_label}
+        artifactKey={artTab.artifact_key}
+        taskKey={taskKey}
+        shapesKey={artTab.shapes_key ?? undefined}
+        jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
+      />
+    )
+  }
+
+  function renderArtifactsPane(): ReactNode {
+    if (!job) return null
+
+    // A — in progress: Generating… + Cancel; no section panels
+    if (buildInProgress) {
+      const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
+      return (
+        <div className="recommended-report-artifacts-actions">
+          <button type="button" className="modal-btn save in-flight" disabled>
+            Generating…
+          </button>
+          {cancelActions.map(action => (
+            <button
+              key={action.action_key}
+              type="button"
+              className="modal-btn save"
+              disabled={primaryBusy}
+              onClick={() => runPrimaryAction(action)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )
+    }
+
+    // B — empty: Generate only
+    if (!hasArtifactContent) {
+      const generate = artifactActions.find(a => a.action_key === "generate_artifacts")
+      if (!generate) return null
+      return (
+        <div className="recommended-report-artifacts-actions">
+          <button
+            type="button"
+            className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
+            disabled={primaryBusy}
+            onClick={() => runPrimaryAction(generate)}
+          >
+            {generate.label}
+          </button>
+        </div>
+      )
+    }
+
+    // C — populated: collapsible editors; no Generate/Cancel strip
+    return (
+      <ReportSectionList
+        sections={populatedArtifactSections}
+        renderSection={renderArtifactSection}
+      />
+    )
+  }
+
   async function runPrimaryAction(action: ReportPrimaryAction) {
+
     if (!jobId || !job || primaryBusy) return
     setPrimaryBusy(true)
     setError(null)
@@ -327,23 +450,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   }
 
   const jobTitleDisplay = job?.job_title?.trim() || job?.company || "Recommended Job Report"
-
-  const artifactsLeading =
-    artifactStripActions.length > 0 ? (
-      <div className="recommended-report-artifacts-actions">
-        {artifactStripActions.map(action => (
-          <button
-            key={action.action_key}
-            type="button"
-            className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
-            disabled={primaryBusy}
-            onClick={() => runPrimaryAction(action)}
-          >
-            {primaryBusy ? "Working…" : action.label}
-          </button>
-        ))}
-      </div>
-    ) : undefined
 
   return (
     <Modal
@@ -417,13 +523,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
                   renderSection={renderAnalysisSection}
                 />
               )}
-              {activeTopTab === "artifacts" && (
-                <ReportSectionList
-                  leading={artifactsLeading}
-                  sections={artifactSections}
-                  renderSection={() => null}
-                />
-              )}
+              {activeTopTab === "artifacts" && renderArtifactsPane()}
             </div>
           )}
         </div>
