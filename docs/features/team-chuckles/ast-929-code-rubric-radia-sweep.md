@@ -231,3 +231,20 @@ Findings route fix-now / discuss / advisory only. Radia does not edit product or
 - §3.6 debug spikes: N/A.
 - No test-tree edits (Betty owns tests).
 - Engineer test-tree ban / Radia no-src: preserved explicitly in Binding Decisions and Stage 2.
+
+
+## Built
+
+| Stage | Commit | Note |
+|-------|--------|------|
+| 1 | `b885312` | code-rubric.v1 + statute pointers |
+| 2 | team-chuckles `7ec2c9e` | review-child + Radia AGENTS |
+| 3 | `5ae8e01` | workflow code-rubric gate |
+| 4 canary stub | `712aff5` | ast-929-canary-stub.md |
+| Publish tip | `712aff5` | origin/sub/AST-916/AST-929-code-rubric-radia-sweep |
+
+## Stage 4 canary evidence
+
+- Canary: AST-968
+- Verdict: `[code-rubric] revision=1` on AST-968 with 56-row Statutes checked (CLEAN)
+- Stub left on publish tip
