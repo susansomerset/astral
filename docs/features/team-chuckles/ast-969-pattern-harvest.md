@@ -198,4 +198,4 @@ Create **exactly** the patterns marked `create`. Skip `already-landed`. Do not a
 
 - **Publish ref:** `origin/sub/AST-913/AST-969-pattern-harvest`
 - **Build commits:** Stage 1 `code(AST-969): pattern HARVEST register + README/AUTHORING pointers` (`c4cf17f`); Stage 2 `code(AST-969): propose pattern.state.entity-state-transitions` (`e109512`); Stage 3 `code(AST-969): approve state pattern + harvest remaining astral patterns` (`181c192`)
-- **Tip at Code Complete:** `181c1928e908bf8142ee819052070e6d958ad9a4`
+- **Tip at Code Complete:** `a36336e384a7fa79c3a2f4fc8302c7c968fd7ab0` (review stub; Stage 3 harvest at `181c192`)
