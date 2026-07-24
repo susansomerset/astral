@@ -26,4 +26,13 @@ Proposed and retired files are excluded from that set.
 
 ## Harvested corpus
 
-Full AC cite map and crosswalk live in [HARVEST.md](HARVEST.md). Stage 1 of AST-969 leaves create rows pending; Stages 2–3 land the remaining approved entries. Exemplars above still lists only the AST-925 entry until Stage 3.
+Full AC cite map and crosswalk live in [HARVEST.md](HARVEST.md). All six catalog entries below are `status: approved`.
+
+| id | status | path |
+|----|--------|------|
+| `pattern.batch.entity-claim-process-release` | approved | `batch/pattern.batch.entity-claim-process-release.md` |
+| `pattern.batch.entity-agent-responses` | approved | `batch/pattern.batch.entity-agent-responses.md` |
+| `pattern.state.entity-state-transitions` | approved | `state/pattern.state.entity-state-transitions.md` |
+| `pattern.config.config-block` | approved | `config/pattern.config.config-block.md` |
+| `pattern.layers.import-discipline` | approved | `layers/pattern.layers.import-discipline.md` |
+| `pattern.ui.admin-endpoint` | approved | `ui/pattern.ui.admin-endpoint.md` |

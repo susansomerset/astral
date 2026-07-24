@@ -1,10 +1,10 @@
 ---
 id: pattern.state.entity-state-transitions
 name: Entity state transitions
-status: proposed
+status: approved
 proposed_in: AST-913
-approved_by: null
-approved_at: null
+approved_by: Archie
+approved_at: "2026-07-24"
 canonical_refs:
   - path: src/core/tracker.py
     symbol: transition_job_state
