@@ -34,7 +34,7 @@ Human-entered. Maps 1:1 to the Profile page form fields.
 
 ### context (candidate-provided, unaltered)
 
-Raw text input from the candidate. Four of these gate the `CONTEXT_READY` state transition (see state machine).
+Raw text input from the candidate. Four of these feed `check_context_complete` (intake completeness); they do not write a state transition (see state machine).
 
 | Key | Token | Gate? | Description |
 |-----|-------|-------|-------------|

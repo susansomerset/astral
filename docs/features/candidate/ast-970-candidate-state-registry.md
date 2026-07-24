@@ -280,3 +280,12 @@ Changes:
 
 **Recommended actions**
 - Engineer: acknowledge straggler / no product change required for it; optional one-line doc cleanup on the CONTEXT_READY leftover (or leave for AST-973 consumer sweep).
+
+## Resolution
+
+2026-07-24 — Radia code-rubric.v1 revision=1 (**DISCUSS**; fix-now none).
+
+| Finding | Action |
+| -- | -- |
+| discuss — C4 `engineer-test-tree-ban` straggler | Acknowledged: Betty owns tip `tests/**` + bible; engineer `code`/`docs` commits did not touch test-tree. No product change. |
+| advisory — `CONTEXT_READY` leftover in data-model context section | One-line cleanup in `CANDIDATE_DATA_MODEL.md`: completeness helper, not a state-transition gate. |
