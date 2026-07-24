@@ -272,3 +272,19 @@ Changes:
 | Commit | Note |
 |--------|------|
 | `bf81fda` on `sub/AST-871/AST-972-dispatch-stale-eligibility` | Code Complete — build-child AST-972 |
+
+### Radia code-rubric.v1 (revision=1)
+
+**Overall:** FIX-NOW  
+**Publish tip reviewed:** `aee89123471e20729c4369f89c7814287af7ab4b` (`origin/dev...origin/sub/AST-871/AST-972-dispatch-stale-eligibility`)
+
+**What’s solid**
+- `CANDIDATE_STAGE_DISPATCH` + candidate `dispatch_claim_states`; provision REQUESTED_* rows; claim gate + eligibility split; tick → `age_stale_candidate_states`; resume/artifacts workers + consult routing; transitions via core only.
+
+**Issues**
+- **fix-now:** `src/core/dispatcher.py` `_tick_loop` late-imports `age_stale_candidate_states` with no cycle-break comment (candidate↔dispatcher). B1 / CODE_RULES: function-scoped imports need a short why comment.
+- **discuss (C4 stragglers):** Joan Excluded statutes that are in-scope on tip (blockedBy 970 + Betty tests + feature docs): `spikes-under-debug-dir`, `features-single-file-per-ticket`, `engineer-test-tree-ban`, `require-auth-on-protected-endpoints`, `ui.naming-conventions`. Substance conforms.
+- **advisory:** `start_scheduler` provision `except Exception` logs via `_sched_log.exception` (acceptable); CREATE candidate `DEFAULT 'NEW'` remains AST-973.
+
+**Recommended actions**
+- Engineer: add one-line late-import comment on the tick aging import; acknowledge C4 stragglers.
