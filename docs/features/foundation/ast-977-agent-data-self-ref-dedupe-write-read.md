@@ -167,3 +167,17 @@
 - **§3.5:** Column/helper names match parent vocabulary (`ref_agent_data_id`).
 - **Compression contract preserved:** Callers still pass/receive plain text; omit payload only on audit rows with refs.
 )
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read` @ `TIP_SHA`
+
+**Stages delivered:**
+- Stage 1: `ref_agent_data_id` schema + inventory — `baa8f4a`
+- Stage 2: `save_agent_data` dedupe write (return dict) — `3194770`
+- Stage 3: transparent read resolve on getters — `30e16c0`
+- Stage 2 follow-up: exclude write id from match (PK retry) — `b51b137`
+- Stage 4: `agent.py` debug found/recorded on write/hydration read — `a2d70db`
+- Stage 5: Code Rules data-layer sentence — this commit
+
+**Betty:** manifest at **Code Complete** — schema ensure column; write match/ref/omit; read resolve by id/batch/ids; self-ref/cycle raise; debug quiet when `debug=False`.
