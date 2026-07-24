@@ -25,7 +25,12 @@ export interface StateUiManifest {
         method: string
         path_suffix: string
       }>>
-      report_fixed_tabs?: Array<{ tab_id: string; nav_label: string }>
+      report_top_tabs?: Array<{ tab_id: string; nav_label: string }>
+      report_summary_sections?: Array<{
+        section_id: string
+        nav_label: string
+        default_expanded: boolean
+      }>
       report_phase_tabs?: Array<{
         tab_id: string
         nav_label: string

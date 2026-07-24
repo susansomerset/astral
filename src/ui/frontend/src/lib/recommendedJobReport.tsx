@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { ConfidenceBullets } from "../components/ConfidenceBullets"
 import {
   buildJobListRubricColumnsFromArtifact,
   formatGradeDotTooltip,
@@ -22,6 +23,36 @@ export function primaryActionsForState(
   return manifest?.jobs.recommended.primary_actions_by_state?.[state] ?? []
 }
 
+/** True for BUILD_ARTIFACTS and legacy daisy-chain BUILD_ARTIFACTS.<hop> (not ERROR_BUILD_ARTIFACTS). */
+export function isArtifactsBuildInProgress(jobState: string): boolean {
+  return jobState === "BUILD_ARTIFACTS" || jobState.startsWith("BUILD_ARTIFACTS.")
+}
+
+/**
+ * Primary actions for the Artifacts strip.
+ * Looks up manifest actions for jobState; if empty while build-in-progress,
+ * fall back to BUILD_ARTIFACTS (compound hops share Cancel). Filters out apply.
+ */
+export function artifactsTabPrimaryActions(
+  manifest: StateUiManifest | null,
+  jobState: string,
+): ReportPrimaryAction[] {
+  let actions = primaryActionsForState(manifest, jobState)
+  if (actions.length === 0 && isArtifactsBuildInProgress(jobState)) {
+    actions = primaryActionsForState(manifest, "BUILD_ARTIFACTS")
+  }
+  return actions.filter(a => a.action_key !== "apply")
+}
+
+/** True if any report_artifact_tabs artifact_key has content on job artifacts blob. */
+export function anyReportArtifactContent(
+  artifacts: unknown,
+  artifactTabs: Array<{ artifact_key: string }> | undefined,
+): boolean {
+  if (!artifactTabs?.length) return false
+  return artifactTabs.some(t => artifactHasContent(artifacts, t.artifact_key))
+}
+
 export function artifactHasContent(artifacts: unknown, key: string): boolean {
   if (!artifacts || typeof artifacts !== "object" || Array.isArray(artifacts)) return false
   const raw = (artifacts as Record<string, unknown>)[key]
@@ -33,6 +64,14 @@ export function artifactHasContent(artifacts: unknown, key: string): boolean {
     )
   }
   return false
+}
+
+export function printResumeVisible(artifacts: unknown): boolean {
+  return artifactHasContent(artifacts, "resume_content")
+}
+
+export function printCoverVisible(artifacts: unknown): boolean {
+  return artifactHasContent(artifacts, "cover_letter")
 }
 
 export function materialsPreviewVisible(
@@ -49,6 +88,8 @@ export function materialsPreviewVisible(
 interface GradeCell {
   grade: string
   gradeTooltip: string
+  /** Present on array grade rows; omitted for object-map grades (bullets dim). */
+  confidence?: number
 }
 
 function gradeAndConfidenceForCol(
@@ -60,14 +101,18 @@ function gradeAndConfidenceForCol(
   const colLabel = normalizeRubricVectorKey(col.label)
   if (Array.isArray(gradesRaw)) {
     const row = (
-      gradesRaw as Array<{ vector: string; grade: string; reason?: string }>
+      gradesRaw as Array<{ vector: string; grade: string; reason?: string; confidence?: number }>
     ).find(i => {
       const vector = normalizeRubricVectorKey(i.vector || "")
       return vector === colCode || vector === colLabel
     })
     if (!row) return { grade: "", gradeTooltip: "" }
     const grade = row.grade || ""
-    return { grade, gradeTooltip: formatGradeDotTooltip(col, grade, row.reason) }
+    return {
+      grade,
+      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason),
+      confidence: row.confidence,
+    }
   }
   if (typeof gradesRaw === "object") {
     const obj = gradesRaw as Record<string, string>
@@ -81,6 +126,27 @@ function gradeAndConfidenceForCol(
     }
   }
   return { grade: "", gradeTooltip: "" }
+}
+
+/** Normalize job grade payloads for AgentAnalysisHeader (array or letter map). */
+export function gradesForHeader(
+  raw: unknown,
+): Array<{ vector: string; grade: string; confidence?: number; reason?: string }> {
+  if (!raw) return []
+  if (Array.isArray(raw)) {
+    return (raw as Array<{ vector?: string; grade?: string; confidence?: number; reason?: string }>)
+      .filter(row => row.vector && row.grade)
+      .map(row => ({
+        vector: row.vector!,
+        grade: row.grade!,
+        confidence: row.confidence,
+        reason: row.reason,
+      }))
+  }
+  if (typeof raw === "object") {
+    return Object.entries(raw as Record<string, string>).map(([vector, grade]) => ({ vector, grade }))
+  }
+  return []
 }
 
 function gradeDot(grade: string, tooltip: string) {
@@ -113,6 +179,57 @@ export function buildPhaseTabGradeDots(
     .filter(Boolean)
   if (!dots.length) return null
   return <>{dots}</>
+}
+
+/** Horizontal grade + confidence row for Analysis section headers (AST-950). */
+export function buildPhaseSectionGradeConfidenceRow(
+  gradesRaw: unknown,
+  rubricArtifactKey: string | undefined,
+  candidateArtifacts: Record<string, unknown>,
+): ReactNode {
+  const cells: ReactNode[] = []
+
+  const rubricItems =
+    rubricArtifactKey && Array.isArray(candidateArtifacts[rubricArtifactKey])
+      ? (candidateArtifacts[rubricArtifactKey] as Array<{
+          code?: string
+          label?: string
+          importance?: unknown
+        }>)
+      : null
+
+  if (rubricItems && rubricItems.length > 0) {
+    const cols = sortJobListRubricColumns(buildJobListRubricColumnsFromArtifact(rubricItems))
+    for (const col of cols) {
+      const { grade, gradeTooltip, confidence } = gradeAndConfidenceForCol(gradesRaw, col)
+      if (!grade) continue
+      cells.push(
+        <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
+          {gradeDot(grade, gradeTooltip)}
+          <ConfidenceBullets confidence={confidence} />
+        </span>,
+      )
+    }
+  } else if (Array.isArray(gradesRaw) && gradesRaw.length > 0) {
+    // Rubric missing — still show graded vectors in array order.
+    for (const row of gradesRaw as Array<{
+      vector?: string
+      grade?: string
+      reason?: string
+      confidence?: number
+    }>) {
+      if (!row.vector || !row.grade) continue
+      cells.push(
+        <span key={row.vector} className="recommended-report-phase-grade-cell">
+          {gradeDot(row.grade, row.reason?.trim() || "")}
+          <ConfidenceBullets confidence={row.confidence} />
+        </span>,
+      )
+    }
+  }
+
+  if (!cells.length) return null
+  return <div className="recommended-report-phase-grade-row">{cells}</div>
 }
 
 export function formatPhaseTabNavLabel(prefix: string, dots: ReactNode): ReactNode {

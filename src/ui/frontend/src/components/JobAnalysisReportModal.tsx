@@ -1,22 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import Modal from "./Modal"
-import SideTabPanel, { type SideTab } from "./SideTabPanel"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import AgentAnalysisHeader from "./AgentAnalysisHeader"
 import ArtifactEditor from "./ArtifactEditor"
-import RecommendedJobReportHeader, { type ProfileLink } from "./RecommendedJobReportHeader"
-import MaterialsPreviewModal from "./MaterialsPreviewModal"
+import Modal from "./Modal"
+import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
+import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
+import { TabBar } from "./TabbedTextArea"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
-import { parseAnalysisUpshot, snakeCaseToTitle, type AnalysisUpshot } from "../lib/analysisUpshot"
+import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
+  anyReportArtifactContent,
   artifactHasContent,
-  buildPhaseTabGradeDots,
+  artifactsTabPrimaryActions,
+  buildPhaseSectionGradeConfidenceRow,
   emailWithJobPlusTag,
-  formatPhaseTabNavLabel,
+  gradesForHeader,
+  isArtifactsBuildInProgress,
   jobGradesForField,
-  materialsPreviewVisible,
-  primaryActionsForState,
+  printCoverVisible,
+  printResumeVisible,
   type ReportPrimaryAction,
 } from "../lib/recommendedJobReport"
 
@@ -40,46 +43,18 @@ interface Props {
   onRefresh?: () => void
 }
 
-function UpshotStringBlock({ heading, body }: { heading: string; body: string }) {
-  const trimmed = body.trim()
-  if (!trimmed) return null
-  return (
-    <div className="job-analysis-upshot-section">
-      <p className="job-analysis-upshot-heading">{heading}</p>
-      <p className="job-analysis-upshot-body">{trimmed}</p>
-    </div>
-  )
-}
-
-function gradesForHeader(raw: unknown): Array<{ vector: string; grade: string; confidence?: number; reason?: string }> {
-  if (!raw) return []
-  if (Array.isArray(raw)) {
-    return (raw as Array<{ vector?: string; grade?: string; confidence?: number; reason?: string }>)
-      .filter(row => row.vector && row.grade)
-      .map(row => ({
-        vector: row.vector!,
-        grade: row.grade!,
-        confidence: row.confidence,
-        reason: row.reason,
-      }))
-  }
-  if (typeof raw === "object") {
-    return Object.entries(raw as Record<string, string>).map(([vector, grade]) => ({ vector, grade }))
-  }
-  return []
-}
-
-/** AST-565: tabbed Recommended Job Report modal */
+/** Shell AST-948; Summary AST-949; Analysis AST-950; Artifacts AST-951. */
 export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Props) {
   const { manifest } = useStateUi()
   const { selectedId, candidates } = useCandidate()
   const [job, setJob] = useState<JobDetail | null>(null)
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null)
+  const [companyNotes, setCompanyNotes] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
+  const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [structureError, setStructureError] = useState(false)
 
@@ -88,7 +63,10 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     [candidates, selectedId],
   )
   const candidateArtifacts = useMemo(
-    () => (candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as Record<string, unknown> ?? {},
+    () =>
+      ((candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as
+        | Record<string, unknown>
+        | undefined) ?? {},
     [candidate],
   )
 
@@ -97,6 +75,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setLoading(true)
     setError(null)
     setCompanyWebsite(null)
+    setCompanyNotes(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (!res.ok) throw new Error("Job not found")
@@ -108,8 +87,13 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           .then(co => {
             const site = co?.company_website
             setCompanyWebsite(typeof site === "string" && site.trim() ? site.trim() : null)
+            const notes = co?.prefilter_company_notes
+            setCompanyNotes(typeof notes === "string" && notes.trim() ? notes.trim() : null)
           })
-          .catch(() => setCompanyWebsite(null))
+          .catch(() => {
+            setCompanyWebsite(null)
+            setCompanyNotes(null)
+          })
       }
     } catch (e) {
       setJob(null)
@@ -121,6 +105,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
 
   useEffect(() => { load() }, [load])
 
+  // Resume section labels for Job Resume ArtifactEditor (mirrors candidate structure).
   useEffect(() => {
     if (!selectedId) {
       setStructureSections(null)
@@ -141,93 +126,99 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       })
   }, [selectedId])
 
+  // Reset top tab when opening a different job.
+  useEffect(() => {
+    setActiveTopTab("summary")
+  }, [jobId])
+
+  const topTabs = useMemo(() => {
+    const rows = manifest?.jobs.recommended.report_top_tabs ?? []
+    return rows.map(r => ({ key: r.tab_id, label: r.nav_label }))
+  }, [manifest])
+
+  useEffect(() => {
+    if (topTabs.length === 0) return
+    if (!topTabs.some(t => t.key === activeTopTab)) {
+      setActiveTopTab(topTabs[0].key)
+    }
+  }, [topTabs, activeTopTab])
+
   const upshot = useMemo(
     () => parseAnalysisUpshot(job?.job_data?.analysis_upshot),
     [job?.job_data?.analysis_upshot],
   )
 
-  const profileLinks = useMemo((): ProfileLink[] => {
-    const profile = (candidate?.candidate_data as Record<string, unknown> | undefined)?.profile
-    if (!profile || typeof profile !== "object") return []
-    const p = profile as Record<string, unknown>
-    const links: ProfileLink[] = []
-    const add = (key: string, label: string, raw: unknown, copyable = true) => {
-      if (typeof raw === "string" && raw.trim()) links.push({ key, label, value: raw.trim(), copyable })
-    }
-    add("contact_email", "Email", p.contact_email)
-    add("reply_email", "Reply email", p.reply_email)
-    add("linkedin_url", "LinkedIn", p.linkedin_url)
-    add("github", "GitHub", p.github)
-    return links
+  const hasCaveats = !!(upshot?.caveats.some(c => c.text.trim()))
+  const hasQuestions = !!(upshot?.candidate_questions.some(q => q.text.trim()))
+
+  // Content-aware expand overrides (AST-949 Stage 3) — emptiness is data-dependent.
+  const summarySections = useMemo((): ReportSectionDef[] => {
+    return (manifest?.jobs.recommended.report_summary_sections ?? []).map(s => {
+      let default_expanded = s.default_expanded
+      if (s.section_id === "job_summary") default_expanded = true
+      else if (s.section_id === "company_upshot") default_expanded = !!companyNotes
+      else if (s.section_id === "caveats") default_expanded = hasCaveats
+      else if (s.section_id === "questions") default_expanded = hasQuestions
+      else if (s.section_id === "raw_jd") default_expanded = false
+      return {
+        section_id: s.section_id,
+        nav_label: s.nav_label,
+        default_expanded,
+      }
+    })
+  }, [manifest, companyNotes, hasCaveats, hasQuestions])
+
+  const analysisSections = useMemo((): ReportSectionDef[] => {
+    return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => ({
+      section_id: p.tab_id,
+      nav_label: p.nav_label,
+      default_expanded: p.tab_id === "phase_jd",
+    }))
+  }, [manifest])
+
+  const artifactTabs = manifest?.jobs.recommended.report_artifact_tabs
+  const artifacts = job?.job_data?.artifacts
+  const buildInProgress = !!(job && isArtifactsBuildInProgress(job.state))
+  const hasArtifactContent = anyReportArtifactContent(artifacts, artifactTabs)
+
+  const populatedArtifactSections = useMemo((): ReportSectionDef[] => {
+    if (!artifactTabs) return []
+    return artifactTabs
+      .filter(a => artifactHasContent(artifacts, a.artifact_key))
+      .map(a => ({
+        section_id: a.tab_id,
+        nav_label: a.nav_label,
+        default_expanded: false,
+      }))
+  }, [artifactTabs, artifacts])
+
+  const artifactActions = useMemo((): ReportPrimaryAction[] => {
+    if (!job) return []
+    return artifactsTabPrimaryActions(manifest, job.state)
+  }, [manifest, job])
+
+  const profile = useMemo(() => {
+    const raw = (candidate?.candidate_data as Record<string, unknown> | undefined)?.profile
+    if (!raw || typeof raw !== "object") return null
+    return raw as Record<string, unknown>
   }, [candidate])
 
-  const tabs = useMemo((): SideTab[] => {
-    const rec = manifest?.jobs.recommended
-    if (!rec) return []
-    const out: SideTab[] = []
-    for (const row of rec.report_fixed_tabs ?? []) {
-      out.push({ id: row.tab_id, label: row.nav_label, content: "" })
+  const applicationEmail = useMemo(() => {
+    if (!profile) return null
+    for (const key of ["contact_email", "reply_email"] as const) {
+      const v = profile[key]
+      if (typeof v === "string" && v.trim()) return v.trim()
     }
-    if (upshot) {
-      for (const row of rec.report_phase_tabs ?? []) {
-        out.push({ id: row.tab_id, label: row.nav_label, content: "" })
-      }
-    }
-    const artifacts = job?.job_data?.artifacts
-    for (const row of rec.report_artifact_tabs ?? []) {
-      if (artifactHasContent(artifacts, row.artifact_key)) {
-        out.push({ id: row.tab_id, label: row.nav_label, content: "" })
-      }
-    }
-    return out
-  }, [manifest, upshot, job?.job_data?.artifacts])
+    return null
+  }, [profile])
 
-  const primaryAction: ReportPrimaryAction | null = useMemo(() => {
-    if (!job) return null
-    const actions = primaryActionsForState(manifest, job.state)
-    return actions[0] ?? null
-  }, [manifest, job])
+  const linkedInUrl = useMemo(() => {
+    const v = profile?.linkedin_url
+    return typeof v === "string" && v.trim() ? v.trim() : null
+  }, [profile])
 
-  const stateSectionLabel = useMemo(() => {
-    if (!job || !manifest) return undefined
-    return manifest.jobs.recommended.sections.find(s => s.state === job.state)?.label
-  }, [manifest, job])
-
-  const artifacts = job?.job_data?.artifacts
-  const showPreview = !!(job && materialsPreviewVisible(job.state, artifacts))
-  const hasCover = artifactHasContent(artifacts, "cover_letter")
-
-  async function runPrimaryAction() {
-    if (!jobId || !job || !primaryAction || primaryBusy) return
-    setPrimaryBusy(true)
-    setError(null)
-    try {
-      if (primaryAction.method === "CLIENT") {
-        if (job.job_link) window.open(job.job_link, "_blank", "noopener,noreferrer")
-        return
-      }
-      const path = `/api/jobs/${encodeURIComponent(jobId)}/${primaryAction.path_suffix}`
-      const res = await api(path, { method: "POST" })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-        throw new Error(err.error || "Action failed")
-      }
-      onRefresh?.()
-      // AST-591: after explicit build start/cancel, return to list (In Progress / Recommended).
-      if (
-        primaryAction.action_key === "generate_artifacts"
-        || primaryAction.action_key === "cancel_artifact_build"
-      ) {
-        onClose()
-        return
-      }
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed")
-    } finally {
-      setPrimaryBusy(false)
-    }
-  }
+  const showPrintResume = printResumeVisible(artifacts)
+  const showPrintCover = printCoverVisible(artifacts)
 
   const emailPlusTag = useMemo(() => {
     if (!job) return jobId ?? ""
@@ -240,150 +231,275 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return job.astral_job_id || jobId || ""
   }, [job, jobId])
 
-  function handleCopy(value: string, linkKey?: string) {
-    const text =
-      linkKey === "contact_email" || linkKey === "reply_email"
-        ? emailWithJobPlusTag(value, emailPlusTag)
-        : value
+  function renderSummarySection(sectionId: string): ReactNode {
+    if (!job) return null
+    const jobData = job.job_data ?? {}
+
+    if (sectionId === "job_summary") {
+      const body = upshot?.whole_jd_upshot?.trim() ?? ""
+      if (body) return <p className="job-analysis-upshot-body">{body}</p>
+      return <p className="recommended-report-empty">No job summary on file.</p>
+    }
+
+    if (sectionId === "company_upshot") {
+      if (companyNotes) return <p className="job-analysis-upshot-body">{companyNotes}</p>
+      return <p className="recommended-report-empty">No company upshot on file.</p>
+    }
+
+    if (sectionId === "caveats") {
+      const rows = (upshot?.caveats ?? []).map(c => c.text.trim()).filter(Boolean)
+      if (rows.length === 0) {
+        return <p className="recommended-report-empty">No noteworthy caveats on file.</p>
+      }
+      return (
+        <ul className="job-analysis-upshot-list">
+          {rows.map((text, i) => (
+            <li key={`c-${i}`}>{text}</li>
+          ))}
+        </ul>
+      )
+    }
+
+    if (sectionId === "questions") {
+      const rows = (upshot?.candidate_questions ?? []).map(q => q.text.trim()).filter(Boolean)
+      if (rows.length === 0) {
+        return <p className="recommended-report-empty">No questions to ask on file.</p>
+      }
+      return (
+        <ul className="job-analysis-upshot-list">
+          {rows.map((text, i) => (
+            <li key={`q-${i}`}>{text}</li>
+          ))}
+        </ul>
+      )
+    }
+
+    if (sectionId === "raw_jd") {
+      const jd = String(jobData.job_description ?? "").trim().replace(/\n{3,}/g, "\n\n")
+      if (jd) return <div className="entity-jd-content">{jd}</div>
+      return <p className="recommended-report-empty">No job description on file.</p>
+    }
+
+    return null
+  }
+
+  function renderAnalysisMetadata(sectionId: string): ReactNode {
+    if (!job || !manifest) return null
+    const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
+    if (!phase) return null
+    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
+    return buildPhaseSectionGradeConfidenceRow(gradesRaw, rubricKey, candidateArtifacts)
+  }
+
+  function renderAnalysisSection(sectionId: string): ReactNode {
+    if (!job || !manifest) return null
+    const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
+    if (!phase) return null
+    const parsed = parseAnalysisUpshot(job.job_data?.analysis_upshot)
+    const takeRaw = parsed?.[phase.take_key as keyof AnalysisUpshot]
+    const takeBody = typeof takeRaw === "string" ? takeRaw.trim() : ""
+    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
+    const grades = gradesForHeader(gradesRaw)
+    return (
+      <div>
+        {takeBody ? <p className="job-analysis-upshot-body">{takeBody}</p> : null}
+        {grades.length > 0 ? (
+          <AgentAnalysisHeader grades={grades} rubricArtifact={rubricKey} />
+        ) : (
+          <p className="recommended-report-empty">No consult detail on file.</p>
+        )}
+      </div>
+    )
+  }
+
+  function renderArtifactSection(sectionId: string): ReactNode {
+    if (!jobId || !artifactTabs) return null
+    const artTab = artifactTabs.find(a => a.tab_id === sectionId)
+    if (!artTab) return null
+    if (artTab.use_resume_structure) {
+      if (structureError) return <p className="entity-error">Failed to load resume structure.</p>
+      if (!structureSections?.length) {
+        return <p className="recommended-report-empty">Loading resume structure…</p>
+      }
+      return (
+        <ArtifactEditor
+          title={artTab.nav_label}
+          artifactKey={artTab.artifact_key}
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={structureSections}
+          jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
+        />
+      )
+    }
+    const taskKey =
+      artTab.artifact_key === "cover_letter"
+        ? "craft_cover_letter"
+        : "propose_application_responses"
+    return (
+      <ArtifactEditor
+        title={artTab.nav_label}
+        artifactKey={artTab.artifact_key}
+        taskKey={taskKey}
+        shapesKey={artTab.shapes_key ?? undefined}
+        jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
+      />
+    )
+  }
+
+  function renderArtifactsPane(): ReactNode {
+    if (!job) return null
+
+    // A — in progress: Generating… + Cancel; no section panels
+    if (buildInProgress) {
+      const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
+      return (
+        <div className="recommended-report-artifacts-actions">
+          <button type="button" className="modal-btn save in-flight" disabled>
+            Generating…
+          </button>
+          {cancelActions.map(action => (
+            <button
+              key={action.action_key}
+              type="button"
+              className="modal-btn save"
+              disabled={primaryBusy}
+              onClick={() => runPrimaryAction(action)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )
+    }
+
+    // B — empty: Generate only
+    if (!hasArtifactContent) {
+      const generate = artifactActions.find(a => a.action_key === "generate_artifacts")
+      if (!generate) return null
+      return (
+        <div className="recommended-report-artifacts-actions">
+          <button
+            type="button"
+            className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
+            disabled={primaryBusy}
+            onClick={() => runPrimaryAction(generate)}
+          >
+            {generate.label}
+          </button>
+        </div>
+      )
+    }
+
+    // C — populated: collapsible editors; no Generate/Cancel strip
+    return (
+      <ReportSectionList
+        sections={populatedArtifactSections}
+        renderSection={renderArtifactSection}
+      />
+    )
+  }
+
+  async function runPrimaryAction(action: ReportPrimaryAction) {
+
+    if (!jobId || !job || primaryBusy) return
+    setPrimaryBusy(true)
+    setError(null)
+    try {
+      if (action.method === "CLIENT") {
+        if (job.job_link) window.open(job.job_link, "_blank", "noopener,noreferrer")
+        return
+      }
+      const path = `/api/jobs/${encodeURIComponent(jobId)}/${action.path_suffix}`
+      const res = await api(path, { method: "POST" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw new Error(err.error || "Action failed")
+      }
+      onRefresh?.()
+      // AST-591: after explicit build start/cancel, return to list.
+      if (action.action_key === "generate_artifacts" || action.action_key === "cancel_build") {
+        onClose()
+        return
+      }
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed")
+    } finally {
+      setPrimaryBusy(false)
+    }
+  }
+
+  function handleCopyApplicationEmail() {
+    if (!applicationEmail) return
+    const text = emailWithJobPlusTag(applicationEmail, emailPlusTag)
     navigator.clipboard.writeText(text).then(() => {
       setCopyFeedback("Copied")
       window.setTimeout(() => setCopyFeedback(null), 2000)
     })
   }
 
-  function renderTabLabel(tab: SideTab) {
-    const phase = manifest?.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === tab.id)
-    if (!phase || !job) return tab.label
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
-    const rubricKey = manifest?.jobs.grade_rubric_by_field[phase.grades_field]
-    const dots = buildPhaseTabGradeDots(gradesRaw, rubricKey, candidateArtifacts)
-    return formatPhaseTabNavLabel(phase.nav_label, dots)
+  function handleCopyLinkedIn() {
+    if (!linkedInUrl) return
+    navigator.clipboard.writeText(linkedInUrl).then(() => {
+      setCopyFeedback("Copied")
+      window.setTimeout(() => setCopyFeedback(null), 2000)
+    })
   }
 
-  function renderReportPane(tabId: string) {
-    if (!job) return null
-    const jobData = job.job_data ?? {}
-    const parsed = upshot
-
-    if (tabId === "summary") {
-      if (!parsed) {
-        return <p className="recommended-report-empty">No analysis upshot on file.</p>
-      }
-      return (
-        <div className="job-analysis-upshot">
-          <UpshotStringBlock heading="Job Summary" body={parsed.whole_jd_upshot} />
-          {parsed.caveats.filter(c => c.text.trim()).length > 0 && (
-            <div className="job-analysis-upshot-section">
-              <p className="job-analysis-upshot-heading">Noteworthy Caveats</p>
-              <ul className="job-analysis-upshot-list">
-                {parsed.caveats.filter(c => c.text.trim()).map((c, i) => (
-                  <li key={`c-${i}`}>{c.text.trim()}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {parsed.candidate_questions.filter(q => q.text.trim()).length > 0 && (
-            <div className="job-analysis-upshot-section">
-              <p className="job-analysis-upshot-heading">Questions to Ask</p>
-              <ul className="job-analysis-upshot-list">
-                {parsed.candidate_questions.filter(q => q.text.trim()).map((q, i) => (
-                  <li key={`q-${i}`}>{q.text.trim()}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )
-    }
-
-    if (tabId === "jd_full") {
-      const jd = String(jobData.job_description ?? "").trim().replace(/\n{3,}/g, "\n\n")
-      if (!jd) return <p className="recommended-report-empty">No job description on file.</p>
-      return <div className="entity-jd-content">{jd}</div>
-    }
-
-    const phase = manifest?.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === tabId)
-    if (phase && parsed) {
-      const takeBody = parsed[phase.take_key as keyof AnalysisUpshot]
-      const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
-      const rubricKey = manifest?.jobs.grade_rubric_by_field[phase.grades_field]
-      const grades = gradesForHeader(gradesRaw)
-      return (
-        <div>
-          {typeof takeBody === "string" && takeBody.trim() && (
-            <UpshotStringBlock heading={snakeCaseToTitle(phase.take_key)} body={takeBody} />
-          )}
-          {grades.length > 0 ? (
-            <AgentAnalysisHeader grades={grades} rubricArtifact={rubricKey} />
-          ) : (
-            <p className="recommended-report-empty">No consult detail on file.</p>
-          )}
-        </div>
-      )
-    }
-
-    const artTab = manifest?.jobs.recommended.report_artifact_tabs?.find(a => a.tab_id === tabId)
-    if (artTab && jobId) {
-      if (artTab.use_resume_structure) {
-        if (structureError) return <p className="entity-error">Failed to load resume structure.</p>
-        if (!structureSections?.length) return <p className="recommended-report-empty">Loading resume structure…</p>
-        return (
-          <ArtifactEditor
-            title={artTab.nav_label}
-            artifactKey={artTab.artifact_key}
-            taskKey="craft_resume_base"
-            useCandidateResumeStructure
-            structureSections={structureSections}
-            jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
-          />
-        )
-      }
-      return (
-        <ArtifactEditor
-          title={artTab.nav_label}
-          artifactKey={artTab.artifact_key}
-          taskKey={artTab.artifact_key === "cover_letter" ? "craft_cover_letter" : "propose_application_responses"}
-          shapesKey={artTab.shapes_key ?? undefined}
-          jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
-        />
-      )
-    }
-
-    return null
-  }
+  const jobTitleDisplay = job?.job_title?.trim() || job?.company || "Recommended Job Report"
 
   return (
     <Modal
       open={!!jobId}
       onClose={onClose}
-      title={job?.job_title || job?.company || "Recommended Job Report"}
+      title={job?.company || "Recommended Job Report"}
       size="wide"
     >
       {loading && <p className="entity-loading">Loading…</p>}
       {error && <p className="entity-error">{error}</p>}
       {job && !loading && (
         <div className="recommended-report-shell">
-          <RecommendedJobReportHeader
-            companyName={job.company}
-            companyWebsite={companyWebsite}
-            jobLink={job.job_link ?? null}
-            jobState={job.state}
-            profileLinks={profileLinks}
-            primaryAction={primaryAction}
-            onPrimaryAction={runPrimaryAction}
-            primaryBusy={primaryBusy}
-            stateLabel={stateSectionLabel}
-            copyFeedback={copyFeedback}
-            onCopyLink={(value, key) => handleCopy(value, key)}
-            previewMaterials={showPreview ? { onClick: () => setPreviewOpen(true) } : undefined}
-          />
-          <div className="recommended-report-body">
-            {tabs.length > 0 ? (
-              <SideTabPanel
-                tabs={tabs}
-                renderTabLabel={renderTabLabel}
-                renderContent={renderReportPane}
-              />
+          <div className="recommended-report-chrome">
+            <RecommendedJobReportHeader
+              jobTitle={jobTitleDisplay}
+              jobLink={job.job_link ?? null}
+              companyName={job.company}
+              companyWebsite={companyWebsite}
+              applicationEmail={applicationEmail}
+              linkedInUrl={linkedInUrl}
+              copyFeedback={copyFeedback}
+              onCopyApplicationEmail={handleCopyApplicationEmail}
+              onCopyLinkedIn={handleCopyLinkedIn}
+              showPrintResume={showPrintResume}
+              showPrintCover={showPrintCover}
+              onPrintResume={() => {
+                if (!jobId) return
+                window.open(
+                  `/candidate/resume/${encodeURIComponent(jobId)}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }}
+              onPrintCover={() => {
+                if (!jobId) return
+                window.open(
+                  `/candidate/cover/${encodeURIComponent(jobId)}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }}
+            />
+            {topTabs.length > 0 ? (
+              <div className="recommended-report-tabs">
+                <TabBar
+                  tabs={topTabs}
+                  active={activeTopTab}
+                  onChange={setActiveTopTab}
+                />
+              </div>
             ) : (
               <p className="recommended-report-empty">
                 {!manifest?.jobs.recommended
@@ -392,15 +508,25 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               </p>
             )}
           </div>
+          {topTabs.length > 0 && (
+            <div className="recommended-report-tab-pane">
+              {activeTopTab === "summary" && (
+                <ReportSectionList
+                  sections={summarySections}
+                  renderSection={renderSummarySection}
+                />
+              )}
+              {activeTopTab === "analysis" && (
+                <ReportSectionList
+                  sections={analysisSections}
+                  renderMetadata={renderAnalysisMetadata}
+                  renderSection={renderAnalysisSection}
+                />
+              )}
+              {activeTopTab === "artifacts" && renderArtifactsPane()}
+            </div>
+          )}
         </div>
-      )}
-      {jobId && (
-        <MaterialsPreviewModal
-          open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          jobId={jobId}
-          hasCover={hasCover}
-        />
       )}
     </Modal>
   )
