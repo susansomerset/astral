@@ -4,6 +4,7 @@ Discrete, id’d, citable reusable-logic packages for Astral — the affirmative
 
 - **Schema (fields + enums):** [SCHEMA.md](SCHEMA.md)
 - **Authoring + lifecycle:** [AUTHORING.md](AUTHORING.md)
+- **Harvest register (AC cite map):** [HARVEST.md](HARVEST.md)
 
 ## Layout
 
@@ -22,3 +23,7 @@ Proposed and retired files are excluded from that set.
 | id | status | path |
 |----|--------|------|
 | `pattern.batch.entity-claim-process-release` | approved | `batch/pattern.batch.entity-claim-process-release.md` |
+
+## Harvested corpus
+
+Full AC cite map and crosswalk live in [HARVEST.md](HARVEST.md). Stage 1 of AST-969 leaves create rows pending; Stages 2–3 land the remaining approved entries. Exemplars above still lists only the AST-925 entry until Stage 3.

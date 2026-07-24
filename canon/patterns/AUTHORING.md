@@ -9,12 +9,13 @@ canon/patterns/
   README.md
   SCHEMA.md
   AUTHORING.md
+  HARVEST.md
   <domain>/<id>.md
 ```
 
 - **One file per pattern.** Filename equals the pattern `id` + `.md`.
 - **Domains are folders** directly under `canon/patterns/` (lowercase kebab-case). Never flatten patterns as siblings of `SCHEMA.md`. Never create one-file-per-domain monoliths.
-- **Reserved top-level names:** `README.md`, `SCHEMA.md`, `AUTHORING.md`, plus domain folders. Do not invent other top-level filenames without Archie approval and a schema/authoring update.
+- **Reserved top-level names:** `README.md`, `SCHEMA.md`, `AUTHORING.md`, `HARVEST.md`, plus domain folders. Do not invent other top-level filenames without Archie approval and a schema/authoring update.
 - **No `orchestration/` vs `astral/` namespace split** under patterns — domain folders alone group entries. Do not redefine `canon/statutes/` schema or layout.
 
 ## Id format
