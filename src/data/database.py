@@ -1495,7 +1495,7 @@ def get_company_job_counts(short_name: str) -> Dict[str, int]:
 
 
 def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
-    """Return {agent_data_id: row_dict} for a list of IDs. block_data is decompressed.
+    """Return {agent_data_id: row_dict} for a list of IDs. block_data is resolved plain text.
     Returns {} if ids is empty (no query issued)."""
     if not ids:
         return {}
@@ -1511,7 +1511,7 @@ def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
             result = {}
             for row in rows:
                 d = _row_to_dict(row)
-                d["block_data"] = _decompress_payload(d["block_data"])
+                d["block_data"] = _resolve_agent_data_block_data(conn, d)
                 result[d["agent_data_id"]] = d
             return result
         finally:
@@ -5401,12 +5401,41 @@ def save_agent_data(
     return _run_with_retry(_with_conn)
 
 
+def _resolve_agent_data_block_data(
+    conn: sqlite3.Connection,
+    row_dict: Dict[str, Any],
+) -> Optional[str]:
+    """Return plain-text block_data, following ref_agent_data_id to the canonical row."""
+    ref = row_dict.get("ref_agent_data_id")
+    if ref is None or str(ref).strip() == "":
+        return _decompress_payload(row_dict.get("block_data"))
+    visited = set()
+    current_id = str(ref)
+    start_id = row_dict.get("agent_data_id")
+    if start_id:
+        visited.add(str(start_id))
+    while True:
+        if current_id in visited:
+            raise ValueError(f"agent_data ref cycle detected at {current_id!r}")
+        visited.add(current_id)
+        row = conn.execute(
+            "SELECT * FROM agent_data WHERE agent_data_id = ?", (current_id,)
+        ).fetchone()
+        if not row:
+            raise ValueError(f"agent_data ref target missing: {current_id!r}")
+        d = _row_to_dict(row)
+        next_ref = d.get("ref_agent_data_id")
+        if next_ref is None or str(next_ref).strip() == "":
+            return _decompress_payload(d.get("block_data"))
+        current_id = str(next_ref)
+
+
 def get_agent_data_by_batch(
     batch_id: str,
     block_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Return all agent_data rows for a batch, optionally filtered by block_type.
-    block_data is decompressed before return."""
+    block_data is resolved plain text (follows ref_agent_data_id when set)."""
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -5424,7 +5453,7 @@ def get_agent_data_by_batch(
             result = []
             for row in rows:
                 d = _row_to_dict(row)
-                d["block_data"] = _decompress_payload(d["block_data"])
+                d["block_data"] = _resolve_agent_data_block_data(conn, d)
                 result.append(d)
             return result
         finally:
@@ -5433,7 +5462,7 @@ def get_agent_data_by_batch(
 
 
 def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
-    """Return a single agent_data row by primary key. block_data is decompressed."""
+    """Return a single agent_data row by primary key. block_data is resolved plain text."""
     def _with_conn() -> Optional[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -5444,7 +5473,7 @@ def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
             if not row:
                 return None
             d = _row_to_dict(row)
-            d["block_data"] = _decompress_payload(d["block_data"])
+            d["block_data"] = _resolve_agent_data_block_data(conn, d)
             return d
         finally:
             conn.close()
