@@ -193,3 +193,9 @@ Create **exactly** the patterns marked `create`. Skip `already-landed`. Do not a
 - §4.2: plan lives at `docs/features/team-chuckles/ast-969-pattern-harvest.md` (Team Chuckles → `team-chuckles`).
 - Engineer test-tree ban respected (no intentional `tests/` or bible edits in plan stages; merge-only test paths from ftr are outside this plan’s Files Changed).
 - Boundaries honored: no SCHEMA field redefinition; no statute redefinition; no AST-914 consumer wiring.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-913/AST-969-pattern-harvest`
+- **Build commits:** Stage 1 `code(AST-969): pattern HARVEST register + README/AUTHORING pointers` (`c4cf17f`); Stage 2 `code(AST-969): propose pattern.state.entity-state-transitions` (`e109512`); Stage 3 `code(AST-969): approve state pattern + harvest remaining astral patterns` (`181c192`)
+- **Tip at Code Complete:** `181c1928e908bf8142ee819052070e6d958ad9a4`
