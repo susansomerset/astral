@@ -5700,3 +5700,74 @@ class TestAst903CraftRubricMaxTokensFloor:
         )
         assert out["success"] is True
         assert send.await_args.kwargs.get("max_tokens") == 100
+
+class TestAst977AgentDataDedupeDebug:
+    """AST-977: found/recorded debug on store/read; quiet when debug=False."""
+
+    def test_store_response_debug_emits_write_outcome(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "save_agent_data",
+            lambda **kwargs: {
+                "inserted": True,
+                "outcome": "ref_existing",
+                "agent_data_id": kwargs["agent_data_id"],
+                "ref_agent_data_id": "canon-1",
+            },
+        )
+        caplog.set_level("DEBUG")
+        agent_mod._store_response_block(
+            "job", "evaluate_jd", "batch-977", "ok", index="job-1", debug=True
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "agent_data_write" in combined
+        assert "outcome=ref_existing" in combined
+        assert "ref_agent_data_id='canon-1'" in combined
+
+    def test_store_response_debug_false_is_quiet(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "save_agent_data",
+            lambda **kwargs: {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": kwargs["agent_data_id"],
+                "ref_agent_data_id": None,
+            },
+        )
+        caplog.set_level("DEBUG")
+        agent_mod._store_response_block(
+            "job", "evaluate_jd", "batch-977", "ok", index="job-1", debug=False
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "agent_data_write" not in combined
+
+    def test_block_text_by_type_debug_emits_read_mode(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_data_for_ids",
+            lambda ids: {
+                "audit-2": {
+                    "agent_data_id": "audit-2",
+                    "block_data": "hello",
+                    "ref_agent_data_id": "canon-1",
+                }
+            },
+        )
+        caplog.set_level("DEBUG")
+        text = agent_mod._block_text_by_type(
+            [{"type": "SYSTEM", "id": "audit-2"}],
+            "SYSTEM",
+            debug=True,
+        )
+        assert text == "hello"
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "agent_data_read" in combined
+        assert "mode=resolved" in combined
+
