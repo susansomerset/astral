@@ -126,3 +126,20 @@ Changes:
 - **Publish ref:** `origin/sub/AST-871/AST-971-candidate-transition-history`
 - **Build:** `2d07385701e59c0f0d98118d568ea0d6a83e1478`
 
+### Radia code-rubric.v1 (revision=1)
+
+**Overall:** DISCUSS  
+**Publish tip reviewed:** `47cd26ddc6f36575bc1330f50b8b856811849d83` (`origin/dev...origin/sub/AST-871/AST-971-candidate-transition-history`)
+
+**What’s solid**
+- `candidate.state_history` column + header inventory; parse/save preserve-when-omitted; no data-layer auto-append.
+- Company-shaped seed on initiate; sole-path append inside `transition_candidate_state` (same `save_candidate` as state); delete/admin do not double-append.
+- Data-model docs cover column + entry shape for AST-869.
+
+**Issues**
+- **discuss (C4 stragglers):** Joan Excluded several scoped statutes at plan time; tip includes blockedBy AST-970 + Betty tests so these score in-scope: `engineer-test-tree-ban`, `ui-config-driven-business-logic`, `require-auth-on-protected-endpoints`, `utils-data-late-import-only`, `ui.naming-conventions`, `ui.single-gunicorn-worker`. Substance **conforms** (no product fix).
+- **advisory:** CREATE TABLE candidate still `state … DEFAULT 'NEW'` (legacy default; remap/defaults are AST-973).
+
+**Recommended actions**
+- Engineer: acknowledge C4 stragglers on resolve; no history-path code change required.
+
