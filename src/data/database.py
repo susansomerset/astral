@@ -5283,6 +5283,22 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
     _agent_data_schema_ensured = True
 
 
+def _find_earliest_agent_data_content_match(
+    conn: sqlite3.Connection,
+    plain_text: str,
+) -> Optional[str]:
+    """Return agent_data_id of earliest canonical row with identical logical block_data, or None."""
+    rows = conn.execute(
+        """SELECT agent_data_id, block_data FROM agent_data
+           WHERE ref_agent_data_id IS NULL AND block_data IS NOT NULL
+           ORDER BY created_at ASC, agent_data_id ASC"""
+    ).fetchall()
+    for row in rows:
+        if _decompress_payload(row[1]) == plain_text:
+            return row[0]
+    return None
+
+
 def save_agent_data(
     agent_data_id: str,
     entity_type: str,
@@ -5292,27 +5308,96 @@ def save_agent_data(
     block_data: str,
     token_size: int = 0,
     created_at: Optional[str] = None,
-) -> bool:
-    """Insert a single content block into agent_data. Returns True on success, False on duplicate.
-    block_data is compressed before storage. block_type must be in BLOCK_TYPES."""
+) -> Dict[str, Any]:
+    """Insert an agent_data audit row; reuse earliest identical content via ref_agent_data_id.
+
+    Returns dict: inserted, outcome (new_content|ref_existing|duplicate_id),
+    agent_data_id, ref_agent_data_id. block_type must be in BLOCK_TYPES.
+    Matching uses exact logical block_data (decompressed); block_type may differ."""
     if block_type not in BLOCK_TYPES:
         raise ValueError(f"Invalid block_type '{block_type}'. Must be one of: {BLOCK_TYPES}")
+    if not isinstance(block_data, str):
+        raise ValueError("block_data must be a str")
     ts = created_at or _utc_now()
-    blob = _compress_payload(block_data)
-    def _with_conn() -> bool:
+    plain = block_data
+
+    def _with_conn() -> Dict[str, Any]:
         conn = _get_connection()
         try:
             _ensure_agent_data_schema(conn)
+            match_id = _find_earliest_agent_data_content_match(conn, plain)
+            if match_id == agent_data_id:
+                raise ValueError(
+                    f"agent_data self-ref rejected: agent_data_id={agent_data_id!r}"
+                )
+            if match_id is not None:
+                match_row = conn.execute(
+                    "SELECT ref_agent_data_id FROM agent_data WHERE agent_data_id = ?",
+                    (match_id,),
+                ).fetchone()
+                if not match_row:
+                    raise ValueError(
+                        f"agent_data match missing after lookup: {match_id!r}"
+                    )
+                match_ref = match_row[0]
+                if match_ref is not None and str(match_ref).strip() != "":
+                    raise ValueError(
+                        f"agent_data non-canonical match rejected: {match_id!r} "
+                        f"ref_agent_data_id={match_ref!r}"
+                    )
+                conn.execute(
+                    """INSERT OR IGNORE INTO agent_data
+                       (agent_data_id, entity_type, task_key, batch_id, created_at,
+                        block_type, block_data, token_size, ref_agent_data_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        agent_data_id, entity_type, task_key, batch_id, ts,
+                        block_type, None, token_size, match_id,
+                    ),
+                )
+                conn.commit()
+                if conn.total_changes == 0:
+                    return {
+                        "inserted": False,
+                        "outcome": "duplicate_id",
+                        "agent_data_id": agent_data_id,
+                        "ref_agent_data_id": None,
+                    }
+                return {
+                    "inserted": True,
+                    "outcome": "ref_existing",
+                    "agent_data_id": agent_data_id,
+                    "ref_agent_data_id": match_id,
+                }
+
+            blob = _compress_payload(plain)
             conn.execute(
                 """INSERT OR IGNORE INTO agent_data
-                   (agent_data_id, entity_type, task_key, batch_id, created_at, block_type, block_data, token_size)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (agent_data_id, entity_type, task_key, batch_id, ts, block_type, blob, token_size),
+                   (agent_data_id, entity_type, task_key, batch_id, created_at,
+                    block_type, block_data, token_size, ref_agent_data_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_data_id, entity_type, task_key, batch_id, ts,
+                    block_type, blob, token_size, None,
+                ),
             )
             conn.commit()
-            return conn.total_changes > 0
+            if conn.total_changes == 0:
+                return {
+                    "inserted": False,
+                    "outcome": "duplicate_id",
+                    "agent_data_id": agent_data_id,
+                    "ref_agent_data_id": None,
+                }
+            return {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": agent_data_id,
+                "ref_agent_data_id": None,
+            }
         finally:
             conn.close()
+
     return _run_with_retry(_with_conn)
 
 
