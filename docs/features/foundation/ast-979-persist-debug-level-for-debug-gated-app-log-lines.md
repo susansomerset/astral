@@ -61,3 +61,28 @@ No other files. Do **not** edit `src/data/database.py` (`add_log_entry` already 
 - Stage 1: `src/utils/logging.py` — debug-gated helpers emit via `Logger.debug`; named logger raised to DEBUG when `debug_flag=True` (root stays INFO); `_DatabaseLogHandler.setLevel(DEBUG)`; late-import flush path unchanged — `ccb2d98`.
 
 **Betty:** at **Code Complete** — cover DEBUG vs INFO persistence for `debug_index` / `debug_detail` / `test` under `debug_flag` True/False; confirm ordinary `info` stays INFO; do not require UI Level-list coverage (AST-980).
+
+## Radia review (code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Overall:** DISCUSS (no fix-now)
+
+**Publish ref tip (pre-docs):** `41ce3edd4898335fb16e1a2a1a7c0c6c24854df7`
+
+### What’s solid
+
+- Stage 1 matches plan: debug-gated helpers use `Logger.debug`; `set_debug_flag` raises/restores named-logger level; root stays INFO; `_DatabaseLogHandler.setLevel(DEBUG)`; late-import `add_log_entry` in `_flush_buffer` unchanged.
+- AC boundaries held: no Execution History UI (AST-980), no schema/`add_log_entry` rewrite, no grandfathered `info("[DEBUG]")` mass migrate.
+- Betty coverage asserts DEBUG persistence / silence / INFO stays INFO / WARN+ERROR unchanged / level restore.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` against plan Files Changed (`logging.py` only). Net three-dot diff vs `origin/dev` also includes `docs/features/**`, `docs/test-bible/**`, and `tests/**`, so those statutes score in-scope here. Content still **conforms** (real plan doc, single features file, Betty-owned test-tree commits). No product fix required — note only.
+
+**advisory:** Joan’s plan-time note stands — handler `setLevel(DEBUG)` is process-wide once attached; root stays INFO so third-party DEBUG remains filtered at source.
+
+### Recommended actions
+
+- Resolve-child: accept discuss stragglers / no product delta; move to User Testing when ready.
+- Sibling AST-980 owns Level-list UI.
