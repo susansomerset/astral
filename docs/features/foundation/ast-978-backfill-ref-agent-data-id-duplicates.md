@@ -8,7 +8,7 @@
 ## UAT fitness
 
 - **AC restored:** Parent AST-974 AC 7–8 (this child): “Backfill dry-run + live sets refs on existing duplicates to earliest twins and leaves all `block_data` values unchanged.” / “With `debug=True` on touched backend backfill paths, a scannable per-index trail shows match-vs-new and the ids recorded/resolved; with `debug=False`, no new debug-contract noise.”
-- **Correct outcome:** After live backfill, every non-earliest content duplicate has `ref_agent_data_id` pointing at the earliest canonical twin; every touched row still has the same `block_data` bytes as before; earliest/canonical rows keep `ref_agent_data_id` null; dry-run reports the same set of would-update rows without writing; `--debug` prints per-row match-vs-skip and ids; without `--debug`, no debug-contract lines.
+- **Correct outcome:** After live backfill, every non-earliest content duplicate has `ref_agent_data_id` pointing at the earliest canonical twin; every touched row still has the same `block_data` bytes as before; no earliest/canonical row gains a ref (`ref_agent_data_id` stays null); dry-run reports the same set of would-update rows without writing; `--debug` prints per-row match-vs-skip and ids; without `--debug`, no debug-contract lines.
 - **Sibling check:** AST-977 (User Testing) owns schema + runtime write/read + resolve. This plan only UPDATEs `ref_agent_data_id` on legacy duplicates and reuses `_find_earliest_agent_data_content_match` / `_decompress_payload` / `_ensure_agent_data_schema` — it does not alter `save_agent_data` or getters. Verified by Boundaries and by not listing write/read files.
 - **Not sufficient:** Removing an exception / making the script exit 0 without setting refs on duplicates, or “fixing” by deleting duplicate rows, is **not** done.
 - **Wrong fix rejected:** Clearing or nulling `block_data` on backfill (space reclaim is Susan SQL + vacuum outside epic); matching on `(block_type, block_data)`; rewriting runtime write/read; skipping dry-run. Correct path is refs-only UPDATE via earliest twin + leave payloads intact.
@@ -36,7 +36,7 @@
 
 ## Stage 1: Data-layer backfill function
 
-**Done when:** `backfill_agent_data_refs(dry_run=True)` scans all content-bearing `agent_data` rows, returns counts + per-row actions without writing; `dry_run=False` UPDATEs only `ref_agent_data_id` on duplicate rows to the earliest twin and leaves every `block_data` value unchanged; re-run is idempotent (second live pass updates 0); `python3 -m py_compile src/data/database.py` passes. No logging in `database.py`.
+**Done when:** `backfill_agent_data_refs(dry_run=True)` scans all content-bearing `agent_data` rows, returns counts + per-row actions without writing; `dry_run=False` UPDATEs only `ref_agent_data_id` on non-earliest duplicate rows to the true earliest twin and leaves every `block_data` value unchanged; after the live pass, every updated row’s `ref_agent_data_id` is an earlier twin and **no** earliest/canonical row gains a ref; re-run is idempotent (second live pass updates 0); `python3 -m py_compile src/data/database.py` passes. No logging in `database.py`.
 
 1. In `src/data/database.py`, immediately after `_find_earliest_agent_data_content_match` / near the other `agent_data` helpers, add:
 
@@ -67,10 +67,9 @@ def backfill_agent_data_refs(*, dry_run: bool = True) -> Dict[str, Any]:
    3. For each row:
       - If `ref_agent_data_id` is not null and `str(ref).strip() != ""`: increment `skipped_already_ref`, append action `outcome="already_ref"`, `ref_agent_data_id=<existing>`, continue.
       - Decompress via `_decompress_payload(row.block_data)` to `plain`. On decompress failure: increment `errors`, append `outcome="error"`, continue (do not abort the whole pass).
-      - `match_id = _find_earliest_agent_data_content_match(conn, plain, exclude_agent_data_id=agent_data_id)`.
-      - If `match_id` is None: this row is canonical/unique — increment `unchanged`, append `outcome="canonical_or_unique"`, `ref_agent_data_id=None`, continue.
-      - If `match_id == agent_data_id`: increment `errors`, append `outcome="error"` (should be unreachable with exclude), continue.
-      - Else (duplicate of earlier twin):
+      - `match_id = _find_earliest_agent_data_content_match(conn, plain)` — **do not** pass `exclude_agent_data_id`. (`exclude` is for AST-977 runtime insert PK-retry only; on backfill it would make the earliest row match a *later* twin and could set a ref on the canonical row or create a cycle.)
+      - If `match_id is None` **or** `match_id == agent_data_id`: this row is the earliest canonical (or unique) — increment `unchanged`, append `outcome="canonical_or_unique"`, `ref_agent_data_id=None`, continue. Do **not** UPDATE.
+      - Else (`match_id` is a different, earlier twin):
         - If `dry_run`: do **not** UPDATE; increment `updated`; append `outcome="would_set_ref"`, `ref_agent_data_id=match_id`.
         - If not `dry_run`:
 
@@ -82,9 +81,11 @@ def backfill_agent_data_refs(*, dry_run: bool = True) -> Dict[str, Any]:
    4. Always increment `scanned` once per candidate row (including already-ref / error / unchanged).
    5. If not `dry_run`: `conn.commit()` once after the loop. If `dry_run`: never commit ref updates (no writes).
    6. Return the counts dict + full `actions` list (no truncation).
-   7. Docstring must state: does not clear `block_data`; identity matches AST-977 (exact logical plain text; `block_type` ignored); data layer does not log.
+   7. Docstring must state: does not clear `block_data`; identity matches AST-977 (exact logical plain text; `block_type` ignored); calls `_find_earliest` without exclude so the canonical row never gains a ref; data layer does not log.
 
 ⚠️ **Decision:** Logic lives in `database.py` (same home as `_find_earliest_agent_data_content_match`) so the script cannot drift from runtime match semantics. Script only orchestrates CLI + debug logging (data raises / does not log — §1.5).
+
+⚠️ **Decision:** Backfill must call `_find_earliest_agent_data_content_match(conn, plain)` with **no** `exclude_agent_data_id`. Self-match (`match_id == agent_data_id`) means canonical — leave ref null. Runtime `save_agent_data` keeps using exclude for PK-retry; that is out of scope here.
 
 ⚠️ **Decision:** Only rows with `block_data IS NOT NULL` are candidates. Rows that are already audit-style (null payload + ref) are out of this pass — runtime write already created them correctly.
 
@@ -157,4 +158,17 @@ from src.utils.logging import get_logger
 - **§3.3:** Script imports `data` + `utils.logging` only; no UI → data.
 - **§3.5:** Names match parent vocabulary (`ref_agent_data_id`, backfill refs).
 - **Unauthorized limits:** No row/batch caps on the scan (Susan rule).
+
+## Revisions
+
+### Revision 1 — 2026-07-24
+
+Driven by: Joan `[plan-discuss] round=1 concern` fix-now — Stage 1 match call uses `exclude_agent_data_id` (inverts earliest / can cycle).
+
+Changes:
+- Stage 1 step 2.3: call `_find_earliest_agent_data_content_match(conn, plain)` **without** `exclude_agent_data_id`.
+- Treat `match_id is None` **or** `match_id == agent_data_id` as `canonical_or_unique` (no UPDATE).
+- Removed the “unreachable with exclude” self-ref error branch.
+- Done-when / UAT Correct outcome: every updated ref points at an earlier twin; no earliest/canonical row gains a ref.
+- Added Decision stating backfill must not use exclude (runtime insert may still use it in AST-977).
 )
