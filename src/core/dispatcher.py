@@ -916,6 +916,7 @@ def _tick_loop() -> None:
     max_auto = ASTRAL_CONFIG.get("max_auto_threads", 3)
     while True:
         try:
+            # late: avoid cycle with candidate → dispatcher (module-top import)
             from src.core.candidate import age_stale_candidate_states
             age_stale_candidate_states()
             due = database.get_due_tasks()  # returns auto_mode=1 tasks with available entities

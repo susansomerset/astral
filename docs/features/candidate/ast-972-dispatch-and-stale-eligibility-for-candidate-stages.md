@@ -288,3 +288,13 @@ Changes:
 
 **Recommended actions**
 - Engineer: add one-line late-import comment on the tick aging import; acknowledge C4 stragglers.
+
+## Resolution
+
+**2026-07-24** — Radia code-rubric.v1 revision=1 (FIX-NOW) @ `582b650`
+
+| Finding | Action |
+|---------|--------|
+| fix-now: `_tick_loop` late import of `age_stale_candidate_states` needs cycle-break comment | Added `# late: avoid cycle with candidate → dispatcher (module-top import)` above the import |
+| discuss: C4 stragglers Joan Excluded at plan time, scored conforms on tip | Acknowledged — no product change |
+| advisory: provision `except Exception` + CREATE DEFAULT NEW | No change — acceptable / AST-973 |
