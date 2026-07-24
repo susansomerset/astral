@@ -263,3 +263,20 @@ Changes:
 | Publish ref | `origin/sub/AST-871/AST-970-candidate-state-registry` |
 | Built | `5e0a8856678efff89a917a4d19e3de8bc56f6406` |
 | Notes | Stages 1–3 implemented per plan (registry, transitions/reap/stale, docs). |
+
+### Radia code-rubric.v1 (revision=1)
+
+**Overall:** DISCUSS  
+**Publish tip reviewed:** `5a75bdc87a52131c8041bc5c738612b18158efc3` (`origin/dev...origin/sub/AST-871/AST-970-candidate-state-registry`)
+
+**What’s solid**
+- Job-style `CANDIDATE_STATES` registry (no `PROSPECT`), `prior_states` enforcement, DELETED reap start on `candidate_data.lifecycle`, `age_stale_candidate_states` without scheduler wiring.
+- Admin state override fail-closed via `transition_candidate_state`; `progress_rank` gates terminals.
+- Sibling boundaries held (no history table, no dispatch claim, no legacy remap).
+
+**Issues**
+- **discuss (C4 straggler):** Joan excluded `astral.git.engineer-test-tree-ban` at plan time; Betty’s `test`/`merge-tests` land on the tip so the statute is in-scope. Substance **conforms** (engineers did not edit test-tree in `code` commits).
+- **advisory:** `CANDIDATE_DATA_MODEL.md` context section still says four fields “gate the `CONTEXT_READY` state transition” while the State machine section is updated.
+
+**Recommended actions**
+- Engineer: acknowledge straggler / no product change required for it; optional one-line doc cleanup on the CONTEXT_READY leftover (or leave for AST-973 consumer sweep).
