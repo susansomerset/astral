@@ -15,7 +15,7 @@ Tables used (inventory):
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_responses — Agent response audit (insert-only from add_agent_response_entry).
-- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data).
+- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data); nullable self-ref ref_agent_data_id → earliest identical content row (audit rows may omit block_data; AST-977).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
@@ -5264,11 +5264,22 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
                 created_at    TIMESTAMP NOT NULL,
                 block_type    TEXT NOT NULL,
                 block_data    BLOB,
-                token_size    INTEGER DEFAULT 0
+                token_size    INTEGER DEFAULT 0,
+                ref_agent_data_id TEXT
             )
         """)
         conn.execute("CREATE INDEX idx_agent_data_batch ON agent_data(batch_id)")
         conn.commit()
+    else:
+        # AST-977: nullable self-ref on legacy tables
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_data)").fetchall()}
+        if "ref_agent_data_id" not in cols:
+            try:
+                conn.execute("ALTER TABLE agent_data ADD COLUMN ref_agent_data_id TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
     _agent_data_schema_ensured = True
 
 
