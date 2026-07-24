@@ -244,3 +244,9 @@ Replace `<build-date YYYY-MM-DD>` with the UTC date of the Stage 2 commit.
 - **Issues**
   - **discuss (C4 straggler):** Joan excluded `astral.git.engineer-test-tree-ban` at plan time; Betty’s `docs(AST-925)` bible README makes it in-scope on the tip. Verdict on the statute itself: **conforms** (engineer never touched bible/tests).
 - **Recommended actions:** No product fix. Implementer may acknowledge the straggler and proceed to resolve / User Testing; no schema/exemplar changes required.
+
+## Resolution
+
+- **Date:** 2026-07-24
+- **Radia:** fix-now none; discuss (C4 straggler on `astral.git.engineer-test-tree-ban` after Betty bible) acknowledged — statute verdict remains conforms; no schema/exemplar/product changes.
+- **Outcome:** `resolve(AST-925): — clean`; §9a dry-run vs `origin/dev` and `origin/ftr/AST-913-pattern-libraries` before User Testing.
