@@ -170,7 +170,7 @@
 
 ## Review (build stub)
 
-**Built:** `origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read` @ `TIP_SHA`
+**Built:** `origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read` @ `6dcfc6a`
 
 **Stages delivered:**
 - Stage 1: `ref_agent_data_id` schema + inventory — `baa8f4a`
