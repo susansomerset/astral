@@ -143,3 +143,19 @@ Changes:
 **Recommended actions**
 - Engineer: acknowledge C4 stragglers on resolve; no history-path code change required.
 
+## Resolution
+
+**Date:** 2026-07-24  
+**Publish tip before resolve:** `d2ea158` (Radia `docs(AST-971): Radia review — findings`)  
+**Outcome:** clean — no product code changes
+
+### Radia findings addressed
+
+- **fix-now:** none.
+- **discuss (C4 stragglers):** Acknowledged. Joan Excluded those statutes at plan time; tip carries blockedBy AST-970 + Betty tests so Radia scored them in-scope and **conforms**. No history-path or product change required.
+- **advisory:** CREATE TABLE `candidate.state … DEFAULT 'NEW'` left as-is — legacy default remaps/defaults are AST-973 scope, not this ticket.
+
+### Commits
+
+- `resolve(AST-971): — clean` — Resolution section only (this commit).
+
