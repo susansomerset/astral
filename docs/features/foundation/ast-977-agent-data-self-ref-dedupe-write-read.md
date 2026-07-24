@@ -181,3 +181,20 @@
 - Stage 5: Code Rules data-layer sentence — this commit
 
 **Betty:** manifest at **Code Complete** — schema ensure column; write match/ref/omit; read resolve by id/batch/ids; self-ref/cycle raise; debug quiet when `debug=False`.
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1` · **Overall:** FIX-NOW · tip `55c9dba65152df7d69ed01c45a15d9ba7b314aae`
+
+### What’s solid
+- Schema + inventory + ALTER path for `ref_agent_data_id`; match on logical plain text without `block_type`; audit row always inserted; omit payload on ref; resolve on all three getters; self-ref/cycle/missing raise in data; Code Rules sentence updated; AST-978 boundary held; Betty owns tests/bible.
+
+### Issues
+- **fix-now:** Hydration `agent_data_read` emits `debug_detail` in `_block_text_by_type` before any `do_task` `debug_index` (`_do_task_debug_entry` runs later). Plan Stage 4 / §1.5.1 want `debug_index` when not already under a task index. Write-path details under `_do_task_debug_entry` are fine.
+- **discuss:** Linear assignee is Radia at Tests Passed; Joan named Ada — restore engineer assignee through resolve.
+- **discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; diff brings them in-scope (all scored conforms).
+- **advisory:** `conn.total_changes == 0` for `duplicate_id` is fragile if `_ensure_agent_data_schema` mutates on the same connection; common path OK after ensure-flag.
+
+### Recommended actions
+1. In `_block_text_by_type` (debug=True): emit a local `debug_index` for the read batch, then details — or defer read-trail until after `_do_task_debug_entry`.
+2. Restore Ada as Linear assignee when resolving.
