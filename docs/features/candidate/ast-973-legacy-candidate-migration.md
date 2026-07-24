@@ -201,3 +201,18 @@ Changes:
 | Publish ref | `origin/sub/AST-871/AST-973-legacy-candidate-migration` |
 | Built | `e5b05d77dc8be3759851953beedf47cd7a9338b5` |
 | Notes | Stages 1–4: legacy map, migrate/hard-delete (ensure=BC), reap-due, consumer sweep. |
+
+### Radia code-rubric.v1 (revision=1)
+
+**Overall:** DISCUSS  
+**Publish tip reviewed:** `b05c75c60e5119d26a66c676ea98fcb3c51866d9` (`origin/dev...origin/sub/AST-871/AST-973-legacy-candidate-migration`)
+
+**What’s solid**
+- `CANDIDATE_LEGACY_STATE_MAP` + remap helper; Phase A pre-cutover DELETED only on CLI; ensure = Phase B/C only; preserve `state_changed_at`; candidate-only `NEW` trigger remap; hard-delete/purge wrappers; CREATE default `NEW_CANDIDATE`; bootstrap + data-model cutover note.
+
+**Issues**
+- **discuss (C4 straggler):** Joan Excluded `astral.git.engineer-test-tree-ban`; tip includes Betty tests/bible so statute is in-scope. Substance **conforms**.
+- **advisory:** `CANDIDATE_DATA_MODEL.md` context section still says four fields “gate the `CONTEXT_READY` state transition” (legacy narrative leftover outside the cutover table).
+
+**Recommended actions**
+- Engineer: acknowledge C4 straggler; optional one-line CONTEXT_READY doc cleanup.
