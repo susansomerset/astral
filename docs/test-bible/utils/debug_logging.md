@@ -8,7 +8,7 @@
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| **AST-554** | Constants, truncation helper, index header formatter, debug-gated INFO emission | `src/utils/logging.py`, `docs/ASTRAL_CODE_RULES.md` §1.5.1 | **`TestTruncateDebugContent`**, **`TestFormatDebugIndexHeader`**, **`TestPrefixedLoggerDebugGating`** in **`test_debug_logging.py`**; regression **`test_logging_batch.py`** |
+| **AST-554** | Constants, truncation helper, index header formatter, debug-gated emission (severity corrected to **DEBUG** by **AST-979**) | `src/utils/logging.py`, `docs/ASTRAL_CODE_RULES.md` §1.5.1 | **`TestTruncateDebugContent`**, **`TestFormatDebugIndexHeader`**, **`TestPrefixedLoggerDebugGating`** in **`test_debug_logging.py`**; regression **`test_logging_batch.py`** |
 
 **AST-554** narrowed run (pytest-only — python-only child; avoids Vitest tail / **AST-511** cross-ticket noise on engineer worktrees):
 
@@ -17,3 +17,17 @@
 ```
 
 **`[qa-handoff]` return (2026-06-03):** Ada **`test-astral`** — `run_component_tests.sh` with trailing paths still invoked full Vitest on **`dev-ada`**; manifest uses direct **`pytest`** gate (13 tests). Harness on **`dev-betty`** skips Vitest when trailing paths are set (**Appendix A** in [README](../README.md)).
+
+### AST-979 · AST-976
+
+**AST-976 (parent):** Add level **DEBUG** to `app_log` so Execution History can filter debug-gated lines. **AST-979** corrects **stored severity only**: debug-gated helpers (`debug_index` / `debug_detail` / `debug_detail_block` / `test`) emit via `Logger.debug` when `debug_flag=True`; named logger raised to DEBUG (root stays INFO); `_DatabaseLogHandler.setLevel(DEBUG)` so records reach the buffer / `add_log_entry`. Ordinary INFO/WARNING/ERROR unchanged. Execution History Level-list UI is **AST-980** (out of scope).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-979** | Persist DEBUG for debug-gated helpers; silence when flag False; INFO stays INFO; WARNING/ERROR unchanged; named-logger level restore | `src/utils/logging.py` | **`TestPrefixedLoggerDebugGating`** (revised — caplog DEBUG + `levelname`); **`TestAst979DebugLevelPersistence`** in **`test_debug_logging.py`**; regression **`test_logging_batch.py`** |
+
+**AST-979** narrowed run:
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
+```
