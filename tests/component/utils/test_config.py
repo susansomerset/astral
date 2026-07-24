@@ -1954,3 +1954,80 @@ class TestAst970CandidateStateRegistry:
     def test_retired_four_step_names_absent(self) -> None:
         for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
             assert retired not in cfg.CANDIDATE_STATES
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst972CandidateStageDispatch:
+    """AST-972: CANDIDATE_STAGE_DISPATCH + claim/trigger helpers for REQUESTED_*."""
+
+    def test_stage_dispatch_map_and_task_config(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["task_key"] == "candidate_requested_resume"
+        assert resume["trigger_state"] == "REQUESTED_RESUME"
+        assert resume["pass_state"] == "RESUME_READY"
+        assert resume["craft_task_key"] == "craft_resume_base"
+        assert arts["task_key"] == "candidate_requested_artifacts"
+        assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
+        assert arts["pass_state"] == "ARTIFACTS_READY"
+        assert "craft_resume_base" in cfg.TASK_CONFIG
+        assert resume["task_key"] in cfg.TASK_CONFIG
+        assert arts["task_key"] in cfg.TASK_CONFIG
+        for k in arts["craft_task_keys"]:
+            assert k in cfg.TASK_CONFIG
+
+    def test_claim_states_include_retry_companions(self) -> None:
+        assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate") == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == ["ACTIVE_SEARCH"]
+
+    def test_trigger_and_entity_helpers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_resume") == "REQUESTED_RESUME"
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_artifacts") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_resume") == "candidate"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_artifacts") == "candidate"
+        d = cfg.dispatch_task_admin_defaults("candidate_requested_resume")
+        assert d["entity_type"] == "candidate"
+        assert d["trigger_state"] == "REQUESTED_RESUME"
+
+
+class TestAst973LegacyCandidateRemap:
+    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
+
+    def test_map_and_trigger_frozenset(self) -> None:
+        assert cfg.CANDIDATE_LEGACY_STATE_MAP == {
+            "LIVE_PROMPTS": "ACTIVE_SEARCH",
+            "NEW": "NEW_CANDIDATE",
+            "PROFILE_READY": "NEW_CANDIDATE",
+            "CONTEXT_READY": "NEW_CANDIDATE",
+        }
+        assert "DELETED" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert cfg.CANDIDATE_LEGACY_TRIGGER_STATES == frozenset(
+            {"LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY"}
+        )
+        assert all(v in cfg.CANDIDATE_STATES for v in cfg.CANDIDATE_LEGACY_STATE_MAP.values())
+
+    def test_remap_helper(self) -> None:
+        assert cfg.remap_legacy_candidate_state("LIVE_PROMPTS") == "ACTIVE_SEARCH"
+        assert cfg.remap_legacy_candidate_state("NEW") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("ACTIVE_SEARCH") == "ACTIVE_SEARCH"
+        assert cfg.remap_legacy_candidate_state("") == cfg.CANDIDATE_CONFIG["initial_state"]
+        assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
+        # DELETED is a live registry key — remap is identity; Phase B never selects it
+        assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"

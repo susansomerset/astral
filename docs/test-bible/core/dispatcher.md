@@ -176,3 +176,7 @@ Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`**
 | Full-list consult for **`parse_job_list`** | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero` |
 
 Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/consult.md`** (**AST-891**).
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher: **`ensure_candidate_stage_dispatch_tasks`** / **`provision_candidate_stage_dispatch_tasks`**; candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** provisions stage rows. Revised **`LIVE_PROMPTS` → `ACTIVE_SEARCH`** in dispatcher fixtures; AST-875 template fixture uses **`qualify_job_listings`** (TASK_CONFIG tip).
