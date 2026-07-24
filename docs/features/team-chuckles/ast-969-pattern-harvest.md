@@ -208,3 +208,9 @@ Create **exactly** the patterns marked `create`. Skip `already-landed`. Do not a
 - **Issues**
   - **discuss (C4 straggler):** Joan excluded `astral.git.engineer-test-tree-ban`; Betty’s bible README brings it in-scope. Statute verdict **conforms**.
 - **Recommended actions:** No product fix; proceed resolve-child / User Testing after acknowledging straggler.
+
+## Resolution
+
+- **Date:** 2026-07-24
+- **Radia:** fix-now none; discuss (C4 straggler on `astral.git.engineer-test-tree-ban` after Betty bible) acknowledged — statute verdict remains conforms; no harvest/schema/product changes.
+- **Outcome:** `resolve(AST-969): — clean`; §9a dry-run vs `origin/dev` and `origin/ftr/AST-913-pattern-libraries` before User Testing.
