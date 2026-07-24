@@ -198,3 +198,10 @@
 ### Recommended actions
 1. In `_block_text_by_type` (debug=True): emit a local `debug_index` for the read batch, then details — or defer read-trail until after `_do_task_debug_entry`.
 2. Restore Ada as Linear assignee when resolving.
+
+## Resolution (2026-07-24)
+
+- **fix-now (debug-contract):** `_block_text_by_type` now emits per-id `debug_index` (`func=_block_text_by_type`, outcome `agent_data_read …`) before `debug_detail` lines when `debug=True`, so hydration read trails are not orphan detail without an index header.
+- **discuss (assignee):** Linear assignee is already Ada Lovelace at resolve — no reassignment needed.
+- **discuss (straggler):** Noted only; Joan excluded statutes scored conforms by Radia — no code change.
+- **advisory:** Left `conn.total_changes` as-is (common path after ensure-flag); no product touch this pass.

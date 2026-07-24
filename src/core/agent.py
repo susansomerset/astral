@@ -648,11 +648,20 @@ def _block_text_by_type(
         return ""
     data_map = get_agent_data_for_ids(ids)
     if debug:
+        # Local index — hydration runs before do_task's debug_index (AST-977 Radia fix-now).
         dbg = get_logger(__name__, debug_flag=True)
-        for bid in ids:
+        total = len(ids)
+        for i, bid in enumerate(ids, start=1):
             row = data_map.get(str(bid), {})
             ref_id = row.get("ref_agent_data_id")
             mode = "resolved" if ref_id else "direct"
+            dbg.debug_index(
+                func="_block_text_by_type",
+                index=i,
+                total=total,
+                identifier=str(bid),
+                outcome=f"agent_data_read {mode}",
+            )
             dbg.debug_detail(
                 f"agent_data_read id={bid} mode={mode} ref_agent_data_id={ref_id!r}"
             )
