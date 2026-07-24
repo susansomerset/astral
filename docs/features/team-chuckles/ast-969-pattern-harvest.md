@@ -199,3 +199,12 @@ Create **exactly** the patterns marked `create`. Skip `already-landed`. Do not a
 - **Publish ref:** `origin/sub/AST-913/AST-969-pattern-harvest`
 - **Build commits:** Stage 1 `code(AST-969): pattern HARVEST register + README/AUTHORING pointers` (`c4cf17f`); Stage 2 `code(AST-969): propose pattern.state.entity-state-transitions` (`e109512`); Stage 3 `code(AST-969): approve state pattern + harvest remaining astral patterns` (`181c192`)
 - **Tip at Code Complete:** `a36336e384a7fa79c3a2f4fc8302c7c968fd7ab0` (review stub; Stage 3 harvest at `181c192`)
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+- **Publish tip reviewed:** (post-docs) see Linear comment SHA
+- **Overall:** DISCUSS
+- **What’s solid:** HARVEST AC cite map + 6-row crosswalk; AUTHORING reserved-name includes `HARVEST.md` only; five create patterns match inventory (`related_statutes` / `canonical_refs` / body sections); Stage 2→3 propose→approve on `pattern.state.entity-state-transitions`; SCHEMA + AST-925 exemplar untouched by `code(AST-969)`.
+- **Issues**
+  - **discuss (C4 straggler):** Joan excluded `astral.git.engineer-test-tree-ban`; Betty’s bible README brings it in-scope. Statute verdict **conforms**.
+- **Recommended actions:** No product fix; proceed resolve-child / User Testing after acknowledging straggler.
