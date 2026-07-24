@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.database import save_candidate, get_candidate
 from src.core.agent import do_task
-from src.utils.config import ASTRAL_CONFIG
+from src.utils.config import ASTRAL_CONFIG, CANDIDATE_CONFIG
 
 RESET = "--reset" in sys.argv
 CANDIDATE_ID = "somerset"
@@ -55,13 +55,13 @@ async def run_bootstrap():
     existing = get_candidate(CANDIDATE_ID)
     if existing and RESET:
         print(f"Resetting candidate_data for '{CANDIDATE_ID}'...")
-        save_candidate(CANDIDATE_ID, state="NEW", candidate_data={}, merge=False)
+        save_candidate(CANDIDATE_ID, state=CANDIDATE_CONFIG["initial_state"], candidate_data={}, merge=False)
         existing = get_candidate(CANDIDATE_ID)
     if existing:
         print(f"Candidate '{CANDIDATE_ID}' already exists (state={existing['state']}). Updating...")
     else:
         print(f"Creating candidate '{CANDIDATE_ID}'...")
-        save_candidate(CANDIDATE_ID, state="NEW", candidate_data=INITIAL_CANDIDATE_DATA)
+        save_candidate(CANDIDATE_ID, state=CANDIDATE_CONFIG["initial_state"], candidate_data=INITIAL_CANDIDATE_DATA)
 
     # Read resume for parse_resume call
     resume_text = read_file(RESUME_FILE)
@@ -118,9 +118,9 @@ async def run_bootstrap():
     save_candidate(CANDIDATE_ID, candidate_data=merged_data, merge=True)
     print(f"  Saved merged candidate_data ({len(merged_data)} keys)")
 
-    # Set state to CONTEXT_READY (context text fields populated, resume parsed, DB-first prompts not yet generated)
-    save_candidate(CANDIDATE_ID, state="CONTEXT_READY")
-    print(f"  State set to CONTEXT_READY")
+    # ACTIVE_SEARCH: bootstrap intent is a candidate usable for generation (AST-973)
+    save_candidate(CANDIDATE_ID, state="ACTIVE_SEARCH")
+    print(f"  State set to ACTIVE_SEARCH")
 
     # Link all company rows to this candidate
     from src.data.database import _get_connection, _ensure_company_schema, _ensure_company_candidate_fk

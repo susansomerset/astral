@@ -6,6 +6,7 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 
 - **astral_candidate_id** — Primary key. Lowercase last name (e.g. `somerset`), same convention as company `short_name`.
 - **state** — UPPERCASE; one of `CANDIDATE_STATES` (see state machine below).
+- **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` may be null until candidate batch claim exists; readers treat null as no batch.
 - **candidate_data** — One JSON blob; see below.
 - **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
@@ -34,7 +35,7 @@ Human-entered. Maps 1:1 to the Profile page form fields.
 
 ### context (candidate-provided, unaltered)
 
-Raw text input from the candidate. Four of these gate the `CONTEXT_READY` state transition (see state machine).
+Raw text input from the candidate. Four of these feed `check_context_complete` (intake completeness); they do not write a state transition (see state machine).
 
 | Key | Token | Gate? | Description |
 |-----|-------|-------|-------------|
@@ -90,21 +91,36 @@ Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Each
 
 ## State machine
 
-Linear progression. States defined in `CANDIDATE_STATES` in `config.py`.
+Runtime vocabulary in `CANDIDATE_STATES` (`config.py`). No `PROSPECT` (conceptual only). Transitions enforced by `transition_candidate_state()` against each state’s `prior_states` (job-style; no parallel transitions list). Successful transitions append `state_history` (prior/new + timestamp) for time-in-state; Progress UI remains AST-869.
+
+Happy path:
 
 ```
-NEW → PROFILE_READY → CONTEXT_READY → LIVE_PROMPTS
-                                 ↑
-                    gated by check_context_complete()
+NEW_CANDIDATE → INTAKE_INITIATED → REQUIRED_TOPICS_READY → ALL_TOPICS_READY
+  → REQUESTED_RESUME → RESUME_READY → REQUESTED_ARTIFACTS → ARTIFACTS_READY
+  → ACTIVE_SEARCH
 ```
 
-- **NEW** — Initial state on creation.
-- **PROFILE_READY** — Transitioned after `parse_candidate_resume` succeeds (resume parsed, base_resume artifact written).
-- **CONTEXT_READY** — Transitioned automatically by `check_context_complete()` when all four gating context fields (strengths, priorities, deal_breakers, backstory) are non-empty.
-- **LIVE_PROMPTS** — All artifacts generated; candidate is fully active.
-- **DELETED** — Soft delete.
+Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE` / `DELETED`. Waiting stages carry `*_STALE` companions (`stale_after_hours` / `stale_state`); `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` carry `*_RETRY` / `*_ERROR`. Topic-ready hops are manual until Topic Menu (AST-953).
 
-State transitions enforced by `transition_candidate_state()` in `src/core/candidate.py` against the `candidate_state_transitions` list in config.
+**DELETED reap:** entering `DELETED` writes `candidate_data.lifecycle.reap_started_at` + `reap_after_hours` from the registry. Hard-delete / legacy row remap is AST-973.
+
+`check_context_complete()` only reports whether the four context fields are populated — it does **not** write state.
+
+
+### Legacy cutover (AST-973)
+
+| Legacy state | Remap |
+| -- | -- |
+| `LIVE_PROMPTS` | `ACTIVE_SEARCH` |
+| `NEW` | `NEW_CANDIDATE` |
+| `PROFILE_READY` | `NEW_CANDIDATE` |
+| `CONTEXT_READY` | `NEW_CANDIDATE` |
+
+- Pre-cutover `DELETED` (no `candidate_data.lifecycle.reap_started_at`) → hard-deleted by CLI Phase A only (`scripts/migrations/migrate_legacy_candidate_states.py --execute`). Not remapped.
+- Post-cutover `DELETED` (with reap metadata) kept until reap-due purge.
+- `dispatch_task.trigger_state`: `LIVE_PROMPTS` / `PROFILE_READY` / `CONTEXT_READY` remapped on any `entity_type`; `NEW` → `NEW_CANDIDATE` only when `entity_type='candidate'`.
+- Schema-ensure runs Phase B/C remaps only; operator CLI runs Phase ABC after Susan OK.
 
 ## Relationships to other tables
 
@@ -121,8 +137,8 @@ Jobs do not have a direct `candidate_id` column; they are scoped via their paren
 
 ## Snake_case
 
-- **DB columns:** astral_candidate_id, state, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
+- **DB columns:** astral_candidate_id, state, state_history, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
 - **candidate_data keys:** profile, context, artifacts, and all nested keys above.
-- **Config keys:** candidate_state_transitions, candidate_states, etc.
+- **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, etc.
 
 If a spec or external doc uses camelCase, implementation still uses snake_case.

@@ -1337,7 +1337,7 @@ class TestAst505InflowDiscoveryConfig:
         assert d["max_results_per_query"] == 100
         assert d["date_restrict_days"] == 7
         assert "dispatch_freq_hrs" not in d
-        assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
+        assert d["dispatch_trigger_state"] == "ACTIVE_SEARCH"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
         assert d["vet_dispatch_trigger_state"] == "NEW"
@@ -1390,7 +1390,7 @@ class TestAst505InflowDiscoveryConfig:
         # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG catalog.
         assert "inflow_discovery" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_discovery") == "candidate"
-        assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "LIVE_PROMPTS"
+        assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "ACTIVE_SEARCH"
         with pytest.raises(KeyError, match="unknown task_key"):
             cfg.dispatch_task_admin_defaults("inflow_discovery")
 
@@ -1881,3 +1881,153 @@ class TestAst962CoverLetterMidHopDefaultTrigger:
             "CANDIDATE_REVIEW"
         )
         assert cfg.dispatch_task_admin_defaults("grade_do")["trigger_state"] == "PASSED_JD"
+
+
+class TestAst970CandidateStateRegistry:
+    """AST-970: job-style CANDIDATE_STATES registry (no PROSPECT; prior_states + companions)."""
+
+    def test_no_prospect_and_initial_state(self) -> None:
+        assert "PROSPECT" not in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
+        assert cfg.CANDIDATE_CONFIG["initial_state"] in cfg.CANDIDATE_STATES
+
+    def test_no_parallel_transitions_list(self) -> None:
+        assert "candidate_state_transitions" not in cfg.ASTRAL_CONFIG
+
+    def test_every_entry_has_prior_and_rank(self) -> None:
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            assert "prior_states" in entry, name
+            assert "progress_rank" in entry, name
+
+    def test_happy_path_keys_present(self) -> None:
+        for key in (
+            "NEW_CANDIDATE",
+            "INTAKE_INITIATED",
+            "REQUIRED_TOPICS_READY",
+            "ALL_TOPICS_READY",
+            "REQUESTED_RESUME",
+            "RESUME_READY",
+            "REQUESTED_ARTIFACTS",
+            "ARTIFACTS_READY",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+            "INACTIVE",
+            "DELETED",
+        ):
+            assert key in cfg.CANDIDATE_STATES
+
+    def test_stale_companions_and_hours(self) -> None:
+        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_after_hours"] == 72
+        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_state"] == "REQUIRED_TOPICS_READY_STALE"
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_after_hours"] == 168
+        assert cfg.CANDIDATE_STATES["DELETED"]["reap_after_hours"] == 720
+
+    def test_stale_to_next_priors(self) -> None:
+        assert "REQUIRED_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["ALL_TOPICS_READY"]["prior_states"]
+        assert "ALL_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"]
+        assert "RESUME_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"]
+        assert "ARTIFACTS_READY_STALE" in cfg.CANDIDATE_STATES["ACTIVE_SEARCH"]["prior_states"]
+
+    def test_terminals_unrestricted(self) -> None:
+        assert cfg.CANDIDATE_STATES["INACTIVE"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["DELETED"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["INACTIVE"]["progress_rank"] == -1
+        assert cfg.CANDIDATE_STATES["DELETED"]["progress_rank"] == -1
+
+    def test_error_states_closed_forward(self) -> None:
+        resume_priors = cfg.CANDIDATE_STATES["RESUME_READY"]["prior_states"] or []
+        assert "REQUESTED_RESUME_ERROR" not in resume_priors
+        art_priors = cfg.CANDIDATE_STATES["ARTIFACTS_READY"]["prior_states"] or []
+        assert "REQUESTED_ARTIFACTS_ERROR" not in art_priors
+
+    def test_nav_and_gen_states_use_new_vocab(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
+        assert jobs["visible"] == "ACTIVE_SEARCH"
+        assert companies["visible"] == "ACTIVE_SEARCH"
+        assert artifacts["visible"] == "RESUME_READY"
+        gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
+        assert gen == ["RESUME_READY", "ACTIVE_SEARCH"]
+        assert all(s in cfg.CANDIDATE_STATES for s in gen)
+
+    def test_retired_four_step_names_absent(self) -> None:
+        for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
+            assert retired not in cfg.CANDIDATE_STATES
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst972CandidateStageDispatch:
+    """AST-972: CANDIDATE_STAGE_DISPATCH + claim/trigger helpers for REQUESTED_*."""
+
+    def test_stage_dispatch_map_and_task_config(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["task_key"] == "candidate_requested_resume"
+        assert resume["trigger_state"] == "REQUESTED_RESUME"
+        assert resume["pass_state"] == "RESUME_READY"
+        assert resume["craft_task_key"] == "craft_resume_base"
+        assert arts["task_key"] == "candidate_requested_artifacts"
+        assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
+        assert arts["pass_state"] == "ARTIFACTS_READY"
+        assert "craft_resume_base" in cfg.TASK_CONFIG
+        assert resume["task_key"] in cfg.TASK_CONFIG
+        assert arts["task_key"] in cfg.TASK_CONFIG
+        for k in arts["craft_task_keys"]:
+            assert k in cfg.TASK_CONFIG
+
+    def test_claim_states_include_retry_companions(self) -> None:
+        assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate") == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == ["ACTIVE_SEARCH"]
+
+    def test_trigger_and_entity_helpers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_resume") == "REQUESTED_RESUME"
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_artifacts") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_resume") == "candidate"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_artifacts") == "candidate"
+        d = cfg.dispatch_task_admin_defaults("candidate_requested_resume")
+        assert d["entity_type"] == "candidate"
+        assert d["trigger_state"] == "REQUESTED_RESUME"
+
+
+class TestAst973LegacyCandidateRemap:
+    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
+
+    def test_map_and_trigger_frozenset(self) -> None:
+        assert cfg.CANDIDATE_LEGACY_STATE_MAP == {
+            "LIVE_PROMPTS": "ACTIVE_SEARCH",
+            "NEW": "NEW_CANDIDATE",
+            "PROFILE_READY": "NEW_CANDIDATE",
+            "CONTEXT_READY": "NEW_CANDIDATE",
+        }
+        assert "DELETED" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert cfg.CANDIDATE_LEGACY_TRIGGER_STATES == frozenset(
+            {"LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY"}
+        )
+        assert all(v in cfg.CANDIDATE_STATES for v in cfg.CANDIDATE_LEGACY_STATE_MAP.values())
+
+    def test_remap_helper(self) -> None:
+        assert cfg.remap_legacy_candidate_state("LIVE_PROMPTS") == "ACTIVE_SEARCH"
+        assert cfg.remap_legacy_candidate_state("NEW") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("ACTIVE_SEARCH") == "ACTIVE_SEARCH"
+        assert cfg.remap_legacy_candidate_state("") == cfg.CANDIDATE_CONFIG["initial_state"]
+        assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
+        # DELETED is a live registry key — remap is identity; Phase B never selects it
+        assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"

@@ -159,7 +159,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       ],
     },
   },
-  candidate: { artifact_generate_states: ["CONTEXT_READY", "LIVE_PROMPTS"] },
+  candidate: { artifact_generate_states: ["RESUME_READY", "ACTIVE_SEARCH"] },
   company: {
     watch_readonly_states: ["WATCH"],
     bulk_transitions: {
