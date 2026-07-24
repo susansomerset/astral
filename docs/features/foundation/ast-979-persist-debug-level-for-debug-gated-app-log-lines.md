@@ -52,3 +52,12 @@ No other files. Do **not** edit `src/data/database.py` (`add_log_entry` already 
 - **§2.4 / §2.6:** N/A (no batch claim / state machine).
 - **§3.3 imports:** No new cross-layer imports.
 - **§3.5 naming:** Existing method names retained.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-976/AST-979-persist-debug-level-for-debug-gated-app-log-lines` @ `ccb2d98`.
+
+**Stages delivered:**
+- Stage 1: `src/utils/logging.py` — debug-gated helpers emit via `Logger.debug`; named logger raised to DEBUG when `debug_flag=True` (root stays INFO); `_DatabaseLogHandler.setLevel(DEBUG)`; late-import flush path unchanged — `ccb2d98`.
+
+**Betty:** at **Code Complete** — cover DEBUG vs INFO persistence for `debug_index` / `debug_detail` / `test` under `debug_flag` True/False; confirm ordinary `info` stays INFO; do not require UI Level-list coverage (AST-980).
