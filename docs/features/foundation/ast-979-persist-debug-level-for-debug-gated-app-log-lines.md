@@ -86,3 +86,12 @@ No other files. Do **not** edit `src/data/database.py` (`add_log_entry` already 
 
 - Resolve-child: accept discuss stragglers / no product delta; move to User Testing when ready.
 - Sibling AST-980 owns Level-list UI.
+
+## Resolution
+
+**Date:** 2026-07-24  
+**Ref:** Radia `[code-rubric] revision=1` Overall DISCUSS @ `a083770` (intake via merge `origin/<publish-ref>`).
+
+- **fix-now:** none — no product changes.
+- **discuss (C4 straggler):** Accepted as noted — statutes score in-scope on net three-dot diff but content **conforms**; no code or plan delta.
+- **advisory:** Handler `setLevel(DEBUG)` remains process-wide once attached; root stays INFO per plan — no change.
