@@ -5286,14 +5286,21 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
 def _find_earliest_agent_data_content_match(
     conn: sqlite3.Connection,
     plain_text: str,
+    *,
+    exclude_agent_data_id: Optional[str] = None,
 ) -> Optional[str]:
-    """Return agent_data_id of earliest canonical row with identical logical block_data, or None."""
+    """Return agent_data_id of earliest canonical row with identical logical block_data, or None.
+
+    exclude_agent_data_id skips the row being written so PK retries hit duplicate_id
+    instead of a false self-ref (AST-977)."""
     rows = conn.execute(
         """SELECT agent_data_id, block_data FROM agent_data
            WHERE ref_agent_data_id IS NULL AND block_data IS NOT NULL
            ORDER BY created_at ASC, agent_data_id ASC"""
     ).fetchall()
     for row in rows:
+        if exclude_agent_data_id is not None and row[0] == exclude_agent_data_id:
+            continue
         if _decompress_payload(row[1]) == plain_text:
             return row[0]
     return None
@@ -5325,7 +5332,7 @@ def save_agent_data(
         conn = _get_connection()
         try:
             _ensure_agent_data_schema(conn)
-            match_id = _find_earliest_agent_data_content_match(conn, plain)
+            match_id = _find_earliest_agent_data_content_match(conn, plain, exclude_agent_data_id=agent_data_id)
             if match_id == agent_data_id:
                 raise ValueError(
                     f"agent_data self-ref rejected: agent_data_id={agent_data_id!r}"
