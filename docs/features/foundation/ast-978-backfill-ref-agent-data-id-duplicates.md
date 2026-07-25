@@ -174,7 +174,7 @@ Changes:
 
 ## Review (build stub)
 
-**Built:** `origin/sub/AST-974/AST-978-backfill-ref-agent-data-id-duplicates` @ `2735020`
+**Built:** `origin/sub/AST-974/AST-978-backfill-ref-agent-data-id-duplicates` @ `4e591c4`
 
 **Stages delivered:**
 - Stage 1: `backfill_agent_data_refs` in `database.py` (no exclude; refs-only UPDATE) — `b1baa73`
