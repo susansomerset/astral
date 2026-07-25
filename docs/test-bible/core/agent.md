@@ -384,3 +384,27 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 | Quiet when `debug=False` | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_store_response_debug_false_is_quiet` |
 | Read trail resolve mode | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_block_text_by_type_debug_emits_read_mode` |
 
+### AST-981 · AST-975
+
+**Scope:** Stop core audit writes to the standalone `agent_responses` **table**. `_store_agent_response` / `add_agent_response_entry` removed; `do_task` still persists `agent_data` (`save_agent_data`) and entity latest-only refs (`append_agent_response`). Schema drop / docs prose / entity-column retirement are siblings AST-982 / AST-983 / AST-984.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired audit symbols absent | `src/core/agent.py` | `TestAst981StandaloneTableAuditRetired::test_agent_module_has_no_standalone_table_helpers` |
+| Success path: agent_data + entity append only | same | `TestAst981StandaloneTableAuditRetired::test_do_task_success_persists_agent_data_and_entity_append_only` |
+| Failure path still stores agent_data | same | `TestDoTask::test_returns_api_failure_and_stores_agent_data` |
+
+**Obsolete revised:** removed `test_store_agent_response_skips_or_records`; dropped all `add_agent_response_entry` monkeypatches / `stub_agent_storage["audit"]` (setattr raises once the import is gone).
+
+**AST-981** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst981StandaloneTableAuditRetired \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/data/database/test_agent_responses.py::TestAst981StandaloneTableIoRetired \
+  tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert \
+  tests/component/scripts/test_migrate_agent_data.py::TestAst981MigrateAgentDataRetired \
+  -q
+```
+
