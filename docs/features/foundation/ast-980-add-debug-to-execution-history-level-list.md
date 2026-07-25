@@ -70,3 +70,11 @@ No backend, config, dispatcher, or ledger-column changes. No edits under `tests/
 - §3.3: UI-only; no new cross-layer imports.
 - §3.5: no new modules; keep existing names (`log_level`, `LOG_LEVELS`, `LogViewer`).
 - §3.6: no spike artifacts committed.
+
+## Review (build)
+
+**Built:** `origin/sub/AST-976/AST-980-add-debug-to-execution-history-level-list` @ `eb6cd90d7801c43353abc71d7f30eb976a7c2cc3`
+
+Stage 1: Confirmed AST-840 DEBUG Level coverage (all six checklist items present).  
+Stage 2: No-op product delta — no edits to `AdminPerformanceMonitor.tsx` or `App.css`.  
+Stage 3: AC4 Level-list portion satisfied by existing UI; real DEBUG row UAT waits on AST-979.
