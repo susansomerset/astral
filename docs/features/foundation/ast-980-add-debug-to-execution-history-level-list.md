@@ -73,7 +73,7 @@ No backend, config, dispatcher, or ledger-column changes. No edits under `tests/
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-976/AST-980-add-debug-to-execution-history-level-list` @ `eb6cd90d7801c43353abc71d7f30eb976a7c2cc3`
+**Built:** `origin/sub/AST-976/AST-980-add-debug-to-execution-history-level-list` @ `cb48b91959142f58de35e7e551199f1e69e7699c`
 
 Stage 1: Confirmed AST-840 DEBUG Level coverage (all six checklist items present).  
 Stage 2: No-op product delta — no edits to `AdminPerformanceMonitor.tsx` or `App.css`.  
