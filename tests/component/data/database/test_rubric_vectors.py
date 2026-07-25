@@ -78,14 +78,16 @@ class TestPurgeLegacyRubricArtifacts:
 class TestFeedbackBlockType:
     def test_save_agent_data_accepts_feedback_block(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        assert db.save_agent_data(
+        result = db.save_agent_data(
             "id-1",
             "candidate",
             "prefilter_company",
             "batch-722",
             "FEEDBACK",
             "payload",
-        ) is True
+        )
+        assert result["inserted"] is True
+        assert result["outcome"] == "new_content"
         rows = db.get_agent_data_by_batch("batch-722", block_type="FEEDBACK")
         assert len(rows) == 1
 
