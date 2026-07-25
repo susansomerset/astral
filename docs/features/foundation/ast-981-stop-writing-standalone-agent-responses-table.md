@@ -148,3 +148,23 @@ none cited
 
 Diff footprint matches Self-Assessment Scope (Single-Component) and sibling boundaries (no schema drop, no entity-column retirement, no invented replacement store). Stages 1–4 delivered; Betty coverage lands on publish-ref tip.
 
+## Resolution
+
+**Date:** 2026-07-25  
+**Review tip:** `abb6972` (`docs(AST-981): Radia review — findings`)  
+**Outcome:** DISCUSS → acknowledged; no fix-now; advancing to User Testing.
+
+### Discuss (C4 straggler) — acknowledged
+
+Radia flagged that Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` at plan time, while the code-rubric three-dot sweep scores them in-scope because the tip includes `docs/features/**`, `tests/**`, and `docs/test-bible/**`. Substance verdicts remain **conforms** for all three:
+
+- Plan doc is a real features file (not a misplaced spike).
+- Single features file for AST-981.
+- Engineer `code(AST-981)` did not touch the test tree; Betty owns tests/bible via `test()` / `merge-tests`.
+
+No product change for these discuss rows.
+
+### Advisory — acknowledged (sibling owns)
+
+Header inventory still names `add_agent_response_entry` — left for **AST-982** per plan Stage 2/4 (schema/ensure/header cleanup). Broader mandate/bible prose remains **AST-983**.
+
