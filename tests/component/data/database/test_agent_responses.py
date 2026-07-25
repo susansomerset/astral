@@ -1,25 +1,34 @@
-"""Component tests for agent_responses table cluster (AST-392)."""
+"""Component tests for agent_responses (entity column + schema leftovers).
+
+AST-981 removed standalone-table insert/list I/O (`add_agent_response_entry` /
+`list_agent_responses`). Entity-column latest-only upserts stay until AST-984;
+schema ensure stays until AST-982.
+"""
 
 from __future__ import annotations
 
 import pytest
 
+import src.data.database as db_mod
 
-class TestAddAgentResponseEntry:
-    def test_stores_and_lists_response(self, seeded_db) -> None:
+
+class TestAst981StandaloneTableIoRetired:
+    """AST-981: data layer no longer exposes standalone-table create/read helpers."""
+
+    def test_add_and_list_helpers_removed(self) -> None:
+        assert not hasattr(db_mod, "add_agent_response_entry")
+        assert not hasattr(db_mod, "list_agent_responses")
+        assert not hasattr(db_mod, "_derive_agent_status")
+        # Schema ensure remains for AST-982 drop sibling.
+        assert hasattr(db_mod, "_ensure_agent_responses_schema")
+        assert hasattr(db_mod, "append_agent_response")
+
+    def test_hard_delete_candidate_skips_standalone_table_key(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
-        ok = db.add_agent_response_entry(
-            "qualify_job_listings",
-            "company",
-            "acme",
-            {"agent_performance": {"status": "success"}},
-            parsed_response={"ok": True},
-        )
-        assert ok is True
-        rows = db.list_agent_responses("company", "acme")
-        assert len(rows) == 1
-        assert rows[0]["status"] == "success"
+        db.save_candidate("c981", state="NEW_CANDIDATE")
+        counts = db.hard_delete_candidate("c981")
+        assert "agent_responses" not in counts
+        assert counts["candidate"] == 1
 
 
 class TestAst726AppendAgentResponseUpsert:

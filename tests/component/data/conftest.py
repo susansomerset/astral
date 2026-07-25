@@ -45,7 +45,7 @@ def sqlite_in_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def seeded_db(sqlite_in_memory):
     """Candidate row for clusters that need a parent candidate."""
     db = sqlite_in_memory
-    db.save_candidate("cand-1", state="NEW", candidate_data={"name": "Test"})
+    db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "Test"})
     return db
 
 

@@ -38,3 +38,8 @@ One-time cleanup: bulk DELETE board-gaze placeholder companies (`__board__*`), t
 ### AST-765 · AST-757 (SUNSET — documentation)
 
 **RETIRED (AST-757):** Board-gaze cleanup phase tests retired with boards channel. Identity dedupe tests remain for migration script. See **`docs/ASTRAL_CODE_RULES.md` §3.7**.
+
+### AST-981 · AST-975
+
+**Scope:** Docstring-only — module “related records” list omits standalone `agent_responses` table. No SQL change; no new pytest (covered by product `rg` acceptance on publish-ref).
+
