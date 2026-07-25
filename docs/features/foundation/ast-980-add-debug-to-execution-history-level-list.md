@@ -101,3 +101,12 @@ Stage 3: AC4 Level-list portion satisfied by existing UI; real DEBUG row UAT wai
 
 - Resolve-child: accept discuss stragglers / no product delta; move to User Testing when ready.
 - End-to-end DEBUG row UAT still depends on AST-979 persistence on the integration line.
+
+## Resolution
+
+**Date:** 2026-07-25  
+**Commit:** `resolve(AST-980): — clean`
+
+- **fix-now:** none — no product changes.
+- **discuss (C4 straggler):** Accepted as process note only (Joan exclude vs post-Betty net diff). Statutes still conform; no product or plan-doc rewrite required.
+- **Outcome:** Confirm-only child remains as shipped; User Testing for Level-list AC4 UI portion. Real DEBUG `app_log` rows still wait on AST-979.
