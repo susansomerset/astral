@@ -93,7 +93,7 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 - **ASTRAL_CONFIG**: Paths, company_state_transitions, gazer, tick_rate_minutes, max_auto_threads, dispatch_timeout_seconds, db_retry, html_cull, cookie_dismiss_selectors, support_email (alert recipient for monitor.py), etc.
 - **RAILWAY_CONFIG**: Gunicorn deployment settings (workers, timeout, playwright_browsers_path). Read by `scripts/start_server.py` to build the gunicorn command. Single worker required — the in-process scheduler thread runs per-worker.
 - **BLOCK_TYPES**: Content block type enum for the `agent_data` table: SYSTEM, CACHE_A-D, NO_CACHE, TASK, RESPONSE. Used by `agent.py` for storage and validation.
-- **ENTITY_TYPES**: Valid entity type strings (candidate, company, job). Single source of truth used across `agent_data`, `dispatch_ledger`, entity-row `agent_responses` JSON columns (company / job / candidate), and config. The standalone `agent_responses` **table** is retired (AST-975).
+- **ENTITY_TYPES**: Valid entity type strings (candidate, company, job). Single source of truth used across `agent_data` (including RESPONSE `entity_id` latest-per-task lookup), `dispatch_ledger`, and config. The standalone `agent_responses` **table** is retired (AST-975); entity-row JSON `agent_responses` columns are retired by AST-984 in favor of `list_entity_latest_agent_refs`.
 - **DISPATCH_TASKS**: Removed. See `dispatch_tasks` DB table above.
 - **NAV_CONFIG**: UI navigation structure — sidebar groups, labels, and route paths. Groups may declare `visible` and items may declare `enabled` as candidate state strings or `False` (permanently disabled). The `/api/nav_config` endpoint in `system.py` resolves these against the selected candidate's state before serving. The frontend renders the resolved structure with no additional visibility logic.
 
@@ -154,14 +154,14 @@ Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`�
 **Statute:** `astral.batch.batch-id-format`
 **Statute:** `astral.batch.batch-id-first`
 
-All batch jobs that process entities by state use batch locking. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks, entity agent_responses, dispatch_ledger entries, and timesheets.
+All batch jobs that process entities by state use batch locking. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks (including RESPONSE `entity_id` latest-per-task refs), dispatch_ledger entries, and timesheets.
 
 **batch_id format:** `f"{task_key}-{uuid}"` — prefixed with the task_key for human readability in foreign-key references (e.g. `prefilter-3f8a2b1c-...`). For non-dispatch calls (e.g. artifact generation), the prefix is the function context.
 
 **Pattern: claim → process → release**
 
 1. **Claim:** Dispatcher generates `batch_id`, writes ledger entry, sets `log_batch_id` context var, then passes `batch_id` to the claim function to lock N unclaimed rows.
-2. **Process:** Select by batch_id, process each (AI calls store agent_data + entity agent_responses via the batch_id), update state.
+2. **Process:** Select by batch_id, process each (AI calls store agent_data blocks via the batch_id; RESPONSE rows carry `entity_id` for latest-per-task lookup), update state.
 3. **Release:** Clear `batch_id` column on entity rows when done. The row lock is temporary; the data trail (agent_data, timesheets, ledger) is permanent.
 
 **Data layer:** `claim_<entity>_batch(batch_id, state, limit, ...)`, `get_<entity>_batch(batch_id)`, `clear_<entity>_batch(batch_id)`. Parameter order: **batch_id first**.
@@ -186,20 +186,24 @@ finally:
 
 Do not select by state and process without batch_id. Use claim / get / clear and batch_id-first order consistently for all entity types.
 
-### 2.4.1 Entity Agent Responses
+### 2.4.1 Entity latest agent refs (via agent_data)
 
 **Statute:** `astral.batch.entity-agent-responses-latest-only`
 
-The standalone `agent_responses` **table** is retired (AST-975); this section describes only the entity-row JSON **column** (live until AST-984).
+The standalone `agent_responses` **table** is retired (AST-975). Entity-row JSON `agent_responses` columns are retired (AST-984). Latest-per-`task_key` lookup uses `agent_data` RESPONSE rows tagged with `entity_id`.
 
-Every entity table (company, job, candidate) has an `agent_responses` JSON array column. After each successful `do_task` call, `agent.py` upserts a lightweight reference entry by `task_key` (latest wins):
+After each `do_task` RESPONSE write when an entity index is known, `_store_response_block` / `save_agent_data` set `agent_data.entity_id` on that RESPONSE row. Shared prompt blocks (SYSTEM / CACHE_* / TASK / NO_CACHE) stay without `entity_id` (batch-scoped).
+
+Readers that need latest-per-task refs call `list_entity_latest_agent_refs(entity_type, entity_id)`:
+
+- Select RESPONSE rows for that entity, newest `created_at` first; keep one row per `task_key`.
+- Reconstruct a lightweight ref `{task_key, batch_id, created_at, prompt_blocks}` where `prompt_blocks` = all non-RESPONSE blocks from `get_agent_data_by_batch(batch_id)` plus this RESPONSE `{type, id}` only.
 
 ```json
 {
   "batch_id": "prefilter-3f8a2b1c-...",
   "task_key": "prefilter",
   "created_at": "2026-03-19 14:32:00",
-  "entity_cost": 0.0042,
   "prompt_blocks": [
     {"type": "SYSTEM", "id": "<agent_data_id>"},
     {"type": "RESPONSE", "id": "<agent_data_id>"}
@@ -207,9 +211,7 @@ Every entity table (company, job, candidate) has an `agent_responses` JSON array
 }
 ```
 
-Historical blocks remain in `agent_data`; only the entity-row ref array is latest-only per phase.
-
-The `prompt_blocks` array contains foreign keys into the `agent_data` table. The entity row stays lightweight; full content is retrieved via `GET /api/agent_data/<batch_id>` using the block IDs.
+Historical blocks remain in `agent_data`. Full content is retrieved via `GET /api/agent_data/<batch_id>` using the block IDs. Hop hydration and `get_entity_agent_story` use `list_entity_latest_agent_refs` — not entity JSON columns.
 
 ### 2.5 Bright Line: Core vs External
 
@@ -417,7 +419,7 @@ astral/
 
 **Statute:** `astral.layers.ui-config-driven-business-logic`
 
-**External (`src/external/`):** Integration with external services (Anthropic, Playwright, Gmail). No business logic, no data persistence. API keys and behavior from config or env. External functions return results or a success/failure status — they do not log; the calling core module decides what to log. HTTP request logging for `httpcore`, `httpx`, and `anthropic` is suppressed at WARNING level in `src/external/anthropic.py` at import time. **Timesheet rows:** `send_to_anthropic` accepts an optional `record_timesheet` callback; `src/core/agent.py` passes `src.core.timesheets.record_timesheet_entry` so token/cost rows are written immediately after each API response without `external` importing `data`. All other data-layer interactions (agent_data, entity-row `agent_responses` refs, prompt resolution) are handled by `src/core/agent.py`.
+**External (`src/external/`):** Integration with external services (Anthropic, Playwright, Gmail). No business logic, no data persistence. API keys and behavior from config or env. External functions return results or a success/failure status — they do not log; the calling core module decides what to log. HTTP request logging for `httpcore`, `httpx`, and `anthropic` is suppressed at WARNING level in `src/external/anthropic.py` at import time. **Timesheet rows:** `send_to_anthropic` accepts an optional `record_timesheet` callback; `src/core/agent.py` passes `src.core.timesheets.record_timesheet_entry` so token/cost rows are written immediately after each API response without `external` importing `data`. All other data-layer interactions (agent_data including RESPONSE `entity_id` / `list_entity_latest_agent_refs`, prompt resolution) are handled by `src/core/agent.py`.
 
 **Data (`src/data/`):** Database and file I/O only. No business logic, no external API calls, no UI. Exposes focused functions. Paths from config. **`agent_data.block_data` is zlib-compressed on write and decompressed on read — this is handled transparently by `save_agent_data` / `get_agent_data_by_batch`. Callers always receive plain text strings; the compression is invisible above the data layer.**
 
