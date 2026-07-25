@@ -216,3 +216,141 @@ class TestAst977AgentDataSelfRefDedupe:
             db.get_agent_data("missing-ref")
         with pytest.raises(ValueError, match="ref cycle"):
             db.get_agent_data("cycle-a")
+
+def _insert_content_row(
+    db,
+    *,
+    agent_data_id: str,
+    plain: str,
+    created_at: str,
+    ref_agent_data_id=None,
+    block_data_override=None,
+) -> bytes:
+    """Insert a legacy-style content row (both payload present) for backfill seeding."""
+    blob = block_data_override if block_data_override is not None else db._compress_payload(plain)
+    conn = db._get_connection()
+    try:
+        db._ensure_agent_data_schema(conn)
+        conn.execute(
+            """INSERT INTO agent_data
+               (agent_data_id, entity_type, task_key, batch_id, created_at,
+                block_type, block_data, token_size, ref_agent_data_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                agent_data_id, "company", "qualify_job_listings", "batch-978",
+                created_at, "SYSTEM", blob, 0, ref_agent_data_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return blob
+
+
+class TestAst978BackfillAgentDataRefs:
+    """Branches: dry-run vs live; canonical untouched; already_ref; idempotent; payload intact."""
+
+    def test_dry_run_would_set_ref_without_writing(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        blob = _insert_content_row(
+            db, agent_data_id="early", plain="dup-body",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        _insert_content_row(
+            db, agent_data_id="late", plain="dup-body",
+            created_at="2026-01-02T00:00:00+00:00",
+        )
+        result = db.backfill_agent_data_refs(dry_run=True)
+        assert result["scanned"] == 2
+        assert result["updated"] == 1
+        assert result["unchanged"] == 1
+        by_id = {a["agent_data_id"]: a for a in result["actions"]}
+        assert by_id["early"]["outcome"] == "canonical_or_unique"
+        assert by_id["late"] == {
+            "agent_data_id": "late",
+            "outcome": "would_set_ref",
+            "ref_agent_data_id": "early",
+        }
+        # No writes on dry-run
+        conn = db._get_connection()
+        try:
+            rows = {
+                r[0]: (r[1], r[2])
+                for r in conn.execute(
+                    "SELECT agent_data_id, block_data, ref_agent_data_id FROM agent_data"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        assert rows["early"][1] is None
+        assert rows["late"][1] is None
+        assert rows["late"][0] == blob
+
+    def test_live_sets_ref_leaves_block_data_and_is_idempotent(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        blob = _insert_content_row(
+            db, agent_data_id="early", plain="dup-body",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        _insert_content_row(
+            db, agent_data_id="late", plain="dup-body",
+            created_at="2026-01-02T00:00:00+00:00",
+        )
+        # Unique content stays canonical
+        _insert_content_row(
+            db, agent_data_id="solo", plain="unique-body",
+            created_at="2026-01-03T00:00:00+00:00",
+        )
+        live = db.backfill_agent_data_refs(dry_run=False)
+        assert live["updated"] == 1
+        assert live["unchanged"] == 2
+        by_id = {a["agent_data_id"]: a for a in live["actions"]}
+        assert by_id["late"]["outcome"] == "set_ref"
+        assert by_id["late"]["ref_agent_data_id"] == "early"
+        assert by_id["early"]["outcome"] == "canonical_or_unique"
+        assert by_id["solo"]["outcome"] == "canonical_or_unique"
+
+        conn = db._get_connection()
+        try:
+            rows = {
+                r[0]: (r[1], r[2])
+                for r in conn.execute(
+                    "SELECT agent_data_id, block_data, ref_agent_data_id FROM agent_data"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        assert rows["early"] == (blob, None)
+        assert rows["late"][0] == blob  # payload unchanged
+        assert rows["late"][1] == "early"
+        assert rows["solo"][1] is None
+
+        again = db.backfill_agent_data_refs(dry_run=False)
+        # late now already_ref (has ref + still has block_data); early+solo unchanged
+        assert again["updated"] == 0
+        assert again["skipped_already_ref"] == 1
+        assert again["unchanged"] == 2
+
+    def test_skips_already_ref_and_records_decompress_error(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        _insert_content_row(
+            db, agent_data_id="canon", plain="shared",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        _insert_content_row(
+            db, agent_data_id="pre-ref", plain="shared",
+            created_at="2026-01-02T00:00:00+00:00",
+            ref_agent_data_id="canon",
+        )
+        _insert_content_row(
+            db, agent_data_id="bad-blob", plain="x",
+            created_at="2026-01-03T00:00:00+00:00",
+            block_data_override=b"not-valid-zlib",
+        )
+        result = db.backfill_agent_data_refs(dry_run=False)
+        by_id = {a["agent_data_id"]: a for a in result["actions"]}
+        assert by_id["pre-ref"]["outcome"] == "already_ref"
+        assert by_id["bad-blob"]["outcome"] == "error"
+        assert result["errors"] == 1
+        assert result["skipped_already_ref"] == 1
+
