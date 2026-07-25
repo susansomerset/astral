@@ -2362,94 +2362,6 @@ def _ensure_agent_responses_schema(conn: sqlite3.Connection) -> None:
             conn.commit()
     _agent_responses_schema_ensured = True
 
-def _derive_agent_status(raw_response: Any, parsed_response: Any) -> Tuple[str, Optional[str]]:
-    """Derive (status, failure_note) for the top-level queryable columns.
-    parsed_response present → success. Otherwise extract from agent_performance envelope."""
-    if parsed_response is not None:
-        return ("success", None)
-    if isinstance(raw_response, dict):
-        perf = raw_response.get("agent_performance")
-        if isinstance(perf, dict):
-            note = perf.get("failure_note")
-            if note:
-                return ("error", str(note)[:1000])
-    return ("error", None)
-
-
-def add_agent_response_entry(
-    task_key: str,
-    entity_type: str,
-    entity_id: str,
-    raw_response: Any,
-    parsed_response: Optional[Any] = None,
-    runtime_prompt: Optional[Any] = None,
-    request_id: Optional[str] = None
-    ) -> bool:
-    """Add an agent response to the database. Insert-only, non-blocking on failure.
-    Extracts status/failure_note to queryable columns; compresses payloads as BLOBs.
-
-    Args:
-        task_key: Task name (e.g. prefilter_company, select_job_page)
-        entity_type: 'company' or 'job'
-        entity_id: short_name or job_id (from do_task index)
-        raw_response: Full response dict (will be compressed)
-        parsed_response: Parsed/validated response if available (will be compressed)
-        runtime_prompt: Prompt blocks sent to the API (will be compressed)
-        request_id: Optional Anthropic API request ID for timesheet link
-
-    Returns:
-        True if added successfully, False if error occurred
-    """
-    entry_id = str(uuid.uuid4())
-    now = _utc_now()
-    status, failure_note = _derive_agent_status(raw_response, parsed_response)
-    raw_blob = _compress_payload(raw_response) if raw_response is not None else _compress_payload({})
-    parsed_blob = _compress_payload(parsed_response)
-    prompt_blob = _compress_payload(runtime_prompt)
-    conn = _get_connection()
-    try:
-        _ensure_agent_responses_schema(conn)
-        conn.execute("""
-            INSERT INTO agent_responses
-            (id, task_key, entity_type, entity_id, status, failure_note,
-             raw_response, parsed_response, runtime_prompt, request_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (entry_id, task_key, entity_type, entity_id, status, failure_note,
-              raw_blob, parsed_blob, prompt_blob, request_id, now))
-        conn.commit()
-        return True
-    except Exception:
-        conn.rollback()
-        return False
-    finally:
-        conn.close()
-
-
-def list_agent_responses(entity_type: str, entity_id: str) -> List[Dict[str, Any]]:
-    """Return all agent_responses for an entity, ordered by created_at ascending.
-    Decompresses payload columns transparently (handles both legacy TEXT and compressed BLOB)."""
-    _PAYLOAD_COLS = ("raw_response", "parsed_response", "runtime_prompt")
-
-    def _with_conn() -> List[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_agent_responses_schema(conn)
-            rows = conn.execute(
-                "SELECT * FROM agent_responses WHERE entity_type = ? AND entity_id = ? ORDER BY created_at ASC",
-                (entity_type, entity_id),
-            ).fetchall()
-            results = []
-            for r in rows:
-                d = dict(r)
-                for col in _PAYLOAD_COLS:
-                    if col in d:
-                        d[col] = _decompress_payload(d[col])
-                results.append(d)
-            return results
-        finally:
-            conn.close()
-    return _run_with_retry(_with_conn)
-
 
 # ---- Company Job Scan ----
 
@@ -2744,7 +2656,6 @@ def hard_delete_candidate(astral_candidate_id: str) -> Dict[str, int]:
                 "company_search_terms": 0,
                 "vector_feedback": 0,
                 "rubric_vector": 0,
-                "agent_responses": 0,
                 "candidate": 0,
             }
             _ensure_candidate_schema(conn)
@@ -2758,10 +2669,6 @@ def hard_delete_candidate(astral_candidate_id: str) -> Dict[str, int]:
                 ("company_search_terms", "DELETE FROM company_search_terms WHERE candidate_id = ?"),
                 ("vector_feedback", "DELETE FROM vector_feedback WHERE candidate_id = ?"),
                 ("rubric_vector", "DELETE FROM rubric_vector WHERE candidate_id = ?"),
-                (
-                    "agent_responses",
-                    "DELETE FROM agent_responses WHERE entity_type = 'candidate' AND entity_id = ?",
-                ),
             ):
                 try:
                     cur = conn.execute(sql, (cid,))
@@ -2834,7 +2741,6 @@ def _legacy_candidate_migrate_conn(
                 "DELETE FROM company_search_terms WHERE candidate_id = ?",
                 "DELETE FROM vector_feedback WHERE candidate_id = ?",
                 "DELETE FROM rubric_vector WHERE candidate_id = ?",
-                "DELETE FROM agent_responses WHERE entity_type = 'candidate' AND entity_id = ?",
             ):
                 try:
                     conn.execute(sql, (cid,))

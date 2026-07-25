@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.data import database
 from src.data.database import (
-    add_agent_response_entry,
     append_agent_response,
     get_agent_task,
     get_agent,
@@ -1620,39 +1619,6 @@ def _validate_grades(grades: list, vectors: list) -> Optional[str]:
     return _validate_grade_confidence_list(grades, "grades")
 
 
-# ---------------------------------------------------------------------------
-# Audit logging
-# ---------------------------------------------------------------------------
-
-def _store_agent_response(
-    task_config: Dict[str, Any],
-    task_key: str,
-    index: Optional[str],
-    raw_response: Any,
-    parsed_response: Optional[Any],
-    result: Dict[str, Any],
-) -> None:
-    """Insert into agent_responses if task has entity_type + index. Silent on failure."""
-    entity_type = task_config.get("entity_type")
-    if not entity_type or not index or raw_response is None:
-        return
-    request_id = None
-    api_resp = result.get("api_response")
-    if api_resp is not None:
-        request_id = getattr(api_resp, "id", None)
-    try:
-        add_agent_response_entry(
-            task_key=task_key,
-            entity_type=entity_type,
-            entity_id=index,
-            raw_response=raw_response,
-            parsed_response=parsed_response,
-            runtime_prompt=result.get("runtime_prompt"),
-            request_id=request_id,
-        )
-    except Exception:
-        logger.debug("_store_agent_response failed", exc_info=True)
-
 
 # ---------------------------------------------------------------------------
 # do_task — primary orchestration entry point
@@ -2166,14 +2132,6 @@ async def do_task(
                 )
             except Exception:
                 logger.debug("_store_response_block (API failure) failed", exc_info=True)
-        _store_agent_response(
-            task_config,
-            task_key,
-            index,
-            raw_for_audit or result.get("error") or audit_body,
-            None,
-            result,
-        )
         if debug:
             _do_task_debug_logger(debug).debug_detail(
                 f"exit provider_failed task_key={task_key} batch_id={batch_id or ''} "
@@ -2236,7 +2194,6 @@ async def do_task(
             batch_id,
             envelope_err,
         )
-        _store_agent_response(task_config, task_key, index, parsed, None, result)
         if _should_store:
             try:
                 _store_response_block(
@@ -2269,7 +2226,6 @@ async def do_task(
             logger.error("do_task validation failed. task_key=%r error=%s", task_key, err)
             if log_batch_id.get():
                 flush_log_buffer()
-            _store_agent_response(task_config, task_key, index, parsed, None, result)
             if _should_store:
                 try:
                     _store_response_block(
@@ -2293,7 +2249,6 @@ async def do_task(
                 logger.error("do_task validation failed. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
                     flush_log_buffer()
-                _store_agent_response(task_config, task_key, index, parsed, None, result)
                 if _should_store:
                     try:
                         _store_response_block(
@@ -2316,7 +2271,6 @@ async def do_task(
             conf_err = _validate_grade_confidence_in_payload(inner_payload, task_key)
             if conf_err:
                 logger.error("do_task confidence validation failed. task_key=%r error=%s", task_key, conf_err)
-                _store_agent_response(task_config, task_key, index, parsed, None, result)
                 if _should_store:
                     try:
                         _store_response_block(
@@ -2340,7 +2294,6 @@ async def do_task(
                 grade_err = _validate_grades(grades, vectors)
                 if grade_err:
                     logger.error("do_task grade validation failed. task_key=%r error=%s", task_key, grade_err)
-                    _store_agent_response(task_config, task_key, index, parsed, None, result)
                     if _should_store:
                         try:
                             _store_response_block(
@@ -2577,7 +2530,6 @@ async def do_task(
         except Exception:
             logger.debug("append_agent_response failed", exc_info=True)
 
-    _store_agent_response(task_config, task_key, index, parsed, parsed, result)
 
     trigger_state, graduate_on_terminal = _dispatch_chain_ctx(ctx)
     _write_dispatch_hop_label_on_success(

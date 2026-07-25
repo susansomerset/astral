@@ -9,7 +9,7 @@ Phase 2 — identity dedupe: for each group sharing the same (company, job_title
 company_job_id) among non-board companies, keep the row with earliest created_at
 (tie-break astral_job_id ASC) and DELETE the rest.
 
-Related records (agent_data, agent_responses, timesheets, dispatch_ledger) for deleted
+Related records (agent_data, timesheets, dispatch_ledger) for deleted
 job rows are left as-is — no re-pointing or cascade deletes.
 
 Idempotent: second live run should report dedupe_groups=0 and board_jobs_scanned=0.
