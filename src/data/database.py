@@ -14,7 +14,7 @@ Tables used (inventory):
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
-- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data).
+- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
@@ -5355,6 +5355,7 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
             CREATE TABLE agent_data (
                 agent_data_id TEXT PRIMARY KEY,
                 entity_type   TEXT NOT NULL,
+                entity_id     TEXT,
                 task_key      TEXT NOT NULL,
                 batch_id      TEXT NOT NULL,
                 created_at    TIMESTAMP NOT NULL,
@@ -5364,7 +5365,23 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
             )
         """)
         conn.execute("CREATE INDEX idx_agent_data_batch ON agent_data(batch_id)")
+        conn.execute(
+            "CREATE INDEX idx_agent_data_entity_task ON agent_data(entity_type, entity_id, task_key, created_at)"
+        )
         conn.commit()
+    else:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_data)").fetchall()}
+        if "entity_id" not in cols:
+            conn.execute("ALTER TABLE agent_data ADD COLUMN entity_id TEXT")
+            conn.commit()
+        idx = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_agent_data_entity_task'"
+        ).fetchone()
+        if not idx:
+            conn.execute(
+                "CREATE INDEX idx_agent_data_entity_task ON agent_data(entity_type, entity_id, task_key, created_at)"
+            )
+            conn.commit()
     _agent_data_schema_ensured = True
 
 
@@ -5377,9 +5394,11 @@ def save_agent_data(
     block_data: str,
     token_size: int = 0,
     created_at: Optional[str] = None,
+    entity_id: Optional[str] = None,
 ) -> bool:
     """Insert a single content block into agent_data. Returns True on success, False on duplicate.
-    block_data is compressed before storage. block_type must be in BLOCK_TYPES."""
+    block_data is compressed before storage. block_type must be in BLOCK_TYPES.
+    entity_id tags RESPONSE rows for latest-per-task lookup (AST-984); omit for shared prompt blocks."""
     if block_type not in BLOCK_TYPES:
         raise ValueError(f"Invalid block_type '{block_type}'. Must be one of: {BLOCK_TYPES}")
     ts = created_at or _utc_now()
@@ -5390,9 +5409,9 @@ def save_agent_data(
             _ensure_agent_data_schema(conn)
             conn.execute(
                 """INSERT OR IGNORE INTO agent_data
-                   (agent_data_id, entity_type, task_key, batch_id, created_at, block_type, block_data, token_size)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (agent_data_id, entity_type, task_key, batch_id, ts, block_type, blob, token_size),
+                   (agent_data_id, entity_type, entity_id, task_key, batch_id, created_at, block_type, block_data, token_size)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (agent_data_id, entity_type, entity_id, task_key, batch_id, ts, block_type, blob, token_size),
             )
             conn.commit()
             return conn.total_changes > 0
@@ -5448,6 +5467,57 @@ def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
             return d
         finally:
             conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def list_entity_latest_agent_refs(entity_type: str, entity_id: str) -> List[Dict[str, Any]]:
+    """Latest-per-task_key RESPONSE refs for an entity, reconstructed from agent_data (AST-984).
+
+    Each ref: {task_key, batch_id, created_at, prompt_blocks} where prompt_blocks are
+    all non-RESPONSE blocks from the batch plus this RESPONSE {type, id} only.
+    """
+    if not entity_type or not entity_id:
+        return []
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_agent_data_schema(conn)
+            rows = conn.execute(
+                """SELECT agent_data_id, task_key, batch_id, created_at
+                   FROM agent_data
+                   WHERE entity_type = ? AND entity_id = ? AND block_type = 'RESPONSE'
+                   ORDER BY created_at DESC""",
+                (entity_type, entity_id),
+            ).fetchall()
+        finally:
+            conn.close()
+        # latest wins per task_key (rows already newest-first)
+        latest_by_task: Dict[str, Any] = {}
+        for row in rows:
+            d = _row_to_dict(row)
+            tk = (d.get("task_key") or "").strip()
+            if not tk or tk in latest_by_task:
+                continue
+            latest_by_task[tk] = d
+        refs: List[Dict[str, Any]] = []
+        for tk, resp in latest_by_task.items():
+            batch_id = resp["batch_id"]
+            blocks = get_agent_data_by_batch(batch_id)
+            prompt_blocks = [
+                {"type": b["block_type"], "id": b["agent_data_id"]}
+                for b in blocks
+                if b.get("block_type") != "RESPONSE"
+            ]
+            prompt_blocks.append({"type": "RESPONSE", "id": resp["agent_data_id"]})
+            refs.append({
+                "task_key": tk,
+                "batch_id": batch_id,
+                "created_at": resp["created_at"],
+                "prompt_blocks": prompt_blocks,
+            })
+        return refs
+
     return _run_with_retry(_with_conn)
 
 

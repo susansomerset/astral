@@ -1484,6 +1484,7 @@ def _store_response_block(
         f"{batch_id}:RESPONSE:{index or ''}:{response_text}".encode()
     ).hexdigest()[:16]
     agent_data_id = f"{batch_id}-response-{content_hash}"
+    # AST-984: tag RESPONSE with entity_id for list_entity_latest_agent_refs (dual-write with append_agent_response)
     save_agent_data(
         agent_data_id=agent_data_id,
         entity_type=entity_type,
@@ -1493,6 +1494,7 @@ def _store_response_block(
         block_data=response_text,
         token_size=len(response_text) // CHARS_PER_TOKEN,
         created_at=created_at,
+        entity_id=index if index else None,
     )
     return agent_data_id
 
