@@ -78,3 +78,26 @@ No backend, config, dispatcher, or ledger-column changes. No edits under `tests/
 Stage 1: Confirmed AST-840 DEBUG Level coverage (all six checklist items present).  
 Stage 2: No-op product delta — no edits to `AdminPerformanceMonitor.tsx` or `App.css`.  
 Stage 3: AC4 Level-list portion satisfied by existing UI; real DEBUG row UAT waits on AST-979.
+
+## Radia review (code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Overall:** DISCUSS (no fix-now)
+
+**Publish ref tip (pre-docs):** `7775aa225d190babb1f8188c40bd1debb903cb5d`
+
+### What’s solid
+
+- Confirm-only delivery matches plan Stages 1–3: Katherine Stage 1 checklist + Stage 3 lock on Linear; Stage 2 no-op product delta.
+- Independent re-check vs `origin/dev`: `LOG_LEVELS` includes DEBUG (`AdminPerformanceMonitor.tsx:40`); URL `log_level` + select (`:146`, `:314–318`); `visibleLogs` strict equality (`:445–448`); filtered-empty / Copy on `visibleLogs`; `.dispatch-log-level-debug` (`App.css:1938`).
+- Three-dot vs `origin/dev` has **no** `src/` edits — persistence stays AST-979; Betty reuses AST-840 Level-filter coverage.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` against plan UI Files Changed. Net three-dot diff is docs/bible/tests only, so those statutes score in-scope here. Content still **conforms**. No product fix.
+
+### Recommended actions
+
+- Resolve-child: accept discuss stragglers / no product delta; move to User Testing when ready.
+- End-to-end DEBUG row UAT still depends on AST-979 persistence on the integration line.
