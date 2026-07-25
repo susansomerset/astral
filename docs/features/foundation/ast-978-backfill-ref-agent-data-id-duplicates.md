@@ -171,4 +171,14 @@ Changes:
 - Removed the “unreachable with exclude” self-ref error branch.
 - Done-when / UAT Correct outcome: every updated ref points at an earlier twin; no earliest/canonical row gains a ref.
 - Added Decision stating backfill must not use exclude (runtime insert may still use it in AST-977).
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-974/AST-978-backfill-ref-agent-data-id-duplicates` @ `2735020`
+
+**Stages delivered:**
+- Stage 1: `backfill_agent_data_refs` in `database.py` (no exclude; refs-only UPDATE) — `b1baa73`
+- Stage 2: `scripts/migrations/backfill_agent_data_refs.py` (default dry-run, `--execute`, `--debug`) — `2735020`
+
+**Betty:** manifest at **Code Complete** — dry-run vs execute; earliest twin only (canonical never gains ref); `block_data` unchanged; idempotent re-run; `--debug` trail / quiet without.
 )
