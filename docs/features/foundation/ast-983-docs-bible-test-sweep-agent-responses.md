@@ -83,3 +83,38 @@ After AST-981 (stop writing the standalone table) and AST-982 (drop schema), man
 **Branch:** `sub/AST-975/AST-983-docs-bible-test-sweep-agent-responses`
 **Build tip:** (filled at publish)
 **Notes:** Stage 1 mandate/config comment split only; Betty owns bible/tests at qa-child (Stage 2).
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-983
+**Publish ref tip (pre-docs):** `abc6d2ca8c303fe488fe8b7d43c246b3cd6a73b9`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1: Code Rules ENTITY_TYPES / §2.4.1 label / §3.2 external wording + `config.py` ENTITY_TYPES comment split table(retired) vs entity JSON column(live until AST-984); column contract body kept.
+- Stage 2 Betty: bible prose updated (`agent_responses.md` title/scope + cross-links); prior AST-981/982 test cleanup reused; one `merge-tests(AST-983)` of `19e8e97`.
+- rg on mandate/config: every `agent_responses` hit is column-scoped or marks table retired.
+- Engineer path avoided `tests/` / `docs/test-bible/**`.
+
+### Issues
+
+**discuss (C4 straggler):** Joan Excluded 16 statutes that this three-dot scores in-scope because `origin/dev...publish-ref` still carries AST-981/982 ancestor paths (`src/core/**`, `src/data/**`, `scripts/**`, `docs/features/**`). Substance for all is **conforms**. No product fix expected.
+
+**advisory:** Plan Review stub tip was mangled (`"'76d4979'"`) — cosmetic only; real tip is publish-ref HEAD.
+
+### Recommended actions
+
+1. Acknowledge C4 stragglers at resolve-child (no code).
+2. AST-984 owns entity-column retirement + §2.4.1 / statute rewrite.
+
+### Pattern conformance
+
+none cited
+
+### Plan adherence
+
+Self-Assessment Scope `minor` matches engineer delta (Code Rules + config comment + plan stub). Sibling boundaries held.
+
