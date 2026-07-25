@@ -5408,6 +5408,115 @@ def save_agent_data(
     return _run_with_retry(_with_conn)
 
 
+def backfill_agent_data_refs(*, dry_run: bool = True) -> Dict[str, Any]:
+    """Set ref_agent_data_id on duplicate content rows to earliest twin; never clear block_data.
+
+    Calls _find_earliest without exclude so the canonical row never gains a ref.
+    Identity matches AST-977 (exact logical plain text; block_type ignored).
+    Data layer does not log.
+
+    Returns dict with keys:
+      scanned, updated, unchanged, skipped_already_ref, errors,
+      actions: list of {agent_data_id, outcome, ref_agent_data_id}
+    outcome: would_set_ref | set_ref | canonical_or_unique | already_ref | error
+    """
+
+    def _with_conn() -> Dict[str, Any]:
+        conn = _get_connection()
+        try:
+            _ensure_agent_data_schema(conn)
+            rows = conn.execute(
+                """SELECT agent_data_id, block_data, ref_agent_data_id, created_at
+                   FROM agent_data
+                   WHERE block_data IS NOT NULL
+                   ORDER BY created_at ASC, agent_data_id ASC"""
+            ).fetchall()
+            counts: Dict[str, Any] = {
+                "scanned": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "skipped_already_ref": 0,
+                "errors": 0,
+                "actions": [],
+            }
+            for row in rows:
+                agent_data_id, block_data, ref, _created_at = row[0], row[1], row[2], row[3]
+                counts["scanned"] += 1
+                if ref is not None and str(ref).strip() != "":
+                    counts["skipped_already_ref"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "already_ref",
+                            "ref_agent_data_id": ref,
+                        }
+                    )
+                    continue
+                try:
+                    plain = _decompress_payload(block_data)
+                except Exception:
+                    counts["errors"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "error",
+                            "ref_agent_data_id": None,
+                        }
+                    )
+                    continue
+                if not isinstance(plain, str):
+                    counts["errors"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "error",
+                            "ref_agent_data_id": None,
+                        }
+                    )
+                    continue
+                # No exclude: self-match means this row is the earliest canonical.
+                match_id = _find_earliest_agent_data_content_match(conn, plain)
+                if match_id is None or match_id == agent_data_id:
+                    counts["unchanged"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "canonical_or_unique",
+                            "ref_agent_data_id": None,
+                        }
+                    )
+                    continue
+                if dry_run:
+                    counts["updated"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "would_set_ref",
+                            "ref_agent_data_id": match_id,
+                        }
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE agent_data SET ref_agent_data_id = ? WHERE agent_data_id = ?",
+                        (match_id, agent_data_id),
+                    )
+                    counts["updated"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "set_ref",
+                            "ref_agent_data_id": match_id,
+                        }
+                    )
+            if not dry_run:
+                conn.commit()
+            return counts
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def _resolve_agent_data_block_data(
     conn: sqlite3.Connection,
     row_dict: Dict[str, Any],
