@@ -120,3 +120,38 @@ rg -n '"agent_responses":\s*\(_agent_responses|"agent_responses":\s*_ensure_agen
 
 **Betty:** at **Code Complete** — retire cases that call `_ensure_agent_responses_schema` or assert the standalone table exists in `tests/component/data/database/test_agent_responses.py`; keep entity-column `append_agent_response` coverage until AST-984.
 
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-982
+**Publish ref tip (pre-docs):** `f201a4785fdeb383eb2d4476978ef8cf483956d3`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1 matches plan: header inventory bullet removed; `_ensure_agent_responses_schema` / ensure flag / upsert-registry keys gone; `_apply_agent_responses_table_sunset` does single `DROP TABLE IF EXISTS agent_responses` before registry loop in `ensure_all_upsert_registry_schemas_at_startup`.
+- Stage 2 rg clean on tip: zero CREATE/`_ensure_*`; exactly one DROP; `append_agent_response` + entity JSON column mentions retained.
+- Build gate: AST-981 merge on ftr is an ancestor (`14bc714` / `resolve(AST-981)` lineage) before DROP.
+- Betty: one `test(AST-982)` + one `merge-tests(AST-982)` SHA `7215e0b`; sunset bootstrap coverage; conftest flag rename.
+
+### Issues
+
+**discuss (C4 straggler):** Joan Excluded 15 statutes that this three-dot scores in-scope because `origin/dev...publish-ref` still carries AST-981 ancestor paths (`src/core/**`, `scripts/**`, `docs/features/**`, `tests/**`). Substance for all is **conforms** (AST-981 already reviewed; AST-982 `code()` is `database.py` only). No product fix expected — acknowledge at resolve-child.
+
+**advisory:** Broader mandate/bible prose remains AST-983.
+
+### Recommended actions
+
+1. Acknowledge C4 straggler discuss list (no code change).
+2. AST-983: mandate/bible/test prose sweep; AST-984: entity JSON column retirement.
+
+### Pattern conformance
+
+none cited
+
+### Plan adherence
+
+Self-Assessment Scope (Single-Component / `database.py`) matches engineer `code(AST-982)`. Sibling keep-list honored. Stages 1–2 delivered.
+
