@@ -81,7 +81,7 @@ After AST-981 (stop writing the standalone table) and AST-982 (drop schema), man
 ## Review
 
 **Branch:** `sub/AST-975/AST-983-docs-bible-test-sweep-agent-responses`
-**Build tip:** (filled at publish)
+**Build tip:** `0bcb4e5`
 **Notes:** Stage 1 mandate/config comment split only; Betty owns bible/tests at qa-child (Stage 2).
 
 ## Radia review (code-rubric.v1)
@@ -117,4 +117,16 @@ none cited
 ### Plan adherence
 
 Self-Assessment Scope `minor` matches engineer delta (Code Rules + config comment + plan stub). Sibling boundaries held.
+
+## Resolution
+
+**Date:** 2026-07-25  
+**Publish rebuild:** Clean stack on `origin/ftr/AST-975-decommission-table-agent-responses` (dropped polluted `merge origin/dev` history that carried `Merge remote-tracking branch` into `sub --not ftr`).
+
+| Finding | Action |
+|---------|--------|
+| **discuss (C4 straggler)** — 16 Joan-excluded statutes in-scope only via AST-981/982 ancestors vs `origin/dev` | Acknowledged. Substance **conforms**; no product change. |
+| **advisory** — mangled Review stub tip | Fixed Build tip to `0bcb4e5` (code commit on rebuilt stack). |
+
+No fix-now items. AST-984 remains owner of entity-column retirement + statute rewrite.
 
