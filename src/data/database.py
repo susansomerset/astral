@@ -14,7 +14,6 @@ Tables used (inventory):
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
-- agent_responses — Agent response audit (insert-only from add_agent_response_entry).
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
@@ -163,7 +162,7 @@ _BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
 _company_candidate_fk_ensured = False
 _company_job_scan_schema_ensured = False
-_agent_responses_schema_ensured = False
+_agent_responses_table_sunset_applied = False
 _agent_schema_ensured = False
 _agent_task_schema_ensured = False
 _timesheets_schema_ensured = False
@@ -2322,45 +2321,17 @@ def _decompress_payload(value: Any) -> Optional[str]:
     return value  # legacy TEXT row
 
 
-def _ensure_agent_responses_schema(conn: sqlite3.Connection) -> None:
-    """Create agent_responses table if not present. Idempotent.
-    Adds status, failure_note columns on existing tables that lack them."""
-    global _agent_responses_schema_ensured
-    if _agent_responses_schema_ensured:
+def _apply_agent_responses_table_sunset(conn: sqlite3.Connection) -> None:
+    """One-time AST-982: hard-drop standalone agent_responses audit table.
+
+    Entity JSON columns on company/job/candidate are unchanged.
+    """
+    global _agent_responses_table_sunset_applied
+    if _agent_responses_table_sunset_applied:
         return
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_responses'"
-    )
-    if cursor.fetchone()[0] == 0:
-        conn.execute("""
-            CREATE TABLE agent_responses (
-                id TEXT PRIMARY KEY,
-                task_key TEXT NOT NULL,
-                entity_type TEXT NOT NULL,
-                entity_id TEXT NOT NULL,
-                status TEXT,
-                failure_note TEXT,
-                raw_response BLOB,
-                parsed_response BLOB,
-                runtime_prompt BLOB,
-                request_id TEXT,
-                created_at TEXT NOT NULL
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX idx_agent_responses_entity ON agent_responses(entity_type, entity_id)"
-        )
-        conn.commit()
-    else:
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(agent_responses)").fetchall()}
-        altered = False
-        for col in ("runtime_prompt", "status", "failure_note"):
-            if col not in cols:
-                conn.execute(f"ALTER TABLE agent_responses ADD COLUMN {col} TEXT")
-                altered = True
-        if altered:
-            conn.commit()
-    _agent_responses_schema_ensured = True
+    conn.execute("DROP TABLE IF EXISTS agent_responses")
+    conn.commit()
+    _agent_responses_table_sunset_applied = True
 
 
 # ---- Company Job Scan ----
@@ -6289,7 +6260,6 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
 _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "agent": ("_agent_schema_ensured",),
     "agent_data": ("_agent_data_schema_ensured",),
-    "agent_responses": ("_agent_responses_schema_ensured",),
     "agent_task": ("_agent_task_schema_ensured",),
     "app_log": ("_app_log_schema_ensured",),
     "candidate": ("_candidate_schema_ensured",),
@@ -6308,7 +6278,6 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
 _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = {
     "agent": _ensure_agent_schema,
     "agent_data": _ensure_agent_data_schema,
-    "agent_responses": _ensure_agent_responses_schema,
     "agent_task": _ensure_agent_task_schema,
     "app_log": _ensure_app_log_schema,
     "candidate": _ensure_candidate_schema,
@@ -6340,9 +6309,11 @@ def ensure_all_upsert_registry_schemas_at_startup() -> None:
 
     Invokes existing ``_UPSERT_LAZY_SCHEMA_HANDLERS`` only — no parallel migration logic.
     Resets per-table ``_*_schema_ensured`` flags via ``ensure_table_schema_for_upsert`` so
-    stale process-global shortcuts cannot skip DDL on a legacy DB file."""
+    stale process-global shortcuts cannot skip DDL on a legacy DB file.
+    Also applies AST-982 standalone ``agent_responses`` table sunset before registry ensures."""
     conn = _get_connection()
     try:
+        _apply_agent_responses_table_sunset(conn)
         for table in sorted(_UPSERT_LAZY_SCHEMA_HANDLERS):
             ensure_table_schema_for_upsert(conn, table)
     finally:
