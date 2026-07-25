@@ -6,7 +6,7 @@
 
 | Source | Test file | Branch lock |
 | --- | --- | --- |
-| `src/data/database.py` (`agent_data` schema / save / get / resolve) | `tests/component/data/database/test_agent_data.py` | no |
+| `src/data/database.py` (`agent_data` schema / save / get / resolve / backfill) | `tests/component/data/database/test_agent_data.py` | no |
 
 ---
 
@@ -43,3 +43,25 @@ Nullable `ref_agent_data_id` on `agent_data`: every content write creates an aud
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-978 · AST-974
+
+One-time `backfill_agent_data_refs` — dry-run + live UPDATE of `ref_agent_data_id` on legacy duplicate content rows to earliest twin; never clears `block_data`; match without `exclude_agent_data_id` so canonical stays ref-null. Operator CLI: **`docs/test-bible/dev/backfill_agent_data_refs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dry-run would_set_ref / no write | `src/data/database.py` | `TestAst978BackfillAgentDataRefs::test_dry_run_would_set_ref_without_writing` |
+| Live set_ref + payload intact + idempotent | `src/data/database.py` | `TestAst978BackfillAgentDataRefs::test_live_sets_ref_leaves_block_data_and_is_idempotent` |
+| already_ref skip + decompress error | `src/data/database.py` | `TestAst978BackfillAgentDataRefs::test_skips_already_ref_and_records_decompress_error` |
+
+**AST-978** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst978BackfillAgentDataRefs \
+  tests/component/scripts/test_backfill_agent_data_refs.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
