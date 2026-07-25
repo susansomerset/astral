@@ -8,13 +8,13 @@
 | --- | --- | --- |
 | `scripts/migrations/backfill_latest_only_rubric_entity_data.py` | `tests/component/scripts/test_backfill_latest_only_rubric_entity_data.py` | no |
 
-**Existing coverage (reuse):** runtime dedupe + backfill normalizer — `docs/test-bible/core/roster.md` (**AST-726**, **AST-727**); entity ref upsert — `docs/test-bible/data/database/agent_responses.md` (**AST-726**).
+**Existing coverage (reuse):** runtime dedupe + backfill normalizer — `docs/test-bible/core/roster.md` (**AST-726**, **AST-727**); entity-row JSON ref upsert — `docs/test-bible/data/database/agent_responses.md` (**AST-726**; standalone table retired AST-975).
 
 ---
 
 ### AST-727 (parent AST-717)
 
-One-time backfill: collapse duplicate `agent_responses` refs per `task_key` (latest `created_at` wins), drop empty-`task_key` legacy refs, **`agent_data` untouched**. CLI `--dry-run`, `--company`, `--job` filters; idempotent second run.
+One-time backfill: collapse duplicate **entity-row** `agent_responses` JSON refs per `task_key` (latest `created_at` wins), drop empty-`task_key` legacy refs, **`agent_data` untouched**. CLI `--dry-run`, `--company`, `--job` filters; idempotent second run.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

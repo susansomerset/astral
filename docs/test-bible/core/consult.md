@@ -264,7 +264,7 @@ Equivalent harness:
 | `{prefix}_notes` always written (empty clears) | `src/core/consult.py` (`_apply_render_verdict_decoded_job`) | `tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes::test_apply_render_verdict_always_persists_notes_including_empty` |
 | `joblist_score` on pass/fail | `src/core/consult.py` (`qualify_job_listings`) | `TestAst726LatestOnlyConsultOutcomes::test_qualify_job_listings_persists_joblist_score_on_pass`; `::test_qualify_job_listings_persists_joblist_score_on_fail` (grades only, no score on F fail) |
 
-Entity ref upsert + modal story: **`docs/test-bible/data/database/agent_responses.md`**, **`docs/test-bible/core/roster.md`** (**AST-726**).
+Entity-row JSON ref upsert + modal story (standalone table retired AST-975): **`docs/test-bible/data/database/agent_responses.md`**, **`docs/test-bible/core/roster.md`** (**AST-726**).
 
 **AST-726** narrowed run:
 

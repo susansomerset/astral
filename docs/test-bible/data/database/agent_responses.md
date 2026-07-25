@@ -1,6 +1,8 @@
-# Agent Responses
+# Agent Responses (entity JSON column)
 
 **Test module:** `tests/component/data/database/test_agent_responses.py`
+
+**Scope:** Entity-row `agent_responses` JSON columns on company / job / candidate (`append_agent_response` latest-only upsert into `agent_data` refs). The standalone `agent_responses` **table** is **retired** (AST-975 / AST-981 / AST-982). Column retirement is sibling **AST-984**.
 
 _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 
@@ -54,5 +56,28 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
   tests/component/data/database/test_agent_responses.py::TestAst981StandaloneTableIoRetired \
   tests/component/data/database/test_agent_responses.py::TestAst982StandaloneTableSunset \
   tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert \
+  -q
+```
+
+### AST-983 · AST-975
+
+**Scope:** Docs/bible honesty — mandate + config already split table(retired) vs column(live) by engineer `code(AST-983)`. Bible intro/cross-links match; no new pytest (AST-981/982 already retired table I/O mocks and sunset coverage).
+
+| Area | Source | Verification |
+| --- | --- | --- |
+| Code Rules + config comment split | `docs/ASTRAL_CODE_RULES.md`, `src/utils/config.py` | `rg -n 'agent_responses' docs/ASTRAL_CODE_RULES.md src/utils/config.py` — every hit column-scoped or table marked retired |
+| Bible entity-column scope | this file | Intro + AST-726/981/982 blocks |
+| Roster / backfill cross-links | `docs/test-bible/core/roster.md`, `docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md` | Entity-row wording only |
+| Table I/O tests already retired | `tests/component/core/test_agent.py`, `tests/component/data/database/test_agent_responses.py` | Reuse AST-981/982 classes below |
+
+**AST-983** narrowed run (reuse + docs gate):
+
+```bash
+rg -n 'agent_responses' docs/ASTRAL_CODE_RULES.md src/utils/config.py
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_responses.py::TestAst981StandaloneTableIoRetired \
+  tests/component/data/database/test_agent_responses.py::TestAst982StandaloneTableSunset \
+  tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert \
+  tests/component/core/test_agent.py::TestAst981StandaloneTableAuditRetired \
   -q
 ```
