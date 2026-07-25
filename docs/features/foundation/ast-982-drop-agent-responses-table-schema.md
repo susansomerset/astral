@@ -109,3 +109,14 @@ rg -n '"agent_responses":\s*\(_agent_responses|"agent_responses":\s*_ensure_agen
 - §3.3 imports: no new cross-layer imports; data-layer only.
 - Layers: data only; no UI/core edits in this ticket.
 - Engineer test-tree ban: Stages forbid engineer commits to `tests/` / bible.
+
+## Review (build stub)
+
+**Built:**  @ .
+
+**Stages delivered:**
+- Stage 1:  — removed header inventory +  + upsert-registry keys; added  () hooked from ; kept  + compress helpers — .
+- Stage 2: acceptance rg clean (no CREATE/); one DROP; entity JSON columns retained.
+
+**Betty:** at **Code Complete** — retire cases that call  or assert the standalone table exists in ; keep entity-column  coverage until AST-984.
+
