@@ -197,4 +197,11 @@ Changes:
 ### Recommended actions
 1. Restore Hedy as Linear assignee when resolving (review-child does not reassign).
 2. No product fix-now for AST-978 stages 1–2.
+
+## Resolution (2026-07-25)
+
+- **fix-now:** none on AST-978 product.
+- **discuss (assignee):** Linear assignee is already Hedy Lamarr at resolve — no reassignment needed.
+- **discuss (straggler):** Noted only; Joan-excluded statutes scored conforms by Radia on three-dot tip — no code change.
+- **advisory:** Left bare `except Exception` on decompress as plan-literal; failures stay visible via `errors` + actions.
 )
