@@ -482,6 +482,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** — default **All** preserves **AST-532**, **AST-634**, and copy-toolbar describes.
 
+### AST-980 · AST-976
+
+**AST-976 (parent):** Add level **DEBUG** to `app_log` / Execution History. **AST-980** owns the Execution History Level-list UI portion of parent AC4. Build was **confirm-only / no-op product delta** — AST-840 already ships `LOG_LEVELS` including **DEBUG**, URL `log_level`, generic `visibleLogs` filter/Copy/empty-state, and `.dispatch-log-level-debug`. Persistence of real DEBUG rows is **AST-979**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-980** | Confirm DEBUG on Level list + client filter (no product delta) | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx`, `App.css` (unchanged this ticket) | **Existing** **`AST-840 log level filter`** describe in **`test_AdminPerformanceMonitor.test.tsx`** (dropdown includes DEBUG; filter/Copy/empty-state generic) — **no new tests** |
+
+**AST-980** narrowed run (same gate as AST-840):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-840 log level filter"
+```
+
 ---
 
 ### AST-677 · AST-655

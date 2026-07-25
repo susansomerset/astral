@@ -40,6 +40,7 @@ from src.utils.config import (
     dispatch_task_key_is_scored,
     is_dispatch_chain_trigger,
     template_candidate_id,
+    CANDIDATE_STAGE_DISPATCH,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -156,6 +157,62 @@ def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict
     return {"candidate_id": target, "template_candidate_id": template_id, **stats}
 
 
+
+def ensure_candidate_stage_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent upsert of REQUESTED_* orchestration rows for one candidate (AST-972)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    added = 0
+    skipped = 0
+    for entry in CANDIDATE_STAGE_DISPATCH.values():
+        tk = str(entry["task_key"]).strip()
+        ts = str(entry["trigger_state"]).strip()
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=1,
+            auto_mode=True,
+            trigger_state=ts,
+            batch_size=1,
+            freq_hrs=0,
+        )
+        added += 1
+    return {"candidate_id": cid, "added": added, "skipped": skipped}
+
+
+def provision_candidate_stage_dispatch_tasks() -> Dict[str, Any]:
+    """Seed template + every candidate that already has dispatch rows (AST-972)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    ensure_candidate_stage_dispatch_tasks(template_id)
+    added = 0
+    skipped = 0
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_candidate_stage_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
+    }
+
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # Batch runners call `database` directly (not via _db_ wrappers) because
@@ -234,7 +291,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_cap = None
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
-        entities = [ctx] if ctx else []
+        claim_states = dispatch_claim_states(input_state, "candidate")
+        cur = (ctx.get("state") or "").strip() if ctx else ""
+        entities = [ctx] if ctx and cur in claim_states else []
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
@@ -857,6 +916,9 @@ def _tick_loop() -> None:
     max_auto = ASTRAL_CONFIG.get("max_auto_threads", 3)
     while True:
         try:
+            # late: avoid cycle with candidate → dispatcher (module-top import)
+            from src.core.candidate import age_stale_candidate_states
+            age_stale_candidate_states()
             due = database.get_due_tasks()  # returns auto_mode=1 tasks with available entities
             # Note: freq_hrs is an entity-level filter (applied during batch claim to exclude
             # recently-processed entities), NOT a task-level cooldown. The tick spawns any
@@ -890,6 +952,17 @@ def start_scheduler() -> None:
     n = database.mark_stale_ledger_interrupted(_now_iso())
     if n:
         _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
+    try:
+        stats = provision_candidate_stage_dispatch_tasks()
+        _sched_log.info(
+            "AST-972 stage dispatch provision template=%s touched=%s added=%s skipped=%s",
+            stats.get("template_candidate_id"),
+            stats.get("candidates_touched"),
+            stats.get("added"),
+            stats.get("skipped"),
+        )
+    except Exception:
+        _sched_log.exception("AST-972 stage dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",

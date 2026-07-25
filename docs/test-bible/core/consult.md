@@ -697,3 +697,7 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
   tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states \
   -q
 ```
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.

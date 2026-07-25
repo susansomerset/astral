@@ -22,13 +22,17 @@ from src.core.deploy_status import get_deploy_status_payload
 
 system_bp = Blueprint("system", __name__, url_prefix="/api")
 
-_STATE_INDEX = {state: i for i, state in enumerate(CANDIDATE_STATES.keys())}
 _log = get_logger(__name__)
 
 
+def _progress_rank(state: str) -> int:
+    cfg = CANDIDATE_STATES.get(state) or {}
+    return int(cfg.get("progress_rank", -1))
+
+
 def _is_at_or_past(current_state: str, required_state: str) -> bool:
-    """True if current_state is at or past required_state in CANDIDATE_STATES order."""
-    return _STATE_INDEX.get(current_state, -1) >= _STATE_INDEX.get(required_state, 999)
+    """True if current_state progress_rank is at or past required_state (rank >= 0)."""
+    return _progress_rank(current_state) >= _progress_rank(required_state) and _progress_rank(current_state) >= 0
 
 
 def _get_company_counts(candidate_id: Optional[str]) -> dict:

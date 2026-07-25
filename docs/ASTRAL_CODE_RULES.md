@@ -87,7 +87,7 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 - **TRACKER_CONFIG**: Job ingest config and JD processing rules. `job_state_transitions` has been removed — transitions are now validated using `prior_states` in `JOB_STATES`.
 - **`dispatch_tasks` DB table**: Sole source of truth for dispatchable batch tasks. Each row carries `entity_type`, `trigger_state`, `sort_by`, `batch_call_mode`, `batch_size`, and scheduling config. Unique constraint: **`(candidate_id, task_key, trigger_state)`** — multiple rows may share a `trigger_state` when `task_key` differs (e.g. TO_WATCH trio: `find_job_page`, `select_job_page`, `parse_job_list`). **Company roster dispatch:** `trigger_state` selects companies; **`task_key` on the row** selects the roster entry (`find_job_page` vs `select_job_page` vs `parse_job_list`), not a hardcoded default. `DISPATCH_TASKS` config block has been removed.
 - **COMPANY_STATES**: Company state list and batch criteria per state (limit, sort_by, scan_interval_hours).
-- **CANDIDATE_STATES**: Candidate state list (`NEW` → `PROFILE_READY` → `CONTEXT_READY` → `LIVE_PROMPTS`, plus `DELETED`).
+- **CANDIDATE_STATES**: Candidate state registry; each entry has `prior_states` (list or `None`), optional `stale_after_hours`/`stale_state`, optional `retry_state`/`error_state`, `progress_rank`; `DELETED` carries `reap_after_hours`. No `PROSPECT`.
 - **ROSTER_CONFIG**: Roster flows (prefilter, locate_job_page, parse_job_list), ats_vendor_patterns.
 - **AGENT_CONFIG**: Anthropic model catalog — model_code (alias), model_label, cpm_input, cpm_output, cpm_cache_write, cpm_cache_read, default_temperature, default_max_tokens, cache_min_tokens. Keyed by model_code alias for O(1) lookup. Use `get_model(model_code)` helper.
 - **ASTRAL_CONFIG**: Paths, company_state_transitions, gazer, tick_rate_minutes, max_auto_threads, dispatch_timeout_seconds, db_retry, html_cull, cookie_dismiss_selectors, support_email (alert recipient for monitor.py), etc.
@@ -250,11 +250,11 @@ Example: a job in `PASSED_JD` is claimed by the **`grade_do`** dispatch task. `r
 
 #### 2.6.3 Candidates
 
-Candidate states are defined in `CANDIDATE_STATES` and transitions in `ASTRAL_CONFIG["candidate_state_transitions"]`. States follow a simple progression:
+Candidate states are defined in `CANDIDATE_STATES`. Each state carries `prior_states` (a list of valid predecessors, or `None` for unrestricted entry). `transition_candidate_state` enforces these — it raises `ValueError` if the hop is illegal. Happy path:
 
-`NEW` → `PROFILE_READY` → `CONTEXT_READY` → `LIVE_PROMPTS` (plus `DELETED` for logical deletes)
+`NEW_CANDIDATE` → `INTAKE_INITIATED` → `REQUIRED_TOPICS_READY` → `ALL_TOPICS_READY` → `REQUESTED_RESUME` → `RESUME_READY` → `REQUESTED_ARTIFACTS` → `ARTIFACTS_READY` → `ACTIVE_SEARCH`
 
-`CONTEXT_READY` is gated by `check_context_complete` — all four context lists (strengths, priorities, deal_breakers, backstory) must have at least one item. Core functions (`initiate_candidate`, `transition_candidate_state`) determine the outcome and pass the target state to the data layer. Example: a candidate in `NEW` saves their profile; core parses the resume via `parse_candidate_resume` and transitions to `PROFILE_READY`.
+Companions: waiting stages may define `stale_after_hours` / `stale_state`; `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` may define `retry_state` / `error_state`. `INACTIVE` and `DELETED` use `prior_states=None`. Entering `DELETED` starts the configured reap timer on `candidate_data.lifecycle`. `check_context_complete` may report context field completeness but does not write state. Core decides the target state and passes it to the data layer.
 
 ### 2.7 render_verdict Pattern
 

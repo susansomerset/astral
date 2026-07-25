@@ -57,3 +57,7 @@ PUT **`artifacts.get_rubric`** with craft-shaped literal `\n` criteria coerces v
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Literal `\n` get_rubric Save | `src/ui/api/api_candidate.py` | **`TestAst906GetRubricLiteralNewlineSave`** |
+
+### AST-970 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Admin PUT state → **`transition_candidate_state`** (**`TestAst970AdminStateOverride`**).

@@ -1876,9 +1876,26 @@ async def run_consult_task(
         )
 
     if entity_type == "candidate":
-        return await roster.run_inflow_discovery_batch(
-            entities[0], batch_id, ctx, debug,
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH, INFLOW_CONFIG
+        from src.core.candidate import (
+            run_requested_artifacts_dispatch,
+            run_requested_resume_dispatch,
         )
+        tk = (dispatch_task_key or "").strip()
+        cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
+        if tk == INFLOW_CONFIG["discovery"]["task_key"]:
+            return await roster.run_inflow_discovery_batch(
+                entities[0], batch_id, ctx, debug,
+            )
+        if tk == CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"]:
+            return await run_requested_resume_dispatch(cid, debug=debug)
+        if tk == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
+            return await run_requested_artifacts_dispatch(cid, debug=debug)
+        logger.warning(
+            "run_consult_task: unhandled candidate task_key=%s",
+            tk,
+        )
+        return zero
 
     task_key = (dispatch_task_key or "").strip()
     if not task_key:

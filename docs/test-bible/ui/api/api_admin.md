@@ -291,6 +291,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-773** (edit modal task_key + validation helper), **AST-505** (**inflow_discovery** admin defaults).
 
+**AST-970 vocab revise:** state_options / trigger cases use **`ACTIVE_SEARCH`** / **`NEW_CANDIDATE`**; candidate trigger happy-path uses **`intake_initiate_candidate`** (inflow_discovery not in TASK_CONFIG — AST-960). Full manifest: **`docs/test-bible/core/candidate.md`** § AST-970.
+
 ---
 
 ### AST-783 · AST-756

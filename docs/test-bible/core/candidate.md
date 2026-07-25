@@ -157,3 +157,118 @@ Rubric authority cutover: **`apply_rubric_vectors_save`**, **`hydrate_rubric_art
 | Save sync + GET overlay helpers | `src/core/candidate.py` | `TestAst723RubricVectorsCutover` |
 | API PUT/GET wiring | `src/ui/api/api_candidate.py` | `TestAst723RubricVectorsApi` (`test_api_candidate.py`) |
 
+
+### AST-970 · AST-871
+
+Config-backed candidate state registry (`prior_states`, companions, `progress_rank`); enforced `transition_candidate_state`; DELETED reap timer on `candidate_data.lifecycle`; `age_stale_candidate_states` helper (no scheduler — AST-972). Retired four-step names (`NEW` / `PROFILE_READY` / `CONTEXT_READY` / `LIVE_PROMPTS`). Parse / `check_context_complete` no longer write state.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + nav/inflow string gates | `src/utils/config.py` | **`TestAst970CandidateStateRegistry`** (`test_config.py`); revised **`TestAst505InflowDiscoveryConfig`** trigger → **`ACTIVE_SEARCH`** |
+| Transitions, reap, stale aging | `src/core/candidate.py` | **`TestAst970CandidateStateMachine`**; revised initiate / transition / delete / context-complete / parse classes |
+| Admin state override fail-closed | `src/ui/api/api_candidate.py` | **`TestAst970AdminStateOverride`**; revised **`TestCandidateRoutes`** state path |
+| `progress_rank` nav gates | `src/ui/api/api_system.py` | revised **`TestSystemNavHelpers`** |
+| Candidate dispatch state_options vocab | `src/ui/api/api_admin.py` | revised **`TestAst804CandidateDispatchAdminValidation`** (`ACTIVE_SEARCH` / `intake_initiate_candidate`) |
+| Frontend fixture / SA options | fixtures + Scheduled Actions | `stateUiManifestFixture.ts`; AST-804 describe in **`test_AdminScheduledActions.test.tsx`** |
+
+**AST-970** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/core/test_candidate.py::TestInitiateCandidate \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState \
+  tests/component/core/test_candidate.py::TestTransitionCandidateStateSuccess \
+  tests/component/core/test_candidate.py::TestDeleteCandidate \
+  tests/component/core/test_candidate.py::TestCheckContextComplete \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestParseCandidateResume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended \
+  tests/component/ui/api/test_api_candidate.py::TestAst970AdminStateOverride \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_merges_data_state_and_api_key \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_list_candidates_and_states \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-804"
+```
+
+**Note:** **AST-972** revised dispatcher + `test_dispatch_tasks` inflow fixtures to **`ACTIVE_SEARCH`**. **AST-973** sweeps remaining roster/integration/frontend legacy vocab fixtures.
+
+### AST-971 · AST-871
+
+Persist company-shaped **`state_history`** on create seed and every successful **`transition_candidate_state`** (sole path — delete/admin do not double-append). Data column + parse/preserve-when-omitted on **`save_candidate`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Append helper + sole-path write | `src/core/candidate.py` | **`TestAst971CandidateTransitionHistory`**; revised initiate / transition / delete / AST-970 asserts for `state_history` kwarg |
+| Column persist / preserve / parse | `src/data/database.py` | **`TestAst971CandidateStateHistoryColumn`** (`test_candidates.py`); revised vocab in **`TestSaveCandidate`** / migrations |
+
+**AST-971** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst971CandidateTransitionHistory \
+  tests/component/core/test_candidate.py::TestInitiateCandidate \
+  tests/component/core/test_candidate.py::TestTransitionCandidateStateSuccess \
+  tests/component/core/test_candidate.py::TestDeleteCandidate \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine \
+  tests/component/data/database/test_candidates.py \
+  tests/component/data/database/test_candidate_migrations.py \
+  -q
+```
+
+
+### AST-972 · AST-871
+
+Wire **`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`** claim workers (ready / retry / error), stage **`dispatch_task`** provision, tick → **`age_stale_candidate_states`**, and **`ACTIVE_SEARCH`**-only company/job search eligibility (replacing **`LIVE_PROMPTS`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage map + claim/trigger helpers | `src/utils/config.py` | **`TestAst972CandidateStageDispatch`** (`test_config.py`) |
+| Ensure/provision rows; claim gate; tick aging; scheduler provision | `src/core/dispatcher.py` | **`TestAst972CandidateStageDispatch`**; **`TestScheduler`** (tick mock ages stale) |
+| Resume/artifacts workers | `src/core/candidate.py` | **`TestAst972RequestedStageDispatch`** |
+| Consult routing | `src/core/consult.py` | **`TestAst972CandidateStageConsultRouting`** |
+| Eligibility split (stage keys vs inflow) | `src/data/database.py` | **`TestAst972CandidateStageEligibility`**; revised AST-525/802 inflow fixtures (`ACTIVE_SEARCH` + `task_key`) |
+
+**AST-972** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible \
+  -q
+```
+
+
+### AST-973 · AST-871
+
+Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch trigger remap; reap-due purge; consumer fixture sweep off retired four-step names.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Legacy map + remap helper | `src/utils/config.py` | **`TestAst973LegacyCandidateRemap`** |
+| hard_delete + migrate A/B/C; ensure = BC only | `src/data/database.py` | **`TestAst973LegacyCandidateMigration`** |
+| Core wrappers | `src/core/candidate.py` | **`TestAst973HardDeleteAndReapPurge`** |
+| Fixture vocab sweep | roster / integration / frontend | `LIVE_PROMPTS`→`ACTIVE_SEARCH`; `CONTEXT_READY`→`ACTIVE_SEARCH` |
+
+**AST-973** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/core/test_candidate.py::TestAst973HardDeleteAndReapPurge \
+  tests/component/data/database/test_candidates.py::TestAst973LegacyCandidateMigration \
+  -q
+```

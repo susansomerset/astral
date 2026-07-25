@@ -30,6 +30,7 @@ from src.core.candidate import (
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
+    transition_candidate_state,
 )
 from src.utils.config import (
     CANDIDATE_STATES,
@@ -161,7 +162,7 @@ def create_candidate():
 @require_auth
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
-    applies it as a direct admin override (bypasses transition validation).
+    applies it via transition_candidate_state (fail closed on illegal hops).
     api_key handling: non-empty string = set/replace, empty string = clear to NULL."""
     body = request.get_json(silent=True) or {}
     if not body:
@@ -221,7 +222,10 @@ def update_candidate_data(candidate_id):
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
         if state_override is not None:
-            save_candidate_admin(candidate_id, state=state_override)
+            try:
+                transition_candidate_state(candidate_id, state_override)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
         if api_key is not None:
             if api_key.strip():
                 save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())
