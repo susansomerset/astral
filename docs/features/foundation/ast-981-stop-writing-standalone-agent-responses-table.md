@@ -112,3 +112,39 @@ rg -n "add_agent_response_entry|list_agent_responses|_store_agent_response|_deri
 - Stage 4: acceptance rg clean for table SQL + removed symbols in `src/`/`scripts/` (header inventory comment left for AST-982).
 
 **Betty:** at **Code Complete** — update/remove `add_agent_response_entry` / `_store_agent_response` mocks in `tests/component/core/test_agent.py` and standalone-table cases in `tests/component/data/database/test_agent_responses.py`; keep entity-column `append_agent_response` coverage until AST-984.
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-981
+**Publish ref tip (pre-docs):** `0daf9ad024a532b75d8c4f613a880c4e5700f390`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1–3 match the plan: `_store_agent_response` / `add_agent_response_entry` / `list_agent_responses` removed; candidate cascade `DELETE FROM agent_responses` gone; `migrate_agent_data.py` hard-retired (exit 2 / SystemExit) with no table SQL left.
+- Durable path intact: `_store_response_block` + `append_agent_response` still on `do_task` success; `_ensure_agent_responses_schema` + upsert registry left for AST-982.
+- Stage 4 rg on tip: no `INSERT`/`DELETE`/`FROM`/`JOIN`/`INTO agent_responses` executable table I/O under `src/`/`scripts/` (entity-column name collisions remain by design).
+- Betty: one `test(AST-981)` + one `merge-tests(AST-981)` SHA; bible/tests updated without touching `src/` or plan features from Betty’s commit.
+
+### Issues
+
+**discuss (C4 straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; this code sweep scores them in-scope on the three-dot diff (`docs/features/**`, `tests/**` / `docs/test-bible/**`). Substance: all three **conform** (plan doc is not a misplaced spike; single features file; engineer `code()` did not touch tests — Betty owns test tree). No product fix required; note for resolve-child acknowledgment.
+
+**advisory:** Header inventory line still says `insert-only from add_agent_response_entry` — plan Stage 2/4 left inventory for AST-982; stale helper name in comment only.
+
+### Recommended actions
+
+1. Implementer: acknowledge the three C4 straggler **discuss** rows (no code change expected).
+2. AST-982: drop ensure/CREATE/header inventory for the standalone table.
+3. AST-983: broader mandate/bible prose sweep beyond Betty’s targeted bible updates here.
+
+### Pattern conformance
+
+none cited
+
+### Plan adherence
+
+Diff footprint matches Self-Assessment Scope (Single-Component) and sibling boundaries (no schema drop, no entity-column retirement, no invented replacement store). Stages 1–4 delivered; Betty coverage lands on publish-ref tip.
+
