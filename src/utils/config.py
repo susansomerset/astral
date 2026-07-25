@@ -735,7 +735,9 @@ BLOCK_TYPES = [
 
 # ---------------------------------------------------------------------------
 # ENTITY_TYPES: valid entity type strings used across agent_data, dispatch_ledger,
-# agent_responses, and config. Single source of truth — add new types here.
+# entity-row agent_responses JSON columns (company / job / candidate), and config.
+# The standalone agent_responses table is retired (AST-975). Single source of
+# truth — add new types here.
 # ---------------------------------------------------------------------------
 ENTITY_TYPES = ["candidate", "company", "job"]
 

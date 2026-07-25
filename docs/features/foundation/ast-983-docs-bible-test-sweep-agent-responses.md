@@ -77,3 +77,9 @@ After AST-981 (stop writing the standalone table) and AST-982 (drop schema), man
 | §3.3 imports | Untouched. |
 | §3.5 naming | Untouched. |
 | Engineer test-tree ban | Stages forbid engineer commits to `tests/` / bible. |
+
+## Review
+
+**Branch:** `sub/AST-975/AST-983-docs-bible-test-sweep-agent-responses`
+**Build tip:** (filled at publish)
+**Notes:** Stage 1 mandate/config comment split only; Betty owns bible/tests at qa-child (Stage 2).
