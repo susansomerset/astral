@@ -181,4 +181,20 @@ Changes:
 - Stage 2: `scripts/migrations/backfill_agent_data_refs.py` (default dry-run, `--execute`, `--debug`) — `2735020`
 
 **Betty:** manifest at **Code Complete** — dry-run vs execute; earliest twin only (canonical never gains ref); `block_data` unchanged; idempotent re-run; `--debug` trail / quiet without.
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1` · **Overall:** DISCUSS · tip at docs commit
+
+### What’s solid
+- `backfill_agent_data_refs` calls `_find_earliest` **without** exclude (Joan round-1); canonical self-match → `canonical_or_unique`; refs-only UPDATE; no `block_data` mutation; dry-run default; CLI `--debug` emits `debug_index` N/M; data layer silent; AST-977 hydrate `debug_index` already on tip.
+
+### Issues
+- **discuss:** Linear assignee is Radia; Joan named Hedy — restore engineer through resolve.
+- **discuss (straggler):** Joan Excluded statutes in-scope on three-dot tip (all conforms) — mostly via AST-977 files co-present on this publish-ref.
+- **advisory:** bare `except Exception` on decompress records `errors` and continues (plan-literal); fine with return-count visibility.
+
+### Recommended actions
+1. Restore Hedy as Linear assignee when resolving (review-child does not reassign).
+2. No product fix-now for AST-978 stages 1–2.
 )
