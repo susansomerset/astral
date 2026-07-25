@@ -112,11 +112,11 @@ rg -n '"agent_responses":\s*\(_agent_responses|"agent_responses":\s*_ensure_agen
 
 ## Review (build stub)
 
-**Built:**  @ .
+**Built:** `origin/sub/AST-975/AST-982-drop-agent-responses-table-schema` @ `58ee447`.
 
 **Stages delivered:**
-- Stage 1:  — removed header inventory +  + upsert-registry keys; added  () hooked from ; kept  + compress helpers — .
-- Stage 2: acceptance rg clean (no CREATE/); one DROP; entity JSON columns retained.
+- Stage 1: `src/data/database.py` — removed header inventory + `_ensure_agent_responses_schema` + upsert-registry keys; added `_apply_agent_responses_table_sunset` (`DROP TABLE IF EXISTS`) hooked from `ensure_all_upsert_registry_schemas_at_startup`; kept `append_agent_response` + compress helpers — `58ee447`.
+- Stage 2: acceptance rg clean (no CREATE/`_ensure_*`); one DROP; entity JSON columns retained.
 
-**Betty:** at **Code Complete** — retire cases that call  or assert the standalone table exists in ; keep entity-column  coverage until AST-984.
+**Betty:** at **Code Complete** — retire cases that call `_ensure_agent_responses_schema` or assert the standalone table exists in `tests/component/data/database/test_agent_responses.py`; keep entity-column `append_agent_response` coverage until AST-984.
 
