@@ -155,3 +155,14 @@ none cited
 
 Self-Assessment Scope (Single-Component / `database.py`) matches engineer `code(AST-982)`. Sibling keep-list honored. Stages 1–2 delivered.
 
+## Resolution
+
+**Date:** 2026-07-25  
+**Review tip:** `dde1cf0` (`docs(AST-982): Radia review — findings`)  
+**Outcome:** clean — no product changes.
+
+| Finding | Disposition |
+| -- | -- |
+| discuss (C4 straggler) — 15 Joan-Excluded statutes scored in-scope via AST-981 ancestors on three-dot vs `origin/dev` | Acknowledged. Substance **conforms**; no product fix. AST-982 `code()` remains `src/data/database.py` only. |
+| advisory — mandate/bible prose sweep | Deferred to sibling **AST-983** (and entity-column retirement to **AST-984**). |
+
