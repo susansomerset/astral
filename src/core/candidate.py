@@ -14,7 +14,7 @@ import copy
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from src.data import database
@@ -31,7 +31,10 @@ from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
+    CANDIDATE_CONFIG,
     CANDIDATE_STATES,
+    CANDIDATE_STAGE_DISPATCH,
+    CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -45,9 +48,7 @@ from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
 
 logger = get_logger(__name__)
 
-_CANDIDATE_STATE_LIST = list(CANDIDATE_STATES.keys())
 _PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
-
 
 def _ledger_task_key_for_ui_generate(task_key: str) -> str:
     return f"user-{task_key}"
@@ -154,10 +155,33 @@ def _normalize_importance_value(raw: Any, ci: dict) -> int:
     return n
 
 
-def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[str, Any]] = None) -> None:
-    """Create a new candidate record with state=NEW. Follows ingest_jobs pattern."""
-    database.save_candidate(astral_candidate_id, state="NEW", candidate_data=candidate_data or {})
+def _append_candidate_state_history(
+    candidate: Dict[str, Any],
+    from_state: str,
+    to_state: str,
+    timestamp: str,
+) -> list:
+    """Return candidate state_history plus one company-shaped entry (no DB write)."""
+    history = list(candidate.get("state_history") or [])
+    history.append({
+        "from_state": from_state,
+        "to_state": to_state,
+        "timestamp": timestamp,
+        "batch_id": candidate.get("batch_id"),
+    })
+    return history
 
+
+def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[str, Any]] = None) -> None:
+    """Create a new candidate record with CANDIDATE_CONFIG initial_state."""
+    initial = CANDIDATE_CONFIG["initial_state"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    database.save_candidate(
+        astral_candidate_id,
+        state=initial,
+        candidate_data=candidate_data or {},
+        state_history=_append_candidate_state_history({}, "", initial, now),
+    )
 
 def save_candidate_data(candidate_id: str, data: Dict[str, Any], replace: bool = False) -> None:
     """Merge (or replace) candidate_data. Follows save_job_data pattern.
@@ -431,50 +455,181 @@ def preview_task_prompt(
 
 
 def delete_candidate(candidate_id: str) -> None:
-    """Logical delete — sets state to DELETED, bypassing transition validation."""
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        raise ValueError(f"Candidate not found: {candidate_id}")
-    database.save_candidate(candidate_id, state="DELETED")
+    """Logical delete — transition to DELETED (starts reap timer)."""
+    transition_candidate_state(candidate_id, "DELETED")
+
+
+def _candidate_prior_states(to_state: str):
+    cfg = CANDIDATE_STATES.get(to_state)
+    if cfg is None:
+        raise ValueError(f"Unknown candidate state: {to_state}")
+    return cfg.get("prior_states")
+
+
+def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
+    prior = _candidate_prior_states(to_state)
+    if prior is None:
+        return True
+    return from_state in prior
+
+
+def _start_candidate_reap_timer(candidate_id: str) -> None:
+    hours = int(CANDIDATE_STATES["DELETED"]["reap_after_hours"])
+    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    database.save_candidate(
+        candidate_id,
+        candidate_data={
+            "lifecycle": {"reap_after_hours": hours, "reap_started_at": started},
+        },
+        merge=True,
+    )
+
+
+def _parse_utc_ts(raw: Any) -> Optional[datetime]:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    # Accept "Z" and space-separated SQLite timestamps
+    s = s.replace(" ", "T")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def candidate_reap_due_at(candidate: dict) -> Optional[datetime]:
+    """UTC due datetime when state is DELETED and lifecycle.reap_started_at is set."""
+    if (candidate.get("state") or "") != "DELETED":
+        return None
+    life = ((candidate.get("candidate_data") or {}).get("lifecycle") or {})
+    started = _parse_utc_ts(life.get("reap_started_at"))
+    if started is None:
+        return None
+    hours = life.get("reap_after_hours")
+    if hours is None:
+        hours = CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0)
+    try:
+        hours_i = int(hours)
+    except (TypeError, ValueError):
+        return None
+    return started + timedelta(hours=hours_i)
+
+
+def is_candidate_reap_due(candidate: dict, *, now: Optional[datetime] = None) -> bool:
+    """True when DELETED and now >= candidate_reap_due_at."""
+    due = candidate_reap_due_at(candidate)
+    if due is None:
+        return False
+    clock = now if now is not None else datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    return clock.astimezone(timezone.utc) >= due
+
+
+def hard_delete_candidate(candidate_id: str) -> Dict[str, int]:
+    """Physical delete — database.hard_delete_candidate. Not a state transition."""
+    return database.hard_delete_candidate(candidate_id)
+
+
+def purge_reap_due_candidates(*, now: Optional[datetime] = None) -> int:
+    """Hard-delete every candidate where is_candidate_reap_due(...). Return count."""
+    n = 0
+    for row in list_candidates(include_deleted=True):
+        if (row.get("state") or "") != "DELETED":
+            continue
+        if not is_candidate_reap_due(row, now=now):
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hard_delete_candidate(cid)
+        n += 1
+    return n
 
 
 def transition_candidate_state(candidate_id: str, to_state: str) -> None:
-    """Validate transition is allowed per ASTRAL_CONFIG, then update state.
-    Raises ValueError if the transition is not in candidate_state_transitions."""
+    """Validate prior_states on CANDIDATE_STATES, then update state.
+    Raises ValueError if the hop is disallowed."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
+    if to_state not in CANDIDATE_STATES:
+        raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
-    transitions = ASTRAL_CONFIG.get("candidate_state_transitions", [])
-    if (from_state, to_state) not in transitions:
+    if not _candidate_state_allowed(from_state, to_state):
         raise ValueError(
             f"Invalid candidate state transition: {from_state} -> {to_state}"
         )
-    database.save_candidate(candidate_id, state=to_state)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    history = _append_candidate_state_history(candidate, from_state, to_state, now)
+    database.save_candidate(candidate_id, state=to_state, state_history=history)
+    if to_state == "DELETED":
+        _start_candidate_reap_timer(candidate_id)
 
 
 _CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
-_CONTEXT_READY_IDX = _CANDIDATE_STATE_LIST.index("CONTEXT_READY")
 
 
 def check_context_complete(candidate_id: str) -> bool:
-    """If every context text field is non-empty, transition to CONTEXT_READY.
-    Returns True if candidate is (now) context-ready."""
+    """True when all four context text fields are non-empty (no state write).
+    Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return False
     current_state = candidate.get("state", "")
-    if current_state in _CANDIDATE_STATE_LIST[_CONTEXT_READY_IDX:]:
+    rank = int((CANDIDATE_STATES.get(current_state) or {}).get("progress_rank", -1))
+    ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
+    if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
     for key in _CONTEXT_TEXT_KEYS:
         if not (ctx.get(key) or "").strip():
             return False
-    try:
-        transition_candidate_state(candidate_id, "CONTEXT_READY")
-    except ValueError:
-        return False
     return True
+
+
+def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
+    """Move waiting-stage candidates past stale_after_hours into stale_state.
+    Returns count of successful transitions. No scheduler wiring (AST-972)."""
+    clock = now if now is not None else datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    clock = clock.astimezone(timezone.utc)
+    moved = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        cfg = CANDIDATE_STATES.get(state) or {}
+        stale_state = cfg.get("stale_state")
+        hours = cfg.get("stale_after_hours")
+        if not stale_state or hours is None:
+            continue
+        if state == stale_state:
+            continue
+        changed = _parse_utc_ts(row.get("state_changed_at"))
+        if changed is None:
+            continue
+        try:
+            hours_i = int(hours)
+        except (TypeError, ValueError):
+            continue
+        if clock < changed + timedelta(hours=hours_i):
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        try:
+            transition_candidate_state(cid, stale_state)
+            moved += 1
+        except ValueError:
+            continue
+    return moved
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -833,8 +988,7 @@ async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
     """Parse context.starting_resume_text via do_task('craft_resume_base').
     Reads from candidate_data.context.starting_resume_text, writes parsed
     result to candidate_data.artifacts.base_resume.
-    On success: transitions to PROFILE_READY.
-    On failure: returns error dict.
+    Does not change candidate state (AST-970 — no PROFILE_READY auto-hop).
 
     Async — called from CLI/scripts via asyncio.run(), never from Flask handlers."""
     candidate = database.get_candidate(candidate_id)
@@ -864,10 +1018,6 @@ async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
         candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
         merge=True,
     )
-    # Transition to PROFILE_READY only if currently NEW
-    current = database.get_candidate(candidate_id)
-    if current and current.get("state") == "NEW":
-        transition_candidate_state(candidate_id, "PROFILE_READY")
     return {"success": True, "parsed": parsed}
 
 
@@ -946,6 +1096,129 @@ def get_pending_craft_generation(
         },
         200,
     )
+
+
+
+def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: Any) -> None:
+    """Persist craft success for REQUESTED_* dispatch (AST-972) — no nested ledger."""
+    if task_key == "craft_resume_base":
+        if not isinstance(parsed, dict):
+            raise ValueError("craft_resume_base parsed_response must be a dict")
+        structure, content = split_craft_resume_base_payload(parsed)
+        database.save_candidate(
+            candidate_id,
+            candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
+            merge=True,
+        )
+        return
+    if task_key == "craft_company_search_terms":
+        if not isinstance(parsed, dict):
+            raise ValueError("craft_company_search_terms parsed_response must be a dict")
+        terms = parsed.get("search_terms")
+        if not isinstance(terms, str):
+            raise ValueError("craft_company_search_terms search_terms must be a string")
+        apply_company_search_terms_save(candidate_id, {"company_search_terms": terms})
+        return
+    artifact_key = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+    if artifact_key:
+        if not isinstance(parsed, dict):
+            raise ValueError(f"{task_key} parsed_response must be a dict")
+        criteria = parsed.get("criteria")
+        if not isinstance(criteria, list) or len(criteria) == 0:
+            raise ValueError(f"{task_key} returned no criteria")
+        arts = {artifact_key: criteria}
+        normalize_rubric_artifacts_on_save(arts)
+        apply_rubric_vectors_save(candidate_id, arts)
+        return
+    raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
+
+
+def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
+    """Primary → retry_state; already on retry (or other) → error_state."""
+    cfg = CANDIDATE_STATES[primary_state]
+    retry = cfg["retry_state"]
+    error = cfg["error_state"]
+    if current_state == primary_state:
+        return retry
+    return error
+
+
+async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
+    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
+    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+    logger.set_debug_flag(debug)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return {**zero, "total_processed": 1, "total_errors": 1}
+    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
+    primary = stage["trigger_state"]
+    pass_state = stage["pass_state"]
+    craft_key = stage["craft_task_key"]
+    current = (candidate.get("state") or "").strip()
+    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("starting_resume_text") or ""
+    try:
+        response = await do_task(
+            task_key=craft_key,
+            live_content=live,
+            index=candidate_id,
+            ctx=candidate,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else "do_task returned None"
+            )
+        parsed = response.get("parsed_response")
+        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
+        transition_candidate_state(candidate_id, pass_state)
+        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+    except Exception as e:
+        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        target = _requested_stage_failure_target(primary, current)
+        try:
+            transition_candidate_state(candidate_id, target)
+        except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+
+
+async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
+    """Claim worker: REQUESTED_ARTIFACTS → sequential craft_* → ARTIFACTS_READY / retry / error."""
+    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+    logger.set_debug_flag(debug)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return {**zero, "total_processed": 1, "total_errors": 1}
+    stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+    primary = stage["trigger_state"]
+    pass_state = stage["pass_state"]
+    current = (candidate.get("state") or "").strip()
+    try:
+        for craft_key in stage["craft_task_keys"]:
+            # Refresh ctx each hop so later crafts see earlier persists.
+            candidate = database.get_candidate(candidate_id) or candidate
+            response = await do_task(
+                task_key=craft_key,
+                live_content="",
+                index=candidate_id,
+                ctx=candidate,
+                debug=debug,
+            )
+            if not response or not response.get("success"):
+                raise RuntimeError(
+                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
+                )
+            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
+        transition_candidate_state(candidate_id, pass_state)
+        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+    except Exception as e:
+        logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        target = _requested_stage_failure_target(primary, current)
+        try:
+            transition_candidate_state(candidate_id, target)
+        except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
 
 
 def run_candidate_artifact_generation(
