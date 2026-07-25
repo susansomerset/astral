@@ -100,3 +100,15 @@ rg -n "add_agent_response_entry|list_agent_responses|_store_agent_response|_deri
 - §3.3 imports: remove unused `add_agent_response_entry` import with the call sites.
 - §2.1 config: no new config keys.
 - Layers: core stops calling data audit insert; data stops exposing table I/O; no UI changes.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-975/AST-981-stop-writing-standalone-agent-responses-table` @ `24ecb0c`.
+
+**Stages delivered:**
+- Stage 1: `src/core/agent.py` — removed `add_agent_response_entry` import, `_store_agent_response`, and all call sites; `_store_response_block` + `append_agent_response` remain — `24ecb0c`.
+- Stage 2: `src/data/database.py` — deleted `_derive_agent_status` / `add_agent_response_entry` / `list_agent_responses` and candidate cascade `DELETE`s against the standalone table; kept `_ensure_agent_responses_schema` + upsert registry + `append_agent_response` — `24ecb0c`.
+- Stage 3: retired `scripts/migrations/migrate_agent_data.py` (exit 2 / SystemExit); docstring cleanup on `cleanup_duplicate_and_board_gaze_jobs.py` — `24ecb0c`.
+- Stage 4: acceptance rg clean for table SQL + removed symbols in `src/`/`scripts/` (header inventory comment left for AST-982).
+
+**Betty:** at **Code Complete** — update/remove `add_agent_response_entry` / `_store_agent_response` mocks in `tests/component/core/test_agent.py` and standalone-table cases in `tests/component/data/database/test_agent_responses.py`; keep entity-column `append_agent_response` coverage until AST-984.
