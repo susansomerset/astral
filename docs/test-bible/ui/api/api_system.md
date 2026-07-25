@@ -19,3 +19,7 @@
 | Admin payload incl. `merge_tickets` | `TestDeployStatus::test_admin_returns_payload` |
 | Env omitted when unset | `TestDeployStatus::test_admin_omits_environment_when_unset` |
 | Uptime samples via utils base builder | `TestDeployStatus::test_admin_uptime_format_samples_via_payload_builder` |
+
+### AST-970 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_or_past`** uses **`progress_rank`** (INACTIVE/DELETED never unlock) — revised **`TestSystemNavHelpers`**.

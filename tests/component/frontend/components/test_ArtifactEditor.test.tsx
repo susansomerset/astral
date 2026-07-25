@@ -31,7 +31,7 @@ function isPendingGenerateUrl(url: string): boolean {
   return /\/api\/candidates\/[^/]+\/generate\/[^/]+\/pending$/.test(url)
 }
 
-function mockApis(state = "CONTEXT_READY") {
+function mockApis(state = "ACTIVE_SEARCH") {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
     if (url === "/api/candidates") {
@@ -101,7 +101,7 @@ describe("ArtifactEditor", () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }] } as Response
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
       if (url === "/api/candidates/c1") {
         return { json: async () => ({ candidate_data: { artifacts: {} } }) } as Response
@@ -119,7 +119,7 @@ describe("ArtifactEditor", () => {
   })
 
   it("edits rubric artifacts, regenerates, and saves", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     renderWithProviders(<ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />)
     await waitFor(() => expect(screen.getByText("Rubric")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
@@ -134,12 +134,12 @@ describe("ArtifactEditor", () => {
     const generatePromise = new Promise<Response>((resolve) => {
       resolveGenerate = resolve
     })
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
         return {
-          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
       if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
@@ -179,7 +179,7 @@ describe("ArtifactEditor", () => {
   })
 
   it("supports fixed-shape artifacts and add/remove controls", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     renderWithProviders(
       <ArtifactEditor title="Resume" artifactKey="resume" taskKey="craft_resume" shapesKey="resume" />,
     )
@@ -188,11 +188,11 @@ describe("ArtifactEditor", () => {
   })
 
   it("loads fixed tabs from structureSections without shapes fetch", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }] } as Response
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
       if (url === "/api/candidates/c1" && !init) {
         return {
@@ -273,12 +273,12 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-902: empty criteria on Generate shows error and clears review mode", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
         return {
-          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
       if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
@@ -310,12 +310,12 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-902: pending recovery loads criteria into review mode", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
         return {
-          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
       if (url === "/api/candidates/c1/generate/craft_get_rubric/pending") {
@@ -356,13 +356,13 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-905: skips pending recovery when loaded criteria already have content", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     let pendingCalls = 0
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
         return {
-          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
       if (url === "/api/candidates/c1/generate/craft_get_rubric/pending") {
@@ -407,12 +407,12 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-902: network interrupt on Generate suggests page-return recovery", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
         return {
-          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
       if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
@@ -442,12 +442,12 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-904: Save failure shows server error and keeps review mode", async () => {
-    mockApis("CONTEXT_READY")
+    mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
       if (url === "/api/candidates") {
         return {
-          json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }],
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
       if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()

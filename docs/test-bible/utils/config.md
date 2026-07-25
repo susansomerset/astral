@@ -820,3 +820,15 @@ Bootstrap / admin: **`docs/test-bible/core/bootstrap.md`** · **`docs/test-bible
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs
 ```
+
+### AST-970 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config coverage: **`TestAst970CandidateStateRegistry`**; inflow discovery trigger string **`ACTIVE_SEARCH`**.
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+
+### AST-973 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDATE_LEGACY_STATE_MAP`** / **`remap_legacy_candidate_state`**.

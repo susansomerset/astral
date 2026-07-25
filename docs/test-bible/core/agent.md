@@ -373,3 +373,14 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/external/test_deepseek.py::TestAst903JsonMaxTokensHardFail \
   tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
 ```
+
+### AST-977 · AST-974
+
+`agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Write trail (`debug=True`) | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome` |
+| Quiet when `debug=False` | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_store_response_debug_false_is_quiet` |
+| Read trail resolve mode | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_block_text_by_type_debug_emits_read_mode` |
+

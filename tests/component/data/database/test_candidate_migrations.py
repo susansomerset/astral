@@ -10,7 +10,7 @@ class TestAst575PronounPreferenceBackfill:
         db = sqlite_in_memory
         db.save_candidate(
             "c575-miss",
-            state="NEW",
+            state="NEW_CANDIDATE",
             candidate_data={"profile": {"first": "A"}},
         )
         # First ensure ran before insert; re-run migrations like a fresh process on existing rows.
@@ -28,7 +28,7 @@ class TestAst575PronounPreferenceBackfill:
         db = sqlite_in_memory
         db.save_candidate(
             "c575-keep",
-            state="NEW",
+            state="NEW_CANDIDATE",
             candidate_data={"profile": {"pronoun_preference": "she/her"}},
         )
         row = db.get_candidate("c575-keep")
@@ -39,7 +39,7 @@ class TestAst575PronounPreferenceBackfill:
         db = sqlite_in_memory
         db.save_candidate(
             "c575-idem",
-            state="NEW",
+            state="NEW_CANDIDATE",
             candidate_data={"profile": {}},
         )
         conn = db._get_connection()

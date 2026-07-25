@@ -84,7 +84,7 @@ def integration_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def seeded_candidate(integration_db):
     integration_db.save_candidate(
         "cand-1",
-        state="LIVE_PROMPTS",
+        state="ACTIVE_SEARCH",
         candidate_data={"name": "Integration Test"},
     )
     return integration_db

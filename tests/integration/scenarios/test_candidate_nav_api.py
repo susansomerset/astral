@@ -20,7 +20,7 @@ def test_list_candidates_returns_seeded_row(
     rows = resp.get_json()
     assert isinstance(rows, list)
     assert any(
-        row.get("astral_candidate_id") == "cand-1" and row.get("state") == "LIVE_PROMPTS"
+        row.get("astral_candidate_id") == "cand-1" and row.get("state") == "ACTIVE_SEARCH"
         for row in rows
     )
 
@@ -39,7 +39,7 @@ def test_nav_config_reflects_seeded_candidate_state(
     in_review = next(item for item in jobs["items"] if item["path"] == "/jobs/in_review")
     assert in_review["enabled"] is True
 
-    # LIVE_PROMPTS satisfies Jobs group visible gate; NEW would hide the whole group.
+    # ACTIVE_SEARCH satisfies Jobs group visible gate; NEW would hide the whole group.
     seeded_candidate.save_candidate("cand-1", state="NEW", candidate_data={"name": "Integration Test"})
     resp_new = client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
     assert _jobs_group(resp_new.get_json()) is None

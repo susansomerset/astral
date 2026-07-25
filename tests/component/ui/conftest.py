@@ -100,7 +100,7 @@ def seeded_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "astral.db")
     for flag in _DB_SCHEMA_FLAGS:
         setattr(database, flag, False)
-    database.save_candidate("cand-1", state="NEW", candidate_data={"name": "Test"})
+    database.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "Test"})
     return database
 
 
@@ -118,7 +118,7 @@ def sqlite_in_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def system_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[FlaskClient]:
-    monkeypatch.setattr("src.core.candidate.get_candidate", lambda candidate_id: {"state": "LIVE_PROMPTS"})
+    monkeypatch.setattr("src.core.candidate.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
     app = Flask(__name__)
     from ui.api.api_system import system_bp
 
