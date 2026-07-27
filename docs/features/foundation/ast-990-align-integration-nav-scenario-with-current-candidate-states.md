@@ -110,3 +110,12 @@ to:
 - §2.6 state machine: no transition-rule changes; test uses `save_candidate` overwrite already used by the scenario.
 - Engineer test-tree ban honored: Ada stages do not edit `tests/` or bible; Betty owns Stage 2.
 - No conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-988/AST-990-align-integration-nav-scenario-with-current-candidate-states` @ `f28fd82` (merge `origin/dev` into sub; no Ada `src/` commit)
+
+**Stages delivered:**
+- Stage 1: Product unchanged confirmed — `CANDIDATE_STATES` has `NEW_CANDIDATE` not `NEW`; Jobs `visible: ACTIVE_SEARCH`; scenario still seeds `state="NEW"` (Betty Stage 2 target)
+
+**Betty:** replace `NEW` → `NEW_CANDIDATE` in `tests/integration/scenarios/test_candidate_nav_api.py` per Stage 2; manifest `./scripts/testing/run_integration_tests.sh`.
