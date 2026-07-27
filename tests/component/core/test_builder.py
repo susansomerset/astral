@@ -747,3 +747,87 @@ class TestBuildBaseResumeDebugPaths:
         )
         with pytest.raises(ValueError, match="missing artifacts.base_resume"):
             builder_mod.build_base_resume("cand-1", debug=True)
+
+
+# Branches: structure/sections validation; empty content; success emit; no get_candidate;
+# debug Style D on/off (incl. failure headers).
+class TestAst987BuildSessionBaseResume:
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_rejects_invalid_structure(self) -> None:
+        with pytest.raises(ValueError, match="resume_structure with sections is required"):
+            builder_mod.build_session_base_resume("bad", {"experience": "x"})  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="resume_structure with sections is required"):
+            builder_mod.build_session_base_resume({}, {"experience": "x"})
+        with pytest.raises(ValueError, match="resume_structure with sections is required"):
+            builder_mod.build_session_base_resume({"sections": "nope"}, {"experience": "x"})
+
+    def test_rejects_empty_base_resume(self) -> None:
+        with pytest.raises(ValueError, match="base_resume content is required"):
+            builder_mod.build_session_base_resume(self._structure(), {})
+        with pytest.raises(ValueError, match="base_resume content is required"):
+            builder_mod.build_session_base_resume(self._structure(), "bad")  # type: ignore[arg-type]
+
+    def test_rejects_invalid_structure_with_debug(self) -> None:
+        with pytest.raises(ValueError, match="resume_structure with sections is required"):
+            builder_mod.build_session_base_resume({}, {"experience": "x"}, debug=True)
+
+    def test_rejects_empty_content_with_debug(self) -> None:
+        with pytest.raises(ValueError, match="base_resume content is required"):
+            builder_mod.build_session_base_resume(self._structure(), {}, debug=True)
+
+    def test_renders_from_in_memory_payload_no_candidate_bind(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        get_c = MagicMock()
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", get_c)
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "candidate_name": "Session User",
+                "professional_summary": "Paste summary",
+                "experience": "Paste jobs",
+            },
+        )
+        assert "Paste summary" in html
+        assert "Paste jobs" in html
+        # Name from paste section strings — not profile (get_candidate never called).
+        assert "Session User" in html
+        get_c.assert_not_called()
+
+    def test_success_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        get_c = MagicMock()
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {"professional_summary": "Debug session", "experience": "Jobs"},
+            debug=True,
+        )
+        assert "Debug session" in html
+        get_c.assert_not_called()
