@@ -202,3 +202,10 @@ Scope `minor` matches: team-chuckles `betty-AGENTS.md` + astral plan (+ Betty bi
 
 - Ada: no code change for the straggler; note acknowledgment in resolve if desired, then proceed to User Testing when ready.
 - Hosts: ensure `./install.sh` / agents link so Betty sessions see `betty-AGENTS.md` @ `8570636`.
+
+## Resolution
+
+**Date:** 2026-07-27  
+**Radia:** Overall DISCUSS — one discuss straggler only; no fix-now ([Linear](https://linear.app/astralcareermatch/issue/AST-991/betty-agent-integration-harness-ownership-betty-monitors-integration)).  
+**Discuss — bible path straggler:** Acknowledged. Plan-time Joan exclusion of `astral.git.engineer-test-tree-ban` did not anticipate Betty’s post-build `docs/test-bible/README.md` note via `merge-tests(AST-991)`. Statute still conforms (Betty-owned path); no product or agent-file change.  
+**Action:** No code changes. Intake Radia `docs(AST-991)` @ `2fbdcdd`. Publish `resolve(AST-991): — clean`.
