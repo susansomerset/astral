@@ -172,3 +172,15 @@ Changes:
 - Added explicit Archie gate: draft → assign Susan → stop → commit statute/pattern only with refreshed `approved_by` / `approved_at` (id vs supersede = Archie).
 - Added `entity_cost` non-UI consumer check before reader cutover (Joan discuss).
 - Updated Self-Assessment / Code Rules check to match the new stage order.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-975/AST-984-retire-entity-agent-responses-columns` @ `03c5361`.
+
+**Stages delivered:**
+- Stage 1: `agent_data.entity_id` + `list_entity_latest_agent_refs` + RESPONSE tagging (dual-write) — `29cc49b`.
+- Stage 2: Code Rules §2.4.1 + ENTITY_TYPES; Archie-waived statute/pattern amend (`approved_at: 2026-07-27`) — `ff7f9f7` / `3745d22`.
+- Stage 3–5: hop/story → list API; batch entity_id tagging; drop entity JSON columns; retire backfill script — `03c5361`.
+
+**Betty:** broad fallout expected — `test_agent.py` append mocks, roster story/dedupe, database append tests, backfill script tests; cover `list_entity_latest_agent_refs` / `entity_id`.
+
