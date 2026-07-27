@@ -122,3 +122,95 @@ Admin convenience backend: accept pasted resume text, run the existing `craft_re
 **Stages delivered:**
 - Stage 1 — `run_session_resume_parse` in `src/core/candidate.py` (synthetic default structure, ledger sentinel `session`, no `get_candidate`/`save_candidate`)
 - Stage 2 — `POST /api/admin/session_resume/parse` on `admin_bp` (`@require_admin`, `ui_llm_debug`)
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-986
+**Publish ref tip (pre-docs):** `066bbe625c6741bd6f3695c52f4103025de8b902`
+**Overall:** DISCUSS
+
+### What’s solid
+- Stages 1–2 match plan: `run_session_resume_parse` + `POST /api/admin/session_resume/parse` (`@require_admin`), synthetic ctx omits `astral_candidate_id`, ledger sentinel `session`, response-only split payload.
+- No `get_candidate` / `save_candidate` / persist helpers in the new path; `craft_resume_base` `entity_type: None` preserved.
+- Debug Style D gated on `debug=True` via `ui_llm_debug()`; `debug_detail_block` truncates.
+- Betty `merge-tests(AST-986)` + manifest coverage for core/API; UI/HTML left to AST-987.
+
+### Findings
+**discuss** — straggler — Joan excluded `astral.debug.spikes-under-debug-dir` / `astral.docs.features-single-file-per-ticket` / `astral.git.engineer-test-tree-ban` at plan time; three-dot tip brings `docs/features/**` + `tests/**`/`docs/test-bible/**` in scope. Code scores **conforms** (plan file only; Betty owns tests). No product action required unless Archie wants plan-time exclusion wording tightened.
+
+### Recommended actions
+- Engineer: no fix-now; proceed resolve-child when ready (or acknowledge stragglers).
+- AST-987: consume success/`success:false` contract only.
+
+### Statutes checked
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Tip ends with single `merge-tests(AST-986)` SHA |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`code`/`test`/`merge-tests` vocabulary on tip |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub publish-ref only; no reverse-flow |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-985/AST-986-…` matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | No checkout/merge violation in reviewed commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force on tip |
+| orch.git.no-dev-agent-branches | universal | conforms | No `dev-<agent>` / agent-named publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review on `astral-AST-985` epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Synthetic ctx / ledger sentinel are planned impl choices |
+| orch.pipeline.plan-is-bible | universal | conforms | Diff matches plan stages + API contract |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Artifacts child only |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible via `test`/`merge-tests`; not engineer product commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada stays implementer through review |
+| orch.roles.pre-commit-path-bans | universal | conforms | Role path bans respected on tip vocabulary |
+| astral.agent.confidence-bounds | scoped | conforms | Not a graded confidence task |
+| astral.agent.do-task-delegation | scoped | conforms | Core calls `do_task("craft_resume_base")` |
+| astral.agent.grade-vector-validation | scoped | conforms | Not a graded-vector path |
+| astral.batch.batch-id-first | scoped | conforms | Opens ledger with `batch_id` then `log_batch_id` |
+| astral.batch.batch-id-format | scoped | conforms | `user-session-parse-resume-{uuid}` prefix form |
+| astral.batch.claim-process-release | scoped | conforms | Cost ledger only; not dispatch claim |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | TASK_CONFIG `entity_type: None` skips entity response store |
+| astral.config.config-source-of-truth | scoped | conforms | Uses `default_resume_structure` / TASK_CONFIG; no schema edit |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring / score_floor path |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No new secrets or env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss (no `artifacts/**` / spikes) |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature plan only; no spike notes under features |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/artifacts/ast-986-….md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty path is tests/bible; Ada owns src + features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code` commits omit tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | LLM I/O behind `do_task` |
+| astral.layers.import-direction | scoped | conforms | ui→core; core→data/agent/utils |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss (no `scripts/**`) |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Thin Admin route validate+delegate |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Not consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | `@require_admin` on POST |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths miss (no `src/data/**`) |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Core/UI return JSON errors; caller logs |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D only when `debug=True` |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Parallel session fn; not a persist-path flag |
+| astral.standards.in-scope-only | scoped | conforms | Product delta is core+admin API; UI is AST-987 |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` / debug helpers |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in layered src |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new state enums; intentional ledger key |
+| astral.standards.public-then-helpers | scoped | conforms | Public `run_session_resume_parse` beside craft helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers/paths miss (no `src/utils/**`) |
+| astral.state.core-decides-transitions | scoped | conforms | No candidate/job transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state machine work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Single craft hop |
+| astral.ui.frontend-file-placement | scoped | not-applicable | paths miss (no `src/ui/frontend/**`) |
+| astral.ui.naming-conventions | scoped | conforms | snake_case `/session_resume/parse` |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No gunicorn/worker changes |
+
+### Pattern conformance
+none cited
+
+### Plan adherence
+Self-Assessment Scope `Single-Component` matches (core orchestrator + Admin POST). Boundaries held vs AST-987. Joan discuss items (distinct ledger key; agent_data vs entity_type None) implemented as planned — no new product discuss beyond C4 stragglers.
+
+### Notes
+Joan plan-rubric verdict attached (APPROVED). Stragglers listed under Findings.
+
+context_tokens≈45000
