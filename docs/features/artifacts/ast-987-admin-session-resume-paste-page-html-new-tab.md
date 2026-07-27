@@ -274,3 +274,14 @@ Self-Assessment Scope `Single-Component` matches. Joan’s `useLocalStorage` ret
 Joan plan-rubric verdict attached (APPROVED). Stragglers under Findings.
 
 context_tokens≈48000
+
+## Resolution
+
+**Date:** 2026-07-27  
+**Publish ref:** `origin/sub/AST-985/AST-987-admin-session-resume-paste-page-html-new-tab`  
+**Radia tip intake:** `e95ffa8` (`docs(AST-987): Radia review — findings`)
+
+- **fix-now:** none.
+- **discuss (stragglers):** Acknowledged — Joan’s plan-rubric exclusions for `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` are scored **conforms** on the three-dot tip; no product or plan-stage change required.
+- **advisory:** none.
+- **Product delta this resolve:** none (clean).
