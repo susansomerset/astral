@@ -493,7 +493,7 @@ Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases
 
 ### AST-726 (parent AST-717)
 
-**Scope:** Read-path `agent_responses` dedupe by `task_key`; company prefilter `vector_grades` from `company_data`; latest-only prefilter score/notes clears on rerun.
+**Scope:** Read-path entity-row `agent_responses` JSON dedupe by `task_key` (standalone table retired AST-975); company prefilter `vector_grades` from `company_data`; latest-only prefilter score/notes clears on rerun.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

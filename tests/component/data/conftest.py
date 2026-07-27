@@ -12,7 +12,7 @@ _SCHEMA_FLAGS = (
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
-    "_agent_responses_schema_ensured",
+    "_agent_responses_table_sunset_applied",
     "_agent_schema_ensured",
     "_agent_task_schema_ensured",
     "_timesheets_schema_ensured",
@@ -45,7 +45,7 @@ def sqlite_in_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def seeded_db(sqlite_in_memory):
     """Candidate row for clusters that need a parent candidate."""
     db = sqlite_in_memory
-    db.save_candidate("cand-1", state="NEW", candidate_data={"name": "Test"})
+    db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "Test"})
     return db
 
 

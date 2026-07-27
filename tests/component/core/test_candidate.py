@@ -1750,3 +1750,175 @@ class TestAst973HardDeleteAndReapPurge:
         )
         assert candidate_mod.purge_reap_due_candidates() == 1
         assert deleted == ["due"]
+
+
+# Branches: 400 empty/non-str; ledger session sentinel; do_task fail/exception/non-dict;
+# success split + no get/save_candidate; debug Style D on/off.
+class TestAst986SessionResumeParse:
+    def _patch_ledger(self, monkeypatch: pytest.MonkeyPatch) -> tuple[list, list]:
+        saves: list = []
+        updates: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_dispatch_ledger",
+            lambda *args, **kwargs: saves.append((args, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "update_dispatch_ledger",
+            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
+        )
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.5))
+        monkeypatch.setattr(candidate_mod, "flush_log_buffer", MagicMock())
+        return saves, updates
+
+    @pytest.mark.parametrize("bad", ["", "   ", None, 12])
+    def test_400_requires_nonempty_resume_text(self, bad: Any) -> None:
+        body, status = candidate_mod.run_session_resume_parse(bad)  # type: ignore[arg-type]
+        assert status == 400
+        assert body == {"success": False, "error": "resume_text is required"}
+
+    def test_500_on_task_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves, updates = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=RuntimeError("boom")))
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste me")
+        assert status == 500
+        assert body["success"] is False
+        assert body["error"] == "boom"
+        assert body["batch_id"].startswith("user-session-parse-resume-")
+        assert saves[0][0][1] == "user-session-parse-resume"
+        assert saves[0][0][2] == "session"
+        assert saves[0][1]["entity_type"] is None
+        assert updates[-1][1]["status"] == "FAILED"
+
+    def test_500_on_task_exception_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=RuntimeError("x")))
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 500
+        assert body["success"] is False
+        dbg.assert_called_once()
+        assert dbg.call_args.kwargs["outcome"] == "exception"
+
+    def test_500_on_failed_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves, updates = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": False, "error": "bad parse"})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste me")
+        assert status == 500
+        assert body["error"] == "bad parse"
+        assert body["batch_id"].startswith("user-session-parse-resume-")
+        assert updates[-1][1]["status"] == "FAILED"
+        assert updates[-1][1]["total_failed"] == 1
+        assert saves  # ledger opened before fail
+
+    def test_500_on_failed_task_default_error_and_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": False})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 500
+        assert body["error"] == "Generation failed"
+        assert dbg.call_args.kwargs["outcome"] == "failed"
+
+    def test_500_when_task_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value=None)))
+        body, status = candidate_mod.run_session_resume_parse("paste me")
+        assert status == 500
+        assert body["error"] == "do_task returned None"
+
+    def test_500_when_parsed_response_not_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": "nope"})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 500
+        assert body["error"] == "craft_resume_base returned non-dict parsed_response"
+        assert dbg.call_args.kwargs["outcome"] == "invalid payload"
+
+    def test_500_non_dict_parsed_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _, updates = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": ["x"]})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste")
+        assert status == 500
+        assert updates[-1][1]["status"] == "FAILED"
+        assert body["success"] is False
+
+    def test_200_success_splits_payload_no_candidate_bind_or_persist(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves, updates = self._patch_ledger(monkeypatch)
+        get_c = MagicMock()
+        save_c = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", get_c)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save_c)
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "Jobs"})
+        calls: list[dict[str, Any]] = []
+
+        async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
+            calls.append(kwargs)
+            return {"success": True, "parsed_response": parsed, "timesheet": {"tokens": 1}}
+
+        monkeypatch.setattr(candidate_mod, "do_task", _fake_do_task)
+        body, status = candidate_mod.run_session_resume_parse("  full resume text  ")
+        assert status == 200
+        assert body["success"] is True
+        assert body["parsed_response"] == parsed
+        assert body["timesheet"] == {"tokens": 1}
+        assert body["batch_id"].startswith("user-session-parse-resume-")
+        assert "resume_structure" in body
+        assert body["base_resume"]["experience"] == "Jobs"
+        assert calls[0]["task_key"] == "craft_resume_base"
+        assert calls[0]["live_content"] == "full resume text"
+        assert calls[0]["index"] == body["batch_id"]
+        assert "astral_candidate_id" not in calls[0]["ctx"]
+        assert calls[0]["ctx"]["candidate_data"]["context"]["starting_resume_text"] == "full resume text"
+        assert saves[0][0][2] == "session"
+        assert updates[-1][1]["status"] == "COMPLETED"
+        get_c.assert_not_called()
+        save_c.assert_not_called()
+
+    def test_200_success_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        block = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail_block", block)
+        parsed = _craft_resume_base_payload(_three_section_structure())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 200
+        assert body["success"] is True
+        assert dbg.call_args.kwargs["outcome"] == "ok"
+        block.assert_called_once()
