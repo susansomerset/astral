@@ -2456,3 +2456,77 @@ class TestAst986SessionResumeParseApi:
         assert resp.status_code == 500
         assert resp.get_json()["success"] is False
         assert resp.get_json()["error"] == "agent down"
+
+
+# AST-987: Admin POST /session_resume/html — in-memory structure → text/html.
+class TestAst987SessionResumeHtmlApi:
+    def test_requires_admin(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={"resume_structure": {"sections": {}}, "base_resume": {"x": "y"}},
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_400_when_structure_or_content_missing(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        bad = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert bad.get_json()["success"] is False
+        non_obj = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={"resume_structure": [], "base_resume": {}},
+            headers=auth_headers,
+        )
+        assert non_obj.status_code == 400
+
+    def test_400_on_builder_value_error(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "build_session_base_resume",
+            MagicMock(side_effect=ValueError("base_resume content is required")),
+        )
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={"resume_structure": {"sections": {}}, "base_resume": {"a": "b"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "base_resume content is required"
+
+    def test_200_returns_html(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(structure: dict, content: dict, *, debug: bool = False) -> str:
+            captured["structure"] = structure
+            captured["content"] = content
+            captured["debug"] = debug
+            return "<html><body>session</body></html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_base_resume", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        resp = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={
+                "resume_structure": {"sections": {"experience": {"id": "experience"}}},
+                "base_resume": {"experience": "Jobs"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/html"
+        assert b"session" in resp.data
+        assert captured["debug"] is True
+        assert captured["content"]["experience"] == "Jobs"
