@@ -119,3 +119,28 @@ to:
 - Stage 1: Product unchanged confirmed — `CANDIDATE_STATES` has `NEW_CANDIDATE` not `NEW`; Jobs `visible: ACTIVE_SEARCH`; scenario still seeds `state="NEW"` (Betty Stage 2 target)
 
 **Betty:** replace `NEW` → `NEW_CANDIDATE` in `tests/integration/scenarios/test_candidate_nav_api.py` per Stage 2; manifest `./scripts/testing/run_integration_tests.sh`.
+
+## Radia review (code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Overall:** DISCUSS (C4 stragglers only — no product/test fix-now)
+
+**Publish ref tip reviewed:** `d0209ba43d0bc97b28c707d215a9c85c52957066`
+
+**Diff:** `origin/dev...origin/sub/AST-988/AST-990-align-integration-nav-scenario-with-current-candidate-states` — plan doc add + one integration scenario seed (`NEW` → `NEW_CANDIDATE`). Zero `src/`.
+
+### What’s solid
+
+- Plan fidelity exact: Betty `test(AST-990)` + Ada `merge-tests` landed the Stage 2 seed; ACTIVE_SEARCH half untouched; no coverage expand; bible left alone per Betty.
+- Ownership: Ada Stage 1 verification-only (docs stub); Betty owns `tests/`; no engineer test-tree edit.
+- Acceptances still encoded: early-lifecycle `NEW_CANDIDATE` hides Jobs; prior ACTIVE_SEARCH enables `/jobs/in_review`.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.betty-no-src-or-features` (plan Files Changed had no `docs/features/**`). Three-dot diff includes the plan file → all three in-scope. Substance: **conforms** (single feature file; content is plan not spike; Betty `test()` did not touch `docs/features/`). No product action — acknowledge at resolve.
+
+### Recommended actions
+
+1. resolve-child: acknowledge the three C4 stragglers (no code change).
+2. Leave assignee Ada; no fix-now.
