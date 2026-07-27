@@ -31,7 +31,7 @@ from src.core.dispatcher import (
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
 )
-from src.core.candidate import preview_task_prompt
+from src.core.candidate import preview_task_prompt, run_session_resume_parse
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
     get_repo_admin_json_divergence_status,
@@ -1443,6 +1443,19 @@ def _decode_blob_values(row: dict) -> dict:
             except (zlib.error, UnicodeDecodeError):
                 row[k] = f"<binary {len(v)} bytes>"
     return row
+
+
+@admin_bp.route("/session_resume/parse", methods=["POST"])
+@require_admin
+def session_resume_parse():
+    """AST-986: paste → craft_resume_base (default structure); response-only, no candidate bind."""
+    body = request.get_json(silent=True) or {}
+    resume_text = body.get("resume_text")
+    result_body, status = run_session_resume_parse(
+        resume_text if isinstance(resume_text, str) else "",
+        debug=ui_llm_debug(),
+    )
+    return jsonify(result_body), status
 
 
 @admin_bp.route("/data/sql", methods=["POST"])
