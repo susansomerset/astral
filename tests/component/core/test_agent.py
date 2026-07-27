@@ -98,14 +98,13 @@ def agent_prompt_rows(monkeypatch: pytest.MonkeyPatch) -> Tuple[Dict[str, Any], 
 
 @pytest.fixture
 def stub_agent_storage(monkeypatch: pytest.MonkeyPatch) -> Dict[str, MagicMock]:
+    # AST-981: standalone table audit path removed; durable store is save + entity append.
     mocks = {
         "save": MagicMock(),
         "append": MagicMock(),
-        "audit": MagicMock(),
     }
     monkeypatch.setattr(agent_mod, "save_agent_data", mocks["save"])
     monkeypatch.setattr(agent_mod, "append_agent_response", mocks["append"])
-    monkeypatch.setattr(agent_mod, "add_agent_response_entry", mocks["audit"])
     monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
     return mocks
 
@@ -1156,22 +1155,6 @@ class TestStoreBlocks:
         assert [b["type"] for b in blocks] == ["SYSTEM"]
         assert {row["block_type"] for row in saved} == {"SYSTEM"}
 
-    def test_store_agent_response_skips_or_records(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        audit = MagicMock()
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", audit)
-        cfg = TASK_CONFIG["evaluate_jd"]
-        agent_mod._store_agent_response(cfg, "evaluate_jd", None, "raw", None, {"api_response": _api_response()})
-        audit.assert_not_called()
-        agent_mod._store_agent_response(
-            cfg,
-            "evaluate_jd",
-            "job-1",
-            "raw",
-            {"jobs": []},
-            {"api_response": _api_response(), "runtime_prompt": "prompt"},
-        )
-        audit.assert_called_once()
-
     def test_store_prompt_blocks_with_four_cache_slots(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test _store_prompt_blocks with caches_resolved_four (AST-458 coverage)."""
         saved: List[Dict[str, Any]] = []
@@ -1300,12 +1283,13 @@ class TestDoTask:
         with pytest.raises(ValueError, match="no brain_setting"):
             await agent_mod.do_task("evaluate_jd")
 
-    async def test_returns_api_failure_and_stores_audit(
+    async def test_returns_api_failure_and_stores_agent_data(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
+        # AST-981: failure path still persists agent_data; no standalone-table audit write.
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
@@ -1315,7 +1299,8 @@ class TestDoTask:
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
         assert stub_agent_storage["save"].called
-        stub_agent_storage["audit"].assert_called_once()
+        assert "add_agent_response_entry" not in vars(agent_mod)
+        assert "_store_agent_response" not in vars(agent_mod)
 
     async def test_do_task_stores_agent_data_for_craft_null_entity_type(
         self,
@@ -1474,7 +1459,6 @@ class TestDoTask:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1666,7 +1650,6 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1698,7 +1681,6 @@ class TestDoTask:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1734,7 +1716,6 @@ class TestDoTask:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1761,7 +1742,6 @@ class TestDoTask:
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
 
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1811,7 +1791,6 @@ class TestDoTask:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1837,7 +1816,6 @@ class TestDoTask:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1873,7 +1851,6 @@ class TestAst492BrainSettingDoTask:
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1905,7 +1882,6 @@ class TestAst492BrainSettingDoTask:
         monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2380,7 +2356,6 @@ class TestDoTaskStorageFailures:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(side_effect=RuntimeError("db")))
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock(side_effect=RuntimeError("db")))
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock(side_effect=RuntimeError("db")))
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2414,7 +2389,6 @@ class TestDoTaskStorageFailures:
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         with monkeypatch.context() as patch:
             patch.setattr(
                 agent_mod,
@@ -2470,7 +2444,6 @@ class TestDoTaskRemainingPaths:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2498,7 +2471,6 @@ class TestDoTaskRemainingPaths:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -2531,7 +2503,6 @@ class TestDoTaskRemainingPaths:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(side_effect=RuntimeError("db")))
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
 
@@ -2657,7 +2628,6 @@ class TestDoTaskValidationStoreErrors:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -2720,7 +2690,6 @@ class TestAgentPayloadListUnwrap:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2755,7 +2724,6 @@ class TestDoTaskFinalBranches:
             AsyncMock(return_value={"success": False, "error": "api down", "api_response": object()}),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
 
@@ -2779,7 +2747,6 @@ class TestDoTaskFinalBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2807,7 +2774,6 @@ class TestDoTaskFinalBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "draft_cover_letter",
             index="job-1",
@@ -2835,7 +2801,6 @@ class TestDoTaskFinalBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock(side_effect=RuntimeError("db")))
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2856,7 +2821,6 @@ class TestDoTaskFinalBranches:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         send = AsyncMock(side_effect=lambda *args, **kwargs: _strict_batch_llm_ok(payload="0|CRA2"))
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(
@@ -2921,7 +2885,6 @@ class TestDoTaskStoreExceptions:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         return await agent_mod.do_task(
             task_key,
             index="job-1",
@@ -2948,7 +2911,6 @@ class TestDoTaskStoreExceptions:
         )
         saved = MagicMock(return_value="resp-id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
         assert any(call.kwargs.get("block_type") == "RESPONSE" for call in saved.call_args_list)
@@ -2996,7 +2958,6 @@ class TestDoTaskStoreExceptions:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3078,7 +3039,6 @@ class TestDoTaskStoreExceptions:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -3133,7 +3093,6 @@ class TestDoTaskStoreExceptions:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", saves)
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -3164,7 +3123,6 @@ class TestDoTaskStoreExceptions:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         monkeypatch.setattr(agent_mod, "append_agent_response", append)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -3193,7 +3151,6 @@ class TestDoTaskStoreExceptions:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -3227,7 +3184,6 @@ class TestDoTaskStoreExceptions:
             return kwargs["agent_data_id"]
 
         monkeypatch.setattr(agent_mod, "save_agent_data", _save2)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3278,7 +3234,6 @@ class TestDoTaskStoreExceptions:
             monkeypatch,
             lambda task_key, task_config, parsed, ctx: (_ for _ in ()).throw(ValueError("boom")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -3316,7 +3271,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         send = AsyncMock(
             return_value={
                 "success": True,
@@ -3352,7 +3306,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3399,7 +3352,6 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is True
 
@@ -3424,7 +3376,6 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
         assert "Unknown resume section key" in out["error"]
@@ -3438,7 +3389,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3480,7 +3430,6 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -3509,7 +3458,6 @@ class TestDoTaskShouldStoreBranches:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
         assert "grades" in out["error"]
@@ -3522,7 +3470,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3551,7 +3498,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3580,7 +3526,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         _patch_normalize_rubric_response(
             monkeypatch,
             lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
@@ -3615,7 +3560,6 @@ class TestDoTaskShouldStoreBranches:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         saved = MagicMock(return_value="id")
         monkeypatch.setattr(agent_mod, "save_agent_data", saved)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         _patch_normalize_rubric_response(
             monkeypatch,
             lambda task_key, task_config, parsed, ctx: {
@@ -3660,7 +3604,6 @@ class TestDoTaskShouldStoreBranches:
             "_store_response_block",
             MagicMock(side_effect=RuntimeError("db")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3691,7 +3634,6 @@ class TestDoTaskShouldStoreBranches:
             "_store_response_block",
             MagicMock(side_effect=RuntimeError("db")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3727,7 +3669,6 @@ class TestDoTaskShouldStoreBranches:
             "_store_response_block",
             MagicMock(side_effect=RuntimeError("db")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3771,7 +3712,6 @@ class TestDoTaskShouldStoreBranches:
             "_store_response_block",
             MagicMock(side_effect=RuntimeError("db")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3803,7 +3743,6 @@ class TestDoTaskStoreExceptionWithoutBatch:
             "_store_response_block",
             MagicMock(side_effect=RuntimeError("db")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3833,7 +3772,6 @@ class TestDoTaskStoreExceptionWithoutBatch:
             "_store_response_block",
             MagicMock(side_effect=RuntimeError("db")),
         )
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3863,7 +3801,6 @@ class TestDoTaskStoreExceptionWithoutBatch:
             lambda task_key, task_config, parsed, ctx: {"jobs": [{"astral_job_id": "job-1"}]},
         )
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "schema failed")
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3901,7 +3838,6 @@ class TestDoTaskStoreExceptionWithoutBatch:
             },
         )
         monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: None)
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -3952,7 +3888,6 @@ class TestDoTaskEncodedPostDecodeFallthrough:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -4346,7 +4281,6 @@ class TestAst769GeneralCallerHydration:
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
 
         out = await agent_mod.do_task(
             "parse_job_list",
@@ -4438,7 +4372,6 @@ class TestAst769GeneralCallerHydration:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
 
         out = await agent_mod.do_task(
             "draft_cover_letter",
@@ -4548,7 +4481,6 @@ class TestAst769GeneralCallerHydration:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
 
         await agent_mod.do_task(
             "parse_job_list",
@@ -4722,7 +4654,6 @@ class TestAst531RunNextHopLedger:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         agent_mod.log_batch_id.set(None)
         out = await agent_mod.do_task(
             "qualify_job_listings",
@@ -4774,7 +4705,6 @@ class TestAst531RunNextHopLedger:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         token = agent_mod.log_batch_id.set("outer-batch-123")
         try:
             out = await agent_mod.do_task(
@@ -5622,7 +5552,6 @@ class TestAst897DoTaskBalanceDebug:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "add_agent_response_entry", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -5770,4 +5699,40 @@ class TestAst977AgentDataDedupeDebug:
         combined = "\n".join(r.message for r in caplog.records)
         assert "agent_data_read" in combined
         assert "mode=resolved" in combined
+
+
+class TestAst981StandaloneTableAuditRetired:
+    """AST-981: do_task keeps agent_data + entity append; no standalone-table audit API."""
+
+    def test_agent_module_has_no_standalone_table_helpers(self) -> None:
+        assert "add_agent_response_entry" not in vars(agent_mod)
+        assert "_store_agent_response" not in vars(agent_mod)
+
+    async def test_do_task_success_persists_agent_data_and_entity_append_only(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": "0|CRA2"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+        )
+        assert out["success"] is True
+        assert stub_agent_storage["save"].called
+        stub_agent_storage["append"].assert_called_once()
 
