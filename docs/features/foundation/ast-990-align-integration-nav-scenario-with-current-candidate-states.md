@@ -144,3 +144,9 @@ to:
 
 1. resolve-child: acknowledge the three C4 stragglers (no code change).
 2. Leave assignee Ada; no fix-now.
+
+## Resolution (2026-07-27)
+
+- **fix-now:** none — no product or test patch.
+- **discuss (C4 straggler):** Acknowledged. Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.betty-no-src-or-features` because planned Files Changed omitted `docs/features/**`; three-dot diff brought the plan file in-scope. Substance remains **conforms** (single plan file; not spike notes; Betty `test()` did not edit features). No code change.
+- **Assignee:** Ada Lovelace unchanged through User Testing.
