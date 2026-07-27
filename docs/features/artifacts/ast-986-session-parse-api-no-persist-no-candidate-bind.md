@@ -214,3 +214,13 @@ Self-Assessment Scope `Single-Component` matches (core orchestrator + Admin POST
 Joan plan-rubric verdict attached (APPROVED). Stragglers listed under Findings.
 
 context_tokens≈45000
+
+## Resolution (Ada / resolve-child) — 2026-07-27
+
+**Review tip:** `origin/sub/AST-985/AST-986-session-parse-api-no-persist-no-candidate-bind` @ `6d1f8db` (Radia `docs(AST-986): Radia review — findings`).
+
+**fix-now:** none.
+
+**Discuss:** C4 straggler (Joan plan-time exclusions vs three-dot tip paths) — acknowledged; Radia scored **conforms** and called out no product action. Left as-is (no plan-wording churn without Archie ask).
+
+**Product delta this resolve:** none — clean resolve.
