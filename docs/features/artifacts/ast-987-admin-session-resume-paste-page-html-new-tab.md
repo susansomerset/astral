@@ -174,3 +174,13 @@ Admin Session Resume Paste workbench: new Admin nav page where Susan pastes resu
 - §3.5: PascalCase page file, snake_case route path, flat `pages/` placement, routes.tsx SYNC comment honored via NAV_CONFIG.
 - §1.5.1: debug Style D only when `debug=True` on the builder path.
 - §3.6: no repo-root `artifacts/` directory; plan under `docs/features/artifacts/`.
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-985/AST-987-admin-session-resume-paste-page-html-new-tab`  
+**Tip:** `2739b25`
+
+**Stages delivered:**
+- Stage 1 — `build_session_base_resume` in `src/core/builder.py` (in-memory structure + content; no `get_candidate` / profile overlay)
+- Stage 2 — `POST /api/admin/session_resume/html` on `admin_bp` (`@require_admin`, `ui_llm_debug`)
+- Stage 3 — `NAV_CONFIG` + `/admin/session_resume_paste` + `AdminSessionResumePaste.tsx` (`useLocalStorage` retention; AST-986 parse; blob URL Open HTML)
