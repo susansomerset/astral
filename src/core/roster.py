@@ -55,6 +55,8 @@ from src.data.database import (
     update_company_last_scan_at,
     update_company_search_term_last_scan_at,
     COMPANY_BATCH_SORT_COLUMNS,
+    ensure_batch_response_entity_ids,
+    list_entity_latest_agent_refs,
 )
 from src.utils.logging import get_logger
 from src.utils.llm_external import is_provider_balance_refusal
@@ -2243,11 +2245,10 @@ async def _run_batch_company_prefilter(
     if agent_ref:
         entity_type = TASK_CONFIG.get(agent_task_key, {}).get("entity_type", "company")
         processed_ids = received_ids - fabricated - bad_grades
-        for aid in processed_ids:
-            try:
-                tracker.append_agent_response(entity_type, aid, agent_ref)
-            except Exception:
-                logger.debug("append_agent_response failed for %s", aid, exc_info=True)
+        try:
+            ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
+        except Exception:
+            logger.debug("ensure_batch_response_entity_ids failed", exc_info=True)
 
     return {"passed": passed, "failed": failed, "total": len(companies)}
 
@@ -3157,7 +3158,7 @@ def _save_company(
         company_website: Original company website URL
         state: Company state (UPPERCASE from COMPANY_STATES)
         page_option_url: Candidate listings URL from locate path; persisted via _job_site_for_persist
-        raw_response: Raw API response for agent_responses blob (includes response_type for audit)
+        raw_response: Raw API response for audit (includes response_type)
         no_jobs_message: Optional message for NO_OPENINGS
         parse_type: Optional parse type (legacy)
         job_tag: Optional job tag (legacy)
@@ -3492,52 +3493,10 @@ def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
     return get_company_job_counts(short_name)
 
 
-def dedupe_agent_responses_latest(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Keep one agent_responses ref per task_key — latest created_at wins; preserve first-seen key order."""
-    best_by_key: Dict[str, Dict[str, Any]] = {}
-    key_order: List[str] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        key = (entry.get("task_key") or "").strip()
-        if not key:
-            continue
-        if key not in best_by_key:
-            key_order.append(key)
-        prev = best_by_key.get(key)
-        if prev is None or (entry.get("created_at") or "") >= (prev.get("created_at") or ""):
-            best_by_key[key] = entry
-    return [best_by_key[key] for key in key_order]
-
-
-def normalize_agent_responses_for_backfill(entries: Any) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    """Prepare entity agent_responses for latest-only storage (AST-727 backfill)."""
-    raw = entries if isinstance(entries, list) else []
-    dropped_empty_key = 0
-    filtered: List[Dict[str, Any]] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
-        key = (entry.get("task_key") or "").strip()
-        if not key:
-            dropped_empty_key += 1
-            continue
-        filtered.append(entry)
-    before_dedupe = len(filtered)
-    normalized = dedupe_agent_responses_latest(filtered)
-    return normalized, {
-        "dropped_empty_key": dropped_empty_key,
-        "deduped_removed": before_dedupe - len(normalized),
-    }
-
-
 def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Expand the entity's agent_responses column entries with their block content.
+    """Expand latest-per-task agent refs (agent_data.entity_id) with block content (AST-984).
 
-    Reads from entity['agent_responses'] (the JSON column on the entity row,
-    already parsed to a list by get_company/get_job). Each entry contains
-    prompt_blocks: [{type, id}] referencing agent_data rows.
-
+    Entity type from astral_job_id / short_name / astral_candidate_id presence.
     For scored tasks (TASK_CONFIG[task_key].scored == True):
     - Attaches vector_grades and rubric_artifact to the enriched entry for display.
     - RESPONSE blocks for batch tasks (those with a "jobs" array) are filtered to
@@ -3546,11 +3505,19 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     Duplicate block types get a counter suffix: NO_CACHE, NO_CACHE (2).
     """
-    entries = dedupe_agent_responses_latest(entity.get("agent_responses") or [])
+    if entity.get("astral_job_id"):
+        entity_type, entity_id = "job", entity["astral_job_id"]
+    elif entity.get("astral_candidate_id"):
+        entity_type, entity_id = "candidate", entity["astral_candidate_id"]
+    elif entity.get("short_name"):
+        entity_type, entity_id = "company", entity["short_name"]
+    else:
+        return []
+
+    entries = list_entity_latest_agent_refs(entity_type, entity_id)
     if not entries:
         return []
 
-    # Batch-fetch all block content in a single query
     all_ids = [
         b["id"]
         for e in entries
@@ -3578,8 +3545,6 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             label = btype if type_counts[btype] == 1 else f"{btype} ({type_counts[btype]})"
             content = data_map.get(bid, {}).get("block_data", "") or ""
 
-            # For scored batch tasks, filter RESPONSE blocks to this job's entry only.
-            # Old encoded data (no astral_job_id) yields empty content → frontend skips.
             if is_scored and btype == "RESPONSE" and entity_job_id:
                 content = _filter_response_block(content, entity_job_id)
 
@@ -3597,6 +3562,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
         enriched.append(entry)
 
     return enriched
+
 
 
 def _filter_response_block(content: str, astral_job_id: str) -> str:

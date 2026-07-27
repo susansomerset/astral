@@ -101,7 +101,7 @@ def bulk_state():
 @jobs_bp.route("/<astral_job_id>")
 @require_auth
 def detail(astral_job_id):
-    """Return job detail with agent_responses attached."""
+    """Return job detail with agent_story attached."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404

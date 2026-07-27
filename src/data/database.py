@@ -7,7 +7,7 @@ Implements database operations directly (no imports from old code).
 Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 
 Tables used (inventory):
-- company   — Roster: company state, state_history, batch_id, company_data, agent_responses, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc.
+- company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
 - candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
@@ -163,6 +163,7 @@ _candidate_schema_ensured = False
 _company_candidate_fk_ensured = False
 _company_job_scan_schema_ensured = False
 _agent_responses_table_sunset_applied = False
+_entity_agent_responses_column_sunset_applied = False
 _agent_schema_ensured = False
 _agent_task_schema_ensured = False
 _timesheets_schema_ensured = False
@@ -829,7 +830,7 @@ COMPANY_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "st
 BOARD_SEARCH_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "last_scan_at"})
 _UPDATE_COMPANY_ALLOWED = frozenset({
     "state", "company_name", "company_website", "job_site", "batch_id", "batch_created_at",
-    "company_data", "agent_responses", "state_history", "last_scan_at", "updated_at", "state_updated_at",
+    "company_data", "state_history", "last_scan_at", "updated_at", "state_updated_at",
     "candidate_id",
 })
 
@@ -852,7 +853,6 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
                 batch_created_at TIMESTAMP,
                 last_scan_at TIMESTAMP,
                 company_data TEXT,
-                agent_responses TEXT DEFAULT '[]',
                 agent_responses_legacy TEXT,
                 state_history TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -909,10 +909,11 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     raise
+    _drop_entity_agent_responses_column(conn, "company")
     _company_schema_ensured = True
 
 def _parse_company_row(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Parse company_data, agent_responses, and state_history JSON in row dict. Mutates and returns d."""
+    """Parse company_data and state_history JSON in row dict. Mutates and returns d."""
     if d.get("company_data"):
         try:
             d["company_data"] = json.loads(d["company_data"])
@@ -920,13 +921,6 @@ def _parse_company_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["company_data"] = {}
     else:
         d["company_data"] = {}
-    if d.get("agent_responses"):
-        try:
-            d["agent_responses"] = json.loads(d["agent_responses"])
-        except (TypeError, ValueError):
-            d["agent_responses"] = []
-    else:
-        d["agent_responses"] = []
     if d.get("state_history"):
         try:
             d["state_history"] = json.loads(d["state_history"])
@@ -1026,7 +1020,7 @@ def set_company_batch(
 
 def get_company_batch(batch_id: str) -> List[Dict[str, Any]]:
     """Return companies with given batch_id as list of dicts (snake_case keys).
-    Parses company_data and agent_responses JSON.
+    Parses company_data JSON.
     """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
@@ -1053,7 +1047,6 @@ def save_company(
     job_site: Optional[str] = None,
     company_name: Optional[str] = None,
     company_data: Optional[Dict[str, Any]] = None,
-    agent_responses: Optional[List[Dict[str, Any]]] = None,
     batch_id: Optional[str] = None,
     batch_created_at: Optional[str] = None,
     last_scan_at: Optional[str] = None,
@@ -1074,7 +1067,6 @@ def save_company(
         job_site: Job listing page URL
         company_name: Human-readable name (caller provides; roster derives from URL when creating)
         company_data: JSON-serializable blob (notes keyed by prompt index, parse_instructions)
-        agent_responses: List of { timestamp, prompt_index, raw_response }
         batch_id: For batch locking
         last_scan_at: When None, preserved from existing row (avoids wiping on full save)
         state_history: JSON array of {to_state, timestamp, batch_id}; when None, preserved from existing
@@ -1098,9 +1090,8 @@ def save_company(
 
     try:
         company_data_json = json.dumps(company_data) if company_data is not None else "{}"
-        agent_responses_json = json.dumps(agent_responses) if agent_responses is not None else "[]"
     except (TypeError, ValueError) as e:
-        raise ValueError(f"Failed to serialize company_data or agent_responses to JSON: {e}") from e
+        raise ValueError(f"Failed to serialize company_data to JSON: {e}") from e
 
     def _with_conn() -> None:
         conn = _get_connection()
@@ -1138,10 +1129,10 @@ def save_company(
             conn.execute("""
                 INSERT OR REPLACE INTO company
                 (short_name, state, company_name, company_website, job_site, batch_id, batch_created_at,
-                 last_scan_at, company_data, agent_responses, state_history, candidate_id,
+                 last_scan_at, company_data, state_history, candidate_id,
                  originating_search_term,
                  created_at, updated_at, state_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 short_name,
                 state,
@@ -1152,7 +1143,6 @@ def save_company(
                 batch_created_at_val,
                 last_scan_at_val,
                 company_data_json,
-                agent_responses_json,
                 state_history_json,
                 candidate_id_val,
                 originating_search_term_val,
@@ -1173,7 +1163,7 @@ def save_company(
 # TODO: merge update_company into save_company (add merge flag, match save_job pattern)
 def update_company(short_name: str, **kwargs: Any) -> int:
     """Partial UPDATE: set only the columns passed. Allowlist enforced.
-    company_data/agent_responses/state_history: dict/list serialized to JSON.
+    company_data/state_history: dict/list serialized to JSON.
     updated_at auto-set to now if not in kwargs; state_updated_at set when state changes.
     Returns rowcount (0 or 1).
     """
@@ -1193,7 +1183,7 @@ def update_company(short_name: str, **kwargs: Any) -> int:
     params: List[Any] = []
     for c in cols:
         v = kwargs.get(c)
-        if c in ("company_data", "agent_responses", "state_history") and v is not None:
+        if c in ("company_data", "state_history") and v is not None:
             v = json.dumps(v) if not isinstance(v, str) else v
         pairs.append(f"{c} = ?")
         params.append(v)
@@ -1449,7 +1439,6 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in cursor.fetchall()}
     for col, col_def in [
         ("job_link", "TEXT"),
-        ("agent_responses", "TEXT DEFAULT '[]'"),
         ("latest_score", "REAL"),            # AST-350: latest numeric score for batch priority sorting
     ]:
         if col not in cols:
@@ -1478,6 +1467,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
               AND TRIM(job_title) != ''
         """)
         conn.commit()
+    _drop_entity_agent_responses_column(conn, "job")
     _job_schema_ensured = True
 
 def get_company_job_counts(short_name: str) -> Dict[str, int]:
@@ -1707,9 +1697,9 @@ def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 def _job_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    """Turn job table row into dict; parse job_data, state_history, agent_responses JSON."""
+    """Turn job table row into dict; parse job_data, state_history JSON."""
     out = {k: row[k] for k in row.keys()}
-    for col in ("job_data", "state_history", "agent_responses"):
+    for col in ("job_data", "state_history"):
         val = out.get(col)
         if isinstance(val, str) and val:
             try:
@@ -2423,7 +2413,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     else:
         # Idempotent migration: add missing columns on existing databases
         cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate)").fetchall()}
-        for col, col_def in [("candidate_api_key", "TEXT"), ("agent_responses", "TEXT DEFAULT '[]'")]:
+        for col, col_def in [("candidate_api_key", "TEXT")]:
             if col not in cols:
                 try:
                     conn.execute(f"ALTER TABLE candidate ADD COLUMN {col} {col_def}")
@@ -2436,6 +2426,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     _migrate_context_arrays_to_text(conn)
     # AST-973: remap legacy states/triggers only (never Phase A hard-delete on ensure)
     _legacy_candidate_migrate_conn(conn, dry_run=False, phases="BC")
+    _drop_entity_agent_responses_column(conn, "candidate")
     _candidate_schema_ensured = True
 
 
@@ -2844,7 +2835,7 @@ def _ensure_company_table_for_upsert(conn: sqlite3.Connection) -> None:
 
 
 def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Parse candidate_data + agent_responses JSON, decrypt candidate_api_key. Mutates and returns d."""
+    """Parse candidate_data JSON, decrypt candidate_api_key. Mutates and returns d."""
     if d.get("candidate_data"):
         try:
             d["candidate_data"] = json.loads(d["candidate_data"])
@@ -2852,13 +2843,6 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["candidate_data"] = {}
     else:
         d["candidate_data"] = {}
-    if d.get("agent_responses"):
-        try:
-            d["agent_responses"] = json.loads(d["agent_responses"])
-        except (TypeError, ValueError):
-            d["agent_responses"] = []
-    else:
-        d["agent_responses"] = []
     if d.get("candidate_api_key"):
         try:
             d["candidate_api_key"] = decrypt_value(d["candidate_api_key"])
@@ -3031,7 +3015,6 @@ def _apply_board_schema_sunset(conn: sqlite3.Connection) -> None:
         ("created_at", "TEXT"),
         ("updated_at", "TEXT"),
         ("state_changed_at", "TEXT"),
-        ("agent_responses", "TEXT DEFAULT '[]'"),
         ("latest_score", "REAL"),
     ]
     copy_cols = [name for name, _ in _job_col_defs if name in cols and name != "board_search_id"]
@@ -5382,6 +5365,7 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
                 "CREATE INDEX idx_agent_data_entity_task ON agent_data(entity_type, entity_id, task_key, created_at)"
             )
             conn.commit()
+    _backfill_agent_data_entity_id_from_entity_columns(conn)
     _agent_data_schema_ensured = True
 
 
@@ -5521,57 +5505,156 @@ def list_entity_latest_agent_refs(entity_type: str, entity_id: str) -> List[Dict
     return _run_with_retry(_with_conn)
 
 
-def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any]) -> None:
-    """Upsert an agent_response ref on the entity's agent_responses JSON array by task_key.
-    Works for company, job, and candidate tables. entry is a lightweight dict
-    (batch_id, task_key, created_at, entity_cost, prompt_blocks). Latest ref wins per task_key."""
-    _TABLE_MAP = {
-        "company":   ("company",   "short_name"),
-        "job":       ("job",       "astral_job_id"),
-        "candidate": ("candidate", "astral_candidate_id"),
-    }
-    if entity_type not in _TABLE_MAP:
-        raise ValueError(f"Unknown entity_type '{entity_type}'. Must be one of: {list(_TABLE_MAP.keys())}")
-    new_key = (entry.get("task_key") or "").strip()
-    if not new_key:
-        raise ValueError("append_agent_response: entry missing task_key")
-    table, pk_col = _TABLE_MAP[entity_type]
+def ensure_batch_response_entity_ids(
+    entity_type: str,
+    entity_ids: List[str],
+    agent_ref: Dict[str, Any],
+) -> None:
+    """Copy the shared batch RESPONSE onto each entity_id for latest-ref lookup (AST-984).
 
-    def _with_conn() -> None:
-        conn = _get_connection()
+    Batch do_task stores one RESPONSE without per-entity entity_id; callers that formerly
+    upserted entity JSON refs now tag/copy that RESPONSE per processed entity.
+    """
+    if not entity_type or not entity_ids or not agent_ref:
+        return
+    blocks = agent_ref.get("prompt_blocks") or []
+    resp = next(
+        (b for b in blocks if isinstance(b, dict) and b.get("type") == "RESPONSE" and b.get("id")),
+        None,
+    )
+    if not resp:
+        return
+    src = get_agent_data(resp["id"])
+    if not src:
+        return
+    task_key = (agent_ref.get("task_key") or src.get("task_key") or "").strip()
+    batch_id = (agent_ref.get("batch_id") or src.get("batch_id") or "").strip()
+    created_at = agent_ref.get("created_at") or src.get("created_at")
+    block_data = src.get("block_data") or ""
+    token_size = int(src.get("token_size") or 0)
+    for eid in entity_ids:
+        if not eid:
+            continue
+        content_hash = hashlib.sha256(
+            f"{batch_id}:RESPONSE:{eid}:{block_data}".encode()
+        ).hexdigest()[:16]
+        save_agent_data(
+            agent_data_id=f"{batch_id}-response-{content_hash}",
+            entity_type=entity_type,
+            task_key=task_key,
+            batch_id=batch_id,
+            block_type="RESPONSE",
+            block_data=block_data,
+            token_size=token_size,
+            created_at=created_at,
+            entity_id=eid,
+        )
+
+
+def _backfill_agent_data_entity_id_from_entity_columns(conn: sqlite3.Connection) -> None:
+    """One-shot: copy RESPONSE ids from entity JSON agent_responses onto agent_data.entity_id."""
+    global _entity_agent_responses_column_sunset_applied
+    # Run while columns may still exist; skip tables/cols already dropped.
+    specs = (
+        ("company", "short_name"),
+        ("job", "astral_job_id"),
+        ("candidate", "astral_candidate_id"),
+    )
+    for table, pk in specs:
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()[0]
+        if not exists:
+            continue
+        cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "agent_responses" not in cols:
+            continue
+        rows = conn.execute(
+            f"SELECT {pk}, agent_responses FROM {table} WHERE agent_responses IS NOT NULL AND agent_responses != ''"
+        ).fetchall()
+        for row in rows:
+            eid, raw = row[0], row[1]
+            if not eid or not raw:
+                continue
+            try:
+                entries = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                for block in entry.get("prompt_blocks") or []:
+                    if not isinstance(block, dict) or block.get("type") != "RESPONSE":
+                        continue
+                    aid = block.get("id")
+                    if not aid:
+                        continue
+                    conn.execute(
+                        """UPDATE agent_data SET entity_id = ?
+                           WHERE agent_data_id = ?
+                             AND (entity_id IS NULL OR entity_id = '')""",
+                        (eid, aid),
+                    )
+    conn.commit()
+
+
+def _drop_entity_agent_responses_column(conn: sqlite3.Connection, table: str) -> None:
+    """Rebuild company/job/candidate without agent_responses JSON column (AST-984)."""
+    # Backfill entity_id from JSON column before dropping (idempotent)
+    _backfill_agent_data_entity_id_from_entity_columns(conn)
+    cols_info = list(conn.execute(f"PRAGMA table_info({table})").fetchall())
+    col_names = [r[1] for r in cols_info]
+    if "agent_responses" not in col_names:
+        return
+    keep = [r for r in cols_info if r[1] != "agent_responses"]
+    # Preserve PK / NOT NULL / default roughly via original type string
+    col_defs = []
+    for r in keep:
+        # r: cid, name, type, notnull, dflt_value, pk
+        name, typ, notnull, dflt, pk = r[1], r[2], r[3], r[4], r[5]
+        piece = f"{name} {typ}" if typ else name
+        if pk:
+            piece += " PRIMARY KEY"
+        elif notnull:
+            piece += " NOT NULL"
+        if dflt is not None and not pk:
+            piece += f" DEFAULT {dflt}"
+        col_defs.append(piece)
+    keep_names = [r[1] for r in keep]
+    select_list = ", ".join(keep_names)
+    tmp = f"{table}_ast984_next"
+    conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+    conn.execute(f"CREATE TABLE {tmp} ({', '.join(col_defs)})")
+    conn.execute(f"INSERT INTO {tmp} ({select_list}) SELECT {select_list} FROM {table}")
+    conn.execute(f"DROP TABLE {table}")
+    conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
+    # Restore common indexes (best-effort; IF NOT EXISTS)
+    if table == "company":
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS idx_company_state ON company(state)",
+            "CREATE INDEX IF NOT EXISTS idx_company_name ON company(company_name)",
+        ):
+            try:
+                conn.execute(sql)
+            except sqlite3.OperationalError:
+                pass
+    elif table == "job":
         try:
-            if table == "company":
-                _ensure_company_schema(conn)
-            elif table == "job":
-                _ensure_job_schema(conn)
-            else:
-                _ensure_candidate_schema(conn)
-            row = conn.execute(
-                f"SELECT agent_responses FROM {table} WHERE {pk_col} = ?", (entity_id,)
-            ).fetchone()
-            if not row:
-                return
-            existing = []
-            if row[0]:
-                try:
-                    parsed = json.loads(row[0])
-                    # Coerce non-list (e.g. "{}" from bad default) to empty list
-                    existing = parsed if isinstance(parsed, list) else []
-                except (TypeError, ValueError):
-                    existing = []
-            updated = [
-                e for e in existing
-                if not (isinstance(e, dict) and (e.get("task_key") or "").strip() == new_key)
-            ]
-            updated.append(entry)
-            conn.execute(
-                f"UPDATE {table} SET agent_responses = ? WHERE {pk_col} = ?",
-                (json.dumps(updated), entity_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    _run_with_retry(_with_conn)
+            conn.execute(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS {_JOB_IDENTITY_UNIQUE_INDEX}
+                ON job (company, job_title, company_job_id)
+                WHERE company_job_id IS NOT NULL
+                  AND job_title IS NOT NULL
+                  AND TRIM(company_job_id) != ''
+                  AND TRIM(job_title) != ''
+            """)
+        except sqlite3.OperationalError:
+            pass
+    conn.commit()
+
 
 
 # ---------------------------------------------------------------------------

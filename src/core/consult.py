@@ -18,6 +18,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core import tracker
+from src.data.database import ensure_batch_response_entity_ids
 from src.core.agent import do_task
 from src.utils import rubric_text
 from src.utils.config import (
@@ -1224,16 +1225,15 @@ async def _run_batch_consult(
                 outcome=f"missing from response -> {d or (row.get('state') if row else '?')}",
             )
 
-    # Store per-job agent_responses refs from the shared batch call
+    # Tag RESPONSE rows with each processed job entity_id (AST-984)
     agent_ref = result.get("agent_ref")
     if agent_ref:
         processed_ids = received_ids - fabricated - bad_grades
         entity_type = TASK_CONFIG.get(task_key, {}).get("entity_type", "job")
-        for aid in processed_ids:
-            try:
-                tracker.append_agent_response(entity_type, aid, agent_ref)
-            except Exception:
-                logger.debug("append_agent_response failed for %s", aid, exc_info=True)
+        try:
+            ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
+        except Exception:
+            logger.debug("ensure_batch_response_entity_ids failed", exc_info=True)
 
     # bad_grades → per-entity retry holding or terminal error
     error_ids = list(bad_grades)

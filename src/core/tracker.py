@@ -686,11 +686,6 @@ def get_company(short_name: str) -> Optional[Dict[str, Any]]:
     return database.get_company(short_name)
 
 
-def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any]) -> None:
-    """Thin delegate — upserts by task_key; latest ref wins; full history stays in agent_data."""
-    database.append_agent_response(entity_type, entity_id, entry)
-
-
 def list_timesheets(**kwargs: Any) -> List[Dict[str, Any]]:
     """Thin delegate for layering — UI/core timesheet reads go through tracker, not database."""
     return database.list_timesheets(**kwargs)

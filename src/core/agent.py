@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.data import database
 from src.data.database import (
-    append_agent_response,
     get_agent_task,
     get_agent,
     save_agent_data,
@@ -741,18 +740,25 @@ def _parent_hop_task_key_for_child(child_task_key: str) -> Optional[str]:
 
 
 def _hop_agent_ref_for_parent(
-    entity: Dict[str, Any],
+    entity_type: str,
+    entity_id: str,
     parent_task_key: str,
     anchor_batch_id: Optional[str],
 ) -> Optional[Dict[str, Any]]:
-    entries = entity.get("agent_responses") or []
-    for ref in reversed(entries):
-        if not isinstance(ref, dict):
-            continue
-        if (ref.get("task_key") or "").strip() != parent_task_key:
-            continue
-        if anchor_batch_id and (ref.get("batch_id") or "").strip() != anchor_batch_id:
-            continue
+    # AST-984: latest-per-task refs from agent_data.entity_id (not entity JSON column)
+    entries = database.list_entity_latest_agent_refs(entity_type, entity_id)
+    candidates = [
+        ref for ref in entries
+        if isinstance(ref, dict) and (ref.get("task_key") or "").strip() == parent_task_key
+    ]
+    ordered = candidates
+    if anchor_batch_id:
+        anchored = [
+            ref for ref in candidates
+            if (ref.get("batch_id") or "").strip() == anchor_batch_id
+        ]
+        ordered = anchored + [r for r in candidates if r not in anchored]
+    for ref in ordered:
         blocks = ref.get("prompt_blocks") or []
         if not any(isinstance(b, dict) and b.get("type") == "RESPONSE" for b in blocks):
             continue
@@ -801,9 +807,9 @@ def _hydrate_caller_chain_context(
     if not entity:
         return (None, f"{entity_type} not found: {entity_id} (hop={entry_task_key!r})")
     anchor = _caller_anchor_batch_id(entity, chain_context)
-    ref = _hop_agent_ref_for_parent(entity, parent_task_key, anchor)
+    ref = _hop_agent_ref_for_parent(entity_type, entity_id, parent_task_key, anchor)
     if ref is None and anchor:
-        ref = _hop_agent_ref_for_parent(entity, parent_task_key, None)
+        ref = _hop_agent_ref_for_parent(entity_type, entity_id, parent_task_key, None)
     if ref is None:
         return (
             None,
@@ -1484,7 +1490,7 @@ def _store_response_block(
         f"{batch_id}:RESPONSE:{index or ''}:{response_text}".encode()
     ).hexdigest()[:16]
     agent_data_id = f"{batch_id}-response-{content_hash}"
-    # AST-984: tag RESPONSE with entity_id for list_entity_latest_agent_refs (dual-write with append_agent_response)
+    # AST-984: tag RESPONSE with entity_id for list_entity_latest_agent_refs
     save_agent_data(
         agent_data_id=agent_data_id,
         entity_type=entity_type,
@@ -2513,24 +2519,20 @@ async def do_task(
         except Exception:
             logger.debug("_store_response_block failed", exc_info=True)
 
-    # Build lightweight ref entry for entity's agent_responses array
+    # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:
         try:
             total_cost = compute_batch_cost(batch_id)
             entity_cost = total_cost / batch_size if batch_size > 0 else total_cost
-            agent_ref = {
+            result["agent_ref"] = {
                 "batch_id": batch_id,
                 "task_key": task_key,
                 "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "entity_cost": round(entity_cost, 7),
                 "prompt_blocks": prompt_blocks,
             }
-            result["agent_ref"] = agent_ref
-            # For single-entity tasks, store directly; batch callers handle their own
-            if index and entity_type:
-                append_agent_response(entity_type, index, agent_ref)
         except Exception:
-            logger.debug("append_agent_response failed", exc_info=True)
+            logger.debug("agent_ref build failed", exc_info=True)
 
 
     trigger_state, graduate_on_terminal = _dispatch_chain_ctx(ctx)
