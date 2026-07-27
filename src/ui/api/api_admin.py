@@ -32,6 +32,7 @@ from src.core.dispatcher import (
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
 )
 from src.core.candidate import preview_task_prompt, run_session_resume_parse
+from src.core.builder import build_session_base_resume
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
     get_repo_admin_json_divergence_status,
@@ -1456,6 +1457,30 @@ def session_resume_parse():
         debug=ui_llm_debug(),
     )
     return jsonify(result_body), status
+
+
+# AST-987 session resume HTML
+@admin_bp.route("/session_resume/html", methods=["POST"])
+@require_admin
+def session_resume_html():
+    """AST-987: in-memory structure + base_resume → print HTML (no candidate bind)."""
+    body = request.get_json(silent=True) or {}
+    structure = body.get("resume_structure")
+    content = body.get("base_resume")
+    if not isinstance(structure, dict) or not isinstance(content, dict):
+        return jsonify({
+            "success": False,
+            "error": "resume_structure and base_resume objects are required",
+        }), 400
+    try:
+        html = build_session_base_resume(
+            structure,
+            content,
+            debug=ui_llm_debug(),
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    return Response(html, mimetype="text/html; charset=utf-8")
 
 
 @admin_bp.route("/data/sql", methods=["POST"])
