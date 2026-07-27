@@ -113,3 +113,12 @@ Admin convenience backend: accept pasted resume text, run the existing `craft_re
 - §3.3: ui → core only; core → data/agent/utils as today.
 - §1.5.1: debug Style D only when `debug=True`.
 - §3.6: no repo-root `artifacts/` directory.
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-985/AST-986-session-parse-api-no-persist-no-candidate-bind`  
+**Tip:** `9c49edb`
+
+**Stages delivered:**
+- Stage 1 — `run_session_resume_parse` in `src/core/candidate.py` (synthetic default structure, ledger sentinel `session`, no `get_candidate`/`save_candidate`)
+- Stage 2 — `POST /api/admin/session_resume/parse` on `admin_bp` (`@require_admin`, `ui_llm_debug`)
