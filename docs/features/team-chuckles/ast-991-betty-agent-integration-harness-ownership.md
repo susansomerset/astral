@@ -95,4 +95,11 @@ You are **Betty**. You own test design, manifests, and `docs/test-bible/**` (per
 ## Review (build stub)
 
 **Publish ref:** `origin/sub/AST-989/AST-991-betty-agent-integration-harness-ownership`
-**Plan path:** `docs/features/team-chuckles/ast-991-betty-agent-integration-harness-ownership.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `2f7dafa` | Plan doc on astral sub |
+| 1–2 | `team-chuckles@8570636` | `betty-AGENTS.md` harness green + existing integration-scenario drift ownership; install verified; qa-child untouched |
+
+**Built:** `~/team-chuckles/agents/betty-AGENTS.md` — identity/standards ownership only; no skill procedure.
+**Tip:** astral plan + stub (this commit); agent on `team-chuckles` `main` @ `8570636`.
