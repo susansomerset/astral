@@ -3,7 +3,7 @@ AST-294: print-oriented resume / cover HTML builder.
 
 Read-only renderer — no do_task, no dispatcher, no ui/external imports.
 Public: ``build_resume``, ``build_resume_from_job``, ``build_cover_letter``,
-``build_cover_letter_from_job``, ``build_base_resume``.
+``build_cover_letter_from_job``, ``build_base_resume``, ``build_session_base_resume``.
 
 ``get_candidate`` / DB rows expose ``candidate_data`` as the nested blob that
 contains ``profile``, ``artifacts``, and ``context``. ``build_resume_from_job``
@@ -404,6 +404,81 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
             outcome="success — base resume html",
         )
         _log.debug_detail("resume_source=candidate_data.artifacts.base_resume")
+        _log.debug_detail(f"enabled_sections={enabled!r}")
+        _log.debug_detail(f"body_section_ids={ordered_body!r}")
+        _log.debug_detail(f"render_keys={content_keys!r}")
+        _log.debug_detail(f"accent_source={_accent_source_label(cd)!r}")
+        _log.debug_detail(f"html_chars={len(html_out)}")
+        _log.debug_detail("html_preview:")
+        _log.debug_detail_block(html_out)
+    return html_out
+
+
+def build_session_base_resume(
+    resume_structure: dict,
+    base_resume: dict,
+    *,
+    debug: bool = False,
+) -> str:
+    """AST-987: print HTML from in-memory structure + content — no candidate/DB bind."""
+    if debug:
+        _log.set_debug_flag(True)
+    if not isinstance(resume_structure, dict) or not isinstance(
+        resume_structure.get("sections"), dict
+    ):
+        msg = "resume_structure with sections is required"
+        _emit_builder_failure(
+            func="builder.build_session_base_resume",
+            identifier="session",
+            message=msg,
+            debug=debug,
+        )
+        raise ValueError(msg)
+    if not _is_nonempty_resume_dict(base_resume):
+        msg = "base_resume content is required"
+        _emit_builder_failure(
+            func="builder.build_session_base_resume",
+            identifier="session",
+            message=msg,
+            debug=debug,
+        )
+        raise ValueError(msg)
+    # Synthetic blob only — never get_candidate / selected-candidate profile.
+    cd = {
+        "artifacts": {
+            "resume_structure": resume_structure,
+            "base_resume": base_resume,
+        },
+        "profile": {},
+    }
+    structure = candidate_mod.resolve_resume_structure(cd)
+    render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
+    # Skip _apply_profile_to_render_dict — contact/header from paste section strings.
+    style = _merge_effective_style(cd)
+    markers = _apply_resume_text_markers(render)
+    ordered_body = _structure_ordered_body_ids(structure)
+    titles = candidate_mod.resume_section_titles(structure)
+    html_out = _emit_html_document(
+        markers,
+        style,
+        include_cover=False,
+        cover_letter={},
+        critical_keywords=None,
+        emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
+        body_section_ids=ordered_body,
+        body_section_titles=titles,
+    )
+    if debug:
+        enabled = candidate_mod.enabled_resume_section_ids(structure)
+        content_keys = sorted(k for k, v in markers.items() if isinstance(v, str) and v.strip())
+        _log.debug_index(
+            func="builder.build_session_base_resume",
+            index=1,
+            total=1,
+            identifier="session",
+            outcome="success — session resume html",
+        )
+        _log.debug_detail("resume_source=session.in_memory")
         _log.debug_detail(f"enabled_sections={enabled!r}")
         _log.debug_detail(f"body_section_ids={ordered_body!r}")
         _log.debug_detail(f"render_keys={content_keys!r}")
