@@ -125,3 +125,14 @@ No fix-now. No product action required for the stragglers unless Archie wants pl
 
 - Implementer (`resolve-child`): acknowledge stragglers; no code change expected for CLEAN product restore.
 
+## Resolution (2026-07-28 — resolve-child, Ada)
+
+**Radia Overall:** DISCUSS (C4 stragglers only). **fix-now:** 0.
+
+**Discuss handled:**
+- Acknowledged three C4 stragglers (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) — already re-scored **conforms** in Radia review; pipeline docs/tests paths vs plan-time product Files Changed, not product defects.
+- No product code changes; no plan-time exclusion refinements (Archie did not ask).
+
+**Publish tip after resolve:** see commit subject `resolve(AST-1000): — clean`.
+
+**Tip rebuild (2026-07-28):** Restacked on `origin/ftr/AST-995-localhost-boot-stack-trace` for validate-sub-log (removed `Merge remote-tracking` / foreign AST-996..998 history; `plan()` subject; single `merge-tests` from `1150959778d4cfe0301a40cd280decb0a15ea0da`; empty `test()` — no product fixes).
