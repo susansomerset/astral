@@ -131,3 +131,14 @@ rg -n -i 'do not.*create-chat|never.*create-chat|other host|run from.*laptop|Mac
 - §3.3 imports / §3.5 naming: N/A — markdown/skills only; label name `missing thread` and tag `[thread-missing]` preserved.
 - §3.6 debug/spikes: N/A.
 - No conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-999/AST-1001-missing-thread-skill-policy`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `ced6b622` | Plan doc on astral sub |
+| 1–4 | `team-chuckles@7e45ec4` | Recover-not-laptop-block prose on datt §3d/§3e/§6, orientation, WAKE_CHEATSHEET, chuckles-AGENTS, CHUCKLES_QUICKREF |
+
+**Tip:** astral review stub (this commit); skill live on `team-chuckles` `main` @ `7e45ec4`. Skills are symlinked from the repo on this host; run `~/team-chuckles/install.sh` if AGENTS copies need refresh.
