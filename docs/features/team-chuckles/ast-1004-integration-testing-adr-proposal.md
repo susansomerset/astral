@@ -322,3 +322,18 @@ Katherine: no fix-now. On resolve-child, note straggler acknowledged (or `[revie
 ### Notes
 
 Joan plan-rubric APPROVED. §5a–§5g N/A (no `src/`). AC2–AC5 satisfied for this child.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Radia tip intake:** `9cc8b12f` (`docs(AST-1004): Radia review — findings`) on `origin/sub/AST-915/AST-1004-integration-testing-adr-proposal`
+
+| Finding | Action |
+|---------|--------|
+| **discuss** C4 straggler (`astral.git.engineer-test-tree-ban` vs AST-1003 merge-carry of `docs/test-bible/integration/README.md`) | **Acknowledged** — three-dot includes the README via AST-1003 ancestor only; AST-1004 commits never edit bible/tests. Statute remains **conforms**. No product/doc code change. No `[review-handoff]`. |
+| **fix-now** | None |
+| **advisory** | None |
+
+Proceed to **User Testing** (assignee Katherine).
