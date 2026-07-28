@@ -245,28 +245,3 @@ Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`count_eligible_for_dispatch_task`** splits candidate stage keys vs **`inflow_discovery`**; fixtures use **`ACTIVE_SEARCH`**.
-
-### AST-1000 · AST-995
-
-Restore **`list_candidate_ids_with_dispatch_tasks`** (AST-972 contract dropped when AST-973 rewrote `database.py`). Product touch is data-layer only; dispatcher provision / `start_scheduler` callers unchanged. Empty DISTINCT result keeps boot provision as a no-op loop after template ensure.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Distinct `candidate_id` listing (empty + non-empty) | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_list_candidate_ids_with_dispatch_tasks` |
-| Provision iterates listing; scheduler invokes provision | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch` |
-
-**Out of this child's green gate:** `TestAst972CandidateStageEligibility` methods that assert REQUESTED_* stage eligibility via `count_eligible_for_dispatch_task` — on the composite tip the candidate branch still routes all candidate tasks through inflow discovery (AST-972 stage_keys split absent). Restoring that split is product scope beyond AST-1000 Files Changed; leave those asserts in the suite for a follow-on, do not weaken them here.
-
-**Broken / obsolete (this restore):** none for the listing helper — `test_list_candidate_ids_with_dispatch_tasks` (incl. empty-list AC4) + dispatcher provision class remain the contract.
-
-**AST-1000** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_list_candidate_ids_with_dispatch_tasks \
-  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
-
