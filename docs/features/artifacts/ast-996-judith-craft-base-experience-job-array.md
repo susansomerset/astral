@@ -12,7 +12,7 @@ Updates Judith’s `craft_resume_base` response contract and prompt so **Experie
 |------|--------|-------|
 | `src/utils/config.py` | Add shared experience-job item schema; set `TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]` and `BUILD_CONFIG["artifact_shapes"]["resume_content"]["experience"]` to list-of-jobs; mark `DATA_SHAPES` base_resume_structure `experience` as structured list | utils |
 | `src/core/candidate.py` | Preserve experience job arrays through flatten / split / filter / token helpers; Style D debug detail for recorded jobs on session + candidate craft-base success paths | core |
-| `data/admin/agent_task.json` | Rewrite `craft_resume_base` `cache_prompt` **### experience** segment for job-array contract (facts-faithful; no prose role blocks) | repo admin JSON |
+| `data/admin/agent_task.json` | Rewrite `craft_resume_base` `cache_prompt` **### experience** for job-array contract; accomplishments paste/resume-source-only (no LinkedIn/backstory/strengths enrichment) | repo admin JSON |
 | `src/ui/frontend/src/components/ArtifactEditor.tsx` | Round-trip non-string section values as JSON text for load / Generate / Save so Base Resume Content does not stringify-corrupt the job array | ui |
 
 **Out of scope (do not touch):** `src/core/builder.py` / HTML emit (AST-998); `draft_job_resume` / `finalize_job_resume` / job-tailored hops (AST-997); `prior_experience` remains `str`; AST-993 chrome; `tests/`, bible.
@@ -77,19 +77,20 @@ Updates Judith’s `craft_resume_base` response contract and prompt so **Experie
 
 ## Stage 3: Judith prompt — experience as job array
 
-**Done when:** `data/admin/agent_task.json` row `craft_resume_base` `cache_prompt` **### experience** instructs an ordered JSON array of job objects with the five fields above, facts-faithful rules, and freeform dates; `{$RESPONSE_SCHEMA}` remains the schema insertion point (no hardcoded duplicate schema block).
+**Done when:** `data/admin/agent_task.json` row `craft_resume_base` `cache_prompt` **### experience** instructs an ordered JSON array of job objects with the five fields above; accomplishments are paste/resume-source-only (organize/copy facts and wording intent — no LinkedIn/backstory/strengths enrichment, no narrative “improvement”); freeform dates; `{$RESPONSE_SCHEMA}` remains the schema insertion point (no hardcoded duplicate schema block).
 
 1. In `data/admin/agent_task.json`, find the `craft_resume_base` row. Replace the **### experience** segment (currently prose “COMPANY NAME / Title | dates | Location” blocks separated by blank lines) with instructions that:
    - `experience` is an **ordered JSON array** of job objects (resume order).
    - Each object has exactly: `company`, `title`, `dates`, `location`, `accomplishments` (all strings).
-   - `dates` is freeform as in the source (year-only or ranges OK).
-   - `location` is the source location string, or `""` if absent.
-   - `accomplishments` is **one** text block for that role (paragraph and/or bullets as in the source), not rewritten or expanded with invented claims.
-   - Resume is source of truth for company / title / dates / location / metrics; do not invent employers, titles, dates, locations, or accomplishments; do not paraphrase factual metadata to “improve” it.
-   - LinkedIn/backstory may enrich narrative inside `accomplishments` only when grounded in resume facts (same rules as today’s synthesis guidance), never new employers/titles/dates/locations.
-2. Leave other segment instructions (`candidate_name`, `professional_summary`, `prior_experience`, etc.) unchanged unless a sentence still says experience is a single prose string — fix only those contradictory lines.
-3. Do **not** invent a second parse agent or session-only prompt; session parse continues to call `do_task("craft_resume_base")`.
-4. Repo JSON applies at bootstrap (`apply_repo_admin_json_at_startup`); no Manage Tasks UI change in this ticket. If local DB has diverged, note in the Linear stage comment that Railway/startup apply picks up the file — do not hand-edit production DB in this plan.
+   - `dates` is freeform as in the paste/resume source (year-only or ranges OK).
+   - `location` is the paste/resume location string, or `""` if absent.
+   - `accomplishments` is **one** text block for that role taken from what the paste/resume says for that role (paragraph and/or bullets) — same facts and wording intent; organize into the field, do not rewrite.
+   - Paste/resume text is the **only** source for company, title, dates, location, and accomplishments for this section. Do **not** invent employers, titles, dates, locations, or accomplishments. Do **not** paraphrase factual metadata to “improve” it. Do **not** add bullet claims that were not in the paste.
+   ⚠️ **Decision (AC3 / Joan round=1):** Craft-base `accomplishments` are **paste/resume-faithful only**. Do **not** allow LinkedIn, backstory, or strengths to enrich, blend, or expand `accomplishments` (that re-authorizes claims outside the paste and contradicts child/parent AC3). Other sections (e.g. `professional_summary`) may keep existing multi-source synthesis; this lock applies to **experience jobs** only.
+2. Scan the rest of the `craft_resume_base` `cache_prompt` (and `user_prompt` if needed) for lines that still teach LinkedIn/backstory/strengths blend **for experience / roles / accomplishments** (e.g. input-source bullets that say LinkedIn “Enriches … experience sections,” or synthesis rules that map strengths into roles). Neutralize **only** those experience-conflicting lines so they do not override Stage 3 step 1 — leave `professional_summary` / non-experience synthesis language alone unless it explicitly tells Judith to put LinkedIn/backstory claims into experience.
+3. Leave other segment instructions (`candidate_name`, `professional_summary`, `prior_experience`, etc.) unchanged except for the experience-conflict fixes in step 2, and any sentence that still says experience is a single prose string (fix those to the job-array shape).
+4. Do **not** invent a second parse agent or session-only prompt; session parse continues to call `do_task("craft_resume_base")`.
+5. Repo JSON applies at bootstrap (`apply_repo_admin_json_at_startup`); no Manage Tasks UI change in this ticket. If local DB has diverged, note in the Linear stage comment that Railway/startup apply picks up the file — do not hand-edit production DB in this plan.
 
 ## Stage 4: Base Resume Content JSON round-trip (no corrupt Save)
 
@@ -133,7 +134,7 @@ Updates Judith’s `craft_resume_base` response contract and prompt so **Experie
 
 **Scope:** `Single-Component` — config contract + craft-base preserve/split path + Judith prompt row + thin ArtifactEditor JSON round-trip; no builder HTML and no job-tailored hops.
 
-**Conf:** `high` — schema already supports nested `list`/`items_schema`; the failure modes are known (`str(list)` in filter/split, `_coerce_schema_str_fields_from_list` only on `str` fields, prompt still teaching prose blocks).
+**Conf:** `high` — schema already supports nested `list`/`items_schema`; known destroyers (`str(list)` in filter/split) are called out; AC3 paste-faithful accomplishments are now explicit in Stage 3 (Joan round=1).
 
 **Risk:** `Medium` — wrong flatten/filter would drop or stringify jobs and break session parse observability and Base Resume Content Save; HTML still uses `_format_experience_value` JSON dump until AST-998, so interim print is ugly but not empty.
 
@@ -146,3 +147,9 @@ Updates Judith’s `craft_resume_base` response contract and prompt so **Experie
 - §3.3: ui → core only; core edits stay in candidate; no ui→data.
 - §1.5.1: debug Style D only when `debug=True`.
 - §3.6: no repo-root `artifacts/` directory.
+
+## Revisions
+
+### Revision 1 — 2026-07-28
+Driven by: Joan `[plan-discuss] round=1 concern` fix-now — Stage 3 LinkedIn/backstory enrichment bullet vs child/parent AC3 (accomplishments must match paste/source; no added claims not in the paste).
+Changes: Stage 3 rewritten so craft-base `accomplishments` are paste/resume-faithful only (no LinkedIn/backstory/strengths enrichment); added scan of other `craft_resume_base` prompt lines that teach experience blend and neutralize only those conflicts; Files Changed / Done when / Conf updated to match.
