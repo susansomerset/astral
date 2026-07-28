@@ -315,3 +315,13 @@ Scope `minor` matches: three team-chuckles skills + astral plan (+ Betty bible R
 
 - Hedy: no code change for the straggler; acknowledge in resolve if desired, then User Testing when ready.
 - Hosts: re-run `~/team-chuckles/install.sh` so sessions see skills @ `4549329`.
+
+## Resolution
+
+**Date:** 2026-07-27
+**Review tip:** `4dbeed6` (`docs(AST-992): Radia review — findings`)
+**Outcome:** clean — no product / skill / test-tree changes.
+
+**discuss (straggler) — acknowledged:** Joan’s plan-time exclusion of `astral.git.engineer-test-tree-ban` assumed no bible path in the ticket deliverable. Betty later added `docs/test-bible/README.md` via `docs(AST-992)` + `merge-tests(AST-992)` (expected Betty sole-authority). Statute verdict remains **conforms**. No code change.
+
+**fix-now:** none.
