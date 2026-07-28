@@ -1157,3 +1157,151 @@ class TestAst1007NestedTypographyMarkers:
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_markers_applied(html)
+
+class TestAst1009EducationSkillsPrior:
+    """AST-1009: education per-line, skills category grid, prior competencies-list."""
+
+    _PRIOR = (
+        "Project__Manager__(4__yrs) • Systems__Analyst__(6__yrs) • "
+        "ETL__Migration__Specialist__(2__yrs)"
+    )
+    _EDU = (
+        "Certified ScrumMaster (CSM) • Scrum Alliance, 2024 to 2026\n"
+        "Certified Scrum Product Owner (CSPO) • Scrum Alliance, 2024 to 2026\n"
+        "UW Milwaukee • Completed coursework in Computer Science and Business Administration"
+    )
+    _SKILLS = (
+        "Program & Delivery: Jira__•__Confluence__•__Linear\n"
+        "AI Development & Orchestration: Claude__API__•__GPT~~4\n"
+        "Design & Documentation: Lucidchart__•__Figma\n"
+        "Development & APIs: Python__•__Next.js\n"
+        "Data & Analytics: PostgreSQL__•__MySQL\n"
+        "Integration & Automation: Zapier__•__GitHub__Actions\n"
+        "Cloud & DevOps: AWS • Vercel • GitHub\n"
+        "Collaboration: Slack__•__Discord"
+    )
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "prior_experience": {
+                    "id": "prior_experience",
+                    "title": "Prior Experience",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "education_certifications": {
+                    "id": "education_certifications",
+                    "title": "Education & Certifications",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+                "technical_skills": {
+                    "id": "technical_skills",
+                    "title": "Technical Skills",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def _blob(self) -> dict[str, Any]:
+        return {
+            "prior_experience": self._PRIOR,
+            "education_certifications": self._EDU,
+            "technical_skills": self._SKILLS,
+        }
+
+    @staticmethod
+    def _assert_section_markup(html: str) -> None:
+        assert 'id="prior-experience"' in html
+        assert 'class="competencies-list"' in html
+        assert "Project\u00a0Manager\u00a0(4\u00a0yrs)" in html
+        assert 'id="education"' in html or ">Education" in html
+        assert 'class="education-list"' in html
+        assert html.count("<strong>") >= 3
+        assert "<strong>Certified ScrumMaster (CSM)</strong>" in html
+        assert "<strong>Certified Scrum Product Owner (CSPO)</strong>" in html
+        assert "<strong>UW Milwaukee</strong>" in html
+        edu_section = html.split('id="education"', 1)[-1].split("</section>", 1)[0]
+        assert 'class="prose-block"' not in edu_section
+        assert 'class="skills-grid"' in html
+        assert html.count('class="skill-category"') >= 8
+        assert "<h4>Program &amp; Delivery</h4>" in html
+        assert "<h4>AI Development &amp; Orchestration</h4>" in html
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in html
+        assert "GPT\u20114" in html
+        assert "__" not in html
+        assert "~~" not in html
+
+    def test_emit_education_list_html_splits_post_marker_bullet(self) -> None:
+        marked = (
+            "Certified ScrumMaster (CSM)\u00a0• Scrum Alliance, 2024 to 2026\n"
+            "UW Milwaukee"
+        )
+        html = builder_mod._emit_education_list_html(marked)
+        assert 'class="education-list"' in html
+        assert (
+            "<strong>Certified ScrumMaster (CSM)</strong>\u00a0• Scrum Alliance, 2024 to 2026"
+            in html
+        )
+        assert "<strong>UW Milwaukee</strong>" in html
+        assert "prose-block" not in html
+
+    def test_emit_skills_grid_html_splits_category_colon(self) -> None:
+        marked = (
+            "Program & Delivery: Jira\u00a0•\u00a0Confluence\n"
+            "Orphan line without colon"
+        )
+        html = builder_mod._emit_skills_grid_html(marked)
+        assert 'class="skills-grid"' in html
+        assert html.count('class="skill-category"') == 2
+        assert "<h4>Program &amp; Delivery</h4>" in html
+        assert "Jira\u00a0•\u00a0Confluence" in html
+        orphan_block = html.split("Orphan line without colon")[0].rsplit("skill-category", 1)[-1]
+        assert "<h4>" not in orphan_block
+        assert "<p>Orphan line without colon</p>" in html
+
+    def test_session_html_education_skills_prior(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(self._structure(), self._blob())
+        self._assert_section_markup(html)
+
+    def test_base_resume_html_education_skills_prior(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        structure = self._structure()
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": self._blob(),
+                },
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_section_markup(html)
+
+    def test_job_resume_html_education_skills_prior(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {"artifacts": {"resume_content": self._blob()}},
+        }
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base"},
+                },
+            }
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_section_markup(html)
