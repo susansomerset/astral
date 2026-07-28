@@ -262,6 +262,21 @@ After ADR approval, implementation children may add **contract** suites that pin
 
 ---
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-915/AST-1004-integration-testing-adr-proposal`
+**Plan path:** `docs/features/team-chuckles/ast-1004-integration-testing-adr-proposal.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `c74761d6` | Plan doc + Target ADR body |
+| 1 | `f7fe2095` | Land `docs/features/team-chuckles/ast-915-integration-testing-adr.md` |
+
+**Built:** docs-only ADR (repo). Stage 2 Linear Document + comments next; no `src/` / `tests/` / bible / GHA.
+**Tip:** `f7fe2095` on publish ref after Stage 1 push.
+
+---
+
 ## Self-Assessment
 
 **Scope:** `Single-Component` — docs + Linear Document only; cites existing README/operator docs; no `src/`, tests, or CI workflow edits.
