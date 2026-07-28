@@ -10,7 +10,7 @@ Ship **`PREAMBLE_CONFIG`** as the product-config source of truth for the mechani
 
 Boundaries (do **not** implement): library persistence / remaps (AST-1014 — already on ftr), Ruth Valid/Try Again/Escalate agent_task body (AST-1015), mechanical intake front-door UI / Estelle chat chrome (AST-1017), Estelle confirm (AST-953), candidate state-machine vocabulary changes.
 
-⚠️ **Decision — Parent AC3 “Intro appears…”:** This child owns the **Intro string** (and step copy) in config and makes the block readable to the UI via `/api/system/ui_config`. **Rendering** Intro at new-intake start in Estelle-consistent presentation is **AST-1017**. Do not edit `CandidateIntake.tsx` here.
+⚠️ **Decision — Parent AC3 “Intro appears…”:** This child owns the **Intro string** (and step copy) in config and makes the block readable to the UI via `/api/ui_config`. **Rendering** Intro at new-intake start in Estelle-consistent presentation is **AST-1017**. Do not edit `CandidateIntake.tsx` here.
 
 ---
 
@@ -19,7 +19,7 @@ Boundaries (do **not** implement): library persistence / remaps (AST-1014 — al
 | File | Change | Layer |
 |------|--------|-------|
 | `src/utils/config.py` | Add `PREAMBLE_CONFIG` after `CANDIDATE_LIBRARY_CONFIG` (intro, steps, validation_task_key); assert step targets ⊆ library vocabulary | utils |
-| `src/ui/api/api_system.py` | Include a JSON-safe `preamble` object on `GET /api/system/ui_config` from `PREAMBLE_CONFIG` | ui |
+| `src/ui/api/api_system.py` | Include a JSON-safe `preamble` object on `GET /api/ui_config` from `PREAMBLE_CONFIG` | ui |
 
 No frontend page changes, no `TASK_CONFIG` / agent_task rows, no database migration, no `tests/` edits (Betty owns tests after Code Complete).
 
@@ -115,13 +115,13 @@ PREAMBLE_CONFIG = {
 
 ## Stage 2: Serve preamble to UI consumers
 
-**Done when:** Authenticated `GET /api/system/ui_config` JSON includes a `preamble` key whose value mirrors `PREAMBLE_CONFIG` (intro, validation_task_key, steps); no other ui_config keys change; `CandidateIntake.tsx` and other frontend pages are untouched.
+**Done when:** Authenticated `GET /api/ui_config` JSON includes a `preamble` key whose value mirrors `PREAMBLE_CONFIG` (intro, validation_task_key, steps); no other ui_config keys change; `CandidateIntake.tsx` and other frontend pages are untouched.
 
 1. In `src/ui/api/api_system.py`, import `PREAMBLE_CONFIG` from `src.utils.config` (same import site as `UI_CONFIG` / `BUILD_CONFIG`).
 
 2. In `ui_config()`, add `"preamble": PREAMBLE_CONFIG` to the jsonify dict alongside the existing `**UI_CONFIG` / `base_resume_accent_palette` keys.
 
-⚠️ **Decision:** Serve under `/api/system/ui_config` rather than a new blueprint route — AST-1017 already (or will) load ui_config for shared UI literals; one fetch gives Intro + steps. Do not add a dedicated `/api/preamble` endpoint.
+⚠️ **Decision:** Serve under `/api/ui_config` (system blueprint) rather than a new blueprint route — AST-1017 already (or will) load ui_config for shared UI literals; one fetch gives Intro + steps. Do not add a dedicated `/api/preamble` endpoint.
 
 3. Do **not** change `INTAKE_CONFIG`, session create/archive flows, or Estelle agent wiring in this ticket.
 
@@ -163,7 +163,15 @@ PREAMBLE_CONFIG = {
 1. **discuss** — C4 stragglers: Joan excluded 16 statutes at plan time that the three-dot tip scores in-scope because the tip also carries resolved AST-1014 (+ Betty tests). Not product defects on the AST-1016 delta; statutes themselves **conform**.
 
 #### Advisory
-- Plan prose says `/api/system/ui_config`; live route is `/api/ui_config` (system blueprint) — implementation correctly extends the existing surface.
+- Plan prose says `/api/ui_config`; live route is `/api/ui_config` (system blueprint) — implementation correctly extends the existing surface.
 
 #### Notes
 Joan plan-rubric verdict attached (APPROVED). No fix-now on AST-1016 deliverable.
+
+## Resolution
+
+**2026-07-28** — resolve-child vs `[code-rubric] revision=1` (DISCUSS)
+
+1. **fix-now** — none.
+2. **discuss / C4 stragglers** — acknowledged; topology-only (tip carries AST-1014 + Betty tests). Statutes already **conform**; no product change.
+3. **advisory / route path** — plan prose corrected to live `GET /api/ui_config` (implementation already correct).
