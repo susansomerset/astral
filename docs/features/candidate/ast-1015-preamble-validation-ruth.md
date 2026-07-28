@@ -12,40 +12,59 @@ Boundaries (do **not** implement): contact/context/artifacts library (AST-1014),
 
 Depends on AST-1014 library already on `origin/ftr/AST-952-candidate-profile-preamble-to-intake` (User Testing) — merge that ftr tip before build; do not re-implement library work.
 
+**Sibling contract (AST-1016, Plan Approved):** `PREAMBLE_CONFIG["validation_task_key"]` is already bound to **`preamble_validate_response`**. This ticket registers that **exact** `task_key` (config + `TASK_CONFIG` + `agent_task.json` + `do_task`). Do not invent a second key.
+
+---
+
+## Revisions
+
+### Revision 1 — 2026-07-28
+Driven by: Joan `[plan-discuss] round=1 concern` — task_key `validate_preamble_answer` diverged from approved AST-1016 `PREAMBLE_CONFIG["validation_task_key"]` = `preamble_validate_response` (§2.1 / DRY).
+Changes: Renamed agent/`TASK_CONFIG`/`PREAMBLE_VALIDATION_CONFIG` task_key to `preamble_validate_response` everywhere; kept Python callable name `validate_preamble_answer`; added equality assert vs `PREAMBLE_CONFIG["validation_task_key"]` when that block is present; consumer-facing string remains AST-1016’s `validation_task_key`.
+
 ---
 
 ## Files Changed (planned)
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/utils/config.py` | Add `PREAMBLE_VALIDATION_CONFIG` (task_key + outcomes); add `TASK_CONFIG["validate_preamble_answer"]` with `response_schema` | utils |
-| `data/admin/agent_task.json` | New row `validate_preamble_answer` assigned to `college_intern_ruth` with Valid/Try Again/Escalate prompts | data (repo admin JSON) |
-| `src/core/intake.py` | Public `validate_preamble_answer(...)` — ledger + `do_task` + outcome parse; `debug=` contract lines; widen module docstring | core |
+| `src/utils/config.py` | Add `PREAMBLE_VALIDATION_CONFIG` (task_key=`preamble_validate_response` + outcomes); add `TASK_CONFIG["preamble_validate_response"]` with `response_schema`; assert equality with `PREAMBLE_CONFIG["validation_task_key"]` when that block exists | utils |
+| `data/admin/agent_task.json` | New row `preamble_validate_response` assigned to `college_intern_ruth` with Valid/Try Again/Escalate prompts | data (repo admin JSON) |
+| `src/core/intake.py` | Public `validate_preamble_answer(...)` — ledger + `do_task(task_key=preamble_validate_response)` + outcome parse; `debug=` contract lines; widen module docstring | core |
 | `src/ui/api/api_intake.py` | `POST /api/candidates/<candidate_id>/preamble/validate` thin wrapper | ui |
 
 ---
 
 ## Stage 1: Config — task key, outcomes, TASK_CONFIG schema
 
-**Done when:** `PREAMBLE_VALIDATION_CONFIG["task_key"]` is `"validate_preamble_answer"`; outcomes are exactly the three AC strings; `TASK_CONFIG` has a matching entry with `response_schema.outcome` required string; `get_task_keys()` includes the new key. No agent_task JSON or core/UI yet.
+**Done when:** `PREAMBLE_VALIDATION_CONFIG["task_key"]` is `"preamble_validate_response"` (same string as approved AST-1016 `validation_task_key`); outcomes are exactly the three AC strings; `TASK_CONFIG` has a matching entry with `response_schema.outcome` required string; `get_task_keys()` includes the new key; if `PREAMBLE_CONFIG` is already defined in `config.py`, a module-level assert enforces key equality. No agent_task JSON or core/UI yet.
 
-1. In `src/utils/config.py`, immediately after `CANDIDATE_LIBRARY_CONFIG`, add:
+1. In `src/utils/config.py`, immediately after `CANDIDATE_LIBRARY_CONFIG` (or after `PREAMBLE_CONFIG` if AST-1016 has already landed on this tree — place this block **after** `PREAMBLE_CONFIG` when both exist so the assert can see it), add:
 
 ```python
 # AST-1015: Ruth preamble answer validation (Valid / Try Again / Escalate).
+# task_key MUST match PREAMBLE_CONFIG["validation_task_key"] (AST-1016) = preamble_validate_response.
 PREAMBLE_VALIDATION_CONFIG = {
-    "task_key": "validate_preamble_answer",
+    "task_key": "preamble_validate_response",
     "outcomes": ("Valid", "Try Again", "Escalate"),
     "outcome_field": "outcome",  # agent_payload key
 }
 ```
 
-⚠️ **Decision:** Keep validation vocabulary in `PREAMBLE_VALIDATION_CONFIG`, not inside future `PREAMBLE_CONFIG` (AST-1016). AST-1016 owns step sequence / Intro / 1st–2nd Try copy; this ticket owns the Ruth task key and outcome enum so UI can call validation without waiting on config-script copy.
-
-2. In `TASK_CONFIG`, add an entry keyed `"validate_preamble_answer"` (place with other candidate intake tasks, after `intake_build_request`):
+2. Immediately after both blocks exist in the file, add (skip only if `PREAMBLE_CONFIG` is not yet defined on this checkout — then the literal alone is the contract; when ftr/sibling merge brings `PREAMBLE_CONFIG`, add the assert in the same stage before Code Complete):
 
 ```python
-"validate_preamble_answer": {
+assert PREAMBLE_VALIDATION_CONFIG["task_key"] == PREAMBLE_CONFIG["validation_task_key"]
+```
+
+⚠️ **Decision:** Consumer-facing task_key string lives on AST-1016 as `PREAMBLE_CONFIG["validation_task_key"]`. This ticket’s `PREAMBLE_VALIDATION_CONFIG["task_key"]` is the **same literal** (`preamble_validate_response`) plus outcome vocabulary — not a second name. Outcomes stay here (not in PREAMBLE_CONFIG). AST-1017 may read `validation_task_key` from ui_config/`PREAMBLE_CONFIG` and/or call this ticket’s API without choosing between two keys.
+
+⚠️ **Decision:** Do **not** invent `validate_preamble_answer` as a task_key. That name is reserved for the Python callable only (Stage 3).
+
+3. In `TASK_CONFIG`, add an entry keyed `"preamble_validate_response"` (place with other candidate intake tasks, after `intake_build_request`):
+
+```python
+"preamble_validate_response": {
     "response_schema": {
         "outcome": {"type": "str", "required": True},
     },
@@ -57,19 +76,19 @@ PREAMBLE_VALIDATION_CONFIG = {
 },
 ```
 
-3. Do **not** add a `dispatch_tasks` row. This task is on-demand (UI/API), not a scheduler batch.
+4. Do **not** add a `dispatch_tasks` row. This task is on-demand (UI/API), not a scheduler batch.
 
 ---
 
 ## Stage 2: Repo agent_task row — Ruth only
 
-**Done when:** `data/admin/agent_task.json` contains one new object with `task_key` == `PREAMBLE_VALIDATION_CONFIG["task_key"]`, `agent_id` == `"college_intern_ruth"`, prompts that force the three-outcome envelope, and no other agent/persona rows changed. Startup apply of repo JSON would load Ruth on this key (no blank `sync_agent_tasks` stub left as the live row).
+**Done when:** `data/admin/agent_task.json` contains one new object with `task_key` == `"preamble_validate_response"` (== `PREAMBLE_VALIDATION_CONFIG["task_key"]`), `agent_id` == `"college_intern_ruth"`, prompts that force the three-outcome envelope, and no other agent/persona rows changed. Startup apply of repo JSON would load Ruth on this key (no blank `sync_agent_tasks` stub left as the live row).
 
 1. Append a new object to the JSON array in `data/admin/agent_task.json` with these fields (generate a fresh `task_key_uuid` via `uuid.uuid4()`; set `updated_at` to current UTC `YYYY-MM-DD HH:MM:SS`; leave unused cache slots empty strings):
 
 | Field | Value |
 |-------|--------|
-| `task_key` | `validate_preamble_answer` |
+| `task_key` | `preamble_validate_response` |
 | `agent_id` | `college_intern_ruth` |
 | `task_name` | `Validate Preamble Answer` |
 | `task_group_name` | `Candidate Preamble` |
@@ -114,7 +133,7 @@ No extra keys. No commentary outside the envelope. Prefer Try Again over Valid w
 Validate the QUESTION/ANSWER pair in the CONTENT block using your PREAMBLE ANSWER VALIDATION instructions. Respond with the envelope and agent_payload.outcome only.
 ```
 
-⚠️ **Decision:** One generic task for every preamble step (question text supplied at call time), not per-field task keys. AST-1016/1017 pass the step’s question string; Ruth does not need PREAMBLE_CONFIG.
+⚠️ **Decision:** One generic task for every preamble step (question text supplied at call time), not per-field task keys. AST-1016/1017 pass the step’s `validation_question` string; Ruth does not own PREAMBLE_CONFIG.
 
 ⚠️ **Decision:** Do not create or edit any `data/admin/agent.json` persona. Existing `college_intern_ruth` (Little brain) is mandatory.
 
@@ -122,7 +141,7 @@ Validate the QUESTION/ANSWER pair in the CONTENT block using your PREAMBLE ANSWE
 
 ## Stage 3: Core callable — parse outcomes, debug contract, no library writes
 
-**Done when:** `validate_preamble_answer` exists on `src/core/intake.py`, returns one of the three config outcomes on success, never writes `candidate_data` / name columns, treats unrecognized model text as failure (not Valid), and with `debug=True` emits style-D found/recorded lines. Manual call with mocked/`do_task` success path can return `"Try Again"` without advancing anything.
+**Done when:** `validate_preamble_answer` exists on `src/core/intake.py`, calls `do_task` with `task_key` from `PREAMBLE_VALIDATION_CONFIG` (`preamble_validate_response`), returns one of the three config outcomes on success, never writes `candidate_data` / name columns, treats unrecognized model text as failure (not Valid), and with `debug=True` emits style-D found/recorded lines. Manual call with mocked/`do_task` success path can return `"Try Again"` without advancing anything.
 
 1. Widen the module docstring of `src/core/intake.py` to state it owns mechanical preamble validation **and** Estelle multi-turn sessions.
 
@@ -144,7 +163,7 @@ async def validate_preamble_answer(
 
 **Behavior (literal):**
 
-- Resolve `task_key = PREAMBLE_VALIDATION_CONFIG["task_key"]`.
+- Resolve `task_key = PREAMBLE_VALIDATION_CONFIG["task_key"]` (must be `"preamble_validate_response"`).
 - Load candidate via `get_candidate(candidate_id)`; if missing → raise `ValueError(f"Candidate not found: {candidate_id}")`.
 - If `(question or "").strip()` is empty → raise `ValueError("question required")`.
 - Strip `answer` for the model input but **allow** empty answer (Ruth should return Try Again) — do not raise on empty answer.
@@ -171,7 +190,7 @@ ANSWER:
 - One `logger.debug_index(func="validate_preamble_answer", index=step_index, total=step_total, identifier=candidate_id, outcome=...)` where outcome is `found|Valid` / `found|Try Again` / `found|Escalate` on success, or `found|error` on failure.
 - `logger.debug_detail` lines: `question=` and `answer=` via `truncate_debug_content(...)` on the stripped strings; on failure also `error=...`.
 
-5. **Hard rules in this function:** no `save_candidate_data`, no column writes, no candidate state transitions, no PREAMBLE_CONFIG reads. Try Again / Escalate “do not advance” is satisfied because this callable never advances or persists preamble progress — AST-1017 must not write library fields unless `outcome == "Valid"`.
+5. **Hard rules in this function:** no `save_candidate_data`, no column writes, no candidate state transitions, no PREAMBLE_CONFIG step/Intro reads (task_key may come only from `PREAMBLE_VALIDATION_CONFIG`, which is asserted equal to AST-1016’s key). Try Again / Escalate “do not advance” is satisfied because this callable never advances or persists preamble progress — AST-1017 must not write library fields unless `outcome == "Valid"`.
 
 ⚠️ **Decision:** Place the callable in `intake.py` (not a new module, not `candidate.py`) so AST-1017 shares the intake API blueprint and the existing single-shot ledger/`do_task` pattern (`_run_intake_task`), while keeping library persistence owned by AST-1014 helpers.
 
@@ -227,11 +246,11 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 ## Self-Assessment
 
-**Scope:** Single-Component — one new Ruth `agent_task` + config/`TASK_CONFIG` + intake core callable + one intake API route; no UI, no library schema, no PREAMBLE_CONFIG.
+**Scope:** Single-Component — one new Ruth `agent_task` (`preamble_validate_response`) + config/`TASK_CONFIG` + intake core callable + one intake API route; no UI, no library schema, no PREAMBLE_CONFIG ownership.
 
-**Conf:** high — reuses `do_task` envelope/`response_schema`, existing Ruth agent, intake ledger pattern, and repo `agent_task.json` apply-at-startup; outcomes are a closed three-string set.
+**Conf:** high — aligned to approved AST-1016 `validation_task_key`; reuses `do_task` envelope/`response_schema`, existing Ruth agent, intake ledger pattern, and repo `agent_task.json` apply-at-startup; outcomes are a closed three-string set.
 
-**Risk:** Medium — a wrong coerce-to-Valid path would let bad preamble answers persist once AST-1017 wires writes; mitigated by exact outcome membership check and no writes in this ticket.
+**Risk:** Medium — a wrong coerce-to-Valid path would let bad preamble answers persist once AST-1017 wires writes; mitigated by exact outcome membership check and no writes in this ticket. Key-clash risk with AST-1016 is closed by Revision 1.
 
 ---
 
@@ -239,8 +258,8 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 | Rule | Check |
 |------|--------|
-| §1.3 DRY | Reuse `_run_intake_task`-style ledger/`do_task`; do not fork a second Anthropic path |
-| §1.4 / §2.1 | Task key + outcomes only in `PREAMBLE_VALIDATION_CONFIG`; no inline Valid/Try Again/Escalate sets in core/UI |
+| §1.3 DRY | One epic task_key string shared with AST-1016 (`preamble_validate_response`); reuse `_run_intake_task`-style ledger/`do_task` |
+| §1.4 / §2.1 | Task key matches `PREAMBLE_CONFIG["validation_task_key"]`; outcomes only in `PREAMBLE_VALIDATION_CONFIG`; no inline Valid/Try Again/Escalate sets in core/UI |
 | §1.5.1 | Debug lines only when `debug=True`; style-D index + ` \| ` detail; truncate long Q/A |
 | §2.2 | Core calls `do_task`; no UI→external |
 | §2.6 | No candidate state transitions |
