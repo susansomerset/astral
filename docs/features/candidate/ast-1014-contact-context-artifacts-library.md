@@ -271,3 +271,27 @@ def build_candidate_token_view(candidate: dict) -> dict:
 
 **Publish ref:** `sub/AST-952/AST-1014-contact-context-artifacts-library`
 **Build tip:** `c907a7c40d9c5eedc30abf985ec4f72b56bc5626`
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Tip reviewed:** `95faf77a50cdfce39366fb957df151ecd8f7b74a` (`origin/sub/AST-952/AST-1014-contact-context-artifacts-library` vs `origin/dev`)
+**Overall:** FIX-NOW
+
+#### What’s solid
+- `CANDIDATE_LIBRARY_CONFIG` owns keys/remaps/URL bases; DATA_SHAPES + TOKEN_SOURCES moved off `profile.*`.
+- Idempotent `_migrate_candidate_library_ast1014` (profile→contact, column lift, context remaps, hopes/interests/concerns seed); refuses `profile` writes in core.
+- Profile/Admin UI + builder/gazer/monitor/intake persistence remapped; Betty test split clean (`test` / `merge-tests` vs engineer `code`).
+
+#### Issues
+1. **fix-now** — `src/ui/api/api_admin.py` still feeds raw `candidate_data` into `resolve_tokens` / preview helpers (`_resolve_agent_preview_candidate`, `_enrich_tasks`, `_resolve_adhoc`). After TOKEN_SOURCES → columns + `contact.*`, Admin task/adhoc name+contact tokens blank. Plan Stage 3.1: every full-row `resolve_tokens` site must use `build_candidate_token_view`.
+2. **fix-now** — `update_candidate_data` calls `save_candidate_data(...)` without `debug=ui_llm_debug()`; Stage 3 / parent AC8 debug contract is dead on the primary PUT path.
+3. **fix-now** — `src/core/agent.py` function-scoped `from src.core.candidate import build_candidate_token_view` lacks an in-code cycle-break / lazy-load comment (B1; sibling import two lines below has one).
+4. **discuss** — straggler: Joan excluded `astral.git.engineer-test-tree-ban` at plan time; diff includes `tests/**` + `docs/test-bible/**`. Statute itself **conforms** (Betty `test`/`merge-tests` only).
+
+#### Recommended actions
+- Wire `build_candidate_token_view(candidate)` (or equivalent merge) at all `api_admin` full-row token sites.
+- Pass `debug=ui_llm_debug()` into `save_candidate_data` from `update_candidate_data`.
+- Add the lazy-import cycle comment on the new `agent.py` import.
+
+#### Notes
+Joan plan-rubric verdict attached (APPROVED). Excluded set: `astral.debug.no-repo-root-artifacts-dir`, `astral.git.engineer-test-tree-ban`, `astral.layers.scripts-exempt-from-layer-rules`.
