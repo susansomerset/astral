@@ -115,3 +115,15 @@ Do **not** emit `<link rel="stylesheet" …>`.
 - §3.6: spikes under `debug/spikes/AST-1020/` only if used; never commit; never repo-root `artifacts/`.
 - Engineer test-tree ban: no `tests/` or bible edits — Betty owns assertions after Code Complete.
 - Sibling scope: title/meta emit left to AST-1021; no cover-letter HTML rewrite.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1019/AST-1020-embedded-stylesheet-golden-parity`
+**Plan path:** `docs/features/artifacts/ast-1020-embedded-stylesheet-golden-parity.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | 6104b15b | `BUILD_CONFIG` text/border color tokens |
+| 2 | 89c3f44c | Golden embedded CSS in `_emit_html_document` + cover/ATS/prose-block |
+
+**Tip:** `89c3f44c` on `origin/sub/AST-1019/AST-1020-embedded-stylesheet-golden-parity`
