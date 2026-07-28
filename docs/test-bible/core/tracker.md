@@ -140,22 +140,19 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
 
 ---
 
-### AST-828 · AST-752 (UAT bug)
 
-**`get_new_job_batch`** accepts legacy compound holding states **`BUILD_ARTIFACTS.<hop>`** at claim validation only — **`is_valid_job_batch_claim_state`** in config; **`transition_job_state`** still uses flat **`JOB_STATES`** registry. Fixes **`draft_cover_letter`** dispatch rows targeting **`BUILD_ARTIFACTS.finalize_job_resume`** without **`ValueError`** before claim.
+---
+
+### AST-997 · AST-994
+
+**AST-997:** Tracker `_resume_payload_body` / match / persist gates treat non-empty experience job arrays as body content (alongside strings). Primary pin/validate coverage: **`docs/test-bible/core/candidate.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Claim-state helper | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation` |
-| Batch claim API | `src/core/tracker.py` | `tests/component/core/test_tracker.py::TestBatchApi::{test_compound_build_artifacts_hop_claimable_without_value_error,test_invalid_compound_suffix_still_rejects,test_states_list_accepts_legacy_compound_hop}` |
-
-**AST-828** narrowed run:
+| Persist + match gates for job arrays | `src/core/tracker.py` | **`TestAst997ExperienceJobArrayPersist`** |
 
 ```bash
-.venv/bin/python -m pytest \
-  tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation \
-  tests/component/core/test_tracker.py::TestBatchApi::test_compound_build_artifacts_hop_claimable_without_value_error \
-  tests/component/core/test_tracker.py::TestBatchApi::test_invalid_compound_suffix_still_rejects \
-  tests/component/core/test_tracker.py::TestBatchApi::test_states_list_accepts_legacy_compound_hop \
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst997ExperienceJobArrayPersist \
   -q
 ```

@@ -848,3 +848,19 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig \
   -q
 ```
+
+---
+
+### AST-997 · AST-994
+
+**AST-997:** `finalize_job_resume` experience uses `_EXPERIENCE_JOB_ARRAY_FIELD_OPTIONAL` sharing `items_schema` with craft-base. Primary pin/persist coverage: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize optional job-array schema | `src/utils/config.py` | **`TestAst997FinalizeExperienceJobArray`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
+  -q
+```
