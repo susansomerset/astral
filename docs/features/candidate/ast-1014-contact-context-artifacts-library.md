@@ -295,3 +295,12 @@ def build_candidate_token_view(candidate: dict) -> dict:
 
 #### Notes
 Joan plan-rubric verdict attached (APPROVED). Excluded set: `astral.debug.no-repo-root-artifacts-dir`, `astral.git.engineer-test-tree-ban`, `astral.layers.scripts-exempt-from-layer-rules`.
+
+## Resolution
+
+**2026-07-28** — resolve-child vs `[code-rubric] revision=1` (FIX-NOW)
+
+1. **fix-now / api_admin** — `_resolve_agent_preview_candidate`, `_enrich_tasks`, and `_resolve_adhoc` now pass `build_candidate_token_view(candidate)` into `resolve_tokens` / preview helpers (name columns + `contact.*`).
+2. **fix-now / api_candidate** — `update_candidate_data` calls `save_candidate_data(..., debug=ui_llm_debug())` so Stage 3 / AC8 gated debug lines fire on primary PUT.
+3. **fix-now / agent.py** — lazy-import comment added on `build_candidate_token_view` (same cycle-break note as sibling import).
+4. **discuss** — engineer-test-tree-ban straggler: acknowledged; statute already conforms (Betty-only test/bible commits). No product change.

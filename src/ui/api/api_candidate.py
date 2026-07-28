@@ -223,7 +223,8 @@ def update_candidate_data(candidate_id):
             if isinstance(contact, dict) and "cover_letter_signature_image" in contact:
                 _validate_cover_letter_signature_image(contact.get("cover_letter_signature_image"))
             if body:
-                save_candidate_data(candidate_id, body, replace=False)
+                # AST-1014 / AC8: gate library-write found/recorded lines on deploy debug.
+                save_candidate_data(candidate_id, body, replace=False, debug=ui_llm_debug())
                 # Clear pending only after persist — keys captured before apply del
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:

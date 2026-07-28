@@ -1808,6 +1808,7 @@ async def do_task(
 
     # AST-1014: full candidate rows → token view (columns + contact/context/artifacts).
     if ctx and ctx.get("astral_candidate_id"):
+        # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
         from src.core.candidate import build_candidate_token_view
         cd = build_candidate_token_view(ctx)
     elif ctx:
