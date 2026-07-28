@@ -3318,6 +3318,13 @@ BUILD_CONFIG = {
             "page_break_policy": "normal",
         },
     },
+    # AST-1008: experience role emit — lead line prefix + location arrangement split (golden layout).
+    "experience_role_layout": {
+        # Paste/source prefix on an accomplishments line → role-description, not <li>.
+        "lead_line_prefix": "<no bullet>",
+        # Splits freeform `location` into place + arrangement for compact-location phrasing.
+        "location_arrangement_sep": " / ",
+    },
     # resume_content: documents known section ids; runtime allowed keys are per-candidate structure subset.
     # cover_letter: canonical Subject/Letter; legacy tasks may still output re_line/body until prompts update.
     "artifact_shapes": {

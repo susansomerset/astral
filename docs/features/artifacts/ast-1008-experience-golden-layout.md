@@ -172,3 +172,54 @@ Parent AC coverage for this ticket: AC1 experience portion + AC3 (Somerset lead 
 - §3.5: private helpers `_format_compact_location`, `_split_role_accomplishments` beside `_emit_experience_jobs_html`.
 - §3.6: spikes under `debug/spikes/AST-1008/` only if used; never commit dumps.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-993/AST-1008-experience-golden-layout`
+**Plan path:** `docs/features/artifacts/ast-1008-experience-golden-layout.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `252f640d` | `experience_role_layout` + golden `_emit_experience_jobs_html` + role CSS |
+| 4 | `456a3749` / `113a6521` | Betty golden layout proof + merge-tests |
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1008
+**Publish ref tip (pre-docs):** post–`origin/ftr` merge on `sub/AST-993/AST-1008-experience-golden-layout`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3 match plan: `BUILD_CONFIG["experience_role_layout"]`, `_format_compact_location` / `_split_role_accomplishments`, golden `<article class="role">` emit, CSS swap off AST-998 selectors; markers-before-escape retained; legacy string experience path untouched.
+- Betty `TestAst1008ExperienceGoldenLayout` covers lead vs bullets + compact title/location + config keys.
+- Self-Assessment Single-Component holds; AST-1009/1010/1007 boundaries respected (siblings arrive via ftr merge-clean only).
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — excluded at plan time; in-scope on diff via `docs/features/**`. Substance **conforms**.
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — excluded at plan time; in-scope on diff. Substance **conforms** (one features file per ticket).
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — excluded at plan time; in-scope via Betty bible/tests. Substance **conforms** (`test(AST-1008)` + one `merge-tests(AST-1008)`).
+
+No **fix-now** product findings.
+
+### Recommended actions
+
+Engineer (`resolve-child`): acknowledge C4 stragglers — no product code change required for those three.
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Radia tip:** `e87afd13` · Overall DISCUSS · no fix-now
+
+| Finding | Action |
+|---------|--------|
+| discuss C4 `astral.debug.spikes-under-debug-dir` | Acknowledged — substance conforms; no product change |
+| discuss C4 `astral.docs.features-single-file-per-ticket` | Acknowledged — substance conforms; no product change |
+| discuss C4 `astral.git.engineer-test-tree-ban` | Acknowledged — substance conforms; no product change |
+
+No product or test-tree edits in resolve. Proceeding to User Testing after §9a dry-run.
