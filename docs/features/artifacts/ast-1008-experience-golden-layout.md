@@ -172,3 +172,15 @@ Parent AC coverage for this ticket: AC1 experience portion + AC3 (Somerset lead 
 - §3.5: private helpers `_format_compact_location`, `_split_role_accomplishments` beside `_emit_experience_jobs_html`.
 - §3.6: spikes under `debug/spikes/AST-1008/` only if used; never commit dumps.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-993/AST-1008-experience-golden-layout`
+**Plan path:** `docs/features/artifacts/ast-1008-experience-golden-layout.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `252f640d` | `experience_role_layout` + golden `_emit_experience_jobs_html` + role CSS |
+| 4 | (verify) | Session + job-tailored fixture proof — lead vs bullets, compact title/location |
+
+**Tip:** `252f640d` on `origin/sub/AST-993/AST-1008-experience-golden-layout`
