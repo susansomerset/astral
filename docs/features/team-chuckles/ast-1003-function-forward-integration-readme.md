@@ -277,3 +277,14 @@ None — proceed to resolve-child / User Testing path.
 ### Notes
 
 Joan plan-rubric APPROVED attached; no straggler (Excluded set remains `not-applicable` on this diff). §5a–§5g N/A (no `src/`).
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Review tip:** `73ccba7d` (`docs(AST-1003): Radia review — clean`)  
+**Outcome:** clean — no product / bible / scenario changes.  
+
+**fix-now:** none.  
+**discuss / advisory:** none.  
+
+**Action:** Intake Radia `docs(AST-1003)` via merge of publish-ref tip. Publish `resolve(AST-1003): — clean`. §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-915-test-coverage-integration-testing-discovery-first`.
