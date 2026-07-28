@@ -293,3 +293,33 @@ Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch tr
   tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
   -q
 ```
+
+---
+
+### AST-996 · AST-994
+
+**AST-996:** Judith `craft_resume_base` Experience is an ordered **job array** (`company` / `title` / `dates` / `location` / `accomplishments`). Config shares `_EXPERIENCE_JOB_ARRAY_FIELD` across TASK + `resume_content` shapes; `DATA_SHAPES` marks experience as `experience_jobs`. Candidate split/filter/flatten/token preserve job lists (no `str(list)`); legacy string experience still readable. Style D debug lists recorded jobs on session parse / parse_candidate_resume / craft generate when `debug=True`. ArtifactEditor JSON round-trip for experience tabs — see **`docs/test-bible/frontend/components.md`**. HTML emit / job-tailored highlights = siblings **AST-998** / **AST-997**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Preserve / split / filter / token / Style D debug / prompt contract | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst996ExperienceJobArray`**; revised **`TestAst517ResumeStructure`** schema fixtures; revised **`TestAst519ResumeStructureUiHelpers::test_filter_base_resume_to_structure_drops_orphans_and_accent`**; revised **`TestAst986SessionResumeParse::test_200_success_debug_style_d`** |
+| Shared schema + stringify example | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Base Resume Content JSON load/Save | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-996:*`** (primary: **`docs/test-bible/frontend/components.md`**) |
+
+**Broken / obsolete this pass:** schema-validation fixtures that used string `experience`; filter helper that expected `str(99)` coercion; session debug assert on `debug_detail_block` (replaced by job-focused `debug_detail`).
+
+**AST-996** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  tests/component/core/test_candidate.py::TestAst519ResumeStructureUiHelpers \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
+  tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-996"
+```

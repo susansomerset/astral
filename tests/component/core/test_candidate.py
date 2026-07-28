@@ -51,11 +51,38 @@ def _three_section_structure() -> dict[str, Any]:
     }
 
 
-def _craft_resume_base_payload(structure: dict, content: dict[str, str] | None = None) -> dict[str, Any]:
+# AST-996: craft-base Experience wire shape (shared fixture for schema-valid payloads).
+_SAMPLE_EXPERIENCE_JOBS: list[dict[str, str]] = [
+    {
+        "company": "Acme Corp",
+        "title": "Engineer",
+        "dates": "2020-2023",
+        "location": "Remote",
+        "accomplishments": "Shipped widgets",
+    },
+    {
+        "company": "Beta LLC",
+        "title": "Lead",
+        "dates": "2023",
+        "location": "",
+        "accomplishments": "Led the team",
+    },
+]
+
+
+def _craft_resume_base_payload(
+    structure: dict, content: dict[str, Any] | None = None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"resume_structure": structure}
     for sid, spec in structure["sections"].items():
-        if spec.get("enabled"):
-            payload[sid] = (content or {}).get(sid, f"content-{sid}")
+        if not spec.get("enabled"):
+            continue
+        if content is not None and sid in content:
+            payload[sid] = content[sid]
+        elif sid == "experience":
+            payload[sid] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        else:
+            payload[sid] = f"content-{sid}"
     return payload
 
 
@@ -849,11 +876,19 @@ class TestAst517ResumeStructure:
         from src.utils.config import TASK_CONFIG
 
         structure = candidate_mod.default_resume_structure()
-        sections = {
-            sid: {**spec, "content": f"body-{sid}"}
-            for sid, spec in structure["sections"].items()
+        # Nested section.content strings for scalars; experience jobs via content dict
+        # (section.content job arrays are not promoted — top-level / content-dict heal only).
+        content = {
+            sid: f"body-{sid}"
+            for sid in structure["sections"]
+            if sid != "experience"
         }
-        parsed: dict[str, Any] = {"agent_payload": {"resume_structure": {"sections": sections}}}
+        content["experience"] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": {"sections": structure["sections"], "content": content}
+            }
+        }
         candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
         schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
         assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
@@ -870,7 +905,7 @@ class TestAst517ResumeStructure:
                 "candidate_contact_detail": "kar@example.com",
                 "professional_summary": "Summary",
                 "core_competencies": "Skills",
-                "experience": "Jobs",
+                "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             },
         }
         candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
@@ -892,7 +927,7 @@ class TestAst517ResumeStructure:
                 "candidate_contact_detail": "kar@example.com",
                 "professional_summary": "Summary",
                 "core_competencies": "Skills",
-                "experience": "Jobs",
+                "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             },
         }
         candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
@@ -1018,16 +1053,18 @@ class TestAst519ResumeStructureUiHelpers:
         ]
 
     def test_filter_base_resume_to_structure_drops_orphans_and_accent(self) -> None:
-        section_ids = {"professional_summary", "technical_skills"}
+        section_ids = {"professional_summary", "technical_skills", "experience"}
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         raw = {
             "professional_summary": "body",
             "orphan_section": "drop",
             "accent_color": "#112233",
-            "technical_skills": 99,
+            "technical_skills": 99,  # non-str / non-job-array → drop (no str()-corrupt)
+            "experience": jobs,
         }
         assert candidate_mod.filter_base_resume_to_structure(raw, section_ids) == {
             "professional_summary": "body",
-            "technical_skills": "99",
+            "experience": jobs,
         }
 
     def test_filter_base_resume_to_structure_non_dict_returns_empty(self) -> None:
@@ -1908,9 +1945,9 @@ class TestAst986SessionResumeParse:
     def test_200_success_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_ledger(monkeypatch)
         dbg = MagicMock()
-        block = MagicMock()
+        detail = MagicMock()
         monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
-        monkeypatch.setattr(candidate_mod.logger, "debug_detail_block", block)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
         parsed = _craft_resume_base_payload(_three_section_structure())
         monkeypatch.setattr(
             candidate_mod,
@@ -1921,4 +1958,207 @@ class TestAst986SessionResumeParse:
         assert status == 200
         assert body["success"] is True
         assert dbg.call_args.kwargs["outcome"] == "ok"
-        block.assert_called_once()
+        detail_msgs = [c.args[0] for c in detail.call_args_list if c.args]
+        assert any(m.startswith("experience[0] company=") for m in detail_msgs)
+        assert any(m.startswith("experience[1] company=") for m in detail_msgs)
+
+
+class TestAst996ExperienceJobArray:
+    """AST-996: craft-base Experience as ordered job array (preserve / debug / token)."""
+
+    def test_is_experience_job_array_helper(self) -> None:
+        assert candidate_mod.is_experience_job_array(_SAMPLE_EXPERIENCE_JOBS) is True
+        assert candidate_mod.is_experience_job_array([]) is True
+        assert candidate_mod.is_experience_job_array("Jobs") is False
+        assert candidate_mod.is_experience_job_array([{"a": 1}, "x"]) is False
+
+    def test_split_preserves_experience_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        _, content = candidate_mod.split_craft_resume_base_payload(parsed)
+        assert content["experience"] == jobs
+        assert content["experience"][0]["company"] == "Acme Corp"
+        assert content["experience"][1]["location"] == ""
+
+    def test_split_still_keeps_legacy_string_experience(self) -> None:
+        parsed = _craft_resume_base_payload(
+            _three_section_structure(), {"experience": "legacy prose"}
+        )
+        _, content = candidate_mod.split_craft_resume_base_payload(parsed)
+        assert content["experience"] == "legacy prose"
+
+    def test_filter_content_preserves_nonempty_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"experience": jobs, "orphan_section": "drop", "technical_skills": "  "},
+            _three_section_structure(),
+        )
+        assert out == {"experience": jobs}
+
+    def test_filter_content_drops_empty_job_array(self) -> None:
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"experience": [], "professional_summary": "ok"},
+            _three_section_structure(),
+        )
+        assert "experience" not in out
+        assert out == {"professional_summary": "ok"}
+
+    def test_flatten_promotes_job_array_from_content_dict(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        structure = candidate_mod.default_resume_structure()
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": {
+                    "sections": structure["sections"],
+                    "content": {"experience": jobs, "professional_summary": "Summary"},
+                }
+            }
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        assert parsed["agent_payload"]["experience"] == jobs
+        assert parsed["agent_payload"]["professional_summary"] == "Summary"
+
+    def test_flatten_does_not_str_coerce_existing_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        structure = candidate_mod.default_resume_structure()
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": {
+                    "sections": structure["sections"],
+                    "content": {"experience": "should not overwrite"},
+                },
+                "experience": jobs,
+            }
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        assert parsed["agent_payload"]["experience"] == jobs
+
+    def test_format_base_resume_token_includes_job_array_json(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {"experience": jobs, "professional_summary": "Summary"},
+            }
+        }
+        out = candidate_mod.format_base_resume_for_token(cd)
+        parsed = json.loads(out)
+        assert parsed["experience"] == jobs
+        assert parsed["professional_summary"] == "Summary"
+
+    def test_debug_experience_jobs_emits_style_d_lines(self) -> None:
+        log = MagicMock()
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        candidate_mod._debug_experience_jobs(log, {"experience": jobs})
+        msgs = [c.args[0] for c in log.debug_detail.call_args_list]
+        assert msgs[0].startswith("experience[0] company='Acme Corp'")
+        assert any("accomplishments:" in m for m in msgs)
+        assert any(m.startswith("experience[1] company='Beta LLC'") for m in msgs)
+
+    def test_debug_experience_jobs_legacy_string_shape(self) -> None:
+        log = MagicMock()
+        candidate_mod._debug_experience_jobs(log, {"experience": "old prose"})
+        log.debug_detail.assert_called_with("experience_shape=str")
+
+    def test_session_parse_returns_job_array_in_base_resume(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list = []
+        updates: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_dispatch_ledger",
+            lambda *args, **kwargs: saves.append((args, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "update_dispatch_ledger",
+            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
+        )
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(candidate_mod, "flush_log_buffer", MagicMock())
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+
+        async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
+            return {"success": True, "parsed_response": parsed, "timesheet": {}}
+
+        monkeypatch.setattr(candidate_mod, "do_task", _fake_do_task)
+        body, status = candidate_mod.run_session_resume_parse("multi-job resume")
+        assert status == 200
+        assert body["base_resume"]["experience"] == jobs
+        assert body["base_resume"]["experience"][0]["accomplishments"] == "Shipped widgets"
+
+    def test_persist_craft_resume_base_keeps_job_array(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list[tuple[Any, ...]] = []
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id}
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_resume_base", "resume text", debug=True
+        )
+        assert status == 200
+        artifacts = saves[0][1]["candidate_data"]["artifacts"]
+        assert artifacts["base_resume"]["experience"] == jobs
+
+    @pytest.mark.asyncio
+    async def test_parse_candidate_resume_debug_lists_jobs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "state": "NEW",
+                "candidate_data": {"context": {"starting_resume_text": "paste"}},
+            },
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", lambda *a, **k: None)
+
+        async def _do_task(**kwargs: Any) -> dict[str, Any]:
+            return {
+                "success": True,
+                "parsed_response": _craft_resume_base_payload(
+                    _three_section_structure(), {"experience": jobs}
+                ),
+            }
+
+        monkeypatch.setattr(candidate_mod, "do_task", _do_task)
+        out = await candidate_mod.parse_candidate_resume("c1", debug=True)
+        assert out["success"] is True
+        msgs = [c.args[0] for c in detail.call_args_list if c.args]
+        assert any(m.startswith("experience[0] company=") for m in msgs)
+
+    def test_craft_resume_base_prompt_requires_job_array_contract(self) -> None:
+        # Repo admin JSON is the Judith prompt source (applied at bootstrap).
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        assert "Ordered JSON array of jobs" in prompt
+        assert "`accomplishments`" in prompt
+        assert "Do **not** enrich, blend, or expand accomplishments from LinkedIn" in prompt

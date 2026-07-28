@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react"
+import { fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -496,5 +496,106 @@ describe("ArtifactEditor", () => {
     // Review mode retained — Save/Cancel still available
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+  })
+
+  it("AST-996: experience job array loads as JSON and Saves as parsed array", async () => {
+    const jobs = [
+      {
+        company: "Acme Corp",
+        title: "Engineer",
+        dates: "2020-2023",
+        location: "Remote",
+        accomplishments: "Shipped widgets",
+      },
+    ]
+    const putBodies: { artifacts?: { base_resume?: Record<string, unknown> } }[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  professional_summary: "Summary body",
+                  experience: jobs,
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[
+          { id: "professional_summary", label: "Custom Summary" },
+          { id: "experience", label: "Custom Jobs" },
+        ]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Summary body")).toBeInTheDocument())
+    // Pretty-printed JSON for the job array (not "[object Object]")
+    expect(screen.getByDisplayValue(/"company": "Acme Corp"/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(putBodies.at(-1)?.artifacts?.base_resume?.experience).toEqual(jobs)
+    expect(typeof putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toBe("string")
+  })
+
+  it("AST-996: invalid experience JSON shows toast and aborts Save", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  experience: [{ company: "Acme", title: "Eng", dates: "2020", location: "", accomplishments: "x" }],
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        throw new Error("Save should not fire")
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    const field = await screen.findByDisplayValue(/"company": "Acme"/)
+    fireEvent.change(field, { target: { value: "not-valid-json{{{" } })
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Experience must be valid JSON")).toBeInTheDocument())
+    expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(
+      false,
+    )
   })
 })

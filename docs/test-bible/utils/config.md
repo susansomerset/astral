@@ -832,3 +832,19 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDA
 ### AST-973 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDATE_LEGACY_STATE_MAP`** / **`remap_legacy_candidate_state`**.
+
+---
+
+### AST-996 · AST-994
+
+**AST-996:** Shared `_EXPERIENCE_JOB_ARRAY_FIELD` on `TASK_CONFIG["craft_resume_base"]` + `BUILD_CONFIG["artifact_shapes"]["resume_content"]`; `DATA_SHAPES` base_resume_structure experience type `experience_jobs`. Primary preserve/debug coverage: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job-array schema + stringify example | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig \
+  -q
+```
