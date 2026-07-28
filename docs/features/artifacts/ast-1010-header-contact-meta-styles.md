@@ -131,6 +131,34 @@ Shared resume HTML builders already emit a header (`Name` + optional ` • Title
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–3 | `8a00e5eb` | Optional `candidate_tagline` + header/meta emit + embedded golden CSS |
-| 4 | (verify) | Session emit + filter keep tagline; meta omit without tagline |
+| 4 | `87c99e5f` | Betty three-surface meta/header/CSS + config coverage |
 
 **Tip:** `8a00e5eb` on `origin/sub/AST-993/AST-1010-header-contact-meta-styles`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1010
+**Publish ref tip (pre-docs):** `d446ab31` — `origin/sub/AST-993/AST-1010-header-contact-meta-styles`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3 match plan: optional `candidate_tagline` in craft/BUILD/DATA_SHAPES + CONTACT/KNOWN/DEFAULT structure; `<h1>` uses `\u00a0• `; meta `Resume of {name}, {title}, specializing in {tagline}` only when all three present; tagline not in body keys; embedded CSS adds golden class rules without `styles07.css`; `.contact` no longer flex chips.
+- Experience emit on this tip still AST-994 `role-subheader` — sibling emit not smuggled into `code(AST-1010)`.
+- Betty `TestAst1010HeaderContactMetaStyles` covers meta present/omit + CSS selectors.
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; in-scope via `docs/features/**`. Substance conforms.
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; in-scope on diff. Substance conforms (one features file per ticket; sibling plans are ancestry).
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; in-scope via bible/tests. Substance conforms (`test(AST-1010)` + one `merge-tests(AST-1010)`).
+
+No **fix-now** product findings.
+
+### Recommended actions
+
+Engineer (`resolve-child`): acknowledge C4 stragglers — no product code change required for those three.
