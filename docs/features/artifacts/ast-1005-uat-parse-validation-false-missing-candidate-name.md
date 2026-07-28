@@ -109,3 +109,20 @@ After AST-996/997 experience job-array contracts, Session Resume Paste craft-bas
 
 ### Recommended actions
 No product fix-now. Resolve may proceed on agent/candidate; Chuckles/Betty can scrub AST-1001 README from this tip / tests line if rollup hygiene requires it.
+
+## Resolution
+
+**Date:** 2026-07-28
+**Review tip:** `32c2338d` (Radia `docs(AST-1005): Radia review — findings`)
+**Overall:** DISCUSS → resolved for User Testing (no fix-now); spawn direction: proceed.
+
+### fix-now
+(none)
+
+### discuss
+1. Cross-ticket AST-1001 bible README on tip via `merge-tests` — accepted as tests-line / rollup hygiene (Chuckles/Betty), not a craft-base product defect. No product change on this resolve.
+
+### advisory
+(none)
+
+**Outcome:** Clean resolve — no code delta vs Radia tip. Proceed to User Testing.
