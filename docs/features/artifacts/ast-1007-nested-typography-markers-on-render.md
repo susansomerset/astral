@@ -65,3 +65,15 @@ Do **not** change these three substitutions, add new marker pairs, or move them 
 - §3.3: core-only change; no new imports across layers.
 - §3.5 naming: private helper `_mark_resume_value` (or equivalent) beside `_apply_resume_text_markers`.
 - §3.6: spike/debug under `debug/spikes/AST-1007/` only if used; never commit spike dumps.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-993/AST-1007-nested-typography-markers-on-render`
+**Plan path:** `docs/features/artifacts/ast-1007-nested-typography-markers-on-render.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `74e6a669` | Deep-walk `_apply_resume_text_markers` via `_mark_resume_value` |
+| 2 | (verify) | Three-surface fixture proof — no leftover `__` / `~~` in HTML |
+
+**Tip:** `74e6a669` on `origin/sub/AST-993/AST-1007-nested-typography-markers-on-render`
