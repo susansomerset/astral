@@ -46,6 +46,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 
 
+### AST-1004 · AST-915 (integration testing ADR)
+
+**Docs-only.** Engineer lands `docs/features/team-chuckles/ast-915-integration-testing-adr.md` + Linear Document on AST-1004. Function-forward map remains sibling **AST-1003** [`integration/README.md`](integration/README.md).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (ADR §§1–8 + Linear Document title `ADR — Integration testing program (AST-915)`) — no pytest. Do **not** invent `tests/integration/scenarios/`.
+
 ### Retired monolith section map
 
 
@@ -281,6 +287,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 **Docs-only** (team-chuckles Betty skills + one engineer pointer + astral plan). Live edits on **`team-chuckles` `main`** @ `4549329` (`qa-child` Integration drift duty + bible-edit scope for `docs/test-bible/integration/**`; `check-linear` §5b no-parallel-queue harness note; `test-child` one-line `tests/integration/` → `[qa-handoff]`); astral **`origin/sub/AST-989/AST-992-betty-skills-integration-drift-duty`** holds the plan doc only. No product `src/`, no pytest, no new integration scenarios. Does **not** rewrite `betty-AGENTS.md` (**AST-991**), fix AST-988 harness red, or expand AST-915 / AST-927 coverage.
 
 **No new component tests.** **`test-child`:** grep/read acceptance on the three skills under `~/team-chuckles` (+ installed `~/.cursor/skills/…`) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-991** out of scope.
+
+### AST-1001 · AST-999 (missing-thread skill policy)
+
+**Docs-only** (team-chuckles orchestration prose + astral plan). Live edits on **`team-chuckles` `main`** @ `7e45ec4` (`do-all-the-things` §3d/§3e/§6, `orientation`, `WAKE_CHEATSHEET`, `chuckles-AGENTS`, `CHUCKLES_QUICKREF` — miss ⇒ comment look path+UUID + `missing thread` + mint + persist + continue, not laptop-block); astral **`origin/sub/AST-999/AST-1001-missing-thread-skill-policy`** holds the plan doc only. No product `src/`, no pytest, no helper/watcher edits (`thread_transcript.py` / `watch_linear.py` stay sibling **AST-1002**).
+
+**No new component tests.** **`test-child`:** grep/read docs-acceptance on the five prose files under `~/team-chuckles` (+ installed `~/.cursor/skills/…` / agents) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-1002** out of scope.
 
 
 ## 2. Where tests live

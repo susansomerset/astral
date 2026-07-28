@@ -1380,6 +1380,8 @@ class TestAst972CandidateStageEligibility:
 
     def test_list_candidate_ids_with_dispatch_tasks(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
+        # AST-1000 / AC4: empty DISTINCT set is a list, not AttributeError
+        assert db.list_candidate_ids_with_dispatch_tasks() == []
         db.save_candidate("c972c", state="ACTIVE_SEARCH", candidate_data={})
         db.save_dispatch_task(
             candidate_id="c972c",
