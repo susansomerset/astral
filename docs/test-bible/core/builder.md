@@ -42,3 +42,26 @@ Equivalent harness:
 | `debug=False` unchanged | All pre-AST-623 rows above; full-file branch lock |
 
 **Betty test fix (AST-623):** Extended **`test_builder.py`** for **`LOCKED_AT_100`** on new **`debug=True`/`False`** branch pairs — not golden log-line asserts.
+
+---
+
+### AST-998 · AST-994
+
+**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html` — per-role `.role` / `.role-subheader` / `.role-meta` / `.role-accomplishments`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Per-role emit + session/base/job surfaces + legacy string | `src/core/builder.py` | **`TestAst998ExperienceJobRender`**; reuse **`TestAst987BuildSessionBaseResume`** (legacy string path) |
+| `body_kind` literal | `src/utils/config.py` | **`TestAst998ExperienceBodyKind`** (primary: **`docs/test-bible/utils/config.md`**) |
+
+**Broken / obsolete this pass:** none — existing builder suite green on job-array product.
+
+**AST-998** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
+  -q
+```

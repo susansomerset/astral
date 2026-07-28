@@ -2079,3 +2079,12 @@ class TestAst997FinalizeExperienceJobArray:
         assert fin["required"] is False
         assert fin["items_schema"] is craft["items_schema"]
         assert craft["required"] is True
+
+
+
+class TestAst998ExperienceBodyKind:
+    """AST-998: BUILD_CONFIG experience body_kind is experience_jobs."""
+
+    def test_experience_body_kind_experience_jobs(self) -> None:
+        assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
+        assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"

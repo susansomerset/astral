@@ -831,3 +831,156 @@ class TestAst987BuildSessionBaseResume:
         )
         assert "Debug session" in html
         get_c.assert_not_called()
+
+
+class TestAst998ExperienceJobRender:
+    """AST-998: shared builders emit per-role HTML for experience job arrays."""
+
+    _JOBS = [
+        {
+            "company": "Acme Corp",
+            "title": "Engineer",
+            "dates": "2020-2023",
+            "location": "Remote",
+            "accomplishments": "Shipped widgets",
+        },
+        {
+            "company": "Beta LLC",
+            "title": "",
+            "dates": "2023",
+            "location": "",
+            "accomplishments": "Led the team",
+        },
+    ]
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_emit_experience_jobs_html_role_chrome(self) -> None:
+        html = builder_mod._emit_experience_jobs_html(self._JOBS)
+        assert 'class="role"' in html
+        assert 'class="role-subheader">Engineer</h3>' in html
+        assert 'class="role-meta">' in html
+        assert "Acme Corp" in html
+        assert "2020-2023" in html
+        assert "Remote" in html
+        assert 'class="role-accomplishments prose-block">Shipped widgets</div>' in html
+        # Title empty → company as subheader; company not repeated in meta
+        assert 'class="role-subheader">Beta LLC</h3>' in html
+        assert "Led the team" in html
+        # No JSON dump of the array
+        assert '"company"' not in html
+
+    def test_emit_skips_non_dict_and_empty_roles(self) -> None:
+        html = builder_mod._emit_experience_jobs_html(
+            ["skip", {}, {"company": "", "title": "", "dates": "", "location": "", "accomplishments": ""}]
+        )
+        assert html == ""
+
+    def test_emit_omits_empty_location_from_meta(self) -> None:
+        html = builder_mod._emit_experience_jobs_html(
+            [
+                {
+                    "company": "Solo",
+                    "title": "Dev",
+                    "dates": "2024",
+                    "location": "",
+                    "accomplishments": "Did stuff",
+                }
+            ]
+        )
+        assert "Solo" in html
+        assert "2024" in html
+        # empty location must not leave a dangling bullet fragment alone — meta still has company+dates
+        assert "Remote" not in html
+
+    def test_render_content_keys_includes_job_array(self) -> None:
+        keys = builder_mod._render_content_keys(
+            {"professional_summary": "S", "experience": self._JOBS, "empty": "  "}
+        )
+        assert "professional_summary" in keys
+        assert "experience" in keys
+        assert "empty" not in keys
+
+    def test_session_builder_renders_roles_not_blob(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {"professional_summary": "Summary", "experience": self._JOBS},
+        )
+        assert 'id="experience"' in html or ">Experience<" in html
+        assert 'class="role-subheader">Engineer</h3>' in html
+        assert "Shipped widgets" in html
+        assert 'class="role-subheader">Beta LLC</h3>' in html
+        assert ".role-subheader" in html  # CSS present
+        assert '"accomplishments"' not in html
+
+    def test_session_legacy_string_experience_still_prose(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {"professional_summary": "Summary", "experience": "Legacy prose blob"},
+        )
+        assert "Legacy prose blob" in html
+        assert 'class="role-subheader"' not in html
+
+    def test_base_resume_renders_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structure = self._structure()
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Ada", "last": "Lovelace", "contact_email": "a@b.c"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {
+                        "professional_summary": "Base summary",
+                        "experience": self._JOBS,
+                    },
+                },
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        assert 'class="role-subheader">Engineer</h3>' in html
+        assert "Acme Corp" in html
+        assert "Shipped widgets" in html
+
+    def test_job_resume_renders_job_array(self) -> None:
+        jobs = self._JOBS
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {
+                "artifacts": {
+                    "resume_content": {
+                        "professional_summary": "Job summary",
+                        "experience": jobs,
+                    }
+                }
+            },
+        }
+        structure = self._structure()
+        cd = _candidate_row(
+            resume_structure=structure,
+            base_resume={"professional_summary": "Base", "experience": "legacy"},
+        )
+        html = builder_mod.build_resume_from_job(job, cd)
+        assert 'class="role-subheader">Engineer</h3>' in html
+        assert "Shipped widgets" in html
+        assert "Job summary" in html

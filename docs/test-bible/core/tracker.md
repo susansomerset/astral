@@ -138,8 +138,6 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
   -q
 ```
 
----
-
 
 ---
 
