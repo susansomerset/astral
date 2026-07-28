@@ -154,3 +154,10 @@ No **fix-now** product findings.
 
 Engineer (`resolve-child`): acknowledge C4 stragglers — no product code change required for those three.
 
+## Resolution
+
+**Date:** 2026-07-28  
+**Outcome:** clean — no product code changes.
+
+Acknowledged Radia’s three **discuss (C4 straggler)** items (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`). Each was Joan-excluded at plan time, in-scope on the three-dot diff, and marked **conforms** in substance. No **fix-now** items. Publish tip after resolve remains product+Betty+Radia stack on `origin/sub/AST-993/AST-1009-education-skills-prior`.
+
