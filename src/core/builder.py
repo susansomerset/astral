@@ -647,6 +647,12 @@ def _emit_html_document(
     hstack = fonts.get("heading_stack", "sans-serif")
     bstack = fonts.get("body_stack", "serif")
     lstack = fonts.get("list_stack", hstack)
+    text_primary = colors.get("text_primary", "#1a1a1a")
+    text_secondary = colors.get("text_secondary", "#444")
+    text_tertiary = colors.get("text_tertiary", "#666")
+    border_light = colors.get("border_light", "#e0e0e0")
+    border_medium = colors.get("border_medium", "#ccc")
+    # emit_prior_experience still drives body-section inclusion via callers; print CSS always has the golden prior-experience break.
 
     name_raw = str(render.get("candidate_name") or "").strip()
     title_raw = str(render.get("candidate_title") or "").strip()
@@ -683,17 +689,16 @@ def _emit_html_document(
 
     ats_html = _emit_ats_block(critical_keywords, ak)
 
-    prior_rule = ""
-    if emit_prior_experience:
-        prior_rule = "\n  #prior-experience { page-break-before: always; }"
-
+    # AST-1020: golden resume stylesheet + Astral cover/ATS/prose-block appendages.
     css = f""":root {{
   --max-width: 800px;
   --accent-color: {accent};
   --header-color: {header_c};
-  --text-primary: #1a1a1a;
-  --text-secondary: #444;
-  --text-tertiary: #666;
+  --text-primary: {text_primary};
+  --text-secondary: {text_secondary};
+  --text-tertiary: {text_tertiary};
+  --border-light: {border_light};
+  --border-medium: {border_medium};
   --header-font-family: {hstack};
   --body-font-family: {bstack};
   --list-font-family: {lstack};
@@ -708,7 +713,7 @@ body {{
   line-height: 1.6;
   font-size: 15px;
 }}
-h1, h2, h3 {{
+h1, h2, h3, .title, .specialties {{
   font-family: var(--header-font-family);
   text-align: center;
 }}
@@ -716,13 +721,39 @@ h1, h2, h3 {{
   font-family: var(--list-font-family);
   text-align: center;
 }}
-p, .prose-block, ul, li {{
+.skill-category h4 {{
+  font-family: var(--header-font-family);
+  text-align: center;
+}}
+p, .role-description, ul, li {{
   font-family: var(--body-font-family);
   text-align: left;
   line-height: 1.25;
-  white-space: pre-wrap;
 }}
-.header {{ max-width: var(--max-width); margin: 0 auto 2px; }}
+p {{ margin-bottom: 12px; }}
+.job-title {{
+  font-family: var(--header-font-family);
+  text-align: left;
+}}
+.dates {{
+  font-family: var(--body-font-family);
+  text-align: left;
+}}
+.competencies-list {{
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  font-size: 13.5px;
+}}
+.skill-category p {{
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  font-size: 13.5px;
+}}
+.header {{
+  max-width: var(--max-width);
+  margin: 0 auto 2px;
+  padding-bottom: 0;
+}}
 h1 {{
   margin: 20px 0 0;
   font-size: 33px;
@@ -731,8 +762,30 @@ h1 {{
   letter-spacing: -0.5px;
   color: var(--header-color);
 }}
-.contact {{ margin: 6px 0 0; font-size: 14px; color: var(--text-secondary); }}
+.title {{
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}}
+.specialties {{
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}}
+.contact {{
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: center;
+}}
+.contact span {{ white-space: nowrap; }}
 .content {{ max-width: var(--max-width); margin: 0 auto; }}
+section {{ margin-bottom: 0; }}
 h2 {{
   margin: 18px 0 2px;
   font-size: 20px;
@@ -751,69 +804,89 @@ h2::before, h2::after {{
 }}
 h2::before {{ margin-right: 12px; }}
 h2::after {{ margin-left: 12px; }}
-.summary-intro {{ margin: 6px; line-height: 1.25; }}
-.competencies-list {{ margin: 6px 0 0; line-height: 1.8; color: var(--text-secondary);
-  text-transform: uppercase; letter-spacing: 0.2px; font-size: 13.5px; }}
-section {{ margin-bottom: 0; }}
-.role {{ margin: 10px 0 14px; }}
-article.role {{ margin: 10px 0 14px; }}
-.role-header {{ text-align: left; margin: 0; }}
-.compact-title {{
-  text-align: left;
-  font-family: var(--header-font-family);
-  font-size: 16px;
-  font-weight: 700;
+.summary-intro {{
+  margin: 6px;
   line-height: 1.25;
-  margin: 8px 0 2px;
+  font-family: var(--body-font-family);
+  text-align: left;
+}}
+.summary-intro:last-child {{ margin-bottom: 0; }}
+.competencies-list {{
+  margin: 6px 0 0;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}}
+.role {{
+  margin-bottom: 12px;
+  page-break-inside: avoid;
+}}
+.role-header {{
+  margin-top: 20px;
+  margin-bottom: 8px;
+}}
+.role-description {{ margin: 8px 0; }}
+.compact-title {{
+  margin: 5px 0 2px;
+  font-size: 16px;
+  font-family: var(--header-font-family);
+  text-align: left;
+}}
+.compact-title strong {{
+  font-weight: 700;
   color: var(--text-primary);
-  text-transform: none;
-  letter-spacing: normal;
 }}
 .compact-location {{
-  text-align: left;
-  font-family: var(--list-font-family);
-  font-size: 13px;
-  line-height: 1.35;
-  margin: 0 0 6px;
-  color: var(--text-secondary);
-}}
-.role-description {{
+  margin: 0 0 4px;
+  font-size: 14.5px;
+  color: var(--text-tertiary);
   font-family: var(--body-font-family);
   text-align: left;
-  margin: 6px 0;
-  line-height: 1.25;
+  line-height: 1.4;
+}}
+.compact-location em {{
+  font-style: italic;
+  font-size: 14.5px;
 }}
 .role ul {{
-  text-align: left;
-  margin: 6px 0 0;
-  padding-left: 1.25em;
+  margin: 4px 0 0;
+  padding-left: 20px;
 }}
-.role li {{
-  font-family: var(--body-font-family);
-  line-height: 1.25;
-  margin: 0 0 4px;
+.role li {{ margin-bottom: 6px; }}
+.role li:last-child {{ margin-bottom: 0; }}
+.education-list {{
+  margin: 8px 0 0;
+  margin-left: 0.5in;
 }}
-.education-list {{ margin: 6px 0 0; }}
 .education-list p {{
-  font-family: var(--body-font-family);
-  text-align: left;
-  margin: 4px 0;
-  line-height: 1.25;
+  margin-bottom: 3px;
+  line-height: 1.1;
 }}
-.skills-grid {{ margin: 6px 0 0; }}
-.skill-category {{ margin: 0 0 8px; }}
-.skill-category h4 {{
+.education-list p:last-child {{ margin-bottom: 0; }}
+.education-list strong {{
   font-family: var(--header-font-family);
-  text-align: left;
-  font-size: 14px;
   font-weight: 700;
-  margin: 0 0 2px;
-  color: var(--text-primary);
 }}
-.skills-grid .skill-category p {{
-  text-align: left;
+.skills-grid {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}}
+.skill-category {{ margin: 0; }}
+.skill-category h4 {{
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}}
+.skill-category p {{
+  margin: 0;
+  line-height: 1.5;
   color: var(--text-secondary);
 }}
+.prose-block {{ white-space: pre-wrap; }}
 .cover-block {{ margin-top: 24px; max-width: var(--max-width); margin-left: auto; margin-right: auto; text-align: left; }}
 .cover-block p {{ white-space: pre-wrap; }}
 .cover-signoff img {{ display: block; margin-bottom: 8px; }}
@@ -829,12 +902,21 @@ article.role {{ margin: 10px 0 14px; }}
   height: {ak["height_px"]}px;
   overflow: {ak["overflow"]};
 }}
+@media (max-width: 600px) {{
+  body {{ padding: 12px; }}
+  h1 {{ font-size: 28px; }}
+  .title {{ font-size: 15px; }}
+  h2 {{ font-size: 18px; }}
+  .contact {{ flex-direction: column; gap: 4px; }}
+  .skills-grid {{ grid-template-columns: 1fr; gap: 12px; }}
+}}
 @media print {{
   body {{ background: #fff; padding: 0; }}
   h2 {{ page-break-after: avoid; }}
   #competencies {{ page-break-after: avoid; }}
+  #prior-experience {{ page-break-before: always; }}
   .role {{ page-break-inside: avoid; }}
-  p, li {{ orphans: 3; widows: 3; }}{prior_rule}
+  p, li {{ orphans: 3; widows: 3; }}
 }}
 """
     title_esc = html.escape(f"{render.get('candidate_name', '')} — Resume".strip() or "Resume")
