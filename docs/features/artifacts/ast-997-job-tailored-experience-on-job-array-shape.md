@@ -141,3 +141,24 @@ Changes: `pin_experience_job_facts_from_base` now matches only on `(company, tit
 | 1–5 | (see tip) | finalize optional job-array schema, draft pin/validate, tracker persist, prompts, Style D tailor debug |
 
 **Tip:** publish-ref tip after this stub append.
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Publish ref tip:** (see Linear / post-push SHA) on `origin/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape`
+**Baseline:** `origin/dev`
+**Overall:** DISCUSS
+
+### What’s solid
+- Finalize reuses shared `_EXPERIENCE_JOB_ITEM_SCHEMA` via optional array field; draft normalize/validate keeps job arrays; pin by `(company, title)` only (no index fallback).
+- Tracker persist/`_resume_section_has_body` keep non-empty job arrays; four hop prompts teach tailor-accomplishments-only.
+- Style D `_debug_experience_jobs` on draft/finalize when `debug=True`; Betty `test`/`merge-tests` on test-tree only.
+
+### Issues
+**discuss (C4 stragglers):** Joan excluded debug/docs/engineer-test-tree/UI auth+placement/naming statutes that the tip brings in-scope via AST-996 merge + features/tests — all scored **conforms** (no product defect).
+
+**advisory:** `agent.py` imports private `_debug_experience_jobs` (tracker correctly uses public `is_experience_job_array`).
+
+### Recommended actions
+No fix-now. Stragglers are process notes — resolve-child may proceed without product edits unless Ada wants a public debug-helper alias.
