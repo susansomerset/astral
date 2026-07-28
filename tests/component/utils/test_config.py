@@ -1473,19 +1473,19 @@ class TestAst575PronounTokens:
             assert cfg.TOKEN_SOURCES[name] == {"source": "pronoun"}
 
     def test_resolve_all_five_tokens_she_her(self) -> None:
-        candidate = {"profile": {"pronoun_preference": "she/her"}}
+        candidate = {"pronouns": "she/her"}
         text = "{$THEY} {$THEIR} {$THEIRS} {$THEM} {$THEMSELF}"
         out = cfg.resolve_tokens(text, candidate, "draft_cover_letter")
         assert out == "she her hers her herself"
 
     def test_resolve_default_when_preference_missing(self) -> None:
         text = "{$THEY} {$THEIR} {$THEIRS} {$THEM} {$THEMSELF}"
-        for candidate in ({}, {"profile": {}}):
+        for candidate in ({}, {"contact": {}}):
             out = cfg.resolve_tokens(text, candidate, "draft_cover_letter")
             assert out == "they their theirs them themselves"
 
     def test_resolve_default_when_preference_invalid(self) -> None:
-        candidate = {"profile": {"pronoun_preference": "custom/xyz"}}
+        candidate = {"pronouns": "custom/xyz"}
         out = cfg.resolve_tokens("{$THEY}", candidate, "draft_cover_letter")
         assert out == "they"
 
@@ -1498,30 +1498,72 @@ class TestAst575PronounTokens:
         ],
     )
     def test_resolve_preference_subject_form(self, preference: str, expected_they: str) -> None:
-        candidate = {"profile": {"pronoun_preference": preference}}
+        candidate = {"pronouns": preference}
         assert cfg.resolve_tokens("{$THEY}", candidate, "draft_cover_letter") == expected_they
 
     def test_first_name_unchanged_with_pronoun_set(self) -> None:
         candidate = {
-            "profile": {"first": "Ada", "pronoun_preference": "she/her"},
+            "first": "Ada",
+            "pronouns": "she/her",
         }
         out = cfg.resolve_tokens("Hi {$FIRST_NAME}, {$THEY}", candidate, "draft_cover_letter")
         assert out == "Hi Ada, she"
 
 
-@pytest.mark.skip(reason="AST-510 canceled — middle name not in DATA_SHAPES on integration branches")
 class TestAst510MiddleNameConfig:
-    """AST-510: profile.middle DATA_SHAPES field + MIDDLE_NAME token."""
+    """AST-510 canceled — middle name removed by AST-1014; first/last/pronouns + FULL_NAME remain."""
 
-    def test_middle_name_in_candidate_profile_shapes(self) -> None:
+    def test_middle_name_absent_from_candidate_profile_shapes(self) -> None:
         sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
         contact = next(s for s in sections if s["label"] == "Contact Information")
         keys = [f["key"] for f in contact["fields"]]
-        assert keys.index("profile.middle") == keys.index("profile.first") + 1
-        assert keys.index("profile.last") == keys.index("profile.middle") + 1
+        assert "profile.middle" not in keys
+        assert "middle" not in keys
+        assert "first" in keys
+        assert "last" in keys
+        assert "pronouns" in keys
 
-    def test_middle_name_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["MIDDLE_NAME"] == {"source": "candidate", "path": "profile.middle"}
+    def test_middle_name_token_source_removed(self) -> None:
+        assert "MIDDLE_NAME" not in cfg.TOKEN_SOURCES
+
+    def test_full_name_token_source(self) -> None:
+        assert cfg.TOKEN_SOURCES["FULL_NAME"] == {"source": "candidate", "path": "full"}
+
+
+class TestAst1014CandidateLibraryConfig:
+    """AST-1014: contact/context/artifacts library + name columns in config contract."""
+
+    def test_library_config_vocabulary(self) -> None:
+        lib = cfg.CANDIDATE_LIBRARY_CONFIG
+        assert lib["name_columns"] == ("first", "last", "full", "pronouns")
+        assert lib["context_key_remap"]["starting_resume_text"] == "raw_resume"
+        assert "title_patterns" in lib["contact_keys"]
+        assert "hopes" in lib["context_keys"]
+
+    def test_data_shapes_use_columns_and_contact_not_profile(self) -> None:
+        contact_section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        keys = [f["key"] for f in contact_section["fields"]]
+        assert "first" in keys
+        assert "contact.contact_email" in keys
+        assert not any(k.startswith("profile.") for k in keys)
+        resume_fields = next(
+            s for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] if s["label"] == "Original Resume Text"
+        )
+        assert resume_fields["fields"][0]["key"] == "context.raw_resume"
+
+    def test_token_sources_use_library_paths(self) -> None:
+        assert cfg.TOKEN_SOURCES["FIRST_NAME"]["path"] == "first"
+        assert cfg.TOKEN_SOURCES["STARTING_RESUME_TEXT"]["path"] == "context.raw_resume"
+        assert cfg.TOKEN_SOURCES["TITLE_PATTERNS"]["path"] == "contact.title_patterns"
+        assert "profile." not in str(cfg.TOKEN_SOURCES)
+
+    def test_intake_build_field_paths_use_contact_title_patterns(self) -> None:
+        assert "contact.title_patterns" in cfg.INTAKE_CONFIG["build_field_paths"]
+        assert not any(p.startswith("profile.") for p in cfg.INTAKE_CONFIG["build_field_paths"])
 
 
 class TestAst517ResumeStructureConfig:
@@ -2088,3 +2130,36 @@ class TestAst998ExperienceBodyKind:
     def test_experience_body_kind_experience_jobs(self) -> None:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
+
+class TestAst1010CandidateTaglineConfig:
+    """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""
+
+    def test_tagline_in_contact_and_known_ids(self) -> None:
+        assert "candidate_tagline" in cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS
+        assert "candidate_tagline" in cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS
+        contact = cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS
+        assert contact.index("candidate_title") < contact.index("candidate_tagline")
+        assert contact.index("candidate_tagline") < contact.index("candidate_contact_detail")
+
+    def test_default_structure_orders_unique_with_tagline(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        assert "candidate_tagline" in sections
+        assert sections["candidate_tagline"]["enabled"] is True
+        assert sections["candidate_tagline"]["job_agent_editable"] is False
+        assert sections["candidate_tagline"]["order"] == 2
+        assert sections["candidate_contact_detail"]["order"] == 3
+        orders = [spec["order"] for spec in sections.values()]
+        assert len(orders) == len(set(orders))
+        assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+
+    def test_craft_and_artifact_schema_optional_tagline(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["candidate_tagline"]
+        assert craft == {"type": "str", "required": False}
+        art = cfg.BUILD_CONFIG["artifact_shapes"]["resume_content"]["candidate_tagline"]
+        assert art == {"type": "str", "required": False}
+        supported = cfg.BUILD_CONFIG["supported_sections"]["candidate_tagline"]
+        assert supported["heading_level"] == "none"
+        keys = [row["key"] for row in cfg.DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]]
+        assert "candidate_tagline" in keys
+        assert keys.index("candidate_title") < keys.index("candidate_tagline")
+        assert keys.index("candidate_tagline") < keys.index("candidate_contact_detail")

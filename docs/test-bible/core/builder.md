@@ -47,14 +47,14 @@ Equivalent harness:
 
 ### AST-998 · AST-994
 
-**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html` — per-role `.role` / `.role-subheader` / `.role-meta` / `.role-accomplishments`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**.
+**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Per-role emit + session/base/job surfaces + legacy string | `src/core/builder.py` | **`TestAst998ExperienceJobRender`**; reuse **`TestAst987BuildSessionBaseResume`** (legacy string path) |
 | `body_kind` literal | `src/utils/config.py` | **`TestAst998ExperienceBodyKind`** (primary: **`docs/test-bible/utils/config.md`**) |
 
-**Broken / obsolete this pass:** none — existing builder suite green on job-array product.
+**Broken / obsolete this pass:** none at AST-998 land — chrome asserts revised under **AST-1008**.
 
 **AST-998** narrowed run:
 
@@ -65,3 +65,119 @@ Equivalent harness:
   tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
   -q
 ```
+
+---
+
+### AST-1007 · AST-993
+
+**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → NBSP-bullet spacing) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Deep-walk helper (job-array + list/dict nests; no mutate; non-strings unchanged) | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers::test_apply_markers_deep_walks_job_array_and_list_leaves`** |
+| Three-surface HTML: no literal `__` / `~~`; NBSP / `\u2011` visible | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers`** session / base / job methods |
+| Existing top-level markers regression | `src/core/builder.py` | **`TestBuilderHelpers::test_applies_profile_contact_and_markers`** |
+| Experience job-array emit still green | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
+
+**Broken / obsolete this pass:** none — prior shallow-copy helper tests remain valid (top-level strings + unmarked nested leaves).
+
+**Integration:** no existing `tests/integration/` scenario asserts resume typography markers — no integration revision this pass.
+
+**AST-1007** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_applies_profile_contact_and_markers \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  -q
+```
+
+
+---
+
+### AST-1008 · AST-993
+
+**AST-1008:** Rewrite `_emit_experience_jobs_html` to golden role **articles**: `div.role-header` / `p.compact-title` (`Title • Company`) / `p.compact-location` (`dates: place (arrangement)` when `location` contains config sep), optional `p.role-description` for accomplishments lines prefixed with `BUILD_CONFIG["experience_role_layout"]["lead_line_prefix"]` (`<no bullet>`), then `<ul><li>` for remaining lines. Embedded CSS swaps AST-998 `.role-subheader` / `.role-meta` / `.role-accomplishments` for golden selectors. Education/skills/prior/header/meta stay siblings **AST-1009** / **AST-1010**. Markers remain **AST-1007**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config literals (lead prefix + location sep) | `src/utils/config.py` | **`TestAst1008ExperienceGoldenLayout::test_experience_role_layout_config_keys`** (also **`docs/test-bible/utils/config.md`**) |
+| Compact location + lead/bullet split helpers | `src/core/builder.py` | **`test_format_compact_location_helpers`**, **`test_split_role_accomplishments_lead_vs_bullets`** |
+| Somerset lead paragraph vs list items + sibling no-lead role | `src/core/builder.py` | **`test_emit_somerset_lead_paragraph_not_list_item`** |
+| Three-surface HTML parity | `src/core/builder.py` | session / base / job methods on **`TestAst1008ExperienceGoldenLayout`** |
+| Revised AST-998 chrome asserts (golden classes) | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
+
+**Broken / obsolete this pass:** **`TestAst998ExperienceJobRender`** asserts on `.role-subheader` / `.role-meta` / `.role-accomplishments` — revised to golden article/compact/list markup in the same pass.
+
+**Integration:** no existing scenario asserts experience role chrome — no integration revision.
+
+**AST-1008** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
+  -q
+```
+
+---
+
+### AST-1009 · AST-993
+
+**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Education / skills helpers | `src/core/builder.py` | **`TestAst1009EducationSkillsPrior`** helper methods |
+| Three-surface HTML (prior + edu ≥3 strong + skills ≥8 categories) | `src/core/builder.py` | **`TestAst1009EducationSkillsPrior`** session / base / job |
+| Existing body-section regression | `src/core/builder.py` | **`TestBuilderHelpers::test_emits_body_sections_and_cover_blocks`** |
+
+**Broken / obsolete this pass:** none — prior dump assertions still green (`skills-grid` present; section count unchanged).
+
+**Integration:** no existing scenario asserts education/skills/prior markup — no revision.
+
+**AST-1009** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
+  -q
+```
+
+---
+
+### AST-1010 · AST-993
+
+**AST-1010:** Shared resume HTML header joins `Name\u00a0• Title`; optional `candidate_tagline` feeds `<meta name="description">` (`Resume of {name}, {title}, specializing in {tagline}`) and never appears in header/main body; embedded CSS expands for golden layout class readiness (`.compact-title`, `.role-description`, `.education-list`, `.skills-grid`, …) without an external `styles07.css` link. Experience/education/skills **emit** markup stays siblings **AST-1008** / **AST-1009**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header NBSP-bullet join + ATS meta present/omit + tagline body exclusion + CSS selectors | `src/core/builder.py` | **`TestAst1010HeaderContactMetaStyles`** (session / base / job) |
+| Optional tagline contract + contact-adjacent structure | `src/utils/config.py` | **`TestAst1010CandidateTaglineConfig`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Experience emit regression (AST-998 / AST-1008 as present on tip) | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
+| Nested markers regression | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers`** |
+
+**Broken / obsolete this pass:** none for header/meta/CSS on this product tip. Sibling emit chrome may already be revised on `origin/tests` by AST-1008/1009 — do not re-litigate here.
+
+**Integration:** no existing scenario asserts resume header/meta/CSS — no revision.
+
+**AST-1010** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  -q
+```
+
+---
+
+### AST-1014 · AST-952
+
+`_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.

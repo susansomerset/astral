@@ -44,7 +44,7 @@ def _build_payload() -> dict[str, str]:
         "context.strengths": "Strong",
         "context.priorities": "Priority",
         "context.deal_breakers": "No remote",
-        "profile.title_patterns": "Engineer\nLead",
+        "contact.title_patterns": "Engineer\nLead",
         "company_search_terms": "Acme\nBeta Corp",
     }
 
@@ -129,9 +129,9 @@ class TestIntakeSessionFlow:
         assert len(dto["transcript"]) == 0
         assert saved
         ctx = saved[0][1]["context"]
-        assert ctx["starting_resume_text"] == "Resume body"
-        assert ctx["sample_cover_text"] == "Cover"
-        assert ctx["linkedin_profile_text"] == "LinkedIn"
+        assert ctx["raw_resume"] == "Resume body"
+        assert ctx["raw_sample"] == "Cover"
+        assert ctx["raw_profile"] == "LinkedIn"
         row = await _wait_for_transcript_assistant(dto["session_id"])
         assert len(row["transcript"]) == 2
         assert row["transcript"][-1]["ready_to_build"] is False
@@ -231,7 +231,7 @@ class TestIntakeSessionFlow:
         assert save_calls
         build_save = next(c for c in save_calls if "bio_summary" in (c[1].get("context") or {}))
         assert build_save[1]["context"]["bio_summary"] == "Bio"
-        assert build_save[1]["profile"]["title_patterns"] == "Engineer\nLead"
+        assert build_save[1]["contact"]["title_patterns"] == "Engineer\nLead"
         assert complete_calls == ["cand-1"]
 
         with pytest.raises(ValueError, match="build already completed"):

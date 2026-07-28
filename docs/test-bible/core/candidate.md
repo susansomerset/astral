@@ -366,3 +366,45 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/core/test_candidate.py::TestAst517ResumeStructure \
   -q
 ```
+
+---
+
+### AST-1014 · AST-952
+
+**AST-1014:** Contact / context / artifacts library under `candidate_data` plus table columns `first` / `last` / `full` / `pronouns`. Remaps `profile`→`contact`, context `starting_resume_text`→`raw_resume` (and LinkedIn/sample siblings), seeds empty `hopes`/`interests`/`concerns`. `build_candidate_token_view`, URL normalize, refuse `profile` writes, library `debug=` contract. Boundaries: Ruth (AST-1015), PREAMBLE_CONFIG (AST-1016), mechanical UI (AST-1017).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token view / URL normalize / save refuse+columns / debug | `src/core/candidate.py` | **`TestAst1014CandidateLibrary`** |
+| Library config + shapes/tokens + middle retired | `src/utils/config.py` | **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**, **`TestAst575PronounTokens`** |
+| Contact render + coerce columns | `src/core/builder.py` | **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`** |
+| Idempotent library migration | `src/data/database.py` | **`TestAst1014CandidateLibraryMigration`** (primary map: **`docs/test-bible/data/database/candidate_migrations.md`**) |
+| PUT refuse `profile`; signature under `contact` | `src/ui/api/api_candidate.py` | **`TestCandidateRoutes::test_update_rejects_legacy_profile_body`** (+ revised signature path) |
+| Profile / Admin one-home UI (§6c) | pages | **`test_CandidateProfile.test.tsx`**, **`test_AdminManageCandidates.test.tsx`** |
+| Gazer title_patterns under `contact` | `src/core/gazer.py` | revised **`TestCompiledTitlePatterns`** |
+| Intake context `raw_*` persist | `src/core/intake.py` | revised **`TestIntakeSessionFlow`** |
+
+**Broken / obsolete (Betty revision):** fixtures using `candidate_data.profile`, `starting_resume_text` / `linkedin_profile_text` / `sample_cover_text`, `_apply_profile_to_render_dict`, `pronoun_preference` nested under profile, `state="NEW"` in core `seeded_db`, AST-510 middle shape/token asserts, Profile/Admin middle + `profile.*` payloads; AST-575 migration end-state now columns after library migrate.
+
+**Integration:** no existing scenario asserts profile/contact library homes — no revision; do not invent new integration coverage.
+
+**AST-1014** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1014CandidateLibrary \
+  tests/component/utils/test_config.py::TestAst1014CandidateLibraryConfig \
+  tests/component/utils/test_config.py::TestAst510MiddleNameConfig \
+  tests/component/utils/test_config.py::TestAst575PronounTokens \
+  tests/component/core/test_builder.py::TestAst1014BuilderContact \
+  tests/component/core/test_builder.py::TestBuilderHelpers \
+  tests/component/data/database/test_candidate_migrations.py \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_legacy_profile_body \
+  tests/component/core/test_gazer.py::TestCompiledTitlePatterns \
+  tests/component/core/test_intake.py::TestIntakeSessionFlow::test_create_session_persists_source_materials \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```

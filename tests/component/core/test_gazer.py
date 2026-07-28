@@ -72,30 +72,30 @@ class TestCompiledTitlePatterns:
         assert gazer_mod._compiled_title_patterns({"candidate_data": "bad"}) == []
 
     def test_returns_empty_for_non_dict_profile(self) -> None:
-        assert gazer_mod._compiled_title_patterns({"candidate_data": {"profile": "bad"}}) == []
+        assert gazer_mod._compiled_title_patterns({"candidate_data": {"contact": "bad"}}) == []
 
     def test_skips_invalid_regex_lines(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": "[unclosed"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "[unclosed"}}}
         assert gazer_mod._compiled_title_patterns(ctx) == []
 
     def test_reads_title_patterns_alias(self) -> None:
-        ctx = {"candidate_data": {"profile": {"TITLE_PATTERNS": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"TITLE_PATTERNS": "engineer"}}}
         assert len(gazer_mod._compiled_title_patterns(ctx)) == 1
 
     def test_coerces_falsy_pattern_source(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": 0}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": 0}}}
         assert gazer_mod._compiled_title_patterns(ctx) == []
 
     def test_coerces_truthy_non_string_pattern_source(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": ("engineer",)}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": ("engineer",)}}}
         assert len(gazer_mod._compiled_title_patterns(ctx)) == 1
 
     def test_skips_blank_pattern_lines(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": "\nengineer\n"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "\nengineer\n"}}}
         assert len(gazer_mod._compiled_title_patterns(ctx)) == 1
 
     def test_compiles_valid_patterns(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer\n"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer\n"}}}
         patterns = gazer_mod._compiled_title_patterns(ctx)
         assert len(patterns) == 1
         assert patterns[0].search("senior engineer role")
@@ -108,7 +108,7 @@ class TestValidateTitleBatch:
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
         jobs = [{"astral_job_id": "job-1", "job_data": {"raw_job_listing": "anything"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, {"candidate_data": {}}, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 1, "failed": 0, "total": 1}
         transition.assert_called_once_with(["job-1"], "VALID_TITLE")
 
     @pytest.mark.asyncio
@@ -123,7 +123,7 @@ class TestValidateTitleBatch:
     async def test_rejects_non_matching_listing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         jobs = [{"astral_job_id": "job-2", "job_data": {"raw_job_listing": "janitor"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, ctx, debug=True)
         assert out["failed"] == 1
@@ -133,7 +133,7 @@ class TestValidateTitleBatch:
     async def test_rejects_without_debug_logging(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         jobs = [{"astral_job_id": "job-8", "job_data": {"raw_job_listing": "janitor"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, ctx, debug=False)
         assert out["failed"] == 1
@@ -1004,7 +1004,7 @@ class TestValidateTitleBatchDebugPaths:
     async def test_pass_fail_and_summary_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         jobs = [
             {"astral_job_id": "job-ok", "job_data": {"raw_job_listing": "senior engineer"}},
             {"astral_job_id": "job-bad", "job_data": {"raw_job_listing": "janitor"}},
@@ -1066,7 +1066,7 @@ class TestProcessGazerBatchDebugPaths:
         monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", MagicMock())
         monkeypatch.setattr(gazer_mod, "update_company_last_scan_at", MagicMock())
 
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         outcomes = await gazer_mod.process_gazer_batch(
             "batch-1",
             [{"short_name": "goodco", "job_site": "https://example.com/good"}],

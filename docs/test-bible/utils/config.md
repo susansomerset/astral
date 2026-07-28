@@ -880,3 +880,45 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
   -q
 ```
+
+---
+
+### AST-1008 · AST-993
+
+**AST-1008:** `BUILD_CONFIG["experience_role_layout"]` — `lead_line_prefix` (`<no bullet>`) + `location_arrangement_sep` (` / `). Primary emit coverage: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| experience_role_layout keys | `src/utils/config.py` | **`TestAst1008ExperienceGoldenLayout::test_experience_role_layout_config_keys`** (in `test_builder.py`) |
+| experience body_kind unchanged | `src/utils/config.py` | **`TestAst998ExperienceBodyKind`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout::test_experience_role_layout_config_keys \
+  tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
+  -q
+```
+
+---
+
+### AST-1010 · AST-993
+
+**AST-1010:** Optional `candidate_tagline` on craft_resume_base + resume_content shapes; contact-adjacent id in `RESUME_STRUCTURE_CONTACT_SECTION_IDS` / `KNOWN` / `DEFAULT` (order 2; contact bumped to 3); `DATA_SHAPES` base_resume_structure field. Primary HTML header/meta/CSS: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tagline contract + structure orders | `src/utils/config.py` | **`TestAst1010CandidateTaglineConfig`** |
+| Default catalog still equals known ids | `src/utils/config.py` | **`TestAst517ResumeStructureConfig`** (regression) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/utils/test_config.py::TestAst517ResumeStructureConfig \
+  -q
+```
+
+---
+
+### AST-1014 · AST-952
+
+`CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.
