@@ -47,14 +47,14 @@ Equivalent harness:
 
 ### AST-998 · AST-994
 
-**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html` — per-role `.role` / `.role-subheader` / `.role-meta` / `.role-accomplishments`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**.
+**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Per-role emit + session/base/job surfaces + legacy string | `src/core/builder.py` | **`TestAst998ExperienceJobRender`**; reuse **`TestAst987BuildSessionBaseResume`** (legacy string path) |
 | `body_kind` literal | `src/utils/config.py` | **`TestAst998ExperienceBodyKind`** (primary: **`docs/test-bible/utils/config.md`**) |
 
-**Broken / obsolete this pass:** none — existing builder suite green on job-array product.
+**Broken / obsolete this pass:** none at AST-998 land — chrome asserts revised under **AST-1008**.
 
 **AST-998** narrowed run:
 
@@ -90,6 +90,36 @@ Equivalent harness:
   tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
   tests/component/core/test_builder.py::TestBuilderHelpers::test_applies_profile_contact_and_markers \
   tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  -q
+```
+
+
+---
+
+### AST-1008 · AST-993
+
+**AST-1008:** Rewrite `_emit_experience_jobs_html` to golden role **articles**: `div.role-header` / `p.compact-title` (`Title • Company`) / `p.compact-location` (`dates: place (arrangement)` when `location` contains config sep), optional `p.role-description` for accomplishments lines prefixed with `BUILD_CONFIG["experience_role_layout"]["lead_line_prefix"]` (`<no bullet>`), then `<ul><li>` for remaining lines. Embedded CSS swaps AST-998 `.role-subheader` / `.role-meta` / `.role-accomplishments` for golden selectors. Education/skills/prior/header/meta stay siblings **AST-1009** / **AST-1010**. Markers remain **AST-1007**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config literals (lead prefix + location sep) | `src/utils/config.py` | **`TestAst1008ExperienceGoldenLayout::test_experience_role_layout_config_keys`** (also **`docs/test-bible/utils/config.md`**) |
+| Compact location + lead/bullet split helpers | `src/core/builder.py` | **`test_format_compact_location_helpers`**, **`test_split_role_accomplishments_lead_vs_bullets`** |
+| Somerset lead paragraph vs list items + sibling no-lead role | `src/core/builder.py` | **`test_emit_somerset_lead_paragraph_not_list_item`** |
+| Three-surface HTML parity | `src/core/builder.py` | session / base / job methods on **`TestAst1008ExperienceGoldenLayout`** |
+| Revised AST-998 chrome asserts (golden classes) | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
+
+**Broken / obsolete this pass:** **`TestAst998ExperienceJobRender`** asserts on `.role-subheader` / `.role-meta` / `.role-accomplishments` — revised to golden article/compact/list markup in the same pass.
+
+**Integration:** no existing scenario asserts experience role chrome — no integration revision.
+
+**AST-1008** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
   -q
 ```
 
