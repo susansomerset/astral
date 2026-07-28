@@ -105,6 +105,12 @@ _EXPERIENCE_JOB_ARRAY_FIELD: Dict[str, Any] = {
     "required": True,
     "items_schema": _EXPERIENCE_JOB_ITEM_SCHEMA,
 }
+# AST-997: finalize sections optional; same items_schema identity as craft-base.
+_EXPERIENCE_JOB_ARRAY_FIELD_OPTIONAL: Dict[str, Any] = {
+    "type": "list",
+    "required": False,
+    "items_schema": _EXPERIENCE_JOB_ITEM_SCHEMA,
+}
 
 # Optional TASK_CONFIG.task_type: CRAFT | RUBRIC | CHAT | CHAIN (schema-only except CHAIN in consult).
 TASK_TYPES = frozenset({"CRAFT", "RUBRIC", "CHAT", "CHAIN"})
@@ -625,7 +631,7 @@ TASK_CONFIG = {
             "candidate_contact_detail": {"type": "str", "required": False},
             "professional_summary": {"type": "str", "required": False},
             "core_competencies": {"type": "str", "required": False},
-            "experience": {"type": "str", "required": False},
+            "experience": _EXPERIENCE_JOB_ARRAY_FIELD_OPTIONAL,
             "prior_experience": {"type": "str", "required": False},
             "education_certifications": {"type": "str", "required": False},
             "technical_skills": {"type": "str", "required": False},

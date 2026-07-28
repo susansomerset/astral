@@ -904,6 +904,8 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
         if not isinstance(block, dict):
             continue
         for sid, val in block.items():
+            if sid == "experience" and _is_experience_job_array(val):
+                continue
             if _coerce_resume_section_string(inner.get(sid)):
                 continue
             text = _coerce_resume_section_string(val)
@@ -912,11 +914,54 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
     for key, val in list(inner.items()):
         if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
             continue
+        if key == "experience" and _is_experience_job_array(val):
+            continue
         if isinstance(val, (list, dict)):
             text = _coerce_resume_section_string(val)
             if text:
                 inner[key] = text
     _apply_draft_job_resume_section_aliases(inner)
+
+
+def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> None:
+    """Restore company/title/dates/location from base jobs matched by (company, title)."""
+    if not isinstance(payload, dict) or not isinstance(candidate_data, dict):
+        return
+    artifacts = candidate_data.get("artifacts")
+    base = artifacts.get("base_resume") if isinstance(artifacts, dict) else None
+    if not isinstance(base, dict):
+        return
+    base_exp = base.get("experience")
+    tailored = payload.get("experience")
+    if not _is_experience_job_array(base_exp) or not _is_experience_job_array(tailored):
+        return
+    unused = list(base_exp)
+    for job in tailored:
+        if not isinstance(job, dict):
+            continue
+        pair = (
+            str(job.get("company") or "").strip().lower(),
+            str(job.get("title") or "").strip().lower(),
+        )
+        match_i = None
+        for i, base_job in enumerate(unused):
+            if not isinstance(base_job, dict):
+                continue
+            base_pair = (
+                str(base_job.get("company") or "").strip().lower(),
+                str(base_job.get("title") or "").strip().lower(),
+            )
+            if base_pair == pair:
+                match_i = i
+                break
+        if match_i is None:
+            continue
+        base_job = unused.pop(match_i)
+        for field in ("company", "title", "dates", "location"):
+            if field in base_job:
+                job[field] = base_job[field]
+            elif field == "location":
+                job[field] = ""
 
 
 def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Optional[str]:
@@ -938,11 +983,24 @@ def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Opt
             return f"Unknown resume section key '{key}' (not in candidate catalog: {sorted(allowed)})"
         if val is None or val == "":
             continue
+        if key == "experience":
+            if _is_experience_job_array(val):
+                for job in val:
+                    if not isinstance(job, dict):
+                        return "Section 'experience' must be a job array or prose string"
+                    if not isinstance(job.get("location"), str):
+                        job["location"] = "" if job.get("location") is None else str(job.get("location") or "")
+                continue
+            if isinstance(val, str):
+                continue
+            if isinstance(val, (list, dict)):
+                return "Section 'experience' must be a job array or prose string"
         text = _coerce_resume_section_string(val)
         if text is None:
             return f"Section '{key}' must be prose text (string or coercible list)"
         if text != val:
             payload[key] = text
+    pin_experience_job_facts_from_base(payload, candidate_data)
     return None
 
 
