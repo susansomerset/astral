@@ -966,3 +966,15 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
 ```
+
+---
+
+### AST-1014 · AST-952
+
+Candidate Profile + Admin Manage Candidates edit columns + `contact` (no `profile.*`); §6c routed Profile page; middle skipped. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```

@@ -273,3 +273,7 @@ External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwri
 **AST-892 revision:** skip path returns `skipped` + work-only `total` (pure skip → `total=0`); claim/count exclusion is primary — see **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-892**).
 
 Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils/config.md`** (**AST-882**).
+
+### AST-1014 · AST-952
+
+`title_patterns` under `contact`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — revised **`TestCompiledTitlePatterns`**.

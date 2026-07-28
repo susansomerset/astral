@@ -161,7 +161,7 @@ Equivalent harness:
 | Experience emit regression (AST-998 / AST-1008 as present on tip) | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
 | Nested markers regression | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers`** |
 
-**Broken / obsolete this pass:** none for header/meta/CSS on this product tip. Sibling emit chrome may already be revised on `origin/tests` by AST-1008/1009 — do not re-litigate here.
+**Broken / obsolete this pass:** none for header/meta/CSS on this product tip. Sibling emit chrome may already be revised on `origin/tests` by AST-1008/1009 — do not re-litigate here. **AST-1020** revises the pre–Take-2 negative contact-flex assert in **`TestAst1010HeaderContactMetaStyles`** (full golden stylesheet → **`TestAst1020GoldenStylesheet`**).
 
 **Integration:** no existing scenario asserts resume header/meta/CSS — no revision.
 
@@ -175,3 +175,39 @@ Equivalent harness:
   tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
   -q
 ```
+
+---
+
+### AST-1020 · AST-1019
+
+**AST-1020:** Shared resume embedded `<style>` matches Take 2 golden rules (contact flex, role/education/skills spacing/type, skills CSS grid, all-caps competencies/skills, unused `.title`/`.specialties`/`.job-title`/`.dates`, mobile + print including always-on `#prior-experience { page-break-before: always }`); `BUILD_CONFIG["default_style"]["colors"]` exposes golden text/border tokens; Astral `.prose-block` / cover / ATS appendages remain; no external stylesheet. Title/meta emit stays sibling **AST-1021**. Markup emit stays **AST-1008** / **AST-1009**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Golden stylesheet + three surfaces + Astral appendages | `src/core/builder.py` | **`TestAst1020GoldenStylesheet`** (session / base / job) |
+| Text/border color tokens + accent/header/page_bg parity | `src/utils/config.py` | **`TestAst1020DefaultStyleColorTokens`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Header/meta/CSS selectors regression | `src/core/builder.py` | **`TestAst1010HeaderContactMetaStyles`** (negative flex assert removed) |
+| Experience / education / skills emit regression | `src/core/builder.py` | **`TestAst998ExperienceJobRender`**, **`TestAst1008ExperienceGoldenLayout`**, **`TestAst1009EducationSkillsPrior`** |
+
+**Broken / obsolete this pass:** **`TestAst1010HeaderContactMetaStyles`** one-line “contact flex not present” assert — obsolete under Take 2 golden CSS; removed; golden flex covered by **`TestAst1020GoldenStylesheet`**.
+
+**Integration:** no existing scenario asserts resume stylesheet — no revision; do not invent new integration coverage.
+
+**AST-1020** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  tests/component/utils/test_config.py::TestAst1020DefaultStyleColorTokens \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior \
+  -q
+```
+
+---
+
+### AST-1014 · AST-952
+
+`_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.

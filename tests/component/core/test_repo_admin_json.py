@@ -250,6 +250,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_candidate_response",
         "intake_initiate_candidate",
         "parse_job_list",
+        "preamble_validate_response",
         "prefilter_company",
         "propose_application_responses",
         "qualify_job_listings",
@@ -261,7 +262,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (38 rows after AST-878)."""
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (39 rows after AST-1015)."""
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
         repo = Path("data/admin/agent_task.json")
@@ -269,9 +270,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_38_current_catalog_keys(self) -> None:
+    def test_repo_json_has_39_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 38
+        assert len(rows) == 39
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -287,7 +288,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_38_current_rows(
+    def test_startup_apply_loads_all_39_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -305,7 +306,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 38
+            assert count == 39
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -336,6 +337,19 @@ class TestAst878FetchCulturePagesCatalogRow:
         assert by["analysis_upshot"]["task_seq"] == 9
 
 
+class TestAst1015PreambleValidateCatalogRow:
+    """AST-1015: Ruth preamble_validate_response row in repo agent_task JSON."""
+
+    def test_ruth_preamble_validate_response_row(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["preamble_validate_response"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_name"] == "Validate Preamble Answer"
+        assert row["task_group_name"] == "Candidate Preamble"
+        assert "PREAMBLE ANSWER VALIDATION" in row["cache_prompt"]
+        assert "Valid | Try Again | Escalate" in row["cache_prompt"]
+        assert "agent_payload.outcome" in row["user_prompt"]
 
 
 AST787_EXPECTED_AGENT_IDS = frozenset(

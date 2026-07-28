@@ -142,3 +142,19 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+---
+
+### AST-1015 · AST-952
+
+**Product:** Add **`preamble_validate_response`** current row (`college_intern_ruth`, Candidate Preamble); keep **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-identical (AST-786 contract). Catalog size **38 → 39**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog count + frozenset + startup apply | `data/admin/agent_task.json`, fixture | `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` |
+| Ruth row fields | same | `tests/component/core/test_repo_admin_json.py::TestAst1015PreambleValidateCatalogRow` |
+
+**Broken / revised:** **`TestAst786AgentTaskRepoJsonSeed`** — assert **39** rows; **`AST786_EXPECTED_TASK_KEYS`** includes **`preamble_validate_response`**.
+
+**AST-1015** narrowed run: see **`docs/test-bible/utils/config.md`** § AST-1015.

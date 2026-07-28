@@ -44,7 +44,7 @@ def _build_payload() -> dict[str, str]:
         "context.strengths": "Strong",
         "context.priorities": "Priority",
         "context.deal_breakers": "No remote",
-        "profile.title_patterns": "Engineer\nLead",
+        "contact.title_patterns": "Engineer\nLead",
         "company_search_terms": "Acme\nBeta Corp",
     }
 
@@ -129,9 +129,9 @@ class TestIntakeSessionFlow:
         assert len(dto["transcript"]) == 0
         assert saved
         ctx = saved[0][1]["context"]
-        assert ctx["starting_resume_text"] == "Resume body"
-        assert ctx["sample_cover_text"] == "Cover"
-        assert ctx["linkedin_profile_text"] == "LinkedIn"
+        assert ctx["raw_resume"] == "Resume body"
+        assert ctx["raw_sample"] == "Cover"
+        assert ctx["raw_profile"] == "LinkedIn"
         row = await _wait_for_transcript_assistant(dto["session_id"])
         assert len(row["transcript"]) == 2
         assert row["transcript"][-1]["ready_to_build"] is False
@@ -231,7 +231,7 @@ class TestIntakeSessionFlow:
         assert save_calls
         build_save = next(c for c in save_calls if "bio_summary" in (c[1].get("context") or {}))
         assert build_save[1]["context"]["bio_summary"] == "Bio"
-        assert build_save[1]["profile"]["title_patterns"] == "Engineer\nLead"
+        assert build_save[1]["contact"]["title_patterns"] == "Engineer\nLead"
         assert complete_calls == ["cand-1"]
 
         with pytest.raises(ValueError, match="build already completed"):
@@ -348,3 +348,104 @@ class TestIntakeArchive:
             for e in (cand.get("candidate_data") or {}).get("intakes_old") or []
         ]
         assert ids == [first["session_id"], second["session_id"]]
+
+
+class TestAst1015ValidatePreambleAnswer:
+    """AST-1015: Ruth Valid / Try Again / Escalate — no library writes."""
+
+    @pytest.mark.asyncio
+    async def test_returns_each_configured_outcome(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import PREAMBLE_VALIDATION_CONFIG
+
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid},
+        )
+        monkeypatch.setattr(intake_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod, "compute_batch_cost", lambda batch_id: 0.0)
+        save_spy = MagicMock()
+        monkeypatch.setattr(intake_mod, "save_candidate_data", save_spy)
+
+        for outcome in PREAMBLE_VALIDATION_CONFIG["outcomes"]:
+            async def _do_task(outcome=outcome, **kwargs):
+                assert kwargs["task_key"] == PREAMBLE_VALIDATION_CONFIG["task_key"]
+                assert "QUESTION:\nWhat is your resume?" in kwargs["live_content"]
+                assert "ANSWER:\nbody" in kwargs["live_content"]
+                return {"success": True, "parsed_response": {"outcome": outcome}}
+
+            monkeypatch.setattr(intake_mod, "do_task", _do_task)
+            result = await intake_mod.validate_preamble_answer(
+                "cand-1", "What is your resume?", "body",
+            )
+            assert result["success"] is True
+            assert result["outcome"] == outcome
+            assert result["error"] is None
+            assert result["batch_id"].startswith(
+                f"preamble-{PREAMBLE_VALIDATION_CONFIG['task_key']}-",
+            )
+        assert save_spy.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_answer_allowed_unknown_outcome_not_valid(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid},
+        )
+        monkeypatch.setattr(intake_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod, "compute_batch_cost", lambda batch_id: 0.0)
+
+        async def _do_task(**kwargs):
+            assert "ANSWER:\n" in kwargs["live_content"]
+            return {"success": True, "parsed_response": {"outcome": "Maybe"}}
+
+        monkeypatch.setattr(intake_mod, "do_task", _do_task)
+        result = await intake_mod.validate_preamble_answer("cand-1", "Q?", "")
+        assert result["success"] is False
+        assert result["outcome"] is None
+        assert "invalid preamble validation outcome" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_missing_candidate_and_empty_question(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            await intake_mod.validate_preamble_answer("missing", "Q?", "A")
+
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid},
+        )
+        with pytest.raises(ValueError, match="question required"):
+            await intake_mod.validate_preamble_answer("cand-1", "  ", "A")
+
+    @pytest.mark.asyncio
+    async def test_debug_emits_found_outcome(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid},
+        )
+        monkeypatch.setattr(intake_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(intake_mod, "compute_batch_cost", lambda batch_id: 0.0)
+        dbg = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(intake_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(intake_mod.logger, "debug_detail", detail)
+        monkeypatch.setattr(intake_mod.logger, "set_debug_flag", MagicMock())
+
+        async def _do_task(**kwargs):
+            return {"success": True, "parsed_response": {"outcome": "Try Again"}}
+
+        monkeypatch.setattr(intake_mod, "do_task", _do_task)
+        await intake_mod.validate_preamble_answer(
+            "cand-1", "Q?", "nope", step_index=2, step_total=3, debug=True,
+        )
+        dbg.assert_called_once()
+        assert dbg.call_args.kwargs["func"] == "validate_preamble_answer"
+        assert dbg.call_args.kwargs["outcome"] == "found|Try Again"
+        assert dbg.call_args.kwargs["index"] == 2
+        assert dbg.call_args.kwargs["total"] == 3
+        assert any("question=" in str(c.args[0]) for c in detail.call_args_list)
