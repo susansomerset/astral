@@ -92,3 +92,28 @@ Equivalent harness:
   tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
   -q
 ```
+
+---
+
+### AST-1009 · AST-993
+
+**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Education / skills helpers | `src/core/builder.py` | **`TestAst1009EducationSkillsPrior`** helper methods |
+| Three-surface HTML (prior + edu ≥3 strong + skills ≥8 categories) | `src/core/builder.py` | **`TestAst1009EducationSkillsPrior`** session / base / job |
+| Existing body-section regression | `src/core/builder.py` | **`TestBuilderHelpers::test_emits_body_sections_and_cover_blocks`** |
+
+**Broken / obsolete this pass:** none — prior dump assertions still green (`skills-grid` present; section count unchanged).
+
+**Integration:** no existing scenario asserts education/skills/prior markup — no revision.
+
+**AST-1009** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
+  -q
+```
