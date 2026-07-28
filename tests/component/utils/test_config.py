@@ -2067,3 +2067,15 @@ class TestAst996ExperienceJobArrayConfig:
     def test_prior_experience_remains_string(self) -> None:
         schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["prior_experience"]
         assert schema["type"] == "str"
+
+
+class TestAst997FinalizeExperienceJobArray:
+    """AST-997: finalize_job_resume experience optional job-array shares items_schema."""
+
+    def test_finalize_experience_optional_shares_items_schema(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
+        fin = cfg.TASK_CONFIG["finalize_job_resume"]["response_schema"]["experience"]
+        assert fin["type"] == "list"
+        assert fin["required"] is False
+        assert fin["items_schema"] is craft["items_schema"]
+        assert craft["required"] is True

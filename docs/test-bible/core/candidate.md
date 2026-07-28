@@ -323,3 +323,28 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
   --testNamePattern="AST-996"
 ```
+
+---
+
+### AST-997 · AST-994
+
+**AST-997:** Job-tailored hops (`draft_job_resume` / `finalize_job_resume`) accept/emit the AST-996 experience job-array shape. `pin_experience_job_facts_from_base` restores company/title/dates/location by `(company, title)` match (no index fallback); accomplishments may tailor. Tracker persist/match gates keep job arrays. Style D debug on tailor hops when `debug=True`. HTML emit = **AST-998**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize / validate / pin / hop prompts | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst997JobTailoredExperience`**; reuse **`TestAst594DraftJobResumePayload`** (legacy string still OK) |
+| Finalize optional schema | `src/utils/config.py` | **`TestAst997FinalizeExperienceJobArray`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Persist / match gates | `src/core/tracker.py` | **`TestAst997ExperienceJobArrayPersist`** (primary: **`docs/test-bible/core/tracker.md`**) |
+
+**Broken / obsolete this pass:** none — legacy string experience still accepted on draft validate.
+
+**AST-997** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_tracker.py::TestAst997ExperienceJobArrayPersist \
+  tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
+  -q
+```

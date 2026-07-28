@@ -2162,3 +2162,135 @@ class TestAst996ExperienceJobArray:
         assert "Ordered JSON array of jobs" in prompt
         assert "`accomplishments`" in prompt
         assert "Do **not** enrich, blend, or expand accomplishments from LinkedIn" in prompt
+
+
+class TestAst997JobTailoredExperience:
+    """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
+
+    def _base_cd(self, jobs: list[dict[str, str]]) -> dict[str, Any]:
+        return {"artifacts": {"base_resume": {"experience": jobs}, "resume_structure": _three_section_structure()}}
+
+    def test_normalize_preserves_experience_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed: dict[str, Any] = {"agent_payload": {"experience": jobs, "professional_summary": "S"}}
+        candidate_mod.normalize_draft_job_resume_agent_payload(parsed)
+        assert parsed["agent_payload"]["experience"] == jobs
+
+    def test_validate_accepts_job_array_and_pins_metadata(self) -> None:
+        base = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        tailored = [
+            {
+                "company": "Beta LLC",
+                "title": "Lead",
+                "dates": "WRONG",
+                "location": "WRONG",
+                "accomplishments": "Tailored lead bullets",
+            },
+            {
+                "company": "Acme Corp",
+                "title": "Engineer",
+                "dates": "WRONG",
+                "location": "WRONG",
+                "accomplishments": "Tailored eng bullets",
+            },
+        ]
+        payload = {"professional_summary": "S", "experience": tailored}
+        err = candidate_mod.validate_draft_job_resume_payload(payload, self._base_cd(base))
+        assert err is None
+        # Reordered: pin by company+title, not index
+        assert payload["experience"][0]["dates"] == "2023"
+        assert payload["experience"][0]["location"] == ""
+        assert payload["experience"][0]["accomplishments"] == "Tailored lead bullets"
+        assert payload["experience"][1]["dates"] == "2020-2023"
+        assert payload["experience"][1]["location"] == "Remote"
+        assert payload["experience"][1]["accomplishments"] == "Tailored eng bullets"
+
+    def test_pin_does_not_index_fallback_on_unmatched(self) -> None:
+        base = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        tailored = [
+            {
+                "company": "Other Co",
+                "title": "Intern",
+                "dates": "kept-model",
+                "location": "kept-loc",
+                "accomplishments": "new role text",
+            }
+        ]
+        payload = {"experience": tailored}
+        candidate_mod.pin_experience_job_facts_from_base(payload, self._base_cd(base))
+        assert payload["experience"][0]["dates"] == "kept-model"
+        assert payload["experience"][0]["location"] == "kept-loc"
+
+    def test_pin_consumes_duplicate_company_title_in_base_order(self) -> None:
+        base = [
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "2018-2020",
+                "location": "SEA",
+                "accomplishments": "first tour",
+            },
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "2021-2023",
+                "location": "NYC",
+                "accomplishments": "second tour",
+            },
+        ]
+        tailored = [
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "x",
+                "location": "x",
+                "accomplishments": "tailored-1",
+            },
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "y",
+                "location": "y",
+                "accomplishments": "tailored-2",
+            },
+        ]
+        payload = {"experience": tailored}
+        candidate_mod.pin_experience_job_facts_from_base(payload, self._base_cd(base))
+        assert payload["experience"][0]["dates"] == "2018-2020"
+        assert payload["experience"][0]["location"] == "SEA"
+        assert payload["experience"][0]["accomplishments"] == "tailored-1"
+        assert payload["experience"][1]["dates"] == "2021-2023"
+        assert payload["experience"][1]["location"] == "NYC"
+
+    def test_validate_accepts_legacy_string_experience(self) -> None:
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"experience": "legacy prose"}, self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS])
+            )
+            is None
+        )
+
+    def test_validate_rejects_non_job_array_experience_object(self) -> None:
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"experience": {"company": "Acme"}},
+            self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
+        )
+        assert err is not None
+        assert "job array or prose string" in err
+
+    def test_tailor_hop_prompts_teach_job_array_and_pin_policy(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
+        draft = by_key["draft_job_resume"]["user_prompt"]
+        assert "ordered array of job objects" in draft
+        assert "**Do not** change `company`, `title`, `dates`, or `location`" in draft
+        fin = by_key["finalize_job_resume"]["user_prompt"]
+        assert "ordered array of job objects" in fin
+        assert "restore factual metadata" in fin
+        advise = by_key["advise_job_resume"]["user_prompt"]
+        assert "**forbid** rewriting company, title, dates, or location" in advise
+        check = by_key["check_job_resume"]["user_prompt"]
+        assert "Experience metadata drift" in check
+        assert "company, title, dates, or location" in check

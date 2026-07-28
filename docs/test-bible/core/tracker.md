@@ -138,3 +138,21 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
   -q
 ```
 
+---
+
+
+---
+
+### AST-997 · AST-994
+
+**AST-997:** Tracker `_resume_payload_body` / match / persist gates treat non-empty experience job arrays as body content (alongside strings). Primary pin/validate coverage: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist + match gates for job arrays | `src/core/tracker.py` | **`TestAst997ExperienceJobArrayPersist`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst997ExperienceJobArrayPersist \
+  -q
+```

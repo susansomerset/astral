@@ -798,3 +798,66 @@ class TestAst311CandidateResults:
         entry = saved[0]["candidate_results"]["applied"]
         assert entry["notes"] == "note"
         assert "timestamp" in entry
+
+
+class TestAst997ExperienceJobArrayPersist:
+    """AST-997: tracker resume persist/match gates keep experience job arrays."""
+
+    def _jobs(self) -> list[dict[str, str]]:
+        return [
+            {
+                "company": "Acme Corp",
+                "title": "Engineer",
+                "dates": "2020-2023",
+                "location": "Remote",
+                "accomplishments": "Shipped widgets",
+            }
+        ]
+
+    def _subset_cd(self) -> dict:
+        from src.core import candidate as candidate_mod
+
+        structure = candidate_mod.default_resume_structure()
+        for sid in list(structure["sections"]):
+            structure["sections"][sid]["enabled"] = sid in ("professional_summary", "experience")
+        return {
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {"experience": self._jobs()},
+            }
+        }
+
+    def test_resume_payload_body_keeps_job_array(self) -> None:
+        jobs = self._jobs()
+        body = tracker_mod._resume_payload_body(
+            {"professional_summary": "S", "experience": jobs, "orphan": {"x": 1}}
+        )
+        assert body["professional_summary"] == "S"
+        assert body["experience"] == jobs
+        assert "orphan" not in body
+
+    def test_parsed_matches_when_experience_is_job_array_only(self) -> None:
+        cd = self._subset_cd()
+        assert tracker_mod.parsed_matches_resume_content_shape({"experience": self._jobs()}, cd) is True
+        assert tracker_mod.parsed_matches_resume_content_shape({"experience": []}, cd) is False
+
+    def test_persist_stores_experience_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict[str, object]] = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._subset_cd())
+        jobs = self._jobs()
+        assert tracker_mod.persist_job_artifact_from_parsed(
+            "job-997", {"professional_summary": "S", "experience": jobs}
+        ) is True
+        rc = saved[0]["artifacts"]["resume_content"]
+        assert rc["experience"] == jobs
+        assert rc["professional_summary"] == "S"
+
+    def test_job_has_persisted_resume_body_for_job_array(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._subset_cd())
+        job = {"job_data": {"artifacts": {"resume_content": {"experience": self._jobs()}}}}
+        assert tracker_mod.job_has_persisted_resume_body("job-997", job) is True
+        empty = {"job_data": {"artifacts": {"resume_content": {"experience": []}}}}
+        assert tracker_mod.job_has_persisted_resume_body("job-997", empty) is False
