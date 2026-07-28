@@ -812,6 +812,52 @@ section {{ margin-bottom: 0; }}
 """
 
 
+def _emit_education_list_html(text: str) -> str:
+    """Per-line education rows: ``<strong>credential</strong>`` + post-marker bullet rest."""
+    bullet = "\u00a0• "
+    rows: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if bullet in line:
+            cred, _, rest = line.partition(bullet)
+            rows.append(
+                f"        <p><strong>{html.escape(cred)}</strong>{bullet}{html.escape(rest)}</p>"
+            )
+        else:
+            rows.append(f"        <p><strong>{html.escape(line)}</strong></p>")
+    if not rows:
+        return ""
+    return "      <div class=\"education-list\">\n" + "\n".join(rows) + "\n      </div>"
+
+
+def _emit_skills_grid_html(text: str) -> str:
+    """Per-line skills categories: ``Category: items`` → ``h4`` + items ``<p>``."""
+    cats: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if ": " in line:
+            category, _, items = line.partition(": ")
+            cats.append(
+                "        <div class=\"skill-category\">\n"
+                f"          <h4>{html.escape(category)}</h4>\n"
+                f"          <p>{html.escape(items)}</p>\n"
+                "        </div>"
+            )
+        else:
+            cats.append(
+                "        <div class=\"skill-category\">\n"
+                f"          <p>{html.escape(line)}</p>\n"
+                "        </div>"
+            )
+    if not cats:
+        return ""
+    return "      <div class=\"skills-grid\">\n" + "\n".join(cats) + "\n      </div>"
+
+
 def _emit_body_sections_html(
     render: dict,
     ordered_ids: List[str],
@@ -854,6 +900,28 @@ def _emit_body_sections_html(
     </section>"""
             )
             continue
+        if key == "education_certifications":
+            edu_html = _emit_education_list_html(str(text))
+            if not edu_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{edu_html}
+    </section>"""
+            )
+            continue
+        if key == "technical_skills":
+            skills_html = _emit_skills_grid_html(str(text))
+            if not skills_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{skills_html}
+    </section>"""
+            )
+            continue
         inner = html.escape(str(text))
         if key == "core_competencies":
             chunks.append(
@@ -874,20 +942,6 @@ def _emit_body_sections_html(
                 f"""    <section aria-labelledby="{sid}">
       <h2 id="{sid}">{heading}</h2>
       <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
-        elif key == "education_certifications":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="education-list"><p class="prose-block">{inner}</p></div>
-    </section>"""
-            )
-        elif key == "technical_skills":  # pragma: no branch
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="skills-grid"><div class="skill-category"><p>{inner}</p></div></div>
     </section>"""
             )
     return "\n".join(chunks)
