@@ -15,6 +15,7 @@ from src.utils.config import (
     SKIPPED_STATES,
     UI_CONFIG,
     BUILD_CONFIG,
+    PREAMBLE_CONFIG,
     build_state_ui_manifest,
 )
 from src.utils.logging import get_logger
@@ -157,6 +158,8 @@ def ui_config():
     return jsonify({
         **UI_CONFIG,
         "base_resume_accent_palette": BUILD_CONFIG.get("accent_palette", []),
+        # AST-1016: Intro + mechanical steps for AST-1017 (no page chrome here).
+        "preamble": PREAMBLE_CONFIG,
     })
 
 

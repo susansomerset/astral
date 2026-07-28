@@ -17,6 +17,7 @@ Config sections:
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
+  PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
@@ -955,6 +956,85 @@ CANDIDATE_LIBRARY_CONFIG = {
     "github_url_base": "https://github.com/",
     "full_name_join": " ",
 }
+
+# AST-1016: mechanical preamble script (Intro + steps). UI = AST-1017; Ruth task = AST-1015.
+PREAMBLE_CONFIG = {
+    "intro": (
+        "[PLACEHOLDER — Archie] Before we start with Estelle, we'll collect three "
+        "source materials: your latest resume, your LinkedIn profile, and a sample "
+        "cover letter from a past application."
+    ),
+    # AST-1015 must register an agent_task with this exact task_key (Ruth / Little Brain).
+    "validation_task_key": "preamble_validate_response",
+    "steps": [
+        {
+            "id": "raw_resume",
+            "order": 1,
+            "prompt_1st_try": (
+                "[PLACEHOLDER — Archie] Let's start with your existing/latest resume. "
+                "Paste the full text (or upload content) so we can store it as your raw resume."
+            ),
+            "prompt_2nd_try": (
+                "[PLACEHOLDER — Archie] That didn't look like resume text. Please paste "
+                "your full resume again — include roles, dates, and education if you have them."
+            ),
+            "target": {"blob": "context", "field": "raw_resume"},
+            "validation_question": (
+                "Does this response look like a valid answer to: paste your resume text?"
+            ),
+        },
+        {
+            "id": "raw_profile",
+            "order": 2,
+            "prompt_1st_try": (
+                "[PLACEHOLDER — Archie] Next, paste your LinkedIn profile content "
+                "(About, Experience, Education — the text you'd want Estelle to read)."
+            ),
+            "prompt_2nd_try": (
+                "[PLACEHOLDER — Archie] That didn't look like a LinkedIn profile. "
+                "Paste the profile text again (not just the profile URL)."
+            ),
+            "target": {"blob": "context", "field": "raw_profile"},
+            "validation_question": (
+                "Does this response look like a valid answer to: paste your LinkedIn profile text?"
+            ),
+        },
+        {
+            "id": "raw_sample",
+            "order": 3,
+            "prompt_1st_try": (
+                "[PLACEHOLDER — Archie] Finally, paste a sample cover letter from a past "
+                "application so we can learn your writing style."
+            ),
+            "prompt_2nd_try": (
+                "[PLACEHOLDER — Archie] That didn't look like a cover letter. "
+                "Paste a full sample cover letter (greeting through sign-off) again."
+            ),
+            "target": {"blob": "context", "field": "raw_sample"},
+            "validation_question": (
+                "Does this response look like a valid answer to: paste a sample cover letter?"
+            ),
+        },
+    ],
+}
+
+_PREAMBLE_STEP_KEYS = (
+    "id", "order", "prompt_1st_try", "prompt_2nd_try", "target", "validation_question",
+)
+assert isinstance(PREAMBLE_CONFIG["validation_task_key"], str) and PREAMBLE_CONFIG["validation_task_key"]
+assert isinstance(PREAMBLE_CONFIG["intro"], str) and PREAMBLE_CONFIG["intro"]
+assert isinstance(PREAMBLE_CONFIG["steps"], list) and PREAMBLE_CONFIG["steps"]
+_preamble_orders = sorted(s["order"] for s in PREAMBLE_CONFIG["steps"])
+assert _preamble_orders == list(range(1, len(PREAMBLE_CONFIG["steps"]) + 1))
+for _step in PREAMBLE_CONFIG["steps"]:
+    assert all(k in _step for k in _PREAMBLE_STEP_KEYS), _step.get("id")
+    _tgt = _step["target"]
+    assert _tgt.get("blob") == "context", _step["id"]
+    assert _tgt.get("field") in CANDIDATE_LIBRARY_CONFIG["context_keys"], _step["id"]
+    assert _step["id"] == _tgt["field"], _step["id"]
+    assert isinstance(_step["prompt_1st_try"], str) and _step["prompt_1st_try"]
+    assert isinstance(_step["prompt_2nd_try"], str) and _step["prompt_2nd_try"]
+    assert isinstance(_step["validation_question"], str) and _step["validation_question"]
 
 assert "PROSPECT" not in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
