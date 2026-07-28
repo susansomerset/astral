@@ -1146,6 +1146,10 @@ def _debug_experience_jobs(log, content_or_parsed: Any) -> None:
         log.debug_detail(f"experience_shape=other type={type(exp).__name__}")
 
 
+# Public alias for agent tailor hops (AST-997).
+debug_experience_jobs = _debug_experience_jobs
+
+
 def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
     """Direct candidate row updates from admin API (state override, api_key, etc.)."""
     database.save_candidate(candidate_id, **kwargs)

@@ -2506,12 +2506,12 @@ async def do_task(
 
     # AST-997: pin experience metadata after finalize schema OK; Style D job detail on tailor hops.
     if task_key in ("draft_job_resume", "finalize_job_resume") and isinstance(parsed, dict):
-        from src.core.candidate import _debug_experience_jobs, pin_experience_job_facts_from_base
+        from src.core.candidate import debug_experience_jobs, pin_experience_job_facts_from_base
 
         if task_key == "finalize_job_resume" and cd:
             pin_experience_job_facts_from_base(parsed, cd)
         if debug:
-            _debug_experience_jobs(_do_task_debug_logger(debug), parsed)
+            debug_experience_jobs(_do_task_debug_logger(debug), parsed)
 
     # SUCCESS: store decoded/validated response block, then build agent_ref
     if envelope_snapshot is not None:

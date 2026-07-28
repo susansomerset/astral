@@ -162,3 +162,18 @@ Changes: `pin_experience_job_facts_from_base` now matches only on `(company, tit
 
 ### Recommended actions
 No fix-now. Stragglers are process notes — resolve-child may proceed without product edits unless Ada wants a public debug-helper alias.
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Review tip:** `7f2720d6` (Radia `docs(AST-997): Radia review — findings`)  
+**Overall:** DISCUSS → resolved for User Testing (no fix-now)
+
+### fix-now
+(none)
+
+### discuss
+C4 stragglers (Joan exclusions vs tip in-scope via AST-996 merge + features/tests) — accepted as process notes; all already **conforms**. No product change.
+
+### advisory
+1. Public `debug_experience_jobs` alias added beside `_debug_experience_jobs`; `agent.py` tailor hops import the public name (mirrors `is_experience_job_array` for tracker).
