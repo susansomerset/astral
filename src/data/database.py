@@ -2444,6 +2444,103 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     _candidate_schema_ensured = True
 
 
+
+def _migrate_candidate_library_ast1014(conn: sqlite3.Connection) -> None:
+    """AST-1014: profile→contact, lift name/pronoun columns, remap context raw keys. Idempotent."""
+    contact_keys = CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+    remap = CANDIDATE_LIBRARY_CONFIG["context_key_remap"]
+    join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
+    rows = conn.execute(
+        "SELECT astral_candidate_id, candidate_data, first, last, full, pronouns FROM candidate"
+    ).fetchall()
+    changed = False
+    for row in rows:
+        cid = row[0]
+        raw = row[1]
+        col_first = row[2] or ""
+        col_last = row[3] or ""
+        col_full = row[4] or ""
+        col_pronouns = row[5] or ""
+        try:
+            cd = json.loads(raw) if raw else {}
+        except (TypeError, ValueError):
+            cd = {}
+        if not isinstance(cd, dict):
+            cd = {}
+        row_changed = False
+        profile = cd.get("profile")
+        contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+        if isinstance(profile, dict):
+            for k in contact_keys:
+                if k in profile and k not in contact:
+                    contact[k] = profile[k]
+            if not col_first and isinstance(profile.get("first"), str):
+                col_first = profile["first"]
+                row_changed = True
+            if not col_last and isinstance(profile.get("last"), str):
+                col_last = profile["last"]
+                row_changed = True
+            pref = profile.get("pronoun_preference")
+            if not col_pronouns and isinstance(pref, str) and pref.strip():
+                col_pronouns = pref.strip()
+                row_changed = True
+            cd.pop("profile", None)
+            row_changed = True
+        cd["contact"] = contact
+        context = cd.get("context") if isinstance(cd.get("context"), dict) else {}
+        for old_k, new_k in remap.items():
+            if old_k in context:
+                if new_k not in context:
+                    context[new_k] = context[old_k]
+                context.pop(old_k, None)
+                row_changed = True
+        for k in ("hopes", "interests", "concerns"):
+            if k not in context:
+                context[k] = ""
+                row_changed = True
+        cd["context"] = context
+        if not isinstance(cd.get("artifacts"), dict):
+            cd["artifacts"] = {}
+            row_changed = True
+        if not col_full:
+            parts = [
+                p for p in (
+                    col_first.strip() if isinstance(col_first, str) else "",
+                    col_last.strip() if isinstance(col_last, str) else "",
+                )
+                if p
+            ]
+            col_full = join.join(parts)
+            if col_full:
+                row_changed = True
+        if not (isinstance(col_pronouns, str) and col_pronouns.strip() in PRONOUN_PREFERENCE_OPTIONS):
+            col_pronouns = PRONOUN_PREFERENCE_DEFAULT
+            row_changed = True
+        # Already-migrated probe: contact present, no profile, no old remap keys
+        if not row_changed:
+            if "profile" in cd:
+                row_changed = True
+            elif any(k in context for k in remap):
+                row_changed = True
+        if not row_changed:
+            continue
+        conn.execute(
+            """UPDATE candidate SET candidate_data = ?, first = ?, last = ?, full = ?, pronouns = ?
+               WHERE astral_candidate_id = ?""",
+            (
+                json.dumps(cd),
+                col_first or "",
+                col_last or "",
+                col_full or "",
+                col_pronouns or "",
+                cid,
+            ),
+        )
+        changed = True
+    if changed:
+        conn.commit()
+
+
 def _migrate_candidate_data_structure(conn: sqlite3.Connection) -> None:
     """One-time migration: restructure candidate_data from flat/mixed layout into
     profile/context/artifacts groups. Idempotent -- skips rows already migrated."""
