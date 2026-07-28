@@ -2088,3 +2088,36 @@ class TestAst998ExperienceBodyKind:
     def test_experience_body_kind_experience_jobs(self) -> None:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
+
+class TestAst1010CandidateTaglineConfig:
+    """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""
+
+    def test_tagline_in_contact_and_known_ids(self) -> None:
+        assert "candidate_tagline" in cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS
+        assert "candidate_tagline" in cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS
+        contact = cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS
+        assert contact.index("candidate_title") < contact.index("candidate_tagline")
+        assert contact.index("candidate_tagline") < contact.index("candidate_contact_detail")
+
+    def test_default_structure_orders_unique_with_tagline(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        assert "candidate_tagline" in sections
+        assert sections["candidate_tagline"]["enabled"] is True
+        assert sections["candidate_tagline"]["job_agent_editable"] is False
+        assert sections["candidate_tagline"]["order"] == 2
+        assert sections["candidate_contact_detail"]["order"] == 3
+        orders = [spec["order"] for spec in sections.values()]
+        assert len(orders) == len(set(orders))
+        assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+
+    def test_craft_and_artifact_schema_optional_tagline(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["candidate_tagline"]
+        assert craft == {"type": "str", "required": False}
+        art = cfg.BUILD_CONFIG["artifact_shapes"]["resume_content"]["candidate_tagline"]
+        assert art == {"type": "str", "required": False}
+        supported = cfg.BUILD_CONFIG["supported_sections"]["candidate_tagline"]
+        assert supported["heading_level"] == "none"
+        keys = [row["key"] for row in cfg.DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]]
+        assert "candidate_tagline" in keys
+        assert keys.index("candidate_title") < keys.index("candidate_tagline")
+        assert keys.index("candidate_tagline") < keys.index("candidate_contact_detail")
