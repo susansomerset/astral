@@ -648,29 +648,9 @@ def _emit_html_document(
     bstack = fonts.get("body_stack", "serif")
     lstack = fonts.get("list_stack", hstack)
 
-    name_raw = str(render.get("candidate_name") or "").strip()
-    title_raw = str(render.get("candidate_title") or "").strip()
-    tagline_raw = str(render.get("candidate_tagline") or "").strip()
-    name = html.escape(name_raw)
-    title = html.escape(title_raw)
-    tagline = html.escape(tagline_raw) if tagline_raw else ""
+    name = html.escape(str(render.get("candidate_name") or ""))
+    title = html.escape(str(render.get("candidate_title") or ""))
     contact = html.escape(str(render.get("candidate_contact_detail") or ""))
-
-    if name and title:
-        h1_inner = f"{name}\u00a0• {title}"
-    elif name:
-        h1_inner = name
-    elif title:
-        h1_inner = title
-    else:
-        h1_inner = ""
-
-    meta_tag = ""
-    if name_raw and title_raw and tagline_raw:
-        meta_esc = html.escape(
-            f"Resume of {name_raw}, {title_raw}, specializing in {tagline_raw}"
-        )
-        meta_tag = f'\n  <meta name="description" content="{meta_esc}" />'
 
     body_sections_html = _emit_body_sections_html(
         render,
@@ -732,7 +712,8 @@ h1 {{
   letter-spacing: -0.5px;
   color: var(--header-color);
 }}
-.contact {{ margin: 6px 0 0; font-size: 14px; color: var(--text-secondary); }}
+.contact {{ margin: 6px 0 0; font-size: 14px; color: var(--text-secondary);
+  display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; }}
 .content {{ max-width: var(--max-width); margin: 0 auto; }}
 h2 {{
   margin: 18px 0 2px;
@@ -757,43 +738,6 @@ h2::after {{ margin-left: 12px; }}
   text-transform: uppercase; letter-spacing: 0.2px; font-size: 13.5px; }}
 section {{ margin-bottom: 0; }}
 .role {{ margin: 10px 0 14px; }}
-article.role {{ margin: 10px 0 14px; }}
-.role-header {{ text-align: left; margin: 0; }}
-.compact-title {{
-  text-align: left;
-  font-family: var(--header-font-family);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.25;
-  margin: 8px 0 2px;
-  color: var(--text-primary);
-  text-transform: none;
-  letter-spacing: normal;
-}}
-.compact-location {{
-  text-align: left;
-  font-family: var(--list-font-family);
-  font-size: 13px;
-  line-height: 1.35;
-  margin: 0 0 6px;
-  color: var(--text-secondary);
-}}
-.role-description {{
-  font-family: var(--body-font-family);
-  text-align: left;
-  margin: 6px 0;
-  line-height: 1.25;
-}}
-.role ul {{
-  text-align: left;
-  margin: 6px 0 0;
-  padding-left: 1.25em;
-}}
-.role li {{
-  font-family: var(--body-font-family);
-  line-height: 1.25;
-  margin: 0 0 4px;
-}}
 .role-subheader {{
   text-align: left;
   font-family: var(--header-font-family);
@@ -814,27 +758,6 @@ article.role {{ margin: 10px 0 14px; }}
   color: var(--text-secondary);
 }}
 .role-accomplishments {{ margin: 0; }}
-.education-list {{ margin: 6px 0 0; }}
-.education-list p {{
-  font-family: var(--body-font-family);
-  text-align: left;
-  margin: 4px 0;
-  line-height: 1.25;
-}}
-.skills-grid {{ margin: 6px 0 0; }}
-.skill-category {{ margin: 0 0 8px; }}
-.skill-category h4 {{
-  font-family: var(--header-font-family);
-  text-align: left;
-  font-size: 14px;
-  font-weight: 700;
-  margin: 0 0 2px;
-  color: var(--text-primary);
-}}
-.skills-grid .skill-category p {{
-  text-align: left;
-  color: var(--text-secondary);
-}}
 .cover-block {{ margin-top: 24px; max-width: var(--max-width); margin-left: auto; margin-right: auto; text-align: left; }}
 .cover-block p {{ white-space: pre-wrap; }}
 .cover-signoff img {{ display: block; margin-bottom: 8px; }}
@@ -864,14 +787,14 @@ article.role {{ margin: 10px 0 14px; }}
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{title_esc}</title>{meta_tag}
+  <title>{title_esc}</title>
   <style>
 {css}
   </style>
 </head>
 <body>
   <header class="header">
-    <h1>{h1_inner}</h1>
+    <h1>{name}{" • " + title if title else ""}</h1>
     <div class="contact"><span>{contact}</span></div>
   </header>
   <main class="content">
@@ -882,6 +805,52 @@ article.role {{ margin: 10px 0 14px; }}
 </body>
 </html>
 """
+
+
+def _emit_education_list_html(text: str) -> str:
+    """Per-line education rows: ``<strong>credential</strong>`` + post-marker bullet rest."""
+    bullet = "\u00a0• "
+    rows: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if bullet in line:
+            cred, _, rest = line.partition(bullet)
+            rows.append(
+                f"        <p><strong>{html.escape(cred)}</strong>{bullet}{html.escape(rest)}</p>"
+            )
+        else:
+            rows.append(f"        <p><strong>{html.escape(line)}</strong></p>")
+    if not rows:
+        return ""
+    return "      <div class=\"education-list\">\n" + "\n".join(rows) + "\n      </div>"
+
+
+def _emit_skills_grid_html(text: str) -> str:
+    """Per-line skills categories: ``Category: items`` → ``h4`` + items ``<p>``."""
+    cats: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if ": " in line:
+            category, _, items = line.partition(": ")
+            cats.append(
+                "        <div class=\"skill-category\">\n"
+                f"          <h4>{html.escape(category)}</h4>\n"
+                f"          <p>{html.escape(items)}</p>\n"
+                "        </div>"
+            )
+        else:
+            cats.append(
+                "        <div class=\"skill-category\">\n"
+                f"          <p>{html.escape(line)}</p>\n"
+                "        </div>"
+            )
+    if not cats:
+        return ""
+    return "      <div class=\"skills-grid\">\n" + "\n".join(cats) + "\n      </div>"
 
 
 def _emit_body_sections_html(
@@ -926,6 +895,28 @@ def _emit_body_sections_html(
     </section>"""
             )
             continue
+        if key == "education_certifications":
+            edu_html = _emit_education_list_html(str(text))
+            if not edu_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{edu_html}
+    </section>"""
+            )
+            continue
+        if key == "technical_skills":
+            skills_html = _emit_skills_grid_html(str(text))
+            if not skills_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{skills_html}
+    </section>"""
+            )
+            continue
         inner = html.escape(str(text))
         if key == "core_competencies":
             chunks.append(
@@ -946,20 +937,6 @@ def _emit_body_sections_html(
                 f"""    <section aria-labelledby="{sid}">
       <h2 id="{sid}">{heading}</h2>
       <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
-        elif key == "education_certifications":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="education-list"><p class="prose-block">{inner}</p></div>
-    </section>"""
-            )
-        elif key == "technical_skills":  # pragma: no branch
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="skills-grid"><div class="skill-category"><p>{inner}</p></div></div>
     </section>"""
             )
     return "\n".join(chunks)

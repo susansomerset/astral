@@ -115,3 +115,14 @@ Rules:
 - §3.3: core-only change; no new cross-layer imports.
 - §3.5 naming: `_emit_education_list_html` / `_emit_skills_grid_html` beside existing `_emit_*` helpers.
 - §3.6: spike/debug under `debug/spikes/AST-1009/` only if used; never commit spike dumps.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-993/AST-1009-education-skills-prior`
+**Plan path:** `docs/features/artifacts/ast-1009-education-skills-prior.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | (see tip) | Education per-line + skills category grid emit; prior competencies-list kept |
+| 2 | (verify) | Three-surface fixture proof — session + job paths |
+
