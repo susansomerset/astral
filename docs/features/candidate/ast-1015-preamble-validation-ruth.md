@@ -265,3 +265,9 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §2.6 | No candidate state transitions |
 | §3.3 | UI imports core only; core does not import UI; no new persona JSON beyond the task row |
 | New agents | Forbidden — `college_intern_ruth` only |
+
+## Review
+
+**Publish ref:** `sub/AST-952/AST-1015-preamble-validation-ruth`
+**Build tip:** `3a6444b16efae68f0f1bf1180dc04772d7256f31`
+
