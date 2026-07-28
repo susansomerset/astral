@@ -175,7 +175,7 @@ class TestParseCandidateResume:
     @pytest.mark.asyncio
     async def test_persists_parsed_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
         store = {
-            "candidate_data": {"context": {"starting_resume_text": "resume body"}},
+            "candidate_data": {"context": {"raw_resume": "resume body"}},
             "state": "NEW_CANDIDATE",
         }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
@@ -344,11 +344,11 @@ class TestPreviewTaskPrompt:
         """Manage Tasks preview path mirrors production for {$SELECTED_AGENT} tasks (AST-631 AC3)."""
         from src.core import agent as agent_mod
 
-        cd = {"profile": {"first": "Ada"}}
+        cd = {"first": "Ada", "contact": {}, "context": {}, "artifacts": {}}
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": cd},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "first": "Ada", "candidate_data": cd},
         )
         monkeypatch.setattr(
             agent_mod,
@@ -489,7 +489,7 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=None))
         out = await candidate_mod.parse_candidate_resume("somerset")
@@ -500,7 +500,7 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         monkeypatch.setattr(
             candidate_mod,
@@ -516,7 +516,7 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value={"success": True}))
         out = await candidate_mod.parse_candidate_resume("somerset")
@@ -526,7 +526,7 @@ class TestParseCandidateResumeExtended:
     async def test_never_auto_transitions_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
         store = {
             "state": "INTAKE_INITIATED",
-            "candidate_data": {"context": {"starting_resume_text": "resume"}},
+            "candidate_data": {"context": {"raw_resume": "resume"}},
         }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda candidate_id, **kwargs: None)
@@ -965,8 +965,8 @@ class TestAst517ResumeStructure:
     @pytest.mark.asyncio
     async def test_parse_persists_custom_structure_per_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         stores: dict[str, dict] = {
-            "cand-a": {"state": "NEW", "candidate_data": {"context": {"starting_resume_text": "a"}}},
-            "cand-b": {"state": "NEW", "candidate_data": {"context": {"starting_resume_text": "b"}}},
+            "cand-a": {"state": "NEW_CANDIDATE", "candidate_data": {"context": {"raw_resume": "a"}}},
+            "cand-b": {"state": "NEW_CANDIDATE", "candidate_data": {"context": {"raw_resume": "b"}}},
         }
         struct_a = _three_section_structure()
         struct_b = _three_section_structure()
@@ -1654,7 +1654,7 @@ class TestAst972RequestedStageDispatch:
             lambda cid: {
                 "astral_candidate_id": cid,
                 "state": "REQUESTED_RESUME",
-                "candidate_data": {"context": {"starting_resume_text": "hello"}},
+                "candidate_data": {"context": {"raw_resume": "hello"}},
             },
         )
         monkeypatch.setattr(
@@ -1936,7 +1936,7 @@ class TestAst986SessionResumeParse:
         assert calls[0]["live_content"] == "full resume text"
         assert calls[0]["index"] == body["batch_id"]
         assert "astral_candidate_id" not in calls[0]["ctx"]
-        assert calls[0]["ctx"]["candidate_data"]["context"]["starting_resume_text"] == "full resume text"
+        assert calls[0]["ctx"]["candidate_data"]["context"]["raw_resume"] == "full resume text"
         assert saves[0][0][2] == "session"
         assert updates[-1][1]["status"] == "COMPLETED"
         get_c.assert_not_called()
@@ -2131,8 +2131,8 @@ class TestAst996ExperienceJobArray:
             candidate_mod.database,
             "get_candidate",
             lambda candidate_id: {
-                "state": "NEW",
-                "candidate_data": {"context": {"starting_resume_text": "paste"}},
+                "state": "NEW_CANDIDATE",
+                "candidate_data": {"context": {"raw_resume": "paste"}},
             },
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
@@ -2374,3 +2374,77 @@ class TestAst1005FalseMissingCandidateName:
         err = _validate_response_schema(parsed, schema, "craft_resume_base")
         assert err is not None
         assert "Missing required field 'candidate_name'" in err
+
+
+class TestAst1014CandidateLibrary:
+    """AST-1014: contact/context library, name columns, token view, save contract."""
+
+    def test_build_candidate_token_view(self) -> None:
+        row = {
+            "astral_candidate_id": "c1",
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "pronouns": "they/them",
+            "candidate_data": {
+                "contact": {"contact_email": "ada@example.com"},
+                "context": {"raw_resume": "paste"},
+                "artifacts": {"base_resume": {}},
+            },
+        }
+        view = candidate_mod.build_candidate_token_view(row)
+        assert view["first"] == "Ada"
+        assert view["full"] == "Ada Lovelace"
+        assert view["pronouns"] == "they/them"
+        assert view["contact"]["contact_email"] == "ada@example.com"
+        assert view["context"]["raw_resume"] == "paste"
+        assert "profile" not in view
+
+    def test_recompute_full_name(self) -> None:
+        assert candidate_mod.recompute_full_name("Ada", "Lovelace") == "Ada Lovelace"
+        assert candidate_mod.recompute_full_name("Ada", "") == "Ada"
+        assert candidate_mod.recompute_full_name("", "Lovelace") == "Lovelace"
+
+    def test_normalize_contact_urls(self) -> None:
+        contact = {"linkedin_url": "ada-lovelace", "github": "ada"}
+        candidate_mod.normalize_contact_urls(contact)
+        assert contact["linkedin_url"] == "https://www.linkedin.com/in/ada-lovelace"
+        assert contact["github"] == "https://github.com/ada"
+
+    def test_save_refuses_profile_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        with pytest.raises(ValueError, match="profile was renamed to contact"):
+            candidate_mod.save_candidate_data("c1", {"profile": {"first": "Ada"}})
+
+    def test_save_columns_contact_and_full_recompute(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "first": "Grace",
+                "last": "Hopper",
+                "pronouns": "she/her",
+                "contact": {"contact_email": "grace@example.com"},
+            },
+        )
+        assert save.call_args.kwargs["first"] == "Grace"
+        assert save.call_args.kwargs["last"] == "Hopper"
+        assert save.call_args.kwargs["full"] == "Grace Hopper"
+        assert save.call_args.kwargs["pronouns"] == "she/her"
+        merged = save.call_args.kwargs["candidate_data"]
+        assert merged["contact"]["contact_email"] == "grace@example.com"
+
+    def test_save_candidate_data_debug_optional(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {})
+        candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=True)
+        assert dbg.called
+        candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=False)

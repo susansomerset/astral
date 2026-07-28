@@ -175,3 +175,9 @@ Equivalent harness:
   tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
   -q
 ```
+
+---
+
+### AST-1014 · AST-952
+
+`_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.

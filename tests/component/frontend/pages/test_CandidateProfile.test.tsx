@@ -8,6 +8,8 @@ import { candidateId, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
@@ -18,11 +20,10 @@ const profileSections = {
       {
         label: "Contact Information",
         fields: [
-          { key: "profile.first", label: "First Name", type: "text" },
-          { key: "profile.middle", label: "Middle Name", type: "text" },
-          { key: "profile.last", label: "Last Name", type: "text" },
+          { key: "first", label: "First Name", type: "text" },
+          { key: "last", label: "Last Name", type: "text" },
           {
-            key: "profile.pronoun_preference",
+            key: "pronouns",
             label: "Pronoun preference",
             type: "select",
             options: [
@@ -40,19 +41,23 @@ const profileSections = {
       },
       {
         label: "Original Resume Text",
-        fields: [{ key: "context.starting_resume_text", label: "Original Resume Text", type: "textarea" }],
+        fields: [{ key: "context.raw_resume", label: "Original Resume Text", type: "textarea" }],
       },
       {
-        label: "Cover letter signature image",
-        fields: [{ key: "profile.cover_letter_signature_image", label: "Cover letter signature image", type: "text" }],
+        label: "Signature Image",
+        fields: [{ key: "contact.cover_letter_signature_image", label: "Signature Image", type: "signature_image" }],
       },
     ],
   },
 }
 
 const candidateData = {
-  profile: { first: "Ada", middle: "Ann", last: "Lovelace", pronoun_preference: "they/them" },
-  context: { bio_summary: "builder", starting_resume_text: "resume text" },
+  first: "Ada",
+  last: "Lovelace",
+  full: "Ada Lovelace",
+  pronouns: "they/them",
+  contact: {},
+  context: { bio_summary: "builder", raw_resume: "resume text" },
 }
 
 function installProfileMocks(overrides: {
@@ -68,7 +73,12 @@ function installProfileMocks(overrides: {
       return jsonResponse(profileSections)
     }
     if (url === `/api/candidates/${candidateId}` && !init) {
-      return jsonResponse({ candidate_data: overrides.candidate ?? candidateData })
+      return jsonResponse({
+        first: "Ada",
+        last: "Lovelace",
+        pronouns: "they/them",
+        candidate_data: overrides.candidate ?? candidateData,
+      })
     }
     if (url === `/api/candidates/${candidateId}/data` && init?.method === "PUT") {
       return overrides.save ? overrides.save(init) : jsonResponse({ candidate_data: candidateData })
@@ -105,10 +115,11 @@ describe("CandidateProfile", () => {
     await userEvent.selectOptions(pronoun, "she/her")
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
-    expect((savedBody?.profile as { pronoun_preference: string }).pronoun_preference).toBe("she/her")
+    expect(savedBody?.pronouns).toBe("she/her")
   })
 
-  it("renders middle name and includes it in save payload", async () => {
+  // AST-1014: middle name removed from profile shapes — AST-510 canceled.
+  it.skip("renders middle name and includes it in save payload", async () => {
     let savedBody: Record<string, unknown> | null = null
     installProfileMocks({
       save: async (init) => {
@@ -119,12 +130,6 @@ describe("CandidateProfile", () => {
     renderWithProviders(<CandidateProfile />)
     await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
     expect(screen.getByDisplayValue("Ann")).toBeInTheDocument()
-    const middle = screen.getByDisplayValue("Ann")
-    await userEvent.clear(middle)
-    await userEvent.type(middle, "Marie")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
-    expect((savedBody?.profile as { middle: string }).middle).toBe("Marie")
   })
 
   it("renders profile fields and saves changes", async () => {
@@ -160,8 +165,8 @@ describe("CandidateProfile", () => {
     installProfileMocks()
     renderWithProviders(<CandidateProfile />)
     await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByRole("button", { name: "Cover letter signature image" })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole("button", { name: "Cover letter signature image" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Signature Image" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Signature Image" }))
     expect(screen.getByText(/JPEG only, max 200×80 pixels/)).toBeInTheDocument()
   })
 
@@ -172,6 +177,6 @@ describe("CandidateProfile", () => {
     renderWithProviders(<CandidateProfile />)
     await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(screen.getByText("nope")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText("nope").length).toBeGreaterThan(0))
   })
 })

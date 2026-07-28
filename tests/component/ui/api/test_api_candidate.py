@@ -13,7 +13,7 @@ from ui.api import api_candidate as candidate_mod
 
 class TestSanitizeCandidate:
     def test_strips_api_key_and_sets_flag(self) -> None:
-        row = {"candidate_api_key": "secret", "state": "NEW"}
+        row = {"candidate_api_key": "secret", "state": "NEW_CANDIDATE"}
         out = candidate_mod._sanitize_candidate(row)
         assert out["has_api_key"] is True
         assert "candidate_api_key" not in out
@@ -115,7 +115,7 @@ class TestCandidateRouteSignatureImageIntegration:
         url = _tiny_jpeg_data_url(8, 8)
         resp = candidate_client.put(
             "/api/candidates/c-rout/data",
-            json={"profile": {"cover_letter_signature_image": url}},
+            json={"contact": {"cover_letter_signature_image": url}},
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -188,6 +188,18 @@ class TestCandidateRoutes:
     def test_update_requires_body(self, candidate_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = candidate_client.put("/api/candidates/cand-1/data", json={}, headers=auth_headers)
         assert resp.status_code == 400
+
+    def test_update_rejects_legacy_profile_body(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        resp = candidate_client.put(
+            "/api/candidates/cand-1/data",
+            json={"profile": {"first": "Ada"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "profile was renamed to contact" in resp.get_json()["error"]
 
     def test_update_merges_data_state_and_api_key(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         save_data = MagicMock()
@@ -285,7 +297,7 @@ class TestCandidateRoutes:
         monkeypatch.setattr(
             candidate_mod,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         run = MagicMock(return_value=({"success": True}, 200))
         monkeypatch.setattr(candidate_mod, "run_candidate_artifact_generation", run)

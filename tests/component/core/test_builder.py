@@ -21,23 +21,30 @@ def _resume_blob(**sections: str) -> Dict[str, Any]:
 
 def _candidate_row(**artifacts: Any) -> Dict[str, Any]:
     return {
+        "first": "Ada",
+        "last": "Lovelace",
+        "full": "Ada Lovelace",
         "candidate_data": {
-            "profile": {
-                "first": "Ada",
-                "last": "Lovelace",
+            "contact": {
                 "contact_email": "ada@example.com",
                 "cover_letter_signature_image": "https://example.com/sig.png",
             },
             "artifacts": artifacts,
-            "context": {"sample_cover_text": "Dear team,\nThanks"},
-        }
+            "context": {"raw_sample": "Dear team,\nThanks"},
+        },
     }
 
 
 class TestCoerceCandidateBlob:
     def test_unwraps_nested_candidate_rows(self) -> None:
-        inner = {"profile": {"first": "Ada"}}
-        assert builder_mod._coerce_candidate_blob({"candidate_data": inner}) == inner
+        inner = {"contact": {"contact_email": "ada@example.com"}}
+        wrapped = {"candidate_data": inner, "first": "Ada", "last": "Lovelace", "full": "Ada Lovelace"}
+        assert builder_mod._coerce_candidate_blob(wrapped) == {
+            **inner,
+            "_first": "Ada",
+            "_last": "Lovelace",
+            "_full": "Ada Lovelace",
+        }
         assert builder_mod._coerce_candidate_blob(inner) == inner
         assert builder_mod._coerce_candidate_blob("bad") == {}
 
@@ -203,17 +210,17 @@ class TestBuildBaseResume:
 class TestBuilderHelpers:
     def test_applies_profile_contact_and_markers(self) -> None:
         render = _resume_blob(professional_summary="__keep~~dash", experience={"role": "lead"})
-        builder_mod._apply_profile_to_render_dict(
+        builder_mod._apply_contact_to_render_dict(
             render,
             {
-                "first": "Ada",
-                "last": "Lovelace",
                 "contact_email": "ada@example.com",
                 "phone": "555",
                 "linkedin_url": "https://linkedin.com/in/ada",
                 "github": "https://github.com/ada",
                 "location": "London",
             },
+            first="Ada",
+            last="Lovelace",
         )
         marked = builder_mod._apply_resume_text_markers(render)
         assert marked["experience"] == {"role": "lead"}
@@ -223,7 +230,7 @@ class TestBuilderHelpers:
     def test_resolves_cover_letter_from_sample_text(self) -> None:
         resolved = builder_mod._resolve_cover_letter(
             {"artifacts": {}},
-            {"context": {"sample_cover_text": "  Hello cover  "}},
+            {"context": {"raw_sample": "  Hello cover  "}},
         )
         assert resolved == {"re_line": "", "body": "Hello cover", "signature": ""}
         assert builder_mod._cover_letter_nonempty({"re_line": "", "body": "", "signature": ""}) is False
@@ -233,10 +240,10 @@ class TestBuilderHelpers:
 
     def test_profile_uses_reply_email_and_skips_empty_name(self) -> None:
         render = _resume_blob()
-        builder_mod._apply_profile_to_render_dict(render, {"reply_email": "reply@example.com"})
+        builder_mod._apply_contact_to_render_dict(render, {"reply_email": "reply@example.com"})
         assert "reply@example.com" in render["candidate_contact_detail"]
         render = _resume_blob(candidate_name="Keep")
-        builder_mod._apply_profile_to_render_dict(render, {"first": "  ", "last": ""})
+        builder_mod._apply_contact_to_render_dict(render, {}, first="  ", last="")
         assert render["candidate_name"] == "Keep"
 
     def test_emits_body_sections_and_cover_blocks(self) -> None:
@@ -335,8 +342,13 @@ class TestAst518BuilderResumeStructure:
     def _candidate_with_structure(self, structure: dict, **base_sections: str) -> dict:
         blob = _resume_blob(**base_sections)
         return {
-            "profile": {"first": "Ada", "last": "Lovelace", "contact_email": "ada@example.com"},
-            "artifacts": {"resume_structure": structure, "base_resume": blob},
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "candidate_data": {
+                "contact": {"contact_email": "ada@example.com"},
+                "artifacts": {"resume_structure": structure, "base_resume": blob},
+            },
         }
 
     def test_renders_catalog_section_titles_not_hardcoded_headings(self) -> None:
@@ -502,7 +514,7 @@ class TestBuilderIdentifierHelpers:
             builder_mod._cover_letter_source_label(
                 {"artifacts": {}}, cd["candidate_data"]
             )
-            == "candidate_data.context.sample_cover_text"
+            == "candidate_data.context.raw_sample"
         )
         assert builder_mod._cover_letter_source_label({"artifacts": {}}, {"context": {}}) is None
 
@@ -694,7 +706,7 @@ class TestBuildCoverLetterFromJobDebugPaths:
             },
         }
         cd = _candidate_row(base_resume=_resume_blob())
-        cd["candidate_data"]["profile"]["cover_letter_signature_image"] = "https://example.com/sig.png"
+        cd["candidate_data"]["contact"]["cover_letter_signature_image"] = "https://example.com/sig.png"
         html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
         assert "Hello" in html
 
@@ -719,7 +731,7 @@ class TestBuildCoverLetterFromJobDebugPaths:
             }
         }
         cd = _candidate_row(base_resume=_resume_blob())
-        cd["candidate_data"]["profile"]["cover_letter_signature_image"] = "javascript:alert(1)"
+        cd["candidate_data"]["contact"]["cover_letter_signature_image"] = "javascript:alert(1)"
         html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
         assert "Body" in html
 
@@ -944,8 +956,11 @@ class TestAst998ExperienceJobRender:
     def test_base_resume_renders_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         cd = {
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
             "candidate_data": {
-                "profile": {"first": "Ada", "last": "Lovelace", "contact_email": "a@b.c"},
+                "contact": {"contact_email": "a@b.c"},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": {
@@ -953,7 +968,7 @@ class TestAst998ExperienceJobRender:
                         "experience": self._JOBS,
                     },
                 },
-            }
+            },
         }
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
@@ -1119,16 +1134,19 @@ class TestAst1007NestedTypographyMarkers:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         structure = self._structure()
-        # No profile email/phone — otherwise _apply_profile_to_render_dict replaces
+        # No contact email/phone — otherwise _apply_contact_to_render_dict replaces
         # artifact contact and drops the marker-laden contact string under test.
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": self._marker_blob(),
                 },
-            }
+            },
         }
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
@@ -1145,15 +1163,18 @@ class TestAst1007NestedTypographyMarkers:
                 }
             },
         }
-        # Profile name only — keep resume_content contact markers for AC2 proof.
+        # Column name only — keep resume_content contact markers for AC2 proof.
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": {"professional_summary": "Base", "experience": "legacy"},
                 },
-            }
+            },
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_markers_applied(html)
@@ -1286,8 +1307,11 @@ class TestAst1008ExperienceGoldenLayout:
     def test_base_resume_html_golden_layout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": {
@@ -1295,7 +1319,7 @@ class TestAst1008ExperienceGoldenLayout:
                         "experience": self._jobs(),
                     },
                 },
-            }
+            },
         }
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
@@ -1316,13 +1340,16 @@ class TestAst1008ExperienceGoldenLayout:
             },
         }
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": {"professional_summary": "Base", "experience": "legacy"},
                 },
-            }
+            },
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_golden_experience(html)
@@ -1446,13 +1473,16 @@ class TestAst1009EducationSkillsPrior:
     ) -> None:
         structure = self._structure()
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": self._blob(),
                 },
-            }
+            },
         }
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
@@ -1466,13 +1496,16 @@ class TestAst1009EducationSkillsPrior:
             "job_data": {"artifacts": {"resume_content": self._blob()}},
         }
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": {"professional_summary": "Base"},
                 },
-            }
+            },
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_section_markup(html)
@@ -1581,13 +1614,16 @@ class TestAst1010HeaderContactMetaStyles:
     def test_base_resume_header_meta_and_css(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": self._blob(),
                 },
-            }
+            },
         }
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
@@ -1601,13 +1637,39 @@ class TestAst1010HeaderContactMetaStyles:
             "job_data": {"artifacts": {"resume_content": self._blob()}},
         }
         cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
             "candidate_data": {
-                "profile": {"first": "Susan", "last": "Somerset"},
+                "contact": {},
                 "artifacts": {
                     "resume_structure": structure,
                     "base_resume": {"professional_summary": "Base"},
                 },
-            }
+            },
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_header_meta_css(html, expect_meta=True)
+
+
+class TestAst1014BuilderContact:
+    """AST-1014: builder reads name columns + contact blob via _apply_contact_to_render_dict."""
+
+    def test_coerce_row_injects_name_columns_for_render(self) -> None:
+        row = _candidate_row(base_resume=_resume_blob())
+        cd = builder_mod._coerce_candidate_blob(row)
+        assert cd["_first"] == "Ada"
+        assert cd["_full"] == "Ada Lovelace"
+        assert cd["contact"]["contact_email"] == "ada@example.com"
+
+    def test_apply_contact_uses_full_column_over_first_last(self) -> None:
+        render = _resume_blob()
+        builder_mod._apply_contact_to_render_dict(
+            render,
+            {"contact_email": "ada@example.com"},
+            first="Ignored",
+            last="Ignored",
+            full="Ada Lovelace",
+        )
+        assert render["candidate_name"] == "Ada Lovelace"
+        assert "ada@example.com" in render["candidate_contact_detail"]
