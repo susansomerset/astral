@@ -235,3 +235,16 @@ Adjacency only — **not** an in-process `tests/integration/` scenario area, and
 - §3.6 spikes: N/A — no spike output.
 - Test-tree ownership: engineer does not commit `docs/test-bible/**` (hook + AGENTS.md); Betty lands Stage 2.
 - No conflict with §2.1 / §2.4 / §2.6 — no config, batch, or state-machine changes.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-915/AST-1003-function-forward-integration-readme`
+**Plan path:** `docs/features/team-chuckles/ast-1003-function-forward-integration-readme.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `e49b6cc1` | Plan doc + Stage 2 target README body |
+| 1 | (this commit) | Ada inventory verify only — no `src/` / `tests/` / bible edit; Code Complete for Betty Stage 2 |
+
+**Built:** verification-only. Tip at Code Complete still has ticket-forward `### AST-711` / `### AST-712` / `### AST-818` headings; Betty lands Stage 2 literal replacement.
+**Tip:** see this commit on publish ref after push.
