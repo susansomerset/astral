@@ -186,3 +186,20 @@ Changes: Stage 3 rewritten so craft-base `accomplishments` are paste/resume-fait
 
 ### Recommended actions
 No fix-now. Stragglers are process notes only — resolve-child may proceed without product edits unless Ada wants the advisory prompt/checklist tighten-ups.
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Review tip:** `8ed58ac4` (Radia `docs(AST-996): Radia review — findings`)  
+**Overall:** DISCUSS → resolved for User Testing (no fix-now)
+
+### fix-now
+(none)
+
+### discuss
+C4 stragglers (Joan exclusions vs tip in-scope statutes) — accepted as process notes; all already **conforms** on tip. No product change.
+
+### advisory
+1. `craft_resume_base` `user_prompt` — added experience carve-out so LinkedIn/backstory “context and color” does not override paste-faithful experience (aligns with Stage 3 / AC3).
+2. Quality checklist — “every key is a non-empty string” → experience may be a job array; string sections remain non-empty when sourced.
+3. Public `is_experience_job_array` + ArtifactEditor `key === "experience"` Save fallback — left as-is (harmless for siblings / structureMode; Radia noted beyond plan text only).
