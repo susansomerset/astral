@@ -166,3 +166,14 @@ rg -n -i 'do not.*create-chat|never.*create-chat|other host|run from.*laptop|Mac
 
 - Ada: acknowledge straggler discuss; no fix-now. Proceed resolve-child → User Testing when ready.
 - Runtime laptop-block remains until AST-1002 (intentional).
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Review:** `[code-rubric] revision=1` — Overall DISCUSS; **fix-now:** none.
+
+| Finding | Disposition |
+|---------|-------------|
+| **discuss** C4 straggler (`astral.git.engineer-test-tree-ban`: Joan excluded at plan-time; post-Betty three-dot includes `docs/test-bible/README.md`) | **Acknowledged.** Statute scored **conforms** — Betty owns bible + `merge-tests`; engineer commits did not edit the test tree. No product or plan-stage change. |
+
+**Ship tip after resolve:** this commit on `origin/sub/AST-999/AST-1001-missing-thread-skill-policy`. Live skills remain `team-chuckles@7e45ec4`.
