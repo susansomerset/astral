@@ -864,3 +864,19 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
   -q
 ```
+
+---
+
+### AST-998 · AST-994
+
+**AST-998:** `BUILD_CONFIG["supported_sections"]["experience"]["body_kind"]` = `"experience_jobs"`. Primary HTML emit coverage: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| experience body_kind | `src/utils/config.py` | **`TestAst998ExperienceBodyKind`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
+  -q
+```
