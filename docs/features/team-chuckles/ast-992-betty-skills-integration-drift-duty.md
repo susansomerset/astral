@@ -216,3 +216,102 @@ Changes: Added Stage 1 step 4 with literal replacements for the sole-authority m
 | 1–4 | `team-chuckles@4549329` | `qa-child` drift duty + bible-edit scope; `check-linear` no-parallel-queue; `test-child` integration `[qa-handoff]` pointer |
 
 **Tip:** astral plan stub (this commit); skills on `team-chuckles` `main` @ `4549329`. Hosts: re-run `~/team-chuckles/install.sh`.
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-992
+**Reviewed tip:** `d35bdfc` (`origin/sub/AST-989/AST-992-betty-skills-integration-drift-duty` before this docs append)
+**Overall:** DISCUSS
+
+### Diff change set
+
+- **Paths:** `docs/features/team-chuckles/ast-992-betty-skills-integration-drift-duty.md` (add), `docs/test-bible/README.md` (modify)
+- **Layers:** `docs`
+- **Change types:** `add`, `modify`
+- **Off-repo deliverable verified:** `team-chuckles@4549329` — `qa-child` Integration drift duty + bible-edit scope for `docs/test-bible/integration/**`; `check-linear` no-parallel-queue note; `test-child` one-line integration `[qa-handoff]`; `betty-AGENTS.md` untouched.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | layers+paths miss (no src/core\|utils) |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers+paths miss (no src/core) |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers+paths miss (no src/core) |
+| astral.batch.batch-id-first | scoped | not-applicable | layers+paths miss (no src data/core) |
+| astral.batch.batch-id-format | scoped | not-applicable | layers+paths miss (no src data/core) |
+| astral.batch.claim-process-release | scoped | not-applicable | layers+paths miss (no src data/core) |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers+paths miss (no src data/core) |
+| astral.config.config-source-of-truth | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | layers+paths miss (no src core/data/config) |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers+paths miss (no src/scripts) |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss (no artifacts/** / scripts/spikes) |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | production plan under docs/features; not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan file docs/features/team-chuckles/ast-992-….md |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty merge-tests only touched test-bible; features by engineer |
+| astral.git.engineer-test-tree-ban | scoped | conforms | docs/test-bible/README.md via Betty merge-tests, not engineer |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers+paths miss (no src core/external) |
+| astral.layers.import-direction | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers+paths miss (no scripts/**) |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers+paths miss (no src/ui) |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | layers+paths miss (no src/core) |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | layers+paths miss (no src/core) |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers+paths miss (no src/ui) |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers+paths miss (no src/data) |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | layers+paths miss (no src/scripts) |
+| astral.standards.in-scope-only | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.no-cross-contamination | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.public-then-helpers | scoped | not-applicable | layers+paths miss (no src/**) |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers+paths miss (no src/utils) |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers+paths miss (no src core/data) |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | layers+paths miss (no src core/data/config) |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers+paths miss (no src/core) |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers+paths miss (no src/ui/frontend) |
+| astral.ui.naming-conventions | scoped | not-applicable | layers+paths miss (no src/ui) |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers+paths miss (no ui/scripts/config) |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | one merge-tests(AST-992) on sub tip |
+| orch.git.commit-vocabulary | universal | conforms | plan/docs/code/merge-tests vocabulary only |
+| orch.git.flow-direction-inviolable | universal | conforms | tests→sub via merge-tests; no reverse flow |
+| orch.git.ftr-sub-topology | universal | conforms | publish ref sub/AST-989/AST-992-… |
+| orch.git.merge-on-checkout | universal | conforms | no evidence of coding on unmerged stale sub |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase/force in commit history |
+| orch.git.no-dev-agent-branches | universal | conforms | work on ticket sub + team-chuckles; no dev-\<agent\> |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-989 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | literal Stage 1–3 text; no product improvisation |
+| orch.pipeline.plan-is-bible | universal | conforms | skills match Stage 1–3 literal inserts; R1 bible-edit scope applied |
+| orch.pipeline.project-scoped-queues | universal | conforms | Team Chuckles ticket-scoped work |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child entry |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon/statutes/** edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | bible README by Betty; skills reinforce Betty revise + engineer handoff |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Hedy |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy stays implementer assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | role path bans respected across homes |
+
+### Pattern conformance
+
+none cited
+
+### Plan adherence
+
+Scope `minor` matches: three team-chuckles skills + astral plan (+ Betty bible README). Stages 1–3 text present at `4549329`; Stage 1 step 4 Who-runs-this includes `docs/test-bible/integration/**`; `betty-AGENTS.md` not touched (AST-991). No AST-988 / new coverage / AST-915–927 smuggle.
+
+### Findings
+
+**discuss:** straggler — Joan excluded `astral.git.engineer-test-tree-ban` (plan said no bible), but the three-dot diff includes `docs/test-bible/README.md` (Betty `docs(AST-992)` via merge-tests). Statute still **conforms** (Betty-owned path). No product fix required — acknowledge plan-time exclusion did not anticipate Betty’s bible note.
+
+### What’s solid
+
+- `qa-child` alone teaches revise-existing integration drift + product-bug return.
+- Intake note + engineer one-liner close the queue/handoff loop without a second QA persona.
+
+### Recommended actions
+
+- Hedy: no code change for the straggler; acknowledge in resolve if desired, then User Testing when ready.
+- Hosts: re-run `~/team-chuckles/install.sh` so sessions see skills @ `4549329`.
