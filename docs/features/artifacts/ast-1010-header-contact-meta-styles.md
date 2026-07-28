@@ -130,7 +130,7 @@ Shared resume HTML builders already emit a header (`Name` + optional ` • Title
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | | Optional `candidate_tagline` schema + contact-adjacent structure |
-| 2 | | Header `\u00a0• ` join + ATS meta description |
-| 3 | | Embedded CSS for golden header/role/education/skills classes |
-| 4 | (verify) | Three-surface meta/header/CSS proof |
+| 1–3 | `8a00e5eb` | Optional `candidate_tagline` + header/meta emit + embedded golden CSS |
+| 4 | (verify) | Session emit + filter keep tagline; meta omit without tagline |
+
+**Tip:** `8a00e5eb` on `origin/sub/AST-993/AST-1010-header-contact-meta-styles`
