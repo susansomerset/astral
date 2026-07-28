@@ -127,3 +127,25 @@ Do **not** emit `<link rel="stylesheet" …>`.
 | 2 | 89c3f44c | Golden embedded CSS in `_emit_html_document` + cover/ATS/prose-block |
 
 **Tip:** `89c3f44c` on `origin/sub/AST-1019/AST-1020-embedded-stylesheet-golden-parity`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1020
+**Publish ref:** `24a466ce420fa770b816603c01d4ce83f34d877a`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1 tokens land in `BUILD_CONFIG["default_style"]["colors"]`; Stage 2 wholesale CSS replace matches the golden contract (contact flex, skills grid, education `0.5in`, mobile + always-on `#prior-experience` print break).
+- Astral appendages (cover / ATS / `.prose-block`) retained; no `<link rel="stylesheet">`; title/meta/markup left for AST-1021.
+- Engineer commits touch only `src/utils/config.py` + `src/core/builder.py` + plan; Betty owns one `merge-tests(AST-1020)` SHA.
+
+### Issues / findings
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` against plan Files Changed; three-dot diff vs `origin/dev` brings them in-scope (plan file + Betty test/bible trees). Diff conforms on each — no product fix.
+
+### Recommended actions
+
+- Engineer: acknowledge stragglers (no code change). Proceed resolve-child → User Testing when clear.
