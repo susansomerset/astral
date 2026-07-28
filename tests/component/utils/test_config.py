@@ -2186,12 +2186,33 @@ class TestAst997FinalizeExperienceJobArray:
         assert craft["required"] is True
 
 
+
 class TestAst998ExperienceBodyKind:
     """AST-998: BUILD_CONFIG experience body_kind is experience_jobs."""
 
     def test_experience_body_kind_experience_jobs(self) -> None:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
+
+class TestAst1020DefaultStyleColorTokens:
+    """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
+
+    def test_golden_text_and_border_color_tokens(self) -> None:
+        colors = cfg.BUILD_CONFIG["default_style"]["colors"]
+        assert colors["text_primary"] == "#1a1a1a"
+        assert colors["text_secondary"] == "#444"
+        assert colors["text_tertiary"] == "#666"
+        assert colors["border_light"] == "#e0e0e0"
+        assert colors["border_medium"] == "#ccc"
+        # Existing consumers keep ink/muted/rule/surface (not renamed).
+        assert "ink" in colors
+        assert "muted" in colors
+        assert "rule" in colors
+        assert "surface" in colors
+        assert colors["default_accent"] == "#3c2c6e"
+        assert colors["default_header"] == "#3c2c6e"
+        assert colors["page_background"] == "#f5f5f5"
+
 
 class TestAst1010CandidateTaglineConfig:
     """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""

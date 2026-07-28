@@ -919,6 +919,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1020 · AST-1019
+
+**AST-1020:** `BUILD_CONFIG["default_style"]["colors"]` adds golden `text_primary` / `text_secondary` / `text_tertiary` / `border_light` / `border_medium` (existing `ink` / `muted` / `rule` / `surface` retained). Primary stylesheet emit: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Golden text/border tokens + accent/header/page_bg | `src/utils/config.py` | **`TestAst1020DefaultStyleColorTokens`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1020DefaultStyleColorTokens \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.

@@ -1597,7 +1597,8 @@ class TestAst1010HeaderContactMetaStyles:
         ):
             assert sel in html
         assert 'href="styles07.css"' not in html
-        assert "display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center;" not in html
+        # AST-1020 owns golden contact-flex / full stylesheet parity asserts
+        # (this class previously forbade the one-line flex rule before Take 2).
 
     def test_session_header_meta_and_css(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
@@ -1650,6 +1651,136 @@ class TestAst1010HeaderContactMetaStyles:
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_header_meta_css(html, expect_meta=True)
+
+
+class TestAst1020GoldenStylesheet:
+    """AST-1020: embedded stylesheet golden parity + Astral CSS appendages."""
+
+    def _structure(self) -> dict[str, Any]:
+        # No prior_experience section — print CSS must still carry the golden break.
+        return {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "candidate_title": {
+                    "id": "candidate_title",
+                    "title": "Title",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": False,
+                },
+                "candidate_contact_detail": {
+                    "id": "candidate_contact_detail",
+                    "title": "Contact",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": False,
+                },
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 3,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def _blob(self) -> dict[str, Any]:
+        return {
+            "candidate_name": "Susan Somerset",
+            "candidate_title": "Senior Technical Program Manager",
+            "candidate_contact_detail": "hire@example.com",
+            "professional_summary": "Summary body",
+        }
+
+    @classmethod
+    def _assert_golden_style(cls, html: str) -> None:
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "<h1>Susan Somerset • Senior Technical Program Manager</h1>" in html
+        assert 'link rel="stylesheet"' not in html
+        assert 'href="styles07.css"' not in html
+        # :root tokens (interpolated from BUILD_CONFIG default_style colors/fonts)
+        assert "--text-primary: #1a1a1a;" in style
+        assert "--text-secondary: #444;" in style
+        assert "--text-tertiary: #666;" in style
+        assert "--border-light: #e0e0e0;" in style
+        assert "--border-medium: #ccc;" in style
+        assert "--accent-color: #3c2c6e;" in style
+        assert "--header-color: #3c2c6e;" in style
+        # Contact flex (multi-line golden block)
+        assert "display: flex;" in style
+        assert "flex-wrap: wrap;" in style
+        assert "gap: 8px 16px;" in style
+        assert "justify-content: center;" in style
+        assert ".contact span { white-space: nowrap; }" in style
+        # Experience / education / skills golden rules
+        assert "font-size: 14.5px;" in style
+        assert "margin-left: 0.5in;" in style
+        assert "minmax(280px, 1fr)" in style
+        assert "letter-spacing: 0.2px;" in style
+        assert "text-transform: uppercase;" in style
+        # Unused-but-present golden selectors
+        for sel in (".title {", ".specialties {", ".job-title {", ".dates {"):
+            assert sel in style
+        # Mobile + print (prior break always — even without prior body section)
+        assert "@media (max-width: 600px)" in style
+        assert "#prior-experience { page-break-before: always; }" in style
+        assert "#competencies { page-break-after: avoid; }" in style
+        # Astral-only appendages between skills and mobile
+        assert ".prose-block { white-space: pre-wrap; }" in style
+        assert ".cover-block" in style
+        assert ".ats-keywords" in style
+
+    def test_session_golden_stylesheet(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(self._structure(), self._blob())
+        self._assert_golden_style(html)
+
+    def test_base_resume_golden_stylesheet(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structure = self._structure()
+        cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
+            "candidate_data": {
+                "contact": {},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": self._blob(),
+                },
+            },
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_golden_style(html)
+
+    def test_job_resume_golden_stylesheet(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {"artifacts": {"resume_content": self._blob()}},
+        }
+        cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
+            "candidate_data": {
+                "contact": {},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base"},
+                },
+            },
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_golden_style(html)
 
 
 class TestAst1014BuilderContact:
