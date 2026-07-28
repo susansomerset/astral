@@ -1476,3 +1476,138 @@ class TestAst1009EducationSkillsPrior:
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_section_markup(html)
+
+
+class TestAst1010HeaderContactMetaStyles:
+    """AST-1010: Name NBSP-bullet Title header, ATS meta from tagline, golden CSS selectors."""
+
+    _TAGLINE = (
+        "Program Delivery • Cross-Functional Alignment • Cloud SaaS • AI-Assisted Engineering"
+    )
+    _META = (
+        "Resume of Susan Somerset, Fractional TPM, specializing in "
+        "Program Delivery • Cross-Functional Alignment • "
+        "Cloud SaaS • AI-Assisted Engineering"
+    )
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "candidate_title": {
+                    "id": "candidate_title",
+                    "title": "Title",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": False,
+                },
+                "candidate_tagline": {
+                    "id": "candidate_tagline",
+                    "title": "Candidate Tagline",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": False,
+                },
+                "candidate_contact_detail": {
+                    "id": "candidate_contact_detail",
+                    "title": "Contact",
+                    "enabled": True,
+                    "order": 3,
+                    "job_agent_editable": False,
+                },
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 4,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def _blob(self, *, tagline: str | None = _TAGLINE) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "candidate_name": "Susan Somerset",
+            "candidate_title": "Fractional TPM",
+            "candidate_contact_detail": "hire@example.com",
+            "professional_summary": "Summary body",
+        }
+        if tagline is not None:
+            out["candidate_tagline"] = tagline
+        return out
+
+    @classmethod
+    def _assert_header_meta_css(cls, html: str, *, expect_meta: bool) -> None:
+        assert "<h1>Susan Somerset • Fractional TPM</h1>" in html
+        assert '<div class="contact"><span>hire@example.com</span></div>' in html
+        header = html.split("<header", 1)[1].split("</header>", 1)[0]
+        main = html.split("<main", 1)[1].split("</main>", 1)[0]
+        assert "Program Delivery" not in header
+        assert "Program Delivery" not in main
+        if expect_meta:
+            assert f'<meta name="description" content="{cls._META}" />' in html
+        else:
+            assert 'meta name="description"' not in html
+        for sel in (
+            ".compact-title",
+            ".compact-location",
+            ".role-description",
+            ".education-list",
+            ".skills-grid",
+            ".skill-category h4",
+        ):
+            assert sel in html
+        assert 'href="styles07.css"' not in html
+        assert "display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center;" not in html
+
+    def test_session_header_meta_and_css(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(self._structure(), self._blob())
+        self._assert_header_meta_css(html, expect_meta=True)
+
+    def test_session_omits_meta_without_tagline(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(), self._blob(tagline=None)
+        )
+        self._assert_header_meta_css(html, expect_meta=False)
+
+    def test_base_resume_header_meta_and_css(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structure = self._structure()
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": self._blob(),
+                },
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_header_meta_css(html, expect_meta=True)
+
+    def test_job_resume_header_meta_and_css(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {"artifacts": {"resume_content": self._blob()}},
+        }
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base"},
+                },
+            }
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_header_meta_css(html, expect_meta=True)

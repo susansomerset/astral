@@ -899,3 +899,20 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   -q
 ```
 
+---
+
+### AST-1010 · AST-993
+
+**AST-1010:** Optional `candidate_tagline` on craft_resume_base + resume_content shapes; contact-adjacent id in `RESUME_STRUCTURE_CONTACT_SECTION_IDS` / `KNOWN` / `DEFAULT` (order 2; contact bumped to 3); `DATA_SHAPES` base_resume_structure field. Primary HTML header/meta/CSS: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tagline contract + structure orders | `src/utils/config.py` | **`TestAst1010CandidateTaglineConfig`** |
+| Default catalog still equals known ids | `src/utils/config.py` | **`TestAst517ResumeStructureConfig`** (regression) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/utils/test_config.py::TestAst517ResumeStructureConfig \
+  -q
+```

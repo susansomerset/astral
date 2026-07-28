@@ -147,3 +147,31 @@ Equivalent harness:
   tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
   -q
 ```
+
+---
+
+### AST-1010 · AST-993
+
+**AST-1010:** Shared resume HTML header joins `Name\u00a0• Title`; optional `candidate_tagline` feeds `<meta name="description">` (`Resume of {name}, {title}, specializing in {tagline}`) and never appears in header/main body; embedded CSS expands for golden layout class readiness (`.compact-title`, `.role-description`, `.education-list`, `.skills-grid`, …) without an external `styles07.css` link. Experience/education/skills **emit** markup stays siblings **AST-1008** / **AST-1009**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header NBSP-bullet join + ATS meta present/omit + tagline body exclusion + CSS selectors | `src/core/builder.py` | **`TestAst1010HeaderContactMetaStyles`** (session / base / job) |
+| Optional tagline contract + contact-adjacent structure | `src/utils/config.py` | **`TestAst1010CandidateTaglineConfig`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Experience emit regression (AST-998 / AST-1008 as present on tip) | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
+| Nested markers regression | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers`** |
+
+**Broken / obsolete this pass:** none for header/meta/CSS on this product tip. Sibling emit chrome may already be revised on `origin/tests` by AST-1008/1009 — do not re-litigate here.
+
+**Integration:** no existing scenario asserts resume header/meta/CSS — no revision.
+
+**AST-1010** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  -q
+```
