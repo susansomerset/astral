@@ -105,3 +105,16 @@ No **fix-now** product findings.
 ### Recommended actions
 
 Engineer (`resolve-child`): acknowledge C4 stragglers (pipeline docs/tests appearing after Joan’s plan-time exclude) — no product code change required for those three.
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Radia tip:** `94671581` · Overall DISCUSS · no fix-now
+
+| Finding | Action |
+|---------|--------|
+| discuss C4 `astral.debug.spikes-under-debug-dir` | Acknowledged — substance conforms; no product change |
+| discuss C4 `astral.docs.features-single-file-per-ticket` | Acknowledged — substance conforms; no product change |
+| discuss C4 `astral.git.engineer-test-tree-ban` | Acknowledged — substance conforms; no product change |
+
+No product or test-tree edits in resolve. Proceeding to User Testing after §9a dry-run.
