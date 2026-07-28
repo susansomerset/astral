@@ -149,3 +149,10 @@ Do **not** emit `<link rel="stylesheet" …>`.
 ### Recommended actions
 
 - Engineer: acknowledge stragglers (no code change). Proceed resolve-child → User Testing when clear.
+
+## Resolution
+
+**Date:** 2026-07-28  
+**Outcome:** clean — no product code changes.
+
+Acknowledged Radia’s **discuss (straggler)** items (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`). Joan excluded them at plan time; three-dot diff brought them in-scope; each **conforms** in substance. No **fix-now** items. Publish tip after resolve remains product+Betty+Radia stack on `origin/sub/AST-1019/AST-1020-embedded-stylesheet-golden-parity`.
