@@ -46,6 +46,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 
 
+### AST-1004 · AST-915 (integration testing ADR)
+
+**Docs-only.** Engineer lands `docs/features/team-chuckles/ast-915-integration-testing-adr.md` + Linear Document on AST-1004. Function-forward map remains sibling **AST-1003** [`integration/README.md`](integration/README.md).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (ADR §§1–8 + Linear Document title `ADR — Integration testing program (AST-915)`) — no pytest. Do **not** invent `tests/integration/scenarios/`.
+
 ### Retired monolith section map
 
 
