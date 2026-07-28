@@ -148,3 +148,22 @@ PREAMBLE_CONFIG = {
 
 **Publish ref:** `sub/AST-952/AST-1016-preamble-config`  
 **Build tip:** `927658d1bf3dfec1e097308ddcd15b27342f6c05`
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Tip reviewed:** `2c0cb3f2cdc18f728b6db9767c709496474def2c` (`origin/sub/AST-952/AST-1016-preamble-config` vs `origin/dev`)
+**Overall:** DISCUSS
+
+#### What’s solid
+- `PREAMBLE_CONFIG` matches plan Stage 1 (intro, three `context.raw_*` steps, `preamble_validate_response`, asserts vs `CANDIDATE_LIBRARY_CONFIG`).
+- Stage 2: `GET /api/ui_config` exposes `preamble` with `@require_auth` retained; no intake UI / Ruth / library churn in the AST-1016 `code` commit.
+- Ancestor AST-1014 fix-nows already resolved on this tip (`api_admin` token view, PUT `debug=ui_llm_debug()`, agent lazy-import comment).
+
+#### Issues
+1. **discuss** — C4 stragglers: Joan excluded 16 statutes at plan time that the three-dot tip scores in-scope because the tip also carries resolved AST-1014 (+ Betty tests). Not product defects on the AST-1016 delta; statutes themselves **conform**.
+
+#### Advisory
+- Plan prose says `/api/system/ui_config`; live route is `/api/ui_config` (system blueprint) — implementation correctly extends the existing surface.
+
+#### Notes
+Joan plan-rubric verdict attached (APPROVED). No fix-now on AST-1016 deliverable.
