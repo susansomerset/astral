@@ -6782,6 +6782,23 @@ def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]
     return _run_with_retry(_with_conn)
 
 
+def list_candidate_ids_with_dispatch_tasks() -> List[str]:
+    """Distinct candidate_id values that already own ≥1 dispatch_task row."""
+    def _with_conn() -> List[str]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT DISTINCT candidate_id FROM dispatch_task "
+                "WHERE candidate_id IS NOT NULL AND TRIM(candidate_id) != '' "
+                "ORDER BY candidate_id ASC"
+            ).fetchall()
+            return [str(r[0]) for r in rows if r[0] is not None]
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
 def count_dispatch_tasks_by_candidate() -> Dict[str, int]:
     """Map candidate_id → row count for all dispatch_task rows."""
     def _with_conn() -> Dict[str, int]:
