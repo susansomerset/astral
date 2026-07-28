@@ -79,3 +79,14 @@ After AST-996/997 experience job-array contracts, Session Resume Paste craft-bas
 - [x] Scope is AST-1005 only (not parent epic remainder)
 - [x] UAT fitness filled from bug Description (parent Description not fetched)
 - [x] Code-rules check completed
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-994/AST-1005-uat-parse-validation-false-missing-candidate-name`
+**Plan path:** `docs/features/artifacts/ast-1005-uat-parse-validation-false-missing-candidate-name.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | f348d69a | Promote known ids from resume_structure; dedicated items_schema object validator |
+
+**Tip:** f348d69a (before stub docs commit).
