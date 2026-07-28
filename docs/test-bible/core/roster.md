@@ -497,7 +497,7 @@ Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| `dedupe_agent_responses_latest` | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory::testdedupe_agent_responses_latest_wins_per_task_key` |
+| `dedupe_agent_responses_latest` (retired AST-984) | `src/core/roster.py` | `TestAst726LatestOnlyRosterStory::test_dedupe_and_normalize_helpers_retired` |
 | Company `vector_grades` via `grades_key` | `src/core/roster.py` (`get_entity_agent_story`) | `TestAst726LatestOnlyRosterStory::test_company_prefilter_vector_grades_from_company_data` |
 | Fail clears `prefilter_score` (explicit None) | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | `TestAst726LatestOnlyRosterStory::test_prefilter_fail_clears_score` |
 
@@ -516,7 +516,7 @@ Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md
 
 ### AST-727 (parent AST-717)
 
-**Scope:** Public `dedupe_agent_responses_latest` + `normalize_agent_responses_for_backfill` for one-time migration script; runtime `get_entity_agent_story` shares dedupe helper (**AST-726**).
+**Scope (historical):** Public dedupe + normalize for backfill; **retired AST-984**. Story now uses `list_entity_latest_agent_refs`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -713,3 +713,14 @@ Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-984 · AST-975
+
+**Scope:** `get_entity_agent_story` reads `list_entity_latest_agent_refs`; `dedupe_agent_responses_latest` / `normalize_agent_responses_for_backfill` removed.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Story from list API | `src/core/roster.py` | `TestEntityAgentStory`, `TestEntityAgentStoryBranches` |
+| Dedupe/normalize retired | same | `TestAst726LatestOnlyRosterStory`, `TestAst727NormalizeAgentResponsesForBackfill` |
+
+**AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md`.

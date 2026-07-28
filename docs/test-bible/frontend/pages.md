@@ -941,3 +941,28 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
 ```
+
+
+### AST-987 · AST-985
+
+**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab. Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session HTML builder (no bind) | `src/core/builder.py` **`build_session_base_resume`** | **`TestAst987BuildSessionBaseResume`** (`test_builder.py`) |
+| Admin HTML POST | `src/ui/api/api_admin.py` **`session_resume_html`** | **`TestAst987SessionResumeHtmlApi`** (`test_api_admin.py`) |
+| Admin paste page (§6c) | `AdminSessionResumePaste.tsx` + nav/route | **`test_AdminSessionResumePaste.test.tsx`** — render, parse success/fail, Open HTML blob/error, localStorage restore |
+
+**Broken / obsolete:** none — new surface; candidate-bound `/candidate/resume/base` and craft persist paths unchanged.
+
+**AST-987** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/ui/api/test_api_admin.py::TestAst987SessionResumeHtmlApi \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```

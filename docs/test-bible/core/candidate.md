@@ -272,3 +272,24 @@ Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch tr
   tests/component/data/database/test_candidates.py::TestAst973LegacyCandidateMigration \
   -q
 ```
+
+
+### AST-986 · AST-985
+
+**AST-986:** Admin session resume parse — paste → `craft_resume_base` with **default** structure, response-only JSON (`resume_structure` / `base_resume` / `parsed_response`). Synthetic ctx omits `astral_candidate_id`; ledger sentinel `candidate_id="session"`; **never** `get_candidate` / `save_candidate`. Route: `POST /api/admin/session_resume/parse` (`@require_admin`). UI / HTML tab / session retention = sibling **AST-987**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Core session parse (no persist / no bind) | `src/core/candidate.py` **`run_session_resume_parse`** | **`TestAst986SessionResumeParse`** |
+| Admin POST delegate + auth | `src/ui/api/api_admin.py` **`session_resume_parse`** | **`TestAst986SessionResumeParseApi`** (`test_api_admin.py`) |
+
+**Broken / obsolete:** none — new surface; **`TestRunCandidateArtifactGeneration`** persist path unchanged.
+
+**AST-986** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse \
+  tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
+  -q
+```

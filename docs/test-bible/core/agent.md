@@ -386,7 +386,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-981 · AST-975
 
-**Scope:** Stop core audit writes to the standalone `agent_responses` **table**. `_store_agent_response` / `add_agent_response_entry` removed; `do_task` still persists `agent_data` (`save_agent_data`) and entity latest-only refs (`append_agent_response`). Schema drop / docs prose / entity-column retirement are siblings AST-982 / AST-983 / AST-984.
+**Scope:** Stop core audit writes to the standalone `agent_responses` **table**. `_store_agent_response` / `add_agent_response_entry` removed; `do_task` persists `agent_data` (`save_agent_data`); entity JSON append was sibling scope. Schema drop / docs / column retirement: AST-982 / AST-983 / **AST-984**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -408,3 +408,13 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   -q
 ```
 
+### AST-984 · AST-975
+
+**Scope:** No `append_agent_response`; RESPONSE rows tagged with `entity_id`; hop/hydrate via `list_entity_latest_agent_refs`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No append symbol; RESPONSE save carries `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired` |
+| Hop skips failure prefix / prefers anchor batch | same | hop tests in `TestAst597*` / `TestAst769*` (list API mocks) |
+
+**AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` (§ AST-984).

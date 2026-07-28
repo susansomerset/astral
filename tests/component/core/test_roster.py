@@ -2970,20 +2970,24 @@ class TestEntityAgentStory:
         assert roster_mod.get_entity_agent_story({}) == []
 
     def test_enriches_scored_response_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-984: story from list_entity_latest_agent_refs, not entity JSON column.
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "qualify_job_listings",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
         monkeypatch.setattr(
             roster_mod,
             "get_agent_data_for_ids",
             MagicMock(return_value={"block-1": {"block_data": json.dumps({"jobs": [{"astral_job_id": "job-1", "title": "Role"}]})}}),
         )
-        scored_key = "qualify_job_listings"
         entity = {
             "astral_job_id": "job-1",
-            "agent_responses": [
-                {
-                    "task_key": scored_key,
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
-                }
-            ],
             "job_data": {"joblist_grades": {"fit": "A"}},
         }
         story = roster_mod.get_entity_agent_story(entity)
@@ -2993,18 +2997,20 @@ class TestEntityAgentStory:
     def test_ast520_agent_story_phase_and_print_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"block-1": {"block_data": '{"note": "scan insight"}'}}),
-        )
-        entity = {
-            "astral_job_id": "job-520",
-            "agent_responses": [
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
                 {
                     "task_key": "anticipate_scan",
                     "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
                 }
             ],
-        }
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "get_agent_data_for_ids",
+            MagicMock(return_value={"block-1": {"block_data": '{"note": "scan insight"}'}}),
+        )
+        entity = {"astral_job_id": "job-520"}
         story = roster_mod.get_entity_agent_story(entity)
         assert story[0]["task_key"] == "anticipate_scan"
         assert story[0]["blocks"][0]["content"] == '{"note": "scan insight"}'
@@ -3512,32 +3518,39 @@ class TestEntityAgentStoryBranches:
     def test_skips_invalid_block_refs_and_labels_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"b1": {"block_data": "one"}, "b2": {"block_data": "two"}}),
-        )
-        entity = {
-            "agent_responses": [
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
                 {
                     "task_key": "parse_job_list",
                     "prompt_blocks": ["bad", {"type": "NO_CACHE", "id": "b1"}, {"type": "NO_CACHE", "id": "b2"}],
                 }
-            ]
-        }
+            ],
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "get_agent_data_for_ids",
+            MagicMock(return_value={"b1": {"block_data": "one"}, "b2": {"block_data": "two"}}),
+        )
+        entity = {"short_name": "acme"}
         story = roster_mod.get_entity_agent_story(entity)
         assert story[0]["blocks"][0]["type"] == "NO_CACHE"
         assert story[0]["blocks"][1]["type"] == "NO_CACHE (2)"
 
     def test_scored_response_without_job_id_keeps_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        scored_key = next(key for key, cfg in TASK_CONFIG.items() if cfg.get("scored"))
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {"task_key": scored_key, "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}]},
+            ],
+        )
         monkeypatch.setattr(
             roster_mod,
             "get_agent_data_for_ids",
             MagicMock(return_value={"block-1": {"block_data": json.dumps({"jobs": [{"title": "Role"}]})}}),
         )
-        scored_key = next(key for key, cfg in TASK_CONFIG.items() if cfg.get("scored"))
-        entity = {
-            "astral_job_id": "job-1",
-            "agent_responses": [{"task_key": scored_key, "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}]}],
-        }
+        entity = {"astral_job_id": "job-1"}
         story = roster_mod.get_entity_agent_story(entity)
         assert story[0]["blocks"][0]["content"] == ""
 
@@ -5311,23 +5324,26 @@ class TestAst692JobsiteScrapeIssue:
 
 
 class TestAst726LatestOnlyRosterStory:
-    """AST-726: modal story dedup + latest-only company prefilter outcomes."""
+    """AST-726/984: modal story from list API + latest-only company prefilter outcomes."""
 
-    def test_dedupe_agent_responses_latest_wins_per_task_key(self) -> None:
-        entries = [
-            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
-            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "do"},
-            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
-        ]
-        deduped = roster_mod.dedupe_agent_responses_latest(entries)
-        assert len(deduped) == 2
-        assert deduped[0]["task_key"] == "consult_get"
-        assert deduped[0]["batch_id"] == "new"
-        assert deduped[1]["task_key"] == "consult_do"
+    def test_dedupe_and_normalize_helpers_retired(self) -> None:
+        # AST-984: column helpers gone; latest-per-task lives in list_entity_latest_agent_refs.
+        assert not hasattr(roster_mod, "dedupe_agent_responses_latest")
+        assert not hasattr(roster_mod, "normalize_agent_responses_for_backfill")
 
     def test_company_prefilter_vector_grades_from_company_data(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "prefilter_company",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
+                }
+            ],
+        )
         monkeypatch.setattr(
             roster_mod,
             "get_agent_data_for_ids",
@@ -5335,12 +5351,6 @@ class TestAst726LatestOnlyRosterStory:
         )
         entity = {
             "short_name": "acme",
-            "agent_responses": [
-                {
-                    "task_key": "prefilter_company",
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
-                }
-            ],
             "company_data": {"prefilter_grades": [{"grade": "A", "vector": "fit"}]},
         }
         story = roster_mod.get_entity_agent_story(entity)
@@ -5363,34 +5373,12 @@ class TestAst726LatestOnlyRosterStory:
         assert saved["prefilter_score"] is None
 
 
-
 class TestAst727NormalizeAgentResponsesForBackfill:
-    """AST-727: shared backfill normalizer matches runtime dedupe rules."""
+    """AST-727 helpers retired with entity columns (AST-984)."""
 
-    def test_drops_empty_task_key_and_dedupes(self) -> None:
-        entries = [
-            {"task_key": "", "batch_id": "orphan"},
-            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
-            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
-            "bad",
-        ]
-        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
-        assert stats == {"dropped_empty_key": 1, "deduped_removed": 1}
-        assert len(normalized) == 1
-        assert normalized[0]["batch_id"] == "new"
-
-    def test_coerces_non_list_to_empty(self) -> None:
-        normalized, stats = roster_mod.normalize_agent_responses_for_backfill({})
-        assert normalized == []
-        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
-
-    def test_idempotent_on_already_normalized(self) -> None:
-        entries = [
-            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "b1"},
-        ]
-        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
-        assert normalized == entries
-        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
+    def test_normalize_helper_removed(self) -> None:
+        assert not hasattr(roster_mod, "normalize_agent_responses_for_backfill")
+        assert not hasattr(roster_mod, "dedupe_agent_responses_latest")
 
 
 class TestAst877OriginatingSearchTerm:

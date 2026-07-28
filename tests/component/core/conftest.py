@@ -22,6 +22,7 @@ _SCHEMA_FLAGS = (
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
     "_agent_responses_table_sunset_applied",
+    "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
     "_agent_task_schema_ensured",
     "_timesheets_schema_ensured",

@@ -270,6 +270,18 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on publish tip + `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-928** out of scope.
 
+### AST-991 · AST-989 (Betty agent — integration harness ownership)
+
+**Docs-only** (team-chuckles Betty persona + astral plan). Live edit is **`~/team-chuckles/agents/betty-AGENTS.md`** (`code(AST-991)` on team-chuckles `main` @ `8570636`); astral **`origin/sub/AST-989/AST-991-betty-agent-integration-harness-ownership`** holds the plan doc only. No product `src/`, no pytest. Opening + Standards ownership note state GHA integration-harness green + drift of **existing** integration scenarios as Betty authority parallel to the component test tree / bible — not a Foundation one-off and not new coverage. Does **not** rewrite QA skill procedure (**AST-992**), fix AST-988 harness red, or expand AST-915 / AST-927 coverage.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on `~/team-chuckles/agents/betty-AGENTS.md` (+ installed `~/.cursor/agents/betty-AGENTS.md`) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-992** out of scope.
+
+### AST-992 · AST-989 (Betty skills — integration drift duty)
+
+**Docs-only** (team-chuckles Betty skills + one engineer pointer + astral plan). Live edits on **`team-chuckles` `main`** @ `4549329` (`qa-child` Integration drift duty + bible-edit scope for `docs/test-bible/integration/**`; `check-linear` §5b no-parallel-queue harness note; `test-child` one-line `tests/integration/` → `[qa-handoff]`); astral **`origin/sub/AST-989/AST-992-betty-skills-integration-drift-duty`** holds the plan doc only. No product `src/`, no pytest, no new integration scenarios. Does **not** rewrite `betty-AGENTS.md` (**AST-991**), fix AST-988 harness red, or expand AST-915 / AST-927 coverage.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the three skills under `~/team-chuckles` (+ installed `~/.cursor/skills/…`) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-991** out of scope.
+
 
 ## 2. Where tests live
 
