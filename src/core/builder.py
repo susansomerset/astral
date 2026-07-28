@@ -592,14 +592,19 @@ def _structure_ordered_body_ids(resume_structure: dict) -> List[str]:
 
 
 def _apply_resume_text_markers(render: dict) -> dict:
-    """Return shallow copy with legacy marker transforms on string values (NBSP / hyphen conventions)."""
-    out = dict(render)
-    for k, v in list(out.items()):
-        if isinstance(v, str):
-            out[k] = _resume_site_markers(v)
-        else:
-            out[k] = v
-    return out
+    """Deep-walk dict/list nests; apply ``_resume_site_markers`` to every string leaf."""
+    return {k: _mark_resume_value(v) for k, v in render.items()}
+
+
+def _mark_resume_value(val: Any) -> Any:
+    """Recurse into dict/list; transform string leaves; leave other types unchanged."""
+    if isinstance(val, str):
+        return _resume_site_markers(val)
+    if isinstance(val, dict):
+        return {k: _mark_resume_value(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [_mark_resume_value(item) for item in val]
+    return val
 
 
 def _render_content_keys(markers: dict) -> List[str]:
