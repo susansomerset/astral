@@ -922,3 +922,27 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 ### AST-1014 · AST-952
 
 `CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.
+
+---
+
+### AST-1016 · AST-952
+
+**AST-1016:** `PREAMBLE_CONFIG` — Intro + three ordered mechanical steps targeting `context.raw_resume` / `raw_profile` / `raw_sample`, Archie placeholder 1st/2nd Try copy, `validation_task_key` = `preamble_validate_response`. Asserts step targets ⊆ `CANDIDATE_LIBRARY_CONFIG["context_keys"]`. Exposed on `GET /api/ui_config` as `preamble` (**AST-1017** renders; **AST-1015** owns Ruth task body).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PREAMBLE_CONFIG contract | `src/utils/config.py` | **`TestAst1016PreambleConfig`** |
+| ui_config `preamble` expose | `src/ui/api/api_system.py` | **`TestSystemAuthRoutes::test_ui_config_includes_preamble_config`** (map: **`docs/test-bible/ui/api/api_system.md`**) |
+
+**Broken / obsolete:** none — additive config + one ui_config key.
+
+**Integration:** no existing scenario asserts preamble script — no revision; do not invent new integration coverage.
+
+**AST-1016** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1016PreambleConfig \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_preamble_config \
+  -q
+```

@@ -1566,6 +1566,43 @@ class TestAst1014CandidateLibraryConfig:
         assert not any(p.startswith("profile.") for p in cfg.INTAKE_CONFIG["build_field_paths"])
 
 
+class TestAst1016PreambleConfig:
+    """AST-1016: PREAMBLE_CONFIG Intro + three context.raw_* steps + Ruth task_key."""
+
+    _STEP_KEYS = (
+        "id", "order", "prompt_1st_try", "prompt_2nd_try", "target", "validation_question",
+    )
+
+    def test_preamble_intro_and_validation_task_key(self) -> None:
+        pc = cfg.PREAMBLE_CONFIG
+        assert isinstance(pc["intro"], str) and pc["intro"].strip()
+        assert pc["validation_task_key"] == "preamble_validate_response"
+
+    def test_preamble_three_ordered_context_raw_steps(self) -> None:
+        steps = cfg.PREAMBLE_CONFIG["steps"]
+        assert len(steps) == 3
+        assert sorted(s["order"] for s in steps) == [1, 2, 3]
+        by_order = {s["order"]: s for s in steps}
+        assert by_order[1]["id"] == "raw_resume"
+        assert by_order[2]["id"] == "raw_profile"
+        assert by_order[3]["id"] == "raw_sample"
+        for step in steps:
+            assert all(k in step for k in self._STEP_KEYS)
+            assert step["target"]["blob"] == "context"
+            assert step["target"]["field"] == step["id"]
+            assert step["target"]["field"] in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+            assert step["prompt_1st_try"].strip()
+            assert step["prompt_2nd_try"].strip()
+            assert step["validation_question"].strip()
+
+    def test_preamble_targets_only_mechanical_raw_fields(self) -> None:
+        fields = {s["target"]["field"] for s in cfg.PREAMBLE_CONFIG["steps"]}
+        assert fields == {"raw_resume", "raw_profile", "raw_sample"}
+        # Contact/name/pronoun and Topic Menu keys stay out of this script.
+        assert "hopes" not in fields
+        assert "contact_email" not in fields
+
+
 class TestAst517ResumeStructureConfig:
     """AST-517: per-candidate resume_structure defaults and craft_resume_base schema."""
 
