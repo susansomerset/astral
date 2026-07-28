@@ -77,3 +77,31 @@ Do **not** change these three substitutions, add new marker pairs, or move them 
 | 2 | (verify) | Three-surface fixture proof — no leftover `__` / `~~` in HTML |
 
 **Tip:** `74e6a669` on `origin/sub/AST-993/AST-1007-nested-typography-markers-on-render`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1007
+**Publish ref tip (pre-docs):** `178f54ff` — `origin/sub/AST-993/AST-1007-nested-typography-markers-on-render`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1 matches plan: `_apply_resume_text_markers` deep-walks via `_mark_resume_value` (str / dict / list|tuple→list / else unchanged); `_resume_site_markers` untouched; emit-time experience markers retained; no layout/CSS/sibling chrome.
+- Three-surface call sites unchanged vs `origin/dev`; Betty `TestAst1007NestedTypographyMarkers` covers deep-walk + session/base/job HTML proof.
+- Self-Assessment Single-Component footprint holds; sibling AST-1008/1009/1010 boundaries respected.
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — excluded at plan time; in-scope on diff via `docs/features/**`. Substance **conforms** (plan doc only; no spike notes under features).
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — excluded at plan time; in-scope on diff. Substance **conforms** (single `docs/features/artifacts/ast-1007-….md`).
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — excluded at plan time; in-scope on diff via Betty bible/tests. Substance **conforms** (`test(AST-1007)` + one `merge-tests(AST-1007)`).
+
+No **fix-now** product findings.
+
+### Recommended actions
+
+Engineer (`resolve-child`): acknowledge C4 stragglers (pipeline docs/tests appearing after Joan’s plan-time exclude) — no product code change required for those three.
