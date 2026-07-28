@@ -2195,16 +2195,17 @@ class TestResponseSchemaBranches:
         )
 
     def test_ast676_craft_rubric_criteria_schema(self) -> None:
+        # AST-1005: items_schema uses object-field validation — fixture must include required `code`.
         schema = TASK_CONFIG["craft_prefilter_rubric"]["response_schema"]
         ok = {
             "agent_payload": {
-                "criteria": [{"label": "L", "content": "c", "importance": 5}],
+                "criteria": [{"label": "L", "code": "c1", "content": "c", "importance": 5}],
             },
         }
         assert agent_mod._validate_response_schema(ok, schema, "craft_prefilter_rubric") is None
         bad = {
             "agent_payload": {
-                "criteria": [{"label": "L", "content": "c"}],
+                "criteria": [{"label": "L", "code": "c1", "content": "c"}],
             },
         }
         err = agent_mod._validate_response_schema(bad, schema, "craft_prefilter_rubric")
@@ -5747,3 +5748,85 @@ class TestAst984EntityColumnRetired:
         ]
         assert resp_saves
         assert resp_saves[-1].get("entity_id") == "job-1"
+
+
+class TestAst1005ItemsSchemaObjectValidation:
+    """AST-1005: list items_schema validates object fields, not agent envelopes."""
+
+    def test_experience_item_missing_company_is_path_prefixed(self) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        jobs = [
+            {
+                "title": "Engineer",
+                "dates": "2020",
+                "location": "Remote",
+                "accomplishments": "Stuff",
+            }
+        ]
+        payload = {
+            "resume_structure": {"sections": {}},
+            "candidate_name": "Ada",
+            "candidate_title": "Eng",
+            "candidate_contact_detail": "a@b.c",
+            "professional_summary": "S",
+            "core_competencies": "C",
+            "experience": jobs,
+        }
+        err = agent_mod._validate_response_schema(
+            {"agent_payload": payload}, schema, "craft_resume_base"
+        )
+        assert err is not None
+        assert err.startswith("experience[0]:")
+        assert "Missing required field 'company'" in err
+
+    def test_valid_experience_job_array_passes_items_schema(self) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        jobs = [
+            {
+                "company": "Acme",
+                "title": "Engineer",
+                "dates": "2020-2023",
+                "location": "Remote",
+                "accomplishments": "Shipped",
+            }
+        ]
+        payload = {
+            "resume_structure": {"sections": {}},
+            "candidate_name": "Ada",
+            "candidate_title": "Eng",
+            "candidate_contact_detail": "a@b.c",
+            "professional_summary": "S",
+            "core_competencies": "C",
+            "experience": jobs,
+        }
+        assert (
+            agent_mod._validate_response_schema(
+                {"agent_payload": payload}, schema, "craft_resume_base"
+            )
+            is None
+        )
+
+    def test_item_with_envelope_keys_still_checks_item_fields(self) -> None:
+        """Nested job objects must not be re-validated as top-level agent envelopes."""
+        schema = {
+            "experience": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "company": {"type": "str", "required": True},
+                    "title": {"type": "str", "required": True},
+                },
+            }
+        }
+        # Would look like an envelope if recursively validated; item fields still required.
+        item = {"agent_performance": "success", "agent_payload": {"x": 1}}
+        err = agent_mod._validate_response_schema(
+            {"agent_payload": {"experience": [item]}}, schema, "t"
+        )
+        assert err is not None
+        assert err.startswith("experience[0]:")
+        assert "Missing required field 'company'" in err

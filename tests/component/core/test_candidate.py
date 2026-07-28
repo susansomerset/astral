@@ -2294,3 +2294,83 @@ class TestAst997JobTailoredExperience:
         check = by_key["check_job_resume"]["user_prompt"]
         assert "Experience metadata drift" in check
         assert "company, title, dates, or location" in check
+
+
+class TestAst1005FalseMissingCandidateName:
+    """AST-1005: promote direct resume_structure section keys before default wipe."""
+
+    _OTHER_REQUIRED = {
+        "candidate_title": "Engineer",
+        "candidate_contact_detail": "a@b.c",
+        "professional_summary": "Summary",
+        "core_competencies": "Skills",
+    }
+
+    def _jobs(self) -> list[dict[str, str]]:
+        return [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+
+    def test_promote_direct_candidate_name_with_sections_passes_schema(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        structure = candidate_mod.default_resume_structure()
+        jobs = self._jobs()
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {
+                    "sections": structure["sections"],
+                    "candidate_name": "Susan Somerset",
+                    "experience": jobs,
+                },
+                **self._OTHER_REQUIRED,
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert ap["candidate_name"] == "Susan Somerset"
+        assert ap["experience"] == jobs
+        assert isinstance(ap["experience"], list)
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_promote_direct_candidate_name_without_sections_passes_schema(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        jobs = self._jobs()
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {
+                    "candidate_name": "Susan Somerset",
+                    "experience": jobs,
+                },
+                **self._OTHER_REQUIRED,
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert ap["candidate_name"] == "Susan Somerset"
+        assert ap["experience"] == jobs
+        assert "candidate_name" in ap["resume_structure"]["sections"]
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_missing_candidate_name_still_fails_schema(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        jobs = self._jobs()
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {"experience": jobs},
+                **self._OTHER_REQUIRED,
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        err = _validate_response_schema(parsed, schema, "craft_resume_base")
+        assert err is not None
+        assert "Missing required field 'candidate_name'" in err
