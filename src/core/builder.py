@@ -738,7 +738,8 @@ h2::after {{ margin-left: 12px; }}
   text-transform: uppercase; letter-spacing: 0.2px; font-size: 13.5px; }}
 section {{ margin-bottom: 0; }}
 .role {{ margin: 10px 0 14px; }}
-.role-subheader {{
+.role-header {{ margin: 0 0 6px; }}
+.compact-title {{
   text-align: left;
   font-family: var(--header-font-family);
   font-size: 16px;
@@ -746,10 +747,8 @@ section {{ margin-bottom: 0; }}
   line-height: 1.25;
   margin: 8px 0 2px;
   color: var(--text-primary);
-  text-transform: none;
-  letter-spacing: normal;
 }}
-.role-meta {{
+.compact-location {{
   text-align: left;
   font-family: var(--list-font-family);
   font-size: 13px;
@@ -757,7 +756,13 @@ section {{ margin-bottom: 0; }}
   margin: 0 0 6px;
   color: var(--text-secondary);
 }}
-.role-accomplishments {{ margin: 0; }}
+.role-description {{
+  text-align: left;
+  margin: 0 0 6px;
+  line-height: 1.25;
+}}
+.role ul {{ margin: 0 0 0 1.2em; padding: 0; }}
+.role li {{ margin: 0 0 4px; }}
 .cover-block {{ margin-top: 24px; max-width: var(--max-width); margin-left: auto; margin-right: auto; text-align: left; }}
 .cover-block p {{ white-space: pre-wrap; }}
 .cover-signoff img {{ display: block; margin-bottom: 8px; }}
@@ -888,8 +893,53 @@ def _emit_body_sections_html(
     return "\n".join(chunks)
 
 
+def _format_compact_location(dates: str, location: str, sep: str) -> str:
+    """Golden compact-location: ``dates: place (arrangement)`` when ``sep`` splits location."""
+    dates = dates.strip()
+    location = location.strip()
+    if sep in location:
+        place, _, arrangement = location.partition(sep)
+        place, arrangement = place.strip(), arrangement.strip()
+        if place and arrangement:
+            text = f"{dates}: {place} ({arrangement})" if dates else f"{place} ({arrangement})"
+            return _resume_site_markers(text) if text else ""
+        # Empty arrangement after split → treat remaining place as plain location.
+        location = place or location
+    if dates and location:
+        text = f"{dates}: {location}"
+    elif dates:
+        text = dates
+    elif location:
+        text = location
+    else:
+        text = ""
+    return _resume_site_markers(text) if text else ""
+
+
+def _split_role_accomplishments(
+    accomplishments: str, lead_prefix: str
+) -> Tuple[List[str], List[str]]:
+    """Split accomplishments into lead paragraphs (prefix lines) and bullet lines."""
+    leads: List[str] = []
+    bullets: List[str] = []
+    for raw_line in accomplishments.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(lead_prefix):
+            rest = line.removeprefix(lead_prefix).strip()
+            if rest:
+                leads.append(_resume_site_markers(rest))
+        else:
+            bullets.append(_resume_site_markers(line))
+    return leads, bullets
+
+
 def _emit_experience_jobs_html(jobs: list) -> str:
-    """Per-role HTML for AST-996 experience job arrays (title subheader + meta + accomplishments)."""
+    """Golden role articles: compact title/location, optional lead, then achievement bullets."""
+    layout = BUILD_CONFIG["experience_role_layout"]
+    lead_prefix = layout["lead_line_prefix"]
+    loc_sep = layout["location_arrangement_sep"]
     role_chunks: List[str] = []
     for item in jobs:
         if not isinstance(item, dict):
@@ -901,33 +951,38 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         accomplishments = str(item.get("accomplishments") or "").strip()
         if not (title or company or dates or location or accomplishments):
             continue
-        # Markers before escape (NBSP / hyphen conventions on freeform strings).
-        title_m = _resume_site_markers(title) if title else ""
-        company_m = _resume_site_markers(company) if company else ""
-        dates_m = _resume_site_markers(dates) if dates else ""
-        location_m = _resume_site_markers(location) if location else ""
-        accom_m = _resume_site_markers(accomplishments) if accomplishments else ""
 
-        lines: List[str] = ['      <div class="role">']
-        subheader = title_m or company_m
-        if subheader:
-            lines.append(f'        <h3 class="role-subheader">{html.escape(subheader)}</h3>')
-        # Title as subheader → company in meta; company-as-subheader → do not repeat company.
-        meta_parts: List[str] = []
-        if title_m and company_m:
-            meta_parts.append(company_m)
-        if dates_m:
-            meta_parts.append(dates_m)
-        if location_m:
-            meta_parts.append(location_m)
-        if meta_parts:
-            meta_joined = _resume_site_markers(" • ".join(meta_parts))
-            lines.append(f'        <p class="role-meta">{html.escape(meta_joined)}</p>')
-        if accom_m:
+        if title and company:
+            title_text = _resume_site_markers(f"{title} • {company}")
+        elif title:
+            title_text = _resume_site_markers(title)
+        elif company:
+            title_text = _resume_site_markers(company)
+        else:
+            title_text = ""
+        loc_text = _format_compact_location(dates, location, loc_sep)
+        leads, bullets = _split_role_accomplishments(accomplishments, lead_prefix)
+        if not (title_text or loc_text or leads or bullets):
+            continue
+
+        lines: List[str] = ['      <article class="role">', '        <div class="role-header">']
+        if title_text:
             lines.append(
-                f'        <div class="role-accomplishments prose-block">{html.escape(accom_m)}</div>'
+                f'          <p class="compact-title"><strong>{html.escape(title_text)}</strong></p>'
             )
-        lines.append("      </div>")
+        if loc_text:
+            lines.append(
+                f'          <p class="compact-location"><em>{html.escape(loc_text)}</em></p>'
+            )
+        lines.append("        </div>")
+        for lead in leads:
+            lines.append(f'        <p class="role-description">{html.escape(lead)}</p>')
+        if bullets:
+            lines.append("        <ul>")
+            for bullet in bullets:
+                lines.append(f"          <li>{html.escape(bullet)}</li>")
+            lines.append("        </ul>")
+        lines.append("      </article>")
         role_chunks.append("\n".join(lines))
     return "\n".join(role_chunks)
 
