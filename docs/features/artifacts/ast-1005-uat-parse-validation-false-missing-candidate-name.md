@@ -90,3 +90,22 @@ After AST-996/997 experience job-array contracts, Session Resume Paste craft-bas
 | 1–2 | f348d69a | Promote known ids from resume_structure; dedicated items_schema object validator |
 
 **Tip:** f348d69a (before stub docs commit).
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Publish ref tip:** (see Linear / post-push SHA) on `origin/sub/AST-994/AST-1005-uat-parse-validation-false-missing-candidate-name`
+**Baseline:** `origin/dev`
+**Overall:** DISCUSS
+
+### What’s solid
+- Promote known section ids from direct `resume_structure` keys before default wipe; experience job arrays preserved via existing `_promote`.
+- `_validate_schema_object_fields` for `items_schema` (no envelope recurse); required `candidate_name` unchanged.
+- Betty coverage for promote + items_schema paths.
+
+### Issues
+**discuss:** Tip three-dot includes `docs(AST-1001)` bible README via `merge-tests` from `origin/tests` — outside AST-1005 Files Changed / UAT scope (tests-line pollution, not product defect).
+
+### Recommended actions
+No product fix-now. Resolve may proceed on agent/candidate; Chuckles/Betty can scrub AST-1001 README from this tip / tests line if rollup hygiene requires it.
