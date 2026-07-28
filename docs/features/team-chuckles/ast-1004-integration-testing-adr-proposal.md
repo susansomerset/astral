@@ -293,3 +293,32 @@ After ADR approval, implementation children may add **contract** suites that pin
 - No §2.4 / §2.6 batch or state-machine changes.
 - Engineer test-tree ban honored — no `tests/` or `docs/test-bible/**` edits.
 - Conflicts: none requiring `conf-!!-NONE`.
+
+---
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1004
+**Publish ref (pre-docs tip):** `4905e4d6`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Three-dot vs `origin/dev` is docs-only. AST-1004 commits touch only plan + ADR under `docs/features/` (+ empty test stub).
+- Repo ADR byte-equals Stage 1 Target; §§1–8 once each; cites AST-1003 map; prep-uat vs Joan post-deploy separated in §5.
+- Linear Document `919ea77a…` titled exactly `ADR — Integration testing program (AST-915)` with matching body; parent AST-915 pointer comment present; no impl children filed (AC4).
+- Katherine assignee retained; Betty docs-acceptance only (no bible invent).
+
+### Issues
+
+**discuss:** C4 straggler — Joan Excluded `astral.git.engineer-test-tree-ban` (plan Files Changed had no test-bible), but three-dot vs `origin/dev` includes `docs/test-bible/integration/README.md` via AST-1003 ancestor. Statute scores **conforms** (AST-1004 commits never touch that path). No product action required — acknowledge merge-carry path in-scope for full-set sweep.
+
+### Recommended actions
+
+Katherine: no fix-now. On resolve-child, note straggler acknowledged (or `[review-handoff]` only if discussion needed). Proceed to User Testing after resolve path.
+
+### Notes
+
+Joan plan-rubric APPROVED. §5a–§5g N/A (no `src/`). AC2–AC5 satisfied for this child.
