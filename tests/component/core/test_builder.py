@@ -874,19 +874,19 @@ class TestAst998ExperienceJobRender:
         }
 
     def test_emit_experience_jobs_html_role_chrome(self) -> None:
+        # AST-1008 superseded AST-998 subheader/meta/prose chrome with golden article classes.
+        # Title joiner " • " becomes NBSP-bullet via _resume_site_markers.
         html = builder_mod._emit_experience_jobs_html(self._JOBS)
-        assert 'class="role"' in html
-        assert 'class="role-subheader">Engineer</h3>' in html
-        assert 'class="role-meta">' in html
-        assert "Acme Corp" in html
-        assert "2020-2023" in html
-        assert "Remote" in html
-        assert 'class="role-accomplishments prose-block">Shipped widgets</div>' in html
-        # Title empty → company as subheader; company not repeated in meta
-        assert 'class="role-subheader">Beta LLC</h3>' in html
-        assert "Led the team" in html
-        # No JSON dump of the array
+        assert '<article class="role">' in html
+        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert 'class="compact-location"><em>2020-2023: Remote</em></p>' in html
+        assert "<li>Shipped widgets</li>" in html
+        # Title empty → company-only compact-title
+        assert 'class="compact-title"><strong>Beta LLC</strong></p>' in html
+        assert "<li>Led the team</li>" in html
         assert '"company"' not in html
+        assert "role-subheader" not in html
+        assert "role-accomplishments" not in html
 
     def test_emit_skips_non_dict_and_empty_roles(self) -> None:
         html = builder_mod._emit_experience_jobs_html(
@@ -906,9 +906,9 @@ class TestAst998ExperienceJobRender:
                 }
             ]
         )
-        assert "Solo" in html
-        assert "2024" in html
-        # empty location must not leave a dangling bullet fragment alone — meta still has company+dates
+        assert 'class="compact-title"><strong>Dev\u00a0• Solo</strong></p>' in html
+        # empty location → dates-only compact-location (no dangling place/arrangement)
+        assert 'class="compact-location"><em>2024</em></p>' in html
         assert "Remote" not in html
 
     def test_render_content_keys_includes_job_array(self) -> None:
@@ -926,10 +926,10 @@ class TestAst998ExperienceJobRender:
             {"professional_summary": "Summary", "experience": self._JOBS},
         )
         assert 'id="experience"' in html or ">Experience<" in html
-        assert 'class="role-subheader">Engineer</h3>' in html
-        assert "Shipped widgets" in html
-        assert 'class="role-subheader">Beta LLC</h3>' in html
-        assert ".role-subheader" in html  # CSS present
+        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert "<li>Shipped widgets</li>" in html
+        assert 'class="compact-title"><strong>Beta LLC</strong></p>' in html
+        assert ".compact-title" in html  # CSS present
         assert '"accomplishments"' not in html
 
     def test_session_legacy_string_experience_still_prose(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -939,7 +939,7 @@ class TestAst998ExperienceJobRender:
             {"professional_summary": "Summary", "experience": "Legacy prose blob"},
         )
         assert "Legacy prose blob" in html
-        assert 'class="role-subheader"' not in html
+        assert '<article class="role">' not in html
 
     def test_base_resume_renders_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
@@ -958,9 +958,9 @@ class TestAst998ExperienceJobRender:
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
         html = builder_mod.build_base_resume("cand-1")
-        assert 'class="role-subheader">Engineer</h3>' in html
+        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
         assert "Acme Corp" in html
-        assert "Shipped widgets" in html
+        assert "<li>Shipped widgets</li>" in html
 
     def test_job_resume_renders_job_array(self) -> None:
         jobs = self._JOBS
@@ -981,8 +981,8 @@ class TestAst998ExperienceJobRender:
             base_resume={"professional_summary": "Base", "experience": "legacy"},
         )
         html = builder_mod.build_resume_from_job(job, cd)
-        assert 'class="role-subheader">Engineer</h3>' in html
-        assert "Shipped widgets" in html
+        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert "<li>Shipped widgets</li>" in html
         assert "Job summary" in html
 
 
@@ -1157,3 +1157,322 @@ class TestAst1007NestedTypographyMarkers:
         }
         html = builder_mod.build_resume_from_job(job, cd)
         self._assert_markers_applied(html)
+
+
+class TestAst1008ExperienceGoldenLayout:
+    """AST-1008: golden role articles — compact title/location, lead vs bullets."""
+
+    _LEAD = (
+        "<no bullet>Solo practice delivering embedded technical program management "
+        "across 30+ SaaS engagements."
+    )
+    _BULLET_A = "Diagnosed and mitigated blockers across distributed teams."
+    _BULLET_B = "Led technical program delivery across globally distributed teams."
+    _SOMERSET = {
+        "company": "Somerset__Consulting",
+        "title": "Principal Technical Program Manager",
+        "dates": "2011 to Present",
+        "location": "United States / Full-time Remote",
+        "accomplishments": f"{_LEAD}\n{_BULLET_A}\n{_BULLET_B}",
+    }
+    _NO_LEAD = {
+        "company": "PTown.tech",
+        "title": "Technical Program Manager",
+        "dates": "2022 to 2024",
+        "location": "United States / Full-time Remote",
+        "accomplishments": "Repaired a fractured relationship between decision makers and engineering.",
+    }
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def _jobs(self) -> list[dict[str, str]]:
+        return [dict(self._SOMERSET), dict(self._NO_LEAD)]
+
+    @staticmethod
+    def _assert_golden_experience(html: str) -> None:
+        assert '<article class="role">' in html
+        # " • " joiner → NBSP-bullet via _resume_site_markers; company __ → NBSP
+        assert (
+            'class="compact-title"><strong>Principal Technical Program Manager\u00a0• '
+            "Somerset\u00a0Consulting</strong></p>"
+        ) in html
+        assert 'class="compact-location"><em>2011 to Present: United States (Full-time Remote)</em></p>' in html
+        assert (
+            'class="role-description">Solo practice delivering embedded technical program management '
+            "across 30+ SaaS engagements.</p>"
+        ) in html
+        assert "<no bullet>" not in html
+        assert f"<li>{TestAst1008ExperienceGoldenLayout._BULLET_A}</li>" in html
+        assert f"<li>{TestAst1008ExperienceGoldenLayout._BULLET_B}</li>" in html
+        assert (
+            'class="compact-title"><strong>Technical Program Manager\u00a0• PTown.tech</strong></p>'
+            in html
+        )
+        assert (
+            "<li>Repaired a fractured relationship between decision makers and engineering.</li>"
+            in html
+        )
+        assert 'class="compact-title"' in html
+        assert 'class="role-description"' in html
+        assert "role-subheader" not in html
+
+    def test_experience_role_layout_config_keys(self) -> None:
+        layout = builder_mod.BUILD_CONFIG["experience_role_layout"]
+        assert layout["lead_line_prefix"] == "<no bullet>"
+        assert layout["location_arrangement_sep"] == " / "
+
+    def test_format_compact_location_helpers(self) -> None:
+        sep = " / "
+        assert (
+            builder_mod._format_compact_location(
+                "2011 to Present", "United States / Full-time Remote", sep
+            )
+            == "2011 to Present: United States (Full-time Remote)"
+        )
+        assert builder_mod._format_compact_location("2024", "Remote", sep) == "2024: Remote"
+        assert builder_mod._format_compact_location("2024", "", sep) == "2024"
+        assert builder_mod._format_compact_location("", "Remote", sep) == "Remote"
+        assert builder_mod._format_compact_location("", "", sep) == ""
+
+    def test_split_role_accomplishments_lead_vs_bullets(self) -> None:
+        leads, bullets = builder_mod._split_role_accomplishments(
+            f"{self._LEAD}\n{self._BULLET_A}\n\n{self._BULLET_B}",
+            "<no bullet>",
+        )
+        assert leads == [
+            "Solo practice delivering embedded technical program management across 30+ SaaS engagements."
+        ]
+        assert bullets == [self._BULLET_A, self._BULLET_B]
+        leads2, bullets2 = builder_mod._split_role_accomplishments(
+            "<no bullet>   \nKeep", "<no bullet>"
+        )
+        assert leads2 == []
+        assert bullets2 == ["Keep"]
+
+    def test_emit_somerset_lead_paragraph_not_list_item(self) -> None:
+        html = builder_mod._emit_experience_jobs_html(self._jobs())
+        self._assert_golden_experience(html)
+        assert "<li>Solo practice" not in html
+
+    def test_session_html_golden_layout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {"professional_summary": "Summary", "experience": self._jobs()},
+        )
+        self._assert_golden_experience(html)
+        # Full document CSS carries golden selectors (emit fragment alone does not).
+        assert ".compact-title" in html
+        assert ".role-description" in html
+
+    def test_base_resume_html_golden_layout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structure = self._structure()
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {
+                        "professional_summary": "Base summary",
+                        "experience": self._jobs(),
+                    },
+                },
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_golden_experience(html)
+
+    def test_job_resume_html_golden_layout(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {
+                "artifacts": {
+                    "resume_content": {
+                        "professional_summary": "Job summary",
+                        "experience": self._jobs(),
+                    }
+                }
+            },
+        }
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base", "experience": "legacy"},
+                },
+            }
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_golden_experience(html)
+        assert "Job summary" in html
+
+
+class TestAst1009EducationSkillsPrior:
+    """AST-1009: education per-line, skills category grid, prior competencies-list."""
+
+    _PRIOR = (
+        "Project__Manager__(4__yrs) • Systems__Analyst__(6__yrs) • "
+        "ETL__Migration__Specialist__(2__yrs)"
+    )
+    _EDU = (
+        "Certified ScrumMaster (CSM) • Scrum Alliance, 2024 to 2026\n"
+        "Certified Scrum Product Owner (CSPO) • Scrum Alliance, 2024 to 2026\n"
+        "UW Milwaukee • Completed coursework in Computer Science and Business Administration"
+    )
+    _SKILLS = (
+        "Program & Delivery: Jira__•__Confluence__•__Linear\n"
+        "AI Development & Orchestration: Claude__API__•__GPT~~4\n"
+        "Design & Documentation: Lucidchart__•__Figma\n"
+        "Development & APIs: Python__•__Next.js\n"
+        "Data & Analytics: PostgreSQL__•__MySQL\n"
+        "Integration & Automation: Zapier__•__GitHub__Actions\n"
+        "Cloud & DevOps: AWS • Vercel • GitHub\n"
+        "Collaboration: Slack__•__Discord"
+    )
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "prior_experience": {
+                    "id": "prior_experience",
+                    "title": "Prior Experience",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "education_certifications": {
+                    "id": "education_certifications",
+                    "title": "Education & Certifications",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+                "technical_skills": {
+                    "id": "technical_skills",
+                    "title": "Technical Skills",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def _blob(self) -> dict[str, Any]:
+        return {
+            "prior_experience": self._PRIOR,
+            "education_certifications": self._EDU,
+            "technical_skills": self._SKILLS,
+        }
+
+    @staticmethod
+    def _assert_section_markup(html: str) -> None:
+        assert 'id="prior-experience"' in html
+        assert 'class="competencies-list"' in html
+        assert "Project\u00a0Manager\u00a0(4\u00a0yrs)" in html
+        assert 'id="education"' in html or ">Education" in html
+        assert 'class="education-list"' in html
+        assert html.count("<strong>") >= 3
+        assert "<strong>Certified ScrumMaster (CSM)</strong>" in html
+        assert "<strong>Certified Scrum Product Owner (CSPO)</strong>" in html
+        assert "<strong>UW Milwaukee</strong>" in html
+        edu_section = html.split('id="education"', 1)[-1].split("</section>", 1)[0]
+        assert 'class="prose-block"' not in edu_section
+        assert 'class="skills-grid"' in html
+        assert html.count('class="skill-category"') >= 8
+        assert "<h4>Program &amp; Delivery</h4>" in html
+        assert "<h4>AI Development &amp; Orchestration</h4>" in html
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in html
+        assert "GPT\u20114" in html
+        assert "__" not in html
+        assert "~~" not in html
+
+    def test_emit_education_list_html_splits_post_marker_bullet(self) -> None:
+        marked = (
+            "Certified ScrumMaster (CSM)\u00a0• Scrum Alliance, 2024 to 2026\n"
+            "UW Milwaukee"
+        )
+        html = builder_mod._emit_education_list_html(marked)
+        assert 'class="education-list"' in html
+        assert (
+            "<strong>Certified ScrumMaster (CSM)</strong>\u00a0• Scrum Alliance, 2024 to 2026"
+            in html
+        )
+        assert "<strong>UW Milwaukee</strong>" in html
+        assert "prose-block" not in html
+
+    def test_emit_skills_grid_html_splits_category_colon(self) -> None:
+        marked = (
+            "Program & Delivery: Jira\u00a0•\u00a0Confluence\n"
+            "Orphan line without colon"
+        )
+        html = builder_mod._emit_skills_grid_html(marked)
+        assert 'class="skills-grid"' in html
+        assert html.count('class="skill-category"') == 2
+        assert "<h4>Program &amp; Delivery</h4>" in html
+        assert "Jira\u00a0•\u00a0Confluence" in html
+        orphan_block = html.split("Orphan line without colon")[0].rsplit("skill-category", 1)[-1]
+        assert "<h4>" not in orphan_block
+        assert "<p>Orphan line without colon</p>" in html
+
+    def test_session_html_education_skills_prior(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(self._structure(), self._blob())
+        self._assert_section_markup(html)
+
+    def test_base_resume_html_education_skills_prior(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        structure = self._structure()
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": self._blob(),
+                },
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_section_markup(html)
+
+    def test_job_resume_html_education_skills_prior(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {"artifacts": {"resume_content": self._blob()}},
+        }
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base"},
+                },
+            }
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_section_markup(html)

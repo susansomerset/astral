@@ -880,3 +880,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
   -q
 ```
+
+---
+
+### AST-1008 · AST-993
+
+**AST-1008:** `BUILD_CONFIG["experience_role_layout"]` — `lead_line_prefix` (`<no bullet>`) + `location_arrangement_sep` (` / `). Primary emit coverage: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| experience_role_layout keys | `src/utils/config.py` | **`TestAst1008ExperienceGoldenLayout::test_experience_role_layout_config_keys`** (in `test_builder.py`) |
+| experience body_kind unchanged | `src/utils/config.py` | **`TestAst998ExperienceBodyKind`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout::test_experience_role_layout_config_keys \
+  tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
+  -q
+```
+
