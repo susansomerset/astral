@@ -1575,43 +1575,14 @@ def _coerce_schema_str_fields_from_list(parsed: Dict[str, Any], schema: Dict[str
                 )
 
 
-def _validate_response_schema(
-    parsed: Dict[str, Any], schema: Dict[str, Dict], task_key: str
-    ) -> Optional[str]:
-    """Validate the { agent_performance, agent_payload } envelope.
-    Returns error string or None."""
-    if not parsed or not isinstance(parsed, dict):
-        return "Parsed response is empty or not a dict"
-
-    perf = parsed.get("agent_performance")
-    payload = parsed.get("agent_payload")
-
-    if perf is None and payload is None:
-        perf = parsed
-        payload = parsed
-
-    # Handle both string ("failure") and legacy dict ({"status": "failure"}) forms
-    if perf == "failure":
-        note = parsed.get("failure_note") or "Agent returned failure with no note"
-        return f"Agent failure: {note}"
-    if isinstance(perf, dict) and perf.get("status") == "failure":
-        note = perf.get("failure_note") or "Agent returned status=failure with no note"
-        return f"Agent failure: {note}"
-
-    if payload is None:
-        return "Response missing 'agent_payload'"
-
-    # String payloads (e.g. qualify_job_output abbreviated text) — no field validation needed
-    if not isinstance(payload, dict):
-        return None
-
-    task_success = payload.get("task_success") if isinstance(payload.get("task_success"), bool) else None
-    when_required = task_success is True
-
-    for field_name, field_spec in schema.items():
+def _validate_schema_object_fields(
+    obj: Dict[str, Any], fields_schema: Dict[str, Dict], *, when_required: bool = False
+) -> Optional[str]:
+    """Validate a plain object against a field schema (not an agent envelope)."""
+    for field_name, field_spec in fields_schema.items():
         if not isinstance(field_spec, dict):
             continue
-        val = payload.get(field_name)
+        val = obj.get(field_name)
         required = field_spec.get("required", False)
         if required == "when_task_success":
             required = when_required
@@ -1647,10 +1618,48 @@ def _validate_response_schema(
             for idx, item in enumerate(val):
                 if not isinstance(item, dict):
                     return f"{field_name}[{idx}] must be object, got {type(item).__name__}"
-                item_err = _validate_response_schema(item, items_schema, task_key)
+                item_err = _validate_schema_object_fields(item, items_schema, when_required=when_required)
                 if item_err:
                     return f"{field_name}[{idx}]: {item_err}"
     return None
+
+
+def _validate_response_schema(
+    parsed: Dict[str, Any], schema: Dict[str, Dict], task_key: str
+    ) -> Optional[str]:
+    """Validate the { agent_performance, agent_payload } envelope.
+    Returns error string or None."""
+    if not parsed or not isinstance(parsed, dict):
+        return "Parsed response is empty or not a dict"
+
+    perf = parsed.get("agent_performance")
+    payload = parsed.get("agent_payload")
+
+    if perf is None and payload is None:
+        perf = parsed
+        payload = parsed
+
+    # Handle both string ("failure") and legacy dict ({"status": "failure"}) forms
+    if perf == "failure":
+        note = parsed.get("failure_note") or "Agent returned failure with no note"
+        return f"Agent failure: {note}"
+    if isinstance(perf, dict) and perf.get("status") == "failure":
+        note = perf.get("failure_note") or "Agent returned status=failure with no note"
+        return f"Agent failure: {note}"
+
+    if payload is None:
+        return "Response missing 'agent_payload'"
+
+    # String payloads (e.g. qualify_job_output abbreviated text) — no field validation needed
+    if not isinstance(payload, dict):
+        return None
+
+    task_success = payload.get("task_success") if isinstance(payload.get("task_success"), bool) else None
+    when_required = task_success is True
+
+    # Payload fields (incl. list items_schema) — not recursive envelope on nested objects.
+    err = _validate_schema_object_fields(payload, schema, when_required=when_required)
+    return err
 
 
 def _validate_grades(grades: list, vectors: list) -> Optional[str]:

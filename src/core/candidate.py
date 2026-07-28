@@ -808,9 +808,10 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
     raw_struct = payload.get("resume_structure")
     if not isinstance(raw_struct, dict):
         return
+    # AST-1005: still promote content / direct keys when sections is missing (before default wipe).
     sections = raw_struct.get("sections")
     if not isinstance(sections, dict):
-        return
+        sections = None
 
     def _promote(sid: str, val: Any) -> None:
         if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
@@ -837,6 +838,13 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
             for sid, val in block.items():
                 _promote(sid, val)
 
+    # Direct keys on resume_structure (e.g. candidate_name) — not sections/content metadata.
+    for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        if sid in raw_struct:
+            _promote(sid, raw_struct[sid])
+
+    if sections is None:
+        return
     for sid, spec in sections.items():
         if not isinstance(spec, dict) or not spec.get("enabled"):
             continue
