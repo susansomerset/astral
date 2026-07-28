@@ -248,3 +248,32 @@ Adjacency only — **not** an in-process `tests/integration/` scenario area, and
 
 **Built:** verification-only. Tip at Code Complete still has ticket-forward `### AST-711` / `### AST-712` / `### AST-818` headings; Betty lands Stage 2 literal replacement.
 **Tip:** see this commit on publish ref after push.
+
+---
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1003
+**Publish ref (pre-docs tip):** `a0267c83`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Three-dot diff vs `origin/dev` is docs-only: plan + `docs/test-bible/integration/README.md`.
+- Landed README equals Stage 2 target body byte-for-byte; no `### AST-NNN` outline; function-area has/should-have map; citations AST-711/712/818/990 as prose.
+- Ada/Betty ownership split honored (Ada plan/`code` verify; Betty bible `docs` + `merge-tests`).
+- Sibling AST-1004 ADR boundary preserved — no ADR/CI/scenario invention.
+
+### Issues
+
+None.
+
+### Recommended actions
+
+None — proceed to resolve-child / User Testing path.
+
+### Notes
+
+Joan plan-rubric APPROVED attached; no straggler (Excluded set remains `not-applicable` on this diff). §5a–§5g N/A (no `src/`).
