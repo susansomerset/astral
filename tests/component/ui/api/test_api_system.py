@@ -63,6 +63,18 @@ class TestSystemAuthRoutes:
         assert payload.get("list_table_frozen_data_columns") == 2
         assert payload.get("list_table_cell_truncate_chars") == 30
 
+    def test_ui_config_includes_preamble_config(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1016: Intro + steps for AST-1017; route alias matches existing ui_config tests.
+        from src.utils.config import PREAMBLE_CONFIG
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        preamble = payload.get("preamble")
+        assert isinstance(preamble, dict)
+        assert preamble["intro"] == PREAMBLE_CONFIG["intro"]
+        assert preamble["validation_task_key"] == PREAMBLE_CONFIG["validation_task_key"]
+        assert len(preamble["steps"]) == len(PREAMBLE_CONFIG["steps"])
+        assert [s["id"] for s in preamble["steps"]] == [s["id"] for s in PREAMBLE_CONFIG["steps"]]
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200
