@@ -58,12 +58,24 @@ export default function Profile() {
     }).catch(() => setSigLimits(null))
   }, [])
 
+  function editValuesFromCandidate(c: Record<string, unknown>): Record<string, unknown> {
+    const d = (c.candidate_data ?? {}) as Record<string, unknown>
+    return {
+      first: c.first ?? "",
+      last: c.last ?? "",
+      pronouns: c.pronouns ?? "",
+      contact: (d.contact as Record<string, unknown>) ?? {},
+      context: (d.context as Record<string, unknown>) ?? {},
+      artifacts: (d.artifacts as Record<string, unknown>) ?? {},
+    }
+  }
+
   useEffect(() => {
     if (!selectedId) return
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
-      const d = c.candidate_data ?? {}
-      setFetched({ id: selectedId, data: d })
-      setValues({ ...d })
+      const vals = editValuesFromCandidate(c)
+      setFetched({ id: selectedId, data: vals })
+      setValues({ ...vals })
     })
   }, [selectedId])
 
@@ -86,9 +98,9 @@ export default function Profile() {
         return r.json()
       })
       .then(candidate => {
-        const d = candidate.candidate_data ?? {}
-        setFetched({ id: selectedId, data: d })
-        setValues({ ...d })
+        const vals = editValuesFromCandidate(candidate)
+        setFetched({ id: selectedId, data: vals })
+        setValues({ ...vals })
         refreshCandidate()
         setToast({ text: "Profile saved", variant: "success" })
       })
@@ -104,7 +116,7 @@ export default function Profile() {
   }
 
   const hasBaseResume = Boolean(getByPath(values, "artifacts.base_resume"))
-  const sigImg = String(getByPath(values, "profile.cover_letter_signature_image") ?? "")
+  const sigImg = String(getByPath(values, "contact.cover_letter_signature_image") ?? "")
   const maxSigW = sigLimits?.max_width_px
   const maxSigH = sigLimits?.max_height_px
 
@@ -114,7 +126,7 @@ export default function Profile() {
     if (!file || maxSigW == null || maxSigH == null) return
     setError(null)
     readJpegDataUrl(file, maxSigW, maxSigH)
-      .then(url => setValues(prev => setByPath(prev, "profile.cover_letter_signature_image", url)))
+      .then(url => setValues(prev => setByPath(prev, "contact.cover_letter_signature_image", url)))
       .catch(err => {
         setError(err instanceof Error ? err.message : "Invalid signature image")
         setToast({ text: "Signature image rejected", variant: "error" })
@@ -122,7 +134,7 @@ export default function Profile() {
   }, [maxSigW, maxSigH])
 
   const handleClearSignatureImage = useCallback(() => {
-    setValues(prev => setByPath(prev, "profile.cover_letter_signature_image", ""))
+    setValues(prev => setByPath(prev, "contact.cover_letter_signature_image", ""))
     if (sigFileRef.current) sigFileRef.current.value = ""
   }, [])
 
@@ -166,7 +178,7 @@ export default function Profile() {
 
   const textTabs: TextTab[] = tabSections.map(sec => {
     const f = sec.fields[0]
-    const isResume = f.key === "context.starting_resume_text"
+    const isResume = f.key === "context.raw_resume"
     return {
       label: sec.label,
       key: f.key,
@@ -204,7 +216,7 @@ export default function Profile() {
               tabs={textTabs}
               values={values}
               onChange={set}
-              customPanels={{ "profile.cover_letter_signature_image": signatureImagePanel }}
+              customPanels={{ "contact.cover_letter_signature_image": signatureImagePanel }}
             />
           </div>
         </div>

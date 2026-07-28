@@ -203,7 +203,7 @@ TASK_CONFIG = {
             "context.strengths": {"type": "str", "required": True},
             "context.priorities": {"type": "str", "required": True},
             "context.deal_breakers": {"type": "str", "required": True},
-            "profile.title_patterns": {"type": "str", "required": True},
+            "contact.title_patterns": {"type": "str", "required": True},
             "company_search_terms": {"type": "str", "required": True},
         },
         "response_format": "json",
@@ -931,6 +931,30 @@ CANDIDATE_CONFIG = {
     "initial_state": "NEW_CANDIDATE",
 }
 
+# AST-1014: contact/context/artifacts library vocabulary + name-column contract.
+CANDIDATE_LIBRARY_CONFIG = {
+    "contact_keys": (
+        "contact_email", "reply_email", "phone", "location",
+        "github", "linkedin_url", "websites", "timezone",
+        "cover_letter_signature", "cover_letter_signature_image",
+        "title_patterns", "reason_codes",
+    ),
+    "context_keys": (
+        "bio_summary", "backstory", "strengths", "priorities", "deal_breakers",
+        "writing_preferences", "hopes", "interests", "concerns",
+        "raw_resume", "raw_profile", "raw_sample",
+    ),
+    "context_key_remap": {
+        "starting_resume_text": "raw_resume",
+        "linkedin_profile_text": "raw_profile",
+        "sample_cover_text": "raw_sample",
+    },
+    "name_columns": ("first", "last", "full", "pronouns"),
+    "linkedin_url_base": "https://www.linkedin.com/in/",
+    "github_url_base": "https://github.com/",
+    "full_name_join": " ",
+}
+
 assert "PROSPECT" not in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
@@ -992,7 +1016,7 @@ INTAKE_CONFIG = {
         "context.strengths",
         "context.priorities",
         "context.deal_breakers",
-        "profile.title_patterns",
+        "contact.title_patterns",
         "company_search_terms",
     ],
 }
@@ -2848,7 +2872,7 @@ UI_CONFIG = {
     # AST-647: shared list-table layout — default frozen data columns (N) and cell truncate length.
     "list_table_frozen_data_columns": 2,
     "list_table_cell_truncate_chars": 30,
-    # AST-366: client + API validation for profile.cover_letter_signature_image (JPEG data URL).
+    # AST-366: client + API validation for contact.cover_letter_signature_image (JPEG data URL).
     "cover_letter_signature_image": {
         "max_width_px": 400,
         "max_height_px": 90,
@@ -2971,15 +2995,15 @@ DATA_SHAPES = {
                 {
                     "label": "Contact Information",
                     "fields": [
-                        {"key": "profile.first", "label": "First Name", "type": "text"},
-                        {"key": "profile.last", "label": "Last Name", "type": "text"},
-                        {"key": "profile.contact_email", "label": "Contact Email", "type": "text"},
-                        {"key": "profile.reply_email", "label": "Reply Email", "type": "text"},
-                        {"key": "profile.phone", "label": "Phone", "type": "text"},
-                        {"key": "profile.location", "label": "Location", "type": "text"},
-                        {"key": "profile.github", "label": "GitHub", "type": "text"},
-                        {"key": "profile.linkedin_url", "label": "LinkedIn URL", "type": "text"},
-                        {"key": "profile.timezone", "label": "Timezone", "type": "select", "options": [
+                        {"key": "first", "label": "First Name", "type": "text"},
+                        {"key": "last", "label": "Last Name", "type": "text"},
+                        {"key": "contact.contact_email", "label": "Contact Email", "type": "text"},
+                        {"key": "contact.reply_email", "label": "Reply Email", "type": "text"},
+                        {"key": "contact.phone", "label": "Phone", "type": "text"},
+                        {"key": "contact.location", "label": "Location", "type": "text"},
+                        {"key": "contact.github", "label": "GitHub", "type": "text"},
+                        {"key": "contact.linkedin_url", "label": "LinkedIn URL", "type": "text"},
+                        {"key": "contact.timezone", "label": "Timezone", "type": "select", "options": [
                             {"value": "", "label": "(UTC)"},
                             {"value": "America/New_York", "label": "Eastern"},
                             {"value": "America/Chicago", "label": "Central"},
@@ -2988,7 +3012,7 @@ DATA_SHAPES = {
                             {"value": "America/Anchorage", "label": "Alaska"},
                             {"value": "Pacific/Honolulu", "label": "Hawaii"},
                         ]},
-                        {"key": "profile.pronoun_preference", "label": "Pronoun preference", "type": "select", "options": [
+                        {"key": "pronouns", "label": "Pronoun preference", "type": "select", "options": [
                             {"value": "", "label": "(not set)"},
                             {"value": "they/them", "label": "they/them"},
                             {"value": "she/her", "label": "she/her"},
@@ -3007,20 +3031,20 @@ DATA_SHAPES = {
                 {
                     "label": "Sample Cover Letter",
                     "fields": [
-                        {"key": "context.sample_cover_text", "label": "Sample Cover Letter", "type": "textarea"},
+                        {"key": "context.raw_sample", "label": "Sample Cover Letter", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "Cover Letter Signature",
                     "fields": [
-                        {"key": "profile.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "Signature Image",
                     "fields": [
                         {
-                            "key": "profile.cover_letter_signature_image",
+                            "key": "contact.cover_letter_signature_image",
                             "label": "Signature Image",
                             "type": "signature_image",
                         },
@@ -3029,19 +3053,19 @@ DATA_SHAPES = {
                 {
                     "label": "Title Patterns",
                     "fields": [
-                        {"key": "profile.title_patterns", "label": "Title Patterns (one regex per line)", "type": "textarea"},
+                        {"key": "contact.title_patterns", "label": "Title Patterns (one regex per line)", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "LinkedIn Profile Text",
                     "fields": [
-                        {"key": "context.linkedin_profile_text", "label": "LinkedIn Profile Text", "type": "textarea"},
+                        {"key": "context.raw_profile", "label": "LinkedIn Profile Text", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "Original Resume Text",
                     "fields": [
-                        {"key": "context.starting_resume_text", "label": "Original Resume Text", "type": "textarea"},
+                        {"key": "context.raw_resume", "label": "Original Resume Text", "type": "textarea"},
                     ],
                 },
             ],
@@ -3624,28 +3648,29 @@ PRONOUN_FORMS: dict[str, dict[str, str]] = {
 # Adding a new token = adding one entry here, no code change needed.
 # ---------------------------------------------------------------------------
 TOKEN_SOURCES = {
-    # profile (identity / contact)
-    "FIRST_NAME":           {"source": "candidate", "path": "profile.first"},
-    "LAST_NAME":            {"source": "candidate", "path": "profile.last"},
-    "CONTACT_EMAIL":        {"source": "candidate", "path": "profile.contact_email"},
-    "REPLY_EMAIL":          {"source": "candidate", "path": "profile.reply_email"},
-    "PHONE":                {"source": "candidate", "path": "profile.phone"},
-    "LOCATION":             {"source": "candidate", "path": "profile.location"},
-    "GITHUB":               {"source": "candidate", "path": "profile.github"},
-    "LINKEDIN_URL":         {"source": "candidate", "path": "profile.linkedin_url"},
+    # name columns + contact blob (AST-1014)
+    "FIRST_NAME":           {"source": "candidate", "path": "first"},
+    "LAST_NAME":            {"source": "candidate", "path": "last"},
+    "FULL_NAME":            {"source": "candidate", "path": "full"},
+    "CONTACT_EMAIL":        {"source": "candidate", "path": "contact.contact_email"},
+    "REPLY_EMAIL":          {"source": "candidate", "path": "contact.reply_email"},
+    "PHONE":                {"source": "candidate", "path": "contact.phone"},
+    "LOCATION":             {"source": "candidate", "path": "contact.location"},
+    "GITHUB":               {"source": "candidate", "path": "contact.github"},
+    "LINKEDIN_URL":         {"source": "candidate", "path": "contact.linkedin_url"},
 
     # context (candidate-provided, unaltered)
-    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.starting_resume_text"},
-    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.linkedin_profile_text"},
-    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.sample_cover_text"},
+    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume"},
+    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile"},
+    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample"},
     "STRENGTHS":            {"source": "candidate", "path": "context.strengths"},
     "PRIORITIES":           {"source": "candidate", "path": "context.priorities"},
     "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers"},
     "BACKSTORY":            {"source": "candidate", "path": "context.backstory"},
     "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences"},
-    "TITLE_PATTERNS":       {"source": "candidate", "path": "profile.title_patterns"},
-    "REASON_CODES":         {"source": "candidate", "path": "profile.reason_codes"},
-    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "profile.cover_letter_signature"},
+    "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns"},
+    "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes"},
+    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature"},
     "THEY":     {"source": "pronoun"},
     "THEIR":    {"source": "pronoun"},
     "THEIRS":   {"source": "pronoun"},
@@ -3781,7 +3806,8 @@ def _walk_dot_path(obj: object, path: str) -> object:
 
 
 def _pronoun_preference_key(candidate_data: dict) -> str:
-    raw = _walk_dot_path(candidate_data, "profile.pronoun_preference")
+    # AST-1014: pronouns column on the token view (was profile.pronoun_preference).
+    raw = candidate_data.get("pronouns") if isinstance(candidate_data, dict) else None
     if not isinstance(raw, str):
         return PRONOUN_PREFERENCE_DEFAULT
     key = raw.strip()

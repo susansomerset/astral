@@ -128,7 +128,7 @@ export default function PerformanceMonitor() {
 
   const tz = useMemo(() => {
     const c = candidates.find(x => x.astral_candidate_id === selectedId)
-    return (c?.candidate_data?.profile as Record<string, string> | undefined)?.timezone || "UTC"
+    return (c?.candidate_data?.contact as Record<string, string> | undefined)?.timezone || "UTC"
   }, [candidates, selectedId])
 
   const filters = useMemo(() => {

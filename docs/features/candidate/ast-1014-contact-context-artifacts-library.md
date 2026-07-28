@@ -264,3 +264,10 @@ def build_candidate_token_view(candidate: dict) -> dict:
 - **§3.3:** UI → core/utils only; data migration imports config options already used by pronoun backfill.
 - **§3.5:** Frontend keeps shapes-driven Profile fields; PascalCase components / snake_case API unchanged.
 - **Out of scope enforced:** no Ruth agent_task, no `PREAMBLE_CONFIG`, no mechanical preamble UI.
+
+---
+
+## Review
+
+**Publish ref:** `sub/AST-952/AST-1014-contact-context-artifacts-library`
+**Build tip:** (filled at Code Complete)

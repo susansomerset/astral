@@ -36,15 +36,16 @@ def _persist_source_materials(
     sample_cover_text: Optional[str],
     linkedin_profile_text: Optional[str],
 ) -> None:
+    # Call-boundary names keep legacy param labels; storage keys are AST-1014 remaps.
     if not (starting_resume_text or "").strip():
         raise ValueError("starting_resume_text is required")
     save_candidate_data(
         candidate_id,
         {
             "context": {
-                "starting_resume_text": starting_resume_text.strip(),
-                "sample_cover_text": (sample_cover_text or "").strip(),
-                "linkedin_profile_text": (linkedin_profile_text or "").strip(),
+                "raw_resume": starting_resume_text.strip(),
+                "raw_sample": (sample_cover_text or "").strip(),
+                "raw_profile": (linkedin_profile_text or "").strip(),
             }
         },
     )

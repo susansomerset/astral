@@ -151,9 +151,9 @@ export default function CandidateIntake() {
         if (cancelled) return
         const ctx = (c.candidate_data?.context ?? {}) as Record<string, string>
         const loaded: IntakeSourceMaterials = {
-          starting_resume_text: ctx.starting_resume_text ?? "",
-          sample_cover_text: ctx.sample_cover_text ?? "",
-          linkedin_profile_text: ctx.linkedin_profile_text ?? "",
+          starting_resume_text: ctx.raw_resume ?? ctx.starting_resume_text ?? "",
+          sample_cover_text: ctx.raw_sample ?? ctx.sample_cover_text ?? "",
+          linkedin_profile_text: ctx.raw_profile ?? ctx.linkedin_profile_text ?? "",
         }
         if (!loaded.starting_resume_text.trim()) {
           setToast({
