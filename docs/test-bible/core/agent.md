@@ -418,3 +418,22 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 | Hop skips failure prefix / prefers anchor batch | same | hop tests in `TestAst597*` / `TestAst769*` (list API mocks) |
 
 **AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` (§ AST-984).
+
+---
+
+### AST-1005 · AST-994
+
+**AST-1005 (UAT bug):** `_validate_response_schema` validates `items_schema` list elements via `_validate_schema_object_fields` (plain object field checks) — not recursive envelope validation — so experience job objects get path-prefixed field errors (`experience[i]: …`) instead of misleading envelope/`candidate_name` fallout. Promote path: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| items_schema object-field validation | `src/core/agent.py` | **`TestAst1005ItemsSchemaObjectValidation`**; reuse **`TestResponseSchemaBranches`** |
+
+**Broken / obsolete this pass:** `TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema` fixture updated to include required criteria `code` (items_schema now correctly enforces object fields).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1005ItemsSchemaObjectValidation \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches \
+  -q
+```

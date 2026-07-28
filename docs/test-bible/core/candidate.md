@@ -348,3 +348,21 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
   -q
 ```
+
+---
+
+### AST-1005 · AST-994
+
+**AST-1005 (UAT bug):** Craft-base normalize promotes known section ids from **direct keys** on `resume_structure` (e.g. `candidate_name`, experience job arrays) even when `sections` is missing — before `default_resume_structure()` replace — so validation no longer false-misses `candidate_name` beside a well-formed experience job array. Does not loosen required `candidate_name`. Items-schema hardening: **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Direct-key promote + validate matrix | `src/core/candidate.py` | **`TestAst1005FalseMissingCandidateName`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1005FalseMissingCandidateName \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  -q
+```
