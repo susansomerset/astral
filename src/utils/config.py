@@ -3189,6 +3189,12 @@ BUILD_CONFIG = {
             "default_accent": "#3c2c6e",
             "default_header": "#3c2c6e",
             "page_background": "#f5f5f5",
+            # Golden resume :root text/border tokens (AST-1020).
+            "text_primary": "#1a1a1a",
+            "text_secondary": "#444",
+            "text_tertiary": "#666",
+            "border_light": "#e0e0e0",
+            "border_medium": "#ccc",
         },
         # Visually hidden ATS keyword strip — builder emits class ats-keywords; all knobs here (§1.4).
         "ats_keyword_block": {
