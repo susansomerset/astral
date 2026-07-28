@@ -210,3 +210,9 @@ Changes: Added Stage 1 step 4 with literal replacements for the sole-authority m
 
 **Publish ref:** `origin/sub/AST-989/AST-992-betty-skills-integration-drift-duty`
 **Plan path:** `docs/features/team-chuckles/ast-992-betty-skills-integration-drift-duty.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–4 | `team-chuckles@4549329` | `qa-child` drift duty + bible-edit scope; `check-linear` no-parallel-queue; `test-child` integration `[qa-handoff]` pointer |
+
+**Tip:** astral plan stub (this commit); skills on `team-chuckles` `main` @ `4549329`. Hosts: re-run `~/team-chuckles/install.sh`.
