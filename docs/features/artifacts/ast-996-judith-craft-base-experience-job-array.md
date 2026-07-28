@@ -153,3 +153,14 @@ Updates Judith’s `craft_resume_base` response contract and prompt so **Experie
 ### Revision 1 — 2026-07-28
 Driven by: Joan `[plan-discuss] round=1 concern` fix-now — Stage 3 LinkedIn/backstory enrichment bullet vs child/parent AC3 (accomplishments must match paste/source; no added claims not in the paste).
 Changes: Stage 3 rewritten so craft-base `accomplishments` are paste/resume-faithful only (no LinkedIn/backstory/strengths enrichment); added scan of other `craft_resume_base` prompt lines that teach experience blend and neutralize only those conflicts; Files Changed / Done when / Conf updated to match.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-994/AST-996-judith-craft-base-experience-job-array`
+**Plan path:** `docs/features/artifacts/ast-996-judith-craft-base-experience-job-array.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–5 | `30b4320f` | experience job-array schema, preserve/split/filter, Judith prompt, ArtifactEditor JSON round-trip, Style D debug |
+
+**Tip:** `30b4320f` on publish-ref (this stub append may tip further).
