@@ -184,3 +184,40 @@ Changes:
 
 **Betty:** broad fallout expected — `test_agent.py` append mocks, roster story/dedupe, database append tests, backfill script tests; cover `list_entity_latest_agent_refs` / `entity_id`.
 
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-984
+**Publish ref tip (pre-docs):** `6ec4f3698f74e4c7768d4747f2eb4f907ec2ea40`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Staged cutover honored: `29cc49b` dual-write → `ff7f9f7` Code Rules → `3745d22` statute/pattern → `03c5361` remove append + drop entity JSON columns + retire backfill script.
+- Replacement contract delivered: `agent_data.entity_id` on RESPONSE writes; `list_entity_latest_agent_refs` for hop + `get_entity_agent_story`; `ensure_batch_response_entity_ids` for batch consult/roster paths.
+- Acceptance clean: no `append_agent_response` / dedupe / normalize symbols in `src/`/`scripts/`; entity columns dropped via `_drop_entity_agent_responses_column`.
+- Betty: one `merge-tests(AST-984)` of `17695ac6`; broad test/bible revision; engineer avoided test-tree.
+
+### Issues
+
+**discuss:** `orch.roles.archie-approves-statutes` — Ada posted Archie gate @ `ff7f9f7` (2026-07-25); statute/pattern committed `3745d22` with `approved_at: 2026-07-27` but no Susan/Archie approval reply visible in AST-984 thread before Stages 3–5. Substance matches draft; resolve-child should link approval artifact or Susan confirms waiver.
+
+**discuss (C4 straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.ui.frontend-file-placement`; three-dot scores in-scope (plan docs, Betty tests). Substance **conforms**.
+
+**advisory:** `entity_cost` still computed in batch `agent_ref` dict for consult tagging but omitted from `list_entity_latest_agent_refs` refs per plan — OK for UI; document if any future consumer expects it on list output.
+
+### Recommended actions
+
+1. Link Archie approval (or confirm waiver) in Linear before resolve-child closes discuss on statute gate.
+2. Acknowledge C4 straggler rows (no code).
+
+### Pattern conformance
+
+none cited (pattern amended in canon commit `3745d22`)
+
+### Plan adherence
+
+Matches MAJOR-CHANGE scope, replacement lookup header, and hard cutover rule. Parent AC5 satisfied: columns gone, mandate/statute updated, hop/story preserved via list API.
+
