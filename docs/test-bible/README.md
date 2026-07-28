@@ -288,6 +288,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read acceptance on the three skills under `~/team-chuckles` (+ installed `~/.cursor/skills/…`) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-991** out of scope.
 
+### AST-1001 · AST-999 (missing-thread skill policy)
+
+**Docs-only** (team-chuckles orchestration prose + astral plan). Live edits on **`team-chuckles` `main`** @ `7e45ec4` (`do-all-the-things` §3d/§3e/§6, `orientation`, `WAKE_CHEATSHEET`, `chuckles-AGENTS`, `CHUCKLES_QUICKREF` — miss ⇒ comment look path+UUID + `missing thread` + mint + persist + continue, not laptop-block); astral **`origin/sub/AST-999/AST-1001-missing-thread-skill-policy`** holds the plan doc only. No product `src/`, no pytest, no helper/watcher edits (`thread_transcript.py` / `watch_linear.py` stay sibling **AST-1002**).
+
+**No new component tests.** **`test-child`:** grep/read docs-acceptance on the five prose files under `~/team-chuckles` (+ installed `~/.cursor/skills/…` / agents) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-1002** out of scope.
+
 
 ## 2. Where tests live
 
