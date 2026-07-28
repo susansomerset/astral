@@ -44,7 +44,7 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
 )
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
 
@@ -709,7 +709,16 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     """Keep only section-id keys; drop accent_color and other non-section keys."""
     if not isinstance(content, dict):
         return {}
-    return {k: str(v) for k, v in content.items() if k in section_ids}
+    out: Dict[str, Any] = {}
+    for k, v in content.items():
+        if k not in section_ids:
+            continue
+        if k == "experience" and _is_experience_job_array(v):
+            out[k] = v
+        elif isinstance(v, str):
+            out[k] = v
+        # else: drop unexpected shapes (do not str()-corrupt)
+    return out
 
 
 def format_base_resume_for_token(candidate_data: dict) -> str:
@@ -772,7 +781,17 @@ _CRAFT_RESUME_NESTED_CONTENT_KEYS = ("content", "text", "value", "body")
 _CRAFT_RESUME_CONTENT_DICT_KEYS = ("content", "section_content", "base_resume")
 
 
+def _is_experience_job_array(val: Any) -> bool:
+    return isinstance(val, list) and all(isinstance(item, dict) for item in val)
+
+
+# Public alias for tracker / builder (AST-996 / AST-997 / AST-998).
+is_experience_job_array = _is_experience_job_array
+
+
 def _coerce_resume_section_string(val: Any) -> Optional[str]:
+    if _is_experience_job_array(val):
+        return None
     if isinstance(val, str) and val.strip():
         return val
     if isinstance(val, list):
@@ -795,6 +814,11 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
 
     def _promote(sid: str, val: Any) -> None:
         if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+            return
+        if sid == "experience" and _is_experience_job_array(payload.get(sid)):
+            return
+        if sid == "experience" and _is_experience_job_array(val):
+            payload[sid] = val
             return
         if _coerce_resume_section_string(payload.get(sid)):
             return
@@ -935,12 +959,14 @@ def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
     enabled_ids = {
         sid for sid, spec in structure["sections"].items() if spec.get("enabled")
     }
-    content: Dict[str, str] = {}
+    content: Dict[str, Any] = {}
     for key in enabled_ids:
         if key not in parsed:
             continue
         val = parsed[key]
-        if isinstance(val, str):
+        if key == "experience" and _is_experience_job_array(val):
+            content[key] = val
+        elif isinstance(val, str):
             content[key] = val
     return structure, content
 
@@ -970,27 +996,30 @@ def filter_content_to_resume_structure(
     *,
     allow_contact: bool = True,
 ) -> dict:
-    """Keep string values for enabled section ids; omit empty strings."""
+    """Keep values for enabled section ids; omit empty strings / empty job arrays."""
     if not isinstance(content, dict):
         return {}
     allowed = set(enabled_resume_section_ids(resume_structure))
     if not allow_contact:
         allowed -= set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
-    out: Dict[str, str] = {}
+    out: Dict[str, Any] = {}
     for key in allowed:
         val = content.get(key)
-        if isinstance(val, str) and val.strip():
+        if key == "experience" and _is_experience_job_array(val) and val:
+            out[key] = val
+        elif isinstance(val, str) and val.strip():
             out[key] = val
     return out
 
 
-async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
+async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> Dict[str, Any]:
     """Parse context.starting_resume_text via do_task('craft_resume_base').
     Reads from candidate_data.context.starting_resume_text, writes parsed
     result to candidate_data.artifacts.base_resume.
     Does not change candidate state (AST-970 — no PROFILE_READY auto-hop).
 
     Async — called from CLI/scripts via asyncio.run(), never from Flask handlers."""
+    logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {"success": False, "error": f"Candidate not found: {candidate_id}"}
@@ -1002,6 +1031,7 @@ async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
         task_key="craft_resume_base",
         live_content=resume_raw,
         index=candidate_id,
+        debug=debug,
     )
     if response is None:
         return {"success": False, "error": "do_task returned None for parse_resume"}
@@ -1018,7 +1048,44 @@ async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
         candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
         merge=True,
     )
+    if debug:
+        logger.debug_index(
+            func="parse_candidate_resume",
+            index=1,
+            total=1,
+            identifier=candidate_id,
+            outcome="ok",
+        )
+        _debug_experience_jobs(logger, content)
     return {"success": True, "parsed": parsed}
+
+
+def _debug_experience_jobs(log, content_or_parsed: Any) -> None:
+    """Style D detail for recorded experience jobs (AST-996)."""
+    blob = content_or_parsed if isinstance(content_or_parsed, dict) else {}
+    exp = blob.get("experience")
+    if _is_experience_job_array(exp):
+        for i, job in enumerate(exp):
+            if not isinstance(job, dict):
+                log.debug_detail(f"experience[{i}] shape=non_dict")
+                continue
+            log.debug_detail(
+                f"experience[{i}] company={job.get('company')!r} title={job.get('title')!r} "
+                f"dates={job.get('dates')!r} location={job.get('location')!r}"
+            )
+            acc = job.get("accomplishments")
+            if isinstance(acc, str) and acc.strip():
+                for line in truncate_debug_content(acc):
+                    log.debug_detail(f"experience[{i}] accomplishments: {line}")
+            else:
+                log.debug_detail(f"experience[{i}] accomplishments=<empty>")
+        return
+    if isinstance(exp, str):
+        log.debug_detail("experience_shape=str")
+    elif exp is None:
+        log.debug_detail("experience_shape=missing")
+    else:
+        log.debug_detail(f"experience_shape=other type={type(exp).__name__}")
 
 
 def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
@@ -1367,7 +1434,7 @@ def run_session_resume_parse(
                 identifier=batch_id,
                 outcome="ok",
             )
-            logger.debug_detail_block(json.dumps(parsed))
+            _debug_experience_jobs(logger, content)
         return (
             {
                 "success": True,
@@ -1584,6 +1651,15 @@ def run_candidate_artifact_generation(
                 candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
                 merge=True,
             )
+            if debug:
+                logger.debug_index(
+                    func="run_candidate_artifact_generation",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome="craft_resume_base persisted",
+                )
+                _debug_experience_jobs(logger, content)
         return (
             {
                 "success": True,

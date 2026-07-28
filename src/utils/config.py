@@ -92,6 +92,20 @@ _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# AST-996: craft-base / resume_content Experience wire shape (shared items_schema).
+_EXPERIENCE_JOB_ITEM_SCHEMA: Dict[str, Dict[str, Any]] = {
+    "company": {"type": "str", "required": True},
+    "title": {"type": "str", "required": True},
+    "dates": {"type": "str", "required": True},
+    "location": {"type": "str", "required": True},
+    "accomplishments": {"type": "str", "required": True},
+}
+_EXPERIENCE_JOB_ARRAY_FIELD: Dict[str, Any] = {
+    "type": "list",
+    "required": True,
+    "items_schema": _EXPERIENCE_JOB_ITEM_SCHEMA,
+}
+
 # Optional TASK_CONFIG.task_type: CRAFT | RUBRIC | CHAT | CHAIN (schema-only except CHAIN in consult).
 TASK_TYPES = frozenset({"CRAFT", "RUBRIC", "CHAT", "CHAIN"})
 BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
@@ -128,7 +142,7 @@ TASK_CONFIG = {
             "candidate_contact_detail": {"type": "str", "required": True},
             "professional_summary": {"type": "str", "required": True},
             "core_competencies": {"type": "str", "required": True},
-            "experience": {"type": "str", "required": True},
+            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
             "prior_experience": {"type": "str", "required": False},
             "education_certifications": {"type": "str", "required": False},
             "technical_skills": {"type": "str", "required": False},
@@ -3032,7 +3046,7 @@ DATA_SHAPES = {
                 {"key": "candidate_contact_detail", "label": "Candidate Contact Detail", "type": "str"},
                 {"key": "professional_summary", "label": "Professional Summary", "type": "str"},
                 {"key": "core_competencies", "label": "Core Competencies", "type": "str"},
-                {"key": "experience", "label": "Experience", "type": "str"},
+                {"key": "experience", "label": "Experience", "type": "experience_jobs"},
                 {"key": "prior_experience", "label": "Prior Experience", "type": "str"},
                 {"key": "education_certifications", "label": "Education & Certifications", "type": "str"},
                 {"key": "technical_skills", "label": "Technical Skills", "type": "str"},
@@ -3300,7 +3314,7 @@ BUILD_CONFIG = {
             "candidate_contact_detail": {"type": "str", "required": True},
             "professional_summary": {"type": "str", "required": True},
             "core_competencies": {"type": "str", "required": True},
-            "experience": {"type": "str", "required": True},
+            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
             "prior_experience": {"type": "str", "required": False},
             "education_certifications": {"type": "str", "required": False},
             "technical_skills": {"type": "str", "required": False},
