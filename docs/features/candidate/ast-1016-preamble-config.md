@@ -143,3 +143,8 @@ PREAMBLE_CONFIG = {
 **Conf:** `high` — mirrors `CANDIDATE_LIBRARY_CONFIG` / `INTAKE_CONFIG` patterns; targets are already-shipped AST-1014 context keys; placeholders are explicit.
 
 **Risk:** `Medium` — wrong `target` or `validation_task_key` would make AST-1017 write/validate against the wrong homes; asserts + sibling contracts mitigate; Intro presentation AC half depends on AST-1017 consuming this block.
+
+## Review
+
+**Publish ref:** `sub/AST-952/AST-1016-preamble-config`  
+**Build tip:** `927658d1bf3dfec1e097308ddcd15b27342f6c05`
