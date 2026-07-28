@@ -597,14 +597,19 @@ def _structure_ordered_body_ids(resume_structure: dict) -> List[str]:
 
 
 def _apply_resume_text_markers(render: dict) -> dict:
-    """Return shallow copy with legacy marker transforms on string values (NBSP / hyphen conventions)."""
-    out = dict(render)
-    for k, v in list(out.items()):
-        if isinstance(v, str):
-            out[k] = _resume_site_markers(v)
-        else:
-            out[k] = v
-    return out
+    """Deep-walk dict/list nests; apply ``_resume_site_markers`` to every string leaf."""
+    return {k: _mark_resume_value(v) for k, v in render.items()}
+
+
+def _mark_resume_value(val: Any) -> Any:
+    """Recurse into dict/list; transform string leaves; leave other types unchanged."""
+    if isinstance(val, str):
+        return _resume_site_markers(val)
+    if isinstance(val, dict):
+        return {k: _mark_resume_value(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [_mark_resume_value(item) for item in val]
+    return val
 
 
 def _render_content_keys(markers: dict) -> List[str]:
@@ -648,9 +653,28 @@ def _emit_html_document(
     bstack = fonts.get("body_stack", "serif")
     lstack = fonts.get("list_stack", hstack)
 
-    name = html.escape(str(render.get("candidate_name") or ""))
-    title = html.escape(str(render.get("candidate_title") or ""))
+    name_raw = str(render.get("candidate_name") or "").strip()
+    title_raw = str(render.get("candidate_title") or "").strip()
+    tagline_raw = str(render.get("candidate_tagline") or "").strip()
+    name = html.escape(name_raw)
+    title = html.escape(title_raw)
     contact = html.escape(str(render.get("candidate_contact_detail") or ""))
+
+    if name and title:
+        h1_inner = f"{name}\u00a0• {title}"
+    elif name:
+        h1_inner = name
+    elif title:
+        h1_inner = title
+    else:
+        h1_inner = ""
+
+    meta_tag = ""
+    if name_raw and title_raw and tagline_raw:
+        meta_esc = html.escape(
+            f"Resume of {name_raw}, {title_raw}, specializing in {tagline_raw}"
+        )
+        meta_tag = f'\n  <meta name="description" content="{meta_esc}" />'
 
     body_sections_html = _emit_body_sections_html(
         render,
@@ -712,8 +736,7 @@ h1 {{
   letter-spacing: -0.5px;
   color: var(--header-color);
 }}
-.contact {{ margin: 6px 0 0; font-size: 14px; color: var(--text-secondary);
-  display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; }}
+.contact {{ margin: 6px 0 0; font-size: 14px; color: var(--text-secondary); }}
 .content {{ max-width: var(--max-width); margin: 0 auto; }}
 h2 {{
   margin: 18px 0 2px;
@@ -738,7 +761,9 @@ h2::after {{ margin-left: 12px; }}
   text-transform: uppercase; letter-spacing: 0.2px; font-size: 13.5px; }}
 section {{ margin-bottom: 0; }}
 .role {{ margin: 10px 0 14px; }}
-.role-subheader {{
+article.role {{ margin: 10px 0 14px; }}
+.role-header {{ text-align: left; margin: 0; }}
+.compact-title {{
   text-align: left;
   font-family: var(--header-font-family);
   font-size: 16px;
@@ -749,7 +774,7 @@ section {{ margin-bottom: 0; }}
   text-transform: none;
   letter-spacing: normal;
 }}
-.role-meta {{
+.compact-location {{
   text-align: left;
   font-family: var(--list-font-family);
   font-size: 13px;
@@ -757,7 +782,43 @@ section {{ margin-bottom: 0; }}
   margin: 0 0 6px;
   color: var(--text-secondary);
 }}
-.role-accomplishments {{ margin: 0; }}
+.role-description {{
+  font-family: var(--body-font-family);
+  text-align: left;
+  margin: 6px 0;
+  line-height: 1.25;
+}}
+.role ul {{
+  text-align: left;
+  margin: 6px 0 0;
+  padding-left: 1.25em;
+}}
+.role li {{
+  font-family: var(--body-font-family);
+  line-height: 1.25;
+  margin: 0 0 4px;
+}}
+.education-list {{ margin: 6px 0 0; }}
+.education-list p {{
+  font-family: var(--body-font-family);
+  text-align: left;
+  margin: 4px 0;
+  line-height: 1.25;
+}}
+.skills-grid {{ margin: 6px 0 0; }}
+.skill-category {{ margin: 0 0 8px; }}
+.skill-category h4 {{
+  font-family: var(--header-font-family);
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 2px;
+  color: var(--text-primary);
+}}
+.skills-grid .skill-category p {{
+  text-align: left;
+  color: var(--text-secondary);
+}}
 .cover-block {{ margin-top: 24px; max-width: var(--max-width); margin-left: auto; margin-right: auto; text-align: left; }}
 .cover-block p {{ white-space: pre-wrap; }}
 .cover-signoff img {{ display: block; margin-bottom: 8px; }}
@@ -787,14 +848,14 @@ section {{ margin-bottom: 0; }}
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{title_esc}</title>
+  <title>{title_esc}</title>{meta_tag}
   <style>
 {css}
   </style>
 </head>
 <body>
   <header class="header">
-    <h1>{name}{" • " + title if title else ""}</h1>
+    <h1>{h1_inner}</h1>
     <div class="contact"><span>{contact}</span></div>
   </header>
   <main class="content">
@@ -805,6 +866,52 @@ section {{ margin-bottom: 0; }}
 </body>
 </html>
 """
+
+
+def _emit_education_list_html(text: str) -> str:
+    """Per-line education rows: ``<strong>credential</strong>`` + post-marker bullet rest."""
+    bullet = "\u00a0• "
+    rows: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if bullet in line:
+            cred, _, rest = line.partition(bullet)
+            rows.append(
+                f"        <p><strong>{html.escape(cred)}</strong>{bullet}{html.escape(rest)}</p>"
+            )
+        else:
+            rows.append(f"        <p><strong>{html.escape(line)}</strong></p>")
+    if not rows:
+        return ""
+    return "      <div class=\"education-list\">\n" + "\n".join(rows) + "\n      </div>"
+
+
+def _emit_skills_grid_html(text: str) -> str:
+    """Per-line skills categories: ``Category: items`` → ``h4`` + items ``<p>``."""
+    cats: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if ": " in line:
+            category, _, items = line.partition(": ")
+            cats.append(
+                "        <div class=\"skill-category\">\n"
+                f"          <h4>{html.escape(category)}</h4>\n"
+                f"          <p>{html.escape(items)}</p>\n"
+                "        </div>"
+            )
+        else:
+            cats.append(
+                "        <div class=\"skill-category\">\n"
+                f"          <p>{html.escape(line)}</p>\n"
+                "        </div>"
+            )
+    if not cats:
+        return ""
+    return "      <div class=\"skills-grid\">\n" + "\n".join(cats) + "\n      </div>"
 
 
 def _emit_body_sections_html(
@@ -849,6 +956,28 @@ def _emit_body_sections_html(
     </section>"""
             )
             continue
+        if key == "education_certifications":
+            edu_html = _emit_education_list_html(str(text))
+            if not edu_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{edu_html}
+    </section>"""
+            )
+            continue
+        if key == "technical_skills":
+            skills_html = _emit_skills_grid_html(str(text))
+            if not skills_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{skills_html}
+    </section>"""
+            )
+            continue
         inner = html.escape(str(text))
         if key == "core_competencies":
             chunks.append(
@@ -871,25 +1000,56 @@ def _emit_body_sections_html(
       <p class="competencies-list">{inner}</p>
     </section>"""
             )
-        elif key == "education_certifications":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="education-list"><p class="prose-block">{inner}</p></div>
-    </section>"""
-            )
-        elif key == "technical_skills":  # pragma: no branch
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="skills-grid"><div class="skill-category"><p>{inner}</p></div></div>
-    </section>"""
-            )
     return "\n".join(chunks)
 
 
+def _format_compact_location(dates: str, location: str, sep: str) -> str:
+    """Golden compact-location: ``dates: place (arrangement)`` when ``sep`` splits location."""
+    dates = dates.strip()
+    location = location.strip()
+    if sep in location:
+        place, _, arrangement = location.partition(sep)
+        place, arrangement = place.strip(), arrangement.strip()
+        if place and arrangement:
+            text = f"{dates}: {place} ({arrangement})" if dates else f"{place} ({arrangement})"
+            return _resume_site_markers(text) if text else ""
+        # Empty arrangement after split → treat remaining place as plain location.
+        location = place or location
+    if dates and location:
+        text = f"{dates}: {location}"
+    elif dates:
+        text = dates
+    elif location:
+        text = location
+    else:
+        text = ""
+    return _resume_site_markers(text) if text else ""
+
+
+def _split_role_accomplishments(
+    accomplishments: str, lead_prefix: str
+) -> Tuple[List[str], List[str]]:
+    """Split accomplishments into lead paragraphs (prefix lines) and bullet lines."""
+    leads: List[str] = []
+    bullets: List[str] = []
+    for raw_line in accomplishments.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(lead_prefix):
+            rest = line.removeprefix(lead_prefix).strip()
+            if rest:
+                leads.append(_resume_site_markers(rest))
+        else:
+            bullets.append(_resume_site_markers(line))
+    return leads, bullets
+
+
 def _emit_experience_jobs_html(jobs: list) -> str:
-    """Per-role HTML for AST-996 experience job arrays (title subheader + meta + accomplishments)."""
+    """Golden role articles: compact title/location, optional lead, then achievement bullets."""
+    layout = BUILD_CONFIG["experience_role_layout"]
+    lead_prefix = layout["lead_line_prefix"]
+    loc_sep = layout["location_arrangement_sep"]
     role_chunks: List[str] = []
     for item in jobs:
         if not isinstance(item, dict):
@@ -901,33 +1061,38 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         accomplishments = str(item.get("accomplishments") or "").strip()
         if not (title or company or dates or location or accomplishments):
             continue
-        # Markers before escape (NBSP / hyphen conventions on freeform strings).
-        title_m = _resume_site_markers(title) if title else ""
-        company_m = _resume_site_markers(company) if company else ""
-        dates_m = _resume_site_markers(dates) if dates else ""
-        location_m = _resume_site_markers(location) if location else ""
-        accom_m = _resume_site_markers(accomplishments) if accomplishments else ""
 
-        lines: List[str] = ['      <div class="role">']
-        subheader = title_m or company_m
-        if subheader:
-            lines.append(f'        <h3 class="role-subheader">{html.escape(subheader)}</h3>')
-        # Title as subheader → company in meta; company-as-subheader → do not repeat company.
-        meta_parts: List[str] = []
-        if title_m and company_m:
-            meta_parts.append(company_m)
-        if dates_m:
-            meta_parts.append(dates_m)
-        if location_m:
-            meta_parts.append(location_m)
-        if meta_parts:
-            meta_joined = _resume_site_markers(" • ".join(meta_parts))
-            lines.append(f'        <p class="role-meta">{html.escape(meta_joined)}</p>')
-        if accom_m:
+        if title and company:
+            title_text = _resume_site_markers(f"{title} • {company}")
+        elif title:
+            title_text = _resume_site_markers(title)
+        elif company:
+            title_text = _resume_site_markers(company)
+        else:
+            title_text = ""
+        loc_text = _format_compact_location(dates, location, loc_sep)
+        leads, bullets = _split_role_accomplishments(accomplishments, lead_prefix)
+        if not (title_text or loc_text or leads or bullets):
+            continue
+
+        lines: List[str] = ['      <article class="role">', '        <div class="role-header">']
+        if title_text:
             lines.append(
-                f'        <div class="role-accomplishments prose-block">{html.escape(accom_m)}</div>'
+                f'          <p class="compact-title"><strong>{html.escape(title_text)}</strong></p>'
             )
-        lines.append("      </div>")
+        if loc_text:
+            lines.append(
+                f'          <p class="compact-location"><em>{html.escape(loc_text)}</em></p>'
+            )
+        lines.append("        </div>")
+        for lead in leads:
+            lines.append(f'        <p class="role-description">{html.escape(lead)}</p>')
+        if bullets:
+            lines.append("        <ul>")
+            for bullet in bullets:
+                lines.append(f"          <li>{html.escape(bullet)}</li>")
+            lines.append("        </ul>")
+        lines.append("      </article>")
         role_chunks.append("\n".join(lines))
     return "\n".join(role_chunks)
 

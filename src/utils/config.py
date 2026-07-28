@@ -146,6 +146,7 @@ TASK_CONFIG = {
             "candidate_name": {"type": "str", "required": True},
             "candidate_title": {"type": "str", "required": True},
             "candidate_contact_detail": {"type": "str", "required": True},
+            "candidate_tagline": {"type": "str", "required": False},
             "professional_summary": {"type": "str", "required": True},
             "core_competencies": {"type": "str", "required": True},
             "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
@@ -3073,6 +3074,7 @@ DATA_SHAPES = {
             "base_resume_structure": [
                 {"key": "candidate_name", "label": "Candidate Name", "type": "str"},
                 {"key": "candidate_title", "label": "Candidate Title", "type": "str"},
+                {"key": "candidate_tagline", "label": "Candidate Tagline", "type": "str"},
                 {"key": "candidate_contact_detail", "label": "Candidate Contact Detail", "type": "str"},
                 {"key": "professional_summary", "label": "Professional Summary", "type": "str"},
                 {"key": "core_competencies", "label": "Core Competencies", "type": "str"},
@@ -3277,6 +3279,11 @@ BUILD_CONFIG = {
             "body_kind": "prose",
             "page_break_policy": "keep_with_next",
         },
+        "candidate_tagline": {
+            "heading_level": "none",
+            "body_kind": "prose",
+            "page_break_policy": "keep_with_next",
+        },
         "candidate_contact_detail": {
             "heading_level": "none",
             "body_kind": "prose",
@@ -3335,6 +3342,13 @@ BUILD_CONFIG = {
             "page_break_policy": "normal",
         },
     },
+    # AST-1008: experience role emit — lead line prefix + location arrangement split (golden layout).
+    "experience_role_layout": {
+        # Paste/source prefix on an accomplishments line → role-description, not <li>.
+        "lead_line_prefix": "<no bullet>",
+        # Splits freeform `location` into place + arrangement for compact-location phrasing.
+        "location_arrangement_sep": " / ",
+    },
     # resume_content: documents known section ids; runtime allowed keys are per-candidate structure subset.
     # cover_letter: canonical Subject/Letter; legacy tasks may still output re_line/body until prompts update.
     "artifact_shapes": {
@@ -3342,6 +3356,7 @@ BUILD_CONFIG = {
             "candidate_name": {"type": "str", "required": True},
             "candidate_title": {"type": "str", "required": True},
             "candidate_contact_detail": {"type": "str", "required": True},
+            "candidate_tagline": {"type": "str", "required": False},
             "professional_summary": {"type": "str", "required": True},
             "core_competencies": {"type": "str", "required": True},
             "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
@@ -3543,11 +3558,13 @@ for _tk, _tc in TASK_CONFIG.items():
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
     "candidate_name",
     "candidate_title",
+    "candidate_tagline",
     "candidate_contact_detail",
 )
 RESUME_STRUCTURE_KNOWN_SECTION_IDS = (
     "candidate_name",
     "candidate_title",
+    "candidate_tagline",
     "candidate_contact_detail",
     "professional_summary",
     "core_competencies",
@@ -3572,53 +3589,60 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 1,
             "job_agent_editable": False,
         },
+        "candidate_tagline": {
+            "id": "candidate_tagline",
+            "title": "Candidate Tagline",
+            "enabled": True,
+            "order": 2,
+            "job_agent_editable": False,
+        },
         "candidate_contact_detail": {
             "id": "candidate_contact_detail",
             "title": "Candidate Contact Detail",
             "enabled": True,
-            "order": 2,
+            "order": 3,
             "job_agent_editable": False,
         },
         "professional_summary": {
             "id": "professional_summary",
             "title": "Professional Summary",
             "enabled": True,
-            "order": 3,
+            "order": 4,
             "job_agent_editable": True,
         },
         "core_competencies": {
             "id": "core_competencies",
             "title": "Core Competencies",
             "enabled": True,
-            "order": 4,
+            "order": 5,
             "job_agent_editable": True,
         },
         "experience": {
             "id": "experience",
             "title": "Experience",
             "enabled": True,
-            "order": 5,
+            "order": 6,
             "job_agent_editable": True,
         },
         "prior_experience": {
             "id": "prior_experience",
             "title": "Prior Experience",
             "enabled": True,
-            "order": 6,
+            "order": 7,
             "job_agent_editable": True,
         },
         "education_certifications": {
             "id": "education_certifications",
             "title": "Education & Certifications",
             "enabled": True,
-            "order": 7,
+            "order": 8,
             "job_agent_editable": True,
         },
         "technical_skills": {
             "id": "technical_skills",
             "title": "Technical Skills",
             "enabled": True,
-            "order": 8,
+            "order": 9,
             "job_agent_editable": True,
         },
     },
