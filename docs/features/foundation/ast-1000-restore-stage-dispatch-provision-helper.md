@@ -85,3 +85,43 @@ Boot-time stage-dispatch provisioning (AST-972) still calls `database.list_candi
 | §2.6 state machine | No state transitions |
 | §3.3 imports | Data layer only; no new cross-layer imports |
 | §3.5 / public-then-helpers | Placed with other public `dispatch_task` list APIs |
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `64a30851e469613f3e8e7e0b36e644d951afed54`.
+
+**Stages delivered:**
+- Stage 1: restore `list_candidate_ids_with_dispatch_tasks` in `src/data/database.py` — `64a30851e469613f3e8e7e0b36e644d951afed54`.
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1000  
+**Publish ref:** `ffe47510942ce0acd50098fc02f6eadb0724c590` (`origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper`)  
+**Overall:** DISCUSS
+
+**Diff change set:** `src/data/database.py` (modify/data); `docs/features/foundation/ast-1000-restore-stage-dispatch-provision-helper.md` (add/docs); `docs/test-bible/data/database/dispatch_tasks.md` + `tests/component/data/database/test_dispatch_tasks.py` (modify/docs via Betty `merge-tests`).
+
+### What’s solid
+
+- Exact AST-972 body restored between `list_dispatch_tasks_for_candidate` and `count_dispatch_tasks_by_candidate` (byte-match to plan Stage 1).
+- Data raises only — no data-layer logging; dispatcher provision caller untouched.
+- Header inventory already lists `dispatch_task`; no new table.
+- Engineer `code()` touched only `src/data/database.py`; bible/tests arrived via `merge-tests`.
+
+### Findings
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded (plan Files Changed = data only); three-dot diff includes `docs/features/**`. Re-score: **conforms** (plan doc is not a spike under `debug/`).
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; plan file is in the diff. Re-score: **conforms** (single `ast-1000-…` features file).
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded (plan said engineer would not touch tests); three-dot includes `tests/**` + `docs/test-bible/**` from Betty `merge-tests`. Re-score: **conforms** (engineer `code()` commit is src-only).
+
+No fix-now. No product action required for the stragglers unless Archie wants plan-time exclusion notes refined for pipeline docs/tests paths.
+
+### Recommended actions
+
+- Implementer (`resolve-child`): acknowledge stragglers; no code change expected for CLEAN product restore.
+
