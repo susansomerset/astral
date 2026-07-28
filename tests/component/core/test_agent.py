@@ -98,13 +98,11 @@ def agent_prompt_rows(monkeypatch: pytest.MonkeyPatch) -> Tuple[Dict[str, Any], 
 
 @pytest.fixture
 def stub_agent_storage(monkeypatch: pytest.MonkeyPatch) -> Dict[str, MagicMock]:
-    # AST-981: standalone table audit path removed; durable store is save + entity append.
+    # AST-984: entity JSON append removed; durable store is save_agent_data (+ entity_id on RESPONSE).
     mocks = {
         "save": MagicMock(),
-        "append": MagicMock(),
     }
     monkeypatch.setattr(agent_mod, "save_agent_data", mocks["save"])
-    monkeypatch.setattr(agent_mod, "append_agent_response", mocks["append"])
     monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
     return mocks
 
@@ -1458,7 +1456,6 @@ class TestDoTask:
             lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1649,7 +1646,6 @@ class TestDoTask:
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1680,7 +1676,6 @@ class TestDoTask:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1715,7 +1710,6 @@ class TestDoTask:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1741,7 +1735,6 @@ class TestDoTask:
         send = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
 
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1790,7 +1783,6 @@ class TestDoTask:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1815,7 +1807,6 @@ class TestDoTask:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
@@ -1850,7 +1841,6 @@ class TestAst492BrainSettingDoTask:
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -1881,7 +1871,6 @@ class TestAst492BrainSettingDoTask:
         )
         monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2355,7 +2344,6 @@ class TestDoTaskStorageFailures:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(side_effect=RuntimeError("db")))
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock(side_effect=RuntimeError("db")))
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2388,7 +2376,6 @@ class TestDoTaskStorageFailures:
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         with monkeypatch.context() as patch:
             patch.setattr(
                 agent_mod,
@@ -2443,7 +2430,6 @@ class TestDoTaskRemainingPaths:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2470,7 +2456,6 @@ class TestDoTaskRemainingPaths:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -2689,7 +2674,6 @@ class TestAgentPayloadListUnwrap:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2746,7 +2730,6 @@ class TestDoTaskFinalBranches:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -2773,38 +2756,10 @@ class TestDoTaskFinalBranches:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "draft_cover_letter",
             index="job-1",
             ctx={"candidate_data": {"profile": {}}},
-        )
-        assert out["success"] is True
-
-    async def test_swallows_append_agent_response_failure(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        batch_token: Any,
-    ) -> None:
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_anthropic",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {"agent_payload": "0|CRA2"},
-                    "api_response": _api_response(),
-                    "timesheet": {},
-                }
-            ),
-        )
-        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock(side_effect=RuntimeError("db")))
-        out = await agent_mod.do_task(
-            "evaluate_jd",
-            index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
 
@@ -3092,7 +3047,6 @@ class TestDoTaskStoreExceptions:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", saves)
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -3122,7 +3076,6 @@ class TestDoTaskStoreExceptions:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "append_agent_response", append)
         monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda batch_id: 1.0)
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -3130,7 +3083,6 @@ class TestDoTaskStoreExceptions:
             ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
-        append.assert_not_called()
 
     async def test_post_decode_schema_requires_job_grades(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
@@ -3351,7 +3303,6 @@ class TestDoTaskShouldStoreBranches:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is True
 
@@ -3375,7 +3326,6 @@ class TestDoTaskShouldStoreBranches:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
         assert "Unknown resume section key" in out["error"]
@@ -3429,7 +3379,6 @@ class TestDoTaskShouldStoreBranches:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -3457,7 +3406,6 @@ class TestDoTaskShouldStoreBranches:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is False
         assert "grades" in out["error"]
@@ -3887,7 +3835,6 @@ class TestDoTaskEncodedPostDecodeFallthrough:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -3913,6 +3860,15 @@ class TestMergeChainContextForNextHop:
         }
 
 
+
+def _patch_entity_latest_refs(monkeypatch: pytest.MonkeyPatch, refs: List[Dict[str, Any]]) -> None:
+    """AST-984: hop/hydrate read list_entity_latest_agent_refs, not entity JSON."""
+    monkeypatch.setattr(
+        agent_mod.database,
+        "list_entity_latest_agent_refs",
+        lambda et, eid: list(refs),
+    )
+
 class TestAst597MidChainResumeHydrationAndTransitions:
     """AST-597 / AST-803: agent_data caller hydration; per-hop compound transitions retired."""
 
@@ -3930,29 +3886,43 @@ class TestAst597MidChainResumeHydrationAndTransitions:
     def test_hop_agent_ref_for_parent_skips_failed_response_rows(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            agent_mod,
-            "get_agent_data_for_ids",
-            MagicMock(
-                side_effect=lambda ids: {
-                    "bad": {"block_data": "Validation failed: schema"},
-                    "good": {"block_data": "upstream advice"},
-                }
-            ),
-        )
-        job = {
-            "agent_responses": [
+        # AST-984: latest-per-task via list API; failure-prefix RESPONSE is skipped.
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "advise_job_resume",
+                    "batch_id": "b-fail",
                     "prompt_blocks": [{"type": "RESPONSE", "id": "bad"}],
                 },
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_block_text_by_type",
+            lambda blocks, typ: "Validation failed: schema",
+        )
+        assert (
+            agent_mod._hop_agent_ref_for_parent("job", "job-1", "advise_job_resume", None)
+            is None
+        )
+
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "advise_job_resume",
+                    "batch_id": "b-ok",
                     "prompt_blocks": [{"type": "RESPONSE", "id": "good"}],
                 },
             ],
-        }
-        ref = agent_mod._hop_agent_ref_for_parent(job, "advise_job_resume", None)
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_block_text_by_type",
+            lambda blocks, typ: "upstream advice",
+        )
+        ref = agent_mod._hop_agent_ref_for_parent("job", "job-1", "advise_job_resume", None)
         assert ref is not None
         assert ref["prompt_blocks"][0]["id"] == "good"
 
@@ -3964,21 +3934,23 @@ class TestAst597MidChainResumeHydrationAndTransitions:
     def test_hydrate_resume_entry_chain_context_builds_agent_data_tokens(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        job = {
-            "astral_job_id": "job-hydrate",
-            "agent_responses": [
+        job = {"astral_job_id": "job-hydrate"}
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: job if jid == "job-hydrate" else None,
+        )
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "advise_job_resume",
+                    "batch_id": "b-h",
                     "prompt_blocks": [
                         {"type": "SYSTEM", "id": "sys-1"},
                         {"type": "RESPONSE", "id": "resp-1"},
                     ],
                 }
             ],
-        }
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "job-hydrate" else None,
         )
         monkeypatch.setattr(
             agent_mod,
@@ -4005,8 +3977,9 @@ class TestAst597MidChainResumeHydrationAndTransitions:
     ) -> None:
         monkeypatch.setattr(
             "src.core.tracker.get_job",
-            lambda jid: {"astral_job_id": jid, "agent_responses": []},
+            lambda jid: {"astral_job_id": jid},
         )
+        _patch_entity_latest_refs(monkeypatch, [])
         ctx, err = agent_mod._hydrate_resume_entry_chain_context(
             "job-miss", "draft_job_resume"
         )
@@ -4053,9 +4026,14 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level("DEBUG")
-        job = {
-            "astral_job_id": "job-dbg",
-            "agent_responses": [
+        job = {"astral_job_id": "job-dbg"}
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: job if jid == "job-dbg" else None,
+        )
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "advise_job_resume",
                     "batch_id": "batch-1",
@@ -4065,10 +4043,6 @@ class TestAst597MidChainResumeHydrationAndTransitions:
                     ],
                 }
             ],
-        }
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "job-dbg" else None,
         )
         monkeypatch.setattr(
             agent_mod,
@@ -4129,22 +4103,21 @@ class TestAst769GeneralCallerHydration:
     def test_hop_agent_ref_for_parent_prefers_anchor_batch_over_newer_ref(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-984: hop still prefers anchor when list returns multiple same task_key.
         monkeypatch.setattr(
             agent_mod,
-            "get_agent_data_for_ids",
-            MagicMock(
-                side_effect=lambda ids: {
-                    "resp-wrong": {"block_data": '{"selected_page": 9}'},
-                    "resp-right": {"block_data": '{"selected_page": 1}'},
-                }
-            ),
+            "_block_text_by_type",
+            lambda blocks, typ: '{"selected_page": 1}',
         )
         entity = {
             "state": "JOBLIST_IDENTIFIED",
             "state_history": [
                 {"to_state": "JOBLIST_IDENTIFIED", "batch_id": "batch-anchor"},
             ],
-            "agent_responses": [
+        }
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "select_job_page",
                     "batch_id": "batch-newer-unrelated",
@@ -4156,9 +4129,9 @@ class TestAst769GeneralCallerHydration:
                     "prompt_blocks": [{"type": "RESPONSE", "id": "resp-right"}],
                 },
             ],
-        }
+        )
         anchor = agent_mod._anchor_batch_id_from_state_history(entity)
-        ref = agent_mod._hop_agent_ref_for_parent(entity, "select_job_page", anchor)
+        ref = agent_mod._hop_agent_ref_for_parent("company", "co-1", "select_job_page", anchor)
         assert ref is not None
         assert ref["batch_id"] == "batch-anchor"
         assert ref["prompt_blocks"][0]["id"] == "resp-right"
@@ -4191,7 +4164,14 @@ class TestAst769GeneralCallerHydration:
             "state_history": [
                 {"to_state": "JOBLIST_IDENTIFIED", "batch_id": "batch-1"},
             ],
-            "agent_responses": [
+        }
+        monkeypatch.setattr(
+            "src.core.tracker.get_company",
+            lambda cid: company if cid == "co-769" else None,
+        )
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "select_job_page",
                     "batch_id": "batch-1",
@@ -4201,10 +4181,6 @@ class TestAst769GeneralCallerHydration:
                     ],
                 }
             ],
-        }
-        monkeypatch.setattr(
-            "src.core.tracker.get_company",
-            lambda cid: company if cid == "co-769" else None,
         )
         monkeypatch.setattr(
             agent_mod,
@@ -4280,7 +4256,6 @@ class TestAst769GeneralCallerHydration:
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
 
         out = await agent_mod.do_task(
             "parse_job_list",
@@ -4302,9 +4277,14 @@ class TestAst769GeneralCallerHydration:
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        job = {
-            "astral_job_id": "job-cl-769",
-            "agent_responses": [
+        job = {"astral_job_id": "job-cl-769"}
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: job if jid == "job-cl-769" else None,
+        )
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "contemplate_job",
                     "batch_id": "batch-cl",
@@ -4314,10 +4294,6 @@ class TestAst769GeneralCallerHydration:
                     ],
                 }
             ],
-        }
-        monkeypatch.setattr(
-            "src.core.tracker.get_job",
-            lambda jid: job if jid == "job-cl-769" else None,
         )
         monkeypatch.setattr(
             agent_mod,
@@ -4371,7 +4347,6 @@ class TestAst769GeneralCallerHydration:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
 
         out = await agent_mod.do_task(
             "draft_cover_letter",
@@ -4391,8 +4366,9 @@ class TestAst769GeneralCallerHydration:
     ) -> None:
         monkeypatch.setattr(
             "src.core.tracker.get_company",
-            lambda cid: {"short_name": cid, "agent_responses": []},
+            lambda cid: {"short_name": cid},
         )
+        _patch_entity_latest_refs(monkeypatch, [])
         agent_row, task_row = _agent_rows()
         task_row["system_prompt"] = "Parse {$CALLER_SYSTEM}"
         monkeypatch.setattr(
@@ -4425,9 +4401,14 @@ class TestAst769GeneralCallerHydration:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level("DEBUG")
-        company = {
-            "short_name": "co-dbg",
-            "agent_responses": [
+        company = {"short_name": "co-dbg"}
+        monkeypatch.setattr(
+            "src.core.tracker.get_company",
+            lambda cid: company if cid == "co-dbg" else None,
+        )
+        _patch_entity_latest_refs(
+            monkeypatch,
+            [
                 {
                     "task_key": "select_job_page",
                     "batch_id": "batch-1",
@@ -4437,10 +4418,6 @@ class TestAst769GeneralCallerHydration:
                     ],
                 }
             ],
-        }
-        monkeypatch.setattr(
-            "src.core.tracker.get_company",
-            lambda cid: company if cid == "co-dbg" else None,
         )
         monkeypatch.setattr(
             agent_mod,
@@ -4480,7 +4457,6 @@ class TestAst769GeneralCallerHydration:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
 
         await agent_mod.do_task(
             "parse_job_list",
@@ -4653,7 +4629,6 @@ class TestAst531RunNextHopLedger:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         agent_mod.log_batch_id.set(None)
         out = await agent_mod.do_task(
             "qualify_job_listings",
@@ -4704,7 +4679,6 @@ class TestAst531RunNextHopLedger:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        monkeypatch.setattr(agent_mod, "append_agent_response", MagicMock())
         token = agent_mod.log_batch_id.set("outer-batch-123")
         try:
             out = await agent_mod.do_task(
@@ -5702,13 +5676,13 @@ class TestAst977AgentDataDedupeDebug:
 
 
 class TestAst981StandaloneTableAuditRetired:
-    """AST-981: do_task keeps agent_data + entity append; no standalone-table audit API."""
+    """AST-981: do_task keeps agent_data; no standalone-table audit API."""
 
     def test_agent_module_has_no_standalone_table_helpers(self) -> None:
         assert "add_agent_response_entry" not in vars(agent_mod)
         assert "_store_agent_response" not in vars(agent_mod)
 
-    async def test_do_task_success_persists_agent_data_and_entity_append_only(
+    async def test_do_task_success_persists_agent_data(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
@@ -5734,5 +5708,42 @@ class TestAst981StandaloneTableAuditRetired:
         )
         assert out["success"] is True
         assert stub_agent_storage["save"].called
-        stub_agent_storage["append"].assert_called_once()
 
+
+class TestAst984EntityColumnRetired:
+    """AST-984: no append_agent_response; hop uses list_entity_latest_agent_refs."""
+
+    def test_agent_has_no_append_agent_response(self) -> None:
+        assert "append_agent_response" not in vars(agent_mod)
+
+    async def test_do_task_success_tags_response_entity_id(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": "0|CRA2"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+        )
+        assert out["success"] is True
+        resp_saves = [
+            c.kwargs for c in stub_agent_storage["save"].call_args_list
+            if c.kwargs.get("block_type") == "RESPONSE"
+        ]
+        assert resp_saves
+        assert resp_saves[-1].get("entity_id") == "job-1"

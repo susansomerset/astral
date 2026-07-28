@@ -2072,9 +2072,14 @@ class TestRunBatchConsultBranches:
     @pytest.mark.asyncio
     async def test_handles_missing_fabricated_and_bad_grades(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
-        append = MagicMock(side_effect=RuntimeError("append failed"))
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        monkeypatch.setattr(consult_mod.tracker, "append_agent_response", append)
+        # Isolate fabricated/bad_grades path; tagging failures are swallowed (AST-984).
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "ensure_batch_response_entity_ids",
+            MagicMock(side_effect=RuntimeError("tag failed")),
+        )
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2088,7 +2093,11 @@ class TestRunBatchConsultBranches:
                             {"astral_job_id": "job-3", "grades": [_pass_grade()]},
                         ]
                     },
-                    "agent_ref": "ref-1",
+                    "agent_ref": {
+                        "task_key": "qualify_job_listings",
+                        "batch_id": "batch-1",
+                        "prompt_blocks": [{"type": "RESPONSE", "id": "resp-1"}],
+                    },
                     "timesheet": {"inputtotal": 1, "inputcached": 0, "outputtotal": 2},
                 }
             ),

@@ -420,17 +420,12 @@ class TestTrackerFacades:
     def test_ast486_consult_layer_facades_delegate_to_database(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # consult routes company / agent_response appends / admin timesheets through these wrappers (AST-486).
+        # consult routes company / admin timesheets through these wrappers (AST-486).
+        # AST-984: append_agent_response facade retired with entity columns.
         monkeypatch.setattr(
             tracker_mod.database,
             "get_company",
             lambda short_name: {"short_name": short_name},
-        )
-        called: list[tuple[Any, ...]] = []
-        monkeypatch.setattr(
-            tracker_mod.database,
-            "append_agent_response",
-            lambda et, eid, ent: called.append((et, eid, ent)),
         )
         monkeypatch.setattr(
             tracker_mod.database,
@@ -438,8 +433,7 @@ class TestTrackerFacades:
             lambda **kwargs: [{"batch_id": kwargs.get("batch_id")}],
         )
         assert tracker_mod.get_company("acme")["short_name"] == "acme"
-        tracker_mod.append_agent_response("job", "j1", {"k": 1})
-        assert called == [("job", "j1", {"k": 1})]
+        assert not hasattr(tracker_mod, "append_agent_response")
         assert tracker_mod.list_timesheets(batch_id="b1") == [{"batch_id": "b1"}]
 
 

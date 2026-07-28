@@ -8,28 +8,26 @@
 | --- | --- | --- |
 | `scripts/migrations/backfill_latest_only_rubric_entity_data.py` | `tests/component/scripts/test_backfill_latest_only_rubric_entity_data.py` | no |
 
-**Existing coverage (reuse):** runtime dedupe + backfill normalizer — `docs/test-bible/core/roster.md` (**AST-726**, **AST-727**); entity-row JSON ref upsert — `docs/test-bible/data/database/agent_responses.md` (**AST-726**; standalone table retired AST-975).
+**Existing coverage (reuse):** latest-per-task via `list_entity_latest_agent_refs` — `docs/test-bible/data/database/agent_responses.md` (**AST-984**). Entity-row JSON columns and this CLI are **retired**.
 
 ---
 
-### AST-727 (parent AST-717)
+### AST-727 (parent AST-717) — historical
 
-One-time backfill: collapse duplicate **entity-row** `agent_responses` JSON refs per `task_key` (latest `created_at` wins), drop empty-`task_key` legacy refs, **`agent_data` untouched**. CLI `--dry-run`, `--company`, `--job` filters; idempotent second run.
+One-time backfill collapsed duplicate **entity-row** `agent_responses` JSON refs. **Superseded by AST-984** (columns dropped; CLI exits 2).
+
+### AST-984 · AST-975
+
+**Scope:** CLI retired — prints AST-984 message, exit 2. Use `agent_data.entity_id` / `list_entity_latest_agent_refs`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| `normalize_agent_responses_for_backfill` | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill` |
-| Company dry-run / live / unchanged / not-found | `scripts/migrations/backfill_latest_only_rubric_entity_data.py` | `TestBackfillCompanies` |
-| Job dry-run / live / unchanged / not-found | same | `TestBackfillJobs` |
-| `--company` only / `--job` only / full scan routing | same | `TestRunBackfill` |
+| CLI exit 2 + retired message | `scripts/migrations/backfill_latest_only_rubric_entity_data.py` | `TestAst984BackfillEntityColumnsRetired` |
 
-Runtime sibling (**AST-726**): `dedupe_agent_responses_latest` — `TestAst726LatestOnlyRosterStory::test_dedupe_agent_responses_latest_wins_per_task_key`.
-
-**AST-727** narrowed run:
+**AST-984** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_roster.py::TestAst727NormalizeAgentResponsesForBackfill \
   tests/component/scripts/test_backfill_latest_only_rubric_entity_data.py \
   -q
 ```
