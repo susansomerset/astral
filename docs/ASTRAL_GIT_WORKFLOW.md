@@ -143,10 +143,12 @@ resolve(AST-NNN)
 | `park-wip()` | Engineer | No | Blocked only |
 | `merge-resume()` | Engineer | No | Paired with each `park-wip()` |
 | `code()` | Engineer | Yes | Implementation complete |
-| `merge-tests()` | **Betty** | Yes | Merge her `origin/tests` SHA into sub; push `origin/sub` |
-| `test()` | Engineer | Yes | Src fixes for manifest green |
+| `merge-tests()` | **Betty** | Yes\* | Merge her `origin/tests` SHA into sub; push `origin/sub` |
+| `test()` | Engineer | Yes | Src fixes for manifest green (**docs-acceptance** = no src / no scenarios) |
 | `docs()` | Radia | Yes | Always — clean or findings |
 | `resolve()` | Engineer | Yes | Always — clean or addressed |
+
+\* **`merge-tests()`** optional when the child is **docs-acceptance** (`test()` / `code()` subject contains that phrase) — no test-tree delivery. `validate-sub-log.sh` enforces this.
 
 `docs()` / `resolve()` message conventions:
 
@@ -210,9 +212,9 @@ Betty may be ahead on `origin/tests` writing tests for the next ticket. Merging 
 
 Before `merge-child()`, Chuckles validates the sub-branch log:
 
-- `plan()` present
+- `plan()` present (alias: `docs(AST-NNN): plan — …` from plan-child)
 - `code()` present
-- `merge-tests()` present — **exactly one** per child id
+- `merge-tests()` present — **exactly one** per child id — **except docs-acceptance**
 - `test()` present
 - `docs()` with `— clean` or `— findings`
 - `resolve()` with matching state
@@ -220,7 +222,9 @@ Before `merge-child()`, Chuckles validates the sub-branch log:
 - No commits to blocked paths (hooks enforce)
 - No **`Merge remote-tracking branch`** (git pull on sub)
 
-**Script (mandatory):** `./scripts/git/validate-sub-log.sh <publish-ref> [child-id]` — called by **`merge-child.sh`**.
+**Docs-acceptance:** when `test(AST-NNN):` or `code(AST-NNN):` subject contains **`docs-acceptance`** (Betty/engineer — no test-tree delivery), **`merge-tests()` is not required**. Duplicate `merge-tests()` still fails. Do not invent a Betty delivery to satisfy the gate.
+
+**Script (mandatory):** `./scripts/git/validate-sub-log.sh <publish-ref> [child-id] [ftr-ref]` — called by **`merge-child.sh`**.
 
 Failure → Chuckles posts on the Linear ticket; no merge.
 
@@ -259,7 +263,7 @@ No-op if ftr unchanged; mandatory every time.
 | `code()` | Engineer | Yes | Implementation complete |
 | `park-wip()` | Engineer | Conditional | Blocked — parked on origin |
 | `merge-resume()` | Engineer | Conditional | Ftr merged after unblock |
-| `merge-tests()` | **Betty** | Yes | Deliver `origin/tests` SHA to `origin/sub` |
+| `merge-tests()` | **Betty** | Yes\* | Deliver `origin/tests` SHA to `origin/sub` (\*skip when docs-acceptance) |
 | `test()` | Engineer | Yes | Src changes — tests pass |
 | `docs()` | Radia | Yes | Review — clean or findings |
 | `resolve()` | Engineer | Yes | Review loop closed |

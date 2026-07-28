@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # validate-sub-log.sh — gate merge-child: canonical sub commit sequence + hygiene.
-# Usage: validate-sub-log.sh <publish-ref> [child-id]
-# Example: validate-sub-log.sh sub/AST-633/AST-647-list-table-layout-freeze-sticky-tooltips AST-647
+# Usage: validate-sub-log.sh <publish-ref> [child-id] [ftr-ref]
+# Example: validate-sub-log.sh sub/AST-633/AST-647-slug AST-647 ftr/AST-633-…
 set -euo pipefail
 
 SUB_REF="${1:?sub ref e.g. sub/AST-633/AST-647-slug}"
@@ -24,24 +24,31 @@ if ! git -C "$MAIN" show-ref --verify --quiet "refs/remotes/origin/${SUB_REF}"; 
   exit 1
 fi
 
-LOG_RANGE="origin/${SUB_REF}"
+LOG_RANGE=("origin/${SUB_REF}")
 if [[ -n "$FTR_REF" ]]; then
   if ! git -C "$MAIN" show-ref --verify --quiet "refs/remotes/origin/${FTR_REF}"; then
     echo "BLOCKED: missing origin/${FTR_REF} for sub-log scope" >&2
     exit 1
   fi
-  LOG_RANGE="origin/${SUB_REF} --not origin/${FTR_REF}"
+  LOG_RANGE=("origin/${SUB_REF}" --not "origin/${FTR_REF}")
 fi
 
 SUBJECTS=()
 while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
   SUBJECTS+=("$line")
-done < <(git -C "$MAIN" log $LOG_RANGE --format='%s')
+done < <(git -C "$MAIN" log "${LOG_RANGE[@]}" --format='%s')
 
 _fail() {
   echo "BLOCKED: $1" >&2
   exit 1
 }
+
+# Already on ftr (empty --not range) — merge-child will no-op after this.
+if ((${#SUBJECTS[@]} == 0)); then
+  echo "RESULT: validate-sub-log status=ok child=${CHILD} ref=origin/${SUB_REF} reason=empty-range"
+  exit 0
+fi
 
 # Duplicate Betty delivery
 merge_tests=0
@@ -61,28 +68,71 @@ for s in "${SUBJECTS[@]}"; do
   fi
 done
 
-# Required sequence (mandatory commit types for this child)
-_require() {
+# Docs-acceptance: Betty/engineer marked no test-tree delivery (shared aux context).
+docs_acceptance=0
+for s in "${SUBJECTS[@]}"; do
+  if [[ "$s" =~ ^(test|code)\(${CHILD}\): ]] && [[ "$s" =~ [Dd]ocs-[Aa]cceptance|[Dd]ocs.acceptance ]]; then
+    docs_acceptance=1
+    break
+  fi
+done
+
+_has_label() {
   local label="$1"
-  local found=0
+  local s
   for s in "${SUBJECTS[@]}"; do
     if [[ "$s" =~ ^${label}\(${CHILD}\): ]]; then
-      found=1
-      break
+      return 0
     fi
   done
-  if (( ! found )); then
-    _fail "missing ${label}(${CHILD}): on origin/${SUB_REF}"
-  fi
+  return 1
 }
 
-_require plan
-_require code
-if (( merge_tests < 1 )); then
-  _fail "missing merge-tests(${CHILD}): on origin/${SUB_REF}"
-fi
-_require test
-_require docs
-_require resolve
+# plan() preferred; plan-child historically used docs(AST-NNN): plan —
+_has_plan() {
+  _has_label plan && return 0
+  local s
+  for s in "${SUBJECTS[@]}"; do
+    if [[ "$s" =~ ^docs\(${CHILD}\):\ plan ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-echo "RESULT: validate-sub-log status=ok child=${CHILD} ref=origin/${SUB_REF}"
+missing=()
+_has_plan || missing+=("plan(${CHILD}):")
+_has_label code || missing+=("code(${CHILD}):")
+if (( docs_acceptance == 0 )); then
+  if (( merge_tests < 1 )); then
+    missing+=("merge-tests(${CHILD}):")
+  fi
+fi
+_has_label test || missing+=("test(${CHILD}):")
+_has_label docs || missing+=("docs(${CHILD}):")
+_has_label resolve || missing+=("resolve(${CHILD}):")
+
+if ((${#missing[@]} > 0)); then
+  detail=""
+  if ! _has_plan && _has_label docs; then
+    for s in "${SUBJECTS[@]}"; do
+      if [[ "$s" =~ ^docs\(${CHILD}\):\ plan ]]; then
+        detail=" (have docs(${CHILD}): plan — accepted as plan())"
+        break
+      fi
+    done
+    if [[ -z "$detail" ]]; then
+      detail=" (have docs(${CHILD}): … instead of plan(); use plan() or docs(): plan —)"
+    fi
+  fi
+  if (( docs_acceptance == 1 )); then
+    detail="${detail}; docs-acceptance — merge-tests not required"
+  fi
+  _fail "missing ${missing[*]} on origin/${SUB_REF}${detail}"
+fi
+
+if (( docs_acceptance == 1 )); then
+  echo "RESULT: validate-sub-log status=ok child=${CHILD} ref=origin/${SUB_REF} docs-acceptance=1 merge-tests=${merge_tests}"
+else
+  echo "RESULT: validate-sub-log status=ok child=${CHILD} ref=origin/${SUB_REF}"
+fi
