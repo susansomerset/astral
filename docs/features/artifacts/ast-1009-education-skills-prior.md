@@ -123,6 +123,34 @@ Rules:
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | (see tip) | Education per-line + skills category grid emit; prior competencies-list kept |
-| 2 | (verify) | Three-surface fixture proof — session + job paths |
+| 1 | `8c4539e3` / `d2765707` | Education per-line + skills category grid emit; prior competencies-list kept |
+| 2 | `35f7f9b1` | Betty three-surface fixture proof |
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1009
+**Publish ref tip (pre-docs):** `210fc16b` — `origin/sub/AST-993/AST-1009-education-skills-prior`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1 matches plan: `_emit_education_list_html` / `_emit_skills_grid_html` beside `_emit_body_sections_html`; post-marker `"\u00a0• "` education split; first `": "` skills split; prior stays `p.competencies-list`; no CSS / experience / markers changes.
+- Betty `TestAst1009EducationSkillsPrior` covers education-list / skills-grid / prior structure.
+- Self-Assessment Single-Component holds; AST-1008/1010/1007 boundaries respected (1007 present via blockedBy merge only).
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — excluded at plan time; in-scope on diff via `docs/features/**`. Substance **conforms**.
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — excluded at plan time; in-scope on diff. Substance **conforms** (one features file per ticket; AST-1007 plan is dependency ancestry).
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — excluded at plan time; in-scope via Betty bible/tests. Substance **conforms** (`test(AST-1009)` + one `merge-tests(AST-1009)`).
+
+No **fix-now** product findings.
+
+### Recommended actions
+
+Engineer (`resolve-child`): acknowledge C4 stragglers — no product code change required for those three.
 
