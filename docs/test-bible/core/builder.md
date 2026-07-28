@@ -65,3 +65,30 @@ Equivalent harness:
   tests/component/utils/test_config.py::TestAst998ExperienceBodyKind \
   -q
 ```
+
+---
+
+### AST-1007 · AST-993
+
+**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → NBSP-bullet spacing) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Deep-walk helper (job-array + list/dict nests; no mutate; non-strings unchanged) | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers::test_apply_markers_deep_walks_job_array_and_list_leaves`** |
+| Three-surface HTML: no literal `__` / `~~`; NBSP / `\u2011` visible | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers`** session / base / job methods |
+| Existing top-level markers regression | `src/core/builder.py` | **`TestBuilderHelpers::test_applies_profile_contact_and_markers`** |
+| Experience job-array emit still green | `src/core/builder.py` | **`TestAst998ExperienceJobRender`** |
+
+**Broken / obsolete this pass:** none — prior shallow-copy helper tests remain valid (top-level strings + unmarked nested leaves).
+
+**Integration:** no existing `tests/integration/` scenario asserts resume typography markers — no integration revision this pass.
+
+**AST-1007** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_applies_profile_contact_and_markers \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  -q
+```

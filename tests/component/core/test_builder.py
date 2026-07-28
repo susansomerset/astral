@@ -984,3 +984,176 @@ class TestAst998ExperienceJobRender:
         assert 'class="role-subheader">Engineer</h3>' in html
         assert "Shipped widgets" in html
         assert "Job summary" in html
+
+
+class TestAst1007NestedTypographyMarkers:
+    """AST-1007: deep-walk markers on nested leaves; three-surface HTML proof."""
+
+    # Fixture substrings shaped like parent AST-993 paste markers.
+    _TITLE = "Fractional__TPM"
+    _CONTACT = "hire@example.com__•__415-555-0100"
+    _COMPETENCIES = "AI~~Assisted__Delivery • Cross~~Functional__Execution"
+    _PRIOR = "Project__Manager__(4__yrs) • Systems__Analyst__(6__yrs)"
+    _SKILLS = "Program: Jira__•__Confluence__•__Linear"
+    _JOBS = [
+        {
+            "company": "Somerset__Consulting",
+            "title": "Principal TPM",
+            "dates": "2011 to Present",
+            "location": "Remote",
+            "accomplishments": "Achieved sprint~~level clarity across delivery.",
+        }
+    ]
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "candidate_title": {
+                    "id": "candidate_title",
+                    "title": "Title",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": False,
+                },
+                "candidate_contact_detail": {
+                    "id": "candidate_contact_detail",
+                    "title": "Contact",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 3,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 4,
+                    "job_agent_editable": True,
+                },
+                "prior_experience": {
+                    "id": "prior_experience",
+                    "title": "Prior Experience",
+                    "enabled": True,
+                    "order": 5,
+                    "job_agent_editable": True,
+                },
+                "technical_skills": {
+                    "id": "technical_skills",
+                    "title": "Technical Skills",
+                    "enabled": True,
+                    "order": 6,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def _marker_blob(self) -> dict[str, Any]:
+        return {
+            "candidate_name": "Susan Somerset",
+            "candidate_title": self._TITLE,
+            "candidate_contact_detail": self._CONTACT,
+            "core_competencies": self._COMPETENCIES,
+            "experience": self._JOBS,
+            "prior_experience": self._PRIOR,
+            "technical_skills": self._SKILLS,
+        }
+
+    @staticmethod
+    def _assert_markers_applied(html: str) -> None:
+        # Transformed forms present after escape (NBSP / non-breaking hyphen survive escape).
+        assert "Fractional\u00a0TPM" in html
+        assert "hire@example.com\u00a0•\u00a0415-555-0100" in html
+        assert "AI\u2011Assisted\u00a0Delivery" in html
+        assert "Somerset\u00a0Consulting" in html
+        assert "sprint\u2011level" in html
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in html
+        assert "Project\u00a0Manager\u00a0(4\u00a0yrs)" in html
+        # Literal marker digraphs must not remain in body text for these sections.
+        assert "__" not in html
+        assert "~~" not in html
+
+    def test_apply_markers_deep_walks_job_array_and_list_leaves(self) -> None:
+        render = {
+            "candidate_title": self._TITLE,
+            "core_competencies": self._COMPETENCIES,
+            "experience": list(self._JOBS),
+            "nested_list": ["AI~~Assisted__Delivery", {"inner": "sprint~~level"}],
+            "keep_int": 7,
+            "keep_none": None,
+        }
+        marked = builder_mod._apply_resume_text_markers(render)
+        assert marked["candidate_title"] == "Fractional\u00a0TPM"
+        assert marked["core_competencies"] == (
+            "AI\u2011Assisted\u00a0Delivery\u00a0• Cross\u2011Functional\u00a0Execution"
+        )
+        job0 = marked["experience"][0]
+        assert job0["company"] == "Somerset\u00a0Consulting"
+        assert job0["accomplishments"] == "Achieved sprint\u2011level clarity across delivery."
+        assert marked["nested_list"][0] == "AI\u2011Assisted\u00a0Delivery"
+        assert marked["nested_list"][1]["inner"] == "sprint\u2011level"
+        assert marked["keep_int"] == 7
+        assert marked["keep_none"] is None
+        # Input not mutated.
+        assert render["experience"][0]["company"] == "Somerset__Consulting"
+        assert render["candidate_title"] == self._TITLE
+
+    def test_session_html_nested_markers_not_literal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(self._structure(), self._marker_blob())
+        self._assert_markers_applied(html)
+
+    def test_base_resume_html_nested_markers_not_literal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        structure = self._structure()
+        # No profile email/phone — otherwise _apply_profile_to_render_dict replaces
+        # artifact contact and drops the marker-laden contact string under test.
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": self._marker_blob(),
+                },
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_markers_applied(html)
+
+    def test_job_resume_html_nested_markers_not_literal(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {
+                "artifacts": {
+                    "resume_content": self._marker_blob(),
+                }
+            },
+        }
+        # Profile name only — keep resume_content contact markers for AC2 proof.
+        cd = {
+            "candidate_data": {
+                "profile": {"first": "Susan", "last": "Somerset"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base", "experience": "legacy"},
+                },
+            }
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_markers_applied(html)
