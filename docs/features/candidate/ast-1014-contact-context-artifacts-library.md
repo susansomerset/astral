@@ -270,4 +270,4 @@ def build_candidate_token_view(candidate: dict) -> dict:
 ## Review
 
 **Publish ref:** `sub/AST-952/AST-1014-contact-context-artifacts-library`
-**Build tip:** (filled at Code Complete)
+**Build tip:** `c907a7c40d9c5eedc30abf985ec4f72b56bc5626`
