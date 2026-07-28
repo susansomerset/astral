@@ -221,7 +221,7 @@ def build_resume_from_job(
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
-        content_keys = sorted(k for k, v in markers.items() if isinstance(v, str) and v.strip())
+        content_keys = _render_content_keys(markers)
         cover_src = _cover_letter_source_label(job_data, cd)
         kw_count = (
             len(split_to_list(str(kw), ","))
@@ -395,7 +395,7 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
-        content_keys = sorted(k for k, v in markers.items() if isinstance(v, str) and v.strip())
+        content_keys = _render_content_keys(markers)
         _log.debug_index(
             func="builder.build_base_resume",
             index=1,
@@ -470,7 +470,7 @@ def build_session_base_resume(
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
-        content_keys = sorted(k for k, v in markers.items() if isinstance(v, str) and v.strip())
+        content_keys = _render_content_keys(markers)
         _log.debug_index(
             func="builder.build_session_base_resume",
             index=1,
@@ -602,6 +602,15 @@ def _apply_resume_text_markers(render: dict) -> dict:
     return out
 
 
+def _render_content_keys(markers: dict) -> List[str]:
+    """Keys present for Style D — strings with content, plus non-empty experience job arrays."""
+    keys = [k for k, v in markers.items() if isinstance(v, str) and v.strip()]
+    exp = markers.get("experience")
+    if candidate_mod.is_experience_job_array(exp) and exp:
+        keys.append("experience")
+    return sorted(set(keys))
+
+
 def _resume_site_markers(text: str) -> str:
     """``__`` → NBSP, ``~~`` → non-breaking hyphen (legacy ResumeSite / PS pipeline)."""
     if not text:
@@ -723,6 +732,27 @@ h2::after {{ margin-left: 12px; }}
 .competencies-list {{ margin: 6px 0 0; line-height: 1.8; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.2px; font-size: 13.5px; }}
 section {{ margin-bottom: 0; }}
+.role {{ margin: 10px 0 14px; }}
+.role-subheader {{
+  text-align: left;
+  font-family: var(--header-font-family);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 8px 0 2px;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}}
+.role-meta {{
+  text-align: left;
+  font-family: var(--list-font-family);
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+}}
+.role-accomplishments {{ margin: 0; }}
 .cover-block {{ margin-top: 24px; max-width: var(--max-width); margin-left: auto; margin-right: auto; text-align: left; }}
 .cover-block p {{ white-space: pre-wrap; }}
 .cover-signoff img {{ display: block; margin-bottom: 8px; }}
@@ -782,14 +812,26 @@ def _emit_body_sections_html(
         raw = render.get(key)
         if raw is None:
             continue
+        sid = _KEY_TO_SECTION_ID.get(key, key)
+        heading = html.escape(titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title())))
+        # Experience job array: emit per-role HTML before generic dict/list → JSON coercion.
+        if key == "experience" and candidate_mod.is_experience_job_array(raw):
+            roles_html = _emit_experience_jobs_html(raw)
+            if not roles_html.strip():
+                continue
+            chunks.append(
+                f"""    <section aria-labelledby="{sid}">
+      <h2 id="{sid}">{heading}</h2>
+{roles_html}
+    </section>"""
+            )
+            continue
         if isinstance(raw, (dict, list)):
             text = _format_experience_value(raw)
         else:
             text = str(raw) if raw is not None else ""
         if not str(text).strip():
             continue
-        sid = _KEY_TO_SECTION_ID.get(key, key)
-        heading = html.escape(titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title())))
         if key == "professional_summary":
             paras = [p.strip() for p in re.split(r"\n\s*\n", str(text)) if p.strip()]
             body = "\n".join(
@@ -841,8 +883,52 @@ def _emit_body_sections_html(
     return "\n".join(chunks)
 
 
+def _emit_experience_jobs_html(jobs: list) -> str:
+    """Per-role HTML for AST-996 experience job arrays (title subheader + meta + accomplishments)."""
+    role_chunks: List[str] = []
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        company = str(item.get("company") or "").strip()
+        dates = str(item.get("dates") or "").strip()
+        location = str(item.get("location") or "").strip()
+        accomplishments = str(item.get("accomplishments") or "").strip()
+        if not (title or company or dates or location or accomplishments):
+            continue
+        # Markers before escape (NBSP / hyphen conventions on freeform strings).
+        title_m = _resume_site_markers(title) if title else ""
+        company_m = _resume_site_markers(company) if company else ""
+        dates_m = _resume_site_markers(dates) if dates else ""
+        location_m = _resume_site_markers(location) if location else ""
+        accom_m = _resume_site_markers(accomplishments) if accomplishments else ""
+
+        lines: List[str] = ['      <div class="role">']
+        subheader = title_m or company_m
+        if subheader:
+            lines.append(f'        <h3 class="role-subheader">{html.escape(subheader)}</h3>')
+        # Title as subheader → company in meta; company-as-subheader → do not repeat company.
+        meta_parts: List[str] = []
+        if title_m and company_m:
+            meta_parts.append(company_m)
+        if dates_m:
+            meta_parts.append(dates_m)
+        if location_m:
+            meta_parts.append(location_m)
+        if meta_parts:
+            meta_joined = _resume_site_markers(" • ".join(meta_parts))
+            lines.append(f'        <p class="role-meta">{html.escape(meta_joined)}</p>')
+        if accom_m:
+            lines.append(
+                f'        <div class="role-accomplishments prose-block">{html.escape(accom_m)}</div>'
+            )
+        lines.append("      </div>")
+        role_chunks.append("\n".join(lines))
+    return "\n".join(role_chunks)
+
+
 def _format_experience_value(val: Any) -> str:
-    """v1: structured experience not yet modeled — JSON for visibility in HTML source."""
+    """JSON visibility for unexpected structured values — job arrays use ``_emit_experience_jobs_html``."""
     if isinstance(val, str):
         return val
     try:

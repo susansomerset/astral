@@ -3270,7 +3270,7 @@ BUILD_CONFIG = {
         },
         "experience": {
             "heading_level": "section_heading",
-            "body_kind": "prose",
+            "body_kind": "experience_jobs",
             "page_break_policy": "avoid_split",
         },
         "prior_experience": {
