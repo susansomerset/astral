@@ -632,7 +632,12 @@ _HOP_FAILURE_RESPONSE_PREFIXES = (
 )
 
 
-def _block_text_by_type(prompt_blocks: List[Dict[str, str]], block_type: str) -> str:
+def _block_text_by_type(
+    prompt_blocks: List[Dict[str, str]],
+    block_type: str,
+    *,
+    debug: bool = False,
+) -> str:
     ids: List[str] = []
     for ref in prompt_blocks or []:
         if isinstance(ref, dict) and ref.get("type") == block_type and ref.get("id"):
@@ -640,6 +645,24 @@ def _block_text_by_type(prompt_blocks: List[Dict[str, str]], block_type: str) ->
     if not ids:
         return ""
     data_map = get_agent_data_for_ids(ids)
+    if debug:
+        # Local index — hydration runs before do_task's debug_index (AST-977 Radia fix-now).
+        dbg = get_logger(__name__, debug_flag=True)
+        total = len(ids)
+        for i, bid in enumerate(ids, start=1):
+            row = data_map.get(str(bid), {})
+            ref_id = row.get("ref_agent_data_id")
+            mode = "resolved" if ref_id else "direct"
+            dbg.debug_index(
+                func="_block_text_by_type",
+                index=i,
+                total=total,
+                identifier=str(bid),
+                outcome=f"agent_data_read {mode}",
+            )
+            dbg.debug_detail(
+                f"agent_data_read id={bid} mode={mode} ref_agent_data_id={ref_id!r}"
+            )
     for ref in prompt_blocks or []:
         if not isinstance(ref, dict) or ref.get("type") != block_type:
             continue
@@ -744,6 +767,8 @@ def _hop_agent_ref_for_parent(
     entity_id: str,
     parent_task_key: str,
     anchor_batch_id: Optional[str],
+    *,
+    debug: bool = False,
 ) -> Optional[Dict[str, Any]]:
     # AST-984: latest-per-task refs from agent_data.entity_id (not entity JSON column)
     entries = database.list_entity_latest_agent_refs(entity_type, entity_id)
@@ -762,7 +787,7 @@ def _hop_agent_ref_for_parent(
         blocks = ref.get("prompt_blocks") or []
         if not any(isinstance(b, dict) and b.get("type") == "RESPONSE" for b in blocks):
             continue
-        response_raw = _block_text_by_type(blocks, "RESPONSE")
+        response_raw = _block_text_by_type(blocks, "RESPONSE", debug=debug)
         if response_raw and response_raw.startswith(_HOP_FAILURE_RESPONSE_PREFIXES):
             continue
         return ref
@@ -800,6 +825,8 @@ def _hydrate_caller_chain_context(
     entry_task_key: str,
     parent_task_key: str,
     chain_context: Optional[Dict[str, str]],
+    *,
+    debug: bool = False,
 ) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
     if entity_type not in ENTITY_TYPES:
         return (None, f"Unknown entity_type: {entity_type!r}")
@@ -815,7 +842,7 @@ def _hydrate_caller_chain_context(
             None,
             f"No stored agent_data for upstream hop {parent_task_key!r} on {entity_type} {entity_id} (entry={entry_task_key!r})",
         )
-    ctx = _caller_chain_context_from_hop_agent_ref(ref, parent_task_key)
+    ctx = _caller_chain_context_from_hop_agent_ref(ref, parent_task_key, debug=debug)
     if not any((ctx.get(k) or "").strip() for k in CALLER_HOP_TOKEN_NAMES):
         return (None, f"Stored hop {parent_task_key!r} has empty caller payload (entry={entry_task_key!r})")
     return (ctx, None)
@@ -839,17 +866,19 @@ def _merge_hydrated_caller_context(
 def _caller_chain_context_from_hop_agent_ref(
     agent_ref: Dict[str, Any],
     parent_task_key: str,
+    *,
+    debug: bool = False,
 ) -> Dict[str, str]:
     blocks = agent_ref.get("prompt_blocks") or []
-    response_raw = _block_text_by_type(blocks, "RESPONSE")
+    response_raw = _block_text_by_type(blocks, "RESPONSE", debug=debug)
     parsed = _parsed_response_from_stored_response_text(response_raw, parent_task_key)
     hop_ctx = _chain_tokens_for_next_hop(
         parsed=parsed,
-        resolved_system=_block_text_by_type(blocks, "SYSTEM"),
-        resolved_cache_a=_block_text_by_type(blocks, "CACHE_A"),
-        resolved_cache_b=_block_text_by_type(blocks, "CACHE_B"),
-        resolved_cache_c=_block_text_by_type(blocks, "CACHE_C"),
-        resolved_cache_d=_block_text_by_type(blocks, "CACHE_D"),
+        resolved_system=_block_text_by_type(blocks, "SYSTEM", debug=debug),
+        resolved_cache_a=_block_text_by_type(blocks, "CACHE_A", debug=debug),
+        resolved_cache_b=_block_text_by_type(blocks, "CACHE_B", debug=debug),
+        resolved_cache_c=_block_text_by_type(blocks, "CACHE_C", debug=debug),
+        resolved_cache_d=_block_text_by_type(blocks, "CACHE_D", debug=debug),
     )
     hop_ctx["_caller_hydration_source"] = "agent_data"
     hop_ctx["_hop_parent_task_key"] = parent_task_key
@@ -1165,6 +1194,7 @@ def _store_prompt_blocks(
     created_at: Optional[str] = None,
     caches_resolved_four: Any = _PB_SLOT_OMIT,
     cache_content: Any = _PB_SLOT_OMIT,
+    debug: bool = False,
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
     Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only)."""
@@ -1173,7 +1203,7 @@ def _store_prompt_blocks(
     def _save(block_type: str, content: str) -> str:
         content_hash = hashlib.sha256(f"{batch_id}:{block_type}:{content}".encode()).hexdigest()[:16]
         agent_data_id = f"{batch_id}-{block_type.lower()}-{content_hash}"
-        save_agent_data(
+        result = save_agent_data(
             agent_data_id=agent_data_id,
             entity_type=entity_type,
             task_key=task_key,
@@ -1183,6 +1213,13 @@ def _store_prompt_blocks(
             token_size=len(content) // CHARS_PER_TOKEN,
             created_at=created_at,
         )
+        if debug:
+            dbg = get_logger(__name__, debug_flag=True)
+            dbg.debug_detail(
+                f"agent_data_write block_type={block_type} outcome={result.get('outcome')} "
+                f"agent_data_id={result.get('agent_data_id')} "
+                f"ref_agent_data_id={result.get('ref_agent_data_id')!r}"
+            )
         return agent_data_id
 
     prompt_blocks.append({"type": "SYSTEM",   "id": _save("SYSTEM",   system_content)})
@@ -1481,6 +1518,8 @@ def _store_response_block(
     response_text: str,
     created_at: Optional[str] = None,
     index: Optional[str] = None,
+    *,
+    debug: bool = False,
 ) -> str:
     """Store a RESPONSE block in agent_data. On success, response_text is the decoded/validated
     payload; on failure it is the raw API text (or error / parsed fallback). Returns the agent_data_id.
@@ -1502,6 +1541,13 @@ def _store_response_block(
         created_at=created_at,
         entity_id=index if index else None,
     )
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        dbg.debug_detail(
+            f"agent_data_write block_type=RESPONSE outcome={result.get('outcome')} "
+            f"agent_data_id={result.get('agent_data_id')} "
+            f"ref_agent_data_id={result.get('ref_agent_data_id')!r}"
+        )
     return agent_data_id
 
 
@@ -1785,6 +1831,7 @@ async def do_task(
                 task_key,
                 parent_for_hydration,
                 chain_context,
+                debug=debug,
             )
             if hydr_err:
                 return {
@@ -2116,6 +2163,7 @@ async def do_task(
                 nocache_content=nocache_content,
                 user_content=user_content,
                 live_content=live_content,
+                debug=debug,
             )
         except Exception:
             logger.debug("_store_prompt_blocks failed", exc_info=True)
@@ -2136,8 +2184,8 @@ async def do_task(
         if _should_store:
             try:
                 _store_response_block(
-                    entity_type, task_key, batch_id, _failure_response_block_data(index, audit_body), index=index
-                )
+                    entity_type, task_key, batch_id, _failure_response_block_data(index, audit_body), index=index,
+                    debug=debug)
             except Exception:
                 logger.debug("_store_response_block (API failure) failed", exc_info=True)
         if debug:
@@ -2210,7 +2258,7 @@ async def do_task(
                     batch_id,
                     _failure_response_block_data(index, _audit_response_body(raw_text, parsed, envelope_err)),
                     index=index,
-                )
+                    debug=debug)
             except Exception:
                 logger.debug("_store_response_block failed", exc_info=True)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
@@ -2242,7 +2290,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    )
+                    debug=debug)
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2267,7 +2315,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        )
+                        debug=debug)
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2287,7 +2335,7 @@ async def do_task(
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        )
+                        debug=debug)
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2310,7 +2358,7 @@ async def do_task(
                                 batch_id,
                                 _failure_response_block_data(index, _audit_response_body(raw_text, parsed, grade_err)),
                                 index=index,
-                            )
+                            debug=debug)
                         except Exception:
                             logger.debug("_store_response_block failed", exc_info=True)
                     _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
@@ -2352,8 +2400,8 @@ async def do_task(
                     if isinstance(parsed, str) and parsed.strip():
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
                     _store_response_block(
-                        entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index
-                    )
+                        entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
+                    debug=debug)
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2376,8 +2424,8 @@ async def do_task(
                     if isinstance(parsed, str) and parsed.strip():
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
                     _store_response_block(
-                        entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index
-                    )
+                        entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
+                    debug=debug)
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2407,7 +2455,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    )
+                    debug=debug)
                 except Exception:
                     logger.debug("_store_response_block failed", exc_info=True)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2431,7 +2479,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        )
+                        debug=debug)
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2449,7 +2497,7 @@ async def do_task(
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        )
+                        debug=debug)
                     except Exception:
                         logger.debug("_store_response_block failed", exc_info=True)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2514,7 +2562,7 @@ async def do_task(
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
-            resp_id = _store_response_block(entity_type, task_key, batch_id, store_content, index=index)
+            resp_id = _store_response_block(entity_type, task_key, batch_id, store_content, index=index, debug=debug)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
             logger.debug("_store_response_block failed", exc_info=True)
@@ -2926,6 +2974,7 @@ async def run_adhoc_workbench_test(
                 nocache_content=nocache_content,
                 user_content=user_content,
                 live_content=live_content,
+                debug=debug,
             )
         except Exception:
             logger.debug("_store_prompt_blocks failed", exc_info=True)
@@ -2957,7 +3006,7 @@ async def run_adhoc_workbench_test(
                     batch_id,
                     _failure_response_block_data(entity_id, audit_body),
                     index=entity_id,
-                )
+                    debug=debug)
             except Exception:
                 logger.debug("_store_response_block (API failure) failed", exc_info=True)
         else:
@@ -2973,7 +3022,7 @@ async def run_adhoc_workbench_test(
                     batch_id,
                     response_text,
                     index=entity_id,
-                )
+                    debug=debug)
             except Exception:
                 logger.debug("_store_response_block failed", exc_info=True)
 

@@ -2905,6 +2905,7 @@ NAV_CONFIG = [
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
             {"label": "Data Management", "path": "/admin/data_management"},
+            {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
         ],
     },
 ]

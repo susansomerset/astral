@@ -196,15 +196,21 @@ class _PrefixedLogger:
     def __init__(self, base_logger: logging.Logger, debug_flag: bool = False):
         """Initialize with a base logger from logging.getLogger()"""
         self._logger = base_logger
-        self._debug_flag = debug_flag
+        # Apply flag + named-logger level together (same path as explicit set_debug_flag).
+        self.set_debug_flag(debug_flag)
 
     def set_debug_flag(self, flag: bool):
-        """Set the debug flag for .test() method.
+        """Set the debug flag for debug-gated helpers (.test / debug_index / detail).
 
-        This allows enabling/disabling test logging on an existing logger instance.
-        Useful when the debug flag is determined at runtime (e.g., from function parameters).
+        Raises the named logger to DEBUG when enabled so Logger.debug reaches handlers;
+        restores INFO when disabled so bare .debug() does not leak after a debug run.
+        Does not raise the root logger (avoids third-party httpcore DEBUG flood).
         """
         self._debug_flag = flag
+        if flag:
+            self._logger.setLevel(logging.DEBUG)
+        elif self._logger.level == logging.DEBUG:
+            self._logger.setLevel(logging.INFO)
 
     def isEnabledFor(self, level: int) -> bool:
         """Match stdlib logging.Logger API — used for cheap guards before expensive debug work."""
@@ -215,14 +221,14 @@ class _PrefixedLogger:
         self._logger.debug(f"[ ~ ] {message}", *args, **kwargs)
 
     def test(self, message: str):
-        """Test logging - uses info level but only when debug flag is set.
+        """Test logging - uses DEBUG level but only when debug flag is set.
 
         This avoids conflicts with third-party libraries (like httpcore) that use
         .debug() method. Use this for instrumentation/logging that should only
         appear when debugging is enabled.
         """
         if self._debug_flag:
-            self._logger.info(f"[ ~ ] {message}")
+            self._logger.debug(f"[ ~ ] {message}")
 
     def debug_index(
         self,
@@ -233,10 +239,10 @@ class _PrefixedLogger:
         identifier: str,
         outcome: str,
     ) -> None:
-        """Emit per-index batch header at INFO when debug_flag is True."""
+        """Emit per-index batch header at DEBUG when debug_flag is True."""
         if not self._debug_flag:
             return
-        self._logger.info(
+        self._logger.debug(
             format_debug_index_header(
                 func=func,
                 index=index,
@@ -250,7 +256,7 @@ class _PrefixedLogger:
         """Emit working detail line with DEBUG_DETAIL_PREFIX when debug_flag is True."""
         if not self._debug_flag:
             return
-        self._logger.info(f"{DEBUG_DETAIL_PREFIX}{message}")
+        self._logger.debug(f"{DEBUG_DETAIL_PREFIX}{message}")
 
     def debug_detail_block(self, text: str) -> None:
         """Emit truncated multiline detail via debug_detail."""
@@ -305,7 +311,8 @@ def get_logger(name: Optional[str] = None, debug_flag: bool = False) -> _Prefixe
     global _db_handler_attached, _db_handler_instance
     if not _db_handler_attached:
         _db_handler_instance = _DatabaseLogHandler()
-        _db_handler_instance.setLevel(logging.INFO)
+        # Accept DEBUG so debug-gated helpers persist level=DEBUG in app_log (AST-979).
+        _db_handler_instance.setLevel(logging.DEBUG)
         _db_handler_instance.setFormatter(logging.Formatter('%(message)s'))
         logging.getLogger().addHandler(_db_handler_instance)
         atexit.register(flush_log_buffer)

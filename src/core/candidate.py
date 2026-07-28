@@ -1221,6 +1221,169 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
         return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
 
 
+def run_session_resume_parse(
+    resume_text: str,
+    *,
+    debug: bool = False,
+) -> Tuple[Dict[str, Any], int]:
+    """Parse pasted resume text via craft_resume_base with default structure; no candidate bind/persist.
+
+    Returns (json_body, http_status) for Admin session-resume paste (AST-986).
+    """
+    if not isinstance(resume_text, str) or not resume_text.strip():
+        return ({"success": False, "error": "resume_text is required"}, 400)
+
+    logger.set_debug_flag(debug)
+    paste = resume_text.strip()
+    structure = default_resume_structure()
+    # Synthetic token ctx only — no astral_candidate_id (do not load a real candidate).
+    ctx = {
+        "candidate_data": {
+            "context": {"starting_resume_text": paste},
+            "artifacts": {"resume_structure": structure},
+        },
+    }
+
+    ledger_task_key = "user-session-parse-resume"
+    batch_id = f"{ledger_task_key}-{uuid.uuid4()}"
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    database.save_dispatch_ledger(
+        batch_id,
+        ledger_task_key,
+        "session",  # sentinel for Admin cost visibility — not an astral_candidate_id
+        started_at,
+        entity_type=None,
+        batch_size=1,
+    )
+    log_batch_id.set(batch_id)
+    try:
+        try:
+            result = asyncio.run(
+                do_task(
+                    task_key="craft_resume_base",
+                    live_content=paste,
+                    index=batch_id,
+                    ctx=ctx,
+                    debug=debug,
+                )
+            )
+        except Exception as e:
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                total_processed=1,
+                total_failed=1,
+            )
+            logger.error(
+                "session resume parse exception batch_id=%s error=%s",
+                batch_id,
+                e,
+            )
+            if debug:
+                logger.debug_index(
+                    func="run_session_resume_parse",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="exception",
+                )
+                logger.debug_detail(str(e))
+            return ({"success": False, "error": str(e), "batch_id": batch_id}, 500)
+
+        completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if not result or not result.get("success"):
+            err = (
+                result.get("error", "Generation failed")
+                if result
+                else "do_task returned None"
+            )
+            total_cost = compute_batch_cost(batch_id)
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=completed_at,
+                total_processed=1,
+                total_passed=0,
+                total_failed=1,
+                total_cost=total_cost,
+            )
+            logger.error(
+                "session resume parse failed batch_id=%s error=%s",
+                batch_id,
+                err,
+            )
+            if debug:
+                logger.debug_index(
+                    func="run_session_resume_parse",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="failed",
+                )
+                logger.debug_detail(str(err))
+            return ({"success": False, "error": err, "batch_id": batch_id}, 500)
+
+        parsed = result.get("parsed_response")
+        if not isinstance(parsed, dict):
+            total_cost = compute_batch_cost(batch_id)
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=completed_at,
+                total_processed=1,
+                total_passed=0,
+                total_failed=1,
+                total_cost=total_cost,
+            )
+            err = "craft_resume_base returned non-dict parsed_response"
+            if debug:
+                logger.debug_index(
+                    func="run_session_resume_parse",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="invalid payload",
+                )
+                logger.debug_detail(err)
+            return ({"success": False, "error": err, "batch_id": batch_id}, 500)
+
+        structure_out, content = split_craft_resume_base_payload(parsed)
+        total_cost = compute_batch_cost(batch_id)
+        database.update_dispatch_ledger(
+            batch_id,
+            status="COMPLETED",
+            completed_at=completed_at,
+            total_processed=1,
+            total_passed=1,
+            total_failed=0,
+            total_cost=total_cost,
+        )
+        if debug:
+            logger.debug_index(
+                func="run_session_resume_parse",
+                index=1,
+                total=1,
+                identifier=batch_id,
+                outcome="ok",
+            )
+            logger.debug_detail_block(json.dumps(parsed))
+        return (
+            {
+                "success": True,
+                "resume_structure": structure_out,
+                "base_resume": content,
+                "parsed_response": parsed,
+                "batch_id": batch_id,
+                "timesheet": result.get("timesheet", {}),
+            },
+            200,
+        )
+    finally:
+        flush_log_buffer()
+        log_batch_id.set(None)
+
+
 def run_candidate_artifact_generation(
     candidate_id: str,
     task_key: str,

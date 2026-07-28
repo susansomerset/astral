@@ -1487,7 +1487,7 @@ def get_company_job_counts(short_name: str) -> Dict[str, int]:
 
 
 def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
-    """Return {agent_data_id: row_dict} for a list of IDs. block_data is decompressed.
+    """Return {agent_data_id: row_dict} for a list of IDs. block_data is resolved plain text.
     Returns {} if ids is empty (no query issued)."""
     if not ids:
         return {}
@@ -1503,7 +1503,7 @@ def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
             result = {}
             for row in rows:
                 d = _row_to_dict(row)
-                d["block_data"] = _decompress_payload(d["block_data"])
+                d["block_data"] = _resolve_agent_data_block_data(conn, d)
                 result[d["agent_data_id"]] = d
             return result
         finally:
@@ -5344,7 +5344,8 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
                 created_at    TIMESTAMP NOT NULL,
                 block_type    TEXT NOT NULL,
                 block_data    BLOB,
-                token_size    INTEGER DEFAULT 0
+                token_size    INTEGER DEFAULT 0,
+                ref_agent_data_id TEXT
             )
         """)
         conn.execute("CREATE INDEX idx_agent_data_batch ON agent_data(batch_id)")
@@ -5369,6 +5370,29 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
     _agent_data_schema_ensured = True
 
 
+def _find_earliest_agent_data_content_match(
+    conn: sqlite3.Connection,
+    plain_text: str,
+    *,
+    exclude_agent_data_id: Optional[str] = None,
+) -> Optional[str]:
+    """Return agent_data_id of earliest canonical row with identical logical block_data, or None.
+
+    exclude_agent_data_id skips the row being written so PK retries hit duplicate_id
+    instead of a false self-ref (AST-977)."""
+    rows = conn.execute(
+        """SELECT agent_data_id, block_data FROM agent_data
+           WHERE ref_agent_data_id IS NULL AND block_data IS NOT NULL
+           ORDER BY created_at ASC, agent_data_id ASC"""
+    ).fetchall()
+    for row in rows:
+        if exclude_agent_data_id is not None and row[0] == exclude_agent_data_id:
+            continue
+        if _decompress_payload(row[1]) == plain_text:
+            return row[0]
+    return None
+
+
 def save_agent_data(
     agent_data_id: str,
     entity_type: str,
@@ -5385,12 +5409,61 @@ def save_agent_data(
     entity_id tags RESPONSE rows for latest-per-task lookup (AST-984); omit for shared prompt blocks."""
     if block_type not in BLOCK_TYPES:
         raise ValueError(f"Invalid block_type '{block_type}'. Must be one of: {BLOCK_TYPES}")
+    if not isinstance(block_data, str):
+        raise ValueError("block_data must be a str")
     ts = created_at or _utc_now()
-    blob = _compress_payload(block_data)
-    def _with_conn() -> bool:
+    plain = block_data
+
+    def _with_conn() -> Dict[str, Any]:
         conn = _get_connection()
         try:
             _ensure_agent_data_schema(conn)
+            match_id = _find_earliest_agent_data_content_match(conn, plain, exclude_agent_data_id=agent_data_id)
+            if match_id == agent_data_id:
+                raise ValueError(
+                    f"agent_data self-ref rejected: agent_data_id={agent_data_id!r}"
+                )
+            if match_id is not None:
+                match_row = conn.execute(
+                    "SELECT ref_agent_data_id FROM agent_data WHERE agent_data_id = ?",
+                    (match_id,),
+                ).fetchone()
+                if not match_row:
+                    raise ValueError(
+                        f"agent_data match missing after lookup: {match_id!r}"
+                    )
+                match_ref = match_row[0]
+                if match_ref is not None and str(match_ref).strip() != "":
+                    raise ValueError(
+                        f"agent_data non-canonical match rejected: {match_id!r} "
+                        f"ref_agent_data_id={match_ref!r}"
+                    )
+                conn.execute(
+                    """INSERT OR IGNORE INTO agent_data
+                       (agent_data_id, entity_type, task_key, batch_id, created_at,
+                        block_type, block_data, token_size, ref_agent_data_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        agent_data_id, entity_type, task_key, batch_id, ts,
+                        block_type, None, token_size, match_id,
+                    ),
+                )
+                conn.commit()
+                if conn.total_changes == 0:
+                    return {
+                        "inserted": False,
+                        "outcome": "duplicate_id",
+                        "agent_data_id": agent_data_id,
+                        "ref_agent_data_id": None,
+                    }
+                return {
+                    "inserted": True,
+                    "outcome": "ref_existing",
+                    "agent_data_id": agent_data_id,
+                    "ref_agent_data_id": match_id,
+                }
+
+            blob = _compress_payload(plain)
             conn.execute(
                 """INSERT OR IGNORE INTO agent_data
                    (agent_data_id, entity_type, entity_id, task_key, batch_id, created_at, block_type, block_data, token_size)
@@ -5398,10 +5471,161 @@ def save_agent_data(
                 (agent_data_id, entity_type, entity_id, task_key, batch_id, ts, block_type, blob, token_size),
             )
             conn.commit()
-            return conn.total_changes > 0
+            if conn.total_changes == 0:
+                return {
+                    "inserted": False,
+                    "outcome": "duplicate_id",
+                    "agent_data_id": agent_data_id,
+                    "ref_agent_data_id": None,
+                }
+            return {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": agent_data_id,
+                "ref_agent_data_id": None,
+            }
         finally:
             conn.close()
+
     return _run_with_retry(_with_conn)
+
+
+def backfill_agent_data_refs(*, dry_run: bool = True) -> Dict[str, Any]:
+    """Set ref_agent_data_id on duplicate content rows to earliest twin; never clear block_data.
+
+    Calls _find_earliest without exclude so the canonical row never gains a ref.
+    Identity matches AST-977 (exact logical plain text; block_type ignored).
+    Data layer does not log.
+
+    Returns dict with keys:
+      scanned, updated, unchanged, skipped_already_ref, errors,
+      actions: list of {agent_data_id, outcome, ref_agent_data_id}
+    outcome: would_set_ref | set_ref | canonical_or_unique | already_ref | error
+    """
+
+    def _with_conn() -> Dict[str, Any]:
+        conn = _get_connection()
+        try:
+            _ensure_agent_data_schema(conn)
+            rows = conn.execute(
+                """SELECT agent_data_id, block_data, ref_agent_data_id, created_at
+                   FROM agent_data
+                   WHERE block_data IS NOT NULL
+                   ORDER BY created_at ASC, agent_data_id ASC"""
+            ).fetchall()
+            counts: Dict[str, Any] = {
+                "scanned": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "skipped_already_ref": 0,
+                "errors": 0,
+                "actions": [],
+            }
+            for row in rows:
+                agent_data_id, block_data, ref, _created_at = row[0], row[1], row[2], row[3]
+                counts["scanned"] += 1
+                if ref is not None and str(ref).strip() != "":
+                    counts["skipped_already_ref"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "already_ref",
+                            "ref_agent_data_id": ref,
+                        }
+                    )
+                    continue
+                try:
+                    plain = _decompress_payload(block_data)
+                except Exception:
+                    counts["errors"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "error",
+                            "ref_agent_data_id": None,
+                        }
+                    )
+                    continue
+                if not isinstance(plain, str):
+                    counts["errors"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "error",
+                            "ref_agent_data_id": None,
+                        }
+                    )
+                    continue
+                # No exclude: self-match means this row is the earliest canonical.
+                match_id = _find_earliest_agent_data_content_match(conn, plain)
+                if match_id is None or match_id == agent_data_id:
+                    counts["unchanged"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "canonical_or_unique",
+                            "ref_agent_data_id": None,
+                        }
+                    )
+                    continue
+                if dry_run:
+                    counts["updated"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "would_set_ref",
+                            "ref_agent_data_id": match_id,
+                        }
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE agent_data SET ref_agent_data_id = ? WHERE agent_data_id = ?",
+                        (match_id, agent_data_id),
+                    )
+                    counts["updated"] += 1
+                    counts["actions"].append(
+                        {
+                            "agent_data_id": agent_data_id,
+                            "outcome": "set_ref",
+                            "ref_agent_data_id": match_id,
+                        }
+                    )
+            if not dry_run:
+                conn.commit()
+            return counts
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def _resolve_agent_data_block_data(
+    conn: sqlite3.Connection,
+    row_dict: Dict[str, Any],
+) -> Optional[str]:
+    """Return plain-text block_data, following ref_agent_data_id to the canonical row."""
+    ref = row_dict.get("ref_agent_data_id")
+    if ref is None or str(ref).strip() == "":
+        return _decompress_payload(row_dict.get("block_data"))
+    visited = set()
+    current_id = str(ref)
+    start_id = row_dict.get("agent_data_id")
+    if start_id:
+        visited.add(str(start_id))
+    while True:
+        if current_id in visited:
+            raise ValueError(f"agent_data ref cycle detected at {current_id!r}")
+        visited.add(current_id)
+        row = conn.execute(
+            "SELECT * FROM agent_data WHERE agent_data_id = ?", (current_id,)
+        ).fetchone()
+        if not row:
+            raise ValueError(f"agent_data ref target missing: {current_id!r}")
+        d = _row_to_dict(row)
+        next_ref = d.get("ref_agent_data_id")
+        if next_ref is None or str(next_ref).strip() == "":
+            return _decompress_payload(d.get("block_data"))
+        current_id = str(next_ref)
 
 
 def get_agent_data_by_batch(
@@ -5409,7 +5633,7 @@ def get_agent_data_by_batch(
     block_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Return all agent_data rows for a batch, optionally filtered by block_type.
-    block_data is decompressed before return."""
+    block_data is resolved plain text (follows ref_agent_data_id when set)."""
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -5427,7 +5651,7 @@ def get_agent_data_by_batch(
             result = []
             for row in rows:
                 d = _row_to_dict(row)
-                d["block_data"] = _decompress_payload(d["block_data"])
+                d["block_data"] = _resolve_agent_data_block_data(conn, d)
                 result.append(d)
             return result
         finally:
@@ -5436,7 +5660,7 @@ def get_agent_data_by_batch(
 
 
 def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
-    """Return a single agent_data row by primary key. block_data is decompressed."""
+    """Return a single agent_data row by primary key. block_data is resolved plain text."""
     def _with_conn() -> Optional[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -5447,7 +5671,7 @@ def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
             if not row:
                 return None
             d = _row_to_dict(row)
-            d["block_data"] = _decompress_payload(d["block_data"])
+            d["block_data"] = _resolve_agent_data_block_data(conn, d)
             return d
         finally:
             conn.close()
