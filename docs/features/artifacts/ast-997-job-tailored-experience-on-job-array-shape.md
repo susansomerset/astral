@@ -130,3 +130,14 @@ Each experience job object:
 ### Revision 1 — 2026-07-28
 Driven by: Joan `[plan-discuss] round=1 concern` fix-now — Stage 2 pin match preferred same index when lengths equal, which corrupts role metadata after reorder.
 Changes: `pin_experience_job_facts_from_base` now matches only on `(company, title)` (consume first unused base with that key); **no index-first / no index fallback**; unmatched jobs stay unpinned for Grace.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape`
+**Plan path:** `docs/features/artifacts/ast-997-job-tailored-experience-on-job-array-shape.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–5 | (see tip) | finalize optional job-array schema, draft pin/validate, tracker persist, prompts, Style D tailor debug |
+
+**Tip:** publish-ref tip after this stub append.
