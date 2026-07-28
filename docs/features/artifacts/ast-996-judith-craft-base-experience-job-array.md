@@ -164,3 +164,25 @@ Changes: Stage 3 rewritten so craft-base `accomplishments` are paste/resume-fait
 | 1–5 | `30b4320f` | experience job-array schema, preserve/split/filter, Judith prompt, ArtifactEditor JSON round-trip, Style D debug |
 
 **Tip:** `30b4320f` on publish-ref (this stub append may tip further).
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Publish ref tip:** `e8e843ae` (`origin/sub/AST-994/AST-996-judith-craft-base-experience-job-array`)
+**Baseline:** `origin/dev`
+**Overall:** DISCUSS
+
+### What’s solid
+- Shared `_EXPERIENCE_JOB_*` in `config.py` wired into TASK_CONFIG + BUILD_CONFIG + `DATA_SHAPES` `experience_jobs`.
+- Preserve/split/filter paths keep job arrays (no `str(list)` corruption); Style D job detail gated on `debug=True`.
+- Judith `### experience` is paste/resume-faithful; LinkedIn experience-enrichment neutralized in cache_prompt.
+- ArtifactEditor JSON round-trip + invalid-JSON toast; Betty `test()` / `merge-tests` only on test-tree paths.
+
+### Issues
+**discuss (C4 stragglers):** Joan excluded `astral.debug.no-repo-root-artifacts-dir`, `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` — all in-scope on tip (features doc + Betty tests). Scored **conforms** (no product defect).
+
+**advisory:** `user_prompt` still says LinkedIn/backstory “add context and color” without experience carve-out; quality checklist still says every key is a non-empty string; public `is_experience_job_array` alias + `key === "experience"` Save fallback beyond Stage 4 plan text.
+
+### Recommended actions
+No fix-now. Stragglers are process notes only — resolve-child may proceed without product edits unless Ada wants the advisory prompt/checklist tighten-ups.
