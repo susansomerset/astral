@@ -2031,3 +2031,39 @@ class TestAst973LegacyCandidateRemap:
         assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
         # DELETED is a live registry key — remap is identity; Phase B never selects it
         assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"
+
+
+class TestAst996ExperienceJobArrayConfig:
+    """AST-996: shared experience job-array schema on craft-base + artifact shapes."""
+
+    _JOB_KEYS = ("company", "title", "dates", "location", "accomplishments")
+
+    def test_craft_resume_base_experience_is_job_array_field(self) -> None:
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
+        assert schema["type"] == "list"
+        assert schema["required"] is True
+        assert set(schema["items_schema"]) == set(self._JOB_KEYS)
+        for key in self._JOB_KEYS:
+            assert schema["items_schema"][key] == {"type": "str", "required": True}
+
+    def test_resume_content_shape_shares_experience_field_object(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
+        resume = cfg.BUILD_CONFIG["artifact_shapes"]["resume_content"]["experience"]
+        assert craft is resume
+
+    def test_data_shapes_experience_type_is_experience_jobs(self) -> None:
+        fields = cfg.DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]
+        exp = next(f for f in fields if f["key"] == "experience")
+        assert exp["type"] == "experience_jobs"
+        assert exp["label"] == "Experience"
+
+    def test_stringify_craft_resume_base_shows_job_array_example(self) -> None:
+        out = json.loads(cfg.stringify_response_schema("craft_resume_base"))
+        exp = out["agent_payload"]["experience"]
+        assert isinstance(exp, list)
+        assert len(exp) >= 1
+        assert set(exp[0]) == set(self._JOB_KEYS)
+
+    def test_prior_experience_remains_string(self) -> None:
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["prior_experience"]
+        assert schema["type"] == "str"

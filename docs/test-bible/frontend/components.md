@@ -500,3 +500,19 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
   --testNamePattern="AST-951|AST-948"
 ```
+
+---
+
+### AST-996 · AST-994
+
+**AST-996:** `ArtifactEditor` round-trips non-string section values (experience job array) as pretty JSON on load/Generate and parses JSON on Save (`experience_jobs` type or `key === "experience"` in structure mode). Invalid JSON → toast **Experience must be valid JSON** and abort PUT. Primary core/config coverage: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| JSON load / Save / invalid toast | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-996: experience job array loads as JSON and Saves as parsed array`**, **`AST-996: invalid experience JSON shows toast and aborts Save`** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-996"
+```
