@@ -142,3 +142,27 @@ rg -n -i 'do not.*create-chat|never.*create-chat|other host|run from.*laptop|Mac
 | 1–4 | `team-chuckles@7e45ec4` | Recover-not-laptop-block prose on datt §3d/§3e/§6, orientation, WAKE_CHEATSHEET, chuckles-AGENTS, CHUCKLES_QUICKREF |
 
 **Tip:** astral review stub (this commit); skill live on `team-chuckles` `main` @ `7e45ec4`. Skills are symlinked from the repo on this host; run `~/team-chuckles/install.sh` if AGENTS copies need refresh.
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1001
+**Publish ref:** (see Linear comment tip SHA after this docs commit)
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Astral three-dot diff is plan + Betty bible note only; live skill prose lives on `team-chuckles@7e45ec4` (five in-scope files) per plan commit-home split.
+- Binding miss contract taught consistently (datt §3d/§3e/§6, orientation, WAKE, AGENTS, QUICKREF); busy carve-out intact; helpers/watcher untouched (AST-1002).
+- Grep gate leftovers are busy / Binding negation only — no live laptop-block miss outcome.
+- One `merge-tests` SHA; Betty owns `docs/test-bible/**`; single features plan file.
+
+### Issues
+
+**discuss:** C4 straggler — Joan excluded `astral.git.engineer-test-tree-ban` (plan-time no test-tree paths); post-Betty diff includes `docs/test-bible/README.md`. Statute scores **conforms** (Betty bible + merge-tests; engineer did not edit test tree). No product fix required — acknowledge only.
+
+### Recommended actions
+
+- Ada: acknowledge straggler discuss; no fix-now. Proceed resolve-child → User Testing when ready.
+- Runtime laptop-block remains until AST-1002 (intentional).
