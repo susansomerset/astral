@@ -221,3 +221,27 @@ none cited (pattern amended in canon commit `3745d22`)
 
 Matches MAJOR-CHANGE scope, replacement lookup header, and hard cutover rule. Parent AC5 satisfied: columns gone, mandate/statute updated, hop/story preserved via list API.
 
+## Resolution
+
+**Date:** 2026-07-28  
+**Review tip:** `a9d16cc` (`docs(AST-984): Radia review — findings`)  
+**Outcome:** DISCUSS → acknowledged; no fix-now; advancing to User Testing.
+
+### Discuss — Archie statute gate (`orch.roles.archie-approves-statutes`) — acknowledged via parent waiver
+
+Radia flagged that statute/pattern landed @ `3745d22` (`approved_at: 2026-07-27`) without an Archie approval reply on AST-984 before Stages 3–5.
+
+Susan waived the gate on **parent AST-975** (2026-07-27): *"This ticket will be outside the scope of the statutes. Please use best judgment."* — [AST-975 comment](https://linear.app/astralcareermatch/issue/AST-975/decommission-table-agent-responses#comment-cafbb55c-8dc7-4d44-9277-b203072cbb3d).
+
+Chuckles recorded the unblock: `[check-linear] In Progress — statute gate waived; best judgment on entity-column / hard-drop path` — [AST-975 comment](https://linear.app/astralcareermatch/issue/AST-975/decommission-table-agent-responses#comment-4519d7f1-2ad2-42fe-94f1-0f0c299f2797).
+
+Implementer kept statute id `astral.batch.entity-agent-responses-latest-only` in place per draft default; substance matches the replacement contract. No product change for this discuss row.
+
+### Discuss (C4 straggler) — acknowledged
+
+Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.ui.frontend-file-placement` at plan time; code-rubric three-dot sweep scored them in-scope (plan docs + Betty tests). Substance **conforms** for all four — no code change.
+
+### Advisory — acknowledged
+
+`entity_cost` remains on batch `agent_ref` for consult/roster tagging but is omitted from `list_entity_latest_agent_refs` output per plan (UI does not require it). No change.
+
