@@ -122,3 +122,41 @@ Each experience job object (wire keys fixed):
 - §3.5: helpers `_emit_experience_jobs_html`; public builders unchanged in signature.
 - §1.5.1: no new ungated debug; only extend existing `debug=True` `render_keys` honesty.
 - §3.6: no repo-root `artifacts/` directory.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-994/AST-998-base-session-job-builders-experience-job-render`
+**Plan path:** `docs/features/artifacts/ast-998-base-session-job-builders-experience-job-render.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `631db63d` | `BUILD_CONFIG` experience `body_kind` → `experience_jobs` |
+| 2 | `cfa1c7cf` | shared `_emit_experience_jobs_html` + role CSS + legacy string path + `render_keys` honesty |
+
+**Tip:** see `origin/sub/AST-994/AST-998-base-session-job-builders-experience-job-render` HEAD after this commit.
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1`
+
+**Publish ref tip:** (see Linear / post-push SHA) on `origin/sub/AST-994/AST-998-base-session-job-builders-experience-job-render`
+**Baseline:** `origin/dev`
+**Overall:** DISCUSS
+
+### What’s solid
+- `body_kind` → `experience_jobs`; emit branches on `is_experience_job_array` (legacy string preserved).
+- Shared `_emit_experience_jobs_html` + role CSS for base/session/job; markers before escape; empty roles omitted.
+- Style D `render_keys` honesty via `_render_content_keys`; Betty `test`/`merge-tests` on builder tests only.
+
+### Issues
+**discuss (C4 stragglers):** Joan excluded debug/docs/engineer-test-tree/UI statutes that the tip brings in-scope via 996/997 merge + features/tests — all scored **conforms**.
+
+### Recommended actions
+No fix-now. Stragglers are process notes — resolve-child may proceed without product edits.
+
+## Resolution
+
+**Date:** 2026-07-28
+**Review:** Radia `[code-rubric] revision=1` — Overall **DISCUSS**; **fix-now** none; discuss items are Joan C4 statute-exclusion stragglers (all scored **conforms** on tip) — no product changes.
+**Outcome:** Clean resolve — no code delta vs `d5b0383b` (Radia docs tip). Proceed to User Testing per resolve-child / spawn direction.
+
