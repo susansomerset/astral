@@ -104,3 +104,13 @@ None (fix-now / discuss).
 ### Recommended actions
 
 resolve-child → User Testing.
+
+## Resolution
+
+**2026-07-29** — Radia **CLEAN**; no fix-now / discuss items.
+
+- Product tip remains `eedc91e4` (`craft_resume_base` preserve `__`/`~~`).
+- Intake: Radia `docs(AST-1027)` @ `f8f0f324` on `origin/sub/AST-1019/AST-1027-uat-markers-nbsp`.
+- No product or test-tree changes on resolve.
+
+**UAT note:** restart/deploy so startup applies repo `agent_task.json`, then Session Resume Paste → Parse → Open HTML on the fixture; expect 1:1 `__` → `&nbsp;`.
