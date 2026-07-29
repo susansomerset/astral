@@ -86,3 +86,25 @@ Bug Description’s shorthand `content="<keywords>"` means keywords belong in me
 | 2 | — | Builder header/meta unchanged; session emit proof tagline in meta only |
 
 **Tip:** `d83b486b` on `origin/sub/AST-1019/AST-1028-uat-keywords-meta`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1028
+**Publish ref tip (pre-docs):** `efec1f04a96f9e063840f2e2c31e5b6b12af1883`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stage 1: `candidate_title` title-only; new `### candidate_tagline` between title and contact; specialty/keywords stay out of title.
+- Builder header/meta untouched (no `src/` in three-dot); emit already correct when fields are split.
+- Semantic JSON change is only `craft_resume_base.cache_prompt`.
+
+### Issues / findings
+
+None (fix-now / discuss).
+
+### Recommended actions
+
+resolve-child → User Testing (restart/deploy so startup applies repo JSON, then re-paste).
