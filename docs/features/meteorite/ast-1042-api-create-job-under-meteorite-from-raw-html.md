@@ -211,3 +211,14 @@ Follow neighboring `# noqa: E402` style.
 - **require-auth-on-protected-endpoints:** `@require_auth` on the create route.
 - **§1.3 public-then-helpers:** Public `create_meteorite_job` after ensure; no private helpers required unless DRY appears during build.
 - **In-scope only:** No UI, no email, no JOB_STATES expansion, no tests/bible.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`
+**Plan path:** `docs/features/meteorite/ast-1042-api-create-job-under-meteorite-from-raw-html.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `ec61e37f` | create_meteorite_job carve-out + POST /api/candidates/<id>/meteorite/jobs + register blueprint |
+
+**Tip:** `ec61e37f4d19af6f5592a335fa20389e1e2e6c1f` on `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`
