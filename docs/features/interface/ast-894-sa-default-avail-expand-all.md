@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-894 archived 2026-07-29 -->
+
+## Linear archive (AST-894)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-894/default-avail-0-and-expand-all-visible-sections-on-load-default-the  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-888 — Default the scheduled_actions screen to show avail >0 and expand all  
+**Blocked by / blocks / related:** parent: AST-888
+
+### Description
+
+## What this implements
+
+On Admin → Scheduled Actions landing, default the existing Avail filter to “> 0” and expand every section that still has rows under the current filters, using the shared Expand All policy from AST-886 — so every section with available entities is visible at once instead of requiring the operator to engage the filter and open sections one by one.
+
+## Acceptance criteria
+
+1. Fresh navigation to Admin → Scheduled Actions engages the Avail filter as “> 0” without the operator touching the control.
+2. With that default and matching rows in more than one section, every section that has at least one matching row is expanded at the same time (no actionable section left collapsed solely because another is open).
+3. Under that default view with no other narrowing filters, every visible row shows a numeric Avail greater than zero (no em-dash Avail rows).
+4. Switching Avail back to All restores zero/empty Avail rows that match the other filters, and empty-section omission continues to follow the filtered set.
+5. After landing, the operator can collapse a section without that action being blocked by the default expand behavior.
+6. The prior first-section-only auto-open no longer leaves other Avail > 0 sections collapsed on the default landing view when multiple sections have matching rows.
+
+## Boundaries
+
+* Does not change Available calculation, claim, dispatch, or Avail column formatting.
+* Does not add new Avail modes or server-side query params.
+* Does not change Run / Stop / AUTO / edit-modal / Manage Tasks.
+* Does not change other sectioned screens’ default expansion.
+* Does not re-implement Expand All — use the shared AST-886 section expand policy already on Scheduled Actions.
+
+## Notes for planning
+
+* Avail > 0 filter control already exists (AST-885 / AST-887); change default only.
+* Shared `useSectionExpandPolicy({ expandAll: true })` already on Scheduled Actions (AST-886 / AST-893); replace first-section-only auto-open with expand-all-visible on landing.
+* Frontend-only; no API change.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Engineers publish to origin sub/ftr refs — never Linear gitBranchName when it disagrees.
+
+### Comments
+
+#### radia — 2026-07-14T01:38:52.609Z
+**Diff:** `origin/dev...origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `348e9cb`
+
+### What's solid
+- Stage 1 matches plan: `availGtZeroFilter` initial `"gt0"`; once-gate + `expandAllSections()`; prune / Expand All policy / Avail options / `filteredRows` predicate untouched.
+- Betty revised AST-887 + AST-894 landing/collapse/Avail→All coverage; no product scope creep.
+- §1.3 DRY / §2.1 / §3.3 / UI-only OK. Self-Assessment Scope matches footprint.
+
+### Issues
+None.
+
+### Recommended actions
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Doc:** `docs/features/interface/ast-894-sa-default-avail-expand-all.md` — `docs(AST-894): Radia review — clean` → `origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `348e9cb`
+
+#### betty — 2026-07-14T01:34:44.961Z
+## QA test manifest — AST-894
+
+**Publish:** `origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `e097f4d` (`merge-tests(AST-894): origin/tests 5f3d93afa8aa4dae53635e73dede28e20398236b`)
+
+**Bible shasum on publish ref:**
+- `docs/test-bible/frontend/pages.md` — `ead665f4dc0af4cfa0126c5c380b8ae81cf0d365`
+
+1. **Default Avail `gt0` omits zero/null Avail** (§6c) — `test_AdminScheduledActions.test.tsx` — `AST-887 Avail > 0 filter` (revised) + `AST-894` Avail All restores
+2. **Landing expand-all opens every matching section** under default filters (§6c) — `AST-894 default Avail > 0 and expand-all on landing`
+3. **Once-gate:** operator collapse after landing stays collapsed — `AST-894`
+4. **Regression:** Expand All chrome + filter suites — `--testNamePattern="AST-894|AST-887|AST-893|AST-751|AST-768|AST-785"` (or full file)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-894|AST-887|AST-893|AST-751|AST-768|AST-785"
+```
+
+**Broken / obsolete revised this pass:** AST-887 default-All case; suites needing zero/null Avail rows now call `selectAvailAll()`.
+
+— Betty
+
+#### katherine — 2026-07-14T01:24:22.792Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-888/AST-894-sa-default-avail-expand-all/docs/features/interface/ast-894-sa-default-avail-expand-all.md
+
+`origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `f4979ff`
+
+**Scope:** Single-Component — one React page (`AdminScheduledActions.tsx`): Avail initial state → `gt0`, first-section auto-open → one-shot `expandAllSections()`.
+
+**Conf:** high — Avail filter and Expand All policy already shipped; only landing defaults change.
+
+**Risk:** low — client landing UX only; Available math / dispatch / other pages untouched. Once-gate keeps post-landing collapses from being overwritten.
+
+#### katherine — 2026-07-14T01:24:09.436Z
+Plan: [`docs/features/interface/ast-894-sa-default-avail-expand-all.md`](https://github.com/susansomerset/astral/blob/sub/AST-888/AST-894-sa-default-avail-expand-all/docs/features/interface/ast-894-sa-default-avail-expand-all.md)
+`origin/sub/AST-888/AST-894-sa-default-avail-expand-all` @ `83e9ea16b4361f3d1d54d063b446b4df1e83a988`
+
+**Scope:** Single-Component — one page (`AdminScheduledActions.tsx`): default Avail to `gt0` and one-shot landing `expandAllSections` instead of first-section-only auto-open.
+**Conf:** high — Avail filter and Expand All policy already on the page; this only flips the initial filter value and the landing expand effect.
+**Risk:** low — client-side defaults on Scheduled Actions only; Available math, dispatch, and other screens untouched.
+
+---
+
 # Default Avail > 0 and expand all visible sections on load (Default the scheduled_actions screen to show avail >0 and expand all)
 
 **Linear:** [AST-894](https://linear.app/astralcareermatch/issue/AST-894/default-avail-0-and-expand-all-visible-sections-on-load-default-the)  
