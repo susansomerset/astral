@@ -1330,7 +1330,8 @@ def _emit_body_sections_html(
         if not str(text).strip():
             continue
         if key == "professional_summary":
-            paras = [p.strip() for p in re.split(r"\n\s*\n", str(text)) if p.strip()]
+            # Blank lines first; single-\n fallback (same as cover letter) → multiple .summary-intro
+            paras = _session_cover_letter_paragraphs(str(text))
             body = "\n".join(
                 f'      <p class="summary-intro">{html.escape(p)}</p>' for p in paras
             )
