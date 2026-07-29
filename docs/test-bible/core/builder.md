@@ -208,6 +208,32 @@ Equivalent harness:
 
 ---
 
+### AST-1021 · AST-1019
+
+**AST-1021:** Shared resume document `<title>` is `{candidate_name} Resume` (space; no em/en dash; empty name → `Resume`); ATS `<meta name="description">` stays the AST-1010 field-derived template (`Resume of {name}, {title}, specializing in {tagline}`) — never the golden HTML example Product Manager / Cloud Platforms literal. Stylesheet remains sibling **AST-1020**. Structural emit remains **AST-1007**–**AST-1010**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Title shape + empty-name fallback + meta lock (three surfaces) | `src/core/builder.py` | **`TestAst1021DocumentTitleChrome`** (session / base / job + empty name) |
+| Meta present/omit + header join regression | `src/core/builder.py` | **`TestAst1010HeaderContactMetaStyles`** |
+| Stylesheet regression | `src/core/builder.py` | **`TestAst1020GoldenStylesheet`** |
+
+**Broken / obsolete this pass:** none — no prior asserts locked `{name} — Resume`.
+
+**Integration:** no existing scenario asserts resume document title/meta chrome — no revision; do not invent new integration coverage.
+
+**AST-1021** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1021DocumentTitleChrome \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.
