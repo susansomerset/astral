@@ -3652,3 +3652,91 @@ class TestAst972CandidateStageConsultRouting:
         )
         assert out["total_passed"] == 1
         worker.assert_awaited_once_with("c2", debug=False)
+
+
+class TestAst1055MeteoriteConsultRoutes:
+    """AST-1055: route meteorite twins; upshot persists analysis_upshot under twin states."""
+
+    @pytest.mark.asyncio
+    async def test_routes_meteorite_like_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # run_consult_task normalizes batch shape via passed/failed/total (not total_*).
+        batch = AsyncMock(return_value={"passed": 2, "failed": 0, "total": 2})
+        monkeypatch.setattr(consult_mod, "meteorite_like_batch", batch)
+        out = await consult_mod.run_consult_task(
+            "job",
+            "METEORITE_PASSED_GET",
+            [{"astral_job_id": "m1"}, {"astral_job_id": "m2"}],
+            "b-ml",
+            {},
+            dispatch_task_key="meteorite_like",
+        )
+        assert out["total_passed"] == 2
+        batch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_routes_meteorite_upshot_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        summary = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(consult_mod, "_run_analysis_upshot_batch", summary)
+        out = await consult_mod.run_consult_task(
+            "job",
+            "METEORITE_PASSED_LIKE",
+            [{"astral_job_id": "m7"}],
+            "b-mu",
+            {},
+            dispatch_task_key="meteorite_upshot",
+        )
+        assert out["total_passed"] == 1
+        summary.assert_awaited_once()
+        args, kwargs = summary.await_args
+        assert kwargs.get("task_key", args[4] if len(args) > 4 else None) == "meteorite_upshot"
+
+    @pytest.mark.asyncio
+    async def test_meteorite_upshot_persists_analysis_upshot_key(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job = {
+            "astral_job_id": "mz",
+            "state": "METEORITE_PASSED_LIKE",
+            "company": None,
+            "job_data": {"raw_job_listing": "listing"},
+        }
+        parsed = {
+            "whole_jd_upshot": "ok",
+            "take_jd": "a",
+            "take_do": "b",
+            "take_get": "c",
+            "take_like": "d",
+        }
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: job)
+        monkeypatch.setattr(
+            consult_mod,
+            "_prep_analysis_upshot_live_content",
+            AsyncMock(return_value="live"),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": parsed}),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", saver)
+        trans = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        out = await consult_mod._run_analysis_upshot_batch(
+            "b-mz", [job], {}, False, task_key="meteorite_upshot",
+        )
+        assert out["total_passed"] == 1
+        saver.assert_called_once_with("mz", {"analysis_upshot": parsed})
+        trans.assert_called_once_with(
+            "meteorite_upshot",
+            ["mz"],
+            TASK_CONFIG["meteorite_upshot"]["pass_state"],
+        )
+

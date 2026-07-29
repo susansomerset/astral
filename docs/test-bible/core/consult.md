@@ -701,3 +701,25 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
+
+---
+
+### AST-1055 · AST-1052
+
+**Publish:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`.
+
+`run_consult_task` routes `meteorite_like` through encoded LIKE (`meteorite_like_batch`) and `meteorite_upshot` through `_run_analysis_upshot_batch(..., task_key=)`; upshot always persists `job_data.analysis_upshot`. Config/catalog: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin routes + persist key | `src/core/consult.py` | **`TestAst1055MeteoriteConsultRoutes`** |
+
+**Broken / obsolete:** none for consult paths — additive routing.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
+  -q
+```

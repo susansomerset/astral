@@ -71,7 +71,7 @@ class TestAst1041EnsureMeteoriteCompany:
         log.debug_detail.assert_not_called()
 
 
-# Branches: validation; missing candidate; insert JD_READY+score+HTML; second call ensures no-op company + new job.
+# Branches: validation; missing candidate; insert job_create_state+score+HTML; second call ensures no-op company + new job.
 class TestAst1042CreateMeteoriteJob:
     def test_validation_errors(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -85,7 +85,7 @@ class TestAst1042CreateMeteoriteJob:
         with pytest.raises(ValueError, match="candidate not found"):
             meteorite_mod.create_meteorite_job("missing-cand", "<p>x</p>")
 
-    def test_creates_jd_ready_job_with_score_and_html(self, sqlite_in_memory) -> None:
+    def test_creates_job_in_config_create_state_with_score_and_html(self, sqlite_in_memory) -> None:
         from src.utils.config import METEORITE_CONFIG, TRACKER_CONFIG
 
         db = sqlite_in_memory
@@ -95,14 +95,17 @@ class TestAst1042CreateMeteoriteJob:
         out = meteorite_mod.create_meteorite_job(cid, html)
         short = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
         jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        # AST-1056: job_create_state is METEORITE_NEW (config-owned; no hardcode in core).
+        landing = METEORITE_CONFIG["job_create_state"]
+        assert landing == "METEORITE_NEW"
         assert out["company"] == short
-        assert out["state"] == METEORITE_CONFIG["job_create_state"] == "JD_READY"
+        assert out["state"] == landing
         assert out["latest_score"] == float(METEORITE_CONFIG["job_create_latest_score"]) == 10.0
         assert out["company_inserted"] is True
         row = db.get_job(out["astral_job_id"])
         assert row is not None
         assert row["company"] == short
-        assert row["state"] == "JD_READY"
+        assert row["state"] == landing
         assert row["latest_score"] == 10.0
         assert row["job_data"][jd_key] == html
         assert db.get_company(short)["state"] == "IGNORE"

@@ -249,6 +249,8 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_build_request",
         "intake_candidate_response",
         "intake_initiate_candidate",
+        "meteorite_like",
+        "meteorite_upshot",
         "parse_job_list",
         "prefilter_company",
         "propose_application_responses",
@@ -262,10 +264,10 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (39 rows after AST-1037).
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (41 rows after AST-1055).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
-    AST-1037 adds `simple_resume_parse` on the current origin/dev base.
+    AST-1037 adds `simple_resume_parse`; AST-1055 adds `meteorite_like` + `meteorite_upshot`.
     Parallel AST-1015 (`preamble_validate_response`) is not on that base yet —
     its row assertion stays in TestAst1015PreambleValidateCatalogRow.
     """
@@ -276,9 +278,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_39_current_catalog_keys(self) -> None:
+    def test_repo_json_has_41_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 39
+        assert len(rows) == 41
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -294,7 +296,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_39_current_rows(
+    def test_startup_apply_loads_all_41_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -312,7 +314,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 39
+            assert count == 41
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -324,6 +326,36 @@ class TestAst786AgentTaskRepoJsonSeed:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         row = next(r for r in rows if r["task_key"] == "select_job_page")
         assert row["run_next"] == ""
+
+
+
+class TestAst1055MeteoriteCatalogRows:
+    """AST-1055: meteorite_like / meteorite_upshot prompt twins in repo agent_task JSON."""
+
+    def test_meteorite_like_cache_prompt_and_seq(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["meteorite_like"]
+        assert row["agent_id"] == "job_analyst_grace"
+        assert row["task_seq"] == 10
+        assert row["task_group_name"] == "Job Review"
+        cache = row["cache_prompt"]
+        assert "no employer website, culture pages, or vibe pages" in cache
+        assert "more liberally" in cache
+        assert "Meteorite — liberal X" in cache
+
+    def test_meteorite_upshot_user_prompt_context(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["meteorite_upshot"]
+        assert row["agent_id"] == "principal_recruiter_estelle"
+        assert row["task_seq"] == 11
+        prompt = row["user_prompt"]
+        assert "### Meteorite context" in prompt
+        assert "meteorite-sourced" in prompt
+        assert "culture visibility" in prompt
+        assert by["analysis_upshot"]["task_seq"] == 9
+        assert by["grade_like"]["task_seq"] == 8
 
 
 class TestAst878FetchCulturePagesCatalogRow:

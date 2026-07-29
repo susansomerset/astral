@@ -168,7 +168,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
         return jsonResponse({
           astral_job_id: "job-42",
           company: "meteorite-cand-ada",
-          state: "JD_READY",
+          state: "METEORITE_NEW",
           latest_score: 10,
           company_inserted: true,
           astral_candidate_id: "cand-ada",
