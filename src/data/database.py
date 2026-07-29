@@ -73,6 +73,7 @@ from src.utils.config import (
     CANDIDATE_STATES,
     remap_legacy_candidate_state,
     COMPANY_STATES,
+    METEORITE_CONFIG,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -200,6 +201,7 @@ def claim_company_batch(
     last_scan_at NULL or stale. candidate_id scopes to a single candidate's companies. Returns count updated.
     score_floor: when set, only companies with company_data.prefilter_score >= floor are claimed (AST-508).
     exclude_prefilter_second_strike: when True, skip WEBSITE_FOUND_RETRY rows with homepage_text (AST-892).
+    Claim excludes short names matching METEORITE_CONFIG["short_name_prefix"] (AST-1041).
     """
     return set_company_batch(
         batch_id,
@@ -949,6 +951,7 @@ def set_company_batch(
     When clear=True: set batch_id and batch_created_at to NULL where batch_id matches. batch_id required.
     When clear=False: set batch_id, batch_created_at on up to limit rows where state=? AND batch_id IS NULL.
     candidate_id: when provided, scopes claim to companies belonging to this candidate.
+    Claim excludes short names matching METEORITE_CONFIG["short_name_prefix"] (AST-1041).
     """
     def _with_conn() -> int:
         conn = _get_connection()
@@ -992,6 +995,10 @@ def set_company_batch(
                         f" )"
                     )
                     params.append(retry_state)
+                # AST-1041: never claim meteorite placeholder companies
+                meteorite_prefix = METEORITE_CONFIG["short_name_prefix"]
+                where_base += " AND short_name NOT LIKE ?"
+                params.append(meteorite_prefix + "%")
                 order_clause = (
                     f"ORDER BY {sort_by} ASC NULLS FIRST" if sort_by and sort_by in COMPANY_BATCH_SORT_COLUMNS
                     else "ORDER BY rowid"
