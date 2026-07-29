@@ -103,3 +103,13 @@ None (fix-now / discuss).
 ### Recommended actions
 
 resolve-child → User Testing (restart/deploy so startup applies repo JSON, then re-paste).
+
+## Resolution
+
+**2026-07-29** — Radia **CLEAN**; no fix-now / discuss items.
+
+- Product tip remains `f90922c4` (`craft_resume_base` require `•` / forbid `|`).
+- Intake: Radia `docs(AST-1029)` @ `b94e3b0b` on `origin/sub/AST-1019/AST-1029-uat-competencies-pipes`.
+- No product or test-tree changes on resolve.
+
+**UAT note:** restart/deploy so startup applies repo `agent_task.json`, then Session Resume Paste → Parse → Open HTML; `.competencies-list` must use `•`, not `|`.
