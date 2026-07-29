@@ -240,3 +240,11 @@ Follow neighboring `# noqa: E402` style.
 
 ### Recommended actions
 - Hedy: acknowledge stragglers → resolve-child → User Testing.
+
+## Resolution
+
+**Date:** 2026-07-29
+**Review:** Radia @ `56b46d43` — **Overall:** DISCUSS; **fix-now:** none; **discuss:** statute straggler ×5 (all substance **conforms**); no advisory.
+
+No product changes. Acknowledged discuss stragglers as plan-time Joan exclusions that became in-scope on the three-dot vs `origin/dev` (AST-1041 + Betty tests/docs) — no code delta. Advanced to **User Testing**.
+
