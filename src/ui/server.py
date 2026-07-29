@@ -49,6 +49,9 @@ app.register_blueprint(companies_bp)
 from ui.api.api_jobs import jobs_bp  # noqa: E402
 app.register_blueprint(jobs_bp)
 
+from ui.api.api_meteorite import meteorite_bp  # noqa: E402
+app.register_blueprint(meteorite_bp)
+
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
 
