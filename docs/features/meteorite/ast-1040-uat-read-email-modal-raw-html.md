@@ -122,3 +122,22 @@ with:
 | 1 | `3a8027a6` | Modal body: escaped `<pre>` source; CSS for scrollable source |
 
 **Tip:** `17ec6714635c325c13ff77748eda0a072a7bc053` on `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1040
+**Publish ref tip (pre-docs):** `88cf003339550e389c11347d0ad85ab09e0576f7`
+**Overall:** CLEAN
+
+### What’s solid
+- Iframe/`srcDoc` replaced with escaped `<pre>` text child — raw source, React-escaped tags.
+- CSS retargeted for scrollable monospace source; list/auth/API untouched.
+- Scope matches Self-Assessment **minor**; Betty revised Vitest accordingly.
+
+### Issues
+(none)
+
+### Recommended actions
+- Hedy: resolve-child → User Testing.
