@@ -114,3 +114,22 @@ Register a **parallel meteorite GDL job-state track** in `JOB_STATES` (entry **M
 
 **Tip:** `9c6ca1b0a93e0425a162b2da3995899a0f749e92` on `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`
 
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1053
+**Publish ref:** `e025602150895a4b7070a8029c1a831dd0cb9b10` (`origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`)
+**Overall:** DISCUSS
+
+### What’s solid
+- Parallel meteorite GDL `JOB_STATES` priors match the plan table; `METEORITE_NEW` unrestricted; LIKE from `METEORITE_PASSED_GET` (no culture hop).
+- In Review / Skipped manifests + grade-field maps config-driven; `RECOMMENDED` priors and `PASSED_SCORE_GATED_STATES` untouched; create default still `JD_READY`.
+- Boundaries held vs AST-1054–1057; Betty owns tests/bible.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot vs `origin/dev` includes `docs/features/**` + Betty tests/bible — all **conforms** on substance.
+
+### Recommended actions
+- Ada: acknowledge stragglers → resolve-child → User Testing.
+
