@@ -200,3 +200,16 @@ Import `METEORITE_DISPATCH_TASKS` and `TASK_CONFIG` from config.
 - **§1.4 / no-hardcoded-sets:** Row specs + outcome map + gated states live in config.
 - **§1.5.1 / debug-contract-gated:** No new ungated Style D lines; reuse existing `debug` flags.
 - **In-scope only:** No Create / Recommended UI / twin prompt authorship; no duplicate AST-1055 TASK_CONFIG shells.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`
+**Plan path:** `docs/features/meteorite/ast-1054-meteorite-gdl-dispatch-rows-score-floor-0.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `45097232` | METEORITE_DISPATCH_TASKS + outcome map + score-gated meteorite triggers |
+| 2 | `6e36b273` | Consult METEORITE_ outcome overlay for shared GDL keys |
+| 3 | `3d4ee03c` | ensure/provision meteorite dispatch_task rows on scheduler start |
+
+**Tip:** `3d4ee03c198238ca09202b6ac87f08ac0826d21a` on `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`
