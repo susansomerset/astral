@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786 / AST-878 / AST-1015):** populated **39**-row catalog (includes **`fetch_culture_pages`**, **`preamble_validate_response`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**, **AST-1015**).
+**UAT seed (AST-786 / AST-878 / AST-1037):** populated **39**-row catalog (includes **`fetch_culture_pages`**, **`simple_resume_parse`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**, **AST-1037**). Parallel **AST-1015** `preamble_validate_response` remains on the Candidate epic tip until that row lands on the shared merge base.
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 

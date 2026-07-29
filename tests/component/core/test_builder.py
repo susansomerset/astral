@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict
 from unittest.mock import MagicMock
 
@@ -2179,6 +2180,89 @@ class TestAst1030UatNoBulletLeadEmit:
         assert 'class="role-description"' not in html
         assert f"<li>{first}</li>" in html
         assert f"<li>{second}</li>" in html
+
+
+class TestAst1039SummaryNewlineParagraphs:
+    """AST-1039: single-\\n summary → multiple .summary-intro; blank lines still work."""
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_single_newline_yields_multiple_summary_intro(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "professional_summary": "First para\nSecond para",
+                "experience": "One bullet",
+            },
+        )
+        intros = re.findall(
+            r'<p class="summary-intro">(.*?)</p>', html, flags=re.DOTALL
+        )
+        assert intros == ["First para", "Second para"]
+        # Must not be one collapsed paragraph with a literal newline inside.
+        assert '<p class="summary-intro">First para\nSecond para</p>' not in html
+
+    def test_blank_line_split_still_multiple_summary_intro(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "professional_summary": "Para one\n\nPara two",
+                "experience": "One bullet",
+            },
+        )
+        intros = re.findall(
+            r'<p class="summary-intro">(.*?)</p>', html, flags=re.DOTALL
+        )
+        assert intros == ["Para one", "Para two"]
+
+    def test_experience_newlines_still_split_to_li(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "professional_summary": "Keep me\nAs two",
+                "experience": [
+                    {
+                        "company": "Acme",
+                        "title": "TPM",
+                        "dates": "2020 to 2021",
+                        "location": "Remote",
+                        "accomplishments": "Bullet A\nBullet B",
+                    }
+                ],
+            },
+        )
+        assert "<li>Bullet A</li>" in html
+        assert "<li>Bullet B</li>" in html
+        assert re.findall(
+            r'<p class="summary-intro">(.*?)</p>', html, flags=re.DOTALL
+        ) == ["Keep me", "As two"]
 
 
 class TestAst1014BuilderContact:

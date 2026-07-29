@@ -5830,3 +5830,16 @@ class TestAst1005ItemsSchemaObjectValidation:
         assert err is not None
         assert err.startswith("experience[0]:")
         assert "Missing required field 'company'" in err
+
+
+class TestAst1037NormalizeGateMembership:
+    """AST-1037: do_task normalize gate uses config frozenset (not inline craft-only)."""
+
+    def test_agent_imports_normalize_task_keys_from_config(self) -> None:
+        assert agent_mod._CRAFT_RESUME_NORMALIZE_TASK_KEYS is cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
+        assert "simple_resume_parse" in agent_mod._CRAFT_RESUME_NORMALIZE_TASK_KEYS
+        assert "craft_resume_base" in agent_mod._CRAFT_RESUME_NORMALIZE_TASK_KEYS
+        # Gate sites still call the shared normalize helper by name (lazy import).
+        src = inspect.getsource(agent_mod.do_task)
+        assert "task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS" in src
+        assert 'task_key == "craft_resume_base"' not in src
