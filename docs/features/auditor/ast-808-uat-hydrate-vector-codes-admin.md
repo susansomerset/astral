@@ -1,3 +1,87 @@
+<!-- linear-archive: AST-808 archived 2026-07-29 -->
+
+## Linear archive (AST-808)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-808/uat-hydrate-rubric-vector-codes-on-admin-vector-feedback  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+Admin Vector Feedback shows raw rubric vector codes (e.g. `ACRAOCVK`, `CFRAOCVK`, `CMRAOCVK`) instead of the human-readable vector assessment (label + criterion content from **rubric_vector**).
+
+Susan UAT 2026-06-25: decode the code list into human-readable assessment on the Admin page.
+
+## Expected
+
+Each **vector_feedback** row displays the active rubric vector's human-readable label and criterion text (from **rubric_vector** where `current = 1`), not only the opaque vector code. Sort/filter on vector code still works; display is hydrated for inspection.
+
+## Repro
+
+1. Open Admin → Vector Feedback on staging after a rubric-backed task run that produced vector feedback.
+2. Observe vector code column shows codes like `ACRAOCVK` with no decoded label/content.
+3. Expected: same row shows human-readable vector label and assessment text alongside (or instead of) the raw code.
+
+## Parent AC (quoted inline)
+
+> 6. Admin Vector Feedback page lists **vector_feedback** rows with sort/filter on candidate, task, vector code, feedback type, value, run/batch identifiers.
+
+## Boundaries
+
+* This bug does **not** change: vector feedback capture at runtime, lenient parse rules, or rubric_vector write/read cutover.
+* Backend schema changes only if required for API join; no new feedback types or batch metadata (separate bug).
+
+### Comments
+
+#### radia — 2026-06-25T17:36:51.941Z
+**Diff:** `origin/dev...origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin` (code `fc98dec`, doc `7b0757c`)
+**Doc:** `docs/features/auditor/ast-808-uat-hydrate-vector-codes-admin.md` § Review (Radia)
+
+### What's solid
+- Stages 1–3: list SELECT adds content/importance; `hydrate_vector_review_strings`; admin enrichment + `rubric_lookup` + `hydrate_reviews`; Assessment + expandable Criterion columns; FEEDBACK modal hydrated table with raw fallback.
+- Read-only display fix — no capture/parse changes. `@require_admin` on new routes. Betty manifest aligns.
+
+### advisory
+- Prefilter embedded RC not in DB lookup — RC lines may lack criterion text in hydration (prefilter discuss family).
+- Explicit craft key as `owner_task_key` skips owner remap (modal uses run `task_key` → OK).
+
+**Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
+
+#### betty — 2026-06-25T17:35:21.824Z
+Bible shasums (publish ref): rubric_feedback.md 929fc1387b5e75aadd4f3650e090654d08d340dd; rubric_vectors.md e672296023df2745d7bbfd6a926a0c66eab6e322; api_admin.md 34f84b90757f293cebed95bb5aeead110f25dcd8; frontend/pages.md b2b1dc97c4d943fe06a4980c1b840e720641ad6a
+
+#### betty — 2026-06-25T17:35:18.318Z
+## QA test manifest (AST-808)
+
+**Publish ref:** origin/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin @ fc98dec
+
+**Pytest:**
+./scripts/testing/run_component_tests.sh tests/component/utils/test_rubric_feedback.py::TestAst808HydrateVectorReviewStrings tests/component/data/database/test_rubric_vectors.py::TestAst808ListVectorFeedbackContent tests/component/ui/api/test_api_admin.py::TestAst808VectorFeedbackHydration -q
+
+**Vitest:** test_AdminVectorFeedback.test.tsx, test_BatchAgentDataModal (hydrated FEEDBACK)
+
+**Bible:** rubric_feedback.md 6b8e0c0; rubric_vectors.md pending; api_admin.md pending; pages.md pending
+
+— Betty
+
+#### katherine — 2026-06-25T17:31:55.214Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-808-uat-hydrate-vector-codes-admin/docs/features/auditor/ast-808-uat-hydrate-vector-codes-admin.md
+
+**Scope:** `Single-Component` — UAT display fix: `vector_content` on list rows, utils hydrate helper, `rubric_lookup` + `hydrate_reviews` admin routes, Admin Vector Feedback assessment column, FEEDBACK modal hydration. No capture/parse or AST-809 batch metadata.
+
+**Conf:** `high` — AST-725 join and `parse_vector_review_string` exist; root cause is missing `content` + raw JSON display.
+
+**Risk:** `low` — read-only admin enrichment; wrong lookup only affects inspection UI.
+
+---
+
 # AST-808 — UAT: Hydrate rubric vector codes on Admin Vector Feedback
 
 - **Linear:** [AST-808](https://linear.app/astralcareermatch/issue/AST-808/uat-hydrate-rubric-vector-codes-on-admin-vector-feedback)
