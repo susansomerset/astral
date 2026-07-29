@@ -204,3 +204,28 @@ Changes: Stage 3 builds `fields = {k: body.get(k, "") for k in BUILD_CONFIG["ses
 - Stage 1 — `BUILD_CONFIG["session_cover_letter"]` field contract + document title
 - Stage 2 — `build_session_cover_letter` + `_emit_session_cover_html_document` (SomersetCover; optional candidate signature image read-only)
 - Stage 3 — `POST /api/admin/session_cover_letter/html` (`@require_admin`, fields from config keys)
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1024
+**Publish ref tip (pre-docs):** `053830d3`
+**Overall:** DISCUSS
+
+### What’s solid
+- Stages 1–3 match the plan bible: config field spine, session-only SomersetCover emit, Admin POST under `@require_admin`.
+- Stage 3 iterates `BUILD_CONFIG["session_cover_letter"]["fields"]` (Joan Revision 1).
+- No job cover reuse, no artifact writes, optional candidate signature via `_safe_image_src` only.
+- Style D gated on `debug=True` / `ui_llm_debug()` with index + `|` detail + `debug_detail_block`.
+
+### Issues
+**discuss (C4 stragglers — Joan Excluded, in-scope on code diff):**
+1. `astral.debug.spikes-under-debug-dir` — `docs/features/**` present (plan/review doc); substance conforms (not a misplaced spike).
+2. `astral.docs.features-single-file-per-ticket` — single features file; substance conforms.
+3. `astral.git.engineer-test-tree-ban` — `tests/**` + bible via Betty `test`/`merge-tests`; engineer `code()` touched only `src/`; substance conforms.
+
+**fix-now:** none
+
+### Recommended actions
+- Ada: acknowledge C4 stragglers in resolve (no product change required) → User Testing.
