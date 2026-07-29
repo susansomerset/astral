@@ -575,6 +575,72 @@ TASK_CONFIG = {
         "agent_task": "analysis_upshot",
         "trigger_state": None,
     },
+    # AST-1052 / AST-1055: company-absent twins (no CULTURE_READY / vibe pages).
+    # Dispatch rows + trigger_state rules are AST-1054 — keys must match that sibling.
+    "meteorite_like": {
+        "scored": True,
+        "grades_key": "like_grades",
+        "rubric_artifact": "like_rubric",
+        "response_format": "json",
+        "output_type": "grades_encoded_notes",
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": _ENCODED_CONSULT_JOB_ITEM_SCHEMA,
+            },
+        },
+        "fallback_batch_size": 10,
+        "pass_state": "METEORITE_PASSED_LIKE",
+        "fail_state": "METEORITE_FAILED_LIKE",
+        "error_state": "METEORITE_FAILED_TECHNICAL_LIKE",
+        "save_prefix": "like",
+        "pass_threshold": 6.0,
+        "requires_company": False,
+        "grading_mode": "scored",
+        "context_format": "meteorite_like_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "meteorite_like",
+    },
+    "meteorite_upshot": {
+        "scored": True,
+        "response_format": "json",
+        "response_schema": {
+            "take_jd": {"type": "str", "required": True},
+            "take_get": {"type": "str", "required": True},
+            "take_do": {"type": "str", "required": True},
+            "take_like": {"type": "str", "required": True},
+            "whole_jd_upshot": {"type": "str", "required": True},
+            "segment_upshots": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "segment_key": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                },
+            },
+            "candidate_questions": {
+                "type": "list",
+                "required": True,
+                "items_schema": {"text": {"type": "str", "required": True}},
+            },
+            "caveats": {
+                "type": "list",
+                "required": True,
+                "items_schema": {"text": {"type": "str", "required": True}},
+            },
+        },
+        "pass_state": "RECOMMENDED",
+        "error_state": "METEORITE_PASSED_LIKE_RETRY",
+        "context_format": "meteorite_upshot_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "requires_company": False,
+        "agent_task": "meteorite_upshot",
+        "trigger_state": None,
+    },
 
     # Phase E. Job Artifacts — dumb chain registry (AST-450). Group order is DB task_seq (AST-734).
     # Prompt authors: caller chain tokens {$CALLER_CACHE_A}–{$CALLER_CACHE_D} / AST-455; avoid
@@ -1343,6 +1409,10 @@ def rubric_owner_task_key(task_key: str) -> Optional[str]:
     artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
     if artifact:
         return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact)
+    # Twin consumers (e.g. meteorite_like) resolve via TASK_CONFIG.rubric_artifact.
+    rk = (TASK_CONFIG.get(task_key) or {}).get("rubric_artifact")
+    if isinstance(rk, str) and rk.strip():
+        return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk.strip())
     return None
 
 
@@ -1440,7 +1510,7 @@ JOB_STATES = {
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
     ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
@@ -1499,6 +1569,83 @@ METEORITE_CONFIG = {
 
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
+
+# AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
+# score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
+# Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
+METEORITE_DISPATCH_TASKS = (
+    {
+        "task_key": "evaluate_jd",
+        "trigger_state": "METEORITE_NEW",
+        "score_floor": None,  # ungated entry (mirrors JD_READY / evaluate_jd)
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "grade_do",
+        "trigger_state": "METEORITE_PASSED_JD",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "grade_get",
+        "trigger_state": "METEORITE_PASSED_DO",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "meteorite_like",
+        "trigger_state": "METEORITE_PASSED_GET",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "meteorite_upshot",
+        "trigger_state": "METEORITE_PASSED_LIKE",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 1,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+)
+
+# Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
+METEORITE_GDL_OUTCOME_BY_TASK = {
+    "evaluate_jd": {
+        "pass_state": "METEORITE_PASSED_JD",
+        "fail_state": "METEORITE_FAILED_JD",
+        "error_state": "METEORITE_ERROR_EVALUATE_JD",
+    },
+    "grade_do": {
+        "pass_state": "METEORITE_PASSED_DO",
+        "fail_state": "METEORITE_FAILED_DO",
+        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
+    },
+    "grade_get": {
+        "pass_state": "METEORITE_PASSED_GET",
+        "fail_state": "METEORITE_FAILED_GET",
+        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
+    },
+}
+
+assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
+assert all(
+    st in JOB_STATES
+    for overlay in METEORITE_GDL_OUTCOME_BY_TASK.values()
+    for st in overlay.values()
+)
 
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
@@ -1604,6 +1751,8 @@ IN_REVIEW_STATES = [
 # PASSED_JOBLIST here (would change claim sort_by for that trigger).
 PASSED_SCORE_GATED_STATES = frozenset({
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE",
+    # AST-1054: meteorite gated hops (score_floor 0 on dispatch rows — not METEORITE_NEW).
+    "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET", "METEORITE_PASSED_LIKE",
 })
 
 # Admin Edit Dispatch Task modal — score_floor dropdown (AST-743 / AST-750).
@@ -1679,7 +1828,7 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like", "vet_inflow_discovery",
+    "grade_like", "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -1740,8 +1889,12 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "PASSED_DO"
     if task_key == "grade_like":
         return "CULTURE_READY"
+    if task_key == "meteorite_like":
+        return "METEORITE_PASSED_GET"
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
+    if task_key == "meteorite_upshot":
+        return "METEORITE_PASSED_LIKE"
     if task_key in resume_artifact_hop_task_keys():
         return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":

@@ -739,5 +739,43 @@
     "task_group_name": "Job Artifacts",
     "task_seq": 9,
     "task_name": "Finalize Cover Letter"
+  },
+  {
+    "task_key_uuid": "613d3205-83aa-4170-b6c9-edb71250137b",
+    "task_key": "meteorite_like",
+    "current": 1,
+    "agent_id": "job_analyst_grace",
+    "user_prompt": "Hi, Grace!  Can you take a look at all of this content and respond to the provided criteria with grades for {$FIRST_NAME}?\n\nAt this stage in the process, we are EXTREMELY CONSCIENTIOUS of output token usage, so DO NOT include natural language content outside the requested JSON response.  It will be rejected, the job will error out of consideration and waste valuable resources that add up in seconds.\n<!-- AST-723_RUBRIC_VECTORS_TOKEN -->",
+    "cache_prompt": "## INSTRUCTIONS\n\nSTEP 1 — VALUES / ENJOYMENT (LIKE): Use the LIKE rubric below to grade whether this role would feel **meaningful and energizing** for the candidate—not merely doable. Capability and gate checks were DO and GET; this pass is **pride, values, and emotional fit** against the **JD and candidate materials only** — **no employer website, culture pages, or vibe pages are available** for this meteorite-sourced job.\n\nSTEP 2 — CONSTRUCT PAYLOAD: Build a **token-conservative** encoded line for `agent_payload` (see PAYLOAD INSTRUCTIONS). Each JD row in --- CONTENT --- carries its own zero-based index; use the index as provided.\nYou may append **one** optional short note (5-10 words MAX) to the tail after the grade segments (`|...`); omit it entirely if nothing worth mentioning — that is valid.\n\nSTEP 3 — VALIDATE PAYLOAD: Confirm exactly one encoded line per JD row, each matching the index from --- CONTENT ---, and **every** rubric vector present with valid **two-letter codes** from the rubric and valid grade + confidence digits per the instructions.\n\nSTEP 4 — PACKAGE RESPONSE: Return valid JSON with `agent_performance` and `agent_payload` (string). Use `agent_performance.status` `\"failure\"` plus `failure_note` only if you cannot complete grading.\n\n*****\nDO NOT ADD PER-VECTOR REASON TEXT OR FAT JSON AT THIS STAGE. Downstream software decodes the compact line and attaches rubric-sourced descriptions to each grade. Minimize output tokens; later workflow handles application copy and artifacts.\n*****\n\n## INPUT FORMAT ##\n\n[index]\nJob description text\n\nThe live task uses a zero-based row index (e.g. `000:`) in --- CONTENT ---, same pattern as evaluate. Your encoded line must start with that index as provided in --- CONTENT --- — match indexes only; do not echo external job identifiers into the payload.\n\n## Ground rules (LIKE)\n\n**Do not punish the role** for what it cannot control or has not revealed in the JD—stay fair.\n\n**Use the rubric's A/B/C/D/F/X definitions.** If the JD text (company website/culture content is not provided) is silent on a vector, grade **X**.\n\n**Independence.** Grade each vector on its own evidence; do not let early rows inflate or deflate later ones.\n\n**Be honest.** She'd rather know a job isn't right than waste months discovering it.\n\n**Use your confidence rating.** Check the facts, catch yourself if you're making assumptions.\n\n**Embrace the X.** If the rubric asks a question the materials don't answer, use **X0**; many vectors may be irrelevant to a given posting—we still want a full vector set with X where there is no signal.\n\n**Meteorite — liberal X:** Because company visibility is absent, use grade **X** with confidence **0** **more liberally** whenever the JD does not supply clear evidence for a vector; do not invent company culture or employer vibe.\n\n**On F for this pass:** Reserve **F** for clear, defensible dealbreaker-level misfit on that vector. If you lack **positive proof** of an F-level failure, prefer **X** (not a soft pass—**unknown / not shown**). Do not \"fail by vibe.\"\n\nRead all candidate blocks below before grading. Do not skim; this could be {$FIRST_NAME}'s next career move.\n\n## LIKE rubric\n{$RUBRIC_VECTORS}\n\n## PAYLOAD INSTRUCTIONS\n{$OUTPUT_INSTRUCTIONS}\n{$RESPONSE_SCHEMA}\n\nRemember: Be ruthless when values or dealbreaker language is explicit in the JD; be liberal when it's judgment. Never assign **F** without positive proof—if the materials don't support F, use **X** (unknown / not shown), not a speculative fail.\n\n## Candidate resume\n{$BASE_RESUME}\n\n## Priorities\n{$PRIORITIES}\n\n## Backstory\n{$BACKSTORY}\n\n## Strengths\n{$STRENGTHS}\n\n## Deal breakers\n{$DEAL_BREAKERS}",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-29 22:02:08",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 10,
+    "task_name": "Grade Job: Like (Meteorite)"
+  },
+  {
+    "task_key_uuid": "dd589bcb-a2e1-4ac4-962f-f700cd3dad46",
+    "task_key": "meteorite_upshot",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "## AGENT MESSAGE\n\n{$SELECTED_AGENT}\n\n## INSTRUCTIONS\n\n### Meteorite context\n\nThis job is **meteorite-sourced**. Astral does **not** have hiring-company website or culture visibility. Do **not** invent employer vibe or company chemistry from absent pages. Call out thin company signal in **caveats**, and temper **take_like** / chemistry language accordingly.\n\nSynthesize a **job analysis upshot** for {$FIRST_NAME} from the consult recap and listing context in the content blocks below. Respond with **one JSON object only** (no markdown fences, no commentary outside JSON).\n\n### Required top-level keys\n\n- **take_jd** (string, required): Estelle's thoughts for the **JD** phase — candidate-facing narrative explaining what stands out about this job listing and role definition after JD consult, in the same voice and depth as **take_do**, **take_get**, and **take_like**. Place JD-phase rubric context in mind but do not dump raw grades. This is **not** **whole_jd_upshot** (overall job summary).\n- **take_do** (string, required): Estelle's thoughts for the **DO** phase — candidate-facing narrative on day-to-day fit and role demands (thoughts above vectors; not a grade dump).\n- **take_get** (string, required): Estelle's thoughts for the **GET** phase — candidate-facing narrative on what {$FIRST_NAME} would gain and grow into.\n- **take_like** (string, required): Estelle's thoughts for the **LIKE** phase — candidate-facing narrative on mutual enthusiasm and chemistry signals.\n- **whole_jd_upshot** (string, required): Short overall job summary for the candidate (one cohesive upshot of the listing).\n- **segment_upshots** (array, required): Objects with **segment_key** (string) and **upshot** (string) for noteworthy JD segments.\n- **candidate_questions** (array, required): Objects with **text** (string) — questions {$FIRST_NAME} should ask the hiring manager.\n- **caveats** (array, required): Objects with **text** (string) — honest caveats or risks to flag.\n\nWrite in direct, second-person or candidate-addressed prose consistent with other Estelle consult outputs. Use the recap grades and notes as input; synthesize — do not paste rubric tables.\n\nKEEP IT CONCISE and use line breaks for improved readability.  Let your points breathe, rather than delivering a wall of text.\n\n\nWe appreciate you!\n\n-The Astral Team",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-29 22:02:08",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 11,
+    "task_name": "Analysis Upshot (Meteorite)"
   }
 ]

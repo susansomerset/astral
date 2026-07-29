@@ -31,6 +31,7 @@ from src.utils.config import (
     RUBRIC_TOTAL,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    METEORITE_GDL_OUTCOME_BY_TASK,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
     grade_value,
@@ -75,11 +76,24 @@ def _consult_orchestration(task_key: str) -> Dict[str, Any]:
     return TASK_CONFIG[tk]
 
 
-def _render_pass_fail(task_key: str, grades: list) -> str:
+def _entity_state_is_meteorite(state: Optional[str]) -> bool:
+    return bool(state) and str(state).startswith("METEORITE_")
+
+
+def _consult_orchestration_for_entity(task_key: str, entity_state: Optional[str] = None) -> Dict[str, Any]:
+    """TASK_CONFIG row, with meteorite pass/fail/error overlay for shared GDL keys."""
+    cfg = dict(_consult_orchestration(task_key))
+    overlay = METEORITE_GDL_OUTCOME_BY_TASK.get((task_key or "").strip())
+    if overlay and _entity_state_is_meteorite(entity_state):
+        cfg.update(overlay)
+    return cfg
+
+
+def _render_pass_fail(task_key: str, grades: list, entity_state: Optional[str] = None) -> str:
     """Binary grading (AST-357): F with confidence 2–5 fails; all literal X fails; no confidence > 1 fails.
     grades: [{vector, grade, confidence, ...}, ...].
     Raises KeyError if orchestration lookup fails (missing TASK_CONFIG key)."""
-    cfg = _consult_orchestration(task_key)
+    cfg = _consult_orchestration_for_entity(task_key, entity_state)
     if not grades:
         logger.debug_detail(f"pass_fail task_key={task_key} branch=empty_grades -> fail")
         return cfg["fail_state"]
@@ -566,6 +580,7 @@ _GRADE_DISPATCH_TO_HEADER = {
     "grade_do": "DO",
     "grade_get": "GET",
     "grade_like": "LIKE",
+    "meteorite_like": "LIKE",
 }
 
 
@@ -716,9 +731,10 @@ def _serialize_do_get_like_bundle(job_data: Dict[str, Any]) -> str:
 async def _prep_analysis_upshot_live_content(
     job: Dict[str, Any],
     company: Optional[Dict[str, Any]],
+    scoring_task_key: str = "analysis_upshot",
 ) -> Any:
     """Coat-check JD + website (same as render_verdict LIKE); add raw_job_listing + DO/GET/LIKE recap."""
-    base = await _prep_live_content(job, company, scoring_task_key="analysis_upshot")
+    base = await _prep_live_content(job, company, scoring_task_key=scoring_task_key)
     if not base:
         return False
     jd_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
@@ -738,11 +754,12 @@ async def _run_analysis_upshot_batch(
     entities: List[Dict[str, Any]],
     ctx: Optional[Dict[str, Any]],
     debug: bool,
+    task_key: str = "analysis_upshot",
 ) -> Dict[str, int]:
-    """AST-480: synthesis at PASSED_LIKE (score_floor dispatch); persist job_data.analysis_upshot → RECOMMENDED."""
+    """AST-480 / AST-1055: synthesis upshot; persist job_data.analysis_upshot → pass_state."""
     if debug:
         logger.set_debug_flag(True)
-    task_cfg = TASK_CONFIG["analysis_upshot"]
+    task_cfg = TASK_CONFIG[task_key]
     processed = passed = failed = errors = 0
     base_ctx = dict(ctx or {})
     for job in entities:
@@ -755,21 +772,23 @@ async def _run_analysis_upshot_batch(
             if not company:
                 dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
                 if dest:
-                    _transition_job_state_for_task("analysis_upshot", [aid], dest)
+                    _transition_job_state_for_task(task_key, [aid], dest)
                 errors += 1
                 continue
-        live_content = await _prep_analysis_upshot_live_content(row, company)
+        live_content = await _prep_analysis_upshot_live_content(
+            row, company, scoring_task_key=task_key,
+        )
         if not live_content:
             fresh = tracker.get_job(aid) or row
             if fresh.get("state") != "NEED_WEBSITE_CONTENT":
                 dest = _consult_batch_fail_dest(fresh.get("state"), task_cfg.get("error_state"))
                 if dest:
-                    _transition_job_state_for_task("analysis_upshot", [aid], dest)
+                    _transition_job_state_for_task(task_key, [aid], dest)
             errors += 1
             continue
         task_ctx = {**base_ctx, "batch_entities": [row], "job": row, "batch_size": 1}
         result = await do_task(
-            task_key="analysis_upshot",
+            task_key=task_key,
             live_content=live_content,
             index=aid,
             ctx=task_ctx,
@@ -793,18 +812,19 @@ async def _run_analysis_upshot_batch(
                 continue
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
-                _transition_job_state_for_task("analysis_upshot", [aid], dest)
+                _transition_job_state_for_task(task_key, [aid], dest)
             errors += 1
             continue
         parsed = result.get("parsed_response")
         if not isinstance(parsed, dict):
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
-                _transition_job_state_for_task("analysis_upshot", [aid], dest)
+                _transition_job_state_for_task(task_key, [aid], dest)
             errors += 1
             continue
+        # Same job_data key as analysis_upshot so Recommended report consumers keep working.
         tracker.save_job_data(aid, {"analysis_upshot": parsed})
-        _transition_job_state_for_task("analysis_upshot", [aid], task_cfg["pass_state"])
+        _transition_job_state_for_task(task_key, [aid], task_cfg["pass_state"])
         passed += 1
     return {
         "total_processed": processed,
@@ -843,7 +863,10 @@ def _apply_render_verdict_decoded_job(
     notes_tail = nt.strip() if isinstance(nt, str) and nt.strip() else ""
 
     if mode == "binary":
-        to_state = _render_pass_fail(dispatch_task_key, grades)
+        job_row = tracker.get_job(astral_job_id) or {}
+        to_state = _render_pass_fail(
+            dispatch_task_key, grades, entity_state=job_row.get("state"),
+        )
         score = None
     elif mode == "scored":
         rubric_key = cfg.get("rubric_artifact")
@@ -877,7 +900,10 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     derives verdict, saves grades+score, transitions state.
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
     Returns result dict for CLI logging."""
-    cfg = _consult_orchestration(task_type)
+    job = tracker.get_job(astral_job_id)
+    cfg = _consult_orchestration_for_entity(
+        task_type, (job or {}).get("state") if job else None,
+    )
     agent_task = cfg.get("agent_task") or task_type
     error_state = cfg.get("error_state")
 
@@ -900,7 +926,6 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
             _transition_job_state_for_task(agent_task, [astral_job_id], error_state)
         return {"success": False, "to_state": error_state, "error": error}
 
-    job = tracker.get_job(astral_job_id)
     if not job:
         return _fail(f"Job not found: {astral_job_id}")
 
@@ -1046,7 +1071,8 @@ async def _run_batch_consult(
     Fabricated IDs are silently dropped.
     batch_chunk_index: parallel dispatcher chunks append suffix for agent_data RESPONSE dedupe (AST-502).
     Returns unified summary dict."""
-    cfg = _consult_orchestration(task_key)
+    entity_state = jobs[0].get("state") if jobs else None
+    cfg = _consult_orchestration_for_entity(task_key, entity_state)
     astral_ids = [j["astral_job_id"] for j in jobs]
     input_by_id = {j["astral_job_id"]: j for j in jobs}
     batch_states = sorted({j.get("state") for j in jobs if j.get("state")})
@@ -1528,7 +1554,7 @@ async def evaluate_jd_batch(
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
         grades = response_job["grades"]
-        to_state = _render_pass_fail(task_key, grades)
+        to_state = _render_pass_fail(task_key, grades, entity_state=input_job.get("state"))
         # Validate grades against rubric vectors; invalid/incomplete payloads retry via _run_batch_consult.
         score = None
         if rubric_list:
@@ -1573,7 +1599,8 @@ async def _consult_scored_dispatch_batch_encoded(
 ) -> Dict[str, Any]:
     """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
     hdr = _GRADE_DISPATCH_TO_HEADER[dispatch_task_key]
-    cfg_dispatch = _consult_orchestration(dispatch_task_key)
+    entity_state = jobs[0].get("state") if jobs else None
+    cfg_dispatch = _consult_orchestration_for_entity(dispatch_task_key, entity_state)
     agent_tk = cfg_dispatch.get("agent_task") or dispatch_task_key
     error_state = cfg_dispatch.get("error_state")
     skipped = 0
@@ -1694,6 +1721,19 @@ async def grade_like_batch(
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+    )
+
+
+async def meteorite_like_batch(
+    batch_id: str,
+    jobs: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_chunk_index: Optional[int] = None,
+) -> Dict[str, Any]:
+    # AST-1055: same encoded LIKE path; TASK_CONFIG.meteorite_like drives states + agent_task.
+    return await _consult_scored_dispatch_batch_encoded(
+        "meteorite_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
     )
 
 
@@ -1919,10 +1959,10 @@ async def run_consult_task(
         r = await evaluate_jd_batch(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
-    elif task_key in ("grade_do", "grade_get", "grade_like"):
+    elif task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
-            orch = _consult_orchestration(task_key)
+            orch = _consult_orchestration_for_entity(task_key, entities[0].get("state"))
             rv = await render_verdict(task_key, aid, ctx=ctx, debug=debug)
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
@@ -1932,10 +1972,11 @@ async def run_consult_task(
             "grade_do": grade_do_batch,
             "grade_get": grade_get_batch,
             "grade_like": grade_like_batch,
+            "meteorite_like": meteorite_like_batch,
         }[task_key]
         r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
-    elif task_key == "analysis_upshot":
-        return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug)
+    elif task_key in ("analysis_upshot", "meteorite_upshot"):
+        return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug, task_key=task_key)
     elif is_dispatch_chain_trigger((input_state or "").strip()) and task_key in TASK_CONFIG:
         return await _run_dispatch_chain_job_batch(
             batch_id, entities, ctx, debug, task_key, input_state,
