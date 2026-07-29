@@ -943,15 +943,36 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 
+### AST-1035 · AST-1019
+
+**AST-1035 (UAT):** Admin **Session Resume Paste** — **View Parsed JSON** between Parse and Open HTML; read-only Modal shows the exact `lastParse` (`resume_structure` + `base_resume`) Open HTML POSTs; disabled when no successful parse; close does not clear `lastParse`. No new API. Parse/HTML contracts unchanged (**AST-987** / **AST-986**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| View Parsed JSON button order + modal payload (§6c) | `AdminSessionResumePaste.tsx` | **`test_AdminSessionResumePaste.test.tsx`** — AST-1035 modal case + Parse/Open HTML regressions |
+
+**Broken / obsolete this pass:** none — additive UI control; AST-987 page tests extended in place.
+
+**Integration:** no existing scenario asserts Session Resume Paste JSON inspect — no revision; do not invent new integration coverage.
+
+**AST-1035** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```
+
+---
+
 ### AST-987 · AST-985
 
-**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab. Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route.
+**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab. Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route. View Parsed JSON control = **AST-1035**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Session HTML builder (no bind) | `src/core/builder.py` **`build_session_base_resume`** | **`TestAst987BuildSessionBaseResume`** (`test_builder.py`) |
 | Admin HTML POST | `src/ui/api/api_admin.py` **`session_resume_html`** | **`TestAst987SessionResumeHtmlApi`** (`test_api_admin.py`) |
-| Admin paste page (§6c) | `AdminSessionResumePaste.tsx` + nav/route | **`test_AdminSessionResumePaste.test.tsx`** — render, parse success/fail, Open HTML blob/error, localStorage restore |
+| Admin paste page (§6c) | `AdminSessionResumePaste.tsx` + nav/route | **`test_AdminSessionResumePaste.test.tsx`** — render, parse success/fail, View Parsed JSON modal, Open HTML blob/error, localStorage restore |
 
 **Broken / obsolete:** none — new surface; candidate-bound `/candidate/resume/base` and craft persist paths unchanged.
 
@@ -991,6 +1012,36 @@ cd src/ui/frontend && npm run test:component -- \
 
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+---
+
+### AST-1033 · AST-1031
+
+**Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`.
+
+Admin **Read email** page (§6c): first-paint list via `GET /api/admin/inbox/messages`; row click → wide `Modal` + sandboxed iframe (`sandbox=""`) for `html_body`; empty subject → title `Message`; list/body errors inline (+ toast on list). API: **`docs/test-bible/ui/api/api_inbox.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page list + modal iframe (§6c) | `AdminReadEmail.tsx` + route | **`test_AdminReadEmail.test.tsx`** |
+| Nav label/path order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1033ReadEmailNav`** (`test_config.py`) |
+| Auth-gated list/get API | `src/ui/api/api_inbox.py` | **`TestAst1033InboxApi`** (`test_api_inbox.py`) |
+
+**Broken / obsolete this pass:** none — additive Admin seed; AST-1032 Gmail/core coverage unchanged.
+
+**Integration:** no existing scenarios inventory Admin Read email or `/api/admin/inbox/*` — none revised; do not invent new integration coverage.
+
+**AST-1033** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminReadEmail.test.tsx
 ```
 
 ---

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -64,7 +64,17 @@ describe("AdminSessionResumePaste — AST-987", () => {
     renderWithProviders(<SessionResumePaste />)
     expect(screen.getByRole("heading", { name: "Session Resume Paste" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Parse" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "View Parsed JSON" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeDisabled()
+    // Button order: Parse → View Parsed JSON → Open HTML (AST-1035).
+    const rowButtons = screen.getAllByRole("button").filter(b =>
+      ["Parse", "View Parsed JSON", "Open HTML"].includes(b.textContent || ""),
+    )
+    expect(rowButtons.map(b => b.textContent)).toEqual([
+      "Parse",
+      "View Parsed JSON",
+      "Open HTML",
+    ])
 
     const textarea = screen.getByPlaceholderText(/Paste full resume text/)
     fireEvent.change(textarea, { target: { value: "Full resume paste" } })
@@ -72,6 +82,7 @@ describe("AdminSessionResumePaste — AST-987", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Parse" }))
     await waitFor(() => expect(screen.getByText("Parsed resume structure.")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "View Parsed JSON" })).toBeEnabled()
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled()
     expect(window.open).not.toHaveBeenCalled()
     expect(JSON.parse(localStorage.getItem("session_resume:last_parse") || "null")).toEqual({
@@ -97,8 +108,34 @@ describe("AdminSessionResumePaste — AST-987", () => {
     })
     await userEvent.click(screen.getByRole("button", { name: "Parse" }))
     await waitFor(() => expect(screen.getAllByText("agent boom").length).toBeGreaterThan(0))
+    expect(screen.getByRole("button", { name: "View Parsed JSON" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeDisabled()
     expect(window.open).not.toHaveBeenCalled()
+  })
+
+  it("View Parsed JSON shows lastParse payload; close keeps lastParse (AST-1035)", async () => {
+    const payload = {
+      resume_structure: STRUCTURE,
+      base_resume: { experience: "Jobs from paste" },
+    }
+    localStorage.setItem("session_resume:paste_text", JSON.stringify("kept paste"))
+    localStorage.setItem("session_resume:last_parse", JSON.stringify(payload))
+    mockApis()
+    renderWithProviders(<SessionResumePaste />)
+    const viewBtn = await screen.findByRole("button", { name: "View Parsed JSON" })
+    expect(viewBtn).toBeEnabled()
+    await userEvent.click(viewBtn)
+    const modal = screen.getByText("Parsed resume JSON").closest(".modal-card") as HTMLElement
+    expect(modal).toBeTruthy()
+    const pre = within(modal).getByText((_, el) => el?.tagName === "PRE")
+    expect(pre.textContent).toBe(JSON.stringify(payload, null, 2))
+    expect(pre.textContent).toContain("resume_structure")
+    expect(pre.textContent).toContain("base_resume")
+    // Close must not clear lastParse / disable Open HTML.
+    await userEvent.click(within(modal).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByText("Parsed resume JSON")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled()
+    expect(JSON.parse(localStorage.getItem("session_resume:last_parse") || "null")).toEqual(payload)
   })
 
   it("Open HTML posts session JSON and opens blob tab", async () => {
@@ -167,6 +204,7 @@ describe("AdminSessionResumePaste — AST-987", () => {
     mockApis()
     renderWithProviders(<SessionResumePaste />)
     expect(screen.getByDisplayValue("restored paste")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "View Parsed JSON" })).toBeEnabled()
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled()
   })
 })
