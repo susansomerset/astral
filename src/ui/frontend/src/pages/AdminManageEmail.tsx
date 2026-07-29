@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type MouseEvent } from "react"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import api from "../lib/api"
@@ -27,7 +27,7 @@ export default function AdminManageEmail() {
   const [bodyLoading, setBodyLoading] = useState(false)
   const [bodyError, setBodyError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const [createBusy, setCreateBusy] = useState(false)
+  const [createBusyId, setCreateBusyId] = useState<string | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
   useEffect(() => {
@@ -96,20 +96,23 @@ export default function AdminManageEmail() {
 
   const selected = messages.find(m => m.id === selectedId)
   const modalTitle = (selected?.subject || "").trim() || "Message"
-  const selectedMatched =
+  const selectedMatchId =
     selected?.candidate_match?.matched === true &&
-    Boolean((selected.candidate_match.astral_candidate_id || "").trim())
-  const selectedMatchId = selectedMatched
-    ? (selected!.candidate_match!.astral_candidate_id as string)
-    : null
+    (selected.candidate_match.astral_candidate_id || "").trim()
+      ? (selected.candidate_match.astral_candidate_id as string)
+      : null
 
-  async function onCreateClick() {
-    if (!selectedMatched || !selectedId || createBusy) return
-    setCreateBusy(true)
+  async function onCreateClick(row: InboxMessage, e: MouseEvent) {
+    e.stopPropagation()
+    const matched =
+      row.candidate_match?.matched === true &&
+      Boolean((row.candidate_match.astral_candidate_id || "").trim())
+    if (!matched || createBusyId !== null) return
+    setCreateBusyId(row.id)
     setToast(null)
     try {
       const r = await api(
-        `/api/admin/inbox/messages/${encodeURIComponent(selectedId)}/create-job`,
+        `/api/admin/inbox/messages/${encodeURIComponent(row.id)}/create-job`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -129,13 +132,13 @@ export default function AdminManageEmail() {
         text: jobId ? `Created job ${jobId}` : "Created job",
         variant: "success",
       })
-    } catch (e) {
+    } catch (err) {
       setToast({
-        text: e instanceof Error ? e.message : "Create failed",
+        text: err instanceof Error ? err.message : "Create failed",
         variant: "error",
       })
     } finally {
-      setCreateBusy(false)
+      setCreateBusyId(null)
     }
   }
 
@@ -170,6 +173,7 @@ export default function AdminManageEmail() {
                 <th>Candidate</th>
                 <th>Date</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -184,11 +188,24 @@ export default function AdminManageEmail() {
                   {matchCell(row)}
                   <td>{row.date}</td>
                   <td>{row.unread ? "Unread" : "Read"}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    {row.candidate_match?.matched === true &&
+                    (row.candidate_match.astral_candidate_id || "").trim() ? (
+                      <button
+                        type="button"
+                        className="manage-email-create"
+                        disabled={createBusyId !== null}
+                        onClick={e => onCreateClick(row, e)}
+                      >
+                        Create
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
               {messages.length === 0 && (
                 <tr>
-                  <td colSpan={5}>No messages in inbox.</td>
+                  <td colSpan={6}>No messages in inbox.</td>
                 </tr>
               )}
             </tbody>
@@ -216,16 +233,6 @@ export default function AdminManageEmail() {
             <pre className="email-html-source" title="Email body">{htmlBody || ""}</pre>
           </div>
         )}
-        <div className="manage-email-actions">
-          <button
-            type="button"
-            className="manage-email-create"
-            disabled={!selected?.candidate_match?.matched || createBusy}
-            onClick={onCreateClick}
-          >
-            Create
-          </button>
-        </div>
       </Modal>
 
       {toast && <Toast message={toast} onDone={clearToast} />}

@@ -2075,12 +2075,6 @@ input.side-tab-heading-editable:focus {
   padding: 12px 20px 0;
   font-size: 13px;
 }
-.manage-email-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 20px 16px;
-  gap: 8px;
-}
 .manage-email-create {
   padding: 6px 14px;
   font-size: 13px;
