@@ -949,6 +949,22 @@ CANDIDATE_CONFIG = {
     "initial_state": "NEW_CANDIDATE",
 }
 
+# AST-1047: reusable string → candidate-id match homes (Manage Email From bind first caller).
+CANDIDATE_LOOKUP_CONFIG = {
+    # Dotted paths resolved against a full candidate row (top-level columns + candidate_data).
+    "email_paths": (
+        "contact.contact_email",   # AST-1014 contact blob
+        "contact.reply_email",
+        "profile.contact_email",   # transitional pre-1014
+        "profile.reply_email",
+    ),
+    "name_paths": (
+        "first", "last", "full",           # AST-1014 name columns when present
+        "profile.first", "profile.last",   # transitional
+    ),
+    "match_casefold": True,  # case-insensitive compare for emails and names
+}
+
 assert "PROSPECT" not in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
