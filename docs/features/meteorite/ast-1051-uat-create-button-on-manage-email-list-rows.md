@@ -227,3 +227,15 @@ Keep the request shape identical to the current AST-1049 wire (same path, method
 **Active statutes:** 56 · **Applicable (yes):** 38 · **n/a:** 18 · **fix-now:** 0 · **discuss:** 0
 
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-07-29  
+**Review:** `[code-rubric] revision=1` — Overall **CLEAN**; **fix-now:** none; **discuss:** none.
+
+**Actions:**
+- No product or plan changes required.
+
+**Outcome:** `resolve(AST-1051): — clean` → User Testing.
