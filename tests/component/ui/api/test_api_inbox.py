@@ -23,12 +23,26 @@ class TestAst1033InboxApi:
                 "from_address": "a@x",
                 "date": "Mon",
                 "unread": True,
+                "candidate_match": {"matched": False, "astral_candidate_id": None},
             }
         ]
-        monkeypatch.setattr(inbox_mod, "list_inbox_messages", MagicMock(return_value=rows))
+        list_mock = MagicMock(return_value=rows)
+        monkeypatch.setattr(inbox_mod, "list_inbox_messages", list_mock)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
         resp = inbox_client.get("/api/admin/inbox/messages", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.get_json() == {"messages": rows}
+        list_mock.assert_called_once_with(debug=False)
+
+    def test_list_passes_ui_llm_debug(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        list_mock = MagicMock(return_value=[])
+        monkeypatch.setattr(inbox_mod, "list_inbox_messages", list_mock)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
+        resp = inbox_client.get("/api/admin/inbox/messages?debug=1", headers=auth_headers)
+        assert resp.status_code == 200
+        list_mock.assert_called_once_with(debug=True)
 
     def test_list_messages_upstream_failure_502(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

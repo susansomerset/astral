@@ -27,3 +27,18 @@ Thin `@require_admin` Flask wrappers over `src.core.inbox` — list/get JSON; up
   tests/component/ui/api/test_api_inbox.py \
   tests/component/utils/test_config.py::TestAst1033ReadEmailNav
 ```
+
+
+### AST-1047 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`.
+
+`inbox_list_messages` passes `ui_llm_debug(...)` into `list_inbox_messages(debug=…)` for From→candidate_match enrichment.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List debug flag wiring | `src/ui/api/api_inbox.py` | revised **`TestAst1033InboxApi.test_list_messages_ok`**; **`test_list_passes_ui_llm_debug`** |
+
+**Broken / obsolete:** none beyond asserting `debug=` call kwargs on list.
+
+**Integration:** no existing scenario — no revision.

@@ -1082,3 +1082,18 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 **Broken / obsolete:** none — additive config block.
 
 **Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
+
+
+### AST-1047 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`.
+
+`CANDIDATE_LOOKUP_CONFIG`: email/name dotted paths + `match_casefold` for reusable string→id lookup (Manage Email From bind first caller).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Lookup path tuples + casefold | `src/utils/config.py` | **`TestAst1047CandidateLookupConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** no existing scenario asserts CANDIDATE_LOOKUP_CONFIG — no revision.

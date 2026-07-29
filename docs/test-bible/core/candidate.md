@@ -545,3 +545,18 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
   -q
 ```
+
+
+### AST-1047 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`.
+
+`get_candidate_id_for_query`: unique email/name hit via `CANDIDATE_LOOKUP_CONFIG`; `parseaddr` for display-name From; ambiguous/none → None; ID `get_candidate` unchanged. Style D when `debug=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| String → unique id / none / ambiguous / empty / parseaddr / casefold / Style D | `src/core/candidate.py` | **`TestAst1047GetCandidateIdForQuery`** |
+
+**Broken / obsolete:** none — additive lookup API.
+
+**Integration:** no existing scenario asserts string→candidate lookup — no revision; do not invent new integration coverage.
