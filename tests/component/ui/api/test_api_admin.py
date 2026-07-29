@@ -2530,3 +2530,173 @@ class TestAst987SessionResumeHtmlApi:
         assert b"session" in resp.data
         assert captured["debug"] is True
         assert captured["content"]["experience"] == "Jobs"
+
+
+# AST-1024: Admin POST /session_cover_letter/html — in-memory fields → text/html.
+class TestAst1024SessionCoverLetterHtmlApi:
+    def _payload(self, **overrides: Any) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "from_block": "Susan Somerset",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Team,\n\nThanks.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        body.update(overrides)
+        return body
+
+    def test_requires_admin(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(),
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_400_when_body_not_object(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=["not", "an", "object"],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["success"] is False
+        assert "JSON object" in body["error"]
+
+    def test_400_on_builder_value_error(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "build_session_cover_letter",
+            MagicMock(side_effect=ValueError("from_block is required")),
+        )
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(from_block=""),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["success"] is False
+        assert body["error"] == "from_block is required"
+
+    def test_200_returns_html_fields_from_config_keys(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["fields"] = fields
+            captured["candidate_id"] = candidate_id
+            captured["debug"] = debug
+            return "<html><body>session-cover</body></html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        field_keys = set(cfg.BUILD_CONFIG["session_cover_letter"]["fields"])
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json={
+                **self._payload(letter="Hello cover"),
+                "candidate_id": None,
+                "noise_key": "should-not-reach-fields",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/html"
+        assert b"session-cover" in resp.data
+        assert captured["debug"] is True
+        assert captured["candidate_id"] is None
+        assert set(captured["fields"]) == field_keys
+        assert "noise_key" not in captured["fields"]
+        assert captured["fields"]["letter"] == "Hello cover"
+
+    def test_blank_candidate_id_becomes_none(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["candidate_id"] = candidate_id
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(candidate_id="  "),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured["candidate_id"] is None
+
+    def test_forwards_candidate_id(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["candidate_id"] = candidate_id
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(candidate_id="cand-9"),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured["candidate_id"] == "cand-9"
+
+    def test_non_string_candidate_id_ignored(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["candidate_id"] = candidate_id
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(candidate_id=123),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured["candidate_id"] is None

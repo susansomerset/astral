@@ -234,6 +234,33 @@ Equivalent harness:
 
 ---
 
+### AST-1024 · AST-1023
+
+**AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` reads `profile.cover_letter_signature_image` via `_safe_image_src` (name-only sign-off when absent/rejected). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validation + SomersetCover DOM/CSS + optional to/subject | `src/core/builder.py` | **`TestAst1024BuildSessionCoverLetter`** |
+| Optional candidate signature image / miss / skip | same | same class (image accepted / absent / rejected / blank id) |
+| Paragraph split + HTML escape | same | same class |
+| Style D debug True/False (no log-string asserts) | same | success + failure debug paths |
+
+**Broken / obsolete this pass:** none — additive session path; job cover emit unchanged.
+
+**Integration:** no existing `tests/integration/` scenario asserts session cover HTML — no revision; do not invent new integration coverage.
+
+**AST-1024** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter \
+  tests/component/ui/api/test_api_admin.py::TestAst1024SessionCoverLetterHtmlApi \
+  tests/component/utils/test_config.py::TestAst1024SessionCoverLetterConfig \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.
