@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786 / AST-878 / AST-1037):** populated **39**-row catalog (includes **`fetch_culture_pages`**, **`simple_resume_parse`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**, **AST-1037**). Parallel **AST-1015** `preamble_validate_response` remains on the Candidate epic tip until that row lands on the shared merge base.
+**UAT seed (AST-786 / AST-878 / AST-1037):** populated **41**-row catalog (includes **`fetch_culture_pages`**, **`simple_resume_parse`**, **`meteorite_like`**, **`meteorite_upshot`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**, **AST-1037**). Parallel **AST-1015** `preamble_validate_response` remains on the Candidate epic tip until that row lands on the shared merge base.
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
@@ -75,3 +75,22 @@ Repo **`agent_task.json`** catalog gains **`fetch_culture_pages`** — primary m
 ### AST-880 · AST-879
 
 **`vet_inflow_discovery`** repo JSON + UAT fixture carry AST-880 encoded A–F rubric marker — byte identity with **`docs/uat-fixtures/AST-756/expected-agent_task.json`** unchanged (**AST-786**). DB migration: **`docs/test-bible/data/database/agent_tasks.md`** / **`TestAst880VetInflowEncodedPromptMigration`**.
+
+---
+
+### AST-1055 · AST-1052
+
+Repo **`agent_task.json`** gains **`meteorite_like`** + **`meteorite_upshot`** (Grace / Estelle prompt twins). Catalog frozenset **39 → 41**; UAT fixture **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-locked. Primary TASK_CONFIG / consult: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + prompts | `data/admin/agent_task.json` | **`TestAst1055MeteoriteCatalogRows`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **39**-row asserts → **41**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  -q
+```

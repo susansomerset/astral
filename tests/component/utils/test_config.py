@@ -2353,8 +2353,7 @@ class TestAst1041MeteoriteConfig:
         assert m["company_state"] == "IGNORE"
         assert m["company_state"] in cfg.COMPANY_STATES
         assert "note" in m["company_data"]
-        # AST-1056: create landing retargeted to METEORITE_NEW.
-        assert m["job_create_state"] == "METEORITE_NEW"
+        assert m["job_create_state"] == "JD_READY"
         assert m["job_create_state"] in cfg.JOB_STATES
         assert m["job_create_latest_score"] == 10.0
 
@@ -2484,24 +2483,58 @@ class TestAst1053MeteoriteGdlJobStates:
         assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
 
     def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
-        # AC2 smoke: score-gated set + Recommended priors stay non-meteorite.
-        # Create landing retarget is AST-1056 (TestAst1056MeteoriteCreateLanding).
+        # AC2 smoke: score-gated set + create default stay non-meteorite.
+        # RECOMMENDED meteorite LIKE priors are AST-1055 (TestAst1055MeteoriteLikeUpshotTasks).
         for state in self._PASS + self._FAIL:
             assert state not in cfg.PASSED_SCORE_GATED_STATES, state
         rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
-        assert "METEORITE_PASSED_LIKE" not in rec_priors
         assert "PASSED_LIKE" in rec_priors
         assert "PASSED_LIKE_RETRY" in rec_priors
+        # Create still JD_READY until AST-1056.
+        assert cfg.METEORITE_CONFIG["job_create_state"] == "JD_READY"
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
 
 
-class TestAst1056MeteoriteCreateLanding:
-    """AST-1056: meteorite create lands in METEORITE_NEW via METEORITE_CONFIG."""
+class TestAst1055MeteoriteLikeUpshotTasks:
+    """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
 
-    def test_job_create_state_is_meteorite_new(self) -> None:
-        assert cfg.METEORITE_CONFIG["job_create_state"] == "METEORITE_NEW"
-        assert cfg.METEORITE_CONFIG["job_create_state"] in cfg.JOB_STATES
-        assert cfg.JOB_STATES["METEORITE_NEW"]["prior_states"] is None
-        # Score stand-in unchanged; meteorite score_floor dispatch is AST-1054.
-        assert cfg.METEORITE_CONFIG["job_create_latest_score"] == 10.0
+    def test_task_config_twins_and_schema_parity(self) -> None:
+        like = cfg.TASK_CONFIG["meteorite_like"]
+        upshot = cfg.TASK_CONFIG["meteorite_upshot"]
+        grade_like = cfg.TASK_CONFIG["grade_like"]
+        analysis = cfg.TASK_CONFIG["analysis_upshot"]
+
+        assert like["pass_state"] == "METEORITE_PASSED_LIKE"
+        assert like["fail_state"] == "METEORITE_FAILED_LIKE"
+        assert like["error_state"] == "METEORITE_FAILED_TECHNICAL_LIKE"
+        assert like["requires_company"] is False
+        assert like["rubric_artifact"] == "like_rubric"
+        assert like["grades_key"] == "like_grades"
+        assert like["agent_task"] == "meteorite_like"
+        assert like["response_schema"] == grade_like["response_schema"]
+
+        assert upshot["pass_state"] == "RECOMMENDED"
+        assert upshot["error_state"] == "METEORITE_PASSED_LIKE_RETRY"
+        assert upshot["requires_company"] is False
+        assert upshot["agent_task"] == "meteorite_upshot"
+        assert upshot["response_schema"] == analysis["response_schema"]
+        assert analysis["requires_company"] is True
+
+    def test_recommended_priors_include_meteorite_like_states(self) -> None:
+        priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        assert "METEORITE_PASSED_LIKE" in priors
+        assert "METEORITE_PASSED_LIKE_RETRY" in priors
+        assert "PASSED_LIKE" in priors
+        assert "PASSED_LIKE_RETRY" in priors
+
+    def test_rubric_owner_batch_and_encoded_membership(self) -> None:
+        from src.core import agent as agent_mod
+        from src.core import dispatcher as dispatcher_mod
+
+        assert cfg.rubric_owner_task_key("meteorite_like") == "grade_like"
+        assert cfg.rubric_owner_task_key("grade_like") == "grade_like"
+        assert "meteorite_like" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_upshot" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+        assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
 
