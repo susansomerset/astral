@@ -1073,11 +1073,11 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
 
-`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (`JD_READY` / score). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Template keys + IGNORE/JD_READY registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** |
+| Template keys + IGNORE/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing assert revised **AST-1056**) |
 
 **Broken / obsolete:** none — additive config block.
 
@@ -1134,13 +1134,13 @@ Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read e
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`.
 
-Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Does **not** extend `PASSED_SCORE_GATED_STATES` or `RECOMMENDED` priors; `METEORITE_CONFIG["job_create_state"]` stays `JD_READY` (AST-1056).
+Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Does **not** extend `PASSED_SCORE_GATED_STATES` or `RECOMMENDED` priors. Create landing was `JD_READY` at ship; **AST-1056** retargets to `METEORITE_NEW` (create assert moved out of this smoke).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** |
 
-**Broken / obsolete:** none — additive registry/UI lists; existing membership asserts still hold.
+**Broken / obsolete:** create-state smoke (`JD_READY`) superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**.
 
 **Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
 
@@ -1149,3 +1149,35 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
   tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
   -q
 ```
+
+---
+
+### AST-1056 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`.
+
+`METEORITE_CONFIG["job_create_state"]` → **`METEORITE_NEW`** (meteorite GDL entry). Core `create_meteorite_job` already reads the config key (docstring honesty only). Score stand-in unchanged. Does **not** own dispatch / agent prompts / Recommended UI.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create landing key + unrestricted entry | `src/utils/config.py` | **`TestAst1056MeteoriteCreateLanding`**; revised **`TestAst1041MeteoriteConfig`** |
+| Insert uses config landing | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** |
+| API / inbox / Manage Email mock honesty | passthrough layers | revised **`TestAst1042MeteoriteCreateApi`**, inbox create mocks, **`test_AdminManageEmail`** Create mock |
+
+**Broken / obsolete:** AST-1041 / AST-1042 / AST-1053 asserts that expected `JD_READY` create landing.
+
+**Integration:** no existing scenarios assert meteorite create landing state — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1056MeteoriteCreateLanding \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/ui/api/test_api_meteorite.py \
+  tests/component/core/test_inbox.py::TestAst1049InboxCreateJob \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
+  tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  -q
+```
+
