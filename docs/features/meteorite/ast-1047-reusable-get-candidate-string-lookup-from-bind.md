@@ -187,3 +187,16 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §1.3 DRY | One lookup helper; inbox From bind calls it — no second matcher in UI |
 | Existing `get_candidate(id)` | Untouched ID fetch — no signature break |
 | No picker / no Create UI | Ambiguous → `None`; React left to AST-1048 |
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`
+**Plan path:** `docs/features/meteorite/ast-1047-reusable-get-candidate-string-lookup-from-bind.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `05e8a2b4` | `CANDIDATE_LOOKUP_CONFIG` email/name paths + casefold |
+| 2 | `3ad56efc` | `get_candidate_id_for_query` + `_lookup_path_value`; Style D |
+| 3 | `a530d025` | Inbox list `candidate_match` From bind; `api_inbox` `ui_llm_debug` |
+
+**Tip:** `a530d0255a69308d63896541b621b49b0faf39b4` on `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`
