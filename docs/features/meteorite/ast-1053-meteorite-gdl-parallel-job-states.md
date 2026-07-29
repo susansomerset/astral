@@ -102,3 +102,15 @@ Register a **parallel meteorite GDL job-state track** in `JOB_STATES` (entry **M
 - **§2.6 / job-prior-states-enforced:** Every new state has explicit `prior_states` (or `None` for entry).
 - **config-source-of-truth:** UI labels/sections read from the same config maps.
 - **In-scope only:** No dispatch / prompts / create / Recommended section.
+
+## Review (build stub)
+
+**Publish ref:** 
+**Plan path:** 
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 |  | JOB_STATES meteorite GDL track + In Review/Skipped UI manifests |
+
+**Tip:**  on 
+
