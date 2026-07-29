@@ -1452,6 +1452,24 @@ JOB_STATES = {
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
     "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY"]},
+    # AST-1052 / AST-1053: parallel meteorite GDL track (no CULTURE_READY hop).
+    # Entry METEORITE_NEW is unrestricted (create landing — sibling AST-1056).
+    "METEORITE_NEW":                  {"prior_states": None},
+    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
+    "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
+    "METEORITE_FAILED_TECHNICAL_GET": {"prior_states": ["METEORITE_PASSED_DO"]},
+    # LIKE claimed from METEORITE_PASSED_GET (no CULTURE_READY) — sibling AST-1054/1055.
+    "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
+    "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
+    "METEORITE_FAILED_TECHNICAL_LIKE":{"prior_states": ["METEORITE_PASSED_GET"]},
+    # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
+    "METEORITE_PASSED_LIKE_RETRY":    {"prior_states": ["METEORITE_PASSED_LIKE"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
     "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
@@ -1573,6 +1591,8 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
+    "METEORITE_NEW", "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET",
+    "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
 ]
 # Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
 # Claim uses latest_score >= score_floor on these states; UI treats misses as Skipped while DB
@@ -1911,6 +1931,10 @@ SKIPPED_STATES = [
     "NEED_WEBSITE_CONTENT",
     "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS",
     "FAILED_LIKE", "FAILED_TECHNICAL_LIKE",
+    "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD",
+    "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
+    "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
+    "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
     "CANDIDATE_SKIPPED",
 ]
@@ -1936,6 +1960,12 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "CULTURE_READY", "label": "Culture Ready"},
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
+    {"state": "METEORITE_NEW", "label": "Meteorite New"},
+    {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
+    {"state": "METEORITE_PASSED_DO", "label": "Meteorite Passed DO"},
+    {"state": "METEORITE_PASSED_GET", "label": "Meteorite Passed GET"},
+    {"state": "METEORITE_PASSED_LIKE", "label": "Meteorite Passed LIKE"},
+    {"state": "METEORITE_PASSED_LIKE_RETRY", "label": "Meteorite LIKE upshot (retry)"},
 ]
 
 JOBS_RECOMMENDED_UI_SECTIONS = [
@@ -1956,15 +1986,23 @@ assert all(row["state"] in RECOMMENDED_JOB_STATES for row in JOBS_RECOMMENDED_UI
 JOBS_SKIPPED_SECTION_ORDER = [
     "FAILED_LIKE",
     "FAILED_TECHNICAL_LIKE",
+    "METEORITE_FAILED_LIKE",
+    "METEORITE_FAILED_TECHNICAL_LIKE",
     "FAILED_GET",
     "FAILED_TECHNICAL_GET",
+    "METEORITE_FAILED_GET",
+    "METEORITE_FAILED_TECHNICAL_GET",
     "FAILED_DO",
     "FAILED_TECHNICAL_DO",
+    "METEORITE_FAILED_DO",
+    "METEORITE_FAILED_TECHNICAL_DO",
     "NEED_WEBSITE_CONTENT",
     "NEED_CULTURE_CONTENT",
     "NO_CULTURE_LINKS",
     "FAILED_JD",
     "FAILED_TECHNICAL",
+    "METEORITE_FAILED_JD",
+    "METEORITE_ERROR_EVALUATE_JD",
     "FAILED_JOBLIST",
     "INVALID_TITLE",
     "JD_SCRAPE_FAIL",
@@ -1990,6 +2028,14 @@ JOBS_SKIPPED_SECTION_LABELS = {
     "NO_CULTURE_LINKS": "No Culture Links",
     "FAILED_LIKE": "Failed LIKE",
     "FAILED_TECHNICAL_LIKE": "Failed Technical LIKE",
+    "METEORITE_FAILED_JD": "Meteorite Failed JD",
+    "METEORITE_ERROR_EVALUATE_JD": "Meteorite Error Evaluate JD",
+    "METEORITE_FAILED_DO": "Meteorite Failed DO",
+    "METEORITE_FAILED_TECHNICAL_DO": "Meteorite Failed Technical DO",
+    "METEORITE_FAILED_GET": "Meteorite Failed GET",
+    "METEORITE_FAILED_TECHNICAL_GET": "Meteorite Failed Technical GET",
+    "METEORITE_FAILED_LIKE": "Meteorite Failed LIKE",
+    "METEORITE_FAILED_TECHNICAL_LIKE": "Meteorite Failed Technical LIKE",
 }
 
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
@@ -2004,6 +2050,11 @@ JOBS_IN_REVIEW_GRADE_FIELD = {
     "PASSED_GET": "get_grades",
     "PASSED_LIKE": "like_grades",
     "PASSED_LIKE_RETRY": "like_grades",
+    "METEORITE_PASSED_JD": "jd_grades",
+    "METEORITE_PASSED_DO": "do_grades",
+    "METEORITE_PASSED_GET": "get_grades",
+    "METEORITE_PASSED_LIKE": "like_grades",
+    "METEORITE_PASSED_LIKE_RETRY": "like_grades",
 }
 JOBS_SKIPPED_GRADE_FIELD = {
     "FAILED_JOBLIST": "joblist_grades",
@@ -2011,6 +2062,10 @@ JOBS_SKIPPED_GRADE_FIELD = {
     "FAILED_GET": "get_grades",
     "FAILED_DO": "do_grades",
     "FAILED_LIKE": "like_grades",
+    "METEORITE_FAILED_JD": "jd_grades",
+    "METEORITE_FAILED_DO": "do_grades",
+    "METEORITE_FAILED_GET": "get_grades",
+    "METEORITE_FAILED_LIKE": "like_grades",
 }
 JOBS_UI_GRADE_RUBRIC = {
     "joblist_grades": "joblist_rubric",
