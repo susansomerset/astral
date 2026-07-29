@@ -165,3 +165,15 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
 - **§2.5 / §2.6:** External owns Gmail I/O; core orchestrates/logs; no state machine.
 - **§3.3 imports:** `gmail.py` → utils only; `inbox.py` → external + utils only; UI never imports external.
 - **§3.5 naming:** snake_case Python module `inbox.py`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1031/AST-1032-gmail-inbox-read`
+**Plan path:** `docs/features/meteorite/ast-1032-gmail-inbox-read-external-core.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `0fc6531f` | Dual-scope credentials; `list_inbox_messages` / `get_message_html` in `src/external/gmail.py` |
+| 2 | `69750f7d` | Thin `src/core/inbox.py` orchestrator (log + re-raise) |
+
+**Tip:** `69750f7d` on `origin/sub/AST-1031/AST-1032-gmail-inbox-read`
