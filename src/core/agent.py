@@ -46,6 +46,7 @@ from src.utils.config import (
     resolve_brain_setting_to_deepseek_tier_meta,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
+    _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
     get_task_keys,
     resume_artifact_hop_task_keys,
     dispatch_chain_graduation_target,
@@ -2277,7 +2278,7 @@ async def do_task(
 
     if parsed is not None and response_format in ("json", "python") and not rubric_encoded:
         if isinstance(parsed, dict) and schema:
-            if task_key == "craft_resume_base":
+            if task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS:
                 from src.core.candidate import normalize_craft_resume_base_agent_payload
 
                 normalize_craft_resume_base_agent_payload(parsed)
@@ -2442,7 +2443,7 @@ async def do_task(
                     "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
     if post_rubric_decode:
         if isinstance(parsed, dict) and schema:
-            if task_key == "craft_resume_base":
+            if task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS:
                 from src.core.candidate import normalize_craft_resume_base_agent_payload
 
                 normalize_craft_resume_base_agent_payload(parsed)

@@ -132,6 +132,26 @@ _RESUME_ARTIFACT_HOP_TASK_KEYS = (
     "finalize_job_resume",
 )
 
+# Shared by craft_resume_base + simple_resume_parse (AST-1037) so contracts cannot drift.
+_CRAFT_RESUME_BASE_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "resume_structure": {"type": "dict", "required": True},
+    "candidate_name": {"type": "str", "required": True},
+    "candidate_title": {"type": "str", "required": True},
+    "candidate_contact_detail": {"type": "str", "required": True},
+    "candidate_tagline": {"type": "str", "required": False},
+    "professional_summary": {"type": "str", "required": True},
+    "core_competencies": {"type": "str", "required": True},
+    "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
+    "prior_experience": {"type": "str", "required": False},
+    "education_certifications": {"type": "str", "required": False},
+    "technical_skills": {"type": "str", "required": False},
+}
+# do_task normalize gate — membership lives here (§1.4), not inline in agent.py.
+_CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
+    "craft_resume_base",
+    "simple_resume_parse",
+})
+
 # ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
 # task_prompt, cached_blocks, uncached_blocks) now lives in the agent_task
@@ -141,23 +161,20 @@ TASK_CONFIG = {
     # PREP CANDIDATE ARTIFACTS PROMPTS
     # CRAFT RESUME BASE - Judith 3
     "craft_resume_base": {
-        "response_schema": {
-            "resume_structure": {"type": "dict", "required": True},
-            "candidate_name": {"type": "str", "required": True},
-            "candidate_title": {"type": "str", "required": True},
-            "candidate_contact_detail": {"type": "str", "required": True},
-            "candidate_tagline": {"type": "str", "required": False},
-            "professional_summary": {"type": "str", "required": True},
-            "core_competencies": {"type": "str", "required": True},
-            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
-            "prior_experience": {"type": "str", "required": False},
-            "education_certifications": {"type": "str", "required": False},
-            "technical_skills": {"type": "str", "required": False},
-        },
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
         "response_format": "json",
         "context_format": "parse_resume_{index}",
         "entity_type": None,
         "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    # SIMPLE RESUME PARSE - Ruth / Little (AST-1037); Admin session wire = AST-1038
+    "simple_resume_parse": {
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
+        "response_format": "json",
+        "context_format": "simple_resume_parse_{index}",
+        "entity_type": None,
+        "requires_candidate_key": False,
         "trigger_state": None,
     },
     # BOOTSTRAP CANDIDATE CONTEXT - Estelle 3
