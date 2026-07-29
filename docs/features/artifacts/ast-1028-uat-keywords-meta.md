@@ -108,3 +108,13 @@ None (fix-now / discuss).
 ### Recommended actions
 
 resolve-child → User Testing (restart/deploy so startup applies repo JSON, then re-paste).
+
+## Resolution
+
+**2026-07-29** — Radia **CLEAN**; no fix-now / discuss items.
+
+- Product tip remains `d83b486b` (`craft_resume_base` title vs tagline split).
+- Intake: Radia `docs(AST-1028)` @ `d749c101` on `origin/sub/AST-1019/AST-1028-uat-keywords-meta`.
+- No product or test-tree changes on resolve.
+
+**UAT note:** restart/deploy so startup applies repo `agent_task.json`, then Session Resume Paste → Parse → Open HTML on a title + specialty fixture; header must be name • title only; meta carries tagline via AST-1010 template.
