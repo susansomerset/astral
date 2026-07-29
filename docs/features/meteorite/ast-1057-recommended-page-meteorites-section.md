@@ -146,3 +146,10 @@ meteorite_section?: {
 ### Recommended actions
 - Katherine: acknowledge stragglers → resolve-child → User Testing.
 
+## Resolution
+
+**Date:** 2026-07-29
+**Review:** Radia @ `36ae2906` — **Overall:** DISCUSS; **fix-now:** none; **discuss:** statute straggler ×14 (all substance **conforms**); no advisory.
+
+No product changes. Acknowledged discuss stragglers as plan-time Joan exclusions that became in-scope on the three-dot vs `origin/dev` (stacked siblings + Betty tests/docs) — no code delta. Advanced to **User Testing**.
+
