@@ -31,6 +31,7 @@ from src.utils.config import (
     RUBRIC_TOTAL,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    METEORITE_GDL_OUTCOME_BY_TASK,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
     grade_value,
@@ -75,11 +76,24 @@ def _consult_orchestration(task_key: str) -> Dict[str, Any]:
     return TASK_CONFIG[tk]
 
 
-def _render_pass_fail(task_key: str, grades: list) -> str:
+def _entity_state_is_meteorite(state: Optional[str]) -> bool:
+    return bool(state) and str(state).startswith("METEORITE_")
+
+
+def _consult_orchestration_for_entity(task_key: str, entity_state: Optional[str] = None) -> Dict[str, Any]:
+    """TASK_CONFIG row, with meteorite pass/fail/error overlay for shared GDL keys."""
+    cfg = dict(_consult_orchestration(task_key))
+    overlay = METEORITE_GDL_OUTCOME_BY_TASK.get((task_key or "").strip())
+    if overlay and _entity_state_is_meteorite(entity_state):
+        cfg.update(overlay)
+    return cfg
+
+
+def _render_pass_fail(task_key: str, grades: list, entity_state: Optional[str] = None) -> str:
     """Binary grading (AST-357): F with confidence 2–5 fails; all literal X fails; no confidence > 1 fails.
     grades: [{vector, grade, confidence, ...}, ...].
     Raises KeyError if orchestration lookup fails (missing TASK_CONFIG key)."""
-    cfg = _consult_orchestration(task_key)
+    cfg = _consult_orchestration_for_entity(task_key, entity_state)
     if not grades:
         logger.debug_detail(f"pass_fail task_key={task_key} branch=empty_grades -> fail")
         return cfg["fail_state"]
@@ -849,7 +863,10 @@ def _apply_render_verdict_decoded_job(
     notes_tail = nt.strip() if isinstance(nt, str) and nt.strip() else ""
 
     if mode == "binary":
-        to_state = _render_pass_fail(dispatch_task_key, grades)
+        job_row = tracker.get_job(astral_job_id) or {}
+        to_state = _render_pass_fail(
+            dispatch_task_key, grades, entity_state=job_row.get("state"),
+        )
         score = None
     elif mode == "scored":
         rubric_key = cfg.get("rubric_artifact")
@@ -883,7 +900,10 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     derives verdict, saves grades+score, transitions state.
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
     Returns result dict for CLI logging."""
-    cfg = _consult_orchestration(task_type)
+    job = tracker.get_job(astral_job_id)
+    cfg = _consult_orchestration_for_entity(
+        task_type, (job or {}).get("state") if job else None,
+    )
     agent_task = cfg.get("agent_task") or task_type
     error_state = cfg.get("error_state")
 
@@ -906,7 +926,6 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
             _transition_job_state_for_task(agent_task, [astral_job_id], error_state)
         return {"success": False, "to_state": error_state, "error": error}
 
-    job = tracker.get_job(astral_job_id)
     if not job:
         return _fail(f"Job not found: {astral_job_id}")
 
@@ -1052,7 +1071,8 @@ async def _run_batch_consult(
     Fabricated IDs are silently dropped.
     batch_chunk_index: parallel dispatcher chunks append suffix for agent_data RESPONSE dedupe (AST-502).
     Returns unified summary dict."""
-    cfg = _consult_orchestration(task_key)
+    entity_state = jobs[0].get("state") if jobs else None
+    cfg = _consult_orchestration_for_entity(task_key, entity_state)
     astral_ids = [j["astral_job_id"] for j in jobs]
     input_by_id = {j["astral_job_id"]: j for j in jobs}
     batch_states = sorted({j.get("state") for j in jobs if j.get("state")})
@@ -1534,7 +1554,7 @@ async def evaluate_jd_batch(
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
         grades = response_job["grades"]
-        to_state = _render_pass_fail(task_key, grades)
+        to_state = _render_pass_fail(task_key, grades, entity_state=input_job.get("state"))
         # Validate grades against rubric vectors; invalid/incomplete payloads retry via _run_batch_consult.
         score = None
         if rubric_list:
@@ -1579,7 +1599,8 @@ async def _consult_scored_dispatch_batch_encoded(
 ) -> Dict[str, Any]:
     """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
     hdr = _GRADE_DISPATCH_TO_HEADER[dispatch_task_key]
-    cfg_dispatch = _consult_orchestration(dispatch_task_key)
+    entity_state = jobs[0].get("state") if jobs else None
+    cfg_dispatch = _consult_orchestration_for_entity(dispatch_task_key, entity_state)
     agent_tk = cfg_dispatch.get("agent_task") or dispatch_task_key
     error_state = cfg_dispatch.get("error_state")
     skipped = 0
@@ -1941,7 +1962,7 @@ async def run_consult_task(
     elif task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
-            orch = _consult_orchestration(task_key)
+            orch = _consult_orchestration_for_entity(task_key, entities[0].get("state"))
             rv = await render_verdict(task_key, aid, ctx=ctx, debug=debug)
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
