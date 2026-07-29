@@ -223,3 +223,16 @@ Do **not** add `meteorite_like` to `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` (owner st
 - **§1.3 DRY:** Reuse `_consult_scored_dispatch_batch_encoded` / generalized upshot batch; do not fork decode or pass/fail.
 - **§3.3 import direction:** Core consult/agent/dispatcher; no UI → core violations.
 - **Boundaries:** No dispatch seed, Create, or Recommended section work.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`
+**Plan path:** `docs/features/meteorite/ast-1055-meteorite-like-meteorite-upshot-agent-tasks.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `be9e9f73` | TASK_CONFIG meteorite_like/upshot twins + RECOMMENDED priors |
+| 2 | `ca3fe5d9` | agent_task meteorite_like + meteorite_upshot prompts |
+| 3 | `2c701210` | route meteorite_like + meteorite_upshot through consult |
+
+**Tip:** `2c701210cff28b9678aad731a434e2e9bd99d952` on `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`
