@@ -147,3 +147,34 @@ params.append(meteorite_prefix + "%")
 - **§1.3 public-then-helpers:** Single public `ensure_meteorite_company`.
 - **database-header-inventory:** Uses existing `company` table only; no new tables.
 - **In-scope only:** No job create / email / UI.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`
+**Plan path:** `docs/features/meteorite/ast-1041-meteorite-company-config-lazy-ensure.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `b5d968b3` | METEORITE_CONFIG after JOB_STATES (IGNORE template + AST-1042 job-create defaults) |
+| 2 | `047be5ff` | ensure_meteorite_company + set_company_batch claim NOT LIKE prefix |
+
+**Tip:** `c49e1711a829850cc8b58c2b0b539ab622f682b9` on `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1041
+**Publish ref tip (pre-docs):** `ae062c74123c6c862f676459dc82cfa339c5c5d4`
+**Overall:** DISCUSS
+
+### What’s solid
+- `METEORITE_CONFIG` owns literals; `ensure_meteorite_company` insert-once / no-op; Style D only when `debug=True`.
+- Claim `NOT LIKE` prefix from config in `set_company_batch` clear=False only; no bulk seed / no reaper / no AST-1042 API.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot now includes `docs/features/**` + Betty tests/bible — all **conforms** on substance.
+
+### Recommended actions
+- Ada: acknowledge stragglers → resolve-child → User Testing.
+
