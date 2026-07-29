@@ -178,3 +178,10 @@ params.append(meteorite_prefix + "%")
 ### Recommended actions
 - Ada: acknowledge stragglers → resolve-child → User Testing.
 
+## Resolution
+
+**Date:** 2026-07-29
+**Review:** Radia @ `fffc224e` — **Overall:** DISCUSS; **fix-now:** none; **discuss:** statute straggler ×3 (all substance **conforms**); no advisory.
+
+No product changes. Acknowledged discuss stragglers as plan-time Joan exclusions that became in-scope on the three-dot vs `origin/dev` (`docs/features/**` + Betty tests/bible) — no code delta. Advanced to **User Testing**.
+
