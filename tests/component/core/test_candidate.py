@@ -2164,6 +2164,35 @@ class TestAst996ExperienceJobArray:
         assert "Do **not** enrich, blend, or expand accomplishments from LinkedIn" in prompt
 
 
+class TestAst1027CraftResumeBaseMarkerPreserve:
+    """AST-1027: craft_resume_base cache_prompt preserves __ / ~~ for builder expand."""
+
+    def test_cache_prompt_preserves_typography_markers(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Preserve contract (replaces prior strip-to-space/hyphen rule).
+        assert "Typography markers (preserve)" in prompt
+        assert "Do **not** replace `__` with a space or `~~` with a hyphen" in prompt
+        assert "`__` → NBSP" in prompt
+        assert (
+            "When the resume/paste contains `__` or `~~`, those digraphs appear unchanged"
+            in prompt
+        )
+        # Old strip instructions must be gone.
+        assert "Strip ANY formatting artifacts" not in prompt
+        assert "All formatting codes stripped clean" not in prompt
+        assert "`__` (replace with space)" not in prompt
+        assert "`~~` (replace with hyphen)" not in prompt
+        # Segment instructions stay paste-faithful (UAT skills / contact / prior).
+        assert "do not rewrite marked bullet separators into pipes" in prompt
+        assert "Jira__•__Confluence__•__Linear" in prompt
+        assert "When the paste uses `__•__`" in prompt
+        assert "Preserve `__` / `~~` / `•` from the paste line" in prompt
+
+
 class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 

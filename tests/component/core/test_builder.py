@@ -1929,6 +1929,59 @@ class TestAst1021DocumentTitleChrome:
         self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
 
 
+class TestAst1027UatMarkerExpand:
+    """AST-1027: when digraphs survive parse, shared expand is 1:1 for UAT skill sample."""
+
+    def test_resume_site_markers_uat_skill_line(self) -> None:
+        # UAT Actual was asymmetric nbsp-left-of-bullet + plain spaces on word joins.
+        sample = (
+            "Program & Delivery: Jira__•__Confluence__•__Linear__• "
+            "Jira__Align__•__Azure__DevOps__•__Asana__• "
+            "Trello__•__JAMA__•__Pivotal__Tracker"
+        )
+        out = builder_mod._resume_site_markers(sample)
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in out
+        assert "Jira\u00a0Align" in out
+        assert "Azure\u00a0DevOps" in out
+        assert "Pivotal\u00a0Tracker" in out
+        assert "__" not in out
+
+    def test_session_html_expands_uat_skill_markers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "technical_skills": {
+                    "id": "technical_skills",
+                    "title": "Technical Skills",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+        blob = {
+            "candidate_name": "Susan Somerset",
+            "technical_skills": (
+                "Program & Delivery: Jira__•__Confluence__•__Linear__• "
+                "Jira__Align__•__Azure__DevOps"
+            ),
+        }
+        html = builder_mod.build_session_base_resume(structure, blob)
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in html
+        assert "Jira\u00a0Align" in html
+        assert "Azure\u00a0DevOps" in html
+        assert "__" not in html
+
+
 class TestAst1014BuilderContact:
     """AST-1014: builder reads name columns + contact blob via _apply_contact_to_render_dict."""
 
@@ -1950,3 +2003,201 @@ class TestAst1014BuilderContact:
         )
         assert render["candidate_name"] == "Ada Lovelace"
         assert "ada@example.com" in render["candidate_contact_detail"]
+
+
+# Branches: fields type/required/string; optional to/subject; candidate miss/image accept/reject;
+# no-candidate skip; paragraph blank-line vs single-chunk newlines; debug True/False success+fail.
+class TestAst1024BuildSessionCoverLetter:
+    """AST-1024: session SomersetCover HTML from in-memory fields (no job load / artifact write)."""
+
+    def _fields(self, **overrides: str) -> dict[str, Any]:
+        base = {
+            "from_block": "Susan Somerset • Oakland, CA\nhire@susansomerset.com",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Hiring Team,\n\nParagraph two.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        base.update(overrides)
+        return base
+
+    def test_rejects_non_dict_fields(self) -> None:
+        with pytest.raises(ValueError, match="session cover letter fields object is required"):
+            builder_mod.build_session_cover_letter("bad")  # type: ignore[arg-type]
+
+    def test_rejects_non_dict_fields_with_debug(self) -> None:
+        with pytest.raises(ValueError, match="session cover letter fields object is required"):
+            builder_mod.build_session_cover_letter("bad", debug=True)  # type: ignore[arg-type]
+
+    def test_rejects_non_string_field(self) -> None:
+        fields = self._fields()
+        fields["letter"] = 42  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="letter must be a string"):
+            builder_mod.build_session_cover_letter(fields)
+
+    def test_rejects_missing_required(self) -> None:
+        with pytest.raises(ValueError, match="from_block is required"):
+            builder_mod.build_session_cover_letter(self._fields(from_block="  "))
+        with pytest.raises(ValueError, match="letter is required"):
+            builder_mod.build_session_cover_letter(self._fields(letter=""))
+
+    def test_none_field_coerces_to_empty_then_required(self) -> None:
+        fields = self._fields()
+        fields["signature"] = None  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="signature is required"):
+            builder_mod.build_session_cover_letter(fields)
+
+    def test_rejects_invalid_with_debug(self) -> None:
+        with pytest.raises(ValueError, match="letter is required"):
+            builder_mod.build_session_cover_letter(self._fields(letter=""), debug=True)
+
+    def test_renders_somerset_cover_without_candidate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        get_c = MagicMock()
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
+        html = builder_mod.build_session_cover_letter(self._fields())
+        assert "<title>SomersetCover</title>" in html
+        assert 'class="fromBlock"' in html
+        assert "Susan Somerset" in html
+        assert "hire@susansomerset.com" in html
+        assert 'class="letterdate"' in html
+        assert "July 27, 2026" in html
+        assert 'class="lettercontent"' in html
+        assert "Dear Hiring Team," in html
+        assert "Paragraph two." in html
+        assert 'class="letterSignoff"' in html
+        assert "Best," in html
+        assert 'class="toBlock"' not in html
+        assert 'class="lettersubject"' not in html
+        assert "<img" not in html  # CSS may define .signature-img; body has no <img>
+        get_c.assert_not_called()
+
+    def test_optional_to_block_and_subject(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            self._fields(to_block="Acme Corp\nHiring Team", subject="Re: Staff Engineer")
+        )
+        assert 'class="toBlock"' in html
+        assert "Acme Corp" in html
+        assert 'class="lettersubject"' in html
+        assert "Re: Staff Engineer" in html
+
+    def test_ignores_unknown_extra_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        fields = self._fields()
+        fields["extra_noise"] = "ignored"
+        html = builder_mod.build_session_cover_letter(fields)
+        assert "ignored" not in html
+        assert "Dear Hiring Team," in html
+
+    def test_blank_line_paragraphs_and_single_chunk_newlines(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            self._fields(letter="Para A\n\nPara B")
+        )
+        assert "<p>Para A</p>" in html
+        assert "<p>Para B</p>" in html
+        html2 = builder_mod.build_session_cover_letter(
+            self._fields(letter="Line one\nLine two")
+        )
+        assert "<p>Line one</p>" in html2
+        assert "<p>Line two</p>" in html2
+        # CRLF normalizes before paragraph split.
+        html3 = builder_mod.build_session_cover_letter(
+            self._fields(letter="CRLF A\r\n\r\nCRLF B")
+        )
+        assert "<p>CRLF A</p>" in html3
+        assert "<p>CRLF B</p>" in html3
+
+    def test_escapes_html_in_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            self._fields(
+                from_block="<b>From</b>",
+                letter='Dear <script>alert(1)</script>',
+                signature='Ada & Co',
+            )
+        )
+        assert "<b>From</b>" not in html
+        assert "&lt;b&gt;From&lt;/b&gt;" in html
+        assert "<script>" not in html
+        assert "Ada &amp; Co" in html
+
+    def test_candidate_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found: cand-x"):
+            builder_mod.build_session_cover_letter(
+                self._fields(), candidate_id="cand-x"
+            )
+
+    def test_candidate_not_found_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            builder_mod.build_session_cover_letter(
+                self._fields(), candidate_id="cand-x", debug=True
+            )
+
+    def test_signature_image_from_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "candidate_data": {
+                "profile": {
+                    "cover_letter_signature_image": "https://example.com/sig.png",
+                }
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: row)
+        html = builder_mod.build_session_cover_letter(
+            self._fields(), candidate_id="cand-1"
+        )
+        assert 'class="signature-img"' in html
+        assert 'src="https://example.com/sig.png"' in html
+        assert "Susan Somerset" in html  # typed name always present
+
+    def test_name_only_when_profile_image_absent_or_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row_absent = {"candidate_data": {"profile": {}}}
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda cid: row_absent
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(), candidate_id="cand-1"
+        )
+        assert "<img" not in html
+        assert "Susan Somerset" in html
+
+        row_bad = {
+            "candidate_data": {
+                "profile": {"cover_letter_signature_image": "javascript:alert(1)"}
+            }
+        }
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda cid: row_bad
+        )
+        html2 = builder_mod.build_session_cover_letter(
+            self._fields(), candidate_id="cand-1"
+        )
+        assert "<img" not in html2
+
+    def test_blank_candidate_id_skips_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        get_c = MagicMock()
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
+        html = builder_mod.build_session_cover_letter(self._fields(), candidate_id="  ")
+        assert "<img" not in html
+        get_c.assert_not_called()
+
+    def test_success_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(self._fields(), debug=True)
+        assert "Dear Hiring Team," in html
+
+    def test_non_string_field_with_debug(self) -> None:
+        fields = self._fields()
+        fields["letter_date"] = ["nope"]  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="letter_date must be a string"):
+            builder_mod.build_session_cover_letter(fields, debug=True)
