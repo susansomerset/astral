@@ -92,7 +92,7 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 [code-rubric] revision=1  
 **Rubric:** code-rubric.v1  
 **Ticket:** AST-1038  
-**Publish ref tip:** (post-docs) `origin/sub/AST-1036/AST-1038-wire-session-resume-parse-to-ruth-task`  
+**Publish ref tip:** 054d26cf `origin/sub/AST-1036/AST-1038-wire-session-resume-parse-to-ruth-task`  
 **Overall:** DISCUSS
 
 ### What's solid
