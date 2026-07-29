@@ -105,12 +105,12 @@ Register a **parallel meteorite GDL job-state track** in `JOB_STATES` (entry **M
 
 ## Review (build stub)
 
-**Publish ref:** 
-**Plan path:** 
+**Publish ref:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`
+**Plan path:** `docs/features/meteorite/ast-1053-meteorite-gdl-parallel-job-states.md`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 |  | JOB_STATES meteorite GDL track + In Review/Skipped UI manifests |
+| 1 | `46ea8b73` | JOB_STATES meteorite GDL track + In Review/Skipped UI manifests |
 
-**Tip:**  on 
+**Tip:** `9c6ca1b0a93e0425a162b2da3995899a0f749e92` on `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`
 
