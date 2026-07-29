@@ -256,3 +256,5 @@ with an async handler that:
 ## Review
 
 **Publish ref:** `sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`
+
+**Build tip (pre-review):** see git log on publish ref after `code(AST-1049)` commit.

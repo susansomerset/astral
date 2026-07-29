@@ -27,6 +27,7 @@ export default function AdminManageEmail() {
   const [bodyLoading, setBodyLoading] = useState(false)
   const [bodyError, setBodyError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [createBusy, setCreateBusy] = useState(false)
   const clearToast = useCallback(() => setToast(null), [])
 
   useEffect(() => {
@@ -93,9 +94,6 @@ export default function AdminManageEmail() {
     setBodyError(null)
   }
 
-  // AST-1049 owns strip/extract + meteorite create wire from this control.
-  function onCreateClick() {}
-
   const selected = messages.find(m => m.id === selectedId)
   const modalTitle = (selected?.subject || "").trim() || "Message"
   const selectedMatched =
@@ -104,6 +102,42 @@ export default function AdminManageEmail() {
   const selectedMatchId = selectedMatched
     ? (selected!.candidate_match!.astral_candidate_id as string)
     : null
+
+  async function onCreateClick() {
+    if (!selectedMatched || !selectedId || createBusy) return
+    setCreateBusy(true)
+    setToast(null)
+    try {
+      const r = await api(
+        `/api/admin/inbox/messages/${encodeURIComponent(selectedId)}/create-job`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        },
+      )
+      const data = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (!r.ok) {
+        const msg =
+          (typeof data.error === "string" && data.error) || `HTTP ${r.status}`
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      const jobId =
+        typeof data.astral_job_id === "string" ? data.astral_job_id : ""
+      setToast({
+        text: jobId ? `Created job ${jobId}` : "Created job",
+        variant: "success",
+      })
+    } catch (e) {
+      setToast({
+        text: e instanceof Error ? e.message : "Create failed",
+        variant: "error",
+      })
+    } finally {
+      setCreateBusy(false)
+    }
+  }
 
   function matchCell(row: InboxMessage) {
     const m = row.candidate_match
@@ -186,7 +220,7 @@ export default function AdminManageEmail() {
           <button
             type="button"
             className="manage-email-create"
-            disabled={!selected?.candidate_match?.matched}
+            disabled={!selected?.candidate_match?.matched || createBusy}
             onClick={onCreateClick}
           >
             Create

@@ -50,6 +50,8 @@ class GmailInboxMessage(TypedDict):
 class GmailMessageHtml(TypedDict):
     id: str
     html_body: str
+    subject: str
+    from_address: str
 
 
 # ---------------------------------------------------------------------------
@@ -134,14 +136,18 @@ def list_inbox_messages() -> list[GmailInboxMessage]:
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:
-    """Return HTML body for one Gmail message id (empty string if no HTML part)."""
+    """Return HTML body + Subject/From for one Gmail message id (empty html if no HTML part)."""
     require_controlled_external_io("gmail.get_message_html")
     service = _build_service()
     raw = service.users().messages().get(userId="me", id=message_id, format="full").execute()
     payload = raw.get("payload") if isinstance(raw, dict) else None
+    payload_dict = payload if isinstance(payload, dict) else {}
+    headers = _header_map(payload_dict.get("headers"))
     return {
         "id": message_id,
-        "html_body": _extract_html_body(payload if isinstance(payload, dict) else {}),
+        "html_body": _extract_html_body(payload_dict),
+        "subject": headers.get("subject", ""),
+        "from_address": headers.get("from", ""),
     }
 
 

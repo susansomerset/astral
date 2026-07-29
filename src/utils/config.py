@@ -28,6 +28,7 @@ Config sections:
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
+  INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
 """
 
 import json
@@ -963,6 +964,25 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.first", "profile.last",   # transitional
     ),
     "match_casefold": True,  # case-insensitive compare for emails and names
+}
+
+# AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
+INBOX_CREATE_JOB_CONFIG = {
+    # Tags removed entirely (and their children) before job HTML is recorded.
+    "strip_tags": (
+        "script", "style", "noscript", "iframe", "object", "embed", "link", "meta",
+    ),
+    # Attribute names removed from every remaining tag (casefold compare).
+    "strip_attr_names": (
+        "style", "onclick", "onload", "onerror", "onmouseover", "srcset",
+    ),
+    # True → also drop any attribute whose name starts with "on".
+    "strip_on_attrs": True,
+    # Format with subject= (HTML-escaped) and body= (already-stripped HTML fragment).
+    "subject_html_template": (
+        '<header class="email-subject"><h1>{subject}</h1></header>\n'
+        '<section class="email-body">{body}</section>'
+    ),
 }
 
 assert "PROSPECT" not in CANDIDATE_STATES
