@@ -1421,6 +1421,31 @@ JOB_STATES = {
     "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
 }
 
+# ---------------------------------------------------------------------------
+# METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
+# Lazy-ensure inserts meteorite-<candidate_id> on demand — never bulk at server start.
+# Job-create defaults (JD_READY + score) are consumed by AST-1042; defined here so
+# literals stay config-owned (parent Architectural definition).
+# ---------------------------------------------------------------------------
+METEORITE_CONFIG = {
+    "short_name_prefix": "meteorite-",
+    "short_name_template": "meteorite-{candidate_id}",  # format with candidate_id=
+    "company_name": "meteorite",
+    "company_state": "IGNORE",
+    "company_data": {
+        "note": (
+            "The company for this job has not been identified, and cannot be "
+            "vetted without a website url."
+        ),
+    },
+    # AST-1042 job-create defaults (unused in AST-1041)
+    "job_create_state": "JD_READY",
+    "job_create_latest_score": 10.0,
+}
+
+assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
+assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
+
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
 
