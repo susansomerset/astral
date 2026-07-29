@@ -204,4 +204,4 @@ Wide modal already sets `.modal-card--wide .modal-body { overflow: hidden; paddi
 | 1 | `ab21fc2f` | NAV **Read email**; `api_inbox` list/get under `@require_admin`; register `inbox_bp` |
 | 2 | `1c3505ce` | `AdminReadEmail` table + sandboxed HTML modal; route + CSS |
 
-**Tip:** `1c3505ce` on `origin/sub/AST-1031/AST-1033-read-email-admin-screen`
+**Tip:** `2d597b46` on `origin/sub/AST-1031/AST-1033-read-email-admin-screen`
