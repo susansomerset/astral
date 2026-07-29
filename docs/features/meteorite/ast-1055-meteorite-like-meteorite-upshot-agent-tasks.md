@@ -236,3 +236,23 @@ Do **not** add `meteorite_like` to `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` (owner st
 | 3 | `2c701210` | route meteorite_like + meteorite_upshot through consult |
 
 **Tip:** `2c701210cff28b9678aad731a434e2e9bd99d952` on `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1055
+**Publish ref:** `78f5a98174a23b8d9fb4261c5eadfec393b7a041` (`origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks` at review start; docs tip follows)
+**Overall:** DISCUSS
+
+### What’s solid
+- `TASK_CONFIG` twins: `requires_company: False`, same LIKE rubric / upshot schema, meteorite pass/fail/error + `RECOMMENDED` priors.
+- Prompts: no-vibe / liberal **X** on `meteorite_like`; Meteorite context on `meteorite_upshot`.
+- Consult routing reuses encoded LIKE + generalized upshot batch; JD-only prep; persist `job_data.analysis_upshot`.
+- Boundaries held vs dispatch seed / Create / Recommended UI.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot vs `origin/dev` includes `docs/features/**` + Betty tests/bible — all **conforms** on substance.
+
+### Recommended actions
+- Katherine: acknowledge stragglers → resolve-child → User Testing.
