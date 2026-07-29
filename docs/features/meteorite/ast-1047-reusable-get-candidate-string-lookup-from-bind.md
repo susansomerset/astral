@@ -200,3 +200,22 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | 3 | `a530d025` | Inbox list `candidate_match` From bind; `api_inbox` `ui_llm_debug` |
 
 **Tip:** `a530d0255a69308d63896541b621b49b0faf39b4` on `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1047
+**Publish ref tip (pre-docs):** `0cefd0c2133867fcf5f6d0c3ec23d086c354908a`
+**Overall:** DISCUSS
+
+### What’s solid
+- `CANDIDATE_LOOKUP_CONFIG` owns email/name homes; `get_candidate_id_for_query` returns id only on unique hit; existing `get_candidate(id)` untouched.
+- Inbox list From→`candidate_match` enrichment in core; `api_inbox` stays thin + `@require_admin` + `ui_llm_debug`.
+- Style D gated on `debug=True` (lookup + per-message `inbox_from_bind`); no React/Create/strip (AST-1048/1049).
+
+### Issues
+- **discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot diff includes `docs/features/**` + Betty `tests/**` / `docs/test-bible/**` so they score in-scope (all **conforms** on substance).
+
+### Recommended actions
+- Ada: acknowledge stragglers (no product change expected) → resolve-child → User Testing.
