@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-880 archived 2026-07-29 -->
+
+## Linear archive (AST-880)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-880/encoded-a-f-link-type-vet-for-inflow-discovery-vet-inflow-discovery  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-879 — vet inflow discovery prompt redraft  
+**Blocked by / blocks / related:** parent: AST-879
+
+### Description
+
+## What this implements
+
+Redraft `vet_inflow_discovery` so each discovery hit is graded with an A–F link-type Result Finding rubric, returned as a compact encoded `agent_payload` (one line per hit), always carrying a company homepage URL (including on F). Decode maps grades to company outcomes: A/B/C/D → WEBSITE_FOUND with website recorded; F → VET_FAILED. Update the Admin Task Prompt and local-dev seed/migration so UAT sees the new contract. Preserve mechanical-only scope (no candidate-fit). Debug when `debug=True` shows per-hit grade, website, and recorded state.
+
+## Acceptance criteria
+
+1. Running `vet_inflow_discovery` against NEW companies with discovery blurbs uses the new Admin prompt text: A–F Result Finding rubric present; slug/ignore mechanical-only text gone.
+2. Model output for a successful vet call is a compact encoded `agent_payload` (one line per input hit index), accepted by the task's decode path into per-hit grade + website.
+3. For a controlled UAT batch, each returned hit (including **F**) shows a non-empty website metadata field in debug and/or Admin response view.
+4. Grades **A/B/C/D** transition **NEW → WEBSITE_FOUND** with `company_website` set to the returned homepage; grade **F** transitions **NEW → VET_FAILED**.
+5. Downstream `fetch_website` remains reachable after WEBSITE_FOUND; rejected (**F**) URLs still are not re-recorded on later discovery runs (AST-776 behavior preserved).
+6. With `debug=True`, per-hit index + working detail shows grade, website, and recorded state for the batch Susan runs in UAT.
+
+## Boundaries
+
+* Does not change `inflow_discovery` CSE search, hit recording, or NEW-only ingest.
+* Does not rename company `short_name` from the vet response (DNS-label-without-TLD at ingest is deferred).
+* Does not add candidate-fit / prefilter logic to vet (D still passes; prefilter handles later).
+* Does not redesign `inflow_resolve_website`, `fetch_website`, or later job-page chain beyond consuming website on pass.
+* Does not introduce new company states.
+
+## Notes for planning
+
+* Parent locked decisions: F-only fail; website required on every grade including F; short_name rename out of scope.
+* Follow existing encoded consult patterns (`grades_encoded` / `_meta` family) and AST-776/822 vet batch `hit_index` / blurb renumber behavior.
+* Prompt lives in Admin Task Prompts + established local seed/migration for this task_key — config as source of truth (§2.1).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-879-vet-inflow-discovery-prompt-redraft`, child `sub/AST-879/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-12T23:29:37.039Z
+**Diff:** `origin/dev...origin/sub/AST-879/AST-880-encoded-af-link-type-vet` @ `5fcb929` (product tip before this docs commit; publish tip now `2824180`)
+
+Review: https://github.com/susansomerset/astral/blob/sub/AST-879/AST-880-encoded-af-link-type-vet/docs/features/consult/ast-880-encoded-af-link-type-vet.md
+
+### What’s solid
+- Stages 1–4 match plan: `grades_encoded_vet_meta`, config pass/fail/`LT`, decode → `results[{hit_index, grade, website, confidence}]`, roster A/B/C/D → `WEBSITE_FOUND` (+ website) / F → `VET_FAILED` (website debug-only), AST-880 migration + JSON ≡ fixture ≡ seed.
+- §1.4 / §2.1 grade sets in config; §1.5.1 per-hit debug grade/website/state; §2.6 no new states; boundaries held (no dispatcher/ingest/`fetch_website`/UI).
+- Self-Assessment Scope Single-Component matches footprint.
+
+### Issues
+None.
+
+### Recommended actions
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+#### betty — 2026-07-12T23:04:48.391Z
+## QA test manifest (AST-880)
+
+**Publish ref:** `origin/sub/AST-879/AST-880-encoded-af-link-type-vet` @ `5fcb929`
+**Tests commit:** `origin/tests` `3663e60`
+
+### Manifest (test-child)
+
+1. **Config — encoded vet contract + grade sets** (required)
+   `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::{test_vet_inflow_discovery_task,test_inflow_config_vet_literals,test_vet_grades_encoded_vet_meta_output_type}`
+
+2. **Decode — `grades_encoded_vet_meta` → `results[]`** (required)
+   `tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode`
+
+3. **Roster — grade outcomes + `batch_entities` ctx** (required; **revised** AST-776/822 action mocks)
+   `tests/component/core/test_roster.py::{TestAst776VetInflowDiscoveryCompany,TestAst822VetInflowDiscoveryBatch,TestAst880VetInflowEncoded}`
+
+4. **Prompt seed — AST-880 DB migration + repo JSON marker** (required)
+   `tests/component/data/database/test_agent_tasks.py::TestAst880VetInflowEncodedPromptMigration`
+   `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_spot_check_rows_have_agent_id_and_user_prompt`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_vet_literals \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type \
+  tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch \
+  tests/component/core/test_roster.py::TestAst880VetInflowEncoded \
+  tests/component/data/database/test_agent_tasks.py::TestAst880VetInflowEncodedPromptMigration \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_spot_check_rows_have_agent_id_and_user_prompt \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Broken / obsolete (Betty revision):** AST-776/822 roster tests using `action: slug|ignore` — updated to `grade` + required `website` (F still requires website; no `update_company` on F).
+
+### Bible shasum (`origin/sub/AST-879/AST-880-encoded-af-link-type-vet`)
+
+- `docs/test-bible/core/agent.md`: `bf88dd4449fb9a4028eeeda1d2be27feb45e24914bb593e4f4d2b3fce4606a45`
+- `docs/test-bible/core/repo_admin_json.md`: `dca0672fc761a143f0cfd71589e136abdc64adbc92e5e744325dec0e664df5eb`
+- `docs/test-bible/core/roster.md`: `5dd20f3d58c043058c20c99a125a2a8b30b6ab17efcce4bfdb2a9aadf176351c`
+- `docs/test-bible/utils/config.md`: `10c28696615806f25f18589c8df30a1d10ea3a341ffdc3d12c33eb535c5a035d`
+
+— Betty
+
+#### ada — 2026-07-12T22:44:52.964Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-879/AST-880-encoded-af-link-type-vet/docs/features/consult/ast-880-encoded-af-link-type-vet.md
+
+**Scope:** Single-Component — `vet_inflow_discovery` config/decode/roster apply + prompt seed; no dispatcher or discovery ingest changes.
+
+**Conf:** high — reuses AST-776/822 vet batch paths, prefilter `astral_job_id=short_name` decode trick, and established `output_types` / `_decode_payload` / agent_task migration patterns.
+
+**Risk:** Medium — wrong grade→state mapping or dropping website-on-F validation would mis-route NEW companies or break Admin UAT of the encoded contract; decode bugs would fail the whole vet batch.
+
+`origin/sub/AST-879/AST-880-encoded-af-link-type-vet` @ f2df83d
+
+---
+
 # AST-880 — Encoded A–F link-type vet for inflow discovery
 
 **Linear:** [AST-880](https://linear.app/astralcareermatch/issue/AST-880/encoded-a-f-link-type-vet-for-inflow-discovery-vet-inflow-discovery)  
