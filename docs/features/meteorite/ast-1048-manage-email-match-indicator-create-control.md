@@ -186,3 +186,22 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 **Publish ref:** `sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`
 **Build tip:** `88df7b07ba5dce779485a6fd4fb93d681dcb1b5e`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1048
+**Publish ref tip (pre-docs):** `5f69a906`
+**Overall:** DISCUSS
+
+### What’s solid
+- Nav/route rename to Manage Email / `/admin/manage_email` under `AdminRoute`; no React lookup — consumes AST-1047 `candidate_match`.
+- List Candidate column + modal bind; Create enabled only when `matched`; click stub deferred to AST-1049; unmatched browse preserved.
+- PascalCase page + snake_case route; styles in `App.css`; no meteorite POST / strip-extract.
+
+### Issues
+- **discuss (straggler):** Joan excluded several statutes at plan time (UI-only Files Changed); three-dot tip also carries rolled-up AST-1047 `core`/`utils`/tests so those ids score in-scope (all **conforms** on substance). No product delta expected from Hedy for the stragglers alone.
+
+### Recommended actions
+- Hedy: acknowledge stragglers (no product change expected) → resolve-child → User Testing.
