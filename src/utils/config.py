@@ -1152,12 +1152,14 @@ CANDIDATE_STAGE_DISPATCH = {
         "task_key": "candidate_requested_resume",
         "trigger_state": "REQUESTED_RESUME",
         "pass_state": "RESUME_READY",
+        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
         "craft_task_key": "craft_resume_base",
     },
     "requested_artifacts": {
         "task_key": "candidate_requested_artifacts",
         "trigger_state": "REQUESTED_ARTIFACTS",
         "pass_state": "ARTIFACTS_READY",
+        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
         # Sequential fan-in — not run_next daisy-chain. Title patterns stay profile/intake.
         "craft_task_keys": [
             "craft_company_search_terms",

@@ -179,7 +179,7 @@ def ensure_candidate_stage_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
             candidate_id=cid,
             task_key=tk,
             min_count=1,
-            auto_mode=True,
+            auto_mode=bool(entry.get("auto_mode", False)),
             trigger_state=ts,
             batch_size=1,
             freq_hrs=0,
