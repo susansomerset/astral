@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-818 archived 2026-07-29 -->
+
+## Linear archive (AST-818)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-818/uat-post-deploy-integration-run-with-github-commit-status-on-origindev  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-512 — Astral Integration Testing  
+**Blocked by / blocks / related:** parent: AST-512
+
+### Description
+
+## What failed
+
+After `origin/dev` push, **astral-test** Railway redeploys (`ASTRAL_DEPLOY_ENV=test`) but integration tests do **not** run automatically afterward, and GitHub shows **no commit status** on the landed dev SHA (e.g. `Integration Tests Passed`). Joan must be invoked manually; failures are not routed to Linear with full context.
+
+## Expected
+
+When the **test** Railway service finishes deploying a commit from **origin/dev**:
+
+1. Joan (or operator scripts) runs `verify_integration_deploy_ref.sh` + `run_railway_integration_tests.sh` against **astral-test.up.railway.app**.
+2. GitHub receives a **commit status** on that **origin/dev** SHA — context `integration/tests`, state **success** or **failure**, description includes pass/fail summary (no empty commits to `origin/dev`, no new GitHub Actions workflow in this bug).
+3. On **failure**, auto-open a Linear **Discussion** ticket for Chuckles with deploy SHA, log tail, and repro context (extend `integration-operator` skill template).
+
+## Repro
+
+1. Land a change on **origin/dev** (Susan: push already redeploys astral-test and astral-staging).
+2. Wait for **astral-test** deploy to complete (`RAILWAY_GIT_COMMIT_SHA` matches `origin/dev`).
+3. Observe: no automatic integration run; no GitHub status on the dev commit; manual Joan invoke only.
+
+## Parent AC (quoted inline)
+
+> **(v2 — Joan + Railway)** Documented Joan workflow: test Railway service, trigger after dev land, failure → Discussion ticket for Chuckles; Joan run is reproducible against a known deploy ref.
+
+Susan UAT (2026-06-26): commit status check on dev SHA; failures → new Linear tickets with full context; **no** GitHub Actions workflow yet; **no** empty commits to dev.
+
+## Boundaries
+
+* Does **not** add `.github/workflows` integration CI (Susan deferred proper CI/CD).
+* Does **not** mutate **origin/dev** with empty Joan commits or log-only commits.
+* Does **not** run against production Railway or enable live external I/O.
+* Does **not** change Slice 1 harness scenarios (AST-711) or component test gates.
+
+### Comments
+
+#### betty — 2026-06-26T02:52:13.003Z
+## QA test manifest (AST-818)
+
+**Publish ref:** `origin/sub/AST-512/AST-818-post-deploy-integration-github-status` @ `38efda0`
+**Tests SHA:** `eeb68a2` (`merge-tests(AST-818): origin/tests eeb68a2`)
+
+1. **Integration harness sanity (required):**
+```bash
+./scripts/testing/run_integration_tests.sh
+```
+
+2. **Post-deploy gate scripts — syntax (required):**
+```bash
+bash -n scripts/post_github_commit_status.sh
+bash -n scripts/testing/post_deploy_integration_gate.sh
+bash -n scripts/testing/watch_post_deploy_integration.sh
+```
+
+3. **Linear failure script — compile (required):**
+```bash
+python3 -m py_compile scripts/create_integration_failure_discussion.py
+```
+
+**Pass criterion:** items 1–3 exit 0 on publish ref tip.
+
+**Railway + GitHub E2E:** Susan/Chuckles after `watch_post_deploy_integration.sh` cron wired — not required for test-child when CLI/tokens absent.
+
+**Bible shasum (publish ref):** `docs/test-bible/integration/README.md` → `eae160c2825164fb259bd0b0d120f99409e70762`
+
+— Betty
+
+#### ada — 2026-06-26T02:49:54.573Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-512/AST-818-post-deploy-integration-github-status/docs/features/foundation/ast-818-post-deploy-integration-github-status.md
+
+**Self-assessment**
+- **Scope:** Single-Component — gate/watcher bash scripts, GitHub status helper, Linear Discussion CLI, operator docs + Joan skill patch; no core/data/UI.
+- **Conf:** Medium — Statuses API + Linear create are known patterns; operator cron wiring and Chuckles user resolution need careful build; no GHA per Susan.
+- **Risk:** Medium — Missing gh/Linear auth could skip status/tickets silently if not guarded; mitigated by BLOCKED exits and failure status before exit.
+
+UAT fix: auto post-deploy integration gate on astral-test deploy, GitHub `integration/tests` status on origin/dev SHA, auto Discussion for Chuckles on failure.
+
+---
+
 # AST-818 — UAT: Post-deploy integration run with GitHub commit status on origin/dev
 
 - **Linear (this ticket):** [AST-818](https://linear.app/astralcareermatch/issue/AST-818/uat-post-deploy-integration-run-with-github-commit-status-on-origindev)

@@ -1,3 +1,128 @@
+<!-- linear-archive: AST-816 archived 2026-07-29 -->
+
+## Linear archive (AST-816)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-816/uat-compact-vector-reviews-still-not-hydrating-on-evaluate-jd  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+After AST-808, Susan re-tested on staging (2026-06-26) — **still not hydrating**.
+
+`evaluate_jd` SUCCESS returns compact `agent_performance.vector_reviews` strings such as `CLRAOCVK`, `DORAOCVK`, `DQRAOCVK`, `JNRAOCVK`, `LORAOCVK`, `RLRAOCVK`, `TIRAOCVK`. Debug log and Admin inspection still show raw codes only — not human-readable rubric vector label + criterion text + decoded Relevance/Clarity/Verdict labels.
+
+Example from debug log (`task_key=evaluate_jd`, batch run 2026-06-26):
+
+```json
+"vector_reviews": [
+  "CLRAOCVK", "DORAOCVK", "DQRAOCVK", "JNRAOCVK",
+  "LORAOCVK", "RLRAOCVK", "TIRAOCVK"
+]
+```
+
+## Expected
+
+1. Compact strings decode to human-readable assessment (vector label, criterion content, relevance/clarity/verdict labels) wherever Susan inspects feedback — Admin Vector Feedback, FEEDBACK agent_data block UI, and debug logging when debug is enabled.
+2. When all compact lines parse and match active rubric vectors for the task owner, **vector_feedback** rows persist (not only raw FEEDBACK fallback).
+3. Partial or owner-task rubric lookup must still hydrate display for codes present in the response.
+
+## Repro
+
+1. On staging, run `evaluate_jd` for a candidate with active rubric vectors (debug enabled).
+2. Observe model returns compact `vector_reviews` list (7 two-letter codes above).
+3. Open Admin → Vector Feedback and/or batch FEEDBACK tab — codes remain opaque.
+4. Debug log repeats raw JSON codes with no decoded labels.
+
+## Parent AC (quoted inline)
+
+> 6. Admin Vector Feedback page lists **vector_feedback** rows with sort/filter on candidate, task, vector code, feedback type, value, run/batch identifiers.
+
+> 7. With debug enabled, rubric-backed runs log each vector feedback found and recorded, or log that raw FEEDBACK was stored due to parse failure.
+
+> 1. Every rubric-backed agent task returns per-vector feedback (Relevance, Clarity, Verdict) for every vector in the active rubric when the model complies, using only config-allowed value codes.
+
+## Boundaries
+
+* Does **not** change lenient run success when feedback is truly unparseable.
+* Does **not** re-scope AST-809 batch metadata (already shipped).
+* Does **not** change task letter grades or consult scoring math.
+
+### Comments
+
+#### radia — 2026-06-26T02:51:27.531Z
+### AST-816 review
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-816-uat-compact-vector-reviews-hydrate-evaluate-jd` (code `a34f4db`, doc `c9c56d0`)
+**Plan:** `docs/features/auditor/ast-816-uat-compact-vector-reviews-hydrate-evaluate-jd.md` § Review (Radia)
+
+**What looks good**
+- JSON-string `vector_reviews` normalization before strict parse — likely Susan repro root cause; agent test confirms rows persist.
+- Diagnostic capture debug (`reason=` / `missing=` / partial hydrated lines) + per-vector success hydration via `format_hydrated_review_debug_line` (§1.5.1, `debug=True` only).
+- `candidate_id` wired from Performance Monitor + Vector Feedback rows; modal resolves ledger `candidate_id`; hydrate POST sends `owner_task_key`.
+
+**discuss**
+- `BatchAgentDataModal`: `owner_task_key` = FEEDBACK `task_key` — fine for `evaluate_jd`; craft rubric tasks may skip owner mapping when `owner_task_key` is set (out of ticket scope).
+
+**advisory**
+- `_rubric_by_code_lookup` duplicates admin `_rubric_lookup_by_code` (minor DRY, same as AST-808 note).
+
+**Verdict:** Clean — approve for User Testing. No fix-now.
+
+#### betty — 2026-06-26T02:49:20.174Z
+## QA test manifest (AST-816)
+
+**Publish ref:** `origin/sub/AST-378/AST-816-uat-compact-vector-reviews-hydrate-evaluate-jd` @ `a34f4db` (`merge-tests(AST-816): origin/tests 250a3df`)
+
+**Pass criterion:** manifest lines green on publish ref — not zero-arg harness / branch-lock gate.
+
+1. **Utils normalize + diagnostic parse (required):** `tests/component/utils/test_rubric_feedback.py` — `TestAst816NormalizeVectorReviews`, `TestAst816ParseVectorReviewsDiagnostic`, `TestAst816FormatHydratedReviewDebugLine`. Use 3-letter rubric compact strings (`CLRRACOVK` = `CLR` + R/A/C/O/V/K).
+
+2. **Capture JSON envelope + debug diagnostics (required):** `tests/component/core/test_agent.py::TestAst816VectorFeedbackCapture` — JSON-string `vector_reviews` persists rows; debug logs `reason=` + hydrated criterion lines on parse failure.
+
+3. **FEEDBACK modal ledger candidate_id (required):** `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx` — AST-816 case hydrates when `candidateId` prop omitted but dispatch ledger returns `candidate_id` (`ok: true` on ledger fetch).
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_feedback.py::TestAst816NormalizeVectorReviews \
+  tests/component/utils/test_rubric_feedback.py::TestAst816ParseVectorReviewsDiagnostic \
+  tests/component/utils/test_rubric_feedback.py::TestAst816FormatHydratedReviewDebugLine \
+  tests/component/core/test_agent.py::TestAst816VectorFeedbackCapture \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx -t "AST-816"
+```
+
+**Regression (same publish ref):** re-run `TestAst724VectorFeedbackCapture`, `TestAst808HydrateVectorReviewStrings`, `TestAst809VectorFeedbackBatchMetadata`, and AST-808 BatchAgentDataModal FEEDBACK case if touching shared capture/hydrate paths.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/utils/rubric_feedback.md`: ab2ba336be2e5e7f594a9f84367fd7a9a5da8df1520977f449bb40f20fbaa899
+- `docs/test-bible/core/agent.md`: f95dd9b3d083a90400ccd242091a29ce1f84e22e2310ef0e577fe65c475b19ba
+- `docs/test-bible/frontend/pages.md`: d78350336c720730fb76ecbe34d320d233acd19fb179bbb36acf77709edd7ef9
+
+— Betty
+
+#### ada — 2026-06-26T02:41:37.156Z
+Plan doc: [`docs/features/auditor/ast-816-uat-compact-vector-reviews-hydrate-evaluate-jd.md`](https://github.com/susansomerset/astral/blob/sub/AST-378/AST-816-uat-compact-vector-reviews-hydrate-evaluate-jd/docs/features/auditor/ast-816-uat-compact-vector-reviews-hydrate-evaluate-jd.md) @ `1713b3c`
+
+**Self-assessment**
+- **Scope:** Single-Component — utils diagnostic parse, capture debug hydration, three React entry points for candidate_id wiring; no new API routes.
+- **Conf:** Medium — AST-808 fixed read-path hydration but left capture/debug/wiring gaps; Stage 0 spike confirms parse failure mode on Susan's seven-code payload before Stage 2.
+- **Risk:** Medium — strict parse equality preserved for persistence; wrong relaxation would store bad rows; spike-first mitigates.
+
+**Delta vs AST-808:** capture normalization + diagnostic debug (AC #7), FEEDBACK modal candidate_id from ledger/row props, evaluate_jd persistence when strict match holds.
+
+---
+
 # AST-816 — UAT: Compact vector_reviews still not hydrating on evaluate_jd
 
 - **Linear:** [AST-816](https://linear.app/astralcareermatch/issue/AST-816/uat-compact-vector-reviews-still-not-hydrating-on-evaluate-jd)

@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-892 archived 2026-07-29 -->
+
+## Linear archive (AST-892)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-892/stop-fetch-website-reclaim-of-prefilter-second-strike-companies-fetch  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-889 — fetch_website infinite loop  
+**Blocked by / blocks / related:** parent: AST-889
+
+### Description
+
+## What this implements
+
+Stop the infinite reclaim loop where `fetch_website` repeatedly claims companies that already have homepage text and are held for prefilter second strike. Preserve real re-fetch work for companies that still need a homepage scrape. Ensure a `fetch_website` run facing only those already-scraped second-strike companies finishes instead of iterating forever with no-op skips. Keep second-strike prefilter ownership intact (AST-881 / AST-882). Emit clear per-company debug outcomes for skip vs scrape when `debug=True`.
+
+## Acceptance criteria
+
+1. With a set of companies that match the production repro (state in the website-fetch claim pool, homepage text already present, destined for prefilter second strike), running `fetch_website` does **not** loop forever reclaiming those same companies; the run ends after a finite number of iterations.
+2. Those same companies remain claimable by **prefilter** for the second-strike attempt and still follow one-retry-then-terminal-error behavior from AST-881 / AST-882.
+3. A company that needs an actual homepage scrape (no usable homepage text yet) still scrapes under `fetch_website` and lands in the correct pass, fail, or retry holding outcome.
+4. A `fetch_website` batch that only contains already-scraped second-strike companies does not accumulate unbounded `total_processed` across endless iterations with zero passes/fails/errors.
+5. With `debug=True`, logs show a per-company outcome for skip-vs-scrape paths so UAT can verify the handoff without guessing from aggregate summary rows alone.
+
+## Boundaries
+
+* Does not redesign prefilter grading, rubric content, or successful evaluate destinations.
+* Does not change the infra-vs-site failure classification contract from AST-850 / AST-854.
+* Does not invent parallel holding states unless claim/eligibility ownership cannot fix the loop safely.
+* Does not touch job-side gazer paths or dispatch admin UI unless a claim-definition change on the company `fetch_website` row requires it.
+
+## Notes for planning
+
+* Adjacent shipped: AST-882 intentionally skips `WEBSITE_FOUND_RETRY` + homepage_text in `fetch_website_batch` for prefilter second strike; `fetch_website` still claims `WEBSITE_FOUND_RETRY` via companion claim — that reuse is the loop. Prefer claim/eligibility ownership fix over inventing new states (parent Boundaries).
+* Hot files likely: config claim helpers, gazer `fetch_website_batch`, possibly dispatcher loop termination when the batch is all no-ops — confirm against ASTRAL_CODE_RULES config-as-source-of-truth.
+* Debug contract AST-538 / §1.5.1 for touched `debug=` surfaces.
+
+## Git branch (authoritative)
+
+Per orientation Branch law: parent `ftr/AST-889-fetch-website-infinite-loop`, child `sub/AST-889/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-13T21:04:58.471Z
+[merge-child] blocked: missing plan(AST-892): on origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim
+
+validate-sub-log requires `plan(AST-892):` subject. Current tip has only `docs(AST-892): plan — …` @ 95e25f4.
+
+@Hedy Lamarr — add sub-log marker commit `plan(AST-892): sub-log marker — plan published as docs(AST-892) 95e25f4` on publish ref (same pattern as AST-877), push origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim. Stay User Testing.
+
+— Chuckles
+
+#### radia — 2026-07-13T21:02:35.623Z
+**Diff:** `origin/dev...origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim` @ `b1f3601`
+
+### What’s solid
+- Stages 1–4 match plan: config helper; twin claim/count exclude for WFR + non-empty `homepage_text`; dispatcher/roster flag scoped to `fetch_website`; gazer skip tally with work-only `total` (consult already uses `r.get("total")`).
+- Boundaries held — no new states; prefilter claim untouched; AST-882 skip kept as defense-in-depth.
+- §1.3 / §2.1 / §2.4 / §2.6 / §1.5.1 / §3.3 OK; Self-Assessment Scope matches footprint.
+
+### Issues
+None.
+
+### Recommended actions
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Doc:** `docs/features/roster/ast-892-stop-fetch-website-prefilter-second-strike-reclaim.md` — `docs(AST-892): Radia review — clean` → `origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim` @ `b1f3601`
+
+#### betty — 2026-07-13T20:57:33.568Z
+1. `tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike` — claim/count exclude WFR+homepage_text for `fetch_website`; bare WFR + WEBSITE_FOUND still eligible; prefilter claim of second-strike unchanged
+2. `tests/component/utils/test_config.py::TestAst892FetchWebsiteSecondStrikeFilter` — `fetch_website_prefilter_second_strike_filter()` returns `(retry_state, homepage_text_key)`
+3. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast892_fetch_website_excludes_prefilter_second_strike` — `exclude_prefilter_second_strike=True` only for `task_key=fetch_website`
+4. `tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_passes_exclude_prefilter_second_strike` (+ revised claim kwargs assert) — roster passthrough
+5. `tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip` (revised) + `::test_mixed_skip_and_scrape_excludes_skips_from_total` — skip tally / work-only `total`
+6. `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_pure_skip_zero_processed` — pure-skip → `total_processed=0`
+
+Broken/revised this pass: AST-882 skip expected `total=1` → now `skipped=1,total=0`; FetchWebsiteBatch/FailRouting exact dicts include `skipped`; BatchApi claim assert includes `exclude_prefilter_second_strike=False`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike \
+  tests/component/utils/test_config.py::TestAst892FetchWebsiteSecondStrikeFilter \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast892_fetch_website_excludes_prefilter_second_strike \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_passes_exclude_prefilter_second_strike \
+  tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_pure_skip_zero_processed \
+  -q
+```
+
+`origin/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim` @ `4551d68` (`merge-tests(AST-892): origin/tests ba76ff313db2e24abc783e2eed329a132b02ad3a`)
+
+Bible shasums on publish-ref:
+- `docs/test-bible/data/database/dispatch_tasks.md` `2ac1c6223a1c477240fe2ca0d388b3c1598a4bfd`
+- `docs/test-bible/core/gazer.md` `f4196ec339a8e986120e33c61cf114604fb2cc41`
+- `docs/test-bible/utils/config.md` `8593634bcc448c1f08a10f802dc0f9c43ea31b97`
+
+#### hedy — 2026-07-13T20:46:56.064Z
+Plan: [ast-892-stop-fetch-website-prefilter-second-strike-reclaim.md](https://github.com/susansomerset/astral/blob/sub/AST-889/AST-892-stop-fetch-website-prefilter-second-strike-reclaim/docs/features/roster/ast-892-stop-fetch-website-prefilter-second-strike-reclaim.md)
+
+**Scope:** Single-Component — claim/count eligibility for `fetch_website` plus skip tally defense in `fetch_website_batch`; no new states or UI.
+**Conf:** high — production skip logs + AST-882 note already isolate the ownership hole; `score_floor` / `require_empty_website` JSON filters give the data-layer pattern.
+**Risk:** Medium — a bad emptiness predicate could hide real infra-retry scrapes or (if mis-wired) starve prefilter second strike; mitigated by task_key-scoped flag and twin claim/count SQL.
+
+---
+
 # AST-892 — Stop fetch_website reclaim of prefilter second-strike companies
 
 - **Linear:** [AST-892 — Stop fetch_website reclaim of prefilter second-strike companies (fetch_website infinite loop)](https://linear.app/astralcareermatch/issue/AST-892/stop-fetch-website-reclaim-of-prefilter-second-strike-companies-fetch)

@@ -1,3 +1,123 @@
+<!-- linear-archive: AST-860 archived 2026-07-29 -->
+
+## Linear archive (AST-860)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-860/uat-grade-get-racovk-vector-reviews-still-not-captured-or-hydrated  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+Susan UAT 2026-07-10 23:12 (after AST-859 prompt fix): **"That did not help."**
+
+`grade_get` SUCCESS now returns **RACOVK-shaped** compact strings (e.g. `ATRACOVK`, `DORACOVK`, `WMRACOVK`, …) — prompt fix worked — but vector feedback is **still not captured, persisted, or hydrated** for inspection. Debug log shows `[DEBUG] do_task('grade_get')` and model `vector_reviews` in response_preview, but **no** AST-820 pipeline trace (`vector feedback capture start/skip`, hydrate lines) and no Admin/FEEDBACK hydration visible.
+
+Example SUCCESS response (job `532bf4b1-…`, batch `grade_get-73f16e40-…`):
+
+```json
+"vector_reviews": [
+  "ATRACOVK", "CRRNCOVK", "DORACOVK", "EDRNCOVK", "RERACRVK",
+  "RFRACOVK", "SSRSCRVK", "TARACOVK", "TDRACOVK", "WMRACOVK", "YERACOVK"
+]
+```
+
+## Expected
+
+1. On rubric-backed `grade_get` SUCCESS with valid compact `vector_reviews`, capture runs (visible debug trace when debug enabled) and **vector_feedback** rows persist with batch metadata.
+2. Admin Vector Feedback / FEEDBACK tab show hydrated human-readable vector label + criterion + R/C/V labels.
+3. If capture skips, debug log states explicit reason (`empty_expected_codes`, code mismatch, missing candidate, etc.) at the same visibility as other `[DEBUG] do_task` lines.
+
+## Repro
+
+1. Staging: dispatch `grade_get` batch for candidate `somerset` with debug enabled.
+2. Observe SUCCESS response with RACOVK `vector_reviews` (11 codes) as in Susan's log.
+3. Check debug log — no vector feedback capture trace; Admin Vector Feedback empty or raw only.
+4. Compare `rubric_vector` codes for owner `grade_get` vs parsed compact codes (AT, CR, DO, …).
+
+## Parent AC (quoted inline)
+
+> 3. When vector feedback parses cleanly, **vector_feedback** rows are persisted with correct **rubric_vector** UUID, candidate, task run identifier, and one row per feedback type per vector.
+
+> 7. With debug enabled, rubric-backed runs log each vector feedback found and recorded, or log that raw FEEDBACK was stored due to parse failure.
+
+> 6. Admin Vector Feedback page lists **vector_feedback** rows with sort/filter on candidate, task, vector code, feedback type, value, run/batch identifiers.
+
+## Boundaries
+
+* AST-859 prompt/example fix is done — do not revert RACOVK example.
+* Does not fix unrelated `grade_get` provider max_tokens errors in the same batch (separate issue).
+
+### Comments
+
+#### radia — 2026-07-10T23:22:21.798Z
+### AST-860 review
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate` (code `4df57b0`, doc after push)
+**Plan:** `docs/features/auditor/ast-860-uat-grade-get-vector-reviews-capture-hydrate.md` § Review (Radia)
+
+**What looks good**
+- `_normalize_rubric_envelope_for_capture`: copies top-level `vector_reviews`, defaults `status=success` when reviews present (preserves explicit failure), runs before snapshot.
+- `expected_codes` restored to criteria ∩ UUID with drift debug (`criteria_codes` / `uuid_codes` on empty skip).
+- Silent capture path closed: debug when `agent_performance` missing after normalize.
+- `_run_batch_consult` defensively wires `astral_candidate_id` + `candidate_data` into `task_ctx`.
+- Tests cover normalize, grade_get RACOVK persist, drift debug, batch ctx.
+
+**discuss**
+- Normalize always materializes `agent_performance={}` when absent — slightly broader envelope snapshot for all rubric-backed tasks (capture no-ops when empty).
+
+**advisory**
+- Candidate id only injected when already on dispatcher ctx — does not derive from `candidate_data` alone.
+
+**Verdict:** Clean — approve for User Testing. No fix-now.
+
+#### betty — 2026-07-10T23:21:06.911Z
+## QA test manifest (AST-860)
+
+**Publish ref:** `origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate` @ `4df57b0` (`merge-tests(AST-860): origin/tests 4916e12`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+1. **Rubric envelope normalize (required):** `tests/component/core/test_agent.py::TestAst860NormalizeRubricEnvelope` — `_normalize_rubric_envelope_for_capture` unwraps nested `rubric` / list envelopes before vector_reviews capture.
+
+2. **grade_get RACOVK capture (required):** `tests/component/core/test_agent.py::TestAst860GradeGetVectorFeedbackCapture` — RACOVK compact string persists `vector_feedback` rows; debug trace shows `criteria_codes=` / `uuid_codes=` when expected set empty.
+
+3. **Batch consult candidate ctx (required):** `tests/component/core/test_consult.py::TestAst860RunBatchConsultCandidateCtx` — `_run_batch_consult` passes `astral_candidate_id` + `candidate_data` into `do_task` ctx for grade_get hydration.
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst860NormalizeRubricEnvelope \
+  tests/component/core/test_agent.py::TestAst860GradeGetVectorFeedbackCapture \
+  tests/component/core/test_consult.py::TestAst860RunBatchConsultCandidateCtx \
+  -q
+```
+
+**6 passed** on replay against publish ref.
+
+**Test bible shasums** (`origin/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate` @ `4df57b0`):
+- `docs/test-bible/core/agent.md`: bb27b638231d6cc7868f43f5490154519347dbb6
+- `docs/test-bible/core/consult.md`: dba731c1d3fda81effa5c01822083d9bb28ce01a
+
+— Betty
+
+#### ada — 2026-07-10T23:16:56.635Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-860-uat-grade-get-vector-reviews-capture-hydrate/docs/features/auditor/ast-860-uat-grade-get-vector-reviews-capture-hydrate.md
+
+**Scope:** Single-Component — `agent.py` envelope normalize + expected_codes (criteria ∩ UUID map) + silent-skip debug; `consult.py` batch `astral_candidate_id` wiring for Pattern-A `grade_get`.
+
+**Conf:** Medium — Susan repro shows RACOVK strings in raw preview but zero capture/hydrate/persist; code review identifies silent snapshot skip, missing `status`, and DB/prompt code drift as likely causes; staging failure mode confirmed via new debug strings at build.
+
+**Risk:** Medium — shared capture hook change; guarded to rubric-backed tasks and AST-724 intersection semantics.
+
+---
+
 # AST-860 — UAT: grade_get RACOVK vector_reviews still not captured or hydrated
 
 - **Linear:** [AST-860](https://linear.app/astralcareermatch/issue/AST-860/uat-grade-get-racovk-vector-reviews-still-not-captured-or-hydrated)

@@ -1,3 +1,116 @@
+<!-- linear-archive: AST-849 archived 2026-07-29 -->
+
+## Linear archive (AST-849)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-849/retire-consult-chain-wrapper-and-dispatch-claim-for-db-hop-labels  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-847 — Unify BUILD_ARTIFACTS chain in do_task (per-hop state + terminal graduation)  
+**Blocked by / blocks / related:** parent: AST-847
+
+### Description
+
+## What this implements
+
+Remove the consult-only chain orchestrator (`do_chain_for_job` and AST-803 split paths). Wire dispatcher and tracker claim/validation for jobs at runtime `<trigger_state>.<hop>` DB labels and chain-entry rows (AST-534 dispatch-key honesty). Consult and dispatcher invoke `do_task` only — no parallel chain wrapper or post-run graduation step.
+
+## Acceptance criteria
+
+3. Mid-chain resume: job on `<trigger>.<hop>` completes remaining hops using `agent_data` caller hydration and graduates without manual state repair.
+4. Terminal hop dispatch row (e.g. `propose_application_responses`) succeeds and graduates in the same run — no silent skip / zero-work batch.
+5. Consult-layer chain wrapper, persist-gate graduation, and AST-803-only paths removed; no state-name-specific chain branches replace them.
+6. Component coverage: full chain from chain-entry dispatch, per-hop DB state writes, mid-chain resume with caller hydration, single-hop dispatch, retry hold, error state, terminal graduation, non-job-chain `run_next` regression.
+
+## Boundaries
+
+Does not reimplement `do_task` recursion (blocked by sibling Ada ticket). Does not add compound keys to `JOB_STATES`. Does not edit hop prompts or `run_next` graph. Does not regress AST-531 execution history or AST-769 caller hydration.
+
+## Notes for planning
+
+Primary files: `src/core/consult.py`, `src/core/dispatcher.py`, `src/core/tracker.py`. Generic pattern — no `if state == BUILD_ARTIFACTS` chain branches. Document ASTRAL_CODE_RULES §2.6 daisy-chain carve-out if touched.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-847-unify-build-artifacts-chain-do-task`, child `sub/AST-847/AST-849-retire-consult-chain-dispatch-claim`.
+
+### Comments
+
+#### radia — 2026-07-09T02:28:49.382Z
+### Plan fidelity
+
+Stages 1–6 land as specified: `dispatch_chain_claim_states_for_row` / `dispatch_chain_row_matches_job` / `is_dispatch_chain_trigger`; eligible count uses chain claim states; dispatcher generic claim + post-claim row filter; tracker hop-label listing; consult `_run_dispatch_chain_job_batch` + `do_task`-only routing; admin hop trigger validation. Consult chain wrapper fully retired (`do_chain_for_job`, `_chain_*`, `build_artifacts_claim_states` dispatcher usage gone).
+
+### fix-now
+
+**`src/core/dispatcher.py` ~230–284** — Post-claim `dispatch_chain_row_matches_job` filter can empty `entities` after `get_new_job_batch` already set `batch_id`. Early `return s` at ~284 skips `try`/`finally` `clear_job_batch(bid)` — claimed jobs stay batch-locked (terminal-hop zero-work / row-mismatch path). Clear batch before early return when post-filter yields empty list.
+
+**`src/core/agent.py` ~2137 (`envelope_err`, AST-848 carry-forward)** — Strict-envelope failure still missing `return` after `_close_hop_ledger`; execution falls through into success handling. Still on this publish ref — restore sibling `return {"success": False, …}` (~2167 pattern). Flagged on AST-848.
+
+### advisory
+
+- Extend `test_ast849_post_claim_filter_skips_row_mismatch` to assert `clear_job_batch` once dispatcher fix lands.
+- `_run_dispatch_chain_job_batch` `continue` on row mismatch skips without `release_job_dispatch_claim` — safe while dispatcher pre-filters.
+
+Review doc: `docs/features/consult/ast-849-retire-consult-chain-dispatch-claim.md` @ `7e0e952` on `origin/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim`.
+
+#### betty — 2026-07-09T02:23:03.504Z
+## QA test manifest — AST-849
+
+**Publish:** `origin/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim` @ `68e5035` (`merge-tests(AST-849): origin/tests 6e7e1e8`)
+
+**Tests commit:** `origin/tests` @ `6e7e1e8`
+
+1. Chain claim states + row match helpers — `tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates`
+2. Post-claim entity filter — `tests/component/core/test_dispatcher.py::TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast849_post_claim_filter_skips_row_mismatch}`
+3. `_run_dispatch_chain_job_batch` → `do_task` — `TestAst371ResumeArtifactDispatch`, `TestAst534DispatchTaskKeyHonesty`, `TestRunConsultTask::test_routes_candidate_review_cover_letter_unhandled_returns_zero`
+4. Admin hop-label row validation — `TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key`
+
+**Broken / obsolete (revised this pass):** `TestAst803ChainGraduation`, `TestAst803ChainHelpers`, `test_ast596_resume_hop_mismatch_skips_claim`
+
+**Regression (required):** `TestAst848DispatchChainDoTask`, `TestAst844BuildArtifactsChainTaskKeys`, `TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestRunConsultTask::test_routes_candidate_review_cover_letter_unhandled_returns_zero \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast849_post_claim_filter_skips_row_mismatch \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  -q
+```
+
+**Manifest run:** 30 passed
+
+**Bible shasums (`origin/sub/...`):**
+- `docs/test-bible/core/agent.md` ee621cd59f56bf5a6b3221e4a7c4ea5257b635fd8b93157ae08e76518ccef560
+- `docs/test-bible/core/consult.md` 625f987254e74d6de964c3193758f344e4afc5f8573b488cbdd767ceaafe6df1
+- `docs/test-bible/core/dispatcher.md` 6298e08c6093233f379f049bbbbd52e02c32097a80ece222951c7b7265719013
+- `docs/test-bible/utils/config.md` 7c56eda7a6fe44c4f187a535e5f99372ef0c8dd9adb2f28cd950f64038c2bee6
+
+— Betty
+
+#### hedy — 2026-07-09T02:05:12.627Z
+Plan: `docs/features/consult/ast-849-retire-consult-chain-dispatch-claim.md`
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-847/AST-849-retire-consult-chain-dispatch-claim/docs/features/consult/ast-849-retire-consult-chain-dispatch-claim.md
+
+**Scope:** MAJOR-CHANGE — Removes the consult `_chain_*` / `do_chain_for_job` layer and rewires generic dispatch claim/count/validation (config + database + dispatcher + consult + tracker + admin) so runtime `<trigger>.<hop>` job labels from AST-848 are claimable; consult calls `do_task` only.
+
+**Conf:** Medium — AST-848 defines the ctx contract (`dispatch_trigger_state`, `dispatch_chain_graduate_on_terminal`, hop writes, graduation); this ticket adds live `run_next` parent lookup for claim states but follows AST-641 multi-state SQL and AST-828 claim-only label patterns.
+
+**Risk:** HIGH — Incorrect `dispatch_chain_claim_states_for_row` or post-claim filtering would reproduce silent terminal-hop skips (AC #4) or break mid-chain resume (AC #3); blockedBy AST-848 until merged to ftr.
+
+Seven build stages (0–6) after AST-848 merge; Stage 7 is Betty manifest only.
+
+---
+
 # Retire consult chain wrapper and dispatch claim for DB hop labels
 
 **Linear:** [AST-849 — Retire consult chain wrapper and dispatch claim for DB hop labels](https://linear.app/astralcareermatch/issue/AST-849/retire-consult-chain-wrapper-and-dispatch-claim-for-db-hop-labels-unify)  

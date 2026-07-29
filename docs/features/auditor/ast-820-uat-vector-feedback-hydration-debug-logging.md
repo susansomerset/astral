@@ -1,3 +1,116 @@
+<!-- linear-archive: AST-820 archived 2026-07-29 -->
+
+## Linear archive (AST-820)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-820/uat-add-debug-logging-to-vector-feedback-hydration-path  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+After AST-816 landed on staging, Susan re-tested `evaluate_jd` (2026-06-26 03:11) — **still not hydrating** compact `vector_reviews` (e.g. `CLRAOCVK`, `DORAOCVK`, …). Admin / FEEDBACK UI and debug output remain opaque.
+
+Susan requests **debug logging in the hydration/decode path for agent feedback** so we can confirm the code is invoked and see processing steps (input raw list, normalized form, rubric lookup keys, parse outcome per line, hydrate rows emitted).
+
+## Expected
+
+When debug is enabled on a rubric-backed run:
+
+1. Hydration/decode helpers (`normalize_vector_reviews_raw`, `parse_vector_review_string`, `hydrate_vector_review_strings`, capture hook) emit structured debug lines showing they were called, with enough detail to trace why display stays raw.
+2. Compact `vector_reviews` still decode to human-readable assessment wherever Susan inspects feedback (Admin Vector Feedback, FEEDBACK tab, debug log) once root cause is fixed.
+3. If parse/hydrate fails, debug log states explicit reason (not silent FEEDBACK fallback only).
+
+## Repro
+
+1. Staging: run `evaluate_jd` with debug enabled for a candidate with active rubric vectors.
+2. Model returns compact `vector_reviews` list (7 codes per Susan's log).
+3. Observe Admin → Vector Feedback / FEEDBACK tab — still raw codes after AST-816.
+4. Debug log lacks visibility into hydration/decode processing — Susan cannot tell if hydrate path runs.
+
+## Parent AC (quoted inline)
+
+> 7. With debug enabled, rubric-backed runs log each vector feedback found and recorded, or log that raw FEEDBACK was stored due to parse failure.
+
+> 6. Admin Vector Feedback page lists **vector_feedback** rows with sort/filter on candidate, task, vector code, feedback type, value, run/batch identifiers.
+
+> 1. Every rubric-backed agent task returns per-vector feedback (Relevance, Clarity, Verdict) for every vector in the active rubric when the model complies, using only config-allowed value codes.
+
+## Boundaries
+
+* Does **not** change lenient run success when feedback is truly unparseable.
+* Does **not** re-scope AST-809 batch metadata.
+* Debug logging only when debug flag is on — no noisy production logs.
+
+### Comments
+
+#### radia — 2026-06-26T03:21:11.538Z
+### AST-820 review
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-820-uat-vector-feedback-hydration-debug-logging` (code `22ee2e1`, doc after push)
+**Plan:** `docs/features/auditor/ast-820-uat-vector-feedback-hydration-debug-logging.md` § Review (Radia)
+
+**What looks good**
+- Pure `vector_reviews_pipeline_trace` (normalize → parse → hydrate) with no utils logging side effects.
+- Capture early returns now emit explicit `skip reason=` when `debug=True` (status, empty batch_id, empty expected_codes).
+- Full pipeline trace on capture start; `do_task` logs skip when `vector_reviews` present but owner/candidate missing.
+- All gated on `debug=True` (§1.5.1); tests cover trace helper + skip paths + do_task integration.
+
+**advisory**
+- Parse-failure path may log hydrate lines twice (trace summary + AST-816 per-vector loop) — verbose but per plan.
+- Admin hydrate API still untraced (explicitly out of scope).
+
+**Verdict:** Clean — approve for User Testing. No fix-now.
+
+#### betty — 2026-06-26T03:19:49.581Z
+## QA test manifest (AST-820)
+
+**Publish ref:** `origin/sub/AST-378/AST-820-uat-vector-feedback-hydration-debug-logging` @ `22ee2e1` (`merge-tests(AST-820): origin/tests 61560be`)
+
+**Pass criterion:** manifest lines green on publish ref — not zero-arg harness / branch-lock gate.
+
+1. **Pipeline trace builder (required):** `tests/component/utils/test_rubric_feedback.py::TestAst820VectorReviewsPipelineTrace` — ordered normalize/diagnostic/hydrate debug_detail lines; no logging side effects in utils.
+
+2. **Capture early-return debug (required):** `TestAst820VectorFeedbackDebugTrace::test_debug_skip_empty_batch_id`, `test_debug_skip_empty_expected_codes` — explicit skip reasons when `debug=True`.
+
+3. **Capture pipeline trace (required):** `TestAst820VectorFeedbackDebugTrace::test_debug_emits_pipeline_trace_on_capture_start` — `vector feedback capture start` + trace lines on SUCCESS capture.
+
+4. **`do_task` pre-capture skip (required):** `TestAst820VectorFeedbackDebugTrace::test_do_task_debug_skip_when_candidate_id_missing` — logs skip when `vector_reviews` present but owner/candidate missing.
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_feedback.py::TestAst820VectorReviewsPipelineTrace \
+  tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace \
+  -q
+```
+
+**Regression:** re-run `TestAst816VectorFeedbackCapture` if capture path assertions drift.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/utils/rubric_feedback.md`: ccfeba9c3b2951b5e180c5fc5a585966ca8e02fcb251f6febf542d09ae829b12
+- `docs/test-bible/core/agent.md`: b767bfbd34ce051a55974a312e7ce01299863b792aa1bb059d04cd0c20624449
+
+— Betty
+
+#### ada — 2026-06-26T03:13:49.644Z
+Plan doc: [`docs/features/auditor/ast-820-uat-vector-feedback-hydration-debug-logging.md`](https://github.com/susansomerset/astral/blob/sub/AST-378/AST-820-uat-vector-feedback-hydration-debug-logging/docs/features/auditor/ast-820-uat-vector-feedback-hydration-debug-logging.md) @ `d7e8639`
+
+**Self-assessment**
+- **Scope:** Single-Component — utils `vector_reviews_pipeline_trace` + capture/do_task debug emission on early returns; no API/React changes.
+- **Conf:** high — Susan needs observability after AST-816; silent early returns (`empty expected_codes`, missing candidate_id) are the likely staging gap.
+- **Risk:** low — debug-only when `debug=True`; no capture or parse rule changes.
+
+**Delta vs AST-816:** full pipeline trace (raw → normalize → diagnostic → hydrate) and explicit skip reasons on every capture early return.
+
+---
+
 # AST-820 — UAT: Add debug logging to vector feedback hydration path
 
 - **Linear:** [AST-820](https://linear.app/astralcareermatch/issue/AST-820/uat-add-debug-logging-to-vector-feedback-hydration-path)

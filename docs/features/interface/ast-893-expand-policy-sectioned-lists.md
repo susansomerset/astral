@@ -1,3 +1,136 @@
+<!-- linear-archive: AST-893 archived 2026-07-29 -->
+
+## Linear archive (AST-893)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-893/optional-expand-all-policy-and-expand-allcollapse-all-chrome-allow  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-886 — Allow "Expand One/Expand All" for sectioned list components  
+**Blocked by / blocks / related:** parent: AST-886
+
+### Description
+
+## What this implements
+
+Shared sectioned-list UI gains an optional page-set expansion policy: **Expand One** by default (current accordion behavior — existing screens stay on this default with no forced refactor) vs **Expand All** when the hosting TypeScript page opts in. When Expand All is on, the user gets visible **Expand all** / **Collapse all** controls and may still expand or collapse individual sections so one or more sections are open without requiring every section to be expanded. Zero expanded remains valid under both policies.
+
+## Acceptance criteria
+
+1. With the default (Expand One / expand-all unset): at most one section is open at a time; expanding a second section closes the first; collapsing the open section leaves zero expanded — matching current accordion behavior on existing screens that are not opted in.
+2. With Expand All opted in by the page: two or more sections can be open at the same time; collapsing one does not force-close the others.
+3. With Expand All opted in: visible **Expand all** opens every section; visible **Collapse all** closes every section.
+4. With Expand All opted in: the user can expand or collapse individual sections so that one or more (but not necessarily all) sections are open, without using Expand all.
+5. Under both policies, every section can be collapsed so that zero sections are expanded.
+6. Existing sectioned-list screens that do not opt in continue to behave as Expand One with no accidental multi-open and no required refactor of their prior expand logic beyond wiring the shared default.
+
+## Boundaries
+
+* Does **not** force existing screens off Expand One — default stays Expand One unless a page opts in.
+* Does **not** invent new list data, filters, sort rules, or API contracts.
+* Does **not** redesign section chrome beyond Expand all / Collapse all for Expand All mode, table layout, sticky columns, or admin filter bars.
+* Does **not** add a global persisted preference for last-expanded sections.
+* Does **not** change Recommended Jobs always-visible sections, AST-858, or AST-885 beyond shared expand primitives reused incidentally.
+* Must not change Expand One behavior on Manage Tasks, Scheduled Actions, In Review, Skipped, and other current accordion consumers that remain on the default.
+* Frontend-only — no backend debug-logging requirements.
+
+## Notes for planning
+
+* Parent **AST-886** definition is authoritative. React / TypeScript / CollapsiblePanel and sectioned list consumers — Katherine domain.
+* Prefer extending shared sectioned-list / CollapsiblePanel coordination over one-off expand state per page. Page opts into Expand All; omission means Expand One.
+* Preserve zero-expanded (AST-426 / CollapsiblePanel). Soften Boundaries in ASTRAL_CODE_RULES if needed for UI-only work — no [config.py](<http://config.py>) / API changes expected.
+* UAT needs at least one page that opts into Expand All so multi-open and bulk controls are observable; other screens keep Expand One default.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-886-expand-one-expand-all-sectioned-lists`, child `sub/AST-886/<child-id>-expand-policy-sectioned-lists`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-07-13T21:25:56.091Z
+[merge-child] blocked: missing resolve(AST-893): on origin/sub/AST-886/AST-893-expand-policy-sectioned-lists
+
+Resolution commit is `docs(AST-893): resolution — …` — validate-sub-log requires `resolve(AST-893):`.
+
+@Katherine Johnson — empty commit `resolve(AST-893): Radia clean sign-off` and push publish tip (no force-push).
+
+— Chuckles
+
+#### chuckles — 2026-07-13T21:25:15.518Z
+[merge-child] blocked: missing plan(AST-893): on origin/sub/AST-886/AST-893-expand-policy-sectioned-lists
+
+Plan commit subject is `docs(AST-893): plan — …` — validate-sub-log requires `plan(AST-893):`.
+
+@Katherine Johnson — on publish tip, add empty commit `plan(AST-893): expand policy sectioned lists` (or equivalently fix the plan commit subject without rewriting shared history) and push `origin/sub/AST-886/AST-893-expand-policy-sectioned-lists`. Do not force-push.
+
+— Chuckles
+
+#### radia — 2026-07-13T21:23:41.617Z
+### What’s solid
+- Stages 1–3 match plan: `useSectionExpandPolicy` Expand One/All Set semantics, `SectionExpandChrome` (**Expand all** / **Collapse all**), App.css `10f`, CollapsiblePanel comment-only.
+- Opt-in correct: Scheduled Actions `expandAll: true` + chrome; Manage Tasks list / In Review / Skipped default Expand One, no chrome; edit-modal untouched.
+- Auto-open + mount-when-expanded preserved on Scheduled Actions; candidate-change reset on In Review / Skipped.
+- Boundaries held (frontend-only). §1.1 / §1.3 / §3.3 / §3.5 OK. Self-Assessment Scope matches. §5f/§5g N/A.
+- Betty tests/bible on tip cover AC 1–6.
+
+### Issues
+None.
+
+### Recommended actions
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+Doc: https://github.com/susansomerset/astral/blob/88119b80dd3d7c57cbfd3d182a18a5f7888f4c2a/docs/features/interface/ast-893-expand-policy-sectioned-lists.md
+`docs(AST-893): Radia review — clean` @ `88119b8`
+
+#### betty — 2026-07-13T21:19:54.194Z
+## QA test manifest
+
+`origin/sub/AST-886/AST-893-expand-policy-sectioned-lists` @ `95f6b6d` (`merge-tests(AST-893): origin/tests cfdf768b31571ec6055cf535a6ee94f3833494ec`)
+
+1. Hook Expand One / Expand All (AC 1–5) — `tests/component/frontend/hooks/test_useSectionExpandPolicy.test.tsx`
+2. `SectionExpandChrome` labels + callbacks — `tests/component/frontend/components/test_SectionExpandChrome.test.tsx`
+3. Manage Tasks list Expand One — second section closes first; no bulk chrome (§6c) — `test_AdminTaskPrompts.test.tsx` **AST-893 Expand One on Manage Tasks list**
+4. In Review Expand One — second section closes first; no bulk chrome (§6c) — `test_JobsInReview.test.tsx` **AST-893 Expand One default**
+5. Skipped Expand One — second section closes first; no bulk chrome (§6c) — `test_JobsSkipped.test.tsx` **AST-893 Expand One default**
+6. Scheduled Actions Expand All — chrome, partial multi-open, Expand all / Collapse all (§6c) — `test_AdminScheduledActions.test.tsx` **AST-893 Expand All policy + bulk chrome**
+
+**Broken / revised this pass:** Scheduled Actions `groups rows…` (Expand All stale-key cleanup vs remembered `openSection`); In Review / Skipped api mocks → `importOriginal` for AuthContext named exports.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useSectionExpandPolicy.test.tsx \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-893|useSectionExpandPolicy|SectionExpandChrome|groups rows into DB"
+```
+
+Bible on publish tip:
+- `docs/test-bible/frontend/hooks.md` shasum `54c4cfbfcc9e2a61e6ba96fc009d397ebfd4d68f`
+- `docs/test-bible/frontend/components.md` shasum `15ee53fcf3cfeb85d7e497077e4da69319f1ee6c`
+- `docs/test-bible/frontend/pages.md` shasum `fe32c6f048f450c9b3cd8b00b58171f9a2bd03a0`
+
+— Betty
+
+#### katherine — 2026-07-13T21:09:48.964Z
+Plan: [`docs/features/interface/ast-893-expand-policy-sectioned-lists.md`](https://github.com/susansomerset/astral/blob/sub/AST-886/AST-893-expand-policy-sectioned-lists/docs/features/interface/ast-893-expand-policy-sectioned-lists.md)
+
+**Scope:** Single-Component — frontend shared `useSectionExpandPolicy` + `SectionExpandChrome`, wire Manage Tasks list / In Review / Skipped as Expand One default, opt Scheduled Actions into Expand All for UAT.
+
+**Conf:** high — CollapsiblePanel already supports controlled multi-open; Expand One is existing `string|null` accordion folded into one Set-based hook.
+
+**Risk:** Medium — Expand One regression on three screens; Scheduled Actions must keep expand-only table mount (AST-746 sticky measure).
+
+origin/`sub/AST-886/AST-893-expand-policy-sectioned-lists` @ `021f338`
+
+---
+
 # Optional Expand All policy and Expand all/Collapse all chrome (Allow "Expand One/Expand All" for sectioned list components)
 
 **Linear:** [AST-893](https://linear.app/astralcareermatch/issue/AST-893/optional-expand-all-policy-and-expand-allcollapse-all-chrome-allow)  
