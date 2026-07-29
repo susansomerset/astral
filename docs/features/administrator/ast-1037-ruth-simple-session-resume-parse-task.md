@@ -10,10 +10,10 @@ Add a dedicated Ruth (Little) agent task and matching `TASK_CONFIG` entry whose 
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/utils/config.py` | Extract shared craft-resume response schema constant; add `TASK_CONFIG["simple_resume_parse"]` with identical schema and session-oriented meta | utils |
+| `src/utils/config.py` | Extract shared craft-resume response schema constant; add `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` frozenset; add `TASK_CONFIG["simple_resume_parse"]` with identical schema and session-oriented meta | utils |
 | `data/admin/agent_task.json` | Add current `simple_resume_parse` row (`college_intern_ruth`, mechanical prompt, paste-faithful rules) | data |
 | `docs/uat-fixtures/AST-756/expected-agent_task.json` | Byte-identical copy of repo `agent_task.json` after the new row (AST-786 seed gate) | docs |
-| `src/core/agent.py` | Apply `normalize_craft_resume_base_agent_payload` for `simple_resume_parse` as well as `craft_resume_base` (same JSON shape before schema validation) | core |
+| `src/core/agent.py` | Gate `normalize_craft_resume_base_agent_payload` via `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` (covers `craft_resume_base` + `simple_resume_parse`) | core |
 
 **No changes expected:** `src/core/candidate.py` (`run_session_resume_parse`, `parse_candidate_resume`, Judith craft path), `src/ui/api/api_admin.py`, React Session Resume Paste / Open HTML, `data/admin/agent.json` (Ruth already exists), Judith `craft_resume_base` `agent_task` row.
 
@@ -23,9 +23,20 @@ Add a dedicated Ruth (Little) agent task and matching `TASK_CONFIG` entry whose 
 
 1. In `src/utils/config.py`, immediately above the `TASK_CONFIG = {` assignment (after `_RESUME_ARTIFACT_HOP_TASK_KEYS`), introduce a module-level constant named `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` whose value is **exactly** the current `craft_resume_base["response_schema"]` dict body (same keys, types, required flags, and `experience: _EXPERIENCE_JOB_ARRAY_FIELD`).
 
-2. Change `TASK_CONFIG["craft_resume_base"]["response_schema"]` to reference `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` (no field edits; no meta edits — keep `response_format`, `context_format`, `entity_type`, `requires_candidate_key`, `trigger_state` as they are today).
+2. Immediately after `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA`, add:
 
-3. Insert a new `TASK_CONFIG` entry **immediately after** `"craft_resume_base"`:
+```python
+_CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
+    "craft_resume_base",
+    "simple_resume_parse",
+})
+```
+
+⚠️ **Decision:** Allowed normalize-gate membership lives in `config.py` (§1.4 / `astral.standards.no-hardcoded-sets`). Growing the set later is a config-only change — not another `agent.py` edit.
+
+3. Change `TASK_CONFIG["craft_resume_base"]["response_schema"]` to reference `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` (no field edits; no meta edits — keep `response_format`, `context_format`, `entity_type`, `requires_candidate_key`, `trigger_state` as they are today).
+
+4. Insert a new `TASK_CONFIG` entry **immediately after** `"craft_resume_base"`:
 
 ```python
 "simple_resume_parse": {
@@ -95,11 +106,13 @@ cmp -s data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.
 
 ⚠️ **Decision:** Group under **Candidate Artifacts** / order `2000` / seq `6` (sits next to `craft_resume_base` seq `5`) so Manage Tasks shows the pair together without inventing a new task group.
 
-## Stage 3: `do_task` normalize hook for the new key
+## Stage 3: `do_task` normalize hook via config membership set
 
-**Done when:** Both `agent.py` sites that special-case `task_key == "craft_resume_base"` before schema validation also run `normalize_craft_resume_base_agent_payload` when `task_key == "simple_resume_parse"`.
+**Done when:** Both `agent.py` sites that special-case `task_key == "craft_resume_base"` before schema validation run `normalize_craft_resume_base_agent_payload` when `task_key` is in `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` (imported from config with the existing `TASK_CONFIG` import).
 
-1. In `src/core/agent.py`, find every occurrence of:
+1. In `src/core/agent.py`, extend the existing `from src.utils.config import …` (or equivalent) that already pulls `TASK_CONFIG` so it also imports `_CRAFT_RESUME_NORMALIZE_TASK_KEYS`.
+
+2. Find every occurrence of:
 
 ```python
 if task_key == "craft_resume_base":
@@ -109,13 +122,13 @@ if task_key == "craft_resume_base":
 
 (There are two today — sync + async validation paths around the craft-base normalize calls.)
 
-2. Change each condition to:
+3. Change each condition to:
 
 ```python
-if task_key in ("craft_resume_base", "simple_resume_parse"):
+if task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS:
 ```
 
-Keep the same import and function call. Do **not** rename `normalize_craft_resume_base_agent_payload` in this ticket.
+Keep the same lazy import and function call. Do **not** rename `normalize_craft_resume_base_agent_payload` in this ticket. Do **not** inline `("craft_resume_base", "simple_resume_parse")` in `agent.py`.
 
 ⚠️ **Decision:** This is catalog usability for the shared JSON shape, **not** Admin Session Resume Parse wiring. `run_session_resume_parse` still calls `craft_resume_base` until **AST-1038**.
 
@@ -137,7 +150,7 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — utils `TASK_CONFIG` + repo `agent_task` seed/fixture + a two-line `agent.py` normalize gate; no Admin route or Judith craft path edits.
+**Scope:** `Single-Component` — utils shared schema + normalize-key frozenset + `TASK_CONFIG` entry, repo `agent_task` seed/fixture, and `agent.py` membership gate against that frozenset; no Admin route or Judith craft path edits.
 
 **Conf:** `high` — reuses the existing craft-base response contract, Ruth agent row, AST-786 fixture sync pattern, and the established normalize hook; sibling owns the parse wire.
 
@@ -147,7 +160,13 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 
 - **§1.1 / in-scope-only:** No Admin wire, no Open HTML, no Judith prompt edits.
 - **§1.3 DRY:** One `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` shared by both task keys; normalize function reused.
-- **§1.4 / no-hardcoded-sets:** Task key lives in `TASK_CONFIG` + `agent_task` seed — no new inline frozensets for membership.
-- **§2.1 config source of truth:** Schema and task meta in `config.py`; prompts in `agent_task` seed.
+- **§1.4 / no-hardcoded-sets:** Task key lives in `TASK_CONFIG` + `agent_task` seed; normalize membership is `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py` — `agent.py` does not grow an inline tuple/frozenset.
+- **§2.1 config source of truth:** Schema, task meta, and normalize membership in `config.py`; prompts in `agent_task` seed.
 - **§2.2 / do-task delegation:** Task is only reachable via `do_task` once a caller (sibling) invokes it — no new direct LLM calls.
-- **§3.3 imports:** `agent.py` keeps the existing lazy import of `normalize_craft_resume_base_agent_payload`.
+- **§3.3 imports:** `agent.py` imports `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` with `TASK_CONFIG`; keeps the existing lazy import of `normalize_craft_resume_base_agent_payload`.
+
+## Revisions
+
+Revision 1 — 2026-07-29  
+Driven by: Joan `[plan-discuss] round=1 concern` — Stage 3 inline `task_key in ("craft_resume_base", "simple_resume_parse")` violates `astral.standards.no-hardcoded-sets` / §1.4.  
+Changes: Stage 1 adds `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py`; Stage 3 gates normalize via that constant; Files Changed + Code Rules check updated to match.
