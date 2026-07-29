@@ -2127,6 +2127,21 @@ JOBS_RECOMMENDED_UI_SECTIONS = [
     {"state": "CANDIDATE_REVIEW", "label": "Ready"},
 ]
 
+# AST-1052 / AST-1057: Recommended page — distinct Meteorites section membership.
+# Jobs already land in RECOMMENDED / BUILD_ARTIFACTS / CANDIDATE_REVIEW after meteorite_upshot
+# (AST-1055); partition by company short_name prefix, not by a new job state.
+JOBS_RECOMMENDED_METEORITE_SECTION = {
+    "section_id": "meteorites",
+    "label": "Meteorites",
+    "company_prefix": METEORITE_CONFIG["short_name_prefix"],  # "meteorite-"
+}
+assert isinstance(JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"], str)
+assert JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
+assert (
+    JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
+    == METEORITE_CONFIG["short_name_prefix"]
+)
+
 JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
     {"field": "jd_score", "label": "JD"},
     {"field": "do_score", "label": "DO"},
@@ -2284,6 +2299,11 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_artifact_tabs": list(JOBS_RECOMMENDED_ARTIFACT_TABS),
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
+                "meteorite_section": {
+                    "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
+                    "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],
+                    "company_prefix": JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"],
+                },
             },
         },
         "candidate": {"artifact_generate_states": gen_states},
