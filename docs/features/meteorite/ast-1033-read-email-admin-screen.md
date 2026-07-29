@@ -223,3 +223,10 @@ Wide modal already sets `.modal-card--wide .modal-body { overflow: hidden; paddi
 
 ### Recommended actions
 - Hedy: acknowledge stragglers → resolve-child → User Testing.
+
+## Resolution
+
+**Date:** 2026-07-29
+**Review:** Radia @ `18b09a64` — **fix-now:** none; **discuss:** statute straggler ×14 (all substance **conforms**); no advisory product items.
+
+No product changes. Acknowledged discuss stragglers as plan-time Joan exclusions that became in-scope on the three-dot vs `origin/dev` (AST-1032 core/external/tests/docs on the same tip) — no code delta. Advanced to **User Testing**.
