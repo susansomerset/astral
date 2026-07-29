@@ -1078,3 +1078,30 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
 ```
+
+
+### AST-1048 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`.
+
+Rename **Read email** → **Manage Email** (`AdminManageEmail.tsx`, route `/admin/manage_email`). List **Candidate** column + modal bind from AST-1047 `candidate_match`; **Create** enabled only when `candidate_match.matched` (stub click — AST-1049 wires meteorite). Unmatched browse (list + HTML modal) unchanged. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page rename + match column/modal + Create enablement (§6c) | `AdminManageEmail.tsx` + route + `App.css` | **`test_AdminManageEmail.test.tsx`** (replaces **`test_AdminReadEmail.test.tsx`**) |
+| Nav label/path | `src/utils/config.py` | revised **`TestAst1033ReadEmailNav`** (`test_manage_email_follows_session_cover_letter`) |
+
+**Broken / obsolete:** **`test_AdminReadEmail.test.tsx`** (page rename); **`TestAst1033ReadEmailNav.test_read_email_follows_session_cover_letter`** (`/admin/read_email` / "Read email") — revised in place.
+
+**Integration:** no existing Admin Manage Email scenarios — no revision; do not invent new integration coverage.
+
+**AST-1048** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
