@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-848 archived 2026-07-29 -->
+
+## Linear archive (AST-848)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-848/do-task-run-next-chain-recursion-and-db-hop-labels-unify-build  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-847 — Unify BUILD_ARTIFACTS chain in do_task (per-hop state + terminal graduation)  
+**Blocked by / blocks / related:** parent: AST-847
+
+### Description
+
+## What this implements
+
+Move synchronous `run_next` daisy-chain ownership into `do_task`: self-recursing hop execution, writing `<trigger_state>.<completed_task_key>` to `job.state` after each successful hop (runtime DB labels — not `JOB_STATES` registry entries), terminal graduation to the next config job state when `run_next` is empty (no persist gates), unified chain including `draft_cover_letter` when wired in the graph, and AST-538 debug logging for chain hops plus info-level terminal graduation.
+
+## Acceptance criteria
+
+1. **Canonical UAT chain** — Scheduled Actions **Run** on `anticipate_scan` @ `BUILD_ARTIFACTS` with full `run_next` graph: all hops execute in order; job graduates to `CANDIDATE_REVIEW`; job appears **Ready** in Recommended Jobs UI.
+2. After each successful hop, `job.state` reflects the completed hop (`<trigger_state>.<task_key>`); Susan can see progress without reading execution history.
+3. Single-hop run (`anticipate_scan` with `run_next` cleared): exactly one LLM hop runs; job advances to matching DB hop label; does **not** reach `CANDIDATE_REVIEW`.
+4. Retryable hop failure: job stays on last successful DB hop label; redispatch can resume. Hard failure: hop `error_state`; no false **Ready**.
+5. Terminal hop dispatch row (e.g. `propose_application_responses`) succeeds and graduates in the same run — no silent skip / zero-work batch.
+6. Consult-layer chain wrapper, persist-gate graduation, and AST-803-only paths removed from touched product code; no state-name-specific chain branches replace them.
+
+## Boundaries
+
+Does not own dispatch claim/validation paths (sibling Hedy ticket). Does not edit hop prompts or `run_next` graph in Manage Tasks. Does not regress AST-769 caller hydration. No `JOB_STATES` compound hop registry.
+
+## Notes for planning
+
+Primary file: `src/core/agent.py`. Terminal target = next job state in config machine (not per-hop `pass_state`). See parent AST-847 definition. Supersedes AST-803 consult-wrapper graduation model.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-847-unify-build-artifacts-chain-do-task`, child `sub/AST-847/AST-848-do-task-run-next-chain`.
+
+### Comments
+
+#### radia — 2026-07-09T02:25:07.811Z
+### Plan fidelity
+
+Stages 1–5 land as specified: config graduation map + hop helpers, tracker hop writes + `graduate_job_from_dispatch_chain`, agent per-hop labels / terminal graduation / failure routing, consult AST-803 retirement, §2.6.0 carve-out. Deleted symbols grep clean. Chain ctx wired in `do_chain_for_job`; `draft_cover_letter` routes through chain batch when trigger is in graduation map.
+
+### fix-now
+
+**`src/core/agent.py` ~2137 (`envelope_err` block)** — Refactor to pass `failure_error` into `_close_hop_ledger` dropped the `return` after strict-envelope failure. Execution falls through into schema validation / success path; strict encoded batch consult hops can report success after envelope failure. Restore `return {"success": False, …}` matching sibling branches (~2167).
+
+### advisory
+
+- `graduate_job_from_dispatch_chain`: cache `parse_dispatch_hop_label(from_state)` instead of calling twice.
+- `_resume_hop_debug_index` dispatch-chain entry uses `identifier=task_key`; hop-ok path uses `identifier=index` — debug consistency only.
+
+### Solid (no action)
+
+- `_job_state_matches_prior` companion change correctly enables graduation and hard `ERROR_BUILD_ARTIFACTS` from runtime `{trigger}.{hop}` labels.
+- AST-538 hop debug uses contract helpers; lazy tracker imports preserved.
+
+Review doc: `docs/features/consult/ast-848-do-task-run-next-chain.md` @ `63341a3` on `origin/sub/AST-847/AST-848-do-task-run-next-chain`.
+
+#### betty — 2026-07-09T02:15:00.989Z
+## QA test manifest (AST-848)
+
+**Publish ref:** `origin/sub/AST-847/AST-848-do-task-run-next-chain` @ `33cd52d`
+**Tests commit:** `origin/tests` `1e1e237`
+
+1. **Config hop labels + claim predicate** — `tests/component/utils/test_config.py::TestAst848DispatchHopLabels`
+2. **Tracker runtime hop write + chain graduation** — `tests/component/core/test_tracker.py::TestAst848DispatchChainTracker`
+3. **Agent per-hop DB label + terminal graduation + hard failure** — `tests/component/core/test_agent.py::TestAst848DispatchChainDoTask`
+4. **Consult thin wrapper (chain ctx, no consult graduation / chain_incomplete)** — `tests/component/core/test_consult.py::TestAst803ChainGraduation` (AST-848 revisions)
+5. **Regression — chain resolution helpers** — `tests/component/core/test_consult.py::TestAst803ChainHelpers`
+6. **Regression — terminal hop registry** — `tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys`
+
+**Broken / revised this pass:** `TestAst803ChainGraduation` consult-layer `transition_job_state` / `chain_incomplete` / `_chain_graduate_to_candidate_review` / batch graduation-failure rows — superseded by do_task ownership (items 3–4).
+
+**Narrowed run:**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/core/test_tracker.py::TestAst848DispatchChainTracker \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (`origin/sub/AST-847/AST-848-do-task-run-next-chain`):**
+- `docs/test-bible/core/agent.md` — `61f5b9d70844e1f45a2abad83af50ab604a2936aca0e0eb95617fc0106d16d1b`
+- `docs/test-bible/core/consult.md` — `8854d47db5e901969e6de77dd07117286ba6ab39bf0e289faff5d2ed49949f97`
+- `docs/test-bible/core/tracker.md` — `af856694b4a45eb0013e1ffc1a85674a98834469dda0e07e02432094ed538f9a`
+- `docs/test-bible/utils/config.md` — `50f36f3432984f581edc1ac8219f3de93ff0509583d70c1051c4800eecb05abd`
+
+— Betty
+
+#### hedy — 2026-07-09T02:01:16.201Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-847/AST-848-do-task-run-next-chain/docs/features/consult/ast-848-do-task-run-next-chain.md
+
+Self-assessment:
+- **Scope:** MAJOR-CHANGE — agent chain orchestration, tracker runtime hop writes, config graduation map, consult wrapper removal.
+- **Conf:** Medium — run_next recursion and caller hydration exist; new runtime labels + ctx graduation gating; dispatch claim alignment deferred to AST-849.
+- **Risk:** HIGH — wrong graduation or hop writes leave jobs stuck or falsely Ready.
+
+---
+
 # do_task run_next chain recursion and DB hop labels
 
 **Linear:** [AST-848 — do_task run_next chain recursion and DB hop labels](https://linear.app/astralcareermatch/issue/AST-848/do-task-run-next-chain-recursion-and-db-hop-labels-unify-build)  
