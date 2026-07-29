@@ -82,3 +82,25 @@ In `data/admin/agent_task.json` → `craft_resume_base` → `cache_prompt`, **FO
 | 2 | — | Builder markers unchanged; session expand proof for sample skill/contact lines |
 
 **Tip:** `eedc91e4` on `origin/sub/AST-1019/AST-1027-uat-markers-nbsp`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1027
+**Publish ref tip (pre-docs):** `b16675cd6ff0d0fbfa26f0ba7c1e0e143304967d`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stage 1: `craft_resume_base` `cache_prompt` preserves `__` / `~~`; checklist no longer demands strip-clean; skills/contact/prior/competencies keep paste separators.
+- Builder `_resume_site_markers` untouched (three-dot has no `src/` product delta for this ticket’s intent).
+- Semantic JSON diff is only that one `cache_prompt` field (other task rows equal after parse).
+
+### Issues / findings
+
+None (fix-now / discuss).
+
+### Recommended actions
+
+resolve-child → User Testing.
