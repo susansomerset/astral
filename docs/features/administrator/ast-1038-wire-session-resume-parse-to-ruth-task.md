@@ -86,3 +86,8 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 - **§1.5.1 / debug-contract-gated:** Preserve existing Style D gated on `debug=True`; no new ungated debug lines.
 - **§3.3 imports:** UI stays ui → core; no new data imports in Admin route.
 - **pattern.ui.admin-endpoint / require-auth:** Route stays thin + `@require_admin`.
+
+## Review (build stub)
+
+**Branch:** `origin/sub/AST-1036/AST-1038-wire-session-resume-parse-to-ruth-task`
+**Tip:** `2cf538f4`
