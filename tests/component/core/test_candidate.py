@@ -2164,6 +2164,66 @@ class TestAst996ExperienceJobArray:
         assert "Do **not** enrich, blend, or expand accomplishments from LinkedIn" in prompt
 
 
+class TestAst1027CraftResumeBaseMarkerPreserve:
+    """AST-1027: craft_resume_base cache_prompt preserves __ / ~~ for builder expand."""
+
+    def test_cache_prompt_preserves_typography_markers(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Preserve contract (replaces prior strip-to-space/hyphen rule).
+        assert "Typography markers (preserve)" in prompt
+        assert "Do **not** replace `__` with a space or `~~` with a hyphen" in prompt
+        assert "`__` → NBSP" in prompt
+        assert (
+            "When the resume/paste contains `__` or `~~`, those digraphs appear unchanged"
+            in prompt
+        )
+        # Old strip instructions must be gone.
+        assert "Strip ANY formatting artifacts" not in prompt
+        assert "All formatting codes stripped clean" not in prompt
+        assert "`__` (replace with space)" not in prompt
+        assert "`~~` (replace with hyphen)" not in prompt
+        # Segment instructions stay paste-faithful (UAT skills / contact / prior).
+        assert "do not rewrite marked bullet separators into pipes" in prompt
+        assert "Jira__•__Confluence__•__Linear" in prompt
+        assert "When the paste uses `__•__`" in prompt
+        assert "Preserve `__` / `~~` / `•` from the paste line" in prompt
+
+
+class TestAst1028CraftResumeBaseTitleTaglineSplit:
+    """AST-1028: craft_resume_base splits title vs specialty/keyword tagline."""
+
+    def test_cache_prompt_title_only_and_candidate_tagline_segment(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Segment order: title → tagline → contact.
+        title_i = prompt.find("### candidate_title")
+        tagline_i = prompt.find("### candidate_tagline")
+        contact_i = prompt.find("### candidate_contact_detail")
+        assert title_i >= 0 and tagline_i > title_i and contact_i > tagline_i
+        # Title must stay title-only (UAT mash was title + em-dash keywords).
+        assert "Put **only** the title in this field" in prompt
+        assert 'Do **not** append specialty phrases, keyword lists, "specializing in …"' in prompt
+        assert "em/en-dash–joined keyword tails" in prompt or "em/en-dash" in prompt
+        assert "belong in `candidate_tagline`, not here" in prompt
+        # Tagline feeds ATS meta only — not header/body.
+        assert "HTML emit uses it for ATS meta only" in prompt
+        assert "Do **not** duplicate this text into `candidate_title`" in prompt
+        assert "Enterprise Implementation • Service Delivery" in prompt
+        # Quality checklist locks the split.
+        assert (
+            "Title is title-only; when the paste has a separate specialty/keyword line, "
+            "it appears in `candidate_tagline`"
+            in prompt
+        )
+
+
 class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 

@@ -1929,6 +1929,125 @@ class TestAst1021DocumentTitleChrome:
         self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
 
 
+class TestAst1027UatMarkerExpand:
+    """AST-1027: when digraphs survive parse, shared expand is 1:1 for UAT skill sample."""
+
+    def test_resume_site_markers_uat_skill_line(self) -> None:
+        # UAT Actual was asymmetric nbsp-left-of-bullet + plain spaces on word joins.
+        sample = (
+            "Program & Delivery: Jira__•__Confluence__•__Linear__• "
+            "Jira__Align__•__Azure__DevOps__•__Asana__• "
+            "Trello__•__JAMA__•__Pivotal__Tracker"
+        )
+        out = builder_mod._resume_site_markers(sample)
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in out
+        assert "Jira\u00a0Align" in out
+        assert "Azure\u00a0DevOps" in out
+        assert "Pivotal\u00a0Tracker" in out
+        assert "__" not in out
+
+    def test_session_html_expands_uat_skill_markers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "technical_skills": {
+                    "id": "technical_skills",
+                    "title": "Technical Skills",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+        blob = {
+            "candidate_name": "Susan Somerset",
+            "technical_skills": (
+                "Program & Delivery: Jira__•__Confluence__•__Linear__• "
+                "Jira__Align__•__Azure__DevOps"
+            ),
+        }
+        html = builder_mod.build_session_base_resume(structure, blob)
+        assert "Jira\u00a0•\u00a0Confluence\u00a0•\u00a0Linear" in html
+        assert "Jira\u00a0Align" in html
+        assert "Azure\u00a0DevOps" in html
+        assert "__" not in html
+
+
+class TestAst1028UatKeywordsMetaEmit:
+    """AST-1028: when title/tagline are split, keywords stay in meta — not header/body."""
+
+    _TAGLINE = (
+        "Program Delivery, Cross-Functional Alignment, Cloud SaaS, AI-Assisted Engineering"
+    )
+    _META = (
+        "Resume of Susan Somerset, Fractional TPM, specializing in "
+        "Program Delivery, Cross-Functional Alignment, Cloud SaaS, AI-Assisted Engineering"
+    )
+
+    def test_session_header_title_only_keywords_in_meta(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "candidate_title": {
+                    "id": "candidate_title",
+                    "title": "Title",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": False,
+                },
+                "candidate_tagline": {
+                    "id": "candidate_tagline",
+                    "title": "Candidate Tagline",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": False,
+                },
+                "candidate_contact_detail": {
+                    "id": "candidate_contact_detail",
+                    "title": "Contact",
+                    "enabled": True,
+                    "order": 3,
+                    "job_agent_editable": False,
+                },
+            }
+        }
+        blob = {
+            "candidate_name": "Susan Somerset",
+            "candidate_title": "Fractional TPM",
+            "candidate_tagline": self._TAGLINE,
+            "candidate_contact_detail": "hire@example.com",
+        }
+        html = builder_mod.build_session_base_resume(structure, blob)
+        assert "<h1>Susan Somerset • Fractional TPM</h1>" in html
+        header = html.split("<header", 1)[1].split("</header>", 1)[0]
+        main = html.split("<main", 1)[1].split("</main>", 1)[0]
+        assert "Program Delivery" not in header
+        assert "Program Delivery" not in main
+        assert "AI-Assisted Engineering" not in header
+        assert "AI-Assisted Engineering" not in main
+        assert f'<meta name="description" content="{self._META}" />' in html
+        # Pre-fix mash shape must not appear in h1 when fields are split.
+        assert "Fractional TPM — Program Delivery" not in html
+
+
 class TestAst1014BuilderContact:
     """AST-1014: builder reads name columns + contact blob via _apply_contact_to_render_dict."""
 
