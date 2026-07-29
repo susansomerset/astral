@@ -69,3 +69,15 @@ Session Resume Paste → Parse → Open HTML shows Core Competencies joined with
 - §2.1: prompt lives in repo admin JSON (existing AST-782 path).
 - §3.6: spikes under `debug/spikes/AST-1029/` only if used.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1019/AST-1029-uat-competencies-pipes`
+**Plan path:** `docs/features/artifacts/ast-1029-uat-competencies-pipes.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `f90922c4` | `craft_resume_base`: require `•` competencies/prior separators; forbid `|` |
+| 2 | — | Builder competencies emit unchanged; session proof bullet list in `.competencies-list` |
+
+**Tip:** `f90922c4` on `origin/sub/AST-1019/AST-1029-uat-competencies-pipes`
