@@ -194,3 +194,13 @@ Core session cover emit from an in-memory field payload (no job load; no artifac
 Revision 1 — 2026-07-29
 Driven by: Joan `[plan-discuss] round=1 concern` — Stage 3 hardcoded seven-key `body.get` dict duplicated `BUILD_CONFIG["session_cover_letter"]["fields"]` (violates config-source-of-truth / DRY / no-hardcoded-sets).
 Changes: Stage 3 builds `fields = {k: body.get(k, "") for k in BUILD_CONFIG["session_cover_letter"]["fields"]}`; `candidate_id` remains outside the map; Decision + Code rules check updated.
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1023/AST-1024-session-cover-letter-html-builder-admin-html-api`
+**Tip:** `db3915d4`
+
+**Stages delivered:**
+- Stage 1 — `BUILD_CONFIG["session_cover_letter"]` field contract + document title
+- Stage 2 — `build_session_cover_letter` + `_emit_session_cover_html_document` (SomersetCover; optional candidate signature image read-only)
+- Stage 3 — `POST /api/admin/session_cover_letter/html` (`@require_admin`, fields from config keys)
