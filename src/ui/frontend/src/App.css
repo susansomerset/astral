@@ -2045,17 +2045,24 @@ input.side-tab-heading-editable:focus {
   padding: 0;
 }
 
-/* AST-1033: Gmail HTML preview fills wide modal and scrolls inside the iframe */
+/* AST-1040: Gmail HTML source fills wide modal; scroll inside the pre */
 .email-html-frame {
   height: 100%;
   overflow: hidden;
 }
-.email-html-frame iframe {
-  display: block;
-  width: 100%;
+.email-html-source {
+  margin: 0;
+  padding: 16px 20px;
   height: 100%;
-  border: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
   background: #fff;
+  color: var(--text-primary);
 }
 
 /* SideTabPanel fills the modal-body */

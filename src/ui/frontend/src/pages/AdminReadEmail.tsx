@@ -145,7 +145,7 @@ export default function AdminReadEmail() {
         )}
         {!bodyLoading && !bodyError && (
           <div className="email-html-frame">
-            <iframe title="Email body" sandbox="" srcDoc={htmlBody || ""} />
+            <pre className="email-html-source" title="Email body">{htmlBody || ""}</pre>
           </div>
         )}
       </Modal>
