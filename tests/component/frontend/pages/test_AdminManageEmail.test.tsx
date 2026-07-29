@@ -34,7 +34,7 @@ const ROWS = [
   },
 ]
 
-describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)", () => {
+describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c routed page)", () => {
   beforeEach(() => {
     mockedApi.mockReset()
   })
@@ -74,7 +74,20 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
     expect(unmatchedRow!.textContent).toContain("—")
   })
 
-  it("matched row: modal shows bind + enabled Create; raw HTML source (AST-1040/1048)", async () => {
+  it("matched row has Actions Create; unmatched has none (AST-1051)", async () => {
+    mockApis()
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument()
+    const matchedRow = screen.getByText("Hello Astral").closest("tr")
+    const unmatchedRow = screen.getByText("other@example.com").closest("tr")
+    expect(matchedRow).toBeTruthy()
+    expect(unmatchedRow).toBeTruthy()
+    expect(matchedRow!.querySelector("button.manage-email-create")).toBeTruthy()
+    expect(unmatchedRow!.querySelector("button.manage-email-create")).toBeNull()
+  })
+
+  it("matched row: modal shows bind + raw HTML; no Create in modal (AST-1040/1051)", async () => {
     const raw = "<p>body html</p>"
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m1") {
@@ -90,8 +103,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
       selector: ".manage-email-match--modal",
     })
     expect(modalMatch).toBeInTheDocument()
-    const create = screen.getByRole("button", { name: "Create" })
-    expect(create).toBeEnabled()
+    expect(document.querySelector(".manage-email-actions")).toBeNull()
     const source = screen.getByTitle("Email body")
     expect(source.tagName).toBe("PRE")
     expect(source).toHaveClass("email-html-source")
@@ -100,7 +112,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
   })
 
-  it("unmatched row: modal omits match line; Create disabled; browse still works", async () => {
+  it("unmatched row: modal omits match line; browse still works (AST-1051)", async () => {
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m2") {
         return jsonResponse({ id: "m2", html_body: "" })
@@ -114,9 +126,8 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Message", level: 2 })).toBeInTheDocument(),
     )
-    // List may still show other rows' match cells; modal must omit the bind line.
     expect(document.querySelector(".manage-email-match--modal")).toBeNull()
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled()
+    expect(document.querySelector(".manage-email-actions")).toBeNull()
     const source = screen.getByTitle("Email body")
     expect(source.tagName).toBe("PRE")
     expect(source).toHaveTextContent("")
@@ -144,14 +155,12 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
     await userEvent.click(screen.getByText("Hello Astral"))
     await waitFor(() => expect(screen.getByText("upstream")).toBeInTheDocument())
     expect(screen.queryByTitle("Email body")).not.toBeInTheDocument()
+    // List-row Create remains available outside the modal.
     expect(screen.getByRole("button", { name: "Create" })).toBeEnabled()
   })
 
-  it("Create POSTs create-job and toasts success (AST-1049)", async () => {
+  it("list-row Create POSTs create-job without opening modal (AST-1051)", async () => {
     mockApis(async (url, init) => {
-      if (url === "/api/admin/inbox/messages/m1" && (!init || !init.method || init.method === "GET")) {
-        return jsonResponse({ id: "m1", html_body: "<p>x</p>" })
-      }
       if (
         url === "/api/admin/inbox/messages/m1/create-job" &&
         init?.method === "POST"
@@ -168,33 +177,30 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
-    await userEvent.click(screen.getByText("Hello Astral"))
-    await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).toBeEnabled())
-    await userEvent.click(screen.getByRole("button", { name: "Create" }))
+    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
+    await userEvent.click(matchedRow.querySelector("button.manage-email-create")!)
     await waitFor(() => expect(screen.getByText("Created job job-42")).toBeInTheDocument())
+    expect(screen.queryByRole("heading", { name: "Hello Astral", level: 2 })).not.toBeInTheDocument()
     expect(mockedApi).toHaveBeenCalledWith(
       "/api/admin/inbox/messages/m1/create-job",
       expect.objectContaining({ method: "POST" }),
     )
+    expect(mockedApi).not.toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
   })
 
-  it("Create failure toasts error without leaving modal (AST-1049)", async () => {
+  it("list-row Create failure toasts error (AST-1051)", async () => {
     mockApis(async (url, init) => {
-      if (url === "/api/admin/inbox/messages/m1" && (!init || !init.method || init.method === "GET")) {
-        return jsonResponse({ id: "m1", html_body: "<p>x</p>" })
-      }
       if (url === "/api/admin/inbox/messages/m1/create-job" && init?.method === "POST") {
         return jsonResponse({ error: "message is not matched to a candidate" }, false)
       }
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
-    await userEvent.click(screen.getByText("Hello Astral"))
-    await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).toBeEnabled())
-    await userEvent.click(screen.getByRole("button", { name: "Create" }))
+    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
+    await userEvent.click(matchedRow.querySelector("button.manage-email-create")!)
     await waitFor(() =>
       expect(screen.getByText("message is not matched to a candidate")).toBeInTheDocument(),
     )
-    expect(screen.getByRole("heading", { name: "Hello Astral", level: 2 })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Hello Astral", level: 2 })).not.toBeInTheDocument()
   })
 })
