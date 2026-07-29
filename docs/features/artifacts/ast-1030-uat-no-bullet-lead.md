@@ -104,3 +104,13 @@ None (fix-now / discuss).
 ### Recommended actions
 
 resolve-child → User Testing (restart/deploy so startup applies repo JSON, then re-paste).
+
+## Resolution
+
+**2026-07-29** — Radia **CLEAN**; no fix-now / discuss items.
+
+- Product tip remains `f54d3519` (`craft_resume_base` preserve `<no bullet>` on accomplishments leads).
+- Intake: Radia `docs(AST-1030)` @ `b35e68bb` on `origin/sub/AST-1019/AST-1030-uat-no-bullet-lead`.
+- No product or test-tree changes on resolve.
+
+**UAT note:** restart/deploy so startup applies repo `agent_task.json`, then Session Resume Paste → Parse → Open HTML on Somerset `<no bullet>` fixture; lead must be `.role-description`, not first `<li>`.
