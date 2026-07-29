@@ -181,3 +181,11 @@ New Admin nav page (sibling of Session Resume Paste): cover-letter field inputs,
 
 ### Recommended actions
 - Katherine: acknowledge C4 stragglers in resolve (no product change) → User Testing.
+
+## Resolution
+
+**2026-07-29** — Radia `[code-rubric] revision=1` Overall DISCUSS; tip intake `f7320b88` (docs-only) after product/tests `f3061950`.
+
+- **fix-now:** none — no product changes.
+- **discuss (C4 stragglers):** acknowledged — Joan Excluded statutes became in-scope via three-dot ancestry (AST-1024 + features/test-tree); substance already **conforms**. No product or plan-stage change.
+- **advisory:** none.
