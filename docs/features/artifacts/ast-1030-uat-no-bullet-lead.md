@@ -82,3 +82,25 @@ In `_split_role_accomplishments`, only lines with `startswith(lead_prefix)` (`<n
 | 2 | — | Builder split/emit unchanged; Somerset lead → `.role-description` proof |
 
 **Tip:** `f54d3519` on `origin/sub/AST-1019/AST-1030-uat-no-bullet-lead`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1030
+**Publish ref tip (pre-docs):** `67718600c18cd8472ccaf45337ea5db08824d59a`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stage 1: `### experience` / `accomplishments` preserves literal `<no bullet>` on paste leads; do-not-invent; checklist bullet present.
+- Builder split/emit untouched (AST-1030 code commit is `data/admin/agent_task.json` only).
+- Semantic JSON change is only `craft_resume_base.cache_prompt`.
+
+### Issues / findings
+
+None (fix-now / discuss).
+
+### Recommended actions
+
+resolve-child → User Testing (restart/deploy so startup applies repo JSON, then re-paste).
