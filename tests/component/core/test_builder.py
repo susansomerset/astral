@@ -2107,6 +2107,80 @@ class TestAst1029UatCompetenciesBulletsEmit:
             assert "|" not in text
 
 
+class TestAst1030UatNoBulletLeadEmit:
+    """AST-1030: preserved `<no bullet>` → .role-description; stripped → first <li>."""
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_with_prefix_lead_is_role_description_not_li(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        lead = (
+            "<no bullet>Solo practice delivering embedded technical program management "
+            "across 30+ SaaS engagements."
+        )
+        bullet = "Diagnosed and mitigated blockers across distributed teams."
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "experience": [
+                    {
+                        "company": "Somerset__Consulting",
+                        "title": "Principal Technical Program Manager",
+                        "dates": "2011 to Present",
+                        "location": "United States / Full-time Remote",
+                        "accomplishments": f"{lead}\n{bullet}",
+                    }
+                ],
+            },
+        )
+        assert 'class="role-description"' in html
+        assert "Solo practice delivering embedded technical program management" in html
+        assert "<no bullet>" not in html
+        # Lead must not appear as a list item.
+        assert "<li>Solo practice delivering" not in html
+        assert f"<li>{bullet}</li>" in html
+
+    def test_without_prefix_first_line_is_li_not_role_description(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        first = (
+            "Solo practice delivering embedded technical program management "
+            "across 30+ SaaS engagements."
+        )
+        second = "Diagnosed and mitigated blockers across distributed teams."
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "experience": [
+                    {
+                        "company": "Somerset__Consulting",
+                        "title": "Principal Technical Program Manager",
+                        "dates": "2011 to Present",
+                        "location": "United States / Full-time Remote",
+                        "accomplishments": f"{first}\n{second}",
+                    }
+                ],
+            },
+        )
+        assert 'class="role-description"' not in html
+        assert f"<li>{first}</li>" in html
+        assert f"<li>{second}</li>" in html
+
+
 class TestAst1014BuilderContact:
     """AST-1014: builder reads name columns + contact blob via _apply_contact_to_render_dict."""
 

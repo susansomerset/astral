@@ -283,6 +283,30 @@ Equivalent harness:
 
 ---
 
+### AST-1030 · AST-1019
+
+**AST-1030 (UAT):** With `<no bullet>` on the first accomplishments line, shared emit uses `.role-description` and strips the marker from HTML; without the prefix the same prose is a first `<li>` (no first-line heuristic). Prompt preserve: **`docs/test-bible/core/candidate.md`**. Golden layout spine: **AST-1008**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UAT with/without `<no bullet>` session emit | `src/core/builder.py` | **`TestAst1030UatNoBulletLeadEmit`** |
+| Golden lead / split / CSS regression | same | **`TestAst1008ExperienceGoldenLayout`** |
+
+**Broken / obsolete this pass:** none — no builder product edit; emit lock only.
+
+**Integration:** no existing scenario asserts `<no bullet>` → `.role-description` — no revision; do not invent new integration coverage.
+
+**AST-1030** narrowed run (builder half — full manifest in candidate.md):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1030UatNoBulletLeadEmit \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  -q
+```
+
+---
+
 ### AST-1029 · AST-1019
 
 **AST-1029 (UAT):** When `core_competencies` / `prior_experience` already use `•` separators, shared emit puts that text in `.competencies-list` (HTML-escaped) with no pipe rewrite. Prompt harden: **`docs/test-bible/core/candidate.md`**. CSS chrome stays **AST-1020**.

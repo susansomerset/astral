@@ -381,6 +381,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1030 · AST-1019
+
+**AST-1030 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` requires preserving paste `<no bullet>` on role lead lines (do not invent). Builder `_split_role_accomplishments` already maps that prefix to `.role-description` (**AST-1008**); stripped prefix makes the lead a first `<li>`. Emit proof: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt preserve / do-not-invent + checklist | `data/admin/agent_task.json` | **`TestAst1030CraftResumeBaseNoBulletPreserve`** |
+| Marker / competencies / title-tagline / job-array regressions | same | **`TestAst1027CraftResumeBaseMarkerPreserve`**, **`TestAst1029CraftResumeBaseCompetenciesBullets`**, **`TestAst1028CraftResumeBaseTitleTaglineSplit`**, **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** |
+
+**Broken / obsolete this pass:** none — emit path unchanged; prompt was the gap.
+
+**Integration:** no existing scenario asserts `<no bullet>` preserve — no revision.
+
+**AST-1030** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1030UatNoBulletLeadEmit \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  -q
+```
+
+---
+
 ### AST-1029 · AST-1019
 
 **AST-1029 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` hardens `### core_competencies` (and `### prior_experience`) to require `•` item separators and forbid `|` / `" | "` — replacing AST-1027 soft “prefer” language. Builder competencies emit remains escape-only (**AST-1009**). Emit proof: **`docs/test-bible/core/builder.md`**.
