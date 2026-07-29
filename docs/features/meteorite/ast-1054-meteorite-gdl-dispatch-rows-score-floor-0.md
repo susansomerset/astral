@@ -213,3 +213,22 @@ Import `METEORITE_DISPATCH_TASKS` and `TASK_CONFIG` from config.
 | 3 | `3d4ee03c` | ensure/provision meteorite dispatch_task rows on scheduler start |
 
 **Tip:** `3d4ee03c198238ca09202b6ac87f08ac0826d21a` on `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1054
+**Publish ref:** `f195665b8df22f7b4ae67c45ae6a94b81f8b0608` (`origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`)
+**Overall:** DISCUSS
+
+### What’s solid
+- `METEORITE_DISPATCH_TASKS` + `METEORITE_GDL_OUTCOME_BY_TASK` + `PASSED_SCORE_GATED_STATES` meteorite hops; entry `METEORITE_NEW` ungated (`score_floor: None`).
+- Consult overlay via `METEORITE_` prefix on shared GDL keys; twin rows skip until AST-1055 `TASK_CONFIG`.
+- Scheduler provision mirrors AST-972; Style D reuses existing `debug=` gates.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot vs `origin/dev` includes `docs/features/**` + Betty tests/bible — all **conforms** on substance.
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
