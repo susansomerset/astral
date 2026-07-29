@@ -2929,6 +2929,7 @@ NAV_CONFIG = [
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
+            {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
         ],
     },
 ]
