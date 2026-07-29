@@ -116,3 +116,25 @@ Inspected on epic worktree after `git merge origin/dev` + `git merge origin/ftr/
 | 4 | — | Three-surface session/base/job + empty-name title checks (build verify) |
 
 **Tip:** `712bd324` on `origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1021
+**Publish ref tip (pre-docs):** `517faa964e4b670dd3f5332ef029b4ab0e6b610a`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1: `<title>` is `{name_raw} Resume` / empty → `Resume`; em-dash + broken empty-name fallback gone.
+- Stage 2–3: meta field-derived template unchanged (lock); residual inventory no further edits.
+- Engineer footprint is the one title line in `_emit_html_document`; Betty owns tests via one `merge-tests(AST-1021)`.
+
+### Issues / findings
+
+**discuss (straggler):** Joan excluded several statutes against plan Files Changed; three-dot diff vs `origin/dev` brings in plan/docs/test/config history (incl. AST-1020). Each scores **conforms** — no product fix.
+
+### Recommended actions
+
+- Engineer: acknowledge stragglers (no code change). resolve-child → User Testing when clear.
