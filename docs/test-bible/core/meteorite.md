@@ -33,3 +33,29 @@ Lazy-ensure `meteorite-<candidate_id>` from `METEORITE_CONFIG` (IGNORE). Idempot
   tests/component/data/database/test_companies.py::TestAst1041MeteoriteClaimExclusion \
   -q
 ```
+
+
+---
+
+### AST-1042 · AST-1034
+
+**Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`.
+
+`create_meteorite_job`: lazy-ensure + create carve-out insert into `METEORITE_CONFIG["job_create_state"]` (**JD_READY**) with synthetic `latest_score`, HTML under `TRACKER_CONFIG` JD key. No `transition_job_state`. HTTP: **`docs/test-bible/ui/api/api_meteorite.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validation / missing candidate / JD_READY+score+HTML / second job company no-op | `src/core/meteorite.py` | **`TestAst1042CreateMeteoriteJob`** |
+
+**Broken / obsolete:** none — additive create helper on existing module.
+
+**Integration:** no existing scenario asserts meteorite job create — no revision; do not invent new integration coverage.
+
+**AST-1042** narrowed run (with API):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/ui/api/test_api_meteorite.py \
+  -q
+```
