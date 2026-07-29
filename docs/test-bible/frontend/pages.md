@@ -1135,3 +1135,24 @@ UAT: **Create** moves from HTML-preview modal to matched list-row **Actions** co
 **Broken / obsolete:** AST-1048/1049 cases that asserted Create inside the modal / disabled Create on unmatched modal — revised for Actions column + omit Create on unmatched.
 
 **Integration:** none.
+
+---
+
+### AST-1057 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`.
+
+Recommended list partitions jobs whose `company` starts with manifest `meteorite_section.company_prefix` into a prepended **Meteorites** section; vetted-company Recommended / In Progress / Ready unchanged. Config: **`docs/test-bible/utils/config.md`** (**AST-1057**). Fixture: **`stateUiManifestFixture.ts`** carries `meteorite_section`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Partition + prepend Meteorites | `JobsRecommended.tsx` + `StateUiContext` type | **`test_JobsRecommended.test.tsx`** — AST-1057 cases |
+
+**Broken / obsolete:** none — additive partition; existing section/sort/Skip cases still hold without meteorite rows.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```

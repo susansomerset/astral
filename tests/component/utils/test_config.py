@@ -2592,3 +2592,29 @@ class TestAst1055MeteoriteLikeUpshotTasks:
         assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
         assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
 
+
+class TestAst1057MeteoriteRecommendedSection:
+    """AST-1057: Recommended Meteorites section config + state UI manifest."""
+
+    def test_jobs_recommended_meteorite_section_block(self) -> None:
+        sec = cfg.JOBS_RECOMMENDED_METEORITE_SECTION
+        assert sec["section_id"] == "meteorites"
+        assert sec["label"] == "Meteorites"
+        assert sec["company_prefix"] == cfg.METEORITE_CONFIG["short_name_prefix"]
+        assert sec["company_prefix"] == "meteorite-"
+
+    def test_manifest_exposes_meteorite_section(self) -> None:
+        rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
+        ms = rec["meteorite_section"]
+        assert ms == {
+            "section_id": "meteorites",
+            "label": "Meteorites",
+            "company_prefix": "meteorite-",
+        }
+        # Non-meteorite Recommended section contract unchanged (AST-522 smoke).
+        assert [row["state"] for row in rec["sections"]] == [
+            "RECOMMENDED",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "CANDIDATE_REVIEW",
+        ]
+
