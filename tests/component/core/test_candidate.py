@@ -2251,6 +2251,33 @@ class TestAst1029CraftResumeBaseCompetenciesBullets:
         )
 
 
+class TestAst1030CraftResumeBaseNoBulletPreserve:
+    """AST-1030: craft_resume_base must preserve paste `<no bullet>` on role leads."""
+
+    def test_cache_prompt_preserves_no_bullet_lead_prefix(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        assert (
+            "copy that line into `accomplishments` **including the literal prefix** "
+            "`<no bullet>`"
+            in prompt
+        )
+        assert "Do **not** invent a `<no bullet>` lead when the paste has none." in prompt
+        assert (
+            "When the paste uses `<no bullet>` on a role lead, keep that exact prefix "
+            "on the corresponding `accomplishments` line(s)"
+            in prompt
+        )
+        assert (
+            "When the paste uses `<no bullet>` on a role lead, that prefix appears "
+            "unchanged on the corresponding `accomplishments` line(s)"
+            in prompt
+        )
+
+
 class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 
