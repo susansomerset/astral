@@ -229,3 +229,11 @@ Changes: Stage 3 builds `fields = {k: body.get(k, "") for k in BUILD_CONFIG["ses
 
 ### Recommended actions
 - Ada: acknowledge C4 stragglers in resolve (no product change required) → User Testing.
+
+## Resolution
+
+**2026-07-29** — Radia `[code-rubric] revision=1` Overall DISCUSS; tip intake `d5813c67` (docs-only) after product `053830d3`.
+
+- **fix-now:** none — no product changes.
+- **discuss (C4 stragglers):** acknowledged — Joan Excluded statutes became in-scope via features/test-tree on the tip; substance already **conforms** (plan under `docs/features/`, single ticket file, Betty owns tests/bible; engineer `code()` was src-only). No product or plan-stage change.
+- **advisory:** none.
