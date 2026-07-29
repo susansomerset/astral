@@ -2394,3 +2394,103 @@ class TestAst1049InboxCreateJobConfig:
         assert "{subject}" in ic["subject_html_template"]
         assert "{body}" in ic["subject_html_template"]
 
+
+class TestAst1053MeteoriteGdlJobStates:
+    """AST-1053: parallel meteorite GDL JOB_STATES + In Review/Skipped manifests."""
+
+    _PASS = (
+        "METEORITE_NEW",
+        "METEORITE_PASSED_JD",
+        "METEORITE_PASSED_DO",
+        "METEORITE_PASSED_GET",
+        "METEORITE_PASSED_LIKE",
+        "METEORITE_PASSED_LIKE_RETRY",
+    )
+    _FAIL = (
+        "METEORITE_FAILED_JD",
+        "METEORITE_ERROR_EVALUATE_JD",
+        "METEORITE_FAILED_DO",
+        "METEORITE_FAILED_TECHNICAL_DO",
+        "METEORITE_FAILED_GET",
+        "METEORITE_FAILED_TECHNICAL_GET",
+        "METEORITE_FAILED_LIKE",
+        "METEORITE_FAILED_TECHNICAL_LIKE",
+    )
+
+    def test_job_states_priors(self) -> None:
+        js = cfg.JOB_STATES
+        assert js["METEORITE_NEW"]["prior_states"] is None
+        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_PASSED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_PASSED_LIKE_RETRY"]["prior_states"] == ["METEORITE_PASSED_LIKE"]
+        # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
+        assert "METEORITE_CULTURE_READY" not in js
+        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+
+    def test_in_review_and_skipped_membership(self) -> None:
+        for state in self._PASS:
+            assert state in cfg.IN_REVIEW_STATES, state
+            assert state not in cfg.SKIPPED_STATES, state
+        for state in self._FAIL:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state not in cfg.IN_REVIEW_STATES, state
+
+    def test_ui_sections_labels_order_and_grades(self) -> None:
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        for state in self._PASS:
+            assert state in review, state
+        assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_PASSED_JD")
+        assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+        assert labels["METEORITE_NEW"] == "Meteorite New"
+        assert labels["METEORITE_PASSED_LIKE_RETRY"] == "Meteorite LIKE upshot (retry)"
+
+        order = cfg.JOBS_SKIPPED_SECTION_ORDER
+        for state in self._FAIL:
+            assert state in order, state
+            assert order.count(state) == 1, state
+        assert order.index("FAILED_TECHNICAL_LIKE") < order.index("METEORITE_FAILED_LIKE")
+        assert order.index("METEORITE_FAILED_LIKE") < order.index("FAILED_GET")
+        assert order.index("FAILED_JD") < order.index("METEORITE_FAILED_JD")
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_JD"] == "Meteorite Failed JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_EVALUATE_JD"] == "Meteorite Error Evaluate JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_TECHNICAL_LIKE"] == (
+            "Meteorite Failed Technical LIKE"
+        )
+
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_JD"] == "jd_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_DO"] == "do_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_GET"] == "get_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE"] == "like_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE_RETRY"] == "like_grades"
+        assert "METEORITE_NEW" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_JD"] == "jd_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_DO"] == "do_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_GET"] == "get_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_LIKE"] == "like_grades"
+        assert "METEORITE_FAILED_TECHNICAL_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+
+    def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
+        # AC2 smoke: score-gated set + Recommended priors + create default stay non-meteorite.
+        for state in self._PASS + self._FAIL:
+            assert state not in cfg.PASSED_SCORE_GATED_STATES, state
+        rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        assert "METEORITE_PASSED_LIKE" not in rec_priors
+        assert "PASSED_LIKE" in rec_priors
+        assert "PASSED_LIKE_RETRY" in rec_priors
+        # Create still JD_READY until AST-1056.
+        assert cfg.METEORITE_CONFIG["job_create_state"] == "JD_READY"
+        assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+
