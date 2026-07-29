@@ -1230,3 +1230,28 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
 ```
+
+---
+
+### AST-1057 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`.
+
+`JOBS_RECOMMENDED_METEORITE_SECTION` (`section_id` / `label` / `company_prefix` from `METEORITE_CONFIG["short_name_prefix"]`); `build_state_ui_manifest()["jobs"]["recommended"]["meteorite_section"]`. UI partition: **`docs/test-bible/frontend/pages.md`** (**AST-1057**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Section block + manifest wire | `src/utils/config.py` | **`TestAst1057MeteoriteRecommendedSection`** |
+
+**Broken / obsolete:** none — additive manifest field; existing Recommended section asserts stay.
+
+**Integration:** no existing scenarios assert Recommended meteorite membership — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1057MeteoriteRecommendedSection \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```

@@ -157,6 +157,12 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
           use_resume_structure: false,
         },
       ],
+      // AST-1057: Recommended Meteorites partition (METEORITE_CONFIG short_name_prefix).
+      meteorite_section: {
+        section_id: "meteorites",
+        label: "Meteorites",
+        company_prefix: "meteorite-",
+      },
     },
   },
   candidate: { artifact_generate_states: ["RESUME_READY", "ACTIVE_SEARCH"] },
