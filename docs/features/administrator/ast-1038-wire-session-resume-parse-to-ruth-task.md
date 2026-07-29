@@ -87,7 +87,21 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 - **§3.3 imports:** UI stays ui → core; no new data imports in Admin route.
 - **pattern.ui.admin-endpoint / require-auth:** Route stays thin + `@require_admin`.
 
-## Review (build stub)
+## Review (Radia — code-rubric.v1)
 
-**Branch:** `origin/sub/AST-1036/AST-1038-wire-session-resume-parse-to-ruth-task`
-**Tip:** `2cf538f4`
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1038  
+**Publish ref tip:** (post-docs) `origin/sub/AST-1036/AST-1038-wire-session-resume-parse-to-ruth-task`  
+**Overall:** DISCUSS
+
+### What's solid
+- Thin wire: `run_session_resume_parse` → `task_key="simple_resume_parse"`; Admin docstring only; `@require_admin` kept.
+- Style D / sentinel ledger / no-bind contract preserved; Judith craft call sites untouched in this ticket's `code()` SHA.
+- Matches plan Stages 1–2; Self-Assessment Single-Component still accurate.
+
+### Findings
+**discuss (C4 straggler):** Joan Excluded `spikes-under-debug-dir`, `docs.features-single-file-per-ticket`, `engineer-test-tree-ban`, `utils-data-late-import-only`; tip three-dot (includes rolled AST-1037 + this child) makes them in-scope. Substance **conforms**. Acknowledge on resolve — no product edit expected.
+
+### Recommended
+Ada: acknowledge C4 stragglers → `resolve-child`.
