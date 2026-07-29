@@ -190,3 +190,12 @@ Changes: Stage 1 adds `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py`; Stage 
 
 ### Recommended actions
 1. Ada: acknowledge the three C4 straggler discusses, then proceed resolve-child (no src/tests edits expected from this review).
+
+## Resolution
+
+**Date:** 2026-07-29 — Ada (`resolve-child`)
+
+- **fix-now:** none.
+- **discuss (C4 stragglers):** Acknowledged — Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` on plan tip; code-rubric correctly brought them in-scope once the feature doc / Betty test tip landed. Substance already **conforms** (plan doc not a spike; single feature file; engineer `code()` clean of test-tree). No product or test-tree edits.
+- **advisory:** Leading-underscore `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` cross-module import left as planned.
+- **Product tip:** unchanged from review tip (`151cd9a8` / Radia docs tip `5f14c5e7`); this commit is Resolution appendix only.
