@@ -70,3 +70,15 @@ In `data/admin/agent_task.json` → `craft_resume_base` → `cache_prompt`, **FO
 - §2.1: prompt lives in repo admin JSON (existing AST-782 path), not new config magic.
 - §3.6: spikes under `debug/spikes/AST-1027/` only if used.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1019/AST-1027-uat-markers-nbsp`
+**Plan path:** `docs/features/artifacts/ast-1027-uat-markers-nbsp.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `eedc91e4` | `craft_resume_base` cache_prompt preserves `__` / `~~`; paste-faithful separators |
+| 2 | — | Builder markers unchanged; session expand proof for sample skill/contact lines |
+
+**Tip:** `eedc91e4` on `origin/sub/AST-1019/AST-1027-uat-markers-nbsp`
