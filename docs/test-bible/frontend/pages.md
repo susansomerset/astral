@@ -1120,3 +1120,18 @@ Manage Email **Create** wires `POST .../create-job` with success/error toast; ma
 **Broken / obsolete:** none — extends AST-1048 page suite.
 
 **Integration:** none.
+
+
+### AST-1051 · AST-1044 (UAT)
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1051-uat-create-button-on-manage-email-list-rows`.
+
+UAT: **Create** moves from HTML-preview modal to matched list-row **Actions** column; unmatched rows omit Create; Create does not open the modal; create-job POST + toast unchanged (AST-1049).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List-row Create + no modal Create (§6c) | `AdminManageEmail.tsx` + `App.css` | revised **`test_AdminManageEmail.test.tsx`** |
+
+**Broken / obsolete:** AST-1048/1049 cases that asserted Create inside the modal / disabled Create on unmatched modal — revised for Actions column + omit Create on unmatched.
+
+**Integration:** none.
