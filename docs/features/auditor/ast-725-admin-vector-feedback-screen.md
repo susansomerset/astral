@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-725 archived 2026-07-29 -->
+
+## Linear archive (AST-725)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-725/admin-vector-feedback-screen-runtime-rubric-validation  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What this implements
+
+Add a minimal Admin page listing **vector_feedback** rows as a sortable, filterable table (candidate, task, vector code, feedback type, value, run/batch identifiers). Intentionally slightly above raw SQL so Susan can inspect data shape before formal rubric health UI. Wire API endpoint(s) in admin layer.
+
+## Acceptance criteria
+
+5. Susan can aggregate per-vector feedback for the active rubric (`current = 1`) by candidate + task_key (counts and value distributions sufficient to judge strong vs weak vectors).
+6. Admin Vector Feedback page lists **vector_feedback** rows with sort/filter on candidate, task, vector code, feedback type, value, run/batch identifiers.
+
+## Boundaries
+
+Does not add rubric health indicators on Artifacts rubric pages. Does not implement feedback capture (sibling Ada ticket). Table may show empty until feedback runs land.
+
+## Notes for planning
+
+React Admin + ui/api admin endpoints. Read-only exploration UI for v1.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-378-runtime-rubric-validation`, child `sub/AST-378/<identifier>-admin-vector-feedback-screen`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T04:31:20.202Z
+**Diff:** `origin/dev...origin/sub/AST-378/AST-725-admin-vector-feedback-screen` (code `9aa2d71`, doc `4391126`)
+**Doc:** `docs/features/auditor/ast-725-admin-vector-feedback-screen.md` § Review (Radia)
+
+*Note: three-dot diff includes sibling AST-722–724 not yet on origin/dev.*
+
+### What's solid
+- Stages 1–3: config owner/run key helpers, data list + aggregate queries, admin API (`/vector_feedback`, `/summary`, `/task_keys`), React page with summary + detail tables, memoized urlBacked, batch → BatchAgentDataModal FEEDBACK tab, nav + route.
+- Owner→craft run key expansion; summary on active rubric vectors; read-only; `@require_admin` on all routes.
+- Betty manifest aligns.
+
+### advisory
+- Frontend hardcodes feedback type/value enums (plan-allowed); drift risk vs `RUBRIC_FEEDBACK_CONFIG`.
+- API enriches `feedback_type_label` but detail column shows raw key.
+- Default 7-day date window not mirrored in URL on first load (API still filtered).
+
+**Verdict:** Clean — approve for `resolve-child` / UAT. No fix-now or discuss blockers.
+
+#### betty — 2026-06-18T04:29:06.386Z
+QA manifest AST-725 published at origin/sub/AST-378/AST-725-admin-vector-feedback-screen @ 9aa2d71. Pytest: TestAst725RubricOwnerRunKeys, TestAst725ListVectorFeedback, TestAst725AggregateVectorFeedback, TestAst725VectorFeedback. Vitest: test_AdminVectorFeedback.test.tsx, test_BatchAgentDataModal FEEDBACK tab. — Betty
+
+#### katherine — 2026-06-18T04:24:03.112Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-725-admin-vector-feedback-screen/docs/features/auditor/ast-725-admin-vector-feedback-screen.md
+
+**Scope:** `Single-Component` — read-only Admin page (summary + detail `ListPage`), three admin API routes, data-layer list/aggregate queries, config owner/run task_key helpers.
+
+**Conf:** `high` — mirrors Agent Timesheets + AST-722/724 schema; owner vs run `task_key` expansion specified via `task_keys_for_rubric_owner`.
+
+**Risk:** `low` — read-only admin exploration; no runtime capture or Artifacts rubric UI changes.
+
+Revision 1 adds `BatchAgentDataModal` FEEDBACK tab + batch_id modal link for AST-724 raw fallback and memoized `urlBacked` (AST-709 parity).
+
+#### chuckles — 2026-06-18T04:17:17.370Z
+## validate-plan AST-725 — APPROVED
+
+**Verdict:** APPROVED → Plan Approved
+
+**Definition fidelity:** Plan covers AC 5–6 (aggregate by active rubric + Admin table with sort/filter). Stays in boundaries (read-only, no capture, no Artifacts health UI).
+
+**Layers:** data queries in `database.py`, API in `api_admin.py`, React page only — compliant.
+
+**Notable:** Owner vs run `task_key` expansion is documented and matches AST-724 storage contract.
+
+No fix-now items. Katherine may **build-child**.
+
+— Chuckles
+
+#### chuckles — 2026-06-18T04:16:47.655Z
+Plan: `docs/features/auditor/ast-725-admin-vector-feedback-screen.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-378/AST-725-admin-vector-feedback-screen/docs/features/auditor/ast-725-admin-vector-feedback-screen.md
+
+**Scope:** `Single-Component` — read-only Admin page + three admin API routes + two DB list/aggregate helpers + nav entry; no agent or Artifacts changes.
+
+**Conf:** `high` — mirrors Agent Timesheets / `list_rubric_vectors`; owner vs run `task_key` expansion specified for AST-724 craft/consumer runs.
+
+**Risk:** `low` — read-only exploration UI; bad aggregation only affects pre-health inspection.
+
+Three stages: (1) `list_vector_feedback` + `aggregate_vector_feedback_by_vector` + `task_keys_for_rubric_owner`, (2) `/api/admin/vector_feedback` + `/summary` + `/task_keys`, (3) `AdminVectorFeedback.tsx` + route + NAV.
+
+---
+
 # AST-725 — Admin Vector Feedback screen (Runtime Rubric Validation)
 
 - **Linear:** [AST-725](https://linear.app/astralcareermatch/issue/AST-725/admin-vector-feedback-screen-runtime-rubric-validation)
