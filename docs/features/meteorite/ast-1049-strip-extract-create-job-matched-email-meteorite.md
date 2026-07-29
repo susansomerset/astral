@@ -257,4 +257,82 @@ with an async handler that:
 
 **Publish ref:** `sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`
 
-**Build tip (pre-review):** see git log on publish ref after `code(AST-1049)` commit.
+**Product tip (pre-docs):** `ad5e0ce6` (`merge-tests(AST-1049)`; product `code(AST-1049)` @ `09152424`)
+
+**Overall:** DISCUSS — no fix-now
+
+**1049-only product delta (`09152424`):** `INBOX_CREATE_JOB_CONFIG`; `get_message_html` + `GmailMessageHtml` subject/From; `strip_extract_email_html` + `create_meteorite_job_from_inbox_message` (rematch + Style D + `create_meteorite_job`); `POST .../create-job` `@require_admin`; Manage Email Create POST + toast + `createBusy`.
+
+### discuss
+- **Three-dot vs 1049-only:** `origin/dev...origin/<publish-ref>` includes rolled-up AST-1047/1048. Statute substance for this review is judged on `09152424` + plan AC4–5; sibling commits are not re-litigated as 1049 fix-now.
+- **Empty-html guard vs subject template:** After wrap, `subject_html_template` always yields non-whitespace markup even when body/subject are empty, so the post-strip `html.strip()` guard rarely trips. Plan-conforming; optional later tighten (check culled body before wrap) is out of scope unless UAT shows empty JD creates.
+
+### acceptable
+- Rematch ignores any client candidate id; Create blocked when From does not uniquely match — matches parent unmatched/ambiguous ban.
+- Create path Style D uses found → matched → extracted → recorded (plan bible); child AC shorthand “found/matched/recorded” is covered; `extracted` is the planned middle step.
+- Parallel email denylist vs page `html_cull` (Joan discuss) — dedicated inbox config kept; no playwright import from inbox.
+
+### Statutes checked
+
+| id | applies | verdict | note |
+|---|---|---|---|
+| astral.agent.confidence-bounds | yes | conforms | No agent/do_task |
+| astral.agent.do-task-delegation | yes | conforms | Untouched |
+| astral.agent.grade-vector-validation | yes | conforms | Untouched |
+| astral.batch.batch-id-first | yes | conforms | No batch |
+| astral.batch.batch-id-format | yes | conforms | No batch |
+| astral.batch.claim-process-release | yes | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | yes | conforms | Untouched |
+| astral.config.config-source-of-truth | yes | conforms | `INBOX_CREATE_JOB_CONFIG` owns strip + template |
+| astral.config.pass-threshold-vs-score-floor | yes | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | yes | conforms | No new secrets |
+| astral.debug.no-repo-root-artifacts-dir | no | n/a | paths miss |
+| astral.debug.spikes-under-debug-dir | yes | conforms | Feature plan only; no spikes |
+| astral.docs.features-single-file-per-ticket | yes | conforms | One plan file for AST-1049 |
+| astral.git.betty-no-src-or-features | yes | conforms | Betty tests/bible only on tip |
+| astral.git.engineer-test-tree-ban | yes | conforms | Engineer `09152424` has no tests/bible |
+| astral.layers.core-vs-external-bright-line | yes | conforms | Strip/orchestrate core; Gmail external |
+| astral.layers.import-direction | yes | conforms | UI → core inbox → meteorite/gmail |
+| astral.layers.scripts-exempt-from-layer-rules | no | n/a | layers miss |
+| astral.layers.ui-config-driven-business-logic | yes | conforms | Rematch/strip server-side; React POST/toast |
+| astral.patterns.coat-check-never-store-empty | yes | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | yes | conforms | Untouched |
+| astral.patterns.require-auth-on-protected-endpoints | yes | conforms | `@require_admin` on create-job |
+| astral.standards.data-raises-caller-logs | yes | conforms | ValueError → 400; other → 502 + log |
+| astral.standards.database-header-inventory | no | n/a | layers miss |
+| astral.standards.debug-contract-gated | yes | conforms | Style D only when debug; `ui_llm_debug` |
+| astral.standards.dry-and-focused-functions | yes | conforms | Calls existing `create_meteorite_job` |
+| astral.standards.in-scope-only | yes | conforms | Create wire only |
+| astral.standards.logging-via-utils | yes | conforms | get_logger / debug helpers |
+| astral.standards.no-cross-contamination | yes | conforms | Layers respected |
+| astral.standards.no-hardcoded-sets | yes | conforms | Tag/attr lists in config |
+| astral.standards.public-then-helpers | yes | conforms | Public strip + orchestrate |
+| astral.standards.utils-data-late-import-only | yes | conforms | No new utils→data |
+| astral.state.core-decides-transitions | yes | conforms | Reuses meteorite create carve-out |
+| astral.state.job-prior-states-enforced | yes | conforms | No prior expansion |
+| astral.state.no-daisy-chain-in-run | yes | conforms | Untouched |
+| astral.ui.frontend-file-placement | yes | conforms | Wire existing AdminManageEmail only |
+| astral.ui.naming-conventions | yes | conforms | snake_case create-job; PascalCase page |
+| astral.ui.single-gunicorn-worker | yes | conforms | Untouched |
+| orch.git.betty-merge-tests-one-sha | yes | conforms | One merge-tests tip |
+| orch.git.commit-vocabulary | yes | conforms | code/test/docs/merge-tests |
+| orch.git.flow-direction-inviolable | yes | conforms | sub under ftr |
+| orch.git.ftr-sub-topology | yes | conforms | `sub/AST-1044/AST-1049-…` |
+| orch.git.merge-on-checkout | yes | conforms | Review merged ftr + publish tip |
+| orch.git.no-cherry-pick-rebase-force | yes | conforms | No forbidden ops |
+| orch.git.no-dev-agent-branches | yes | conforms | On sub/* |
+| orch.git.one-epic-worktree-per-parent | yes | conforms | astral-AST-1044 |
+| orch.git.three-permanent-branches | yes | conforms | Untouched |
+| orch.pipeline.call-susan-for-product-decisions | yes | conforms | No product ambiguity in delta |
+| orch.pipeline.plan-is-bible | yes | conforms | Stages match `09152424` |
+| orch.pipeline.project-scoped-queues | yes | conforms | Meteorite |
+| orch.pipeline.status-gates-skill-entry | yes | conforms | Tests Passed → review |
+| orch.roles.archie-approves-statutes | yes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | yes | conforms | Betty owned test commit |
+| orch.roles.chuckles-never-ticket-assignee | yes | conforms | Engineer implementer path |
+| orch.roles.engineer-assignee-through-resolve | yes | conforms | Review does not steal implementer role |
+| orch.roles.pre-commit-path-bans | yes | conforms | No banned paths in product commit |
+
+**Active statutes:** 56 · **Applicable (yes):** 53 · **n/a:** 3 · **fix-now:** 0 · **discuss:** 2
+
+— Radia
