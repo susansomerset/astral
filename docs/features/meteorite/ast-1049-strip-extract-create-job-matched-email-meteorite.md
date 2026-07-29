@@ -336,3 +336,13 @@ with an async handler that:
 **Active statutes:** 56 · **Applicable (yes):** 53 · **n/a:** 3 · **fix-now:** 0 · **discuss:** 2
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-07-29  
+**Engineer:** Katherine  
+**Outcome:** clean — no fix-now; discuss items acknowledged, no product change
+
+- **Three-dot vs 1049-only:** Accepted as review scoping note; no code action.
+- **Empty-html guard vs subject template:** Left as plan-conforming; optional pre-wrap body check deferred unless UAT shows empty JD creates.
+- Product tip unchanged from Radia intake (`6306a013` docs on `ad5e0ce6` / `09152424`).
