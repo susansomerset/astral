@@ -38,6 +38,10 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
         "src.core.candidate.age_stale_candidate_states",
         MagicMock(return_value=0),
     )
+    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
+    monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
+    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
+    monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
 
 
 class TestDispatchWrappers:
@@ -1406,6 +1410,11 @@ class TestScheduler:
         clear = MagicMock()
         monkeypatch.setattr(dispatcher_mod._tick_event, "clear", clear)
         monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        monkeypatch.setattr(
+            "src.core.candidate.age_stale_candidate_states",
+            MagicMock(return_value=0),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
         clear.assert_called()
@@ -1590,3 +1599,186 @@ class TestAst972CandidateStageDispatch:
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
         dispatcher_mod.start_scheduler()
         provision.assert_called_once_with()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_debug_log_auto_off_stage_skips"),
+    reason="AST-1022 product not on this publish tip",
+)
+class TestAst1022HonorAutoOffStageDispatch:
+    """AST-1022: stage seed AUTO off; ensure insert-only; tick Style D AUTO-off skips."""
+
+    def test_ensure_seeds_auto_mode_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: [],
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "save_dispatch_task",
+            lambda **kwargs: saves.append(kwargs),
+        )
+        out = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert out["added"] == 2 and out["skipped"] == 0
+        assert {s["task_key"] for s in saves} == {
+            "candidate_requested_resume",
+            "candidate_requested_artifacts",
+        }
+        assert all(s["auto_mode"] is False for s in saves)
+
+    def test_ensure_does_not_rewrite_existing_auto_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Operator left resume AUTO on; artifacts already off — second ensure must not touch either.
+        existing = [
+            {
+                "task_key": "candidate_requested_resume",
+                "trigger_state": "REQUESTED_RESUME",
+                "auto_mode": 1,
+            },
+            {
+                "task_key": "candidate_requested_artifacts",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "auto_mode": 0,
+            },
+        ]
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "save_dispatch_task",
+            lambda **kwargs: saves.append(kwargs),
+        )
+        out = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert out["added"] == 0 and out["skipped"] == 2
+        assert saves == []
+
+    def test_debug_log_auto_off_stage_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {
+                "id": 1,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c1",
+                "min_count": 1,
+            },
+            {
+                "id": 2,
+                "task_key": "candidate_requested_artifacts",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "candidate_id": "c1",
+                "min_count": 1,
+            },
+            # Non-stage / wrong gates — must not emit
+            {
+                "id": 3,
+                "task_key": "evaluate_jd",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "job",
+                "trigger_state": "JD_READY",
+                "candidate_id": "c1",
+                "min_count": 1,
+            },
+            {
+                "id": 4,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 0,
+                "debug": 0,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c2",
+                "min_count": 1,
+            },
+            {
+                "id": 5,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 1,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c3",
+                "min_count": 1,
+            },
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda task: 1,
+        )
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        run = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "run_task", run)
+        dispatcher_mod._debug_log_auto_off_stage_skips()
+        run.assert_not_called()
+        log.set_debug_flag.assert_called_once_with(True)
+        assert log.debug_index.call_count == 2
+        kwargs_list = [c.kwargs for c in log.debug_index.call_args_list]
+        assert kwargs_list[0]["index"] == 1 and kwargs_list[0]["total"] == 2
+        assert kwargs_list[1]["index"] == 2 and kwargs_list[1]["total"] == 2
+        assert kwargs_list[0]["func"] == "dispatcher._tick_loop"
+        assert kwargs_list[0]["outcome"] == "skipped — AUTO off"
+        assert {k["identifier"] for k in kwargs_list} == {
+            "candidate_requested_resume",
+            "candidate_requested_artifacts",
+        }
+        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("candidate_id='c1'" in d and "auto_mode=0" in d for d in details)
+
+    def test_debug_log_skips_when_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {
+                "id": 9,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c1",
+                "min_count": 2,
+            },
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda task: 1,
+        )
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        dispatcher_mod._debug_log_auto_off_stage_skips()
+        log.set_debug_flag.assert_not_called()
+        log.debug_index.assert_not_called()
+
+    def test_tick_loop_calls_auto_off_debug_helper_before_spawn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        due = [{"id": 20}]
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
+        order: list[str] = []
+
+        def _dbg() -> None:
+            order.append("debug")
+
+        def _run(task_id: int) -> bool:
+            order.append(f"run:{task_id}")
+            return True
+
+        monkeypatch.setattr(dispatcher_mod, "_debug_log_auto_off_stage_skips", _dbg)
+        monkeypatch.setattr(dispatcher_mod, "run_task", _run)
+        _run_one_tick(monkeypatch)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert order == ["debug", "run:20"]

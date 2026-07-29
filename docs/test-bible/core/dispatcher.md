@@ -180,3 +180,28 @@ Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`do
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher: **`ensure_candidate_stage_dispatch_tasks`** / **`provision_candidate_stage_dispatch_tasks`**; candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** provisions stage rows. Revised **`LIVE_PROMPTS` → `ACTIVE_SEARCH`** in dispatcher fixtures; AST-875 template fixture uses **`qualify_job_listings`** (TASK_CONFIG tip).
+
+
+### AST-1022 · AST-1018
+
+**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick Style D helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (index N/M); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config seed `auto_mode: False` | `src/utils/config.py` | **`TestAst1022HonorAutoOffStageDispatch`** (`test_config.py`) |
+| Ensure seed + persist; Style D skip; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
+
+**Broken / obsolete:** tick unit helpers must stub `list_dispatch_tasks` (new side path) — same DB-free contract as AST-972 `age_stale` stub.
+
+**Existing coverage (unchanged paths):** AUTO-on tick spawn — **`TestScheduler::test_tick_loop_spawns_due_auto_tasks`**; CLICK with `auto_mode=0` — **`TestDispatchOne`** / run_task paths already covering AUTO-off CLICK.
+
+**AST-1022** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  -q
+```

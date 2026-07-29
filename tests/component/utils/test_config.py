@@ -2110,6 +2110,21 @@ class TestAst972CandidateStageDispatch:
         assert d["trigger_state"] == "REQUESTED_RESUME"
 
 
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst1022HonorAutoOffStageDispatch:
+    """AST-1022: CANDIDATE_STAGE_DISPATCH seeds AUTO off for new stage rows."""
+
+    def test_stage_dispatch_auto_mode_seed_false(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["auto_mode"] is False
+        assert arts["auto_mode"] is False
+
+
 class TestAst973LegacyCandidateRemap:
     """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
 

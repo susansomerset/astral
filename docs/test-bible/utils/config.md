@@ -829,6 +829,10 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
 
+### AST-1022 · AST-1018
+
+Primary manifest: **`docs/test-bible/core/dispatcher.md`** § AST-1022. Config seed: **`CANDIDATE_STAGE_DISPATCH[*].auto_mode`** is **`False`** — **`TestAst1022HonorAutoOffStageDispatch`**.
+
 ### AST-973 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDATE_LEGACY_STATE_MAP`** / **`remap_legacy_candidate_state`**.
