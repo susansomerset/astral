@@ -909,6 +909,43 @@ def task_status_all() -> Dict[int, Dict[str, Any]]:
         }
 
 
+def _debug_log_auto_off_stage_skips() -> None:
+    """Style D: stage rows with AUTO off + debug on that would have met min_count (AST-1022)."""
+    stage_keys = frozenset(
+        str(entry["task_key"]).strip() for entry in CANDIDATE_STAGE_DISPATCH.values()
+    )
+    # Collect would-have-run skips first so index N/M is honest across the batch.
+    eligible: List[tuple] = []
+    for task in database.list_dispatch_tasks():
+        tk = str(task.get("task_key") or "").strip()
+        if tk not in stage_keys:
+            continue
+        if bool(task.get("auto_mode")) or not bool(task.get("debug")):
+            continue
+        if not task.get("entity_type") or not task.get("trigger_state") or not task.get("candidate_id"):
+            continue
+        avail = database.count_eligible_for_dispatch_task(task)
+        if avail < (task.get("min_count") or 1):
+            continue
+        eligible.append((task, avail))
+    total = len(eligible)
+    if not total:
+        return
+    logger.set_debug_flag(True)
+    for i, (task, avail) in enumerate(eligible, start=1):
+        logger.debug_index(
+            func="dispatcher._tick_loop",
+            index=i,
+            total=total,
+            identifier=task.get("task_key"),
+            outcome="skipped — AUTO off",
+        )
+        logger.debug_detail(
+            f"candidate_id={task.get('candidate_id')!r} task_id={task.get('id')} "
+            f"available={avail} min_count={task.get('min_count') or 1} auto_mode={task.get('auto_mode')}"
+        )
+
+
 def _tick_loop() -> None:
     """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
     # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
@@ -923,6 +960,7 @@ def _tick_loop() -> None:
             # Note: freq_hrs is an entity-level filter (applied during batch claim to exclude
             # recently-processed entities), NOT a task-level cooldown. The tick spawns any
             # auto_mode=1 task that has available entities; if none qualify, the runner exits cleanly.
+            _debug_log_auto_off_stage_skips()
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
                 running_ids = set(_task_registry.keys())
