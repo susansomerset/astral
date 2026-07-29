@@ -176,7 +176,7 @@ Changes: Stage 1 adds `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py`; Stage 
 [code-rubric] revision=1  
 **Rubric:** code-rubric.v1  
 **Ticket:** AST-1037  
-**Publish ref tip:** `46e493a9` (`origin/sub/AST-1036/AST-1037-ruth-simple-session-resume-parse-task`)  
+**Publish ref tip:** `151cd9a8` (`origin/sub/AST-1036/AST-1037-ruth-simple-session-resume-parse-task`)  
 **Overall:** DISCUSS
 
 ### What's solid
