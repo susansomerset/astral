@@ -205,3 +205,21 @@ Wide modal already sets `.modal-card--wide .modal-body { overflow: hidden; paddi
 | 2 | `1c3505ce` | `AdminReadEmail` table + sandboxed HTML modal; route + CSS |
 
 **Tip:** `055acb74cebc8493f2f4499dad9a794ab0b2ed03` on `origin/sub/AST-1031/AST-1033-read-email-admin-screen`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1033
+**Publish ref tip (pre-docs):** `a94497cc0cdc6b88c0c0fb08e1f01c3c024f563a`
+**Overall:** DISCUSS
+
+### What’s solid
+- `@require_admin` on both inbox endpoints; `AdminRoute` on `/admin/read_email`; UI → core only (no external).
+- Nav via `NAV_CONFIG`; sandboxed iframe (`sandbox=""`); 502 mapping for upstream failures; Stages 1–2 match plan.
+
+### Issues
+- **discuss (straggler ×14):** Joan excluded several statutes at plan time (1033 Files Changed = ui+utils); three-dot vs `origin/dev` also carries AST-1032 core/external/tests/docs, so those statutes score in-scope. All **conforms** on substance; no product fix expected.
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
