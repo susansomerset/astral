@@ -3,7 +3,8 @@ AST-294: print-oriented resume / cover HTML builder.
 
 Read-only renderer — no do_task, no dispatcher, no ui/external imports.
 Public: ``build_resume``, ``build_resume_from_job``, ``build_cover_letter``,
-``build_cover_letter_from_job``, ``build_base_resume``, ``build_session_base_resume``.
+``build_cover_letter_from_job``, ``build_base_resume``, ``build_session_base_resume``,
+``build_session_cover_letter``.
 
 ``get_candidate`` / DB rows expose ``candidate_data`` as the nested blob that
 contains ``profile``, ``artifacts``, and ``context``. ``build_resume_from_job``
@@ -487,6 +488,312 @@ def build_session_base_resume(
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
     return html_out
+
+
+def build_session_cover_letter(
+    fields: dict,
+    *,
+    candidate_id: Optional[str] = None,
+    debug: bool = False,
+) -> str:
+    """AST-1024: SomersetCover HTML from in-memory fields — no job load / artifact write."""
+    if debug:
+        _log.set_debug_flag(True)
+    identifier = (
+        candidate_id.strip()
+        if isinstance(candidate_id, str) and candidate_id.strip()
+        else "session"
+    )
+    if not isinstance(fields, dict):
+        msg = "session cover letter fields object is required"
+        _emit_builder_failure(
+            func="builder.build_session_cover_letter",
+            identifier=identifier,
+            message=msg,
+            debug=debug,
+        )
+        raise ValueError(msg)
+    cfg = BUILD_CONFIG["session_cover_letter"]
+    field_defs = cfg["fields"]
+    normalized: Dict[str, str] = {}
+    for key, meta in field_defs.items():
+        raw = fields.get(key, "")
+        if raw is None:
+            raw = ""
+        if not isinstance(raw, str):
+            msg = f"{key} must be a string"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        if meta.get("required") and not raw.strip():
+            msg = f"{key} is required"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        normalized[key] = raw
+
+    sig_src: Optional[str] = None
+    sig_image_status = "skipped_no_candidate"
+    cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
+    if cid:
+        row = candidate_mod.get_candidate(cid)
+        if not row:
+            msg = f"Candidate not found: {cid}"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        profile = _coerce_candidate_blob(row).get("profile") or {}
+        sig_src = _safe_image_src(profile.get("cover_letter_signature_image"))
+        sig_image_status = "accepted" if sig_src else "absent_or_rejected"
+
+    html_out = _emit_session_cover_html_document(normalized, signature_image_src=sig_src)
+    if debug:
+        _log.debug_index(
+            func="builder.build_session_cover_letter",
+            index=1,
+            total=1,
+            identifier=identifier,
+            outcome="success — session cover html",
+        )
+        for key, meta in field_defs.items():
+            if meta.get("required"):
+                _log.debug_detail(f"{key}_nonempty={bool(normalized[key].strip())}")
+        _log.debug_detail(
+            f"to_block={'present' if normalized['to_block'].strip() else 'omitted'}"
+        )
+        _log.debug_detail(
+            f"subject={'present' if normalized['subject'].strip() else 'omitted'}"
+        )
+        _log.debug_detail(f"candidate_id={'used' if cid else 'not_used'}")
+        _log.debug_detail(f"signature_image={sig_image_status}")
+        _log.debug_detail(f"html_chars={len(html_out)}")
+        _log.debug_detail("html_preview:")
+        _log.debug_detail_block(html_out)
+    return html_out
+
+
+def _session_cover_letter_paragraphs(letter: str) -> List[str]:
+    """Blank-line paragraphs; single-chunk newlines become separate paragraphs."""
+    text = letter.replace("\r\n", "\n").strip()
+    chunks = [c.strip() for c in re.split(r"\n\s*\n", text) if c.strip()]
+    if len(chunks) == 1 and "\n" in chunks[0]:
+        chunks = [c.strip() for c in chunks[0].split("\n") if c.strip()]
+    return chunks
+
+
+def _emit_session_cover_html_document(
+    fields: dict,
+    *,
+    signature_image_src: Optional[str] = None,
+) -> str:
+    """Standalone SomersetCover DOM/CSS (session-only; does not touch job cover emit)."""
+    style = BUILD_CONFIG["default_style"]
+    fonts = style.get("fonts") or {}
+    colors = style.get("colors") or {}
+    accent = colors.get("default_accent", "#3c2c6e")
+    header_c = colors.get("default_header", accent)
+    page_bg = colors.get("page_background", "#f5f5f5")
+    hstack = fonts.get("heading_stack", "sans-serif")
+    bstack = fonts.get("body_stack", "serif")
+    lstack = fonts.get("list_stack", hstack)
+    text_primary = colors.get("text_primary", "#1a1a1a")
+    text_secondary = colors.get("text_secondary", "#444")
+    text_tertiary = colors.get("text_tertiary", "#666")
+    border_light = colors.get("border_light", "#e0e0e0")
+    border_medium = colors.get("border_medium", "#ccc")
+    doc_title = BUILD_CONFIG["session_cover_letter"]["document_title"]
+    sig_name = (fields.get("signature") or "").strip()
+    meta_content = f"Cover Letter - {sig_name}" if sig_name else doc_title
+    meta_tag = f'\n  <meta name="description" content="{html.escape(meta_content)}" />'
+
+    from_lines = (fields.get("from_block") or "").replace("\r\n", "\n").split("\n")
+    from_html = "<br>\n        ".join(html.escape(line) for line in from_lines)
+
+    blocks: List[str] = [
+        f'      <div class="fromBlock">\n        {from_html}\n      </div>'
+    ]
+    to_block = (fields.get("to_block") or "").strip()
+    if to_block:
+        to_lines = to_block.replace("\r\n", "\n").split("\n")
+        to_html = "<br>\n        ".join(html.escape(line) for line in to_lines)
+        blocks.append(f'      <div class="toBlock">\n        {to_html}\n      </div>')
+    blocks.append(
+        f'      <div class="letterdate">{html.escape((fields.get("letter_date") or "").strip())}</div>'
+    )
+    subject = (fields.get("subject") or "").strip()
+    if subject:
+        blocks.append(
+            f'      <div class="lettersubject">{html.escape(subject)}</div>'
+        )
+    paras = _session_cover_letter_paragraphs(fields.get("letter") or "")
+    p_html = "\n".join(
+        f"        <p>{html.escape(p).replace(chr(10), '<br>')}</p>" for p in paras
+    )
+    blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
+
+    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
+    if signature_image_src:
+        src_esc = html.escape(signature_image_src, quote=True)
+        signoff_parts.append(
+            f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+        )
+        signoff_parts.append("<br>")
+    signoff_parts.append(html.escape(sig_name))
+    blocks.append(
+        "      <div class=\"letterSignoff\">\n        "
+        + "\n        ".join(signoff_parts)
+        + "\n      </div>"
+    )
+    body_inner = "\n\n".join(blocks)
+
+    css = f""":root {{
+  --max-width: 800px;
+  --accent-color: {accent};
+  --header-color: {header_c};
+  --text-primary: {text_primary};
+  --text-secondary: {text_secondary};
+  --text-tertiary: {text_tertiary};
+  --border-light: {border_light};
+  --border-medium: {border_medium};
+  --header-font-family: {hstack};
+  --body-font-family: {bstack};
+  --list-font-family: {lstack};
+}}
+* {{ box-sizing: border-box; }}
+body {{
+  margin: 0;
+  padding: 40px 20px;
+  background: {page_bg};
+  font-family: var(--body-font-family);
+  color: var(--text-primary);
+  line-height: 1.65;
+  font-size: 15px;
+}}
+.cover-letter {{
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 14px 35px 35px 35px;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  color: var(--text-primary);
+  line-height: 1.65;
+}}
+.fromBlock {{
+  margin: 0 0 32px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--accent-color);
+  font-size: 17px;
+  color: var(--accent-color);
+  text-align: left;
+  line-height: 1.5;
+  font-weight: 700;
+}}
+.toBlock {{
+  margin: 16px 0 16px;
+  font-size: 15px;
+  color: var(--text-primary);
+  text-align: left;
+  line-height: 1.5;
+  font-weight: 400;
+}}
+.letterdate {{
+  margin: 40px 0 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: left;
+}}
+.lettersubject {{
+  margin: 0 0 24px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-primary);
+  text-align: left;
+}}
+.lettercontent {{
+  margin: 0 0 24px;
+  text-align: left;
+}}
+.lettercontent p {{
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-primary);
+}}
+.lettercontent p:last-child {{
+  margin-bottom: 0;
+}}
+.letterSignoff {{
+  margin: 24px 0 0;
+  font-size: 15px;
+  text-align: left;
+  line-height: 1.5;
+}}
+.signature-img {{
+  display: block;
+  height: 61px;
+  margin: 8px 0 -25px 0;
+}}
+@page {{
+  margin-top: 1in;
+  orphans: 3;
+  widows: 3;
+}}
+@page :first {{
+  margin-top: 0.5in;
+}}
+@media print {{
+  body {{
+    background: #fff;
+    padding: 0;
+  }}
+  .cover-letter {{
+    box-shadow: none;
+    padding: 0.5in;
+  }}
+  .lettercontent {{
+    orphans: 3;
+    widows: 3;
+  }}
+  .lettercontent p {{
+    orphans: 3;
+    widows: 3;
+    page-break-inside: auto;
+    break-inside: auto;
+  }}
+}}"""
+
+    title_esc = html.escape(doc_title)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title_esc}</title>
+  <style>
+{css}
+  </style>{meta_tag}
+</head>
+<body>
+  <main>
+    <div class="cover-letter">
+{body_inner}
+    </div>
+  </main>
+</body>
+</html>
+"""
 
 
 def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:

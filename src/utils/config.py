@@ -3363,6 +3363,19 @@ BUILD_CONFIG = {
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
     },
+    # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
+    "session_cover_letter": {
+        "document_title": "SomersetCover",
+        "fields": {
+            "from_block": {"required": True},
+            "letter_date": {"required": True},
+            "to_block": {"required": False},
+            "subject": {"required": False},
+            "letter": {"required": True},
+            "signoff_closing": {"required": True},
+            "signature": {"required": True},
+        },
+    },
 }
 
 # AST-803: BUILD_ARTIFACTS chain helpers (hop order from BUILD_CONFIG).
