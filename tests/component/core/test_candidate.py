@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
@@ -1893,7 +1894,7 @@ class TestAst986SessionResumeParse:
         )
         body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
         assert status == 500
-        assert body["error"] == "craft_resume_base returned non-dict parsed_response"
+        assert body["error"] == "simple_resume_parse returned non-dict parsed_response"
         assert dbg.call_args.kwargs["outcome"] == "invalid payload"
 
     def test_500_non_dict_parsed_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1932,11 +1933,12 @@ class TestAst986SessionResumeParse:
         assert body["batch_id"].startswith("user-session-parse-resume-")
         assert "resume_structure" in body
         assert body["base_resume"]["experience"] == "Jobs"
-        assert calls[0]["task_key"] == "craft_resume_base"
+        assert calls[0]["task_key"] == "simple_resume_parse"
         assert calls[0]["live_content"] == "full resume text"
         assert calls[0]["index"] == body["batch_id"]
         assert "astral_candidate_id" not in calls[0]["ctx"]
-        assert calls[0]["ctx"]["candidate_data"]["context"]["raw_resume"] == "full resume text"
+        # Session synthetic ctx on this tip still uses starting_resume_text (AST-1014 raw_* not on base).
+        assert calls[0]["ctx"]["candidate_data"]["context"]["starting_resume_text"] == "full resume text"
         assert saves[0][0][2] == "session"
         assert updates[-1][1]["status"] == "COMPLETED"
         get_c.assert_not_called()
@@ -1961,6 +1963,23 @@ class TestAst986SessionResumeParse:
         detail_msgs = [c.args[0] for c in detail.call_args_list if c.args]
         assert any(m.startswith("experience[0] company=") for m in detail_msgs)
         assert any(m.startswith("experience[1] company=") for m in detail_msgs)
+
+
+class TestAst1038SessionResumeWire:
+    """AST-1038: session parse uses Ruth simple_resume_parse; Judith craft paths unchanged."""
+
+    def test_session_parse_wires_simple_resume_parse_not_craft_base(self) -> None:
+        src = inspect.getsource(candidate_mod.run_session_resume_parse)
+        assert 'task_key="simple_resume_parse"' in src
+        assert 'task_key="craft_resume_base"' not in src
+        assert "simple_resume_parse returned non-dict parsed_response" in src
+
+    def test_candidate_craft_paths_still_use_craft_resume_base(self) -> None:
+        parse_src = inspect.getsource(candidate_mod.parse_candidate_resume)
+        assert 'task_key="craft_resume_base"' in parse_src
+        # Artifact generation still accepts craft_resume_base as the catalog key for Judith.
+        gen_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
+        assert "craft_resume_base" in gen_src
 
 
 class TestAst996ExperienceJobArray:
