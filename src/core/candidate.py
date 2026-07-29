@@ -1363,9 +1363,9 @@ def run_session_resume_parse(
     *,
     debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
-    """Parse pasted resume text via craft_resume_base with default structure; no candidate bind/persist.
+    """Parse pasted resume text via simple_resume_parse (Ruth / Little); no candidate bind/persist.
 
-    Returns (json_body, http_status) for Admin session-resume paste (AST-986).
+    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038).
     """
     if not isinstance(resume_text, str) or not resume_text.strip():
         return ({"success": False, "error": "resume_text is required"}, 400)
@@ -1397,7 +1397,7 @@ def run_session_resume_parse(
         try:
             result = asyncio.run(
                 do_task(
-                    task_key="craft_resume_base",
+                    task_key="simple_resume_parse",
                     live_content=paste,
                     index=batch_id,
                     ctx=ctx,
@@ -1473,7 +1473,7 @@ def run_session_resume_parse(
                 total_failed=1,
                 total_cost=total_cost,
             )
-            err = "craft_resume_base returned non-dict parsed_response"
+            err = "simple_resume_parse returned non-dict parsed_response"
             if debug:
                 logger.debug_index(
                     func="run_session_resume_parse",

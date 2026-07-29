@@ -1450,7 +1450,7 @@ def _decode_blob_values(row: dict) -> dict:
 @admin_bp.route("/session_resume/parse", methods=["POST"])
 @require_admin
 def session_resume_parse():
-    """AST-986: paste → craft_resume_base (default structure); response-only, no candidate bind."""
+    """AST-986/AST-1038: paste → simple_resume_parse (Ruth); response-only, no candidate bind."""
     body = request.get_json(silent=True) or {}
     resume_text = body.get("resume_text")
     result_body, status = run_session_resume_parse(
