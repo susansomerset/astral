@@ -2048,6 +2048,65 @@ class TestAst1028UatKeywordsMetaEmit:
         assert "Fractional TPM — Program Delivery" not in html
 
 
+class TestAst1029UatCompetenciesBulletsEmit:
+    """AST-1029: bullet-joined competencies render in .competencies-list (no pipes)."""
+
+    def test_session_competencies_list_uses_bullets_not_pipes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+                "prior_experience": {
+                    "id": "prior_experience",
+                    "title": "Prior Experience",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+        comps = (
+            "AI-Assisted Delivery • Cross-Functional Execution • "
+            "Risk and Dependency Management"
+        )
+        prior = "Project Manager (4 yrs) • Systems Analyst (6 yrs)"
+        # Shared markers turn " • " into NBSP-bullet before emit.
+        comps_html = comps.replace(" • ", "\u00a0• ")
+        prior_html = prior.replace(" • ", "\u00a0• ")
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": comps,
+                "prior_experience": prior,
+            },
+        )
+        assert 'class="competencies-list"' in html
+        assert comps_html in html
+        assert prior_html in html
+        assert "AI-Assisted Delivery | Cross-Functional" not in html
+        # No pipe separators in either competencies-list block.
+        for block in html.split('class="competencies-list"')[1:]:
+            text = block.split("</p>", 1)[0]
+            assert " | " not in text
+            assert "|" not in text
+
+
 class TestAst1014BuilderContact:
     """AST-1014: builder reads name columns + contact blob via _apply_contact_to_render_dict."""
 

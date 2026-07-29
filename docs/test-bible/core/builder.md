@@ -283,6 +283,30 @@ Equivalent harness:
 
 ---
 
+### AST-1029 · AST-1019
+
+**AST-1029 (UAT):** When `core_competencies` / `prior_experience` already use `•` separators, shared emit puts that text in `.competencies-list` (HTML-escaped) with no pipe rewrite. Prompt harden: **`docs/test-bible/core/candidate.md`**. CSS chrome stays **AST-1020**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UAT bullet competencies + prior session emit | `src/core/builder.py` | **`TestAst1029UatCompetenciesBulletsEmit`** |
+| Education/skills/prior markup regression | `src/core/builder.py` | **`TestAst1009EducationSkillsPrior`** |
+
+**Broken / obsolete this pass:** none — no builder product edit; emit lock only.
+
+**Integration:** no existing scenario asserts competencies bullet vs pipe — no revision; do not invent new integration coverage.
+
+**AST-1029** narrowed run (builder half — full manifest in candidate.md):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior \
+  -q
+```
+
+---
+
 ### AST-1024 · AST-1023
 
 **AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` reads `profile.cover_letter_signature_image` via `_safe_image_src` (name-only sign-off when absent/rejected). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).

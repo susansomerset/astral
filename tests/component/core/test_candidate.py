@@ -2224,6 +2224,33 @@ class TestAst1028CraftResumeBaseTitleTaglineSplit:
         )
 
 
+class TestAst1029CraftResumeBaseCompetenciesBullets:
+    """AST-1029: craft_resume_base requires • competencies separators; forbids pipes."""
+
+    def test_cache_prompt_requires_bullet_not_pipe_separators(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Soft AST-1027 prefer-language must be gone.
+        assert "Prefer separators from the paste" not in prompt
+        assert 'rather than rewriting to " | "' not in prompt
+        # Hard require • / forbid |
+        assert "Item separator is the bullet character `•`" in prompt
+        assert '**Do not** use `|` (pipe) as an item separator' in prompt
+        assert 'not `" | "`, not bare `|`' in prompt
+        assert "**join with ` • `**, never `|`" in prompt
+        # Prior experience same convention.
+        assert "Use `•` between role items (same convention as core competencies)" in prompt
+        assert "**Do not** use `|` as separators" in prompt
+        # Checklist.
+        assert (
+            "`core_competencies` (and `prior_experience` when non-empty) use `•` separators, not `|`"
+            in prompt
+        )
+
+
 class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 
