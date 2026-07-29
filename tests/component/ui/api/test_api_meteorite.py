@@ -22,7 +22,7 @@ class TestAst1042MeteoriteCreateApi:
                 return_value={
                     "astral_job_id": "j1",
                     "company": "meteorite-cand-1",
-                    "state": "JD_READY",
+                    "state": "METEORITE_NEW",
                     "latest_score": 10.0,
                     "company_inserted": True,
                     "job": {"astral_job_id": "j1"},
@@ -38,7 +38,7 @@ class TestAst1042MeteoriteCreateApi:
         assert resp.get_json() == {
             "astral_job_id": "j1",
             "company": "meteorite-cand-1",
-            "state": "JD_READY",
+            "state": "METEORITE_NEW",
             "latest_score": 10.0,
             "company_inserted": True,
         }
@@ -119,7 +119,7 @@ class TestAst1042MeteoriteCreateApi:
                 return_value={
                     "astral_job_id": "j2",
                     "company": "meteorite-cand-1",
-                    "state": "JD_READY",
+                    "state": "METEORITE_NEW",
                     "latest_score": 10.0,
                     "company_inserted": False,
                     "job": {},

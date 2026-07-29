@@ -41,11 +41,11 @@ Lazy-ensure `meteorite-<candidate_id>` from `METEORITE_CONFIG` (IGNORE). Idempot
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`.
 
-`create_meteorite_job`: lazy-ensure + create carve-out insert into `METEORITE_CONFIG["job_create_state"]` (**JD_READY**) with synthetic `latest_score`, HTML under `TRACKER_CONFIG` JD key. No `transition_job_state`. HTTP: **`docs/test-bible/ui/api/api_meteorite.md`**.
+`create_meteorite_job`: lazy-ensure + create carve-out insert into `METEORITE_CONFIG["job_create_state"]` (**METEORITE_NEW** after **AST-1056**; was **JD_READY** at AST-1042) with synthetic `latest_score`, HTML under `TRACKER_CONFIG` JD key. No `transition_job_state`. HTTP: **`docs/test-bible/ui/api/api_meteorite.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Validation / missing candidate / JD_READY+score+HTML / second job company no-op | `src/core/meteorite.py` | **`TestAst1042CreateMeteoriteJob`** |
+| Validation / missing candidate / config landing+score+HTML / second job company no-op | `src/core/meteorite.py` | **`TestAst1042CreateMeteoriteJob`** (landing assert revised **AST-1056**) |
 
 **Broken / obsolete:** none — additive create helper on existing module.
 
@@ -58,4 +58,35 @@ Lazy-ensure `meteorite-<candidate_id>` from `METEORITE_CONFIG` (IGNORE). Idempot
   tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
   tests/component/ui/api/test_api_meteorite.py \
   -q
+```
+
+---
+
+### AST-1056 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`.
+
+Config retarget only: create insert lands in **METEORITE_NEW**. Runtime body already read `job_create_state`; docstring honesty in product. Config primary: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Insert state from config | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** |
+
+**Broken / obsolete:** hardcoded **JD_READY** create asserts in AST-1042.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1056MeteoriteCreateLanding \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/ui/api/test_api_meteorite.py \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
 ```

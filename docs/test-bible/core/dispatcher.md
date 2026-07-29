@@ -205,3 +205,25 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
   -q
 ```
+
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure GDL + twin skip/insert; provision; scheduler hook | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** |
+| Stage scheduler stub | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision`** (stubs meteorite provision) |
+
+**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
+  -q
+```

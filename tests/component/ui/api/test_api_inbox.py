@@ -122,7 +122,7 @@ class TestAst1049InboxCreateJobApi:
             return_value={
                 "astral_job_id": "job-1",
                 "company": "meteorite-cand-1",
-                "state": "JD_READY",
+                "state": "METEORITE_NEW",
                 "latest_score": 10.0,
                 "company_inserted": True,
                 "astral_candidate_id": "cand-1",
@@ -147,7 +147,7 @@ class TestAst1049InboxCreateJobApi:
             return_value={
                 "astral_job_id": "job-1",
                 "company": "meteorite-cand-1",
-                "state": "JD_READY",
+                "state": "METEORITE_NEW",
                 "latest_score": 10.0,
                 "company_inserted": False,
                 "astral_candidate_id": "cand-1",
