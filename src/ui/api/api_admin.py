@@ -32,7 +32,7 @@ from src.core.dispatcher import (
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
 )
 from src.core.candidate import preview_task_prompt, run_session_resume_parse
-from src.core.builder import build_session_base_resume
+from src.core.builder import build_session_base_resume, build_session_cover_letter
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
     get_repo_admin_json_divergence_status,
@@ -41,6 +41,7 @@ from src.core.repo_admin_json import (
 from src.utils.config import (
     ASTRAL_CONFIG,
     AGENT_CONFIG,
+    BUILD_CONFIG,
     DEEPSEEK_MODEL_PRICING,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
@@ -1481,6 +1482,32 @@ def session_resume_html():
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
     return Response(html, mimetype="text/html; charset=utf-8")
+
+
+# AST-1024 session cover letter HTML
+@admin_bp.route("/session_cover_letter/html", methods=["POST"])
+@require_admin
+def session_cover_letter_html():
+    """AST-1024: in-memory cover fields → SomersetCover HTML (optional candidate signature image)."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"success": False, "error": "JSON object body is required"}), 400
+    # Field keys from config only — do not hardcode the key list here (Joan plan-discuss round=1).
+    field_defs = BUILD_CONFIG["session_cover_letter"]["fields"]
+    fields = {k: body.get(k, "") for k in field_defs}
+    raw_cid = body.get("candidate_id")
+    candidate_id = raw_cid.strip() if isinstance(raw_cid, str) else None
+    if candidate_id == "":
+        candidate_id = None
+    try:
+        html_out = build_session_cover_letter(
+            fields,
+            candidate_id=candidate_id,
+            debug=ui_llm_debug(),
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    return Response(html_out, mimetype="text/html; charset=utf-8")
 
 
 @admin_bp.route("/data/sql", methods=["POST"])

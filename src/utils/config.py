@@ -2929,6 +2929,7 @@ NAV_CONFIG = [
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
+            {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
         ],
     },
 ]
@@ -3362,6 +3363,19 @@ BUILD_CONFIG = {
     # AST-301 / AST-368 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
+    },
+    # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
+    "session_cover_letter": {
+        "document_title": "SomersetCover",
+        "fields": {
+            "from_block": {"required": True},
+            "letter_date": {"required": True},
+            "to_block": {"required": False},
+            "subject": {"required": False},
+            "letter": {"required": True},
+            "signoff_closing": {"required": True},
+            "signature": {"required": True},
+        },
     },
 }
 
