@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-722 archived 2026-07-29 -->
+
+## Linear archive (AST-722)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-722/rubric-storage-schema-backfill-and-feedback-config-runtime-rubric  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378; blocks: AST-725; blocks: AST-723
+
+### Description
+
+## What this implements
+
+Introduce normalized rubric storage and one-time backfill from legacy candidate artifact JSON. Add **rubric_vector** (UUID PK, `current`, FKs to candidate and **agent_task**, code/label/content/importance/content_fingerprint) and **vector_feedback** (feedback_type + value rows, FK to **rubric_vector** UUID). Register tables in the data-layer inventory. Add **FEEDBACK** to **BLOCK_TYPES**. Add product **config** for rubric feedback type codes and allowed value codes (extensible without schema migration). Ship a backfill migration that maps legacy artifact rubric keys to **task_key** / **agent_task** (mapping lives in migration only). After verified backfill, **delete** legacy rubric keys from `candidate_data.artifacts` (Susan: avoid confusion — we have few candidates).
+
+## Acceptance criteria
+
+9. **Migration:** After backfill, **rubric_vector** rows where `current = 1` match pre-migration JSON for designated UAT candidates (vector count, codes, labels, content, importance).
+
+## Boundaries
+
+Does not switch runtime read paths off artifact JSON (sibling cutover ticket). Does not capture vector feedback from agent runs. Does not build Admin UI.
+
+## Notes for planning
+
+Data-layer inventory update mandatory per ASTRAL_CODE_RULES. Follow **agent_task** `current=1` versioning pattern. No **rubric_version** table.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-378-runtime-rubric-validation`, child `sub/AST-378/<identifier>-rubric-storage-schema-backfill`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T02:30:22.706Z
+**Diff:** `origin/dev...origin/sub/AST-378/AST-722-rubric-storage-schema-backfill` (tip `1c02bc4`)
+**Doc:** `docs/features/auditor/ast-722-rubric-storage-schema-backfill.md` § Review (Radia)
+
+### What's solid
+- Plan Stages 1–3: schema + `RUBRIC_FEEDBACK_CONFIG` + fingerprint helper, backfill script (dry-run, idempotency, `--candidates`), gated `--purge-artifacts` + `--confirm-purge`.
+- Scope clean: no runtime read/write cutover (AST-723/724/725 deferred).
+- §1.1 inventory, §2.1 config, §3.3 layers, SQL bind counts — all good.
+- Betty manifest aligns with diff.
+
+### discuss
+1. `database.py` `_rubric_vector_backfill_swept` — declared + conftest reset but never read/set (dead guard). Remove in resolve or wire when sweep lands.
+2. `_ensure_vector_feedback_table` — DDL only; no public AST-722 path calls ensure (test-only). OK to defer to AST-724 first write, but confirm ensure on that path.
+3. Backfill idempotency — `count > 0` skip is all-or-nothing per task_key; partial failed run leaves incomplete vectors. Dry-run + AC#9 mitigate; optional transaction wrap if desired.
+
+### advisory
+- `purge_legacy_rubric_artifact_keys` uses direct SQL UPDATE instead of `save_candidate(merge=True)` — **justified** (`_deep_merge` cannot delete nested artifact keys).
+- Extra blank lines after `sync_company_search_terms` — cosmetic.
+
+**Verdict:** No fix-now. Approve for `resolve-child`.
+
+#### betty — 2026-06-18T02:25:53.769Z
+## QA test manifest (AST-722)
+
+**Publish ref:** `origin/sub/AST-378/AST-722-rubric-storage-schema-backfill` @ `98edfad` (`merge-tests(AST-722): origin/tests ce9a6a8`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+1. **Database cluster (required):** `tests/component/data/database/test_rubric_vectors.py` — `rubric_vector` insert/list/count, `vector_feedback` lazy schema, `purge_legacy_rubric_artifact_keys`, `FEEDBACK` `save_agent_data`, backfill script integration (dry-run, live insert, idempotent skip, purge dry/live).
+
+2. **Migration script unit (required):** `tests/component/scripts/test_backfill_rubric_vectors.py` — `_normalize_importance`, `_criterion_from_artifact_item`, deleted-candidate skip, `--purge-artifacts` without `--confirm-purge` exits 1.
+
+3. **Config (required):** `tests/component/utils/test_config.py::TestAst722RubricFeedbackConfig` — `FEEDBACK` in `BLOCK_TYPES`, `RUBRIC_FEEDBACK_CONFIG` shapes.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_rubric_vectors.py \
+  tests/component/scripts/test_backfill_rubric_vectors.py \
+  tests/component/utils/test_config.py::TestAst722RubricFeedbackConfig \
+  -q
+```
+
+**Bible shasums (`origin/sub/...`):**
+- `docs/test-bible/data/database/rubric_vectors.md`: ca6f533cfc2384a326cc614bde662dfec6bd0b22
+- `docs/test-bible/data/database.md`: 19eac8339b4f1053a738ca75f946d5e12654c5f1
+- `docs/test-bible/dev/backfill_rubric_vectors.md`: c5099ffa5c639531abc615d6fe8b1aacd171eb06
+- `docs/test-bible/utils/config.md`: 367d330ebfcdad8d84a16ea433166dc9fe3c7853
+
+**Broken / obsolete:** none identified.
+
+**Gaps filled:** new cluster tests + migration script tests for AST-722 schema/backfill/purge; no runtime read-path cutover (AST-723 out of scope).
+
+#### ada — 2026-06-18T02:19:42.995Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-722-rubric-storage-schema-backfill/docs/features/auditor/ast-722-rubric-storage-schema-backfill.md
+
+**Scope:** MAJOR-CHANGE — new rubric_vector + vector_feedback tables, RUBRIC_FEEDBACK_CONFIG, FEEDBACK block type, backfill/purge migration script; no runtime read/write cutover (AST-723).
+
+**Conf:** Medium — follows company_search_terms + agent_task versioning patterns; purge gated behind --confirm-purge until AST-723 read-switch lands.
+
+**Risk:** Medium — backfill mapping errors could desync rubric data; mitigated by dry-run, idempotent skip, and dual-flag artifact purge.
+
+---
+
 # AST-722 — Rubric storage schema, backfill, and feedback config (Runtime Rubric Validation)
 
 - **Linear:** [AST-722](https://linear.app/astralcareermatch/issue/AST-722/rubric-storage-schema-backfill-and-feedback-config-runtime-rubric)
