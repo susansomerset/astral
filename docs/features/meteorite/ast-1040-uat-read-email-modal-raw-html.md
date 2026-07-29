@@ -121,4 +121,4 @@ with:
 |-------|--------|---------|
 | 1 | `3a8027a6` | Modal body: escaped `<pre>` source; CSS for scrollable source |
 
-**Tip:** `3a8027a6` on `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`
+**Tip:** `17ec6714635c325c13ff77748eda0a072a7bc053` on `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`
