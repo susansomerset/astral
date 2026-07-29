@@ -81,3 +81,25 @@ Session Resume Paste → Parse → Open HTML shows Core Competencies joined with
 | 2 | — | Builder competencies emit unchanged; session proof bullet list in `.competencies-list` |
 
 **Tip:** `f90922c4` on `origin/sub/AST-1019/AST-1029-uat-competencies-pipes`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1029
+**Publish ref tip (pre-docs):** `52962126030703df4509ace6abd6c61d77d36909`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stage 1: `core_competencies` requires `•` joins and forbids `|`; `prior_experience` aligned; checklist bullet present.
+- Builder competencies emit untouched (no `src/` in three-dot).
+- Semantic JSON change is only `craft_resume_base.cache_prompt`.
+
+### Issues / findings
+
+None (fix-now / discuss).
+
+### Recommended actions
+
+resolve-child → User Testing (restart/deploy so startup applies repo JSON, then re-paste).
