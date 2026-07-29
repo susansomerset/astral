@@ -234,6 +234,30 @@ Equivalent harness:
 
 ---
 
+### AST-1027 · AST-1019
+
+**AST-1027 (UAT):** `craft_resume_base` `cache_prompt` in `data/admin/agent_task.json` **preserves** `__` / `~~` digraphs (no strip-to-space/hyphen); skills/contact/prior/competencies instructions stay paste-faithful. Shared `_resume_site_markers` expand unchanged (**AST-1007**) — when digraphs survive parse, HTML shows 1:1 NBSP (including `__•__` both sides and word joins like `Jira__Align`). Stylesheet/title siblings **AST-1020** / **AST-1021** untouched. Primary prompt assert: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UAT skill-line expand + session HTML | `src/core/builder.py` | **`TestAst1027UatMarkerExpand`** |
+| Nested / three-surface marker expand regression | `src/core/builder.py` | **`TestAst1007NestedTypographyMarkers`** |
+
+**Broken / obsolete this pass:** none — expand asserts already green; bug was prompt destroying digraphs.
+
+**Integration:** no existing scenario asserts craft_resume_base marker preserve or `__`→NBSP in session HTML — no revision; do not invent new integration coverage.
+
+**AST-1027** narrowed run (builder half — full manifest in candidate.md):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1027UatMarkerExpand \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  -q
+```
+
+---
+
 ### AST-1024 · AST-1023
 
 **AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` reads `profile.cover_letter_signature_image` via `_safe_image_src` (name-only sign-off when absent/rejected). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).

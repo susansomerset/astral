@@ -326,6 +326,32 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1027 · AST-1019
+
+**AST-1027 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` preserves `__` / `~~` typography digraphs (FORMATTING RULES + QUALITY CHECKLIST + skills/contact/prior/competencies separator fidelity). Builder expand remains **AST-1007** / **`TestAst1027UatMarkerExpand`** in **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt preserve / no-strip contract | `data/admin/agent_task.json` | **`TestAst1027CraftResumeBaseMarkerPreserve`** |
+| Experience job-array prompt still present | same | **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** (regression) |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** no existing scenario asserts craft_resume_base marker preserve language — no revision.
+
+**AST-1027** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1027UatMarkerExpand \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  -q
+```
+
+---
+
 ### AST-997 · AST-994
 
 **AST-997:** Job-tailored hops (`draft_job_resume` / `finalize_job_resume`) accept/emit the AST-996 experience job-array shape. `pin_experience_job_facts_from_base` restores company/title/dates/location by `(company, title)` match (no index fallback); accomplishments may tailor. Tracker persist/match gates keep job arrays. Style D debug on tailor hops when `debug=True`. HTML emit = **AST-998**.
