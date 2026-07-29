@@ -196,3 +196,10 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
 
 ### Recommended actions
 - Ada: acknowledge stragglers (no product change expected) then proceed resolve-child → User Testing.
+
+## Resolution
+
+**Date:** 2026-07-29
+**Review:** Radia @ `a9adbdc5` — **fix-now:** none; **discuss:** three statute stragglers (all substance **conforms**); **advisory:** dual-scope token remint remains parent/live-UAT ops.
+
+No product changes. Acknowledged discuss stragglers (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) as plan-time exclusions that became in-scope on the three-dot diff — no code delta. Advisory remint stays on parent AST-1031. Advanced to **User Testing**.
