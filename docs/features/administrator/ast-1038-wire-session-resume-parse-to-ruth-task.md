@@ -105,3 +105,11 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 
 ### Recommended
 Ada: acknowledge C4 stragglers → `resolve-child`.
+
+## Resolution
+
+**Date:** 2026-07-29 — Ada (`resolve-child`)
+
+- **fix-now:** none.
+- **discuss (C4 stragglers):** Acknowledged — Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, and `astral.standards.utils-data-late-import-only` on plan tip; code-rubric correctly brought them in-scope once feature docs / Betty tests / rolled AST-1037 `config.py` landed on the three-dot tip. Substance already **conforms**. No product or test-tree edits.
+- **Product tip:** unchanged from review tip (`1c62a5ea`); this commit is Resolution appendix only.
