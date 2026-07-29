@@ -138,3 +138,10 @@ Inspected on epic worktree after `git merge origin/dev` + `git merge origin/ftr/
 ### Recommended actions
 
 - Engineer: acknowledge stragglers (no code change). resolve-child → User Testing when clear.
+
+## Resolution
+
+**Date:** 2026-07-29  
+**Outcome:** clean — no product code changes.
+
+Acknowledged Radia’s **discuss (straggler)** items (Joan-excluded statutes brought in-scope by three-dot diff vs `origin/dev`, including AST-1020 history). Each **conforms** in substance. No **fix-now** items. Publish tip after resolve remains product + Betty + Radia stack on `origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks`.
