@@ -2353,7 +2353,8 @@ class TestAst1041MeteoriteConfig:
         assert m["company_state"] == "IGNORE"
         assert m["company_state"] in cfg.COMPANY_STATES
         assert "note" in m["company_data"]
-        assert m["job_create_state"] == "JD_READY"
+        # AST-1056: create landing retargeted to METEORITE_NEW.
+        assert m["job_create_state"] == "METEORITE_NEW"
         assert m["job_create_state"] in cfg.JOB_STATES
         assert m["job_create_latest_score"] == 10.0
 
@@ -2483,9 +2484,10 @@ class TestAst1053MeteoriteGdlJobStates:
         assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
 
     def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
-        # AC2 smoke: create default stay non-meteorite.
+        # AC2 smoke: score-gated exceptions + non-meteorite GDL priors.
         # RECOMMENDED meteorite LIKE priors are AST-1055 (TestAst1055MeteoriteLikeUpshotTasks).
         # AST-1054 adds METEORITE_PASSED_* (not METEORITE_NEW / fails) to PASSED_SCORE_GATED_STATES.
+        # Create landing retarget is AST-1056 (TestAst1056MeteoriteCreateLanding).
         for state in (
             "METEORITE_NEW",
             "METEORITE_PASSED_LIKE_RETRY",
@@ -2495,9 +2497,18 @@ class TestAst1053MeteoriteGdlJobStates:
         rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
         assert "PASSED_LIKE" in rec_priors
         assert "PASSED_LIKE_RETRY" in rec_priors
-        # Create still JD_READY until AST-1056.
-        assert cfg.METEORITE_CONFIG["job_create_state"] == "JD_READY"
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+
+
+class TestAst1056MeteoriteCreateLanding:
+    """AST-1056: meteorite create lands in METEORITE_NEW via METEORITE_CONFIG."""
+
+    def test_job_create_state_is_meteorite_new(self) -> None:
+        assert cfg.METEORITE_CONFIG["job_create_state"] == "METEORITE_NEW"
+        assert cfg.METEORITE_CONFIG["job_create_state"] in cfg.JOB_STATES
+        assert cfg.JOB_STATES["METEORITE_NEW"]["prior_states"] is None
+        # Score stand-in unchanged; meteorite score_floor dispatch is AST-1054.
+        assert cfg.METEORITE_CONFIG["job_create_latest_score"] == 10.0
 
 
 @pytest.mark.skipif(

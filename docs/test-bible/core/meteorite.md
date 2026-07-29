@@ -78,7 +78,15 @@ Config retarget only: create insert lands in **METEORITE_NEW**. Runtime body alr
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1056MeteoriteCreateLanding \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
   tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/ui/api/test_api_meteorite.py \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
   -q
-```
 
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
