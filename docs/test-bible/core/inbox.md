@@ -43,3 +43,18 @@ List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_
 **Broken / obsolete:** **`TestListInboxMessages.test_returns_external_rows`** expected exact external passthrough — product now adds `candidate_match` (revised).
 
 **Integration:** no existing Admin inbox integration scenario — no revision.
+
+
+### AST-1049 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
+
+`strip_extract_email_html` + `create_meteorite_job_from_inbox_message`: rematch From, strip/wrap subject, call `create_meteorite_job`; Style D found→matched→extracted→recorded when `debug=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Strip + create orchestration | `src/core/inbox.py` | **`TestAst1049StripExtractEmailHtml`**; **`TestAst1049CreateMeteoriteJobFromInboxMessage`** |
+
+**Broken / obsolete:** none — additive orchestration.
+
+**Integration:** none; do not invent new integration coverage.

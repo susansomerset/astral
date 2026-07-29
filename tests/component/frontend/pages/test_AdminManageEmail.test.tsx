@@ -146,4 +146,55 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 (§6c routed page)
     expect(screen.queryByTitle("Email body")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Create" })).toBeEnabled()
   })
+
+  it("Create POSTs create-job and toasts success (AST-1049)", async () => {
+    mockApis(async (url, init) => {
+      if (url === "/api/admin/inbox/messages/m1" && (!init || !init.method || init.method === "GET")) {
+        return jsonResponse({ id: "m1", html_body: "<p>x</p>" })
+      }
+      if (
+        url === "/api/admin/inbox/messages/m1/create-job" &&
+        init?.method === "POST"
+      ) {
+        return jsonResponse({
+          astral_job_id: "job-42",
+          company: "meteorite-cand-ada",
+          state: "JD_READY",
+          latest_score: 10,
+          company_inserted: true,
+          astral_candidate_id: "cand-ada",
+        })
+      }
+    })
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Hello Astral"))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).toBeEnabled())
+    await userEvent.click(screen.getByRole("button", { name: "Create" }))
+    await waitFor(() => expect(screen.getByText("Created job job-42")).toBeInTheDocument())
+    expect(mockedApi).toHaveBeenCalledWith(
+      "/api/admin/inbox/messages/m1/create-job",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
+  it("Create failure toasts error without leaving modal (AST-1049)", async () => {
+    mockApis(async (url, init) => {
+      if (url === "/api/admin/inbox/messages/m1" && (!init || !init.method || init.method === "GET")) {
+        return jsonResponse({ id: "m1", html_body: "<p>x</p>" })
+      }
+      if (url === "/api/admin/inbox/messages/m1/create-job" && init?.method === "POST") {
+        return jsonResponse({ error: "message is not matched to a candidate" }, false)
+      }
+    })
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Hello Astral"))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).toBeEnabled())
+    await userEvent.click(screen.getByRole("button", { name: "Create" }))
+    await waitFor(() =>
+      expect(screen.getByText("message is not matched to a candidate")).toBeInTheDocument(),
+    )
+    expect(screen.getByRole("heading", { name: "Hello Astral", level: 2 })).toBeInTheDocument()
+  })
 })

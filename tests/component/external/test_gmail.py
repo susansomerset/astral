@@ -208,7 +208,36 @@ class TestGetMessageHtml:
             },
         )
         monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
-        assert gmail_mod.get_message_html("m1") == {"id": "m1", "html_body": html}
+        assert gmail_mod.get_message_html("m1") == {
+            "id": "m1",
+            "html_body": html,
+            "subject": "",
+            "from_address": "",
+        }
+
+    def test_includes_subject_and_from_headers(self, monkeypatch) -> None:
+        fake = _inbox_service(
+            list_pages=[],
+            full_by_id={
+                "m1": {
+                    "payload": {
+                        "mimeType": "text/html",
+                        "headers": [
+                            {"name": "Subject", "value": "JD role"},
+                            {"name": "From", "value": "Ada <ada@ex.com>"},
+                        ],
+                        "body": {"data": _b64url("<p>body</p>")},
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        assert gmail_mod.get_message_html("m1") == {
+            "id": "m1",
+            "html_body": "<p>body</p>",
+            "subject": "JD role",
+            "from_address": "Ada <ada@ex.com>",
+        }
 
     def test_top_level_html_and_empty_when_missing(self, monkeypatch) -> None:
         fake = _inbox_service(
@@ -246,11 +275,23 @@ class TestGetMessageHtml:
         )
         monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
         assert gmail_mod.get_message_html("html")["html_body"] == "<b>x</b>"
-        assert gmail_mod.get_message_html("plain") == {"id": "plain", "html_body": ""}
+        assert gmail_mod.get_message_html("html")["subject"] == ""
+        assert gmail_mod.get_message_html("html")["from_address"] == ""
+        assert gmail_mod.get_message_html("plain") == {
+            "id": "plain",
+            "html_body": "",
+            "subject": "",
+            "from_address": "",
+        }
         assert gmail_mod.get_message_html("empty-data")["html_body"] == ""
         assert gmail_mod.get_message_html("bad-body")["html_body"] == ""
         assert gmail_mod.get_message_html("parts-no-html")["html_body"] == ""
-        assert gmail_mod.get_message_html("non-dict-raw") == {"id": "non-dict-raw", "html_body": ""}
+        assert gmail_mod.get_message_html("non-dict-raw") == {
+            "id": "non-dict-raw",
+            "html_body": "",
+            "subject": "",
+            "from_address": "",
+        }
         assert gmail_mod.get_message_html("no-payload")["html_body"] == ""
 
     def test_raises_on_get_failure(self, monkeypatch) -> None:
