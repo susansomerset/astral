@@ -575,6 +575,72 @@ TASK_CONFIG = {
         "agent_task": "analysis_upshot",
         "trigger_state": None,
     },
+    # AST-1052 / AST-1055: company-absent twins (no CULTURE_READY / vibe pages).
+    # Dispatch rows + trigger_state rules are AST-1054 — keys must match that sibling.
+    "meteorite_like": {
+        "scored": True,
+        "grades_key": "like_grades",
+        "rubric_artifact": "like_rubric",
+        "response_format": "json",
+        "output_type": "grades_encoded_notes",
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": _ENCODED_CONSULT_JOB_ITEM_SCHEMA,
+            },
+        },
+        "fallback_batch_size": 10,
+        "pass_state": "METEORITE_PASSED_LIKE",
+        "fail_state": "METEORITE_FAILED_LIKE",
+        "error_state": "METEORITE_FAILED_TECHNICAL_LIKE",
+        "save_prefix": "like",
+        "pass_threshold": 6.0,
+        "requires_company": False,
+        "grading_mode": "scored",
+        "context_format": "meteorite_like_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "meteorite_like",
+    },
+    "meteorite_upshot": {
+        "scored": True,
+        "response_format": "json",
+        "response_schema": {
+            "take_jd": {"type": "str", "required": True},
+            "take_get": {"type": "str", "required": True},
+            "take_do": {"type": "str", "required": True},
+            "take_like": {"type": "str", "required": True},
+            "whole_jd_upshot": {"type": "str", "required": True},
+            "segment_upshots": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "segment_key": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                },
+            },
+            "candidate_questions": {
+                "type": "list",
+                "required": True,
+                "items_schema": {"text": {"type": "str", "required": True}},
+            },
+            "caveats": {
+                "type": "list",
+                "required": True,
+                "items_schema": {"text": {"type": "str", "required": True}},
+            },
+        },
+        "pass_state": "RECOMMENDED",
+        "error_state": "METEORITE_PASSED_LIKE_RETRY",
+        "context_format": "meteorite_upshot_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "requires_company": False,
+        "agent_task": "meteorite_upshot",
+        "trigger_state": None,
+    },
 
     # Phase E. Job Artifacts — dumb chain registry (AST-450). Group order is DB task_seq (AST-734).
     # Prompt authors: caller chain tokens {$CALLER_CACHE_A}–{$CALLER_CACHE_D} / AST-455; avoid
@@ -1343,6 +1409,10 @@ def rubric_owner_task_key(task_key: str) -> Optional[str]:
     artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
     if artifact:
         return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact)
+    # Twin consumers (e.g. meteorite_like) resolve via TASK_CONFIG.rubric_artifact.
+    rk = (TASK_CONFIG.get(task_key) or {}).get("rubric_artifact")
+    if isinstance(rk, str) and rk.strip():
+        return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk.strip())
     return None
 
 
@@ -1440,7 +1510,7 @@ JOB_STATES = {
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
     ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
@@ -1679,7 +1749,7 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like", "vet_inflow_discovery",
+    "grade_like", "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
