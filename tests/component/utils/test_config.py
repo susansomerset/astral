@@ -2312,3 +2312,32 @@ class TestAst1033ReadEmailNav:
         read_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/read_email")
         assert read_i == cover_i + 1
         assert items[read_i]["label"] == "Read email"
+
+
+class TestAst1037SimpleResumeParseConfig:
+    """AST-1037: shared craft-resume schema + simple_resume_parse TASK_CONFIG + normalize keys."""
+
+    def test_simple_resume_parse_shares_schema_object_with_craft_base(self) -> None:
+        assert "simple_resume_parse" in cfg.get_task_keys()
+        simple = cfg.TASK_CONFIG["simple_resume_parse"]
+        craft = cfg.TASK_CONFIG["craft_resume_base"]
+        assert simple["response_schema"] is craft["response_schema"]
+        assert simple["response_schema"] is cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert simple["response_format"] == "json"
+        assert simple["context_format"] == "simple_resume_parse_{index}"
+        assert simple["entity_type"] is None
+        assert simple["requires_candidate_key"] is False
+        assert simple["trigger_state"] is None
+
+    def test_craft_resume_base_meta_unchanged(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]
+        assert craft["requires_candidate_key"] is True
+        assert craft["context_format"] == "parse_resume_{index}"
+        assert craft["response_format"] == "json"
+        assert craft["entity_type"] is None
+        assert craft["trigger_state"] is None
+
+    def test_normalize_task_keys_frozenset_in_config(self) -> None:
+        keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
+        assert isinstance(keys, frozenset)
+        assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
