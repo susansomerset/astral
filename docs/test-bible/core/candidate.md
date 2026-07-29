@@ -352,6 +352,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1028 · AST-1019
+
+**AST-1028 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` adds `### candidate_tagline` (between title and contact) and tightens `### candidate_title` to title-only (no specialty/keyword / em-dash tails). Builder header/meta emit unchanged when fields are split (**AST-1010** / **AST-1021**). Primary prompt assert here; emit UAT sample: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt title/tagline split + checklist | `data/admin/agent_task.json` | **`TestAst1028CraftResumeBaseTitleTaglineSplit`** |
+| Marker preserve still present | same | **`TestAst1027CraftResumeBaseMarkerPreserve`** (regression) |
+| Job-array prompt still present | same | **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** (regression) |
+
+**Broken / obsolete this pass:** none — emit already excluded tagline from body; bug was parse folding keywords into title.
+
+**Integration:** no existing scenario asserts craft_resume_base title/tagline split — no revision.
+
+**AST-1028** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1028UatKeywordsMetaEmit \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/core/test_builder.py::TestAst1021DocumentTitleChrome \
+  -q
+```
+
+---
+
 ### AST-997 · AST-994
 
 **AST-997:** Job-tailored hops (`draft_job_resume` / `finalize_job_resume`) accept/emit the AST-996 experience job-array shape. `pin_experience_job_facts_from_base` restores company/title/dates/location by `(company, title)` match (no index fallback); accomplishments may tailor. Tracker persist/match gates keep job arrays. Style D debug on tailor hops when `debug=True`. HTML emit = **AST-998**.
