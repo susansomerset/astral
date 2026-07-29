@@ -955,6 +955,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1025 · AST-1023
+
+**AST-1025:** Admin `NAV_CONFIG` item **Session Cover Letter** (`/admin/session_cover_letter`) immediately after **Session Resume Paste**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nav order + label | `src/utils/config.py` | **`TestAst1025SessionCoverLetterNav`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.

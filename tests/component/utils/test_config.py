@@ -2288,3 +2288,15 @@ class TestAst1010CandidateTaglineConfig:
         assert "candidate_tagline" in keys
         assert keys.index("candidate_title") < keys.index("candidate_tagline")
         assert keys.index("candidate_tagline") < keys.index("candidate_contact_detail")
+
+
+class TestAst1025SessionCoverLetterNav:
+    """AST-1025: Admin NAV_CONFIG Session Cover Letter after Session Resume Paste."""
+
+    def test_session_cover_letter_follows_session_resume_paste(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        resume_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_resume_paste")
+        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
+        assert cover_i == resume_i + 1
+        assert items[cover_i]["label"] == "Session Cover Letter"

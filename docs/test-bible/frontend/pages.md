@@ -969,6 +969,32 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1025 · AST-1023
+
+**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab; failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav item after Session Resume Paste. Core emit = sibling **AST-1024**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Admin page render + Open HTML + localStorage (§6c) | `AdminSessionCoverLetter.tsx` + route | **`test_AdminSessionCoverLetter.test.tsx`** |
+| Nav label/path order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1025SessionCoverLetterNav`** (`test_config.py`) |
+
+**Broken / obsolete this pass:** none — additive Admin page; Session Resume Paste unchanged.
+
+**Integration:** existing `tests/integration/scenarios/test_candidate_nav_api.py` asserts Jobs group gates only — no Admin item inventory; no revision; do not invent new integration coverage.
+
+**AST-1025** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+---
+
 ### AST-1014 · AST-952
 
 Candidate Profile + Admin Manage Candidates edit columns + `contact` (no `profile.*`); §6c routed Profile page; middle skipped. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014.

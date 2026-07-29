@@ -381,6 +381,34 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1029 · AST-1019
+
+**AST-1029 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` hardens `### core_competencies` (and `### prior_experience`) to require `•` item separators and forbid `|` / `" | "` — replacing AST-1027 soft “prefer” language. Builder competencies emit remains escape-only (**AST-1009**). Emit proof: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt •-required / pipe-forbidden + checklist | `data/admin/agent_task.json` | **`TestAst1029CraftResumeBaseCompetenciesBullets`** |
+| Marker / title-tagline / job-array prompt regressions | same | **`TestAst1027CraftResumeBaseMarkerPreserve`**, **`TestAst1028CraftResumeBaseTitleTaglineSplit`**, **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** |
+
+**Broken / obsolete this pass:** none — soft prefer language retired by prompt harden (asserted gone).
+
+**Integration:** no existing scenario asserts competencies separators — no revision.
+
+**AST-1029** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior \
+  -q
+```
+
+---
+
 ### AST-997 · AST-994
 
 **AST-997:** Job-tailored hops (`draft_job_resume` / `finalize_job_resume`) accept/emit the AST-996 experience job-array shape. `pin_experience_job_facts_from_base` restores company/title/dates/location by `(company, title)` match (no index fallback); accomplishments may tailor. Tracker persist/match gates keep job arrays. Style D debug on tailor hops when `debug=True`. HTML emit = **AST-998**.
