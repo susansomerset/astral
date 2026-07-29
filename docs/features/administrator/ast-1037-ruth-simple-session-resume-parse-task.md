@@ -170,3 +170,8 @@ python3 -c "from src.utils import config as c; assert 'simple_resume_parse' in c
 Revision 1 — 2026-07-29  
 Driven by: Joan `[plan-discuss] round=1 concern` — Stage 3 inline `task_key in ("craft_resume_base", "simple_resume_parse")` violates `astral.standards.no-hardcoded-sets` / §1.4.  
 Changes: Stage 1 adds `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py`; Stage 3 gates normalize via that constant; Files Changed + Code Rules check updated to match.
+
+## Review (build stub)
+
+**Branch:** `origin/sub/AST-1036/AST-1037-ruth-simple-session-resume-parse-task`
+**Tip:** `80ea40e7`
