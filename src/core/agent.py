@@ -81,6 +81,7 @@ _STRICT_ENCODED_BATCH_CONSULT_KEYS = frozenset({
     "grade_do",
     "grade_get",
     "grade_like",
+    "meteorite_like",
 })
 
 
