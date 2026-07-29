@@ -149,7 +149,81 @@ Keep the request shape identical to the current AST-1049 wire (same path, method
 
 ---
 
-## Review (build stub)
+## Review
 
 **Publish ref:** `sub/AST-1044/AST-1051-uat-create-button-on-manage-email-list-rows`
-**Build tip:** `d5b42c844c6b7dd57b06f17a86680002fbaff5bd`
+
+**Product tip (pre-docs):** `026732cf` (`merge-tests(AST-1051)`; product `code(AST-1051)` @ `d5b42c84`)
+
+**Overall:** CLEAN — no fix-now / discuss
+
+**1051 product delta (`d5b42c84`):** Move Create onto matched list-row Actions; remove modal Create + `.manage-email-actions`; `createBusyId` + `stopPropagation`; reuse AST-1049 create-job POST/toast. CSS: drop unused modal footer rule.
+
+### Notes
+- No Joan plan-rubric verdict attachment on the ticket (C4 straggler check N/A).
+- Three-dot vs `origin/dev` is 1051-only (siblings already on integration line).
+
+### Statutes checked
+
+| id | applies | verdict | note |
+|---|---|---|---|
+| astral.agent.confidence-bounds | no | n/a | layers miss |
+| astral.agent.do-task-delegation | no | n/a | layers miss |
+| astral.agent.grade-vector-validation | no | n/a | layers miss |
+| astral.batch.batch-id-first | no | n/a | layers miss |
+| astral.batch.batch-id-format | no | n/a | layers miss |
+| astral.batch.claim-process-release | no | n/a | layers miss |
+| astral.batch.entity-agent-responses-latest-only | no | n/a | layers miss |
+| astral.config.config-source-of-truth | yes | conforms | No new config; UI affordance only |
+| astral.config.pass-threshold-vs-score-floor | no | n/a | layers miss |
+| astral.config.secrets-and-env-specific-from-environ | yes | conforms | No secrets |
+| astral.debug.no-repo-root-artifacts-dir | no | n/a | paths miss |
+| astral.debug.spikes-under-debug-dir | yes | conforms | Feature plan only |
+| astral.docs.features-single-file-per-ticket | yes | conforms | One plan file |
+| astral.git.betty-no-src-or-features | yes | conforms | Betty owns test/bible tip |
+| astral.git.engineer-test-tree-ban | yes | conforms | Engineer commit is UI-only |
+| astral.layers.core-vs-external-bright-line | no | n/a | layers miss |
+| astral.layers.import-direction | yes | conforms | React/api only; no new layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | no | n/a | layers miss |
+| astral.layers.ui-config-driven-business-logic | yes | conforms | Match gate still from server `candidate_match` |
+| astral.patterns.coat-check-never-store-empty | no | n/a | layers miss |
+| astral.patterns.render-verdict-orchestrates-consult | no | n/a | layers miss |
+| astral.patterns.require-auth-on-protected-endpoints | yes | conforms | No new route; create-job unchanged |
+| astral.standards.data-raises-caller-logs | yes | conforms | Untouched backend |
+| astral.standards.database-header-inventory | no | n/a | layers miss |
+| astral.standards.debug-contract-gated | yes | conforms | No new debug paths |
+| astral.standards.dry-and-focused-functions | yes | conforms | Reuses create-job POST/toast |
+| astral.standards.in-scope-only | yes | conforms | Affordance move only |
+| astral.standards.logging-via-utils | yes | conforms | No new logging |
+| astral.standards.no-cross-contamination | yes | conforms | UI only |
+| astral.standards.no-hardcoded-sets | yes | conforms | No new sets |
+| astral.standards.public-then-helpers | yes | conforms | N/A shape; page handlers clear |
+| astral.standards.utils-data-late-import-only | no | n/a | layers miss |
+| astral.state.core-decides-transitions | no | n/a | layers miss |
+| astral.state.job-prior-states-enforced | no | n/a | layers miss |
+| astral.state.no-daisy-chain-in-run | no | n/a | layers miss |
+| astral.ui.frontend-file-placement | yes | conforms | Existing AdminManageEmail page |
+| astral.ui.naming-conventions | yes | conforms | keep manage-email-create / create-job |
+| astral.ui.single-gunicorn-worker | yes | conforms | Untouched |
+| orch.git.betty-merge-tests-one-sha | yes | conforms | One merge-tests tip |
+| orch.git.commit-vocabulary | yes | conforms | code/test/docs/merge-tests |
+| orch.git.flow-direction-inviolable | yes | conforms | sub under ftr |
+| orch.git.ftr-sub-topology | yes | conforms | `sub/AST-1044/AST-1051-…` |
+| orch.git.merge-on-checkout | yes | conforms | Review merged ftr + publish tip |
+| orch.git.no-cherry-pick-rebase-force | yes | conforms | No forbidden ops |
+| orch.git.no-dev-agent-branches | yes | conforms | On sub/* |
+| orch.git.one-epic-worktree-per-parent | yes | conforms | astral-AST-1044 |
+| orch.git.three-permanent-branches | yes | conforms | Untouched |
+| orch.pipeline.call-susan-for-product-decisions | yes | conforms | UAT expected outcome followed |
+| orch.pipeline.plan-is-bible | yes | conforms | `d5b42c84` matches Stage 1 |
+| orch.pipeline.project-scoped-queues | yes | conforms | Meteorite |
+| orch.pipeline.status-gates-skill-entry | yes | conforms | Tests Passed → review |
+| orch.roles.archie-approves-statutes | yes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | yes | conforms | Betty owned test commit |
+| orch.roles.chuckles-never-ticket-assignee | yes | conforms | Implementer Hedy |
+| orch.roles.engineer-assignee-through-resolve | yes | conforms | Assignee left Hedy |
+| orch.roles.pre-commit-path-bans | yes | conforms | No banned paths in product commit |
+
+**Active statutes:** 56 · **Applicable (yes):** 38 · **n/a:** 18 · **fix-now:** 0 · **discuss:** 0
+
+— Radia
