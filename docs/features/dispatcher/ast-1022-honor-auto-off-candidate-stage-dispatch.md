@@ -149,3 +149,12 @@ Candidate stage-dispatch rows (`candidate_requested_resume` / `candidate_request
 
 - Resolve-child: acknowledge stragglers (no product change required unless Ada/Archie want a different reading).
 - No fix-now product edits from this review.
+
+---
+
+## Resolution (AST-1022)
+
+**Date:** 2026-07-29  
+**Outcome:** Clean — no product changes. Radia **fix-now:** none. **Discuss:** C4 stragglers (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) acknowledged as **conforms** (plan file / single features doc / engineer `code()` = `src/` only); no alternate reading.
+
+**Publish tip after resolve:** `origin/sub/AST-1018/AST-1022-honor-auto-off-candidate-stage-dispatch`
