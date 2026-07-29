@@ -2341,3 +2341,22 @@ class TestAst1037SimpleResumeParseConfig:
         keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
         assert isinstance(keys, frozenset)
         assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
+class TestAst1041MeteoriteConfig:
+    """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
+
+    def test_required_keys_and_ignore_state(self) -> None:
+        m = cfg.METEORITE_CONFIG
+        assert m["short_name_prefix"] == "meteorite-"
+        assert m["short_name_template"] == "meteorite-{candidate_id}"
+        assert m["company_name"] == "meteorite"
+        assert m["company_state"] == "IGNORE"
+        assert m["company_state"] in cfg.COMPANY_STATES
+        assert "note" in m["company_data"]
+        assert m["job_create_state"] == "JD_READY"
+        assert m["job_create_state"] in cfg.JOB_STATES
+        assert m["job_create_latest_score"] == 10.0
+
+    def test_template_matches_prefix_plus_candidate(self) -> None:
+        cid = "cand-42"
+        built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
