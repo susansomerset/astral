@@ -171,7 +171,22 @@ Revision 1 — 2026-07-29
 Driven by: Joan `[plan-discuss] round=1 concern` — Stage 3 inline `task_key in ("craft_resume_base", "simple_resume_parse")` violates `astral.standards.no-hardcoded-sets` / §1.4.  
 Changes: Stage 1 adds `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py`; Stage 3 gates normalize via that constant; Files Changed + Code Rules check updated to match.
 
-## Review (build stub)
+## Review (Radia — code-rubric.v1)
 
-**Branch:** `origin/sub/AST-1036/AST-1037-ruth-simple-session-resume-parse-task`
-**Tip:** `80ea40e7`
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1037  
+**Publish ref tip:** `46e493a9` (`origin/sub/AST-1036/AST-1037-ruth-simple-session-resume-parse-task`)  
+**Overall:** DISCUSS
+
+### What's solid
+- Shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` identity for `craft_resume_base` + `simple_resume_parse`; normalize membership in `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` (Joan Plan Discuss fix).
+- Ruth `agent_task` seed with paste-faithful rules (`__`/`~~`, `•` not `|`, tagline vs title, `<no bullet>` leads); Judith craft row untouched in the diff.
+- Boundaries held: no Admin Session wire / Open HTML / UI; `requires_candidate_key: False` for session sentinel.
+- Git vocabulary + Betty one-SHA merge-tests; engineer `code()` did not touch `tests/**`.
+
+### Findings
+**discuss (C4 straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; code-rubric sweep scores them in-scope on the three-dot tip (plan doc under `docs/features/**`; Betty `tests/` + bible in tip). Substance still **conforms** — not product fix-now. Acknowledge on resolve; no code change required.
+
+### Recommended actions
+1. Ada: acknowledge the three C4 straggler discusses, then proceed resolve-child (no src/tests edits expected from this review).
