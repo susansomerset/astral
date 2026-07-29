@@ -1134,18 +1134,66 @@ Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read e
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`.
 
-Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Does **not** extend `PASSED_SCORE_GATED_STATES` or `RECOMMENDED` priors; `METEORITE_CONFIG["job_create_state"]` stays `JD_READY` (AST-1056).
+Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Score-floor gating for meteorite pass hops is **AST-1054**; RECOMMENDED meteorite LIKE priors are **AST-1055**; create landing retarget is **AST-1056**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** |
 
-**Broken / obsolete:** none — additive registry/UI lists; existing membership asserts still hold.
+**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**.
 
 **Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
+
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ `METEORITE_NEW`, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK`; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** |
+| Revised ungated smoke | `src/utils/config.py` | revised **`TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched`** |
+
+**Broken / obsolete:** AST-1053 score-gated membership smoke — see above.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  -q
+```
+
+### AST-1055 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`.
+
+`TASK_CONFIG` twins `meteorite_like` / `meteorite_upshot` (`requires_company: False`; meteorite pass/fail/error; upshot → `RECOMMENDED` / `METEORITE_PASSED_LIKE_RETRY`); `RECOMMENDED` priors gain meteorite LIKE states; `rubric_owner_task_key("meteorite_like")` → `grade_like`; `meteorite_like` in batch-mode / strict-encoded / chunk-exhaust frozensets.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twins + RECOMMENDED priors + rubric/batch/encoded membership | `src/utils/config.py`, `src/core/agent.py`, `src/core/dispatcher.py` | **`TestAst1055MeteoriteLikeUpshotTasks`** |
+| Catalog rows + 41-key seed | `data/admin/agent_task.json` | **`TestAst1055MeteoriteCatalogRows`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+| Consult routes + upshot persist key | `src/core/consult.py` | **`TestAst1055MeteoriteConsultRoutes`** |
+
+**Broken / obsolete:** AST-1053 RECOMMENDED prior absence assert; AST-786 catalog **39 → 41** (+ UAT fixture byte lock).
+
+**Integration:** no existing scenarios assert these task keys — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
   -q
 ```

@@ -60,6 +60,43 @@ class TestRenderPassFail:
         assert consult_mod._render_pass_fail("qualify_job_listings", grades) == TASK_CONFIG["qualify_job_listings"]["pass_state"]
 
 
+@pytest.mark.skipif(
+    not hasattr(consult_mod, "_consult_orchestration_for_entity"),
+    reason="AST-1054 meteorite GDL overlay not on this publish tip",
+)
+class TestAst1054MeteoriteGdlOutcomeOverlay:
+    """AST-1054: shared GDL keys overlay meteorite pass/fail when entity state is METEORITE_*."""
+
+    def test_overlay_for_meteorite_entity_states(self) -> None:
+        overlay = cfg.METEORITE_GDL_OUTCOME_BY_TASK["evaluate_jd"]
+        cfg_m = consult_mod._consult_orchestration_for_entity("evaluate_jd", "METEORITE_NEW")
+        assert cfg_m["pass_state"] == overlay["pass_state"]
+        assert cfg_m["fail_state"] == overlay["fail_state"]
+        assert cfg_m["error_state"] == overlay["error_state"]
+        cfg_v = consult_mod._consult_orchestration_for_entity("evaluate_jd", "JD_READY")
+        assert cfg_v["pass_state"] == TASK_CONFIG["evaluate_jd"]["pass_state"]
+        assert cfg_v["fail_state"] == TASK_CONFIG["evaluate_jd"]["fail_state"]
+
+    def test_render_pass_fail_uses_meteorite_overlay(self) -> None:
+        grades = [_pass_grade()]
+        assert (
+            consult_mod._render_pass_fail("evaluate_jd", grades, entity_state="METEORITE_NEW")
+            == "METEORITE_PASSED_JD"
+        )
+        assert (
+            consult_mod._render_pass_fail("evaluate_jd", grades, entity_state="JD_READY")
+            == TASK_CONFIG["evaluate_jd"]["pass_state"]
+        )
+        assert (
+            consult_mod._render_pass_fail(
+                "grade_do",
+                [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                entity_state="METEORITE_PASSED_JD",
+            )
+            == "METEORITE_FAILED_DO"
+        )
+
+
 class TestRubricHelpers:
     def test_strips_code_suffix(self) -> None:
         assert consult_mod._strip_code("Fit (CR)") == "Fit"
@@ -3652,3 +3689,91 @@ class TestAst972CandidateStageConsultRouting:
         )
         assert out["total_passed"] == 1
         worker.assert_awaited_once_with("c2", debug=False)
+
+
+class TestAst1055MeteoriteConsultRoutes:
+    """AST-1055: route meteorite twins; upshot persists analysis_upshot under twin states."""
+
+    @pytest.mark.asyncio
+    async def test_routes_meteorite_like_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # run_consult_task normalizes batch shape via passed/failed/total (not total_*).
+        batch = AsyncMock(return_value={"passed": 2, "failed": 0, "total": 2})
+        monkeypatch.setattr(consult_mod, "meteorite_like_batch", batch)
+        out = await consult_mod.run_consult_task(
+            "job",
+            "METEORITE_PASSED_GET",
+            [{"astral_job_id": "m1"}, {"astral_job_id": "m2"}],
+            "b-ml",
+            {},
+            dispatch_task_key="meteorite_like",
+        )
+        assert out["total_passed"] == 2
+        batch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_routes_meteorite_upshot_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        summary = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(consult_mod, "_run_analysis_upshot_batch", summary)
+        out = await consult_mod.run_consult_task(
+            "job",
+            "METEORITE_PASSED_LIKE",
+            [{"astral_job_id": "m7"}],
+            "b-mu",
+            {},
+            dispatch_task_key="meteorite_upshot",
+        )
+        assert out["total_passed"] == 1
+        summary.assert_awaited_once()
+        args, kwargs = summary.await_args
+        assert kwargs.get("task_key", args[4] if len(args) > 4 else None) == "meteorite_upshot"
+
+    @pytest.mark.asyncio
+    async def test_meteorite_upshot_persists_analysis_upshot_key(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job = {
+            "astral_job_id": "mz",
+            "state": "METEORITE_PASSED_LIKE",
+            "company": None,
+            "job_data": {"raw_job_listing": "listing"},
+        }
+        parsed = {
+            "whole_jd_upshot": "ok",
+            "take_jd": "a",
+            "take_do": "b",
+            "take_get": "c",
+            "take_like": "d",
+        }
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: job)
+        monkeypatch.setattr(
+            consult_mod,
+            "_prep_analysis_upshot_live_content",
+            AsyncMock(return_value="live"),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": parsed}),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", saver)
+        trans = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        out = await consult_mod._run_analysis_upshot_batch(
+            "b-mz", [job], {}, False, task_key="meteorite_upshot",
+        )
+        assert out["total_passed"] == 1
+        saver.assert_called_once_with("mz", {"analysis_upshot": parsed})
+        trans.assert_called_once_with(
+            "meteorite_upshot",
+            ["mz"],
+            TASK_CONFIG["meteorite_upshot"]["pass_state"],
+        )
+
