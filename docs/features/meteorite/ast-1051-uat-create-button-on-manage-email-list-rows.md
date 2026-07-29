@@ -146,3 +146,10 @@ Keep the request shape identical to the current AST-1049 wire (same path, method
 - §2.1 / §2.4 / §2.6 — N/A (no config/batch/state-machine changes).
 - §3.3 imports — React mouse event only; no new layer imports.
 - §3.5 naming — keep `manage-email-create` class and create-job route names.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `sub/AST-1044/AST-1051-uat-create-button-on-manage-email-list-rows`
+**Build tip:** `d5b42c844c6b7dd57b06f17a86680002fbaff5bd`
