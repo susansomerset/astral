@@ -221,4 +221,4 @@ Follow neighboring `# noqa: E402` style.
 |-------|--------|---------|
 | 1–2 | `ec61e37f` | create_meteorite_job carve-out + POST /api/candidates/<id>/meteorite/jobs + register blueprint |
 
-**Tip:** `ec61e37f4d19af6f5592a335fa20389e1e2e6c1f` on `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`
+**Tip:** `e3f029ce0786fe7bf6c6c16c70bf6a9404144613` on `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`
