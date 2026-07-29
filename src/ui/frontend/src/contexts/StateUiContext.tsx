@@ -44,6 +44,12 @@ export interface StateUiManifest {
         shapes_key: string | null
         use_resume_structure: boolean
       }>
+      // AST-1057: partition by METEORITE_CONFIG company prefix (manifest-driven).
+      meteorite_section?: {
+        section_id: string
+        label: string
+        company_prefix: string
+      }
     }
   }
   candidate: { artifact_generate_states: string[] }
