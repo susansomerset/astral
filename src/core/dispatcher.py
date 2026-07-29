@@ -33,6 +33,7 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
+    METEORITE_DISPATCH_TASKS,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
     dispatch_chain_claim_states_for_row,
@@ -211,6 +212,72 @@ def provision_candidate_stage_dispatch_tasks() -> Dict[str, Any]:
         "skipped": skipped,
     }
 
+
+def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of AST-1054 meteorite GDL dispatch_task rows for one candidate."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    added = 0
+    skipped = 0
+    skipped_missing_config = 0
+    for entry in METEORITE_DISPATCH_TASKS:
+        tk = str(entry["task_key"]).strip()
+        ts = str(entry["trigger_state"]).strip()
+        if tk not in TASK_CONFIG:
+            skipped_missing_config += 1
+            continue
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=int(entry.get("min_count") or 1),
+            auto_mode=bool(entry.get("auto_mode", False)),
+            trigger_state=ts,
+            batch_size=entry.get("batch_size"),
+            freq_hrs=float(entry.get("freq_hrs") or 0),
+            score_floor=entry.get("score_floor"),
+        )
+        added += 1
+    return {
+        "candidate_id": cid,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+    }
+
+
+def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
+    """Seed template + every candidate that already has dispatch rows (AST-1054)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    ensure_meteorite_dispatch_tasks(template_id)
+    added = 0
+    skipped = 0
+    skipped_missing_config = 0
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_meteorite_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1001,6 +1068,19 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-972 stage dispatch provision failed")
+    try:
+        mstats = provision_meteorite_dispatch_tasks()
+        _sched_log.info(
+            "AST-1054 meteorite dispatch provision template=%s touched=%s added=%s "
+            "skipped=%s skipped_missing_config=%s",
+            mstats.get("template_candidate_id"),
+            mstats.get("candidates_touched"),
+            mstats.get("added"),
+            mstats.get("skipped"),
+            mstats.get("skipped_missing_config"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1054 meteorite dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
