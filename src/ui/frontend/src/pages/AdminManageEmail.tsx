@@ -3,6 +3,11 @@ import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import api from "../lib/api"
 
+type CandidateMatch = {
+  matched: boolean
+  astral_candidate_id: string | null
+}
+
 type InboxMessage = {
   id: string
   thread_id: string
@@ -10,9 +15,10 @@ type InboxMessage = {
   from_address: string
   date: string
   unread: boolean
+  candidate_match?: CandidateMatch
 }
 
-export default function AdminReadEmail() {
+export default function AdminManageEmail() {
   const [messages, setMessages] = useState<InboxMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -87,13 +93,34 @@ export default function AdminReadEmail() {
     setBodyError(null)
   }
 
+  // AST-1049 owns strip/extract + meteorite create wire from this control.
+  function onCreateClick() {}
+
   const selected = messages.find(m => m.id === selectedId)
   const modalTitle = (selected?.subject || "").trim() || "Message"
+  const selectedMatched =
+    selected?.candidate_match?.matched === true &&
+    Boolean((selected.candidate_match.astral_candidate_id || "").trim())
+  const selectedMatchId = selectedMatched
+    ? (selected!.candidate_match!.astral_candidate_id as string)
+    : null
+
+  function matchCell(row: InboxMessage) {
+    const m = row.candidate_match
+    if (m?.matched === true && (m.astral_candidate_id || "").trim()) {
+      return (
+        <td>
+          <span className="manage-email-match">Matched: {m.astral_candidate_id}</span>
+        </td>
+      )
+    }
+    return <td>—</td>
+  }
 
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ margin: "0 0 16px", fontSize: 22, color: "var(--text-primary)" }}>
-        Read email
+        Manage Email
       </h1>
       {loading && <p>Loading…</p>}
       {error && !loading && (
@@ -106,6 +133,7 @@ export default function AdminReadEmail() {
               <tr>
                 <th>Subject</th>
                 <th>From</th>
+                <th>Candidate</th>
                 <th>Date</th>
                 <th>Status</th>
               </tr>
@@ -119,13 +147,14 @@ export default function AdminReadEmail() {
                 >
                   <td>{row.subject}</td>
                   <td>{row.from_address}</td>
+                  {matchCell(row)}
                   <td>{row.date}</td>
                   <td>{row.unread ? "Unread" : "Read"}</td>
                 </tr>
               ))}
               {messages.length === 0 && (
                 <tr>
-                  <td colSpan={4}>No messages in inbox.</td>
+                  <td colSpan={5}>No messages in inbox.</td>
                 </tr>
               )}
             </tbody>
@@ -139,6 +168,11 @@ export default function AdminReadEmail() {
         title={modalTitle}
         size="wide"
       >
+        {selectedMatchId && (
+          <p className="manage-email-match manage-email-match--modal">
+            Matched: {selectedMatchId}
+          </p>
+        )}
         {bodyLoading && <p style={{ padding: 20 }}>Loading…</p>}
         {!bodyLoading && bodyError && (
           <p style={{ padding: 20, color: "var(--danger)", fontSize: 13 }}>{bodyError}</p>
@@ -148,6 +182,16 @@ export default function AdminReadEmail() {
             <pre className="email-html-source" title="Email body">{htmlBody || ""}</pre>
           </div>
         )}
+        <div className="manage-email-actions">
+          <button
+            type="button"
+            className="manage-email-create"
+            disabled={!selected?.candidate_match?.matched}
+            onClick={onCreateClick}
+          >
+            Create
+          </button>
+        </div>
       </Modal>
 
       {toast && <Toast message={toast} onDone={clearToast} />}

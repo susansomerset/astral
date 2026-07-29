@@ -2988,7 +2988,7 @@ NAV_CONFIG = [
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
-            {"label": "Read email", "path": "/admin/read_email"},
+            {"label": "Manage Email", "path": "/admin/manage_email"},
         ],
     },
 ]

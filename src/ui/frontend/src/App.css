@@ -2065,6 +2065,32 @@ input.side-tab-heading-editable:focus {
   color: var(--text-primary);
 }
 
+/* AST-1048: Manage Email match bind + Create enablement */
+.manage-email-match {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.manage-email-match--modal {
+  margin: 0;
+  padding: 12px 20px 0;
+  font-size: 13px;
+}
+.manage-email-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px 16px;
+  gap: 8px;
+}
+.manage-email-create {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.manage-email-create:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* SideTabPanel fills the modal-body */
 .modal-card--wide .side-tab-panel {
   height: 100%;
