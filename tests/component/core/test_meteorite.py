@@ -69,3 +69,46 @@ class TestAst1041EnsureMeteoriteCompany:
         log.set_debug_flag.assert_called_with(False)
         log.debug_index.assert_not_called()
         log.debug_detail.assert_not_called()
+
+
+# Branches: validation; missing candidate; insert JD_READY+score+HTML; second call ensures no-op company + new job.
+class TestAst1042CreateMeteoriteJob:
+    def test_validation_errors(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("cand-ok", state="NEW_CANDIDATE", candidate_data={"name": "Ok"})
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            meteorite_mod.create_meteorite_job("", "<p>x</p>")
+        with pytest.raises(ValueError, match="html_body is required"):
+            meteorite_mod.create_meteorite_job("cand-ok", "   ")
+        with pytest.raises(ValueError, match="html_body is required"):
+            meteorite_mod.create_meteorite_job("cand-ok", None)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="candidate not found"):
+            meteorite_mod.create_meteorite_job("missing-cand", "<p>x</p>")
+
+    def test_creates_jd_ready_job_with_score_and_html(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_CONFIG, TRACKER_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-1042"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
+        html = "<html><body><h1>Role</h1></body></html>"
+        out = meteorite_mod.create_meteorite_job(cid, html)
+        short = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        assert out["company"] == short
+        assert out["state"] == METEORITE_CONFIG["job_create_state"] == "JD_READY"
+        assert out["latest_score"] == float(METEORITE_CONFIG["job_create_latest_score"]) == 10.0
+        assert out["company_inserted"] is True
+        row = db.get_job(out["astral_job_id"])
+        assert row is not None
+        assert row["company"] == short
+        assert row["state"] == "JD_READY"
+        assert row["latest_score"] == 10.0
+        assert row["job_data"][jd_key] == html
+        assert db.get_company(short)["state"] == "IGNORE"
+
+        # Second create: company no-op, new job id
+        out2 = meteorite_mod.create_meteorite_job(cid, "<p>second</p>")
+        assert out2["company_inserted"] is False
+        assert out2["astral_job_id"] != out["astral_job_id"]
+        assert out2["job"]["job_data"][jd_key] == "<p>second</p>"
