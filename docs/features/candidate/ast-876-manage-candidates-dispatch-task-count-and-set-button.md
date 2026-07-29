@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-876 archived 2026-07-29 -->
+
+## Linear archive (AST-876)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-876/manage-candidates-dispatch-task-count-and-set-button-add-set-dispatch  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-873 — Add “set dispatch tasks” button  
+**Blocked by / blocks / related:** parent: AST-873
+
+### Description
+
+## What this implements
+
+On the Manage Candidates list, show each candidate’s dispatch-task count and a **Set dispatch tasks** control that calls the admin set API (sibling) so an operator can materialize the configured template candidate’s full schedule onto the chosen candidate, then refresh the count.
+
+## Acceptance criteria
+
+1. Manage Candidates shows an accurate per-candidate count of dispatch-task rows.
+2. An admin can run **Set dispatch tasks** for a target candidate and afterward that candidate’s dispatch-task set exactly matches the config template candidate’s set: one row per template (task key, trigger state), with AUTO and other schedule metadata matching the template; extras on the target are gone.
+3. The action does not enqueue or execute dispatcher batches by itself.
+4. After the set, Scheduled Actions for the target candidate shows the resulting rows with the expected AUTO values and schedule metadata.
+
+## Boundaries
+
+Does not implement the upsert/prune data path or template-candidate config (sibling ticket). Does not redesign Scheduled Actions beyond verifying resulting rows. Does not auto-run dispatcher batches.
+
+## Notes for planning
+
+Blocked by the backend sibling until the count and set admin contracts exist. Match existing AdminManageCandidates / ListPage patterns. Confirm success with a list refresh of the count.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Engineers publish to origin/<sub-ref> — never Linear gitBranchName when it disagrees.
+
+### Comments
+
+#### radia — 2026-07-12T18:51:15.385Z
+### Radia review — clean
+
+**Diff:** `origin/dev...origin/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks` @ `e63c6c5` (review doc; product tip was `a9f668d`)
+
+**What’s solid**
+- Stages 1–2: `dispatch_task_count` shape column; Manage Candidates counts merge + **Set dispatch tasks** (danger confirm → AST-875 set API → refresh)
+- §2.1 / G1: no template id in UI; §3.3 frontend → admin API only; no Run/scheduler calls
+- AST-875 backend on tip is sibling merge (already reviewed) — no duplicate upsert path
+
+**Issues:** none (0 fix-now · 0 discuss · 0 advisory)
+
+**Doc:** `docs(AST-876): Radia review — clean` @ `e63c6c5`
+
+**Outcome:** Clean — ready for `resolve-child`.
+
+#### betty — 2026-07-12T18:44:11.192Z
+**QA test manifest (AST-876)**
+
+`origin/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks` @ `a9f668d` (`merge-tests(AST-876): origin/tests 3dfbae51725fddc92ec76ef4504ecd769941fb85`)
+
+1. Manage Candidates §6c — count column, Set confirm → `set_from_template`, cancel, error toast — `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`
+2. Shape column — `tests/component/utils/test_config.py::TestAst876DispatchTaskCountShape`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst876DispatchTaskCountShape \
+  -q
+```
+
+**Broken / obsolete (revised):** existing Manage Candidates mocks now stub `GET /api/admin/dispatch_tasks/counts` (first-paint would otherwise throw).
+
+**Bible shasums** (`git show origin/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks:<path> | shasum`):
+- `docs/test-bible/frontend/pages.md` — `f612d99079e5326a82313f13d6a86e146f930860`
+- `docs/test-bible/utils/config.md` — `5731cc847d09439b002122387bcc363a443393f5`
+
+— Betty
+
+#### katherine — 2026-07-12T18:34:05.545Z
+Plan published.
+
+[https://github.com/susansomerset/astral/blob/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks/docs/features/candidate/ast-876-manage-candidates-dispatch-task-count-and-set-button.md](https://github.com/susansomerset/astral/blob/sub/AST-873/AST-876-manage-candidates-set-dispatch-tasks/docs/features/candidate/ast-876-manage-candidates-dispatch-task-count-and-set-button.md)
+
+**Scope:** Single-Component — `DATA_SHAPES` dispatch_task_count column + Manage Candidates wiring to AST-875 admin counts/set_from_template contracts (no upsert/prune in this ticket).
+
+**Conf:** high — AST-875 plan already locks request/response shapes; AdminManageCandidates already has ListPage, confirm, toast, and mutate-refresh patterns to extend.
+
+**Risk:** Medium — client could skip confirm or miss count refresh; prune itself remains AST-875. Mitigated by confirm + error toast + no Run/scheduler calls.
+
+Blocked by AST-875 until those admin endpoints exist on the merged ftr line for build.
+
+---
+
 # AST-876 — Manage Candidates dispatch-task count and Set button (Add “set dispatch tasks” button)
 
 **Linear:** [AST-876](https://linear.app/astralcareermatch/issue/AST-876/manage-candidates-dispatch-task-count-and-set-button-add-set-dispatch)
