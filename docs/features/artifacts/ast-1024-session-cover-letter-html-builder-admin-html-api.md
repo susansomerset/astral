@@ -139,7 +139,7 @@ Core session cover emit from an in-memory field payload (no job load; no artifac
 
 **Done when:** `POST /api/admin/session_cover_letter/html` is registered on `admin_bp`, requires admin auth, returns `text/html` on valid body and JSON `{success:false,error}` on bad input / `ValueError`; `py_compile` clean on touched Python files.
 
-1. In `src/ui/api/api_admin.py`, import `build_session_cover_letter` from `src.core.builder` (keep existing `build_session_base_resume` import; extend that import line).
+1. In `src/ui/api/api_admin.py`, import `build_session_cover_letter` from `src.core.builder` (keep existing `build_session_base_resume` import; extend that import line). Import `BUILD_CONFIG` from `src.utils.config` if not already imported in this module.
 2. Add route immediately after `session_resume_html` (leave comment `# AST-1024 session cover letter HTML`):
    ```python
    @admin_bp.route("/session_cover_letter/html", methods=["POST"])
@@ -148,15 +148,9 @@ Core session cover emit from an in-memory field payload (no job load; no artifac
        body = request.get_json(silent=True) or {}
        if not isinstance(body, dict):
            return jsonify({"success": False, "error": "JSON object body is required"}), 400
-       fields = {
-           "from_block": body.get("from_block", ""),
-           "letter_date": body.get("letter_date", ""),
-           "to_block": body.get("to_block", ""),
-           "subject": body.get("subject", ""),
-           "letter": body.get("letter", ""),
-           "signoff_closing": body.get("signoff_closing", ""),
-           "signature": body.get("signature", ""),
-       }
+       # Field keys from config only — do not hardcode the key list here (Joan plan-discuss round=1).
+       field_defs = BUILD_CONFIG["session_cover_letter"]["fields"]
+       fields = {k: body.get(k, "") for k in field_defs}
        raw_cid = body.get("candidate_id")
        candidate_id = raw_cid.strip() if isinstance(raw_cid, str) else None
        if candidate_id == "":
@@ -175,6 +169,8 @@ Core session cover emit from an in-memory field payload (no job load; no artifac
 4. Do **not** alter `/api/admin/session_resume/*` or `/candidate/cover/<job_id>`.
 5. Compile: `python3 -m py_compile src/utils/config.py src/core/builder.py src/ui/api/api_admin.py`.
 
+⚠️ **Decision:** API builds `fields` by iterating `BUILD_CONFIG["session_cover_letter"]["fields"]` so config remains the single key spine (AST-1025 form + Flask + core). `candidate_id` stays outside that map. Required/type validation stays in core (Stage 2).
+
 ## Self-Assessment
 
 **Scope:** `Single-Component` — config field contract, one core session emit path beside `build_session_base_resume`, and one Admin POST HTML route; job cover emit and React left untouched.
@@ -186,9 +182,15 @@ Core session cover emit from an in-memory field payload (no job load; no artifac
 ## Code rules check
 
 - §1.1 / `in-scope-only`: no job cover backfill, no React/nav, no artifact writes.
-- §1.3 DRY: new session emit helper; reuse `_safe_image_src` / `_coerce_candidate_blob` / `_emit_builder_failure`; do not fork job `_emit_cover_sections_html`.
+- §1.3 DRY: new session emit helper; reuse `_safe_image_src` / `_coerce_candidate_blob` / `_emit_builder_failure`; do not fork job `_emit_cover_sections_html`. Stage 3 field keys iterated from config (no duplicate hardcoded list).
 - §1.5.1: Style D only when `debug=True` via `ui_llm_debug()` / `debug=` pass-through.
-- §2.1: field keys + title in `BUILD_CONFIG["session_cover_letter"]`; style tokens from `default_style`.
+- §2.1 / `no-hardcoded-sets`: field keys + title in `BUILD_CONFIG["session_cover_letter"]`; API maps body via those keys; style tokens from `default_style`.
 - §2.9 / require-auth: `@require_admin` on the new Admin route.
-- §3.3: ui → core only; core may call `candidate_mod.get_candidate` for optional image read.
+- §3.3: ui → core + utils; core may call `candidate_mod.get_candidate` for optional image read.
 - §3.6: no repo-root `artifacts/` directory.
+
+## Revisions
+
+Revision 1 — 2026-07-29
+Driven by: Joan `[plan-discuss] round=1 concern` — Stage 3 hardcoded seven-key `body.get` dict duplicated `BUILD_CONFIG["session_cover_letter"]["fields"]` (violates config-source-of-truth / DRY / no-hardcoded-sets).
+Changes: Stage 3 builds `fields = {k: body.get(k, "") for k in BUILD_CONFIG["session_cover_letter"]["fields"]}`; `candidate_id` remains outside the map; Decision + Code rules check updated.
