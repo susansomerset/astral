@@ -179,3 +179,10 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | `require-auth` / AdminRoute | Keep `AdminRoute`; inbox APIs stay `@require_admin` (unchanged) |
 | ui-config-driven business logic | Create enablement = `candidate_match.matched` from API, not React heuristics |
 | In-scope only | No strip/extract, no meteorite POST, no lookup config edits |
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`
+**Build tip:** `88df7b07ba5dce779485a6fd4fb93d681dcb1b5e`
