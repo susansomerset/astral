@@ -971,6 +971,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1033 · AST-1031
+
+**AST-1033:** Admin `NAV_CONFIG` item **Read email** (`/admin/read_email`) immediately after **Session Cover Letter**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nav order + label | `src/utils/config.py` | **`TestAst1033ReadEmailNav`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.

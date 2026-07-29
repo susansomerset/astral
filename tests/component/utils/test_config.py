@@ -2300,3 +2300,15 @@ class TestAst1025SessionCoverLetterNav:
         cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
         assert cover_i == resume_i + 1
         assert items[cover_i]["label"] == "Session Cover Letter"
+
+
+class TestAst1033ReadEmailNav:
+    """AST-1033: Admin NAV_CONFIG Read email after Session Cover Letter."""
+
+    def test_read_email_follows_session_cover_letter(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
+        read_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/read_email")
+        assert read_i == cover_i + 1
+        assert items[read_i]["label"] == "Read email"
