@@ -919,7 +919,8 @@ h2::after {{ margin-left: 12px; }}
   p, li {{ orphans: 3; widows: 3; }}
 }}
 """
-    title_esc = html.escape(f"{render.get('candidate_name', '')} — Resume".strip() or "Resume")
+    # AST-1021: `{name} Resume` (space, no em/en dash); empty name → `Resume`.
+    title_esc = html.escape(f"{name_raw} Resume" if name_raw else "Resume")
     return f"""<!doctype html>
 <html lang="en">
 <head>
