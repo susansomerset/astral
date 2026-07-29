@@ -67,3 +67,24 @@ That only breaks on **blank lines**. A fixture / parse payload with single `\n` 
 - §1.1 / scope isolation: no Experience/CSS/prompt/UI edits.
 - Engineer test-tree ban: no `tests/` or bible edits.
 - §3.6: spikes under `debug/spikes/AST-1039/` only if used.
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1039
+**Publish ref tip (pre-docs):** `c213ed4b1ef0d18dfaf9ae2b5463763e1967ec93`
+**Overall:** CLEAN
+
+### What’s solid
+
+- `professional_summary` now uses `_session_cover_letter_paragraphs` (blank-line first, single-`\n` fallback) → multiple `.summary-intro`.
+- Experience / CSS / prompts untouched. Engineer footprint is one builder line + plan.
+
+### Issues / findings
+
+None (fix-now / discuss).
+
+### Recommended actions
+
+resolve-child → User Testing.
