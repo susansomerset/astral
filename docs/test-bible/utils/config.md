@@ -1067,3 +1067,18 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/core/test_agent.py::TestAst1037NormalizeGateMembership \
   -q
 ```
+---
+
+### AST-1041 · AST-1034
+
+**Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
+
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (`JD_READY` / score). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Template keys + IGNORE/JD_READY registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
