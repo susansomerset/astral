@@ -159,3 +159,25 @@ New Admin nav page (sibling of Session Resume Paste): cover-letter field inputs,
 **Stages delivered:**
 - Stage 1 — `NAV_CONFIG` Session Cover Letter + `/admin/session_cover_letter` under `AdminRoute`
 - Stage 2 — `AdminSessionCoverLetter.tsx` field form, `useLocalStorage` retention, Open HTML → AST-1024 API + blob tab
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1025
+**Publish ref tip (pre-docs):** `f3061950`
+**Overall:** DISCUSS
+
+### What’s solid
+- Stages 1–2 match plan: `NAV_CONFIG` + `/admin/session_cover_letter` under `AdminRoute`, page twin of Session Resume Paste.
+- Open HTML failure path never opens a tab; empty HTML treated as error; `last_render` only on success.
+- Field/key mirror Decision matches Joan-approved plan; server remains validation SoT.
+- Engineer `code()` touched only planned files (no builder/API rewrite).
+
+### Issues
+**discuss (C4 stragglers — Joan Excluded; in-scope on `origin/dev...publish-ref` which includes AST-1024 + Betty tests):** 14 statutes (agent/batch/core-bright-line/patterns/state + spikes/features/engineer-test-tree). All substance **conforms** (untouched or process-clean).
+
+**fix-now:** none
+
+### Recommended actions
+- Katherine: acknowledge C4 stragglers in resolve (no product change) → User Testing.
