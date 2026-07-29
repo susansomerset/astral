@@ -119,3 +119,12 @@ Candidate stage-dispatch rows (`candidate_requested_resume` / `candidate_request
 | §1.4 no hardcoded sets | Stage keys from `CANDIDATE_STAGE_DISPATCH`, not inline frozenset of string literals |
 | §3.3 import direction | Core already imports data + utils; no new layer violations |
 | AST-745 | No re-seed of deleted rows; ensure remains insert-missing only |
+
+---
+
+## Review (build stub)
+
+| Commit | Note |
+|--------|------|
+| `f0234c4c` | Stage 1 — `CANDIDATE_STAGE_DISPATCH.auto_mode=False`; ensure reads config |
+| `de222da4` on `sub/AST-1018/AST-1022-honor-auto-off-candidate-stage-dispatch` | Stage 2 — `_debug_log_auto_off_stage_skips` (Style D index N/M); Code Complete |
