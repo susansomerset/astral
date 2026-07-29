@@ -2581,3 +2581,91 @@ class TestAst1014CandidateLibrary:
         candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=True)
         assert dbg.called
         candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=False)
+
+
+# AST-1047: reusable string → astral candidate id lookup (From bind).
+class TestAst1047GetCandidateIdForQuery:
+    def _cand(
+        self,
+        cid: str,
+        *,
+        contact_email: str = "",
+        reply_email: str = "",
+        first: str = "",
+        last: str = "",
+        full: str = "",
+        profile: dict | None = None,
+    ) -> dict:
+        cd: dict = {"contact": {}, "profile": dict(profile or {})}
+        if contact_email:
+            cd["contact"]["contact_email"] = contact_email
+        if reply_email:
+            cd["contact"]["reply_email"] = reply_email
+        return {
+            "astral_candidate_id": cid,
+            "first": first,
+            "last": last,
+            "full": full,
+            "state": "NEW_CANDIDATE",
+            "candidate_data": cd,
+        }
+
+    def test_unique_contact_email_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", contact_email="ada@ex.com", first="Ada"),
+            self._cand("c2", contact_email="other@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("ada@ex.com") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("ADA@EX.COM") == "c1"
+
+    def test_parseaddr_display_name_uses_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", contact_email="ada@ex.com")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Ada Lovelace <ada@ex.com>") == "c1"
+
+    def test_unique_name_column_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", first="Ada", last="Lovelace", full="Ada Lovelace")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Ada Lovelace") == "c1"
+
+    def test_transitional_profile_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", profile={"contact_email": "legacy@ex.com", "first": "Leg"}),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("legacy@ex.com") == "c1"
+
+    def test_none_and_ambiguous(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", contact_email="shared@ex.com"),
+            self._cand("c2", contact_email="shared@ex.com"),
+            self._cand("c3", contact_email="solo@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("missing@ex.com") is None
+        assert candidate_mod.get_candidate_id_for_query("shared@ex.com") is None
+        assert candidate_mod.get_candidate_id_for_query("solo@ex.com") == "c3"
+
+    def test_empty_query(self) -> None:
+        assert candidate_mod.get_candidate_id_for_query("") is None
+        assert candidate_mod.get_candidate_id_for_query("   ") is None
+
+    def test_get_candidate_id_fetch_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {"astral_candidate_id": "c1"}
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda cid: row)
+        assert candidate_mod.get_candidate("c1") is row
+
+    def test_debug_true_emits_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", contact_email="ada@ex.com")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        assert candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=True) == "c1"
+        assert dbg.called
+        assert dbg.call_args.kwargs["outcome"] == "found|matched"
+        dbg.reset_mock()
+        candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=False)
+        assert not dbg.called

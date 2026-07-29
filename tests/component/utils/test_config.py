@@ -2360,3 +2360,24 @@ class TestAst1041MeteoriteConfig:
         cid = "cand-42"
         built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
         assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
+
+
+class TestAst1047CandidateLookupConfig:
+    """AST-1047: CANDIDATE_LOOKUP_CONFIG email/name paths + casefold."""
+
+    def test_lookup_paths_and_casefold(self) -> None:
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert luc["match_casefold"] is True
+        assert luc["email_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+            "profile.contact_email",
+            "profile.reply_email",
+        )
+        assert luc["name_paths"] == (
+            "first",
+            "last",
+            "full",
+            "profile.first",
+            "profile.last",
+        )

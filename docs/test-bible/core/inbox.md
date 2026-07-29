@@ -28,3 +28,18 @@ Thin core wrapper over `src.external.gmail` list/get: passthrough on success; `l
   tests/component/external/test_gmail.py \
   tests/component/core/test_inbox.py
 ```
+
+
+### AST-1047 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`.
+
+List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_id`) from From via `get_candidate_id_for_query`. Get HTML path unchanged. Style D per-row when `debug=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List enrichment + Style D; get unchanged | `src/core/inbox.py` | revised **`TestListInboxMessages`**; **`TestAst1047InboxFromBind`**; **`TestGetMessageHtml`** (unchanged) |
+
+**Broken / obsolete:** **`TestListInboxMessages.test_returns_external_rows`** expected exact external passthrough — product now adds `candidate_match` (revised).
+
+**Integration:** no existing Admin inbox integration scenario — no revision.
