@@ -1127,3 +1127,25 @@ Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read e
 **Broken / obsolete:** none — additive.
 
 **Integration:** none.
+
+---
+
+### AST-1053 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`.
+
+Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Does **not** extend `PASSED_SCORE_GATED_STATES` or `RECOMMENDED` priors; `METEORITE_CONFIG["job_create_state"]` stays `JD_READY` (AST-1056).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** |
+
+**Broken / obsolete:** none — additive registry/UI lists; existing membership asserts still hold.
+
+**Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
