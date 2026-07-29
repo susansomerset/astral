@@ -150,3 +150,12 @@ New Admin nav page (sibling of Session Resume Paste): cover-letter field inputs,
 - **§3.5 naming:** `AdminSessionCoverLetter.tsx`, route `/admin/session_cover_letter`, snake_case API path already provided by AST-1024.
 - **§1.5.1 debug:** No React debug contract; do not add frontend debug logging.
 - **in-scope-only / no-cross-contamination:** No artifact persistence; optional `candidate_id` is read-only for signature on the server.
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention`
+**Tip:** `ac23db55`
+
+**Stages delivered:**
+- Stage 1 — `NAV_CONFIG` Session Cover Letter + `/admin/session_cover_letter` under `AdminRoute`
+- Stage 2 — `AdminSessionCoverLetter.tsx` field form, `useLocalStorage` retention, Open HTML → AST-1024 API + blob tab
