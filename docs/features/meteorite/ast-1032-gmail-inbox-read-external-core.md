@@ -177,3 +177,22 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
 | 2 | `69750f7d` | Thin `src/core/inbox.py` orchestrator (log + re-raise) |
 
 **Tip:** `ac6addfd` on `origin/sub/AST-1031/AST-1032-gmail-inbox-read`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1032
+**Publish ref tip (pre-docs):** `1241834f0eaac855ac04cfcbab647c8b3f23ee49`
+**Overall:** DISCUSS
+
+### What’s solid
+- Dual-scope `_GMAIL_SCOPES` shared by send/list/get; `send_email` bool contract preserved; list/get raise after `require_controlled_external_io`.
+- Thin `src/core/inbox.py` logs then re-raises; no UI/data/CSE bleed; public-then-helpers in `gmail.py`.
+- Diff matches plan Stages 1–2 and Self-Assessment Single-Component.
+
+### Issues
+- **discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot diff now includes `docs/features/**` + Betty `tests/**` / `docs/test-bible/**` so they score in-scope (all **conforms** on substance).
+
+### Recommended actions
+- Ada: acknowledge stragglers (no product change expected) then proceed resolve-child → User Testing.
