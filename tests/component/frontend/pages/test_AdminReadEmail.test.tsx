@@ -32,7 +32,7 @@ const ROWS = [
   },
 ]
 
-describe("AdminReadEmail — AST-1033 (§6c routed page)", () => {
+describe("AdminReadEmail — AST-1033 / AST-1040 (§6c routed page)", () => {
   beforeEach(() => {
     mockedApi.mockReset()
   })
@@ -60,10 +60,11 @@ describe("AdminReadEmail — AST-1033 (§6c routed page)", () => {
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages")
   })
 
-  it("click row opens wide modal with sandboxed HTML iframe", async () => {
+  it("click row opens wide modal with escaped raw HTML source (AST-1040)", async () => {
+    const raw = "<p>body html</p>"
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m1") {
-        return jsonResponse({ id: "m1", html_body: "<p>body html</p>" })
+        return jsonResponse({ id: "m1", html_body: raw })
       }
     })
     renderWithProviders(<AdminReadEmail />)
@@ -71,13 +72,15 @@ describe("AdminReadEmail — AST-1033 (§6c routed page)", () => {
     await userEvent.click(screen.getByText("Hello Astral"))
     await waitFor(() => expect(screen.getByTitle("Email body")).toBeInTheDocument())
     expect(screen.getByRole("heading", { name: "Hello Astral", level: 2 })).toBeInTheDocument()
-    const iframe = screen.getByTitle("Email body") as HTMLIFrameElement
-    expect(iframe.getAttribute("sandbox")).toBe("")
-    expect(iframe.getAttribute("srcdoc")).toBe("<p>body html</p>")
+    const source = screen.getByTitle("Email body")
+    expect(source.tagName).toBe("PRE")
+    expect(source).toHaveClass("email-html-source")
+    expect(source).toHaveTextContent(raw)
+    expect(document.querySelector("iframe")).toBeNull()
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
   })
 
-  it("empty subject uses Message title; empty html still opens iframe", async () => {
+  it("empty subject uses Message title; empty html still opens empty source panel", async () => {
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m2") {
         return jsonResponse({ id: "m2", html_body: "" })
@@ -91,8 +94,9 @@ describe("AdminReadEmail — AST-1033 (§6c routed page)", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Message", level: 2 })).toBeInTheDocument(),
     )
-    const iframe = screen.getByTitle("Email body") as HTMLIFrameElement
-    expect(iframe.getAttribute("srcdoc")).toBe("")
+    const source = screen.getByTitle("Email body")
+    expect(source.tagName).toBe("PRE")
+    expect(source).toHaveTextContent("")
   })
 
   it("list failure shows inline error + toast", async () => {
@@ -106,7 +110,7 @@ describe("AdminReadEmail — AST-1033 (§6c routed page)", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
   })
 
-  it("body fetch failure shows modal error without iframe", async () => {
+  it("body fetch failure shows modal error without source panel", async () => {
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m1") {
         return jsonResponse({ error: "upstream" }, false)

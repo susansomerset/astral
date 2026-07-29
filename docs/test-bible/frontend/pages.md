@@ -999,11 +999,11 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`.
 
-Admin **Read email** page (§6c): first-paint list via `GET /api/admin/inbox/messages`; row click → wide `Modal` + sandboxed iframe (`sandbox=""`) for `html_body`; empty subject → title `Message`; list/body errors inline (+ toast on list). API: **`docs/test-bible/ui/api/api_inbox.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+Admin **Read email** page (§6c): first-paint list via `GET /api/admin/inbox/messages`; row click → wide `Modal` + body panel for `html_body` (**AST-1040** revised presentation to escaped `<pre>` raw source — was sandboxed iframe); empty subject → title `Message`; list/body errors inline (+ toast on list). API: **`docs/test-bible/ui/api/api_inbox.md`**. Nav: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed page list + modal iframe (§6c) | `AdminReadEmail.tsx` + route | **`test_AdminReadEmail.test.tsx`** |
+| Routed page list + modal body (§6c) | `AdminReadEmail.tsx` + route | **`test_AdminReadEmail.test.tsx`** (modal body assertions revised by **AST-1040**) |
 | Nav label/path order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1033ReadEmailNav`** (`test_config.py`) |
 | Auth-gated list/get API | `src/ui/api/api_inbox.py` | **`TestAst1033InboxApi`** (`test_api_inbox.py`) |
 
@@ -1019,6 +1019,29 @@ Admin **Read email** page (§6c): first-paint list via `GET /api/admin/inbox/mes
   tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
   -q
 
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminReadEmail.test.tsx
+```
+
+---
+
+### AST-1040 · AST-1031 (UAT)
+
+**Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`.
+
+UAT: modal must show Gmail `html_body` as **escaped raw source** (`<pre class="email-html-source">`), not a rendered iframe/`srcDoc` preview. API/nav/list unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Modal raw HTML source (revises AST-1033 iframe cases) | `AdminReadEmail.tsx` + `App.css` | **`test_AdminReadEmail.test.tsx`** — click → `<pre title="Email body">` text content; no `iframe` |
+
+**Broken / obsolete this pass:** AST-1033 Vitest cases that asserted `sandbox` / `srcdoc` on iframe — revised in place.
+
+**Integration:** none touched.
+
+**AST-1040** narrowed run:
+
+```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminReadEmail.test.tsx
 ```
