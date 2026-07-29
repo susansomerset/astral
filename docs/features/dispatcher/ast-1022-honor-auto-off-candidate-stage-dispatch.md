@@ -128,3 +128,24 @@ Candidate stage-dispatch rows (`candidate_requested_resume` / `candidate_request
 |--------|------|
 | `f0234c4c` | Stage 1 — `CANDIDATE_STAGE_DISPATCH.auto_mode=False`; ensure reads config |
 | `de222da4` on `sub/AST-1018/AST-1022-honor-auto-off-candidate-stage-dispatch` | Stage 2 — `_debug_log_auto_off_stage_skips` (Style D index N/M); Code Complete |
+
+---
+
+## Radia review — code-rubric.v1
+
+`[code-rubric] revision=1` · tip reviewed `359c046c` · **Overall: DISCUSS** (C4 stragglers only; no product fix-now)
+
+### What’s solid
+
+- Stage 1: `CANDIDATE_STAGE_DISPATCH` seeds `auto_mode: False`; `ensure_candidate_stage_dispatch_tasks` reads `entry.get("auto_mode", False)` and still skips existing `(task_key, trigger_state)` pairs.
+- Stage 2: `_debug_log_auto_off_stage_skips` scopes stage keys from config, gates on row `debug`, collects eligible then emits Style D `index N/M` (Joan’s plan-time `1/1` discuss addressed), never calls `run_task`.
+- Tick spawn / `get_due_tasks` / CLICK path untouched; Betty test + bible commits are vocabulary-separated from engineer `code()` SHAs.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` at plan time; this three-dot diff brings them in-scope (`docs/features/**`, `tests/**` / bible). All three **conform** (plan is a features file not a spike; single `docs/features/dispatcher/ast-1022-…md`; engineer `code()` commits touch only `src/`).
+
+### Recommended actions
+
+- Resolve-child: acknowledge stragglers (no product change required unless Ada/Archie want a different reading).
+- No fix-now product edits from this review.
