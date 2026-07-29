@@ -1500,6 +1500,83 @@ METEORITE_CONFIG = {
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 
+# AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
+# score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
+# Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
+METEORITE_DISPATCH_TASKS = (
+    {
+        "task_key": "evaluate_jd",
+        "trigger_state": "METEORITE_NEW",
+        "score_floor": None,  # ungated entry (mirrors JD_READY / evaluate_jd)
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "grade_do",
+        "trigger_state": "METEORITE_PASSED_JD",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "grade_get",
+        "trigger_state": "METEORITE_PASSED_DO",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "meteorite_like",
+        "trigger_state": "METEORITE_PASSED_GET",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "meteorite_upshot",
+        "trigger_state": "METEORITE_PASSED_LIKE",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 1,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+)
+
+# Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
+METEORITE_GDL_OUTCOME_BY_TASK = {
+    "evaluate_jd": {
+        "pass_state": "METEORITE_PASSED_JD",
+        "fail_state": "METEORITE_FAILED_JD",
+        "error_state": "METEORITE_ERROR_EVALUATE_JD",
+    },
+    "grade_do": {
+        "pass_state": "METEORITE_PASSED_DO",
+        "fail_state": "METEORITE_FAILED_DO",
+        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
+    },
+    "grade_get": {
+        "pass_state": "METEORITE_PASSED_GET",
+        "fail_state": "METEORITE_FAILED_GET",
+        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
+    },
+}
+
+assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
+assert all(
+    st in JOB_STATES
+    for overlay in METEORITE_GDL_OUTCOME_BY_TASK.values()
+    for st in overlay.values()
+)
+
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
 
@@ -1604,6 +1681,8 @@ IN_REVIEW_STATES = [
 # PASSED_JOBLIST here (would change claim sort_by for that trigger).
 PASSED_SCORE_GATED_STATES = frozenset({
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE",
+    # AST-1054: meteorite gated hops (score_floor 0 on dispatch rows — not METEORITE_NEW).
+    "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET", "METEORITE_PASSED_LIKE",
 })
 
 # Admin Edit Dispatch Task modal — score_floor dropdown (AST-743 / AST-750).
@@ -1740,8 +1819,12 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "PASSED_DO"
     if task_key == "grade_like":
         return "CULTURE_READY"
+    if task_key == "meteorite_like":
+        return "METEORITE_PASSED_GET"
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
+    if task_key == "meteorite_upshot":
+        return "METEORITE_PASSED_LIKE"
     if task_key in resume_artifact_hop_task_keys():
         return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
