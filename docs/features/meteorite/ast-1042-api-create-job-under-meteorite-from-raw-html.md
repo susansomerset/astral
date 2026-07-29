@@ -222,3 +222,21 @@ Follow neighboring `# noqa: E402` style.
 | 1–2 | `ec61e37f` | create_meteorite_job carve-out + POST /api/candidates/<id>/meteorite/jobs + register blueprint |
 
 **Tip:** `e3f029ce0786fe7bf6c6c16c70bf6a9404144613` on `origin/sub/AST-1034/AST-1042-api-create-job-under-meteorite-from-raw-html`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1042
+**Publish ref tip (pre-docs):** `e057271af4f79039e468e202bbc33138b163f3c8`
+**Overall:** DISCUSS
+
+### What’s solid
+- `create_meteorite_job` carve-out → JD_READY + score from `METEORITE_CONFIG`; JD key from `TRACKER_CONFIG`; two-step insert + `latest_score` update with postconditions.
+- Thin `@require_auth` POST; 400/404/502 mapping; no UI/email; ui→core only.
+
+### Issues
+- **discuss (straggler ×5):** Joan excluded spikes/docs/engineer-test-ban/database-header/utils-data-late at plan time; three-dot includes AST-1041 + Betty tests/docs — all **conforms** on substance.
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
