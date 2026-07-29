@@ -193,3 +193,15 @@ Wide modal already sets `.modal-card--wide .modal-body { overflow: hidden; paddi
 - **§3.5 naming:** `AdminReadEmail.tsx`, path `/admin/read_email`, blueprint `inbox`.
 - **`astral.patterns.require-auth-on-protected-endpoints`:** `@require_admin` on both endpoints; `AdminRoute` on the screen.
 - **`astral.layers.ui-config-driven-business-logic`:** Nav via `NAV_CONFIG`; React renders API payloads without inventing inbox rules.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`
+**Plan path:** `docs/features/meteorite/ast-1033-read-email-admin-screen.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ab21fc2f` | NAV **Read email**; `api_inbox` list/get under `@require_admin`; register `inbox_bp` |
+| 2 | `1c3505ce` | `AdminReadEmail` table + sandboxed HTML modal; route + CSS |
+
+**Tip:** `1c3505ce` on `origin/sub/AST-1031/AST-1033-read-email-admin-screen`
