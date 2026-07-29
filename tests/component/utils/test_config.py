@@ -2229,6 +2229,33 @@ class TestAst1020DefaultStyleColorTokens:
         assert colors["page_background"] == "#f5f5f5"
 
 
+class TestAst1024SessionCoverLetterConfig:
+    """AST-1024: BUILD_CONFIG session_cover_letter field contract + document title."""
+
+    def test_document_title_and_field_required_flags(self) -> None:
+        block = cfg.BUILD_CONFIG["session_cover_letter"]
+        assert block["document_title"] == "SomersetCover"
+        fields = block["fields"]
+        assert fields["from_block"]["required"] is True
+        assert fields["letter_date"]["required"] is True
+        assert fields["to_block"]["required"] is False
+        assert fields["subject"]["required"] is False
+        assert fields["letter"]["required"] is True
+        assert fields["signoff_closing"]["required"] is True
+        assert fields["signature"]["required"] is True
+        # Job artifact shape stays separate (Subject/Letter/signature).
+        assert "cover_letter" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert set(fields) == {
+            "from_block",
+            "letter_date",
+            "to_block",
+            "subject",
+            "letter",
+            "signoff_closing",
+            "signature",
+        }
+
+
 class TestAst1010CandidateTaglineConfig:
     """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""
 

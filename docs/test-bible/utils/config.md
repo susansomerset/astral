@@ -939,6 +939,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1024 · AST-1023
+
+**AST-1024:** `BUILD_CONFIG["session_cover_letter"]` — `document_title` `SomersetCover` + field map (`from_block` / `letter_date` / `letter` / `signoff_closing` / `signature` required; `to_block` / `subject` optional). Does **not** change `artifact_shapes["cover_letter"]`. Primary emit + admin route: **`docs/test-bible/core/builder.md`**, **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Field contract + title | `src/utils/config.py` | **`TestAst1024SessionCoverLetterConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1024SessionCoverLetterConfig \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.
