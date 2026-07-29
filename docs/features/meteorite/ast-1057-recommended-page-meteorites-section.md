@@ -114,3 +114,15 @@ meteorite_section?: {
 - **§3.3 / import-direction:** UI → manifest JSON from API; no UI importing core/data.
 - **Boundaries:** No states / dispatch / prompts / Create edits.
 - **AC6 smoke (non-meteorite Recommended unchanged):** Normal sections still driven by `JOBS_RECOMMENDED_UI_SECTIONS` + `RECOMMENDED_JOB_STATES`; only membership filter changes.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`
+**Plan path:** `docs/features/meteorite/ast-1057-recommended-page-meteorites-section.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `60f68589` | `JOBS_RECOMMENDED_METEORITE_SECTION` + manifest `meteorite_section` |
+| 2 | `f1c1808b` | JobsRecommended partition + StateUi `meteorite_section` type |
+
+**Tip:** `f1c1808b5103db10aaeb274729a1d106ea9f46b8` on `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`
