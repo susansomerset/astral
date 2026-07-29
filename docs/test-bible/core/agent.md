@@ -437,3 +437,25 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/core/test_agent.py::TestResponseSchemaBranches \
   -q
 ```
+
+---
+
+### AST-1037 · AST-1036
+
+**AST-1037:** Ruth `simple_resume_parse` task — shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` with Judith `craft_resume_base`; `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` frozenset gates `normalize_craft_resume_base_agent_payload` in `do_task` (both sync validation sites). Repo `agent_task` seed + AST-756 fixture sync. Admin session wire = sibling **AST-1038**. Config: **`docs/test-bible/utils/config.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize gate membership | `src/core/agent.py` | **`TestAst1037NormalizeGateMembership`** |
+
+**Broken / obsolete:** AST-786 catalog frozenset — `preamble_validate_response` → `simple_resume_parse` on this tip’s origin/dev base (parallel AST-1015 row not on base).
+
+**Integration:** no existing scenario asserts session-parse task key — no revision; do not invent new integration coverage.
+
+**AST-1037** narrowed run (agent slice):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1037NormalizeGateMembership \
+  -q
+```

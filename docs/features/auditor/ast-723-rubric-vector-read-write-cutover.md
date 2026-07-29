@@ -1,3 +1,125 @@
+<!-- linear-archive: AST-723 archived 2026-07-29 -->
+
+## Linear archive (AST-723)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-723/rubric-vector-readwrite-cutover-and-rubric-vectors-token-runtime  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378; blocks: AST-724
+
+### Description
+
+## What this implements
+
+Move rubric authority from `candidate_data.artifacts` JSON to **rubric_vector** rows. Artifacts save and craft flows write **rubric_vector** (retire prior row + insert new UUID on fingerprint change; importance/reorder alone do not retire). Consult, roster, and agent runtime assemble active rubrics from `rubric_vector WHERE current=1` for `(candidate_id, task_key)` — no artifact JSON reads after cutover. Replace per-artifact rubric tokens with single `{$RUBRIC_VECTORS}` resolved at runtime from current rows. Task↔rubric linkage via **agent_task** data relationships only — do not maintain parallel rubric artifact keys in **TASK_CONFIG** for this feature.
+
+## Acceptance criteria
+
+10. **Migration:** Runtime and `{$RUBRIC_VECTORS}` resolve from **rubric_vector**, not `candidate_data.artifacts` JSON, after read-switch.
+
+## Boundaries
+
+Does not add vector feedback envelope parsing (sibling Ada ticket). Does not build Admin Vector Feedback UI. Does not change letter-grade scoring math.
+
+## Notes for planning
+
+Touches [consult.py](<http://consult.py>), [roster.py](<http://roster.py>), [agent.py](<http://agent.py>) token resolution, Artifacts UI/API. Embedded vectors (e.g. prefilter Reality Check) keep existing merge rules.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-378-runtime-rubric-validation`, child `sub/AST-378/<identifier>-rubric-vector-read-write-cutover`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T03:14:14.845Z
+**Diff:** `origin/dev...origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` (code tip `9ed0c99`, doc `e17ec81`)
+**Doc:** `docs/features/auditor/ast-723-rubric-vector-read-write-cutover.md` § Review (Radia)
+
+*Note: three-dot diff includes sibling AST-722 commits not yet on origin/dev.*
+
+### What's solid
+- Stages 1–6: owner maps + `{$RUBRIC_VECTORS}`; `sync_rubric_vectors_from_criteria` retire/insert; API save/GET overlay; consult/roster cutover; AST-723 agent_task token migration.
+- `_rubric_criteria_from_cd` and legacy per-rubric TOKEN_SOURCES removed from `src/`.
+- §2.1 / §3.3 compliant; Betty manifest aligns.
+
+### fix-now
+- `src/core/candidate.py` `preview_task_prompt` ~L297: `build_job_token_context(..., candidate_id=cid)` runs **before** `cid = candidate.get(...)` (~L298). Preview with `astral_job_id` → `UnboundLocalError`. Move `cid` assignment above the job block.
+
+### discuss
+- `_rubric_rows_to_criteria`: `except ValueError: pass` on grade-table parse from DB — add comment if legacy-backfill tolerance is intentional.
+- `sync_rubric_vectors_from_criteria`: `importance` default magic `5` vs config literal (safe post-normalize).
+
+### advisory
+- Diff baseline includes AST-722 stack until ftr → dev.
+- `_fetch_prefilter_notes` table read fixes prior wrong-level artifact access.
+
+**Verdict:** One fix-now — resolve then UAT. Cutover architecture is sound.
+
+#### betty — 2026-06-18T03:10:18.490Z
+Bible shasums (`origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` @ 9ed0c99):
+- docs/test-bible/data/database/rubric_vectors.md: d7bd9fe297cfa9a1ef73ad0b37f930065dc19f32
+- docs/test-bible/data/database.md: 52b497f57ee26484adf66d8e30a6ecc45da5bddc
+- docs/test-bible/core/candidate.md: 309e7b90a386a6de72486ddc7fbf56f211aa4f7b
+- docs/test-bible/core/consult.md: ba024c8a4332c2dcffdcdd83bf36712c9328f9d7
+- docs/test-bible/utils/config.md: 579a3f180658953cf2058a0cc4f93514fcb4a27e
+- docs/test-bible/ui/api/api_candidate.md: 4aec140867b4e693ce49d0ed22791732ccd8eb16
+
+#### betty — 2026-06-18T03:10:13.163Z
+## QA test manifest (AST-723)
+
+**Publish ref:** `origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` @ `9ed0c99` (`merge-tests(AST-723): origin/tests a7b998c`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+1. **Database sync + token migration (required):** `tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors`, `::TestAst723RubricTokenMigration` — fingerprint-gated retire/insert, legacy `{$GET_RUBRIC}` → `{$RUBRIC_VECTORS}` migration.
+
+2. **Core save/load cutover (required):** `tests/component/core/test_candidate.py::TestAst723RubricVectorsCutover` — `apply_rubric_vectors_save`, `hydrate_rubric_artifacts_for_response`, embedded RC merge, preview `_astral_candidate_id` injection.
+
+3. **Consult read cutover (required):** `tests/component/core/test_consult.py::TestRubricHelpers` — table-backed `rubric_criteria_for_task` / `_rubric_criteria_for_cfg` (replaces obsolete `_rubric_criteria_from_cd` tests).
+
+4. **Config token registry (required):** `tests/component/utils/test_config.py::TestAst723RubricVectorsToken`; `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` (uses `{$RUBRIC_VECTORS}`).
+
+5. **Candidate API wiring (required):** `tests/component/ui/api/test_api_candidate.py::TestAst723RubricVectorsApi` — PUT sync + GET hydrate overlay.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors \
+  tests/component/data/database/test_rubric_vectors.py::TestAst723RubricTokenMigration \
+  tests/component/core/test_candidate.py::TestAst723RubricVectorsCutover \
+  tests/component/core/test_consult.py::TestRubricHelpers \
+  tests/component/utils/test_config.py::TestAst723RubricVectorsToken \
+  tests/component/utils/test_config.py::TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens \
+  tests/component/ui/api/test_api_candidate.py::TestAst723RubricVectorsApi \
+  -q
+```
+
+**Bible shasums (`origin/sub/...`):**
+- `docs/test-bible/data/database/rubric_vectors.md`: (see publish tip)
+- `docs/test-bible/data/database.md`: (see publish tip)
+- `docs/test-bible/core/candidate.md`: (see publish tip)
+- `docs/test-bible/core/consult.md`: (see publish tip)
+- `docs/test-bible/utils/config.md`: (see publish tip)
+- `docs/test-bible/ui/api/api_candidate.md`: (see publish tip)
+
+**Broken / obsolete (revised this pass):** `TestRubricHelpers` — `_rubric_criteria_from_cd` removed in product; tests now use table-backed `rubric_criteria_for_task`. `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` — `{$GET_RUBRIC}` → `{$RUBRIC_VECTORS}` + `_astral_candidate_id` overlay.
+
+**Gaps filled:** sync/versioning, token migration, candidate API overlay, consult/roster read path, config registry. Out of scope: vector feedback capture (**AST-724**), Admin UI (**AST-725**).
+
+#### hedy — 2026-06-18T02:37:33.510Z
+Plan: [docs/features/auditor/ast-723-rubric-vector-read-write-cutover.md](https://github.com/susansomerset/astral/blob/sub/AST-378/AST-723-rubric-vector-read-write-cutover/docs/features/auditor/ast-723-rubric-vector-read-write-cutover.md) on `origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` @ f48c559.
+
+**Scope:** MAJOR-CHANGE — config token registry, `sync_rubric_vectors_from_criteria` retire/insert, core consult/roster/candidate read-write cutover, `agent_task` prompt migration to `{$RUBRIC_VECTORS}`, candidate API save/GET overlay.
+
+**Conf:** Medium — AST-722 table + backfill mapping and company_search_terms cutover are established patterns; token migration must land before legacy rubric tokens are removed from `TOKEN_SOURCES`.
+
+**Risk:** HIGH — a missed artifact read path or bad sync versioning would desync consult grading from live rubrics; mitigated by fingerprint-gated retire/insert and Stage 6 grep gate.
+
+---
+
 # AST-723 — Rubric_vector read/write cutover and RUBRIC_VECTORS token (Runtime Rubric Validation)
 
 - **Linear:** [AST-723](https://linear.app/astralcareermatch/issue/AST-723/rubric-vector-read-write-cutover-and-rubric-vectors-token-runtime-rubric)

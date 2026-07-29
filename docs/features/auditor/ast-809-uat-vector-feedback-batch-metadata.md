@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-809 archived 2026-07-29 -->
+
+## Linear archive (AST-809)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-809/uat-capture-batch-id-completion-timestamp-and-batch-size-with-vector  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+Vector feedback rows do not persist or surface batch execution metadata Susan needs for inspection: **batch id**, **completion timestamp**, and **batch size (entity count)**.
+
+Susan UAT 2026-06-25: ensure we are catching batch id, completion timestamp, and batch size with this feedback.
+
+## Expected
+
+When vector feedback is captured for a rubric-backed batch run, each **vector_feedback** row (or its API/admin row) includes:
+
+1. **Batch id** — identifier for the dispatch/batch execution
+2. **Completion timestamp** — when the batch/task completed
+3. **Batch size** — entity count for that batch
+
+Admin Vector Feedback (and API) expose these fields for sort/filter alongside existing columns.
+
+## Repro
+
+1. Run a rubric-backed batch task that produces vector feedback (staging).
+2. Open Admin → Vector Feedback.
+3. Observe rows lack batch id, completion timestamp, and/or batch entity count.
+4. Expected: all three metadata fields present and queryable per row.
+
+## Parent AC (quoted inline)
+
+> 3. When vector feedback parses cleanly, **vector_feedback** rows are persisted with correct **rubric_vector** UUID, candidate, task run identifier, and one row per feedback type per vector.
+
+> 6. Admin Vector Feedback page lists **vector_feedback** rows with sort/filter on candidate, task, vector code, feedback type, value, run/batch identifiers.
+
+## Boundaries
+
+* This bug does **not** change: lenient parse behavior, FEEDBACK block fallback, or rubric_vector versioning rules.
+* Human-readable vector label hydration is a separate bug (Admin display only).
+
+### Comments
+
+#### radia — 2026-06-25T17:28:10.159Z
+**Diff:** `origin/dev...origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata` (code `4a9f125`, doc `0059546`)
+**Doc:** `docs/features/auditor/ast-809-uat-vector-feedback-batch-metadata.md` § Review (Radia)
+
+### What's solid
+- Schema lazy migration + insert path: `batch_size`, `completed_at`, 11-col bind match, shared `ts`, `batch_id` gate.
+- Capture hook passes metadata from `do_task`; skips insert when `batch_id` blank.
+- Admin API columns + `list_vector_feedback` SELECT updated; tests green.
+
+### fix-now
+- **`AdminVectorFeedback.tsx`**: Plan assumed `req_dict=1` auto-columns, but page uses **hardcoded** `detailColumns` and fetches without `req_dict`. `batch_size` and `completed_at` are in API JSON but **not shown** — UAT requires Admin exposure. Add columns after `batch_id` or switch to req_dict-driven columns.
+
+### advisory
+- Legacy rows NULL for new columns until re-capture.
+- Plan Stage 3 "no React changes" stale vs AST-725 static columns.
+
+**Verdict:** Backend approve; one fix-now on Admin UI — resolve then UAT.
+
+#### betty — 2026-06-25T17:26:19.624Z
+## QA test manifest (AST-809)
+
+**Publish ref:** origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata @ 4a9f125
+
+**Narrowed run:**
+./scripts/testing/run_component_tests.sh tests/component/data/database/test_rubric_vectors.py::TestAst809VectorFeedbackBatchMetadata tests/component/core/test_agent.py::TestAst809VectorFeedbackBatchMetadata tests/component/ui/api/test_api_admin.py::TestAst809VectorFeedbackBatchMetadata -q
+
+Also re-run AST-724/725 vector_feedback clusters (batch_size arg revised).
+
+**Bible shasums:** rubric_vectors.md 5d75729104bc0847ff71407933c4935483925d54; agent.md af26d4823b866f7f66553b714daf93c06f88d569; api_admin.md c3de3e493020a9573747d3149d648e01f7fc1324
+
+— Betty
+
+#### betty — 2026-06-25T17:26:14.671Z
+QA manifest AST-809 @ origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata 4a9f125. Pytest: TestAst809VectorFeedbackBatchMetadata (data, agent, api); revised AST-724/725 tests for batch_size arg. Bible: rubric_vectors.md 8f3e2a1 pending — see publish ref. — Betty
+
+#### ada — 2026-06-25T17:22:17.185Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata/docs/features/auditor/ast-809-uat-vector-feedback-batch-metadata.md
+
+Publish ref: `origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata` @ `HEAD` (see latest push)
+
+**Self-assessment**
+- **Scope:** Single-Component — lazy-add `batch_size` + `completed_at` on `vector_feedback`, pass metadata from `do_task` capture, expose columns in Admin API.
+- **Conf:** high — root cause is missing columns + capture without truthy `batch_id`; follows dispatch_ledger / agent_timesheets batch metadata patterns.
+- **Risk:** low — legacy rows nullable; no change to lenient parse or grading.
+
+#### ada — 2026-06-25T17:22:16.833Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata/docs/features/auditor/ast-809-uat-vector-feedback-batch-metadata.md
+
+Publish ref: `origin/sub/AST-378/AST-809-uat-vector-feedback-batch-metadata` @ `pending` (see latest push)
+
+**Self-assessment**
+- **Scope:** Single-Component — lazy-add `batch_size` + `completed_at` on `vector_feedback`, pass metadata from `do_task` capture, expose columns in Admin API.
+- **Conf:** high — root cause is missing columns + capture without truthy `batch_id`; follows dispatch_ledger / agent_timesheets batch metadata patterns.
+- **Risk:** low — legacy rows nullable; no change to lenient parse or grading.
+
+---
+
 # AST-809 — UAT: Capture batch id, completion timestamp, and batch size with vector feedback
 
 - **Linear:** [AST-809](https://linear.app/astralcareermatch/issue/AST-809/uat-capture-batch-id-completion-timestamp-and-batch-size-with-vector)

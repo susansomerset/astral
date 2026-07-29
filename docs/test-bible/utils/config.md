@@ -1042,3 +1042,28 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_preamble_config \
   -q
 ```
+
+---
+
+### AST-1037 · AST-1036
+
+**AST-1037:** `TASK_CONFIG["simple_resume_parse"]` shares `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` with `craft_resume_base`; `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` frozenset in config (§1.4). Session wire = **AST-1038**. Agent gate: **`docs/test-bible/core/agent.md`**. Catalog seed: **`docs/test-bible/core/repo_admin_json.md`** / **`docs/test-bible/data/database/agent_tasks.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared schema + meta + normalize frozenset | `src/utils/config.py` | **`TestAst1037SimpleResumeParseConfig`** |
+
+**Broken / obsolete:** AST-786 catalog frozenset membership — `simple_resume_parse` on this tip (see agent_tasks.md).
+
+**Integration:** no existing scenario asserts simple_resume_parse — no revision; do not invent new integration coverage.
+
+**AST-1037** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1037SimpleResumeParseCatalogRow \
+  tests/component/core/test_agent.py::TestAst1037NormalizeGateMembership \
+  -q
+```

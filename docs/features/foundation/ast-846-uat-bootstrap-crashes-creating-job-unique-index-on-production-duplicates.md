@@ -1,3 +1,120 @@
+<!-- linear-archive: AST-846 archived 2026-07-29 -->
+
+## Linear archive (AST-846)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-846/uat-bootstrap-crashes-creating-job-unique-index-on-production  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-842 — Database updates are not running on production deployments  
+**Blocked by / blocks / related:** parent: AST-842
+
+### Description
+
+## What failed
+
+After AST-843 landed on Railway production, the gunicorn worker fails to boot on every restart. Bootstrap calls `ensure_all_upsert_registry_schemas_at_startup()` → `_ensure_job_schema`, which raises `sqlite3.IntegrityError: UNIQUE constraint failed: job.company, job.job_title, job.company_job_id`. The container loops: "Worker failed to boot" / "Reason: Worker failed to boot." Production never serves traffic.
+
+## Expected
+
+Server process starts successfully on production after deploy/restart. Bootstrap schema ensure completes idempotently even when the production SQLite file contains legacy duplicate job rows. Schema migration must not crash the worker.
+
+## Repro
+
+1. Deploy AST-842/843 to Railway production (commit on origin/dev with bootstrap schema ensure).
+2. Observe Railway deploy logs after container start.
+3. Worker crashes during `bootstrap_runtime()` with `IntegrityError` on job unique index creation in `_ensure_job_schema`.
+
+## Parent AC (quoted inline)
+
+> 4. Bootstrap schema ensure runs once per process before the scheduler starts dispatch work—not only on upsert or first ad-hoc query.
+> 5. Bootstrap ensure is idempotent on databases already at canonical schema; local and staging behave the same after restart.
+
+## Boundaries
+
+* This bug does **not** change: company-table bootstrap ensure (AST-843), upsert merge rules, or dropping `agent_responses_legacy`.
+* Does **not** refactor `database.py` structure (AST-777).
+* Fix is scoped to making job-table schema ensure safe at bootstrap when duplicate identity rows already exist in production.
+
+### Comments
+
+#### radia — 2026-07-03T00:53:43.998Z
+### Plan fidelity
+
+Stages 1–3 delivered on `origin/sub/AST-842/AST-846-bootstrap-job-unique-index-dedup` @ `522723d` (`origin/dev...` three-dot). `_delete_board_placeholder_jobs` / `_dedupe_job_identity_triples` run inside `_ensure_job_schema` only when `idx_job_identity_unique` is missing; migration script live paths delegate to the same helpers. AST-843 bootstrap registry loop and AST-732 index SQL unchanged.
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 DRY:** Shared helpers — bootstrap + migration script — no drift.
+- **§1.5 data layer:** No logging; delete/index paths fail-fast (no swallowed `IntegrityError`).
+- **§3.3 / B2:** Data-layer only; script imports existing private `database` helpers (same pattern as `_ensure_job_schema`).
+- **Database SQL:** Parameterized `IN` deletes; `?` bind count matches tuple length.
+
+### Tests (read-only)
+
+`TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` (5/5) + AST-843 / AST-729 regression green locally. Bootstrap path validated via `ensure_table_schema_for_upsert` flag reset.
+
+### Advisory
+
+- Tie-break case (`created_at` equal → `astral_job_id ASC`) not an explicit test row — helper ORDER BY matches AST-729.
+- No-filter live migration: per-group log line says `deleted` before bulk `_dedupe_job_identity_triples` at loop end — cosmetic timing only.
+
+**Doc:** `docs/features/foundation/ast-846-uat-bootstrap-crashes-creating-job-unique-index-on-production-duplicates.md` § Review (Radia).
+
+**fix-now:** none — proceed to `resolve-child` / merge.
+
+#### betty — 2026-07-03T00:51:31.295Z
+## QA test manifest — AST-846
+
+**Publish:** `origin/sub/AST-842/AST-846-bootstrap-job-unique-index-dedup` @ `277fbe8` (`merge-tests(AST-846): origin/tests bcc60a5`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/data/database.md`: `7bb16ef7e7578145bafe1066c83d9a61d29a422fd035563e8353e5868b744d01`
+- `docs/test-bible/dev/cleanup_duplicate_and_board_gaze_jobs.md`: `5b417a6a25d12f3d02ea14a10062ce75532f778e4072e63e951efd23905371fb`
+
+### Manifest (test-child)
+
+1. **Duplicate triples → index succeeds:** `tests/component/data/test_database.py::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex::test_duplicate_triples_index_succeeds`
+2. **Board placeholders removed before index:** `::test_board_placeholders_removed_before_index`
+3. **Idempotent second ensure:** `::test_idempotent_second_ensure`
+4. **Incomplete triples untouched:** `::test_incomplete_triples_untouched`
+5. **Bootstrap registry path:** `::test_bootstrap_registry_path`
+
+**Regression (reuse):**
+6. **AST-843 bootstrap schema ensure:** `tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure::test_ensure_all_upsert_registry_schemas_at_startup_idempotent`
+7. **AST-729 migration script identity dedupe:** `tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py::TestIdentityDedupe` (full class — includes Betty revision for `--company` error path)
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_database.py::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex \
+  tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure \
+  tests/component/scripts/test_cleanup_duplicate_and_board_gaze_jobs.py::TestIdentityDedupe \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Broken / obsolete (revised this pass):** `TestIdentityDedupe::test_group_error_increments_errors` — live no-filter path now uses `_dedupe_job_identity_triples`; error increment path uses `company_filter="acme"`.
+
+— Betty
+
+#### hedy — 2026-07-03T00:46:44.998Z
+Plan: `docs/features/foundation/ast-846-uat-bootstrap-crashes-creating-job-unique-index-on-production-duplicates.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-842/AST-846-bootstrap-job-unique-index-dedup/docs/features/foundation/ast-846-uat-bootstrap-crashes-creating-job-unique-index-on-production-duplicates.md
+
+**Scope:** Single-Component — `_ensure_job_schema` gains AST-729-compatible board cleanup + identity triple dedupe before `idx_job_identity_unique` creation; migration script DRY'd to the same helpers.
+
+**Conf:** high — Production failure mode is confirmed (IntegrityError on index create over legacy duplicates); survivor SQL already proven in AST-729 script/tests.
+
+**Risk:** Medium — Bootstrap DELETEs duplicate job rows on first index migration; survivor rule matches AST-729; related tables still not cascaded (unchanged contract).
+
+---
+
 # AST-846 — UAT: bootstrap crashes creating job unique index on production duplicates
 
 **Linear:** [AST-846 — UAT: bootstrap crashes creating job unique index on production duplicates](https://linear.app/astralcareermatch/issue/AST-846/uat-bootstrap-crashes-creating-job-unique-index-on-production-duplicates)  

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react"
+import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import api from "../lib/api"
 import { useLocalStorage } from "../lib/useLocalStorage"
@@ -17,6 +18,7 @@ export default function SessionResumePaste() {
   )
   const [parsing, setParsing] = useState(false)
   const [opening, setOpening] = useState(false)
+  const [jsonOpen, setJsonOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -123,7 +125,7 @@ export default function SessionResumePaste() {
         Session Resume Paste
       </h1>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-        Paste a full resume, Parse to structure-keyed JSON, then Open HTML to Print → PDF.
+        Paste a full resume, Parse to structure-keyed JSON, optionally View Parsed JSON, then Open HTML to Print → PDF.
         This tool does not use the selected candidate and does not save to the database.
       </p>
 
@@ -156,6 +158,14 @@ export default function SessionResumePaste() {
         <button
           type="button"
           className="dep-btn"
+          onClick={() => setJsonOpen(true)}
+          disabled={!lastParse || opening || parsing}
+        >
+          View Parsed JSON
+        </button>
+        <button
+          type="button"
+          className="dep-btn"
           onClick={() => void handleOpenHtml()}
           disabled={!lastParse || opening || parsing}
         >
@@ -168,6 +178,20 @@ export default function SessionResumePaste() {
           {error}
         </p>
       )}
+
+      <Modal
+        open={jsonOpen}
+        onClose={() => setJsonOpen(false)}
+        title="Parsed resume JSON"
+      >
+        <pre style={{
+          whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13,
+          color: "#e0e0e0", background: "#1a1a2e", padding: 16, borderRadius: 8,
+          maxHeight: "60vh", overflow: "auto",
+        }}>
+          {lastParse ? JSON.stringify(lastParse, null, 2) : ""}
+        </pre>
+      </Modal>
 
       <Toast message={toast} onDone={clearToast} />
     </div>

@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-828 archived 2026-07-29 -->
+
+## Linear archive (AST-828)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-828/uat-draft-cover-letter-dispatch-crashes-on-build-artifactsfinalize-job  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-752 — Use agent_data for the "caller" content  
+**Blocked by / blocks / related:** parent: AST-752
+
+### Description
+
+## What failed
+
+Scheduled dispatch of `draft_cover_letter` crashes before any LLM hop runs. Log shows `[draft_cover_letter/...] crashed` with `ValueError: Value 'BUILD_ARTIFACTS.finalize_job_resume' not in allowed list` raised from `get_new_job_batch` → `validate_value(_JOB_STATE_LIST, s)`.
+
+## Expected
+
+Dispatch for cover-letter / resume-artifact chain tasks claims jobs in compound `BUILD_ARTIFACTS.<task_key>` holding states (here `BUILD_ARTIFACTS.finalize_job_resume`) without crashing, and the daisy-chain run proceeds or fails gracefully with a domain error — not a config validation exception on the trigger state string.
+
+## Repro
+
+1. Have a job in compound state `BUILD_ARTIFACTS.finalize_job_resume` with a dispatch row for `draft_cover_letter` on that trigger state (Susan's staging run: batch `draft_cover_letter-fbdbc4dc-c45c-4485-b498-479134903585`, candidate `somerset`, 6 available).
+2. Run scheduled dispatch (or manual Run on that dispatch task).
+3. Observe dispatcher crash in `_run_unified` → `get_new_job_batch` before `do_task` starts.
+
+## Parent AC (quoted inline)
+
+> 2. Live chain behavior matches today's successful outcomes: a full chain that succeeded before this change still succeeds with equivalent assembled prompts (parity on roster locate→parse, consult/cover-letter chains, and resume-artifact chains).
+> 3. AST-597 resume-artifact mid-chain entry behavior is preserved through the refactored general hydration path (no parallel resume-only branch left behind).
+
+## Boundaries
+
+* This bug does **not** change: `{$CALLER_*}` token registry, Manage Tasks authoring, or general caller hydration logic in `agent.py` except where required to unblock dispatch entry.
+* Does not change dispatch_task seeding (AST-741 / AST-745).
+* Does not add new job states — compound `BUILD_ARTIFACTS.*` states already exist from AST-595; fix claim/validation to recognize them.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-752-agent-data-caller-content**, child **sub/AST-752/<bug-id>-<slug>**. Seed from **origin/ftr/AST-752-agent-data-caller-content**.
+
+### Comments
+
+#### betty — 2026-06-26T18:59:23.506Z
+## QA test manifest (AST-828)
+
+**Publish:** `origin/sub/AST-752/AST-828-draft-cover-letter-compound-state-claim` @ `69122b2` (`merge-tests(AST-828): origin/tests 9844698`)
+
+**Bible shasums:**
+- `docs/test-bible/core/tracker.md` → `7d147198dee9c7106c8ee6650e17d4aac8aab846`
+- `docs/test-bible/utils/config.md` → `0437fddbb94d81b920aa1ed62cdac41accf279f3`
+
+### Manifest (test-child)
+
+1. **Config helper (`TestAst828JobBatchClaimStateValidation`):**
+   - `test_flat_job_state_valid`
+   - `test_legacy_compound_hop_valid` — `BUILD_ARTIFACTS.finalize_job_resume`
+   - `test_invalid_compound_suffix_rejected` — `BUILD_ARTIFACTS.not_a_hop`
+   - `test_blank_rejected`
+
+2. **Tracker batch claim (`TestBatchApi`):**
+   - `test_compound_build_artifacts_hop_claimable_without_value_error` — no `ValueError` before claim
+   - `test_invalid_compound_suffix_still_rejects`
+   - `test_states_list_accepts_legacy_compound_hop` — multi-state claim list path
+
+**Narrowed run (pass criterion: pytest green — not zero-arg branch-lock gate):**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst828JobBatchClaimStateValidation \
+  tests/component/core/test_tracker.py::TestBatchApi::test_compound_build_artifacts_hop_claimable_without_value_error \
+  tests/component/core/test_tracker.py::TestBatchApi::test_invalid_compound_suffix_still_rejects \
+  tests/component/core/test_tracker.py::TestBatchApi::test_states_list_accepts_legacy_compound_hop \
+  -q
+```
+
+**Regression note:** `transition_job_state` still validates flat `JOB_STATES` only — out of scope per plan.
+
+— Betty
+
+#### hedy — 2026-06-26T18:56:16.150Z
+**Plan doc:** [`docs/features/roster/ast-828-uat-draft-cover-letter-compound-state-claim.md`](https://github.com/susansomerset/astral/blob/sub/AST-752/AST-828-draft-cover-letter-compound-state-claim/docs/features/roster/ast-828-uat-draft-cover-letter-compound-state-claim.md)
+
+**Root cause:** `get_new_job_batch` validates trigger states against flat `JOB_STATES` keys only; legacy compound holding states `BUILD_ARTIFACTS.<hop>` (AST-595/803) are valid on job rows and in SQL claim/count paths but fail `validate_value` before dispatch runs.
+
+**Fix (2 stages):** Add `is_valid_job_batch_claim_state` in config (flat registry + `legacy_build_artifacts_hop`); use it in `tracker.get_new_job_batch` only — no `JOB_STATES` registry expansion, no agent/dispatcher changes.
+
+**Self-Assessment**
+- **Scope:** Single-Component — config helper + tracker batch claim validation.
+- **Conf:** high — stack trace matches code path; compound hop set already defined by AST-803 helpers.
+- **Risk:** low — claim boundary only; `transition_job_state` unchanged.
+
+---
+
 # AST-828 — UAT: draft_cover_letter dispatch crashes on BUILD_ARTIFACTS.finalize_job_resume trigger state
 
 - **Linear:** [AST-828 — UAT: draft_cover_letter dispatch crashes on BUILD_ARTIFACTS.finalize_job_resume trigger state](https://linear.app/astralcareermatch/issue/AST-828/uat-draft-cover-letter-dispatch-crashes-on-build-artifactsfinalize-job)

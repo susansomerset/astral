@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-875 archived 2026-07-29 -->
+
+## Linear archive (AST-875)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-875/template-candidate-config-and-dispatch-task-set-upsert-add-set  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-873 — Add “set dispatch tasks” button  
+**Blocked by / blocks / related:** parent: AST-873; blocks: AST-876
+
+### Description
+
+## What this implements
+
+Define the template candidate id in product config (default Somerset / `somerset`) and implement the data-layer upsert that copies the template candidate’s full live dispatch-task set onto a target candidate: update matching rows, create missing ones, delete extras so the target matches the template exactly, and clear `last_run_at` and `batch_id` on every target row. Expose an admin API the Manage Candidates UI can call to perform that set and to report per-candidate dispatch-task counts.
+
+## Acceptance criteria
+
+1. Manage Candidates shows an accurate per-candidate count of dispatch-task rows.
+2. An admin can run **Set dispatch tasks** for a target candidate and afterward that candidate’s dispatch-task set exactly matches the config template candidate’s set: one row per template (task key, trigger state), with AUTO and other schedule metadata matching the template; extras on the target are gone.
+3. After the set, every target row has `last_run_at` and `batch_id` cleared.
+4. Re-running the action is idempotent as an upsert-plus-prune: it does not create duplicate (candidate, task key, trigger state) rows and leaves the target matching the template again.
+5. The action does not enqueue or execute dispatcher batches by itself.
+
+## Boundaries
+
+Does not build the Manage Candidates list UI or the Set button control (sibling ticket). Does not redesign Scheduled Actions. Does not invent a hardcoded task catalog — mirrors the template candidate’s live rows. Does not copy companies, jobs, ledger, prompts, or profile data.
+
+## Notes for planning
+
+Template candidate id belongs in config (Code Rules §2.1). Unique key remains `(candidate_id, task_key, trigger_state)`. AUTO is `auto_mode`. Prefer extending existing dispatch_task admin APIs over a parallel seed path (AST-549 retired seed dicts).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Engineers publish to origin/<sub-ref> — never Linear gitBranchName when it disagrees.
+
+### Comments
+
+#### radia — 2026-07-12T18:50:22.854Z
+### Radia review — clean
+
+**Diff:** `origin/dev...origin/sub/AST-873/AST-875-template-dispatch-task-set-upsert` @ `9f6ee49` (review doc; product tip was `f907929`)
+
+**What’s solid**
+- Stages 1–4 match plan: config template id, transactional upsert+prune (clears `last_run_at`/`batch_id`), core orchestration, admin `counts` + `set_from_template`
+- §2.1 / §3.3: `"somerset"` only in `ASTRAL_CONFIG`; new admin paths call core only
+- No `run_task` / claim side effects; AST-876 UI boundary clean
+
+**Issues:** none (0 fix-now · 0 discuss · 0 advisory)
+
+**Doc:** `docs(AST-875): Radia review — clean` @ `9f6ee49`
+
+**Outcome:** Clean — ready for `resolve-child`.
+
+#### betty — 2026-07-12T18:42:30.735Z
+**QA test manifest (AST-875)**
+
+`origin/sub/AST-873/AST-875-template-dispatch-task-set-upsert` @ `f907929` (`merge-tests(AST-875): origin/tests aa606f2324b5f273d73d1a6f51b11cd3cf9186a3`)
+
+1. Data upsert+prune — `tests/component/data/database/test_dispatch_tasks.py::TestAst875SetDispatchTasksFromTemplate`
+2. Config template id — `tests/component/utils/test_config.py::TestAst875TemplateCandidateId`
+3. Core orchestration (no `run_task`) — `tests/component/core/test_dispatcher.py::TestAst875SetCandidateDispatchTasksFromTemplate`
+4. Admin counts + set_from_template — `tests/component/ui/api/test_api_admin.py::TestAst875DispatchTasksSetFromTemplate`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst875SetDispatchTasksFromTemplate \
+  tests/component/utils/test_config.py::TestAst875TemplateCandidateId \
+  tests/component/core/test_dispatcher.py::TestAst875SetCandidateDispatchTasksFromTemplate \
+  tests/component/ui/api/test_api_admin.py::TestAst875DispatchTasksSetFromTemplate \
+  -q
+```
+
+**Broken / obsolete:** none.
+
+**Bible shasums** (`git show origin/sub/AST-873/AST-875-template-dispatch-task-set-upsert:<path> | shasum`):
+- `docs/test-bible/data/database/dispatch_tasks.md` — `7b6dfca05e9d23730bc0b9f0eb6588e4684ffb0e`
+- `docs/test-bible/utils/config.md` — `75898263bff956c1533020db83703ecef279d3f1`
+- `docs/test-bible/core/dispatcher.md` — `d9f1ce5fadd84985c3c1143f95fad10835883c8a`
+- `docs/test-bible/ui/api/api_admin.md` — `5344ca4fc273974c182364316c8a57d0e0e9b925`
+
+— Betty
+
+#### ada — 2026-07-12T18:32:15.680Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-873/AST-875-template-dispatch-task-set-upsert/docs/features/candidate/ast-875-template-candidate-config-and-dispatch-task-set-upsert.md
+
+**Scope:** Single-Component — config one-liner, focused `dispatch_task` data helpers, thin core wrapper, two admin routes on the existing dispatch_tasks admin surface.
+
+**Conf:** high — unique key, schedule columns, and admin API patterns already exist; the only non-mechanical piece is avoiding `save_dispatch_task`'s `last_run_at=now` insert via a dedicated transactional writer.
+
+**Risk:** Medium — a bug in prune/upsert could delete or overwrite a candidate's live schedule (including AUTO flags); wrong template id would propagate Somerset's set incorrectly. Mitigated by requiring both candidate rows to exist and by not touching Run/claim paths.
+
+---
+
 # AST-875 — Template candidate config and dispatch-task set upsert (Add “set dispatch tasks” button)
 
 **Linear:** [AST-875](https://linear.app/astralcareermatch/issue/AST-875/template-candidate-config-and-dispatch-task-set-upsert-add-set)

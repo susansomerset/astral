@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-712 archived 2026-07-29 -->
+
+## Linear archive (AST-712)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-712/joan-operator-workflow-and-railway-test-host-astral-integration  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-512 — Astral Integration Testing  
+**Blocked by / blocks / related:** parent: AST-512
+
+### Description
+
+## What this implements
+
+Slice 2: Joan as integration-test operator — skill/workflow to run the integration harness against a dedicated Railway **test** host pinned to the landed `origin/dev` deploy; on failure, open a **Discussion** ticket for Chuckles with repro output. Document the controlled-vs-live operator contract and failure triage path.
+
+## Acceptance criteria
+
+7. **(v2 — Joan + Railway)** Documented Joan workflow: test Railway service, trigger after dev land, failure → Discussion ticket for Chuckles; Joan run is reproducible against a known deploy ref.
+
+## Boundaries
+
+* Does **not** implement the in-process pytest harness or first scenario — blocked until Slice 1 ships.
+* Does **not** use production Railway; test service only.
+* Joan does not own product fixes — Chuckles triages failures.
+
+## Notes for planning
+
+* Depends on `run_integration_tests.sh` and Bible tier docs from Slice 1.
+* Susan provisions Railway test environment; this ticket wires Joan skill + documented trigger/repro workflow.
+* Failure tickets land in **Discussion** for Chuckles.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-512-astral-integration-testing`, child `sub/AST-512/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-16T20:34:56.119Z
+### Review — `origin/dev...origin/sub/AST-512/AST-712-joan-operator-railway-test-host` @ `fc1f013` (doc: `af62497`)
+
+**Plan fidelity:** Stages 1–4 match — `docs/integration-operator/*`, `env.example`, operator scripts per spec, Joan skill at `~/.cursor/skills/integration-operator/SKILL.md`, bible § Joan operator + AST-712 manifest. `run_integration_tests.sh` untouched by AST-712 commits. Integration harness green (3 passed); `bash -n` on operator scripts clean.
+
+**§2.1 / §3.6:** Operator vars env-only; logs under `debug/integration-operator/` (gitignored `debug/`).
+
+**fix-now:** `docs/integration-operator/RAILWAY_TEST_HOST.md` § Harness env vars — lists `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN`. Actual requirements (`tests/integration/conftest.py`, `src/external/gmail.py`): `GMAIL_USER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`. Wrong checklist will break Susan provisioning / Railway harness import.
+
+**discuss:** `run_railway_integration_tests.sh` inner command runs `ensure_component_venv.sh` path on Railway container — confirm deployed test service Python/venv layout or document `ASTRAL_PYTHON` before E2E proof.
+
+**Doc:** `docs/features/foundation/ast-712-joan-operator-railway-test-host.md` — Radia review section.
+
+#### betty — 2026-06-16T20:33:38.631Z
+## QA test manifest (AST-712)
+
+**Publish ref:** `origin/sub/AST-512/AST-712-joan-operator-railway-test-host` @ `fc1f013`
+**Tests SHA:** `a068550` (`merge-tests(AST-712): origin/tests a068550`)
+
+1. **Integration harness sanity (required):**
+```bash
+./scripts/testing/run_integration_tests.sh
+```
+
+2. **Operator scripts — syntax (required):**
+```bash
+bash -n scripts/testing/verify_integration_deploy_ref.sh
+bash -n scripts/testing/run_railway_integration_tests.sh
+```
+
+**Pass criterion:** items 1–2 exit 0 on publish ref tip.
+
+**Railway E2E:** Susan/Chuckles invoke `integration-operator` skill once test host is provisioned — not required for test-child closure.
+
+**Bible shasum (publish ref):** `docs/test-bible/integration/README.md` → `f41742082c708f81d9efc5992dc53309f34a1e35`
+
+— Betty
+
+#### chuckles — 2026-06-16T20:31:34.405Z
+**APPROVED** — Joan operator + Railway pin aligns with AST-512 Slice 2 AC; harness reuse from AST-711.
+
+— Chuckles
+
+#### ada — 2026-06-16T20:31:20.222Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-512/AST-712-joan-operator-railway-test-host/docs/features/foundation/ast-712-joan-operator-railway-test-host.md
+
+**Self-assessment**
+- **Scope:** Single-Component — operator docs, two bash scripts, Joan skill under `~/.cursor/skills/integration-operator/`; no core/data/UI changes.
+- **Conf:** Medium — Railway CLI deploy SHA pin is straightforward; Joan skill is new; Susan must provision the test host before E2E proof.
+- **Risk:** Medium — stale deploy could false-pass without SHA verify; mitigated by `verify_integration_deploy_ref.sh` and explicit wait-for-deploy steps.
+
+Slice 2 of AST-512: Joan runs AST-711 harness via `railway run` on dedicated test service; failure → Linear Discussion for Chuckles.
+
+---
+
 # AST-712 — Joan operator workflow and Railway test host
 
 - **Linear (this ticket):** [AST-712](https://linear.app/astralcareermatch/issue/AST-712/joan-operator-workflow-and-railway-test-host-astral-integration-testing)

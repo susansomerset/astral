@@ -283,6 +283,30 @@ Equivalent harness:
 
 ---
 
+### AST-1039 · AST-1019
+
+**AST-1039 (UAT):** Professional Summary paragraph split reuses `_session_cover_letter_paragraphs` (blank lines first, then single-`\n` fallback) so paste newlines become multiple `.summary-intro` `<p>` elements — not one paragraph with whitespace-collapsed newlines. Experience `\n` → `<li>` unchanged. CSS / prompt / Session Resume Paste chrome untouched.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-`\n` + blank-line summary intros + Experience regression | `src/core/builder.py` | **`TestAst1039SummaryNewlineParagraphs`** |
+| Cover-letter paragraph helper regression | same | **`TestAst1024BuildSessionCoverLetter::test_blank_line_paragraphs_and_single_chunk_newlines`** |
+
+**Broken / obsolete this pass:** none — blank-line `"Para one\n\nPara two"` behavior preserved; only single-`\n` was missing.
+
+**Integration:** no existing scenario asserts `.summary-intro` count — no revision; do not invent new integration coverage.
+
+**AST-1039** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1039SummaryNewlineParagraphs \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_blank_line_paragraphs_and_single_chunk_newlines \
+  -q
+```
+
+---
+
 ### AST-1030 · AST-1019
 
 **AST-1030 (UAT):** With `<no bullet>` on the first accomplishments line, shared emit uses `.role-description` and strips the marker from HTML; without the prefix the same prose is a first `<li>` (no first-line heuristic). Prompt preserve: **`docs/test-bible/core/candidate.md`**. Golden layout spine: **AST-1008**.

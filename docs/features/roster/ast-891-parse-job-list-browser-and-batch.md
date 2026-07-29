@@ -1,3 +1,136 @@
+<!-- linear-archive: AST-891 archived 2026-07-29 -->
+
+## Linear archive (AST-891)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-891/parse-job-list-browser-pressure-and-batch-completion-parse-job-list  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-890 — parse_job_list error causing infinite loop  
+**Blocked by / blocks / related:** parent: AST-890
+
+### Description
+
+## What this implements
+
+Stop production `parse_job_list` batches from thrashing the host and stalling the roster pipeline. Bound simultaneous browser pressure so a claimed batch does not cascade into Firefox launch/crash failures; ensure every claimed company gets a definite outcome (success → `WATCH`, first failure → parse retry holding state, exhausted retry → terminal parse failure) including when the failure is browser/infra; make the batch finish under partial failure without hanging until dispatch timeout; and stop undrainable reclaim of companies that have already exhausted the parse retry contract. Preserve happy-path parse behavior. With `debug=True`, emit AST-538-style per-company observability for the parse hop.
+
+## Acceptance criteria
+
+1. On production, Susan runs `parse_job_list` against a non-trivial `JOBLIST_IDENTIFIED` queue and the batch reaches a normal terminal finish (completed, or INTERRUPTED only on explicit cancel / true wall-clock policy) without sitting for a full dispatch timeout while Firefox launch errors cascade and little or no work progresses.
+2. Under induced or natural browser/infra failure mid-batch, every claimed company lands in a verifiable state (`WATCH`, `JOBLIST_IDENTIFIED_RETRY`, or `COULD_NOT_PARSE_JOBLIST` per existing strike rules) — no company remains indefinitely claimed or invisible to the next eligible dispatch.
+3. After one parse retry has already been consumed, a further infra or parse failure moves the company to `COULD_NOT_PARSE_JOBLIST` (or equivalent existing terminal) so it stops being reclaimed by `parse_job_list`.
+4. Successful parses in the same batch still reach `WATCH`; failures on other companies do not abort or strand the successful ones.
+5. With `debug=True`, Susan can scan per-company index headers and substantive `|` detail lines showing attempt outcome and recorded state for the parse hop (AST-538 / AST-554 contract).
+6. A follow-up dispatch on the remaining eligible pool does not sit in an endless reclaim of the same already-exhausted companies with no state change.
+
+## Boundaries
+
+* Does not change `select_job_page`, `find_job_page`, prefilter, or gazer job-side tasks.
+* Does not redesign successful parse destinations, title/DOM cull semantics, or LLM parse prompt/schema for `parse_job_list`.
+* Does not own the sibling `fetch_website` reclaim loop (`AST-889`).
+* Does not reopen Playwright launch taxonomy already shipped under `AST-853` / `AST-854` except as reuse of the existing infra-failure signaling contract and config-as-truth rules.
+* Does not change Railway host OS / sandbox privileges as a product deliverable.
+
+## Notes for planning
+
+Primary lift: `roster` parse dispatch / company task paths and how `parse_job_list` obtains browser contexts under concurrent claim. Reuse AST-853 Playwright infra classification and AST-854-style fail destinations / batch completion patterns where they fit; respect `ASTRAL_CODE_RULES` §2.1 (config-driven limits) and §1.5.1 debug contract. Do not invent ad-hoc launch constants outside config.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-890-parse-job-list-infinite-loop`, child `sub/AST-890/<this-id>-parse-job-list-browser-and-batch`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### betty — 2026-07-13T21:03:02.228Z
+[check-linear]
+Cleared `[qa-handoff]` (Radia fix-now / test-tree only).
+
+Deleted on `origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` @ `fefb15c` (`test(AST-891): remove AST-892 pollution tests (Radia fix-now)`):
+1. `tests/component/core/test_dispatcher.py` · `test_ast892_fetch_website_excludes_prefilter_second_strike`
+2. `tests/component/core/test_roster.py` · `test_get_new_company_batch_passes_exclude_prefilter_second_strike`
+
+Left `Review Posted`; assignee → Hedy for resolve-child → User Testing. Those two methods remain on `origin/tests` under AST-892 corpus (not re-deleted there).
+
+#### hedy — 2026-07-13T21:01:00.622Z
+[qa-handoff]
+@Betty White
+
+Radia fix-now on AST-891 is test-tree only (engineer ban) — need Betty delete on publish-ref, not AST-892 product:
+
+1. `tests/component/core/test_dispatcher.py` · `test_ast892_fetch_website_excludes_prefilter_second_strike`
+2. `tests/component/core/test_roster.py` · `test_get_new_company_batch_passes_exclude_prefilter_second_strike`
+
+Both assert `exclude_prefilter_second_strike` which is not on this branch's claim/API paths. `f207f5b` already cleaned consult/config AST-892 pollution; these two remain. Delete them on `origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` @ `0c98279`, then reassign Hedy for resolve-child continue to User Testing.
+
+Advisory items left for UAT / optional polish — no product fix this pass.
+
+#### radia — 2026-07-13T21:00:15.295Z
+**Diff:** `origin/dev...origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` @ `0c98279`
+
+Doc: https://github.com/susansomerset/astral/blob/0c98279aa5be886ea137f52f07771692a3a8bfaa/docs/features/roster/ast-891-parse-job-list-browser-and-batch.md
+
+### fix-now
+- `tests/component/core/test_dispatcher.py` · `test_ast892_fetch_website_excludes_prefilter_second_strike` and `tests/component/core/test_roster.py` · `test_get_new_company_batch_passes_exclude_prefilter_second_strike` — AST-892 pollution left after `f207f5b` cleaned consult/config only. Both assert `exclude_prefilter_second_strike`, which is not on claim/API paths in this diff. Delete both on resolve (do not implement AST-892 here).
+
+### discuss
+None.
+
+### advisory
+- Nested debug: batch `index N/M` then dispatch `index 1/1` when `debug=True`.
+- Timeout path sets `list_url` only under `debug=True` (non-debug falls back to `company_website` in `_save_parse_dispatch_failure`).
+- Gather unhandled exception → `errors` only, no strike write (AST-854 parity; dispatcher `finally` clears claim).
+
+**Counts:** 1 fix-now · 0 discuss · 3 advisory
+
+Product stages 1–3 match plan (batch session, semaphore, infra scrape raise, consult + `use_full_batch`).
+
+#### betty — 2026-07-13T20:55:40.389Z
+1. `tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_job_list_roster_config` — `ROSTER_CONFIG["parse_job_list"]["max_concurrent"] == 3`
+2. `tests/component/core/test_roster.py::TestAst891ScrapeListPageInfra` — list-page scrape raises Playwright infra (does not swallow as empty DOM); non-infra rethrows
+3. `tests/component/core/test_roster.py::TestAst891ParseDispatchInfraAndBatchSession` — infra → `PARSE_DISPATCH_INFRA` + strike ladder; `batch_session` skips solo `create_browser_context`
+4. `tests/component/core/test_roster.py::TestAst891ParseJobListBatch` — shared batch session, scrape-timeout labeling, resilient gather, definite outcomes count as `passed`, debug index
+5. `tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers::test_parse_dispatch_failure_state_ladder` — existing strike ladder (reuse)
+6. `tests/component/core/test_roster.py::TestAst721ParseJobListDispatch` — existing happy / empty-DOM retry→terminal (reuse)
+7. `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch` — consult routes to `parse_job_list_batch`
+8. `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch_errors_count` — `total_errors` from batch `errors`
+9. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero` — full-list consult when `batch_call_mode=0`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_job_list_roster_config \
+  tests/component/core/test_roster.py::TestAst891ScrapeListPageInfra \
+  tests/component/core/test_roster.py::TestAst891ParseDispatchInfraAndBatchSession \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchHelpers::test_parse_dispatch_failure_state_ladder \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_parse_job_list_batch_errors_count \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero \
+  -q
+```
+
+`origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` @ `d9f1fed` (`merge-tests(AST-891): origin/tests f207f5bfaceeca334d87461982e0cf2d90580506`)
+
+Bible shasums on publish-ref:
+- `docs/test-bible/core/roster.md` `5116de2bc7e7e324d5f8ae9a757781e654bd7821`
+- `docs/test-bible/core/consult.md` `97a443e621eb1fbc302789231506f8caa7a3ccd8`
+- `docs/test-bible/core/dispatcher.md` `d9d5074a37b84635f2fd9ef86e815139e2e6b40f`
+- `docs/test-bible/utils/config.md` `7caf8c01ae47e4591231c39cb569c49f41a66016`
+
+#### hedy — 2026-07-13T20:45:39.527Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-890/AST-891-parse-job-list-browser-and-batch/docs/features/roster/ast-891-parse-job-list-browser-and-batch.md
+
+**Scope:** Single-Component — `ROSTER_CONFIG` concurrency key, roster scrape/dispatch/batch, thin consult + dispatcher route for `parse_job_list` only.
+**Conf:** high — reuses AST-853 `BatchBrowserSession` / `[playwright:]` taxonomy and AST-854 resilient gather; existing `_parse_dispatch_failure_state` already owns the three strike destinations.
+**Risk:** Medium — production parse hot path + dispatcher full-batch special-case for this `task_key`; mitigated by preserving happy-path finalize helpers and not touching sibling hops.
+
+Approach in short: stop `_warm_then_gather` Firefox fan-out for this task; one recoverable batch session + `max_concurrent: 3`; infra failures still hit `JOBLIST_IDENTIFIED_RETRY` then `COULD_NOT_PARSE_JOBLIST` so exhausted companies leave the reclaim pool.
+
+---
+
 # AST-891 — parse_job_list browser pressure and batch completion
 
 **Linear:** [AST-891 — parse_job_list browser pressure and batch completion](https://linear.app/astralcareermatch/issue/AST-891/parse-job-list-browser-pressure-and-batch-completion-parse-job-list)

@@ -1,3 +1,118 @@
+<!-- linear-archive: AST-843 archived 2026-07-29 -->
+
+## Linear archive (AST-843)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-843/bootstrap-schema-ensure-at-server-startup-database-updates-are-not  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-842 — Database updates are not running on production deployments  
+**Blocked by / blocks / related:** parent: AST-842
+
+### Description
+
+## What this implements
+
+Run idempotent schema ensure for every table in the upsert schema registry once per server process start, before the scheduler begins dispatch work. Wire the call into runtime bootstrap so production Railway databases upgrade on deploy/restart without waiting for upsert or a rare first-touch code path. Audit and complete company-table lazy migrations so legacy databases gain `batch_created_at` and any other canonical columns the current code expects. Do not drop `agent_responses_legacy` in this ticket (deferred to AST-777).
+
+## Acceptance criteria
+
+1. After a fresh production deploy/restart, `PRAGMA table_info(company)` on Railway production includes `batch_created_at` and all other canonical columns from Susan's localhost reference (minus any legacy columns explicitly retired in scope).
+2. `inflow_discovery` dispatch completes on production for a candidate that succeeds on localhost with the same codebase version (no schema-column errors in logs or dispatch ledger).
+3. Bootstrap schema ensure runs once per process before the scheduler starts dispatch work—not only on upsert or first ad-hoc query.
+4. Bootstrap ensure is idempotent on databases already at canonical schema; local and staging behave the same after restart.
+5. Susan can compare production and localhost column lists post-deploy and see them match (except retired legacy columns).
+
+## Boundaries
+
+* Does **not** refactor the data-layer module structure or relocate migrations—that is AST-777.
+* Does **not** change upsert merge rules, Data Management UI, or table upsert validation semantics.
+* Does **not** drop `agent_responses_legacy` or other legacy columns (Susan deferred to AST-777).
+* Does **not** alter inflow_discovery business logic beyond what schema repair unblocks.
+
+## Notes for planning
+
+* Susan confirmed: ensure **all** registry tables on every startup; schema only—do not replace data.
+* Susan confirmed: no one-time production repair script; restart after code ship is sufficient.
+* Existing lazy `_ensure_*_schema` handlers and upsert registry are the source of truth—invoke them, do not invent parallel migration logic.
+* Bootstrap order: validation → repo admin json → **schema ensure** → sync_agent_tasks → start_scheduler.
+* Primary touch: runtime bootstrap entrypoint and data-layer ensure registry.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-842-production-schema-ensure-on-bootstrap`, child `sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-03T00:02:44.040Z
+### Plan fidelity
+
+All four stages delivered on `origin/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup` @ `ba11482` (`origin/dev...` three-dot diff). Stage 1 company audit clean — `_ensure_company_schema` / `_ensure_company_candidate_fk` already cover `batch_created_at`; no migration delta. Stage 2 `ensure_all_upsert_registry_schemas_at_startup()` matches plan (sorted `_UPSERT_LAZY_SCHEMA_HANDLERS` loop via `ensure_table_schema_for_upsert`, own connection, fail-fast). Stage 3 bootstrap order: validation → repo JSON → schema ensure → sync → scheduler. Product SHAs: `375f454`, `ef2f5e6`.
+
+### ASTRAL_CODE_RULES
+
+- **§3.3 layers:** `server.py` still core-only for bootstrap — no new `src.data` in UI. `bootstrap.py` adds one call on existing `database` import — allowed.
+- **§1.3 DRY:** Single registry entrypoint; no duplicate migration logic; reuses AST-626 flag-reset path.
+- **Database:** Registry scoped to 13 upsert-handler tables per plan; no AST-777 drop/refactor scope.
+
+### Tests / bible
+
+Betty manifest on publish tip: bootstrap ordering includes `schema_ensure` after `repo_json`; `TestAst843BootstrapSchemaEnsure` proves legacy `company` gains `batch_created_at` and second ensure is idempotent. Bible rows aligned.
+
+### Issues
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:**
+- Werkzeug debug reloader may run bootstrap twice — idempotent ensure; plan acknowledges.
+- Tables outside `_UPSERT_LAZY_SCHEMA_HANDLERS` remain lazy-only at upsert — intentional; AST-777 owns broader migration work if scope expands.
+
+**Verdict:** Clean — `resolve-child` may proceed.
+
+Review doc: `docs/features/foundation/ast-843-bootstrap-schema-ensure-at-server-startup.md` § Review (Radia). Commit `ba11482`.
+
+#### betty — 2026-07-02T23:59:57.362Z
+## QA test manifest (AST-843)
+
+**Publish ref:** `origin/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup` @ `6bdd983` (`merge-tests`)
+**Tests commit:** `origin/tests` @ `a295733`
+
+### Manifest (test-child)
+
+1. **Bootstrap ordering** — `tests/component/core/test_bootstrap.py::TestBootstrapRuntime::test_runs_validation_sync_and_scheduler_in_order` — pipeline is validation → repo_json → **schema_ensure** → sync → scheduler.
+
+2. **Registry startup ensure idempotency** — `tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure::test_ensure_all_upsert_registry_schemas_at_startup_idempotent` — legacy `company` without `batch_created_at`; `ensure_all_upsert_registry_schemas_at_startup()` twice adds column then no-ops.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/data/test_database.py::TestAst843BootstrapSchemaEnsure \
+  -q
+```
+
+**Regression:** existing `TestValidateRuntimeCoupling` rows unchanged; `server_client` bootstrap stub unchanged.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/bootstrap.md`: db9d1c6654786b4adb3ba69729b78aed42a9396240cabb5aa7a624b866873aa5
+- `docs/test-bible/data/database.md`: a019ff07142d6be011905a7ce19d30b44dd8e6b63d805a2098473aecbf90e161
+- `docs/test-bible/ui/server.md`: 5a2553ff2e73c955278e309ea254cff5a1460b823c1f0492eeedc39b04bd286c
+
+#### ada — 2026-07-02T23:56:45.076Z
+Plan: [`docs/features/foundation/ast-843-bootstrap-schema-ensure-at-server-startup.md`](https://github.com/susansomerset/astral/blob/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup/docs/features/foundation/ast-843-bootstrap-schema-ensure-at-server-startup.md) on `origin/sub/AST-842/AST-843-bootstrap-schema-ensure-at-server-startup` @ `bfe357d`.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — New `ensure_all_upsert_registry_schemas_at_startup()` in the data layer plus one call in `bootstrap_runtime()`; company audit is verify-only unless a migration gap surfaces.
+- **Conf:** `high` — Reuses AST-626 upsert registry handlers; Susan locked scope (all registry tables, schema-only, no legacy drops) and bootstrap order in the ticket description.
+- **Risk:** `Medium` — Every server start runs idempotent DDL for 13 registry tables before the scheduler; fail-fast on ensure errors prevents silent drift but a handler bug could block boot.
+
+---
+
 # AST-843 — Bootstrap schema ensure at server startup
 
 **Linear:** [AST-843 — Bootstrap schema ensure at server startup](https://linear.app/astralcareermatch/issue/AST-843/bootstrap-schema-ensure-at-server-startup-database-updates-are-not)  

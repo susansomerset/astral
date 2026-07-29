@@ -250,19 +250,25 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_candidate_response",
         "intake_initiate_candidate",
         "parse_job_list",
-        "preamble_validate_response",
         "prefilter_company",
         "propose_application_responses",
         "qualify_job_listings",
         "recheck_no_openings",
         "select_job_page",
+        "simple_resume_parse",
         "vet_inflow_discovery",
     },
 )
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (39 rows after AST-1015)."""
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (39 rows after AST-1037).
+
+    Catalog membership tracks the active tip's `data/admin/agent_task.json`.
+    AST-1037 adds `simple_resume_parse` on the current origin/dev base.
+    Parallel AST-1015 (`preamble_validate_response`) is not on that base yet —
+    its row assertion stays in TestAst1015PreambleValidateCatalogRow.
+    """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
         repo = Path("data/admin/agent_task.json")
@@ -350,6 +356,40 @@ class TestAst1015PreambleValidateCatalogRow:
         assert "PREAMBLE ANSWER VALIDATION" in row["cache_prompt"]
         assert "Valid | Try Again | Escalate" in row["cache_prompt"]
         assert "agent_payload.outcome" in row["user_prompt"]
+
+
+class TestAst1037SimpleResumeParseCatalogRow:
+    """AST-1037: Ruth simple_resume_parse row + Judith craft_resume_base unchanged."""
+
+    def test_ruth_simple_resume_parse_row(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["simple_resume_parse"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_name"] == "Simple Resume Parse"
+        assert row["task_group_name"] == "Candidate Artifacts"
+        assert row["task_group_order"] == "2000"
+        assert row["task_seq"] == 6
+        assert row["task_key_uuid"] == "046ffb1c-9708-49af-9380-56d85136066b"
+        cache = row["cache_prompt"]
+        # Paste-faithful mechanical rules (session Open HTML contract).
+        assert "__" in cache and "~~" in cache
+        assert "candidate_tagline" in cache
+        assert "**Never** use `|`" in cache
+        assert "<no bullet>" in cache
+        assert "PARSE task" in cache
+        assert row["nocache_prompt"].strip().startswith("RESUME PASTE TEXT:")
+        assert "{$STARTING_RESUME_TEXT}" in row["nocache_prompt"]
+        assert "Map the pasted resume text" in row["user_prompt"]
+
+    def test_judith_craft_resume_base_row_unchanged(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        craft = by["craft_resume_base"]
+        assert craft["agent_id"] == "content_writer_judith"
+        assert craft["task_seq"] == 5
+        assert craft["task_name"] == "Craft Resume Base"
+        assert craft["task_group_name"] == "Candidate Artifacts"
 
 
 AST787_EXPECTED_AGENT_IDS = frozenset(

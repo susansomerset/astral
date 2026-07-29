@@ -276,7 +276,7 @@ Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch tr
 
 ### AST-986 · AST-985
 
-**AST-986:** Admin session resume parse — paste → `craft_resume_base` with **default** structure, response-only JSON (`resume_structure` / `base_resume` / `parsed_response`). Synthetic ctx omits `astral_candidate_id`; ledger sentinel `candidate_id="session"`; **never** `get_candidate` / `save_candidate`. Route: `POST /api/admin/session_resume/parse` (`@require_admin`). UI / HTML tab / session retention = sibling **AST-987**.
+**AST-986:** Admin session resume parse — paste → response-only JSON (`resume_structure` / `base_resume` / `parsed_response`). Synthetic ctx omits `astral_candidate_id`; ledger sentinel `candidate_id="session"`; **never** `get_candidate` / `save_candidate`. Route: `POST /api/admin/session_resume/parse` (`@require_admin`). UI / HTML tab / session retention = sibling **AST-987**. **Task key:** originally `craft_resume_base`; **AST-1038** re-keys to Ruth `simple_resume_parse` (revised **`TestAst986SessionResumeParse`**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -519,4 +519,29 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+---
+
+### AST-1038 · AST-1036
+
+**AST-1038:** `run_session_resume_parse` `do_task` key → `simple_resume_parse` (Ruth); non-dict error string + docstring; Admin `session_resume_parse` docstring only. Preserves AST-986 sentinel / no-persist / Style D. Judith `craft_resume_base` candidate craft unchanged. Catalog/seed = **AST-1037**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Core wire + craft-path unchanged | `src/core/candidate.py` | **`TestAst1038SessionResumeWire`**; revised **`TestAst986SessionResumeParse`** (`task_key` / error string) |
+| Admin thin route (docstring only) | `src/ui/api/api_admin.py` | **`TestAst986SessionResumeParseApi`** (existing — contract unchanged) |
+
+**Broken / obsolete:** **`TestAst986SessionResumeParse`** assertions on `craft_resume_base` task_key and non-dict error string → `simple_resume_parse`.
+
+**Integration:** no existing scenario asserts session-parse task key — no revision; do not invent new integration coverage.
+
+**AST-1038** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1038SessionResumeWire \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse \
+  tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
+  -q
 ```
