@@ -995,6 +995,36 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1033 · AST-1031
+
+**Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`.
+
+Admin **Read email** page (§6c): first-paint list via `GET /api/admin/inbox/messages`; row click → wide `Modal` + sandboxed iframe (`sandbox=""`) for `html_body`; empty subject → title `Message`; list/body errors inline (+ toast on list). API: **`docs/test-bible/ui/api/api_inbox.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page list + modal iframe (§6c) | `AdminReadEmail.tsx` + route | **`test_AdminReadEmail.test.tsx`** |
+| Nav label/path order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1033ReadEmailNav`** (`test_config.py`) |
+| Auth-gated list/get API | `src/ui/api/api_inbox.py` | **`TestAst1033InboxApi`** (`test_api_inbox.py`) |
+
+**Broken / obsolete this pass:** none — additive Admin seed; AST-1032 Gmail/core coverage unchanged.
+
+**Integration:** no existing scenarios inventory Admin Read email or `/api/admin/inbox/*` — none revised; do not invent new integration coverage.
+
+**AST-1033** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminReadEmail.test.tsx
+```
+
+---
+
 ### AST-1014 · AST-952
 
 Candidate Profile + Admin Manage Candidates edit columns + `contact` (no `profile.*`); §6c routed Profile page; middle skipped. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014.
