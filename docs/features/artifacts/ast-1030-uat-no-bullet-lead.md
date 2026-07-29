@@ -70,3 +70,15 @@ In `_split_role_accomplishments`, only lines with `startswith(lead_prefix)` (`<n
 - §2.1: prompt lives in repo admin JSON (existing AST-782 path); `lead_line_prefix` stays config-driven.
 - §3.6: spikes under `debug/spikes/AST-1030/` only if used.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1019/AST-1030-uat-no-bullet-lead`
+**Plan path:** `docs/features/artifacts/ast-1030-uat-no-bullet-lead.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `f54d3519` | `craft_resume_base`: preserve `<no bullet>` on experience accomplishments leads |
+| 2 | — | Builder split/emit unchanged; Somerset lead → `.role-description` proof |
+
+**Tip:** `f54d3519` on `origin/sub/AST-1019/AST-1030-uat-no-bullet-lead`
