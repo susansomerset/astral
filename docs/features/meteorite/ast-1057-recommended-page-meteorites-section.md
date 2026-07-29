@@ -126,3 +126,23 @@ meteorite_section?: {
 | 2 | `f1c1808b` | JobsRecommended partition + StateUi `meteorite_section` type |
 
 **Tip:** `fec43afc1fc9aaf94d4578ee63f6cced1494e686` on `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1057
+**Publish ref:** `37796488b181d764bf4308f7ae1a5334043d1a96` (`origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`)
+**Overall:** DISCUSS
+
+### What’s solid
+- `JOBS_RECOMMENDED_METEORITE_SECTION` + manifest `meteorite_section`; prefix from `METEORITE_CONFIG`.
+- JobsRecommended partitions by manifest prefix; meteorites prepended; normal sections use normalRows only.
+- No hardcoded `meteorite-` in the page; no new Recommended job state.
+
+### Issues
+- **discuss (straggler ×14):** Joan excluded core/batch/docs/tests statutes at plan time (Files Changed utils+ui); three-dot vs `origin/dev` includes stacked sibling product + Betty tests/docs — all **conforms** on substance.
+
+### Recommended actions
+- Katherine: acknowledge stragglers → resolve-child → User Testing.
+
