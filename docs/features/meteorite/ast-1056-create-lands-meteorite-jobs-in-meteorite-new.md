@@ -95,3 +95,22 @@ Keep `"job_create_latest_score": 10.0` unchanged (synthetic score stand-in; mete
 | 1–2 | `b8850e8e` | `job_create_state` → METEORITE_NEW + meteorite.py docstring honesty |
 
 **Tip:** `b8850e8e83f185083250b42be865dc613651b434` on `origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1056
+**Publish ref:** `a84a6d5e24dffd8ecc8bb2cc7cc1d5721ee50d43` (`origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`)
+**Overall:** DISCUSS
+
+### What’s solid
+- `METEORITE_CONFIG["job_create_state"]` → `METEORITE_NEW`; create body still reads config (no hardcode).
+- Docstrings honest; `job_create_latest_score` unchanged; direct insert carve-out retained.
+- Boundaries held vs dispatch / prompts / Recommended.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot vs `origin/dev` includes `docs/features/**` + Betty tests/bible — all **conforms** on substance.
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
