@@ -54,6 +54,7 @@ import AnthropicAdHoc from "./pages/AdminAnthropicAdHoc"
 import DataManagement from "./pages/AdminDataManagement"
 import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
+import AdminReadEmail from "./pages/AdminReadEmail"
 
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
@@ -119,6 +120,7 @@ const routes: RouteObject[] = [
           { path: "admin/data_management", element: <AdminRoute><DataManagement /></AdminRoute> },
           { path: "admin/session_resume_paste", element: <AdminRoute><SessionResumePaste /></AdminRoute> },
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
+          { path: "admin/read_email", element: <AdminRoute><AdminReadEmail /></AdminRoute> },
 
           // Catch-all
           { path: "*", element: <Navigate to="/jobs/recommended" replace /> },
