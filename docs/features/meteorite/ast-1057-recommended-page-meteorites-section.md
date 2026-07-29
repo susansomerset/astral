@@ -125,4 +125,4 @@ meteorite_section?: {
 | 1 | `60f68589` | `JOBS_RECOMMENDED_METEORITE_SECTION` + manifest `meteorite_section` |
 | 2 | `f1c1808b` | JobsRecommended partition + StateUi `meteorite_section` type |
 
-**Tip:** `f1c1808b5103db10aaeb274729a1d106ea9f46b8` on `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`
+**Tip:** `fec43afc1fc9aaf94d4578ee63f6cced1494e686` on `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`
