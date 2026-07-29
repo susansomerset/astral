@@ -111,3 +111,14 @@ with:
 - **`astral.layers.ui-config-driven-business-logic`:** No new inbox rules in React — display-only.
 - **`astral.patterns.require-auth-on-protected-endpoints`:** Untouched (`@require_admin` / `AdminRoute` stay).
 - **In-scope only:** Modal presentation; no Gmail/credential/ingest creep.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`
+**Plan path:** `docs/features/meteorite/ast-1040-uat-read-email-modal-raw-html.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `3a8027a6` | Modal body: escaped `<pre>` source; CSS for scrollable source |
+
+**Tip:** `3a8027a6` on `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`
