@@ -1097,3 +1097,18 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 **Broken / obsolete:** none — additive config block.
 
 **Integration:** no existing scenario asserts CANDIDATE_LOOKUP_CONFIG — no revision.
+
+
+### AST-1048 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`.
+
+Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read email** / `/admin/read_email`), still immediately after **Session Cover Letter**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nav order + label/path rename | `src/utils/config.py` | revised **`TestAst1033ReadEmailNav`** |
+
+**Broken / obsolete:** AST-1033 assertions on `/admin/read_email` and label **Read email** — revised for Manage Email.
+
+**Integration:** none.

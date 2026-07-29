@@ -2303,15 +2303,16 @@ class TestAst1025SessionCoverLetterNav:
 
 
 class TestAst1033ReadEmailNav:
-    """AST-1033: Admin NAV_CONFIG Read email after Session Cover Letter."""
+    """AST-1033 / AST-1048: Admin NAV_CONFIG Manage Email after Session Cover Letter."""
 
-    def test_read_email_follows_session_cover_letter(self) -> None:
+    def test_manage_email_follows_session_cover_letter(self) -> None:
         admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
         items = admin["items"]
         cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
-        read_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/read_email")
-        assert read_i == cover_i + 1
-        assert items[read_i]["label"] == "Read email"
+        manage_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_email")
+        assert manage_i == cover_i + 1
+        assert items[manage_i]["label"] == "Manage Email"
+        assert not any(it.get("path") == "/admin/read_email" for it in items)
 
 
 class TestAst1037SimpleResumeParseConfig:
