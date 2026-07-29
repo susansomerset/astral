@@ -205,3 +205,16 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 ### Recommended actions
 - Hedy: acknowledge stragglers (no product change expected) → resolve-child → User Testing.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-29  
+**Review:** `[code-rubric] revision=1` — Overall **DISCUSS**; **fix-now:** none.
+
+**Actions:**
+- Acknowledged discuss straggler cluster (plan-time UI-only exclusions vs three-dot tip rolling AST-1047) — substance already **conforms**; no product change.
+- No advisory items.
+
+**Outcome:** `resolve(AST-1048): — clean` → User Testing.
