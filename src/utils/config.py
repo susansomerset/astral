@@ -1478,8 +1478,8 @@ JOB_STATES = {
 # ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
 # Lazy-ensure inserts meteorite-<candidate_id> on demand — never bulk at server start.
-# Job-create defaults (JD_READY + score) are consumed by AST-1042; defined here so
-# literals stay config-owned (parent Architectural definition).
+# Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
+# (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
 # ---------------------------------------------------------------------------
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
@@ -1492,8 +1492,8 @@ METEORITE_CONFIG = {
             "vetted without a website url."
         ),
     },
-    # AST-1042 job-create defaults (unused in AST-1041)
-    "job_create_state": "JD_READY",
+    # AST-1042 / AST-1056 job-create defaults (consumed by create_meteorite_job)
+    "job_create_state": "METEORITE_NEW",
     "job_create_latest_score": 10.0,
 }
 

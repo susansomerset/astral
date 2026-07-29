@@ -1,8 +1,9 @@
 """
-Meteorite placeholder company ensure + job create (AST-1041 / AST-1042).
+Meteorite placeholder company ensure + job create (AST-1041 / AST-1042 / AST-1056).
 
 Lazy-insert meteorite-<candidate_id> from METEORITE_CONFIG. API-facing job create
-from raw HTML lands in JD_READY with synthetic latest_score (AST-1042 carve-out).
+from raw HTML inserts into METEORITE_CONFIG["job_create_state"] (meteorite GDL entry
+METEORITE_NEW) with synthetic latest_score from job_create_latest_score.
 No email ingest. No admin UI. Leave-in-place — callers must not delete these rows
 on candidate exit.
 """
@@ -74,13 +75,13 @@ def create_meteorite_job(
     *,
     debug: bool = False,
 ) -> dict[str, Any]:
-    """Lazy-ensure meteorite company, then insert a JD_READY job from raw HTML.
+    """Lazy-ensure meteorite company, then insert a job from raw HTML.
 
     Create carve-out (not transition_job_state): first write inserts directly into
-    METEORITE_CONFIG["job_create_state"] the same way ingest_jobs inserts into NEW
-    (JOB_STATES prior_states=None unrestricted entry). JD_READY's registered
-    prior_states remain ["PASSED_JOBLIST"] for scrape/qualify hops — this path does
-    not expand those priors and does not invent a new job state.
+    METEORITE_CONFIG["job_create_state"] (METEORITE_NEW after AST-1056) the same
+    way ingest_jobs inserts into NEW (JOB_STATES prior_states=None unrestricted
+    entry). METEORITE_NEW is unrestricted; this path does not expand normal
+    JD_READY priors and does not invent a new job state.
 
     Returns:
       {
