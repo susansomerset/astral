@@ -84,3 +84,14 @@ Keep `"job_create_latest_score": 10.0` unchanged (synthetic score stand-in; mete
 - §3.3 imports — no new imports.
 - §2.4 batch — untouched (create is not a claim batch).
 - Engineer must not edit `tests/` / bible; Betty owns assert flips from `JD_READY` → `METEORITE_NEW`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`
+**Plan path:** `docs/features/meteorite/ast-1056-create-lands-meteorite-jobs-in-meteorite-new.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `b8850e8e` | `job_create_state` → METEORITE_NEW + meteorite.py docstring honesty |
+
+**Tip:** `b8850e8e83f185083250b42be865dc613651b434` on `origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`
