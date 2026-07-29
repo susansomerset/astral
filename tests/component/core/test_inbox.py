@@ -107,3 +107,120 @@ class TestAst1047InboxFromBind:
         assert dbg_index.call_args.kwargs["func"] == "inbox_from_bind"
         assert dbg_index.call_args.kwargs["outcome"] == "found|none"
         assert any("from_address=" in str(c) for c in dbg_detail.call_args_list)
+
+
+# AST-1049: strip/extract + Create orchestration.
+class TestAst1049StripExtractEmailHtml:
+    def test_strips_tags_attrs_and_wraps_subject(self) -> None:
+        raw = (
+            '<html><body><script>alert(1)</script>'
+            '<p style="x" onclick="y" onfocus="z">Hello</p></body></html>'
+        )
+        out = inbox_mod.strip_extract_email_html("Role <A>", raw)
+        assert "<script>" not in out
+        assert "onclick" not in out
+        assert "onfocus" not in out
+        assert 'style="' not in out
+        assert "Hello" in out
+        assert "Role &lt;A&gt;" in out
+        assert 'class="email-subject"' in out
+        assert 'class="email-body"' in out
+
+
+class TestAst1049CreateMeteoriteJobFromInboxMessage:
+    def test_happy_path_rematch_strip_create(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "id": "m1",
+                    "html_body": "<p>JD body</p>",
+                    "subject": "Engineer",
+                    "from_address": "ada@ex.com",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
+        )
+        create = MagicMock(
+            return_value={
+                "astral_job_id": "job-1",
+                "company": "meteorite-cand-1",
+                "state": "JD_READY",
+                "latest_score": 10.0,
+                "company_inserted": True,
+            }
+        )
+        monkeypatch.setattr(inbox_mod, "create_meteorite_job", create)
+        out = inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
+        assert out["astral_job_id"] == "job-1"
+        assert out["astral_candidate_id"] == "cand-1"
+        create.assert_called_once()
+        assert create.call_args.args[0] == "cand-1"
+        html = create.call_args.args[1]
+        assert "Engineer" in html
+        assert "JD body" in html
+        assert create.call_args.kwargs.get("debug") is False
+
+    def test_unmatched_and_empty_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "id": "m1",
+                    "html_body": "<p>x</p>",
+                    "subject": "S",
+                    "from_address": "x@y",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value=None)
+        )
+        with pytest.raises(ValueError, match="not matched"):
+            inbox_mod.create_meteorite_job_from_inbox_message("m1")
+        with pytest.raises(ValueError, match="message_id is required"):
+            inbox_mod.create_meteorite_job_from_inbox_message("  ")
+
+    def test_debug_emits_four_style_d_steps(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "id": "m1",
+                    "html_body": "<p>body</p>",
+                    "subject": "Sub",
+                    "from_address": "ada@ex.com",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "create_meteorite_job",
+            MagicMock(
+                return_value={
+                    "astral_job_id": "job-9",
+                    "company": "meteorite-cand-1",
+                    "state": "JD_READY",
+                    "latest_score": 10.0,
+                    "company_inserted": False,
+                }
+            ),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(inbox_mod.logger, "debug_detail", MagicMock())
+        inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=True)
+        outcomes = [c.kwargs.get("outcome") for c in dbg.call_args_list]
+        assert outcomes == ["found", "matched", "extracted", "recorded"]
+        dbg.reset_mock()
+        inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
+        assert not dbg.called

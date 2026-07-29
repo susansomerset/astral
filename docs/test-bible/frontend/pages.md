@@ -1105,3 +1105,18 @@ Rename **Read email** → **Manage Email** (`AdminManageEmail.tsx`, route `/admi
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
 ```
+
+
+### AST-1049 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
+
+Manage Email **Create** wires `POST .../create-job` with success/error toast; matched gate from AST-1048 retained. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create POST + toast (§6c page) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** Create success/failure cases |
+
+**Broken / obsolete:** none — extends AST-1048 page suite.
+
+**Integration:** none.

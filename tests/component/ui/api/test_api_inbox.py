@@ -111,3 +111,120 @@ class TestAst1033InboxApi:
             inbox_client.get("/api/admin/inbox/messages/m1", headers=non_admin_headers).status_code
             == 403
         )
+
+
+# AST-1049: POST create-job orchestration endpoint.
+class TestAst1049InboxCreateJobApi:
+    def test_create_job_201(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        create = MagicMock(
+            return_value={
+                "astral_job_id": "job-1",
+                "company": "meteorite-cand-1",
+                "state": "JD_READY",
+                "latest_score": 10.0,
+                "company_inserted": True,
+                "astral_candidate_id": "cand-1",
+            }
+        )
+        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.post(
+            "/api/admin/inbox/messages/m1/create-job",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["astral_job_id"] == "job-1"
+        assert resp.get_json()["astral_candidate_id"] == "cand-1"
+        create.assert_called_once_with("m1", debug=False)
+
+    def test_create_job_passes_debug(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        create = MagicMock(
+            return_value={
+                "astral_job_id": "job-1",
+                "company": "meteorite-cand-1",
+                "state": "JD_READY",
+                "latest_score": 10.0,
+                "company_inserted": False,
+                "astral_candidate_id": "cand-1",
+            }
+        )
+        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
+        resp = inbox_client.post(
+            "/api/admin/inbox/messages/m1/create-job?debug=1",
+            headers=auth_headers,
+            json={"debug": True},
+        )
+        assert resp.status_code == 201
+        create.assert_called_once_with("m1", debug=True)
+
+    def test_create_job_value_error_400(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "create_meteorite_job_from_inbox_message",
+            MagicMock(side_effect=ValueError("message is not matched to a candidate")),
+        )
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.post(
+            "/api/admin/inbox/messages/m1/create-job",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "message is not matched to a candidate"}
+
+    def test_create_job_blank_id_400(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = inbox_client.post(
+            "/api/admin/inbox/messages/%20%20/create-job",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "message_id is required"}
+
+    def test_create_job_upstream_502(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "create_meteorite_job_from_inbox_message",
+            MagicMock(side_effect=RuntimeError("gmail down")),
+        )
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        warn = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "warning", warn)
+        resp = inbox_client.post(
+            "/api/admin/inbox/messages/m1/create-job",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 502
+        assert resp.get_json() == {"error": "gmail down"}
+        warn.assert_called_once()
+
+    def test_create_job_requires_auth(self, inbox_client: FlaskClient) -> None:
+        assert (
+            inbox_client.post("/api/admin/inbox/messages/m1/create-job", json={}).status_code
+            == 401
+        )
+
+    def test_create_job_non_admin_forbidden(
+        self, inbox_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        assert (
+            inbox_client.post(
+                "/api/admin/inbox/messages/m1/create-job",
+                headers=non_admin_headers,
+                json={},
+            ).status_code
+            == 403
+        )

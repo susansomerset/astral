@@ -2382,3 +2382,15 @@ class TestAst1047CandidateLookupConfig:
             "profile.first",
             "profile.last",
         )
+
+class TestAst1049InboxCreateJobConfig:
+    """AST-1049: INBOX_CREATE_JOB_CONFIG strip sets + subject template."""
+
+    def test_strip_sets_and_subject_template(self) -> None:
+        ic = cfg.INBOX_CREATE_JOB_CONFIG
+        assert "script" in ic["strip_tags"]
+        assert "style" in ic["strip_attr_names"]
+        assert ic["strip_on_attrs"] is True
+        assert "{subject}" in ic["subject_html_template"]
+        assert "{body}" in ic["subject_html_template"]
+

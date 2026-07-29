@@ -34,3 +34,18 @@ Dual-scope OAuth (`gmail.send` + `gmail.readonly`) on shared credentials; `list_
 ```
 
 **Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.
+
+
+### AST-1049 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
+
+`get_message_html` / `GmailMessageHtml` include `subject` + `from_address` from full-message headers (empty strings when missing).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Subject/From on HTML get | `src/external/gmail.py` | revised **`TestGetMessageHtml`**; **`test_includes_subject_and_from_headers`** |
+
+**Broken / obsolete:** exact-equality asserts on `{id, html_body}` only — revised to include subject/from_address.
+
+**Integration:** none.

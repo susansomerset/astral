@@ -1112,3 +1112,18 @@ Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read e
 **Broken / obsolete:** AST-1033 assertions on `/admin/read_email` and label **Read email** — revised for Manage Email.
 
 **Integration:** none.
+
+
+### AST-1049 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
+
+`INBOX_CREATE_JOB_CONFIG`: strip tag/attr sets + `subject_html_template` for Manage Email Create.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Strip sets + subject template | `src/utils/config.py` | **`TestAst1049InboxCreateJobConfig`** |
+
+**Broken / obsolete:** none — additive.
+
+**Integration:** none.
