@@ -2483,9 +2483,14 @@ class TestAst1053MeteoriteGdlJobStates:
         assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
 
     def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
-        # AC2 smoke: score-gated set + create default stay non-meteorite.
+        # AC2 smoke: create default stay non-meteorite.
         # RECOMMENDED meteorite LIKE priors are AST-1055 (TestAst1055MeteoriteLikeUpshotTasks).
-        for state in self._PASS + self._FAIL:
+        # AST-1054 adds METEORITE_PASSED_* (not METEORITE_NEW / fails) to PASSED_SCORE_GATED_STATES.
+        for state in (
+            "METEORITE_NEW",
+            "METEORITE_PASSED_LIKE_RETRY",
+            *self._FAIL,
+        ):
             assert state not in cfg.PASSED_SCORE_GATED_STATES, state
         rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
         assert "PASSED_LIKE" in rec_priors
@@ -2493,6 +2498,44 @@ class TestAst1053MeteoriteGdlJobStates:
         # Create still JD_READY until AST-1056.
         assert cfg.METEORITE_CONFIG["job_create_state"] == "JD_READY"
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "METEORITE_DISPATCH_TASKS"),
+    reason="AST-1054 meteorite dispatch specs not on this publish tip",
+)
+class TestAst1054MeteoriteGdlDispatch:
+    """AST-1054: METEORITE_DISPATCH_TASKS, score_floor gating, overlay map, twin triggers."""
+
+    def test_dispatch_row_specs_and_job_states(self) -> None:
+        rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        assert rows[("evaluate_jd", "METEORITE_NEW")]["score_floor"] is None
+        assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
+        assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
+        assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
+        assert rows[("meteorite_upshot", "METEORITE_PASSED_LIKE")]["score_floor"] == 0.0
+        for e in cfg.METEORITE_DISPATCH_TASKS:
+            assert e["trigger_state"] in cfg.JOB_STATES
+            assert e["auto_mode"] is False
+        for task_key, overlay in cfg.METEORITE_GDL_OUTCOME_BY_TASK.items():
+            for sk in ("pass_state", "fail_state", "error_state"):
+                assert overlay[sk] in cfg.JOB_STATES, f"{task_key}.{sk}"
+
+    def test_score_floor_gating_and_trigger_defaults(self) -> None:
+        assert cfg.dispatch_claim_uses_score_floor("METEORITE_NEW") is False
+        for state in (
+            "METEORITE_PASSED_JD",
+            "METEORITE_PASSED_DO",
+            "METEORITE_PASSED_GET",
+            "METEORITE_PASSED_LIKE",
+        ):
+            assert state in cfg.PASSED_SCORE_GATED_STATES
+            assert cfg.dispatch_claim_uses_score_floor(state) is True
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_like") == "METEORITE_PASSED_GET"
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_upshot") == "METEORITE_PASSED_LIKE"
+        assert cfg._dispatch_trigger_state_for_task_key("evaluate_jd") == "JD_READY"
+        assert cfg._dispatch_trigger_state_for_task_key("grade_do") == "PASSED_JD"
+        assert cfg._dispatch_trigger_state_for_task_key("grade_get") == "PASSED_DO"
 
 
 class TestAst1055MeteoriteLikeUpshotTasks:

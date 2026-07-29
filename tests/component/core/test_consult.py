@@ -60,6 +60,43 @@ class TestRenderPassFail:
         assert consult_mod._render_pass_fail("qualify_job_listings", grades) == TASK_CONFIG["qualify_job_listings"]["pass_state"]
 
 
+@pytest.mark.skipif(
+    not hasattr(consult_mod, "_consult_orchestration_for_entity"),
+    reason="AST-1054 meteorite GDL overlay not on this publish tip",
+)
+class TestAst1054MeteoriteGdlOutcomeOverlay:
+    """AST-1054: shared GDL keys overlay meteorite pass/fail when entity state is METEORITE_*."""
+
+    def test_overlay_for_meteorite_entity_states(self) -> None:
+        overlay = cfg.METEORITE_GDL_OUTCOME_BY_TASK["evaluate_jd"]
+        cfg_m = consult_mod._consult_orchestration_for_entity("evaluate_jd", "METEORITE_NEW")
+        assert cfg_m["pass_state"] == overlay["pass_state"]
+        assert cfg_m["fail_state"] == overlay["fail_state"]
+        assert cfg_m["error_state"] == overlay["error_state"]
+        cfg_v = consult_mod._consult_orchestration_for_entity("evaluate_jd", "JD_READY")
+        assert cfg_v["pass_state"] == TASK_CONFIG["evaluate_jd"]["pass_state"]
+        assert cfg_v["fail_state"] == TASK_CONFIG["evaluate_jd"]["fail_state"]
+
+    def test_render_pass_fail_uses_meteorite_overlay(self) -> None:
+        grades = [_pass_grade()]
+        assert (
+            consult_mod._render_pass_fail("evaluate_jd", grades, entity_state="METEORITE_NEW")
+            == "METEORITE_PASSED_JD"
+        )
+        assert (
+            consult_mod._render_pass_fail("evaluate_jd", grades, entity_state="JD_READY")
+            == TASK_CONFIG["evaluate_jd"]["pass_state"]
+        )
+        assert (
+            consult_mod._render_pass_fail(
+                "grade_do",
+                [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                entity_state="METEORITE_PASSED_JD",
+            )
+            == "METEORITE_FAILED_DO"
+        )
+
+
 class TestRubricHelpers:
     def test_strips_code_suffix(self) -> None:
         assert consult_mod._strip_code("Fit (CR)") == "Fit"

@@ -702,6 +702,27 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
 
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`evaluate_jd` / `grade_do` / `grade_get`); vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Overlay + `_render_pass_fail` entity_state | `src/core/consult.py` | **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+
+**Broken / obsolete:** none — additive helper; existing `_render_pass_fail` call sites without `entity_state` unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  tests/component/core/test_consult.py::TestRenderPassFail \
+  -q
+```
+
 ---
 
 ### AST-1055 · AST-1052

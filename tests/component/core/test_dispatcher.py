@@ -1597,8 +1597,159 @@ class TestAst972CandidateStageDispatch:
                 return False
 
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "provision_meteorite_dispatch_tasks",
+            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+        )
         dispatcher_mod.start_scheduler()
         provision.assert_called_once_with()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "ensure_meteorite_dispatch_tasks"),
+    reason="AST-1054 meteorite dispatch provision not on this publish tip",
+)
+class TestAst1054MeteoriteDispatchProvision:
+    """AST-1054: ensure/provision meteorite GDL dispatch rows; twins skip without TASK_CONFIG."""
+
+    def test_ensure_inserts_shared_gdl_and_twins_per_task_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]}
+            )
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        twins_present = {"meteorite_like", "meteorite_upshot"} <= set(dispatcher_mod.TASK_CONFIG)
+        first = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        if twins_present:
+            assert first["added"] == 5 and first["skipped_missing_config"] == 0
+        else:
+            assert first["added"] == 3 and first["skipped_missing_config"] == 2
+        assert first["skipped"] == 0
+        by_key = {s["task_key"]: s for s in saves}
+        assert by_key["evaluate_jd"]["trigger_state"] == "METEORITE_NEW"
+        assert by_key["evaluate_jd"]["score_floor"] is None
+        assert by_key["grade_do"]["score_floor"] == 0.0
+        assert by_key["grade_get"]["score_floor"] == 0.0
+        if twins_present:
+            assert by_key["meteorite_like"]["score_floor"] == 0.0
+            assert by_key["meteorite_upshot"]["batch_size"] == 1
+        else:
+            assert "meteorite_like" not in by_key
+        second = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        expect_skip = 5 if twins_present else 3
+        assert second["added"] == 0 and second["skipped"] == expect_skip
+        assert second["skipped_missing_config"] == (0 if twins_present else 2)
+
+    def test_ensure_inserts_twins_when_task_config_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]}
+            )
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        patched = dict(dispatcher_mod.TASK_CONFIG)
+        patched["meteorite_like"] = {"agent_task": "meteorite_like"}
+        patched["meteorite_upshot"] = {"agent_task": "meteorite_upshot"}
+        monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", patched)
+        out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert out["added"] == 5 and out["skipped_missing_config"] == 0
+        by_key = {s["task_key"]: s for s in saves}
+        assert by_key["meteorite_like"]["trigger_state"] == "METEORITE_PASSED_GET"
+        assert by_key["meteorite_like"]["score_floor"] == 0.0
+        assert by_key["meteorite_upshot"]["trigger_state"] == "METEORITE_PASSED_LIKE"
+        assert by_key["meteorite_upshot"]["score_floor"] == 0.0
+        assert by_key["meteorite_upshot"]["batch_size"] == 1
+
+    def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid},
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_candidate_ids_with_dispatch_tasks",
+            lambda: ["tmpl", "c2"],
+        )
+        calls: list[str] = []
+
+        def _ensure(cid):
+            calls.append(cid)
+            return {
+                "candidate_id": cid,
+                "added": 0,
+                "skipped": 3,
+                "skipped_missing_config": 2,
+            }
+
+        monkeypatch.setattr(dispatcher_mod, "ensure_meteorite_dispatch_tasks", _ensure)
+        out = dispatcher_mod.provision_meteorite_dispatch_tasks()
+        assert calls[0] == "tmpl"
+        assert "tmpl" in calls and "c2" in calls
+        assert out["candidates_touched"] == 2
+        assert out["skipped_missing_config"] == 4
+
+    def test_start_scheduler_invokes_meteorite_provision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(
+            dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
+        )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "provision_candidate_stage_dispatch_tasks",
+            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+        )
+        mprovision = MagicMock(
+            return_value={
+                "template_candidate_id": "tmpl",
+                "candidates_touched": 1,
+                "added": 3,
+                "skipped": 0,
+                "skipped_missing_config": 2,
+            }
+        )
+        monkeypatch.setattr(dispatcher_mod, "provision_meteorite_dispatch_tasks", mprovision)
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        dispatcher_mod.start_scheduler()
+        mprovision.assert_called_once_with()
 
 
 @pytest.mark.skipif(
