@@ -103,3 +103,16 @@ Inspected on epic worktree after `git merge origin/dev` + `git merge origin/ftr/
 - §3.6: spikes under `debug/spikes/AST-1021/` only if used; never commit; never repo-root `artifacts/`.
 - Engineer test-tree ban: no `tests/` or bible edits — Betty owns assertions after Code Complete.
 - Sibling scope: AST-1020 owns CSS; this ticket owns title + meta lock + residual emit chrome only.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks`
+**Plan path:** `docs/features/artifacts/ast-1021-residual-emit-chrome-tweaks.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `712bd324` | Document `<title>` → `{name} Resume` (empty → `Resume`) |
+| 2–3 | — | Meta lock verified unchanged; residual inventory no further edits |
+| 4 | — | Three-surface session/base/job + empty-name title checks (build verify) |
+
+**Tip:** `712bd324` on `origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks`
