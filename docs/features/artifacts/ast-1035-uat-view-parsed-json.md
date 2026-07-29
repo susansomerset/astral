@@ -72,3 +72,25 @@ Session Resume Paste already keeps the successful Parse payload in `lastParse` (
 - §3.5 naming: button label matches ticket (**View Parsed JSON**).
 - §3.6: spikes under `debug/spikes/AST-1035/` only if used.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1035
+**Publish ref tip (pre-docs):** `91d25515c9cd4c458394a4e8351556d5569ac68c`
+**Overall:** CLEAN
+
+### What’s solid
+
+- **View Parsed JSON** between Parse and Open HTML; disabled when `!lastParse` (and while parsing/opening).
+- Modal + `JSON.stringify(lastParse, null, 2)` — same object Open HTML POSTs; shared `Modal` + Manage Candidates `<pre>` look.
+- No new API / DB / builder edits. Engineer footprint is one TSX file + plan.
+
+### Issues / findings
+
+None (fix-now / discuss).
+
+### Recommended actions
+
+resolve-child → User Testing.
