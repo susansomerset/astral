@@ -1783,6 +1783,152 @@ class TestAst1020GoldenStylesheet:
         self._assert_golden_style(html)
 
 
+class TestAst1021DocumentTitleChrome:
+    """AST-1021: document <title> `{name} Resume`; meta stays field-derived (no golden literal)."""
+
+    _TAGLINE = "Enterprise Implementation • Service Delivery"
+    # Non-golden title/tagline — proves meta is not the desired-HTML example string.
+    _META = (
+        "Resume of Susan Somerset, Fractional TPM, specializing in "
+        "Enterprise Implementation • Service Delivery"
+    )
+    _GOLDEN_META_FRAGMENT = "Senior Technical Product Manager / Program Manager"
+    _GOLDEN_META_FRAGMENT2 = "Cloud Platforms, Agile Delivery"
+
+    def _structure(self, *, with_tagline: bool = True) -> dict[str, Any]:
+        sections: dict[str, Any] = {
+            "candidate_name": {
+                "id": "candidate_name",
+                "title": "Name",
+                "enabled": True,
+                "order": 0,
+                "job_agent_editable": False,
+            },
+            "candidate_title": {
+                "id": "candidate_title",
+                "title": "Title",
+                "enabled": True,
+                "order": 1,
+                "job_agent_editable": False,
+            },
+            "candidate_contact_detail": {
+                "id": "candidate_contact_detail",
+                "title": "Contact",
+                "enabled": True,
+                "order": 3 if with_tagline else 2,
+                "job_agent_editable": False,
+            },
+            "professional_summary": {
+                "id": "professional_summary",
+                "title": "Summary",
+                "enabled": True,
+                "order": 4 if with_tagline else 3,
+                "job_agent_editable": True,
+            },
+        }
+        if with_tagline:
+            sections["candidate_tagline"] = {
+                "id": "candidate_tagline",
+                "title": "Candidate Tagline",
+                "enabled": True,
+                "order": 2,
+                "job_agent_editable": False,
+            }
+        return {"sections": sections}
+
+    def _blob(
+        self,
+        *,
+        name: str = "Susan Somerset",
+        title: str = "Fractional TPM",
+        tagline: str | None = _TAGLINE,
+        contact: str = "hire@example.com",
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "candidate_name": name,
+            "candidate_title": title,
+            "candidate_contact_detail": contact,
+            "professional_summary": "Summary body",
+        }
+        if tagline is not None:
+            out["candidate_tagline"] = tagline
+        return out
+
+    @classmethod
+    def _assert_title_meta(
+        cls,
+        html: str,
+        *,
+        expect_title: str,
+        expect_meta: bool,
+    ) -> None:
+        assert f"<title>{expect_title}</title>" in html
+        # No em/en dash between name and Resume (old AST-1010 chrome).
+        assert "— Resume" not in html
+        assert "– Resume" not in html
+        assert "SomersetResume" not in html
+        assert '<div class="contact"><span>' in html
+        if expect_meta:
+            assert f'<meta name="description" content="{cls._META}" />' in html
+            assert cls._GOLDEN_META_FRAGMENT not in html
+            assert cls._GOLDEN_META_FRAGMENT2 not in html
+        else:
+            assert 'meta name="description"' not in html
+
+    def test_session_title_and_field_meta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(self._structure(), self._blob())
+        self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
+
+    def test_session_empty_name_title_is_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(with_tagline=False),
+            self._blob(name="", tagline=None),
+        )
+        self._assert_title_meta(html, expect_title="Resume", expect_meta=False)
+
+    def test_base_resume_title_and_field_meta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structure = self._structure()
+        cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
+            "candidate_data": {
+                "contact": {},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": self._blob(),
+                },
+            },
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        html = builder_mod.build_base_resume("cand-1")
+        self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
+
+    def test_job_resume_title_and_field_meta(self) -> None:
+        structure = self._structure()
+        job = {
+            "astral_job_id": "job-1",
+            "job_data": {"artifacts": {"resume_content": self._blob()}},
+        }
+        cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
+            "candidate_data": {
+                "contact": {},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base"},
+                },
+            },
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
+
+
 class TestAst1014BuilderContact:
     """AST-1014: builder reads name columns + contact blob via _apply_contact_to_render_dict."""
 
