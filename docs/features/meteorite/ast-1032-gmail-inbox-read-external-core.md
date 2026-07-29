@@ -176,4 +176,4 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
 | 1 | `0fc6531f` | Dual-scope credentials; `list_inbox_messages` / `get_message_html` in `src/external/gmail.py` |
 | 2 | `69750f7d` | Thin `src/core/inbox.py` orchestrator (log + re-raise) |
 
-**Tip:** `69750f7d` on `origin/sub/AST-1031/AST-1032-gmail-inbox-read`
+**Tip:** `ac6addfd` on `origin/sub/AST-1031/AST-1032-gmail-inbox-read`
