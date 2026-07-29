@@ -1,3 +1,140 @@
+<!-- linear-archive: AST-769 archived 2026-07-29 -->
+
+## Linear archive (AST-769)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-769/general-caller-hydration-from-agent-data-use-agent-data-for-the-caller  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-752 — Use agent_data for the "caller" content  
+**Blocked by / blocks / related:** parent: AST-752
+
+### Description
+
+## What this implements
+
+Replace in-memory `{$CALLER_*}` propagation during `run_next` chains with hydration from persisted `agent_data`, anchored by the batch id tied to entity state advancement. Refactor (or expand) AST-597 resume-artifact helpers into one general caller lookup path for all tasks whose prompts reference caller tokens — job, company, and candidate indexed chains. Preserve non-caller chain tokens (`{$JOB_LIST_VISIBLE}`, `{$SELECTED_AGENT}`, `resolve_run_next_live`) and admin preview simulation.
+
+## Acceptance criteria
+
+1. Given a successful parent hop in a `run_next` chain that stored `agent_data` for an entity, the immediate child hop resolves non-empty `{$CALLER_*}` tokens referenced in its prompt from those stored blocks — observable via test or UAT without relying on in-memory-only propagation.
+2. Live chain behavior matches today's successful outcomes: a full chain that succeeded before this change still succeeds with equivalent assembled prompts (parity on roster locate→parse, consult/cover-letter chains, and resume-artifact chains).
+3. Given an entity whose upstream hop(s) already completed successfully in a prior dispatch, starting dispatch at the next downstream hop completes without re-running upstream LLM calls — caller tokens come from stored `agent_data`.
+4. Given a chain that failed on hop *N* after hop *N−1* stored successfully, retrying from hop *N* (or re-dispatching at hop *N*) succeeds using stored caller content from hop *N−1* — no manual chain reconstruction.
+5. Caller lookup uses the batch id tied to the entity's state advancement history — not a best-guess scan across unrelated prior attempts — so the child hop receives the caller content from the hop that actually completed upstream for this chain attempt.
+6. Hydration works for job-, company-, and candidate-indexed chains that reference `{$CALLER_*}` in their prompts.
+7. AST-597 resume-artifact mid-chain entry behavior is preserved through the refactored general hydration path (no parallel resume-only branch left behind).
+8. With `debug=True`, logs for hops that load caller content from storage include Style D detail distinguishing `agent_data` reuse from chain-entry / live paths.
+9. Existing daisy-chain component tests (AST-303, AST-455, AST-469, AST-597 coverage) remain green; new or extended tests cover at least one roster chain and one non-roster chain using stored caller hydration.
+
+## Boundaries
+
+* Does not change the `{$CALLER_*}` token registry, Manage Tasks prompt authoring, or `run_next` wiring.
+* Does not change per-hop `agent_data` storage shape or Execution History UI (AST-531 / AST-528).
+* Does not change roster `resolve_run_next_live` DOM/visible threading (AST-469).
+* Does not change dispatch_task / agent_task seeding (AST-741 / AST-745).
+* Does not change admin preview chain simulation.
+* Sibling tickets: none — this child carries the full epic implementation scope.
+
+## Notes for planning
+
+* Primary file: `src/core/agent.py` — existing AST-597 helpers (`_caller_chain_context_from_hop_agent_ref`, `_hydrate_resume_entry_chain_context`, etc.) are the starting point for generalization.
+* Batch anchoring: entity state history should identify which dispatch batch advanced state; trace that batch to parent hop `agent_data`.
+* Read AST-538 debug contract for `caller_source` / Style D lines on hydration hops.
+* plan-child §3 maps to `docs/features/roster/` or foundation/agent as appropriate.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-752-agent-data-caller-content**, child **sub/AST-752/AST-753-general-caller-hydration-agent-data**. Engineers publish to **origin/sub/...** — never Linear **gitBranchName** when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-23T20:12:02.446Z
+### Review — AST-769 @ `origin/sub/AST-752/AST-769-general-caller-hydration-agent-data` (`f20e27d`)
+
+**Product (`174a747` / `agent.py`):** Plan Stages 1–4 land cleanly — generalized hydration helpers, `do_task` entry path with `effective_chain_context`, storage-first `run_next` caller dispatch, Style D debug extension. Fail-closed on hydration miss; batch anchor + retry-without-anchor; non-caller keys preserved. §1.5.1 / §3.3 OK.
+
+**Tests (AST-769):** `TestAst769GeneralCallerHydration` + updated AST-597 debug path cover anchor, roster company hop, job cover letter, miss-without-LLM, debug emission.
+
+---
+
+**fix-now — publish ref vs `origin/dev` (branch hygiene, not product logic):**
+
+1. **Deleted component tests (~14 methods)** on sub tip vs dev — tracker placeholder ingest (4), `TestBoardRegistryAst457` (6), gaze_board admin/config (4). Restore via proper `merge origin/dev` + `merge-tests` before resolve; do not regress dev coverage.
+2. **Sibling scope on this ref:** AST-750 product (`config.dispatch_score_floor_option_labels`, `api_admin` `/dispatch_tasks/score_floor_options`, ast-750 feature doc) — plan Out of Scope for AST-769. Re-sync or split sub tip so resolve carries AST-769 only unless rollup approved on AST-752.
+
+**discuss:** `_hydrate_caller_chain_context` — `entry_task_key` param unused (plan signature).
+
+**advisory:** `_parent_hop_task_key_for_child` scans all `get_task_keys()` per caller-token hop — fine now.
+
+Doc: `docs/features/roster/ast-769-general-caller-hydration-agent-data.md` § Radia review.
+
+#### betty — 2026-06-23T20:06:03.453Z
+## QA test manifest (AST-769)
+
+**Publish:** `origin/sub/AST-752/AST-769-general-caller-hydration-agent-data` @ `ec7e710` (`merge-tests(AST-769): origin/tests eee7c2e`)
+
+**Bible shasum:** `docs/test-bible/core/agent.md` → `7419686e872f226edff15deb7610de0ed02fe699`
+
+### Manifest (test-child)
+
+1. **New — general hydration (`TestAst769GeneralCallerHydration`):**
+   - `test_anchor_batch_id_from_state_history_uses_current_state_row`
+   - `test_hop_agent_ref_for_parent_prefers_anchor_batch_over_newer_ref`
+   - `test_merge_hydrated_caller_context_preserves_non_caller_keys`
+   - `test_do_task_parse_job_list_hydrates_caller_from_company_agent_data` (roster mid-chain entry)
+   - `test_do_task_job_cover_letter_hydrates_from_stored_parent_hop` (non-roster job hop)
+   - `test_do_task_hydration_miss_returns_error_without_llm`
+   - `test_do_task_hydrated_hop_debug_logs_agent_data`
+
+2. **Regression — AST-597 resume hydration (full class):**
+   - `tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions`
+   - `_latest_job_hop_agent_ref` renamed → `_hop_agent_ref_for_parent` in `test_hop_agent_ref_for_parent_skips_failed_response_rows`
+   - `test_resume_hop_debug_logs_agent_data_source_on_mid_chain_entry` updated for storage-first hydration (job mock + `_hop_parent_task_key` only)
+
+3. **Regression — daisy-chain callers:**
+   - `tests/component/core/test_agent.py::TestAst469ResolveRunNextLive`
+   - `tests/component/core/test_agent.py::TestChainContext`
+
+**Narrowed run (pass criterion: pytest green — not zero-arg branch-lock gate):**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst769GeneralCallerHydration \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  tests/component/core/test_agent.py::TestAst469ResolveRunNextLive \
+  tests/component/core/test_agent.py::TestChainContext \
+  -q
+```
+
+— Betty
+
+#### ada — 2026-06-23T20:02:10.272Z
+Betty qa-handoff notes (plan Stage 5):
+
+- Regression: `TestAst597MidChainResumeHydrationAndTransitions` + daisy-chain tests (AST-303, AST-455, AST-469)
+- New roster: `parse_job_list` chain entry with mocked `company.agent_responses` + `get_agent_data_for_ids` for upstream `select_job_page`
+- New non-roster: cover-letter/consult chain with stored parent `agent_responses`
+- Batch anchor: `_hop_agent_ref_for_parent` prefers `state_history` anchor `batch_id`
+- Failure path: hydration miss → `success: False`, no LLM
+- Debug: caplog `caller_hydration=agent_data` with `debug=True`
+- `_latest_job_hop_agent_ref` removed — update tests to `_hop_agent_ref_for_parent`
+
+`origin/sub/AST-752/AST-769-general-caller-hydration-agent-data` @ `174a747`
+
+#### ada — 2026-06-23T19:59:45.886Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-752/AST-769-general-caller-hydration-agent-data/docs/features/roster/ast-769-general-caller-hydration-agent-data.md
+
+**Scope:** Single-Component — all product work in `src/core/agent.py` (general hydration helpers, `do_task` entry wiring, `run_next` merge adjustment, debug).
+
+**Conf:** Medium — AST-597 + AST-531 patterns are established; batch anchoring via `state_history` is new but follows existing transition writes; candidate entities use latest-ref fallback until `state_history` ships.
+
+**Risk:** HIGH — wrong hydration or batch anchor loads empty or stale `{$CALLER_*}` tokens, causing silent prompt corruption or full-chain re-runs.
+
+---
+
 # General caller hydration from agent_data
 
 **Linear:** [AST-769](https://linear.app/astralcareermatch/issue/AST-769/general-caller-hydration-from-agent-data-use-agent-data-for-the-caller)  
