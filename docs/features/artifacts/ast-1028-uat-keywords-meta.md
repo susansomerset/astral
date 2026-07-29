@@ -74,3 +74,15 @@ Bug Description’s shorthand `content="<keywords>"` means keywords belong in me
 - §2.1: prompt lives in repo admin JSON (existing AST-782 path), not new config magic.
 - §3.6: spikes under `debug/spikes/AST-1028/` only if used.
 - Engineer test-tree ban: no `tests/` or bible edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1019/AST-1028-uat-keywords-meta`
+**Plan path:** `docs/features/artifacts/ast-1028-uat-keywords-meta.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `d83b486b` | `craft_resume_base` cache_prompt: title-only + `### candidate_tagline` |
+| 2 | — | Builder header/meta unchanged; session emit proof tagline in meta only |
+
+**Tip:** `d83b486b` on `origin/sub/AST-1019/AST-1028-uat-keywords-meta`
