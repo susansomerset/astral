@@ -993,6 +993,8 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+---
+
 ### AST-1015 · AST-952
 
 **AST-1015:** `PREAMBLE_VALIDATION_CONFIG` — task_key `preamble_validate_response`, closed outcomes Valid / Try Again / Escalate; `TASK_CONFIG` schema; equality with `PREAMBLE_CONFIG["validation_task_key"]` when both present. Ruth agent_task + core/API: **`docs/test-bible/core/intake.md`**, **`docs/test-bible/ui/api/api_intake.md`**, catalog: **`docs/test-bible/data/database/agent_tasks.md`**.
@@ -1318,5 +1320,166 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1062QualifyMeteoriteThresholds \
+  -q
+```
+
+### AST-1066 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
+
+`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| CONTACT_CONFIG defaults + env names; slack lookup path home | `src/utils/config.py` | **`TestAst1066ContactConfig`** (empty-skills assert revised **AST-1071**) |
+
+**Broken / obsolete:** empty-`skills == {}` — revised by **AST-1071**.
+
+**Integration:** no existing scenario asserts CONTACT_CONFIG / slack_user_id_paths — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1066ContactConfig \
+  tests/component/core/test_contact.py::TestAst1066ContactScaffold \
+  -q
+```
+
+### AST-1071 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
+
+`CONTACT_CONFIG["skills"]`: `save_candidate_profile` + `save_candidate_contact` with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
+
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1071ContactSkillsConfig \
+  tests/component/core/test_contact.py::TestAst1071ContactSkillRunners \
+  tests/component/ui/api/test_api_contact.py::TestAst1071ContactSkillsApi \
+  -q
+```
+
+### AST-1069 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`.
+
+`CONTACT_CONFIG` Events/Socket Mode keys: `events_http_path`, `bot_event_types`, `event_id_dedupe_max`, `app_token_env`. Ingress handlers: **`docs/test-bible/core/contact.md`**. External verify/post: **`docs/test-bible/external/slack.md`**. HTTP blueprint: **`docs/test-bible/ui/api/api_slack.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Events path / bot types / dedupe / app token env | `src/utils/config.py` | **`TestAst1069ContactEventsConfig`** |
+
+**Broken / obsolete:** none — additive keys on CONTACT_CONFIG.
+
+**Integration:** no existing scenario asserts Slack Events ingress — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1069ContactEventsConfig \
+  tests/component/external/test_slack.py::TestAst1069ExternalSlack \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi \
+  -q
+```
+
+
+### AST-1070 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`.
+
+`CONTACT_CONFIG` context keys: `context_history_limit`, `context_cache_max_conversations`, `context_cache_ttl_seconds`. Core load/append: **`docs/test-bible/core/contact.md`**. External fetch: **`docs/test-bible/external/slack.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| History limit / cache max / TTL | `src/utils/config.py` | **`TestAst1070ContactContextConfig`** |
+
+**Broken / obsolete:** none — additive keys on CONTACT_CONFIG.
+
+**Integration:** no existing scenario asserts context cache config — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1070ContactContextConfig \
+  tests/component/external/test_slack.py::TestAst1070FetchConversationHistory \
+  tests/component/core/test_contact.py::TestAst1070ContactConversationContext \
+  -q
+```
+
+
+
+
+### AST-1068 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
+
+`CANDIDATE_STATES["PROSPECT"]`; `CONTACT_CONFIG["prospect_candidate_id_template"]`. Revised **`TestAst970CandidateStateRegistry`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PROSPECT registry + id template | `src/utils/config.py` | **`TestAst1068ProspectConfig`**; revised **`TestAst970CandidateStateRegistry`** |
+
+**Broken / obsolete:** AST-970 `assert "PROSPECT" not in CANDIDATE_STATES` — revised this pass.
+
+**Integration:** no existing scenario — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1068ProspectConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  -q
+```
+
+
+### AST-1072 · AST-1046
+
+**Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`.
+
+CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_PERFORMANCE_SCHEMA` (do **not** mutate `BASE_SCHEMA`); `CONTACT_ESTELLE_CONFIG` Medium brain; `TASK_CONFIG["contact_estelle_turn"]` (`task_type="CHAT"`); `is_conversational_task` / `stringify_response_schema` concern path. Core `do_task` contract: **`docs/test-bible/core/agent.md`**. Catalog seed: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + CHAT registration + stringify | `src/utils/config.py` | **`TestAst1072ConversationalEnvelopeConfig`** |
+
+**Broken / obsolete:** AST-786 catalog **42 → 43** (`contact_estelle_turn`) — see repo_admin_json bible.
+
+**Integration:** no existing scenario asserts CHAT / contact_estelle_turn envelope — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+```
+
+
+---
+
+### AST-1074 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1074-topic-menu-model-and-persistence`.
+
+`TOPIC_MENU_CONFIG`: closed `informs` (`rubrics`, `base_resume`, `strengths`, `priorities`, `deal_breakers`, `backstory`), statuses `open`/`ready`/`retired`, `candidate_data_key: topic_menu`, required topic fields. Library homes for context informs live under `CANDIDATE_LIBRARY_CONFIG`. Core persistence: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Closed informs + status triad | `src/utils/config.py` | **`TestAst1074TopicMenuConfig`** |
+
+**Broken / obsolete:** none — additive config.
+
+**Integration:** no existing scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
   -q
 ```

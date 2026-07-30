@@ -2669,3 +2669,205 @@ class TestAst1047GetCandidateIdForQuery:
         dbg.reset_mock()
         candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=False)
         assert not dbg.called
+
+
+# Branches: slack_user_id path match; initiate_prospect_candidate PROSPECT (AST-1068).
+class TestAst1068CandidateSlackLookup:
+    def _cand(self, cid: str, **kwargs):
+        data = {"contact": {}, "profile": {}}
+        if "slack_user_id" in kwargs:
+            data["contact"]["slack_user_id"] = kwargs.pop("slack_user_id")
+        if "contact_email" in kwargs:
+            data["contact"]["contact_email"] = kwargs.pop("contact_email")
+        if "profile" in kwargs:
+            data["profile"] = kwargs.pop("profile")
+        return {"astral_candidate_id": cid, "candidate_data": data, **kwargs}
+
+    def test_lookup_matches_slack_user_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", slack_user_id="Uabc"),
+            self._cand("c2", contact_email="x@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Uabc") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("UABC") == "c1"
+
+    def test_initiate_prospect_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved = {}
+
+        def _save(cid, state=None, candidate_data=None, state_history=None, merge=None, **kwargs):
+            saved["cid"] = cid
+            saved["state"] = state
+            saved["candidate_data"] = candidate_data
+            saved["state_history"] = state_history
+            saved["kwargs"] = kwargs
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        # AST-1014: names are columns (first=/last=); contact blob holds slack_user_id only.
+        candidate_mod.initiate_prospect_candidate(
+            "slack-u1",
+            {"contact": {"slack_user_id": "U1"}},
+            first="Ada",
+            last="",
+        )
+        assert saved["cid"] == "slack-u1"
+        assert saved["state"] == "PROSPECT"
+        assert saved["candidate_data"] == {"contact": {"slack_user_id": "U1"}}
+        assert "profile" not in saved["candidate_data"]
+        assert saved["kwargs"].get("first") == "Ada"
+        assert saved["kwargs"].get("last") == ""
+        assert saved["state_history"] is not None
+
+    def test_initiate_rejects_empty_and_existing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with pytest.raises(ValueError, match="required"):
+            candidate_mod.initiate_prospect_candidate("")
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid})
+        with pytest.raises(ValueError, match="already exists"):
+            candidate_mod.initiate_prospect_candidate("slack-u1")
+
+
+
+class TestAst1074TopicMenuPersistence:
+    """AST-1074: Topic Menu validate / revise / get / save (no wipe)."""
+
+    def _topic(
+        self,
+        tid: str,
+        *,
+        name: str | None = None,
+        ask: str = "What matters?",
+        required: bool = True,
+        informs: list | None = None,
+        status: str = "open",
+    ) -> dict:
+        return {
+            "id": tid,
+            "name": name if name is not None else tid,
+            "ask": ask,
+            "required": required,
+            "informs": list(["backstory"] if informs is None else informs),
+            "status": status,
+        }
+
+    def test_validate_topic_happy_and_rejects(self) -> None:
+        row = candidate_mod.validate_topic(self._topic("t1", informs=["backstory", "rubrics", "backstory"]))
+        assert row["informs"] == ["backstory", "rubrics"]
+        assert row["status"] == "open"
+        with pytest.raises(ValueError, match="required must be a bool"):
+            candidate_mod.validate_topic(self._topic("t1", required="yes"))  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="not in TOPIC_MENU_CONFIG"):
+            candidate_mod.validate_topic(self._topic("t1", informs=["invented"]))
+        with pytest.raises(ValueError, match="non-empty list"):
+            candidate_mod.validate_topic(self._topic("t1", informs=[]))
+
+    def test_validate_topic_menu_rejects_duplicate_ids(self) -> None:
+        with pytest.raises(ValueError, match="duplicate topic id"):
+            candidate_mod.validate_topic_menu(
+                {"topics": [self._topic("dup"), self._topic("dup", name="Other")]}
+            )
+
+    def test_revise_retires_missing_ids_keeps_content(self) -> None:
+        existing = {
+            "topics": [
+                self._topic("keep", name="Keep", status="ready"),
+                self._topic("drop", name="Drop", ask="Old ask?", informs=["strengths"], status="open"),
+            ]
+        }
+        incoming = {
+            "topics": [
+                self._topic("keep", name="Keep renamed", ask="New ask?", informs=["priorities"], status="ready"),
+                self._topic("new", name="New"),
+            ]
+        }
+        out = candidate_mod.revise_topic_menu(existing, incoming)
+        by_id = {t["id"]: t for t in out["topics"]}
+        assert list(by_id) == ["keep", "new", "drop"]
+        assert by_id["keep"]["name"] == "Keep renamed"
+        assert by_id["keep"]["ask"] == "New ask?"
+        assert by_id["keep"]["informs"] == ["priorities"]
+        assert by_id["drop"]["status"] == "retired"
+        assert by_id["drop"]["name"] == "Drop"
+        assert by_id["drop"]["ask"] == "Old ask?"
+        assert by_id["drop"]["informs"] == ["strengths"]
+
+    def test_get_topic_menu_missing_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            candidate_mod.get_topic_menu("missing")
+
+    def test_get_topic_menu_normalizes_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        assert candidate_mod.get_topic_menu("c1") == {"topics": []}
+
+    def test_save_topic_menu_revise_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stored: dict = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "topic_menu": {"topics": [self._topic("old", name="Old", status="open")]}
+            },
+        }
+        saves: list = []
+
+        def _get(cid: str):
+            return dict(stored)
+
+        def _save_cd(cid: str, data: dict, replace: bool = False, debug: bool = False):
+            saves.append({"cid": cid, "data": data, "debug": debug})
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", _get)
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save_cd)
+        result = candidate_mod.save_topic_menu(
+            "c1",
+            {"topics": [self._topic("new", name="New")]},
+        )
+        assert [t["id"] for t in result["topics"]] == ["new", "old"]
+        assert result["topics"][1]["status"] == "retired"
+        assert saves[0]["data"]["topic_menu"]["topics"][1]["status"] == "retired"
+        assert saves[0]["debug"] is False
+
+    def test_save_topic_menu_revise_false_full_replace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stored: dict = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "topic_menu": {"topics": [self._topic("old", status="open")]}
+            },
+        }
+        saves: list = []
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(
+            candidate_mod,
+            "save_candidate_data",
+            lambda cid, data, replace=False, debug=False: saves.append(data),
+        )
+        result = candidate_mod.save_topic_menu(
+            "c1",
+            {"topics": [self._topic("only")]},
+            revise=False,
+        )
+        assert [t["id"] for t in result["topics"]] == ["only"]
+        assert "old" not in {t["id"] for t in saves[0]["topic_menu"]["topics"]}
+
+    def test_save_topic_menu_debug_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg_index = MagicMock()
+        dbg_detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg_index)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", dbg_detail)
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        candidate_mod.save_topic_menu("c1", {"topics": [self._topic("t1")]}, debug=True)
+        assert dbg_index.call_count == 2
+        candidate_mod.save_topic_menu("c1", {"topics": [self._topic("t1")]}, debug=False)
+        assert dbg_index.call_count == 2
