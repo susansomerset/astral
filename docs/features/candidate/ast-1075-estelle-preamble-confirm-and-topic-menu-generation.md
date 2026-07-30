@@ -397,3 +397,11 @@ TOPIC_MENU_GEN_CONFIG = {
 - **debug-contract-gated:** Style D only when `debug=True` on confirm/generate/mark-confirmed paths.
 - **§1.3 DRY:** reuse `_run_intake_task` ledger pattern or extract shared helper if duplication exceeds ~15 lines — prefer calling existing `_run_intake_task` for generate/confirm with the new task keys rather than a third copy of ledger code.
 - **Out of scope enforced:** no satisfaction turns, no state hops, no AST-1074 informs catalog edits, no `tests/` edits, no rewrite of legacy intake chat prompts.
+
+---
+
+## Review
+
+**Publish ref:** `sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`
+
+**Build tip:** `a730b5d5` (`code(AST-1075): Stages 5–6 — topic-menu API and intake UI handoff`)
