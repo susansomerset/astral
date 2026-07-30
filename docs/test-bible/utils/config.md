@@ -1327,13 +1327,13 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, empty `skills` ACL (distinct from `TASK_CONFIG`). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)` — matcher inclusion is AST-1068. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| CONTACT_CONFIG defaults + env names; slack lookup path home | `src/utils/config.py` | **`TestAst1066ContactConfig`** |
+| CONTACT_CONFIG defaults + env names; slack lookup path home | `src/utils/config.py` | **`TestAst1066ContactConfig`** (empty-skills assert revised **AST-1071**) |
 
-**Broken / obsolete:** none — additive config + lookup path tuple (AST-1047 email/name asserts unchanged).
+**Broken / obsolete:** empty-`skills == {}` — revised by **AST-1071**.
 
 **Integration:** no existing scenario asserts CONTACT_CONFIG / slack_user_id_paths — no revision.
 
@@ -1341,5 +1341,50 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1066ContactConfig \
   tests/component/core/test_contact.py::TestAst1066ContactScaffold \
+  -q
+```
+
+### AST-1071 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
+
+`CONTACT_CONFIG["skills"]`: `save_candidate_profile` + `save_candidate_contact` with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
+
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1071ContactSkillsConfig \
+  tests/component/core/test_contact.py::TestAst1071ContactSkillRunners \
+  tests/component/ui/api/test_api_contact.py::TestAst1071ContactSkillsApi \
+  -q
+```
+
+### AST-1072 · AST-1046
+
+**Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`.
+
+CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_PERFORMANCE_SCHEMA` (do **not** mutate `BASE_SCHEMA`); `CONTACT_ESTELLE_CONFIG` Medium brain; `TASK_CONFIG["contact_estelle_turn"]` (`task_type="CHAT"`); `is_conversational_task` / `stringify_response_schema` concern path. Core `do_task` contract: **`docs/test-bible/core/agent.md`**. Catalog seed: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + CHAT registration + stringify | `src/utils/config.py` | **`TestAst1072ConversationalEnvelopeConfig`** |
+
+**Broken / obsolete:** AST-786 catalog **42 → 43** (`contact_estelle_turn`) — see repo_admin_json bible.
+
+**Integration:** no existing scenario asserts CHAT / contact_estelle_turn envelope — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
   -q
 ```

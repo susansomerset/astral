@@ -2622,27 +2622,54 @@ class TestAst1062QualifyMeteoriteThresholds:
         assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
 
 
-# Branches: CONTACT_CONFIG + slack_user_id_paths home (AST-1066). Distinct from TASK_CONFIG.
+# Branches: CONTACT_CONFIG scaffold (AST-1066) + entity-save skills ACL (AST-1071).
 class TestAst1066ContactConfig:
-    """AST-1066: CONTACT_CONFIG listen/skills/env-names + CANDIDATE_LOOKUP slack path."""
+    """AST-1066: CONTACT_CONFIG listen/env-names + CANDIDATE_LOOKUP slack path."""
 
     def test_contact_config_defaults_and_env_names(self) -> None:
         cc = cfg.CONTACT_CONFIG
         assert cc["listen_enabled"] is False
-        assert cc["skills"] == {}
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
         assert cc["non_production_reply_prefix_template"] == "[{environment}] "
-        # Skills ACL must never collide with dispatch TASK_CONFIG keys.
+        assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
 
     def test_slack_user_id_lookup_home(self) -> None:
         luc = cfg.CANDIDATE_LOOKUP_CONFIG
         assert luc["slack_user_id_paths"] == ("contact.slack_user_id",)
-        # Email/name homes from AST-1047 remain (matcher scan of slack paths is AST-1068).
         assert "contact.contact_email" in luc["email_paths"]
         assert "first" in luc["name_paths"]
+
+
+class TestAst1071ContactSkillsConfig:
+    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+
+    def test_two_skills_not_in_task_config(self) -> None:
+        skills = cfg.CONTACT_CONFIG["skills"]
+        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
+        for key, meta in skills.items():
+            assert key not in cfg.TASK_CONFIG
+            assert meta["entity"] == "candidate"
+            assert meta["write"] is True
+            assert isinstance(meta["description"], str) and meta["description"].strip()
+            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
+
+    def test_allowlisted_paths_no_slack_user_id(self) -> None:
+        skills = cfg.CONTACT_CONFIG["skills"]
+        assert skills["save_candidate_profile"]["allowed_paths"] == (
+            "profile.first",
+            "profile.last",
+            "profile.pronoun_preference",
+            "profile.contact_email",
+        )
+        assert skills["save_candidate_contact"]["allowed_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+        )
+        for meta in skills.values():
+            assert "contact.slack_user_id" not in meta["allowed_paths"]
 
 
 class TestAst1055MeteoriteLikeUpshotTasks:
@@ -2734,3 +2761,42 @@ class TestAst1061MeteoriteEmailIngestConfig:
             assert frag in excludes
         assert int(cfg["playwright_concurrency"]) == 3
         assert int(cfg["min_jd_chars"]) == 40
+
+
+# Branches: CHAT envelope schema + contact_estelle_turn registration (AST-1072).
+class TestAst1072ConversationalEnvelopeConfig:
+    def test_conversational_outcomes_and_performance_schema(self) -> None:
+        assert cfg.CONVERSATIONAL_OUTCOMES == ("success", "failure", "concern")
+        status = cfg.CONVERSATIONAL_PERFORMANCE_SCHEMA["status"]
+        assert status["required"] is True
+        assert set(status["enum"]) == set(cfg.CONVERSATIONAL_OUTCOMES)
+        assert "admin_aside" in cfg.CONVERSATIONAL_PERFORMANCE_SCHEMA
+        # Global BASE_SCHEMA stays binary — concern is CHAT-only.
+        assert "concern" not in cfg.BASE_SCHEMA["status"]["enum"]
+
+    def test_contact_estelle_config_medium_brain(self) -> None:
+        assert cfg.CONTACT_ESTELLE_CONFIG["task_key"] == "contact_estelle_turn"
+        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+
+    def test_contact_estelle_turn_task_registration(self) -> None:
+        entry = cfg.TASK_CONFIG["contact_estelle_turn"]
+        assert entry["task_type"] == "CHAT"
+        assert entry["agent_task"] == "contact_estelle_turn"
+        assert entry["response_format"] == "json"
+        assert entry["response_schema"]["reply"]["required"] is True
+        assert entry["trigger_state"] is None
+        assert entry["requires_candidate_key"] is False
+
+    def test_is_conversational_task_chat_only(self) -> None:
+        assert cfg.is_conversational_task("contact_estelle_turn") is True
+        assert cfg.is_conversational_task("evaluate_jd") is False
+        assert cfg.is_conversational_task("missing-task") is False
+
+    def test_stringify_chat_schema_includes_concern(self) -> None:
+        chat = json.loads(cfg.stringify_response_schema("contact_estelle_turn"))
+        assert chat["agent_performance"]["status"] == "success | failure | concern"
+        assert "admin_aside" in chat["agent_performance"]
+        assert chat["agent_payload"]["reply"] == "<reply>"
+        # Non-CHAT still uses BASE_SCHEMA example (no concern).
+        other = json.loads(cfg.stringify_response_schema("evaluate_jd"))
+        assert other["agent_performance"]["status"] == "success | failure"
