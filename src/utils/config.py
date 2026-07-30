@@ -446,6 +446,8 @@ TASK_CONFIG = {
             },
         },
         "fallback_batch_size": 30,
+        "min_job_title_length": 5,   # same role as qualify_job_listings title gate
+        "min_jd_chars": 40,          # usable visible JD floor (align with METEORITE_EMAIL_INGEST_CONFIG)
         "pass_state": "METEORITE_QUALIFIED",
         "fail_state": "METEORITE_FAILED_QUALIFY",
         "error_state": "METEORITE_ERROR_QUALIFY",
