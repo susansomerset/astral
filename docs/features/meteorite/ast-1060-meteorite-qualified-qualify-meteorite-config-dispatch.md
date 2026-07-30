@@ -225,3 +225,16 @@ Changes: Added `src/core/dispatcher.py` to Files Changed; Stage 1 Step 5 retires
 ### Recommended actions
 - Ada: acknowledge stragglers → resolve-child → User Testing.
 
+## Resolution
+
+**Date:** 2026-07-30  
+**Commit:** `resolve(AST-1060): — clean`
+
+### Against Radia review (`3f8f6fc4` / Overall DISCUSS)
+
+- **fix-now:** none — no product changes.
+- **discuss (straggler ×3):** Acknowledged. Joan excluded at plan time; Radia re-checked on three-dot vs `origin/dev` via plan docs + Betty tests/bible — all substance **conforms** (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`). No further action.
+- **advisory:** none.
+
+Stages 1–2 product + Betty manifest green @ `6f155650`; Radia docs intake @ `3f8f6fc4` already on publish-ref before this resolve commit.
+
