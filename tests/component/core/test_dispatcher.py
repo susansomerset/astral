@@ -1769,7 +1769,8 @@ class TestAst1054MeteoriteDispatchProvision:
         assert calls[0] == "tmpl"
         assert "tmpl" in calls and "c2" in calls
         assert out["candidates_touched"] == 2
-        assert out["skipped_missing_config"] == 4
+        # Template ensure + loop over ["tmpl","c2"] → 3 ensures × stub 2 = 6.
+        assert out["skipped_missing_config"] == 6
         assert out.get("retired", 0) == 0
 
     def test_start_scheduler_invokes_meteorite_provision(

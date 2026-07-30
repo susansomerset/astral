@@ -2515,11 +2515,12 @@ class TestAst1053MeteoriteGdlJobStates:
         assert "PASSED_LIKE_RETRY" in rec_priors
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
         # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
+        # qualify_job_listings has no agent_task key — do not invent one.
         qjl = cfg.TASK_CONFIG["qualify_job_listings"]
         assert qjl["pass_state"] == "PASSED_JOBLIST"
         assert qjl["fail_state"] == "FAILED_JOBLIST"
         assert qjl["error_state"] == "ERROR_QUALIFY_JOB_LISTINGS"
-        assert qjl["agent_task"] == "qualify_job_listings"
+        assert "agent_task" not in qjl
         assert cfg._dispatch_trigger_state_for_task_key("qualify_job_listings") == "NEW"
 
 
