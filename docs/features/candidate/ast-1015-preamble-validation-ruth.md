@@ -271,3 +271,27 @@ Proposed resolutions: <2-3 options, or "need guidance">
 **Publish ref:** `sub/AST-952/AST-1015-preamble-validation-ruth`
 **Build tip:** `3a6444b16efae68f0f1bf1180dc04772d7256f31`
 
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Tip reviewed:** `7ff0ac90955ae70340c4ec1efe57f1e99f6c6ebc` (`origin/sub/AST-952/AST-1015-preamble-validation-ruth` vs `origin/dev`)
+**Overall:** DISCUSS
+
+#### What’s solid
+- Stages 1–4 match Revision 1: `PREAMBLE_VALIDATION_CONFIG["task_key"]` == `PREAMBLE_CONFIG["validation_task_key"]` == `preamble_validate_response`; Ruth-only `agent_task` row; `validate_preamble_answer` via `do_task` with closed outcomes (no coerce-to-Valid); no library writes / state transitions.
+- Debug style-D gated on `debug=True` with truncated Q/A detail; API `POST …/preamble/validate` keeps `@require_auth` and `_debug_flag()`.
+- Betty catalog lock 39 + fixture sync for `preamble_validate_response` on ftr base (no polluted origin/dev merge).
+
+#### Issues
+1. **discuss** — C4 stragglers: Joan excluded statutes that the three-dot tip scores in-scope (tip carries AST-1014/1016 + frontend/tests): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.standards.database-header-inventory`, `astral.ui.frontend-file-placement`. All **conform**; no product fix for AST-1015.
+
+#### Notes
+Joan plan-rubric APPROVED (Revision 1 after Plan Discuss). No fix-now on the Ruth validation delta.
+
+## Resolution
+
+**2026-07-30** — `resolve(AST-1015): — clean`
+
+- **fix-now:** none (Radia Overall DISCUSS; recommended proceed).
+- **discuss (C4 stragglers):** noted — tip-topology statute in-scope vs Joan plan exclude; all scored **conform**; no AST-1015 product change.
+- Tip after resolve publish: `origin/sub/AST-952/AST-1015-preamble-validation-ruth` (this commit).
+
