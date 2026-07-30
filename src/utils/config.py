@@ -18,6 +18,7 @@ Config sections:
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
   PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
+  TOPIC_MENU_CONFIG — closed informs + status triad for Topic Menu (AST-1074; generation = AST-1075)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
@@ -1174,6 +1175,50 @@ PREAMBLE_VALIDATION_CONFIG = {
 }
 
 assert PREAMBLE_VALIDATION_CONFIG["task_key"] == PREAMBLE_CONFIG["validation_task_key"]
+
+
+# AST-1074: Topic Menu closed informs + status triad (generation = AST-1075).
+TOPIC_MENU_CONFIG = {
+    # Parent AC closed vocabulary — Estelle may not invent new target kinds.
+    "informs": (
+        "rubrics",
+        "base_resume",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "backstory",
+    ),
+    "statuses": ("open", "ready", "retired"),
+    "default_status": "open",
+    # Stable key under candidate_data (meta sibling of contact/context/artifacts).
+    "candidate_data_key": "topic_menu",
+    "topic_required_fields": ("id", "name", "ask", "required", "informs", "status"),
+}
+
+assert TOPIC_MENU_CONFIG["informs"] == (
+    "rubrics",
+    "base_resume",
+    "strengths",
+    "priorities",
+    "deal_breakers",
+    "backstory",
+)
+assert len(TOPIC_MENU_CONFIG["informs"]) == len(set(TOPIC_MENU_CONFIG["informs"]))
+assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["informs"])
+assert TOPIC_MENU_CONFIG["statuses"] == ("open", "ready", "retired")
+assert TOPIC_MENU_CONFIG["default_status"] in TOPIC_MENU_CONFIG["statuses"]
+assert TOPIC_MENU_CONFIG["candidate_data_key"] == "topic_menu"
+assert isinstance(TOPIC_MENU_CONFIG["topic_required_fields"], tuple)
+assert TOPIC_MENU_CONFIG["topic_required_fields"]
+assert len(TOPIC_MENU_CONFIG["topic_required_fields"]) == len(set(TOPIC_MENU_CONFIG["topic_required_fields"]))
+assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["topic_required_fields"])
+for _req in ("id", "name", "ask", "required", "informs", "status"):
+    assert _req in TOPIC_MENU_CONFIG["topic_required_fields"], _req
+# Library homes (string contract): context keys + base_resume artifact name.
+for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+    assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
+assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
+
 
 # AST-1047: reusable string → candidate-id match homes (Manage Email From bind first caller).
 CANDIDATE_LOOKUP_CONFIG = {
