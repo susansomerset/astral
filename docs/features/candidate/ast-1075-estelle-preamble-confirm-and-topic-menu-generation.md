@@ -427,3 +427,20 @@ TOPIC_MENU_GEN_CONFIG = {
 ### Recommended actions
 
 None for resolve-child product code. Acknowledge discuss/advisory or leave for follow-on polish.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Review:** Radia `[code-rubric] revision=1` Overall DISCUSS @ `ac813e90` (product tip `26b789b5`).
+
+**fix-now:** none — no product code changes.
+
+**discuss (C4 straggler):** Acknowledged. Joan Excluded `astral.git.engineer-test-tree-ban` on plan paths; post–Tests Ready tip includes Betty `tests/**` + bible. Statute remains conforms (engineer SHAs omit test tree). No Archie re-score requested; no plan-rubric rewrite.
+
+**advisory (debug truncate repr):** Acknowledged; leave for follow-on polish — still Style D gated and contract-complete.
+
+**advisory (duplicate topic ids on save):** Acknowledged; rare Estelle failure mode; `validate_topic_menu` reject → 400 is acceptable without soft-drop expansion this ticket.
+
+**Outcome:** resolve clean → User Testing.
