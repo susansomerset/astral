@@ -405,3 +405,25 @@ TOPIC_MENU_GEN_CONFIG = {
 **Publish ref:** `sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`
 
 **Build tip:** `a730b5d5` (`code(AST-1075): Stages 5–6 — topic-menu API and intake UI handoff`)
+
+**Reviewed tip:** `26b789b5` (`merge(AST-1075): origin/dev`) vs `origin/dev`
+
+**Overall:** DISCUSS (C4 straggler only; no product fix-now)
+
+### What’s solid
+
+- Stages 1–6 match tip: `TOPIC_MENU_GEN_CONFIG` + TASK_CONFIG, Estelle agent_task rows, `preamble_confirmed_at`, confirm/generate via `_run_intake_task`/`do_task`, thin `@require_auth` API, IntakeTopicMenuPanel + new-start `topic_menu` phase (resume → chat kept).
+- Revision 1 landed: no `preferred_name`; name columns under snapshot `name`; hopes/interests/concerns in packet/patch; `informs_covered` recomputed from survivors; always `save_topic_menu(..., revise=True)`.
+- Style D present on confirm / generate / mark-confirmed when `debug=True`.
+
+### Findings
+
+**discuss (C4):** Joan Excluded `astral.git.engineer-test-tree-ban` (plan paths); tip three-dot includes Betty `tests/**` + bible. Statute still **conforms** (engineer SHAs omit test tree). No engineer action required.
+
+**advisory:** Confirm debug logs `assistant_message={truncate_debug_content(msg)!r}` (list repr) instead of iterating truncated lines like `save_topic_menu` — still gated; polish only.
+
+**advisory:** Soft-drop validates topics one-by-one; duplicate ids among survivors surface as `validate_topic_menu` ValueError on save (API → 400) rather than soft-drop. Rare Estelle failure mode.
+
+### Recommended actions
+
+None for resolve-child product code. Acknowledge discuss/advisory or leave for follow-on polish.
