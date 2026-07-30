@@ -98,3 +98,16 @@ Rules (literal):
 
 ### Recommended actions
 - Hedy: resolve-child → User Testing.
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Commit:** `resolve(AST-1076): — clean`
+
+### Against Radia review (`45623fa4` / Overall CLEAN)
+
+- **fix-now:** none — no product changes.
+- **discuss:** none.
+- **advisory:** none.
+
+Stage 1 product + Betty manifest green @ `d71086aa`; Radia docs intake @ `45623fa4` already on publish-ref before this resolve commit.
