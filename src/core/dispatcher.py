@@ -305,6 +305,7 @@ _SUMMARY_ZERO: Dict[str, int] = {
 # batch_call_mode job consult exhaustion (AST-502): widen claim + chunk parallel waves for encoded batch consult (AST-501/503).
 _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "qualify_job_listings",
+    "qualify_meteorite",
     "evaluate_jd",
     "grade_do",
     "grade_get",

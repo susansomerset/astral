@@ -9,6 +9,7 @@ _render_score: scored grading (AST-358 importance × universal grade values × c
 When TASK_CONFIG[task_key].scored, transitions persist latest_score only when a numeric score exists.
 _run_batch_consult: shared scaffolding for batch AI tasks (ID reconciliation, audit, error handling).
 qualify_job_listings: batch job list screen (Pattern A) — thin wrapper over _run_batch_consult.
+qualify_meteorite: meteorite pre-AI enrich (Pattern A, fields) — thin wrapper over _run_batch_consult.
 evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over _run_batch_consult.
 grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
@@ -23,6 +24,7 @@ from src.core.agent import do_task
 from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
+    TRACKER_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
     JOB_STATES,
     ASTRAL_CONFIG,
@@ -1497,6 +1499,122 @@ async def qualify_job_listings(
     return result
 
 
+async def qualify_meteorite(
+    batch_id: str,
+    jobs: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_chunk_index: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Meteorite pre-AI enrich (Pattern A). Same claim/process shape as qualify_job_listings;
+    fields output (no grades). AST-1062."""
+    task_key = "qualify_meteorite"
+    cfg = _consult_orchestration(task_key)
+    jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(f"qualify_meteorite batch_id={batch_id} job_count={len(jobs)}")
+        for ji, j in enumerate(jobs, start=1):
+            jd_len = len((j.get("job_data") or {}).get(jd_key, "") or "")
+            logger.debug_index(
+                func="consult.qualify_meteorite",
+                index=ji,
+                total=len(jobs),
+                identifier=_consult_job_identifier(j),
+                outcome="input job",
+            )
+            logger.debug_detail(
+                f"job_link={(j.get('job_link') or '')!r} job_description_chars={jd_len}"
+            )
+
+    def assemble(jobs):
+        # 0-based numbered format — astral_job_id excluded from live content (position map in decode/response).
+        lines = [
+            f"{i:03d}: job_link: {j.get('job_link') or ''}\n"
+            f"job_description: {(j.get('job_data') or {}).get(jd_key, '') or ''}"
+            for i, j in enumerate(jobs)
+        ]
+        return "METEORITE JOBS:\n" + "\n".join(lines)
+
+    def process(input_job, response_job, cfg):
+        aid = response_job["astral_job_id"]
+        company_job_id = (response_job.get("company_job_id") or "").strip()
+        job_title = (response_job.get("job_title") or "").strip()
+        job_link = (response_job.get("job_link") or "").strip()
+        jd_text = (response_job.get("jd_text") or "").strip()
+        min_title = int(cfg.get("min_job_title_length", 5))
+        min_jd = int(cfg.get("min_jd_chars", 40))
+
+        fail_reason = None
+        if not company_job_id:
+            fail_reason = "empty company_job_id"
+        elif len(job_title) < min_title:
+            fail_reason = f"title too short len={len(job_title)} min={min_title}"
+        elif not job_link.startswith("http"):
+            fail_reason = f"job_link not http: {job_link!r}"
+        elif len(jd_text) < min_jd:
+            fail_reason = f"jd_text too short len={len(jd_text)} min={min_jd}"
+
+        if fail_reason:
+            to_state = cfg["fail_state"]
+            if debug:
+                logger.debug_index(
+                    func="consult.qualify_meteorite",
+                    index=1,
+                    total=1,
+                    identifier=_consult_job_identifier(input_job),
+                    outcome=f"content fail -> {to_state}",
+                )
+                logger.debug_detail(
+                    f"gate={fail_reason} found company_job_id={company_job_id!r} "
+                    f"title={job_title!r} link={job_link!r} jd_chars={len(jd_text)}"
+                )
+            else:
+                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{fail_reason}]")
+            _transition_job_state_for_task(task_key, [aid], to_state)
+            return to_state
+
+        parsed_job = {
+            "company_job_id": company_job_id,
+            "job_title": job_title,
+            "job_link": job_link,
+            jd_key: jd_text,
+        }
+        if not tracker.initialize_job(aid, input_job["company"], parsed_job):
+            # Identity collision deleted the row — same as listing qualify fail_state return.
+            if not debug:
+                logger.info(f"  {aid} -> deleted (identity collision)")
+            return cfg["fail_state"]
+
+        to_state = cfg["pass_state"]
+        _transition_job_state_for_task(task_key, [aid], to_state)
+        if debug:
+            recorded = tracker.get_job(aid) or {}
+            rec_jd = len((recorded.get("job_data") or {}).get(jd_key, "") or "")
+            logger.debug_index(
+                func="consult.qualify_meteorite",
+                index=1,
+                total=1,
+                identifier=_consult_job_identifier(input_job),
+                outcome=str(to_state),
+            )
+            logger.debug_detail(
+                f"found company_job_id={company_job_id!r} title={job_title!r} "
+                f"link={job_link!r} jd_chars={len(jd_text)} | "
+                f"recorded company_job_id={recorded.get('company_job_id')!r} "
+                f"title={recorded.get('job_title')!r} link={recorded.get('job_link')!r} "
+                f"jd_chars={rec_jd}"
+            )
+        else:
+            logger.info(f"  {input_job.get('job_title') or aid} -> {to_state}")
+        return to_state
+
+    return await _run_batch_consult(
+        task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
+    )
+
+
 def _jd_ready_for_evaluate(job: Dict[str, Any], min_chars: int) -> bool:
     jd = ((job.get("job_data") or {}).get("job_description") or "").strip()
     return len(jd) >= min_chars
@@ -1986,6 +2104,10 @@ async def run_consult_task(
         r = await fetch_culture_pages_batch(batch_id, entities, debug=debug)
     elif task_key == "qualify_job_listings":
         r = await qualify_job_listings(
+            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        )
+    elif task_key == "qualify_meteorite":
+        r = await qualify_meteorite(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
     elif task_key == "evaluate_jd":

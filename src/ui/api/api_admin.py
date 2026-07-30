@@ -51,6 +51,7 @@ from src.utils.config import (
     admin_brain_setting_catalog,
     brain_setting_for_anthropic_agent_key,
     TASK_CONFIG,
+    TRACKER_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
     CANDIDATE_STATES,
@@ -1191,6 +1192,20 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
             return (
                 "JOB LISTINGS:\n" + "\n".join(f"{i:03d}: {item}" for i, item in enumerate(raw_htmls))
             ) if astral_ids else ""
+        # batch mode: qualify_meteorite — lockstep with consult.qualify_meteorite assemble
+        if task_key == "qualify_meteorite":
+            ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
+            jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+            lines = []
+            for jid in ids:
+                job = database.get_job(jid)
+                if not job:
+                    continue
+                lines.append(
+                    f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
+                    f"job_description: {(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                )
+            return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
         job = database.get_job(entity_id)
         if not job:
