@@ -4,7 +4,8 @@ Inbox read orchestration for Meteorite seed (AST-1032).
 Thin core wrapper over src.external.gmail list/get. No persistence, no admin HTTP.
 AST-1033 owns the Read email admin surface and calls these functions.
 AST-1047: From-address → candidate_match enrichment on list payloads.
-AST-1049: strip/extract + Create orchestration → create_meteorite_job (no extra persistence).
+AST-1049: strip/extract + Create orchestration.
+AST-1061: Create routes through gazer email ingest (Playwright + dedupe) → multi create.
 """
 
 from __future__ import annotations
@@ -12,13 +13,13 @@ from __future__ import annotations
 import html as html_module
 
 from src.core.candidate import get_candidate_id_for_query
-from src.core.meteorite import create_meteorite_job
+from src.core.gazer import ingest_meteorite_jobs_from_email_html_sync
 from src.external.gmail import (
     GmailMessageHtml,
     get_message_html as external_get_message_html,
     list_inbox_messages as external_list_inbox_messages,
 )
-from src.utils.config import INBOX_CREATE_JOB_CONFIG
+from src.utils.config import INBOX_CREATE_JOB_CONFIG, METEORITE_CONFIG
 from src.utils.logging import get_logger, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -117,7 +118,7 @@ def create_meteorite_job_from_inbox_message(
     *,
     debug: bool = False,
 ) -> dict:
-    """Fetch message, rematch From→candidate, strip/extract, create meteorite job."""
+    """Fetch message, rematch From→candidate, strip/extract, gazer ingest → meteorite jobs."""
     mid = (message_id or "").strip()
     if not mid:
         raise ValueError("message_id is required")
@@ -170,19 +171,36 @@ def create_meteorite_job_from_inbox_message(
         for line in truncate_debug_content(html):
             logger.debug_detail(line)
 
-    result = create_meteorite_job(cid, html, debug=debug)
+    ingest = ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=debug)
+    created = ingest.get("created") or []
+    skipped = ingest.get("skipped") or []
+    if not created and not skipped:
+        raise ValueError("no meteorite jobs created")
+
     if debug:
         logger.debug_index(
             func="inbox_create_job",
             index=4,
             total=4,
             identifier=mid[:80],
-            outcome="recorded",
+            outcome="recorded" if created else "skipped",
         )
-        logger.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
-        logger.debug_detail(f"company={result.get('company')}")
-        logger.debug_detail(f"state={result.get('state')}")
+        logger.debug_detail(
+            f"created={len(created)} skipped={len(skipped)} mode={ingest.get('mode')}"
+        )
+        if created:
+            logger.debug_detail(f"astral_job_id={created[0].get('astral_job_id')}")
 
-    out = dict(result)
-    out["astral_candidate_id"] = cid
-    return out
+    company_fallback = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+    first = created[0] if created else None
+    return {
+        "astral_candidate_id": cid,
+        "mode": ingest.get("mode"),
+        "created": created,
+        "skipped": skipped,
+        "astral_job_id": first["astral_job_id"] if first else None,
+        "company": first["company"] if first else company_fallback,
+        "state": first["state"] if first else None,
+        "latest_score": first["latest_score"] if first else None,
+        "company_inserted": any(c.get("company_inserted") for c in created),
+    }

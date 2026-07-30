@@ -3,6 +3,7 @@
 Thin Flask wrappers over src.core.inbox. No Gmail I/O here; no persistence.
 AST-1047: pass ui_llm_debug into list for From→candidate_match enrichment.
 AST-1049: POST create-job — strip/extract + meteorite create orchestration.
+AST-1061: create-job may return multiple created / skipped jobs (gazer ingest).
 """
 
 from flask import Blueprint, jsonify, request
@@ -68,13 +69,27 @@ def inbox_create_job_from_message(message_id: str):
     except Exception as e:
         logger.warning("[api_inbox] create-job failed id=%s: %s", mid, e)
         return jsonify({"error": str(e)}), 502
-    return jsonify(
-        {
-            "astral_job_id": result["astral_job_id"],
-            "company": result["company"],
-            "state": result["state"],
-            "latest_score": result["latest_score"],
-            "company_inserted": result["company_inserted"],
-            "astral_candidate_id": result["astral_candidate_id"],
-        }
-    ), 201
+
+    created = result.get("created") or []
+    payload = {
+        "astral_candidate_id": result["astral_candidate_id"],
+        "mode": result.get("mode"),
+        "created": [
+            {
+                "astral_job_id": c["astral_job_id"],
+                "company": c["company"],
+                "state": c["state"],
+                "latest_score": c["latest_score"],
+                "company_inserted": c["company_inserted"],
+            }
+            for c in created
+        ],
+        "skipped": result.get("skipped") or [],
+        "astral_job_id": result.get("astral_job_id"),
+        "company": result.get("company"),
+        "state": result.get("state"),
+        "latest_score": result.get("latest_score"),
+        "company_inserted": result.get("company_inserted"),
+    }
+    # ≥1 created → 201; all skipped → 200
+    return jsonify(payload), (201 if created else 200)

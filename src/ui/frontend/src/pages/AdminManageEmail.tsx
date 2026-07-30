@@ -126,10 +126,31 @@ export default function AdminManageEmail() {
         setToast({ text: msg, variant: "error" })
         return
       }
+      const createdRaw = data.created
+      const skippedRaw = data.skipped
+      const createdCount = Array.isArray(createdRaw) ? createdRaw.length : 0
+      const skippedCount = Array.isArray(skippedRaw) ? skippedRaw.length : 0
+      if (createdCount === 0 && skippedCount > 0) {
+        setToast({
+          text: `Skipped ${skippedCount} (already known or empty)`,
+          variant: "success",
+        })
+        return
+      }
       const jobId =
         typeof data.astral_job_id === "string" ? data.astral_job_id : ""
+      const createdPart =
+        createdCount > 1
+          ? `Created ${createdCount} jobs`
+          : jobId
+            ? `Created job ${jobId}`
+            : createdCount === 1
+              ? "Created job"
+              : "Created job"
+      const skippedPart =
+        skippedCount > 0 ? `; skipped ${skippedCount}` : ""
       setToast({
-        text: jobId ? `Created job ${jobId}` : "Created job",
+        text: `${createdPart}${skippedPart}`,
         variant: "success",
       })
     } catch (err) {
