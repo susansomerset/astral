@@ -11,6 +11,7 @@ Required environment variables (set in Railway / .env):
   LINEAR_API_KEY        — Linear GraphQL (admin deploy footer UAT ticket tooltip — AST-792)
   SLACK_BOT_TOKEN       — Estelle bot token (Contact / external slack; AST-1069 reads)
   SLACK_SIGNING_SECRET  — Slack Events signing secret (AST-1069 verifies)
+  SLACK_APP_TOKEN       — Socket Mode app token (local/dev only; AST-1069)
 
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
@@ -1087,12 +1088,27 @@ CONTACT_CONFIG = {
     "signing_secret_env": "SLACK_SIGNING_SECRET",
     # skill_key → ACL metadata dict. Empty until AST-1071 registers entity-save skills.
     "skills": {},
+    # AST-1069: Events API Request URL path (Flask route under /api).
+    "events_http_path": "/slack/events",
+    # Bot events Contact accepts when listen is on (Slack Event Subscriptions must match).
+    "bot_event_types": ("app_mention", "message"),
+    # Process-local event_id dedupe capacity (single gunicorn worker — AST/Railway).
+    "event_id_dedupe_max": 4096,
+    # Socket Mode (local/dev only) — app-level token env name (xapp-…).
+    "app_token_env": "SLACK_APP_TOKEN",
 }
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+assert str(CONTACT_CONFIG["events_http_path"]).startswith("/")
+assert CONTACT_CONFIG["bot_event_types"] and all(
+    isinstance(_t, str) for _t in CONTACT_CONFIG["bot_event_types"]
+)
+assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
+assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
+assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
 # Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
 for _skill_key in CONTACT_CONFIG["skills"]:
     assert _skill_key not in TASK_CONFIG, _skill_key
