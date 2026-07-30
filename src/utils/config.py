@@ -1085,8 +1085,37 @@ CONTACT_CONFIG = {
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
-    # skill_key → ACL metadata dict. Empty until AST-1071 registers entity-save skills.
-    "skills": {},
+    # skill_key → ACL metadata. Contact-only entity-save paths (AST-1071).
+    # Keys must never appear in TASK_CONFIG (assert below).
+    "skills": {
+        "save_candidate_profile": {
+            "entity": "candidate",
+            "write": True,
+            "description": (
+                "Merge allowlisted profile fields into candidate_data.profile "
+                "for Slack Contact intake."
+            ),
+            # Dotted paths under candidate_data. Payload field keys must match exactly.
+            "allowed_paths": (
+                "profile.first",
+                "profile.last",
+                "profile.pronoun_preference",
+                "profile.contact_email",
+            ),
+        },
+        "save_candidate_contact": {
+            "entity": "candidate",
+            "write": True,
+            "description": (
+                "Merge allowlisted contact.* fields into candidate_data "
+                "(not slack_user_id — AST-1068 owns that)."
+            ),
+            "allowed_paths": (
+                "contact.contact_email",
+                "contact.reply_email",
+            ),
+        },
+    },
 }
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
@@ -1096,6 +1125,15 @@ assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
 # Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
 for _skill_key in CONTACT_CONFIG["skills"]:
     assert _skill_key not in TASK_CONFIG, _skill_key
+for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
+    assert isinstance(_skill_meta, dict), _skill_key
+    assert _skill_meta.get("entity") == "candidate", _skill_key
+    assert _skill_meta.get("write") is True, _skill_key
+    assert isinstance(_skill_meta.get("description"), str) and _skill_meta["description"].strip(), _skill_key
+    _paths = _skill_meta.get("allowed_paths")
+    assert isinstance(_paths, tuple) and len(_paths) > 0, _skill_key
+    for _p in _paths:
+        assert isinstance(_p, str) and "." in _p, (_skill_key, _p)
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
