@@ -4,15 +4,15 @@ Meteorite placeholder company ensure + job create (AST-1041 / AST-1042 / AST-105
 Lazy-insert meteorite-<candidate_id> from METEORITE_CONFIG. API-facing job create
 from raw HTML inserts into METEORITE_CONFIG["job_create_state"] (meteorite GDL entry
 METEORITE_NEW) with synthetic latest_score from job_create_latest_score.
-No email ingest. No admin UI. Leave-in-place — callers must not delete these rows
-on candidate exit.
+Optional job_link for link-sourced ingest (AST-1061); still no Ruth metadata.
+No admin UI. Leave-in-place — callers must not delete these rows on candidate exit.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from src.core.candidate import get_candidate
 from src.data.database import get_company, get_job, save_company, save_job
@@ -73,6 +73,7 @@ def create_meteorite_job(
     candidate_id: str,
     html_body: str,
     *,
+    job_link: Optional[str] = None,
     debug: bool = False,
 ) -> dict[str, Any]:
     """Lazy-ensure meteorite company, then insert a job from raw HTML.
@@ -82,6 +83,8 @@ def create_meteorite_job(
     way ingest_jobs inserts into NEW (JOB_STATES prior_states=None unrestricted
     entry). METEORITE_NEW is unrestricted; this path does not expand normal
     JD_READY priors and does not invent a new job state.
+    Optional job_link for link-sourced ingest (AST-1061); company_job_id stays None
+    (Ruth enrichment owns external UUID).
 
     Returns:
       {
@@ -110,13 +113,14 @@ def create_meteorite_job(
     score = float(METEORITE_CONFIG["job_create_latest_score"])
     astral_job_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    link = job_link.strip() if job_link and str(job_link).strip() else None
 
     inserted = save_job(
         astral_job_id,
         company=short_name,
         state=state,
         job_title=None,
-        job_link=None,
+        job_link=link,
         company_job_id=None,
         job_data={jd_key: html_body},
         state_history=[{"to_state": state, "timestamp": now, "score": score}],
