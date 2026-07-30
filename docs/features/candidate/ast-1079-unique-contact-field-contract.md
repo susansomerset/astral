@@ -159,3 +159,19 @@ No conflicts requiring `conf-!!-NONE`.
 | Publish ref | `origin/sub/AST-1045/AST-1079-unique-contact-field-contract` |
 | Built | `fb4cd6e02c39ada87e5628f1177739f3cd536d8a` |
 | Notes | Stage 1 — `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` sibling to lookup; email/slack path objects shared by identity. |
+
+### Radia — code-rubric.v1
+
+`[code-rubric] revision=1` · **Overall:** DISCUSS (stragglers only; product CLEAN)
+
+**What’s solid**
+- Sibling `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` matches plan Stage 1 verbatim: email/slack path objects shared by identity with `CANDIDATE_LOOKUP_CONFIG`; scalar/list paths + compare/scopes as specified; import-time asserts lock alignment and `contact_keys` membership.
+- No core/data/UI/enforce creep — AST-1080 boundary held.
+- Engineer `code()` touched only `src/utils/config.py`; Betty owns `test()` / `merge-tests`.
+
+**Issues**
+- **discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot diff vs `origin/dev` brings `docs/features/**` + Betty test-tree paths in scope. All three score **conforms** on this diff — no product fix.
+
+**Recommended actions**
+- Ada: no code change required for stragglers; proceed `resolve-child` → User Testing unless a discuss thread is opened.
+- Full statutes-checked table + Linear comment on AST-1079.
