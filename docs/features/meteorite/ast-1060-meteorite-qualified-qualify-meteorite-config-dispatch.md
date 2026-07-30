@@ -190,3 +190,16 @@ Keep **METEORITE_NEW** `prior_states: None` (create / ingest unrestricted entry)
 **Revision 1 — 2026-07-30**
 Driven by: Joan `[plan-discuss] round=1 concern` / plan-rubric fix-now — insert-only provision leaves claimable stale `evaluate_jd`@`METEORITE_NEW` (AC5).
 Changes: Added `src/core/dispatcher.py` to Files Changed; Stage 1 Step 5 retires that pair via `delete_dispatch_task` after inserts; removed the old “do not mutate DB rows” decision and the out-of-scope “cleanup later” line; Done-when / Self-Assessment / Rules updated for live claim-surface match.
+
+## Review (build stub)
+
+**Publish ref:** 
+**Plan path:** 
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 |  | JOB_STATES/UI + qualify_meteorite TASK_CONFIG/dispatch + retire evaluate_jd@METEORITE_NEW |
+| 2 |  | data/admin agent_task.json Ruth shell |
+
+**Tip:**  on 
+
