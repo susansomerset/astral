@@ -389,7 +389,11 @@ def normalize_topic_menu(raw: Any) -> dict:
     topics = raw.get("topics")
     if not isinstance(topics, list):
         return empty_topic_menu()
-    return {"topics": list(topics)}
+    out: dict = {"topics": list(topics)}
+    confirmed = raw.get("preamble_confirmed_at")
+    if isinstance(confirmed, str) and confirmed.strip():
+        out["preamble_confirmed_at"] = confirmed.strip()
+    return out
 
 
 def get_topic_menu(candidate_id: str) -> dict:
@@ -464,7 +468,10 @@ def validate_topic_menu(menu: Any) -> dict:
             raise ValueError(f"duplicate topic id: {row['id']!r}")
         seen_ids.add(row["id"])
         out.append(row)
-    return {"topics": out}
+    result: dict = {"topics": out}
+    if "preamble_confirmed_at" in normalized:
+        result["preamble_confirmed_at"] = normalized["preamble_confirmed_at"]
+    return result
 
 
 def revise_topic_menu(existing: Any, incoming: Any) -> dict:
@@ -481,7 +488,13 @@ def revise_topic_menu(existing: Any, incoming: Any) -> dict:
         retired = dict(topic)
         retired["status"] = "retired"
         out.append(retired)
-    return {"topics": out}
+    result: dict = {"topics": out}
+    # Prefer incoming stamp when both set; else keep existing.
+    if "preamble_confirmed_at" in incoming_n:
+        result["preamble_confirmed_at"] = incoming_n["preamble_confirmed_at"]
+    elif "preamble_confirmed_at" in existing_n:
+        result["preamble_confirmed_at"] = existing_n["preamble_confirmed_at"]
+    return result
 
 
 def save_topic_menu(
@@ -534,6 +547,39 @@ def save_topic_menu(
             f"retired={status_counts['retired']} revise={revise}"
         )
     return to_store
+
+
+def mark_topic_menu_preamble_confirmed(
+    candidate_id: str,
+    *,
+    when: str | None = None,
+    debug: bool = False,
+) -> dict:
+    """Stamp ``preamble_confirmed_at`` on topic_menu without wiping topics (AST-1075)."""
+    logger.set_debug_flag(debug)
+    menu = get_topic_menu(candidate_id)
+    if debug:
+        logger.debug_index(
+            func="candidate.mark_topic_menu_preamble_confirmed",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"topics={len(menu.get('topics') or [])}")
+    stamp = when or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    menu["preamble_confirmed_at"] = stamp
+    save_candidate_data(candidate_id, {_topic_menu_key(): menu}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.mark_topic_menu_preamble_confirmed",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"preamble_confirmed_at={stamp}")
+    return menu
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:

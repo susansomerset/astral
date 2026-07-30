@@ -101,11 +101,12 @@ candidate_data.topic_menu = {
       "informs": ["backstory", ...],  # ⊆ TOPIC_MENU_CONFIG["informs"], non-empty
       "status": "open" | "ready" | "retired"
     }
-  ]
+  ],
+  "preamble_confirmed_at": "<YYYY-MM-DD HH:MM:SS>"  # optional; AST-1075 after Estelle accept
 }
 ```
 
-Revising keeps prior topics: dropped ids become `status: "retired"` rather than deleted from the list. Default save path is revise-by-id (`save_topic_menu(..., revise=True)`).
+Revising keeps prior topics: dropped ids become `status: "retired"` rather than deleted from the list. Default save path is revise-by-id (`save_topic_menu(..., revise=True)`). Optional `preamble_confirmed_at` is stamped by `mark_topic_menu_preamble_confirmed` when Estelle confirm accepts (AST-1075); normalize/validate/revise preserve it.
 
 ## Token resolution
 
