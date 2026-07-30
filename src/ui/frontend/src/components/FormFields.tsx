@@ -1,7 +1,7 @@
 export interface Field {
   key: string
   label: string
-  type: "text" | "textarea" | "select" | "toggle"
+  type: "text" | "textarea" | "select" | "toggle" | "string_list"
   options?: (string | { value: string; label: string })[]
 }
 
@@ -95,6 +95,43 @@ function renderInput(
           </span>
         </label>
       )
+
+    case "string_list": {
+      // Persist as string[]; empty rows allowed while editing (core strips on save)
+      const items = Array.isArray(value) ? value.map(v => String(v)) : []
+      return (
+        <div className="dep-string-list">
+          {items.map((item, i) => (
+            <div key={i} className="dep-string-list-row">
+              <input
+                className="dep-input"
+                type="text"
+                value={item}
+                onChange={e => {
+                  const next = [...items]
+                  next[i] = e.target.value
+                  onChange(next)
+                }}
+              />
+              <button
+                type="button"
+                className="dep-btn cancel"
+                onClick={() => onChange(items.filter((_, j) => j !== i))}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="dep-btn cancel dep-string-list-add"
+            onClick={() => onChange([...items, ""])}
+          >
+            Add
+          </button>
+        </div>
+      )
+    }
 
     default:
       return (
