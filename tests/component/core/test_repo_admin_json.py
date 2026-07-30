@@ -317,7 +317,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 43
+            assert count == 44
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
