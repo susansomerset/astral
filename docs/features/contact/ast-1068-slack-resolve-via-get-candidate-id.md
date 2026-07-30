@@ -145,22 +145,18 @@ def resolve_slack_user(
      - If `debug`: outcome `found|none` (no create).
      - Return `{"astral_candidate_id": None, "state": None, "created": False}`.
    - If `cid` is None and **`estelle_in_play` is True** (create path):
-     - `profile = fetch_user_profile(sid)` from `src.external.slack`.
+     - `slack_profile = fetch_user_profile(sid)` from `src.external.slack` (returns first/last/display_name — Slack API fields, not a candidate `profile` blob).
      - `new_id = CONTACT_CONFIG["prospect_candidate_id_template"].format(slack_user_id=sid)`. Strip/lower the id the same way admin create does for consistency: `.strip().lower()`.
-     - Build `candidate_data`:
+     - Seed names via **AST-1014 name columns** (do **not** write legacy `candidate_data["profile"]` — refused by `save_candidate_data` / initiate paths):
+       - `first = slack_profile.get("first") or ""`, `last = slack_profile.get("last") or ""`.
+       - If `slack_profile["display_name"]` is non-empty and both first/last empty, set `first = display_name` (single-field seed — do not invent a last name).
+     - Build `candidate_data` with Slack id only under contact:
 
 ```python
-{
-    "contact": {"slack_user_id": sid},
-    "profile": {
-        "first": profile.get("first") or "",
-        "last": profile.get("last") or "",
-    },
-}
+{"contact": {"slack_user_id": sid}}
 ```
 
-     - If `profile["display_name"]` is non-empty and both first/last empty, set `profile["first"] = display_name` (single-field seed — do not invent a last name).
-     - Call `initiate_prospect_candidate(new_id, candidate_data)`.
+     - Call `initiate_prospect_candidate(new_id, candidate_data, first=first, last=last)`.
      - If `debug`: outcome `recorded|created`, details `slack_user_id=`, `candidate_id=`, `state=PROSPECT`.
      - Return `{"astral_candidate_id": new_id, "state": "PROSPECT", "created": True}`.
 
@@ -325,3 +321,18 @@ Stages 1–2 product intent lands: PROSPECT registry, lookup scan, `fetch_user_p
 Create gated by `estelle_in_play`; lookup never creates; users.info external-only; PROSPECT separate from `initiate_candidate`; Style D outcomes; Betty revised tests for AST-1014 columns.
 
 context_tokens≈58000
+
+---
+
+## Resolution
+
+**2026-07-30** — resolve-child after Radia `Review Posted` @ `54d12f7c`.
+
+| Finding | Disposition |
+| -- | -- |
+| **fix-now** — restore AST-1017 frontend tests dropped when engineer merge of `origin/dev` stripped banned paths | **`[qa-handoff]` → Betty** — engineer cannot commit `tests/**`; Betty restores from `origin/dev` onto publish tip (no new assertions) |
+| **discuss** — Stage 2 plan still showed `profile` seed | **Addressed** — Stage 2 create path now documents AST-1014 name columns (`first=`/`last=`) + `contact.slack_user_id` only |
+| **discuss** — C4 ancestry statutes | **Noted** — no product change |
+
+Also merged `origin/ftr/AST-1043-slack-bot-agent` (AST-1070 context) keeping both `resolve_slack_user` / `fetch_user_profile` and conversation cache / `fetch_conversation_history`.
+
