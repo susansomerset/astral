@@ -3,8 +3,9 @@ Contact: Slack foundation + CONTACT_CONFIG skills ACL (Astral Contact / AST-1066
 
 AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 (`handle_slack_event`). AST-1071: ACL-gated entity-save skill runners.
-Siblings: Manage Slack listen UI (AST-1067), resolve/PROSPECT (AST-1068),
-conversation context (AST-1070). Estelle turn loop: AST-1046 — not here.
+AST-1070: Slack-sourced conversation context load / process-local cache / append.
+Siblings: Manage Slack listen UI (AST-1067), resolve/PROSPECT (AST-1068).
+Estelle turn loop: AST-1046 — not here.
 """
 
 from __future__ import annotations
@@ -12,11 +13,17 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from collections import OrderedDict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import get_candidate, save_candidate_data
-from src.external.slack import parse_url_verification, verify_slack_signature
+from src.external.slack import (
+    fetch_conversation_history,
+    parse_url_verification,
+    post_message,
+    verify_slack_signature,
+)
 from src.utils.config import CONTACT_CONFIG
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -26,7 +33,168 @@ logger = get_logger(__name__)
 _seen_event_ids: "OrderedDict[str, None]" = OrderedDict()
 _seen_lock = threading.Lock()
 
+# Process-local conversation cache: key → {messages, fetched_at}. LRU by access.
+# Key is (channel, Slack thread_ts or "") — never message ts (would shard one DM).
+_context_cache: "OrderedDict[Tuple[str, str], Dict[str, Any]]" = OrderedDict()
+_context_lock = threading.Lock()
+
 _TEXT_DEBUG_MAX = 200
+
+
+def _context_cache_key(channel: str, thread_ts: Optional[str]) -> Tuple[str, str]:
+    """Cache key = (channel, Slack thread_ts only). Missing thread → \"\"."""
+    return (channel, thread_ts or "")
+
+
+def _context_cache_put(key: Tuple[str, str], entry: Dict[str, Any]) -> None:
+    """Insert/refresh cache entry; evict oldest when over max conversations."""
+    max_n = int(CONTACT_CONFIG["context_cache_max_conversations"])
+    with _context_lock:
+        if key in _context_cache:
+            del _context_cache[key]
+        _context_cache[key] = entry
+        while len(_context_cache) > max_n:
+            _context_cache.popitem(last=False)
+
+
+def load_slack_conversation_context(
+    *,
+    channel: str,
+    thread_ts: Optional[str] = None,
+    refresh: bool = False,
+    debug: bool = False,
+) -> list[dict]:
+    """Return recent Slack messages for a conversation (cache + Slack SoT)."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    key = _context_cache_key(channel, thread_ts)
+    now = time.time()
+    ttl = float(CONTACT_CONFIG["context_cache_ttl_seconds"])
+    limit = int(CONTACT_CONFIG["context_history_limit"])
+
+    if not refresh:
+        with _context_lock:
+            entry = _context_cache.get(key)
+            if entry is not None and (now - float(entry["fetched_at"])) < ttl:
+                # Move to MRU end.
+                _context_cache.move_to_end(key)
+                messages = list(entry["messages"])
+                if debug:
+                    log.debug_index(
+                        func="contact.load_slack_conversation_context",
+                        index=1,
+                        total=1,
+                        identifier=f"{key[0]}:{key[1] or '-'}",
+                        outcome="cache_hit",
+                    )
+                    log.debug_detail(f"count={len(messages)} refresh=False")
+                return messages
+
+    messages = fetch_conversation_history(
+        channel=channel,
+        thread_ts=thread_ts or None,
+        limit=limit,
+    )
+    _context_cache_put(key, {"messages": list(messages), "fetched_at": now})
+    if debug:
+        log.debug_index(
+            func="contact.load_slack_conversation_context",
+            index=1,
+            total=1,
+            identifier=f"{key[0]}:{key[1] or '-'}",
+            outcome="fetched",
+        )
+        log.debug_detail(f"count={len(messages)} refresh={refresh}")
+    return list(messages)
+
+
+def append_slack_conversation_message(
+    *,
+    channel: str,
+    thread_ts: Optional[str] = None,
+    message: dict,
+    debug: bool = False,
+) -> None:
+    """Append one message into the process-local cache (no Slack round-trip)."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    if not isinstance(message, dict) or "text" not in message or "ts" not in message:
+        raise ValueError("message must be a dict with text and ts")
+    if not isinstance(message["text"], str) or not isinstance(message["ts"], str):
+        raise ValueError("message text and ts must be strings")
+
+    key = _context_cache_key(channel, thread_ts)
+    limit = int(CONTACT_CONFIG["context_history_limit"])
+    now = time.time()
+    with _context_lock:
+        entry = _context_cache.get(key)
+        if entry is None:
+            entry = {"messages": [dict(message)], "fetched_at": now}
+        else:
+            msgs = list(entry["messages"])
+            msgs.append(dict(message))
+            # Keep newest N (Slack history order varies; trim from the front).
+            if len(msgs) > limit:
+                msgs = msgs[-limit:]
+            entry = {"messages": msgs, "fetched_at": entry.get("fetched_at", now)}
+            del _context_cache[key]
+        _context_cache[key] = entry
+        max_n = int(CONTACT_CONFIG["context_cache_max_conversations"])
+        while len(_context_cache) > max_n:
+            _context_cache.popitem(last=False)
+
+    if debug:
+        log.debug_index(
+            func="contact.append_slack_conversation_message",
+            index=1,
+            total=1,
+            identifier=f"{key[0]}:{key[1] or '-'}",
+            outcome="appended",
+        )
+        preview = message["text"]
+        if len(preview) > _TEXT_DEBUG_MAX:
+            preview = preview[:_TEXT_DEBUG_MAX] + "…"
+        log.debug_detail(f"ts={message['ts']!r} text={preview!r}")
+
+
+def contact_post_message(
+    *,
+    channel: str,
+    text: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """Post via Slack Web API, then append outbound into process-local cache."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    resp = post_message(channel=channel, text=text, thread_ts=thread_ts)
+    if resp.get("ok"):
+        # Prefer Slack response ts; fall back so cache still warms if shape odd.
+        out_ts = resp.get("ts") or (resp.get("message") or {}).get("ts") or ""
+        if not isinstance(out_ts, str):
+            out_ts = str(out_ts) if out_ts else ""
+        if out_ts:
+            append_slack_conversation_message(
+                channel=channel,
+                thread_ts=thread_ts,
+                message={
+                    "user": "estelle",
+                    "bot_id": "estelle",
+                    "text": text,
+                    "ts": out_ts,
+                },
+                debug=debug,
+            )
+    if debug:
+        log.debug_index(
+            func="contact.contact_post_message",
+            index=1,
+            total=1,
+            identifier=channel,
+            outcome="ok" if resp.get("ok") else "api_error",
+        )
+        log.debug_detail(f"ok={resp.get('ok')!r} error={resp.get('error')!r}")
+    return resp
 
 
 def slack_listen_enabled() -> bool:
@@ -275,16 +443,30 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
     text = event.get("text") or ""
     if not isinstance(text, str):
         text = ""
+    channel = event.get("channel")
+    msg_ts = event.get("ts")
     result = {
         "accepted": True,
         "event_id": event_id,
         "event_type": etype,
         "user": event.get("user"),
-        "channel": event.get("channel"),
-        "ts": event.get("ts"),
+        "channel": channel,
+        "ts": msg_ts,
         "thread_ts": event.get("thread_ts"),
         "text": text,
     }
+    # Warm process-local cache — key uses Slack thread_ts only (never message ts).
+    if isinstance(channel, str) and channel and isinstance(msg_ts, str) and msg_ts:
+        append_slack_conversation_message(
+            channel=channel,
+            thread_ts=event.get("thread_ts"),
+            message={
+                "user": event.get("user"),
+                "text": text,
+                "ts": msg_ts,
+            },
+            debug=debug,
+        )
     if debug:
         preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
         log.debug_index(
@@ -296,7 +478,7 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         )
         log.debug_detail(
             f"accepted=True event_type={etype!r} user={event.get('user')!r} "
-            f"channel={event.get('channel')!r} text={preview!r}"
+            f"channel={channel!r} text={preview!r}"
         )
     return result
 
