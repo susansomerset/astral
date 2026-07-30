@@ -1080,6 +1080,10 @@ CANDIDATE_LOOKUP_CONFIG = {
 CONTACT_CONFIG = {
     # Default off. Manage Slack (AST-1067) owns the per-environment flip.
     "listen_enabled": False,
+    # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
+    "listen_state_filename": "contact_slack_listen.json",
+    # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
+    "production_deploy_env": "production",
     # Format with environment= (deploy label). AST-1067 applies when listen is on
     # and deploy is not production.
     "non_production_reply_prefix_template": "[{environment}] ",
@@ -1128,6 +1132,8 @@ CONTACT_CONFIG = {
 }
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
+assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -3395,6 +3401,7 @@ NAV_CONFIG = [
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
             {"label": "Manage Email", "path": "/admin/manage_email"},
+            {"label": "Manage Slack", "path": "/admin/manage_slack"},
         ],
     },
 ]
