@@ -155,4 +155,15 @@ brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
 - **§1.5.1 debug-contract-gated:** Style D only when `debug=True`.
 - **§1.3 DRY:** single `CONVERSATIONAL_PERFORMANCE_SCHEMA`; no per-call string enums.
 - **Layers:** utils config + core agent only; no `src/data/` debug; Slack stays external/sibling.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`
+**Plan path:** `docs/features/contact/ast-1072-conversational-agent-envelope.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | *(this push)* | CHAT envelope schema + do_task contract + contact_estelle_turn seed |
+
+**Tip:** set after publish
 )

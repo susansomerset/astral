@@ -65,6 +65,18 @@ BASE_SCHEMA = {
     "failure_note": {"type": "str", "required": False},
 }
 
+# AST-1072: CHAT-only agent_performance — do not mutate BASE_SCHEMA.
+CONVERSATIONAL_OUTCOMES = ("success", "failure", "concern")
+CONVERSATIONAL_PERFORMANCE_SCHEMA = {
+    "status": {
+        "type": "str",
+        "required": True,
+        "enum": list(CONVERSATIONAL_OUTCOMES),
+    },
+    "failure_note": {"type": "str", "required": False},
+    "admin_aside": {"type": "str", "required": False},
+}
+
 # Post-decode jobs[] item for grade_do / grade_get / grade_like (grades_encoded_notes).
 _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
     "astral_job_id": {"type": "str", "required": True},
@@ -806,6 +818,19 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+    },
+    # AST-1072: conversational Contact Estelle turn (envelope only — Slack/loop = AST-1073).
+    "contact_estelle_turn": {
+        "print_label": "Contact Estelle Turn",
+        "response_format": "json",
+        "response_schema": {
+            "reply": {"type": "str", "required": True},
+        },
+        "entity_type": None,
+        "requires_candidate_key": False,
+        "trigger_state": None,
+        "task_type": "CHAT",
+        "agent_task": "contact_estelle_turn",
     },
 }
 
@@ -2876,6 +2901,12 @@ def is_rubric_backed_task(task_key: str) -> bool:
     return rubric_owner_task_key(task_key) is not None
 
 
+def is_conversational_task(task_key: str) -> bool:
+    """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
+    cfg = TASK_CONFIG.get(task_key) or {}
+    return cfg.get("task_type") == "CHAT"
+
+
 def importance_multiplier(n: int) -> float:
     """Return the configured multiplier for rubric importance (AST-359 / AST-358)."""
     ci = ASTRAL_CONFIG["consult_importance"]
@@ -2987,6 +3018,13 @@ BRAIN_LITTLE = "Little"
 BRAIN_MEDIUM = "Medium"
 BRAIN_BIG = "Big"
 BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
+
+# AST-1072: conversational Contact turns — Medium / non-thinking; Estelle agent row stays Big for upshot.
+CONTACT_ESTELLE_CONFIG = {
+    "default_brain_setting": "Medium",
+    "task_key": "contact_estelle_turn",
+}
+assert CONTACT_ESTELLE_CONFIG["default_brain_setting"] == BRAIN_MEDIUM
 
 
 def infer_brain_setting_from_legacy_model_code(model_code: Optional[str]) -> str:
@@ -4166,8 +4204,14 @@ def stringify_response_schema(task_key: str) -> str:
         payload: object = example
     else:
         payload = _schema_to_example(schema)
+    # CHAT tasks use concern-capable performance schema; others keep BASE_SCHEMA.
+    perf_schema = (
+        CONVERSATIONAL_PERFORMANCE_SCHEMA
+        if is_conversational_task(task_key)
+        else BASE_SCHEMA
+    )
     envelope = {
-        "agent_performance": _schema_to_example(BASE_SCHEMA),
+        "agent_performance": _schema_to_example(perf_schema),
         "agent_payload": payload,
     }
     return json.dumps(envelope, indent=2)
