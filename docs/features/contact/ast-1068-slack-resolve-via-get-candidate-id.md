@@ -224,3 +224,104 @@ The plan is binding. Execute stages in order; one commit per stage on epic workt
 - **Publish ref:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`
 - **Tip:** `7216151c` — resolve_slack_user + users.info + Events wire
 - **Stage commits:** `0856416a` (PROSPECT registry + lookup), `7216151c` (resolve + wire)
+
+---
+
+## Review (Radia / code-rubric.v1)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1068  
+**Publish ref:** `2b0a4352` on `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id` (docs tip follows)  
+**Overall:** FIX-NOW
+
+**Diff change set:** `origin/dev...2b0a4352` — layers `{core, data, external, utils, ui, docs, scripts}`; tip carries Contact ancestry (1066/1067/1069/1071) + AST-1068 resolve/PROSPECT; change_types `{add, modify, delete}`.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | PROSPECT registry + prospect_candidate_id_template in config |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | bot token via CONTACT_CONFIG env name at call time |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plans only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file per ticket under docs/features/contact/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | merge-tests tips touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | needs-discussion | tip drops origin/dev AST-1017 frontend tests after merge (restore) |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | users.info in external; Contact orchestrates |
+| astral.layers.import-direction | scoped | conforms | core→external/utils; UI never fetches users.info |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Socket Mode script under scripts/ (ancestry) |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | no React resolve logic; Manage Slack ancestry only |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | no new open data routes this ticket |
+| astral.standards.data-raises-caller-logs | scoped | conforms | external raises; Contact handles create/lookup |
+| astral.standards.database-header-inventory | scoped | not-applicable | no new tables; existing candidate_data JSON |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on resolve when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | extends AST-1047 matcher; separate prospect initiator |
+| astral.standards.in-scope-only | scoped | conforms | no Manage Slack/cache/skills/turn-loop ownership |
+| astral.standards.logging-via-utils | scoped | conforms | Contact logger; external users.info silent |
+| astral.standards.no-cross-contamination | scoped | violates | tip deletes origin/dev AST-1017 frontend test files |
+| astral.standards.no-hardcoded-sets | scoped | conforms | PROSPECT + id template from config |
+| astral.standards.public-then-helpers | scoped | conforms | public resolve_slack_user / initiate_prospect surface |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | core chooses PROSPECT on create |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | candidate registry only |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | Manage Slack page placement (ancestry) |
+| astral.ui.naming-conventions | scoped | conforms | existing snake_case admin/events routes |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no worker config change |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHAs present; tip re-merged |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests/merge/resolve vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1068-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | needs-discussion | merge origin/dev dropped AST-1017 frontend tests |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1068-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held; AST-1014 column seed is correct adaptation |
+| orch.pipeline.plan-is-bible | universal | needs-discussion | Stage 2 still shows profile seed; tip uses AST-1014 columns |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible revisions |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Ada remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.state.entity-state-transitions | conforms | PROSPECT on CANDIDATE_STATES |
+| pattern.config.config-block | conforms | slack_user_id_paths scan + id template |
+| pattern.core.contact-agent (proposed) | conforms | resolve_slack_user + Events accept wire |
+
+### Plan adherence
+
+Stages 1–2 product intent lands: PROSPECT registry, lookup scan, `fetch_user_profile`, `resolve_slack_user` gated by `estelle_in_play`, accept-path wire, race re-lookup. Tip correctly seeds names via AST-1014 columns (`first=`/`last=`) instead of plan’s stale `profile` blob. Self-Assessment MAJOR-CHANGE / high / HIGH matches create-gate risk.
+
+### Findings
+
+**fix-now** — `astral.standards.no-cross-contamination` / merge integrity  
+**Location:** tip vs `origin/dev` — missing `tests/component/frontend/components/test_IntakePreamblePanel.test.tsx`, `tests/component/frontend/fixtures/ast1017PreambleConfig.ts`; `test_CandidateIntake.test.tsx` regressed (AST-1017 preamble coverage stripped after `cdf5b307` merge origin/dev).  
+**Action:** Restore those paths from `origin/dev` onto this publish tip (`git checkout origin/dev -- <paths>` then publish). Do not invent new assertions — restore integration-line coverage.
+
+**discuss** — Stage 2 plan text still shows `profile` seed; tip uses AST-1014 name columns + `initiate_prospect_candidate(..., first=, last=)`. Product is correct; update plan stub to match.
+
+**discuss** — C4 straggler: Joan Excluded docs/tests/scripts/ui statutes now in-scope via tip ancestry — score **conforms** except engineer-test-tree-ban noted above.
+
+### What’s solid
+
+Create gated by `estelle_in_play`; lookup never creates; users.info external-only; PROSPECT separate from `initiate_candidate`; Style D outcomes; Betty revised tests for AST-1014 columns.
+
+context_tokens≈58000
