@@ -203,3 +203,25 @@ Changes: Added `src/core/dispatcher.py` to Files Changed; Stage 1 Step 5 retires
 
 **Tip:** `6b89952b364a157cb9edc53a415cf19c3a2944d9` on `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`
 
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1060
+**Publish ref:** `6f15565094e8c7825e229b35e7c8e71094cc1ce0` (`origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`)
+**Overall:** DISCUSS
+
+### What’s solid
+- Qualify states + priors + UI manifests; `qualify_meteorite` TASK_CONFIG / METEORITE_DISPATCH_TASKS; evaluate_jd@METEORITE_QUALIFIED.
+- Surgical retire of `evaluate_jd`@`METEORITE_NEW` in `ensure_meteorite_dispatch_tasks` (JD_READY untouched); provision sums `retired`.
+- Ruth `agent_task` shell; Betty tests/bible on tip after qa-handoff catalog lock fix.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded at plan time; in-scope on three-dot vs `origin/dev` via plan docs + Betty tests/bible — all substance **conforms**:
+  - `astral.debug.spikes-under-debug-dir`
+  - `astral.docs.features-single-file-per-ticket`
+  - `astral.git.engineer-test-tree-ban`
+
+### Recommended actions
+- Ada: acknowledge stragglers → resolve-child → User Testing.
+
