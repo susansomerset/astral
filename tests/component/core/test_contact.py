@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import hashlib
 import hmac
 import json
@@ -12,7 +14,7 @@ import pytest
 
 from src.core import contact as contact_mod
 from src.core import candidate as candidate_mod
-from src.utils.config import CONTACT_CONFIG, TASK_CONFIG
+from src.utils.config import ASTRAL_CONFIG, CONTACT_CONFIG, TASK_CONFIG
 
 
 def _sign(secret: str, timestamp: str, body: bytes) -> str:
@@ -418,4 +420,82 @@ class TestAst1070ContactConversationContext:
         assert msgs[-1]["ts"] == "5.5"
         assert msgs[-1]["text"] == "bye"
         assert msgs[-1]["bot_id"] == "estelle"
+
+
+# Branches: hydrate/set listen; production gate; format prefix; post_contact_reply (AST-1067).
+class TestAst1067ContactListenCore:
+    def setup_method(self) -> None:
+        contact_mod._listen_hydrated = False
+
+    def test_hydrate_from_durable_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", tmp_path)
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        contact_mod._listen_hydrated = False
+        (tmp_path / CONTACT_CONFIG["listen_state_filename"]).write_text(
+            '{"listen_enabled": true}\n', encoding="utf-8"
+        )
+        assert contact_mod.slack_listen_enabled() is True
+        assert CONTACT_CONFIG["listen_enabled"] is True
+        (tmp_path / CONTACT_CONFIG["listen_state_filename"]).write_text(
+            '{"listen_enabled": false}\n', encoding="utf-8"
+        )
+        assert contact_mod.slack_listen_enabled() is True
+
+    def test_set_slack_listen_persists_and_applies(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", tmp_path)
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        contact_mod._listen_hydrated = False
+        assert contact_mod.set_slack_listen_enabled(True) is True
+        assert CONTACT_CONFIG["listen_enabled"] is True
+        assert contact_mod.slack_listen_enabled() is True
+        path = tmp_path / CONTACT_CONFIG["listen_state_filename"]
+        assert path.is_file()
+        assert contact_mod.set_slack_listen_enabled(False) is False
+        assert CONTACT_CONFIG["listen_enabled"] is False
+
+    def test_set_rejects_non_bool(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", tmp_path)
+        contact_mod._listen_hydrated = False
+        with pytest.raises(TypeError, match="bool"):
+            contact_mod.set_slack_listen_enabled("yes")  # type: ignore[arg-type]
+
+    def test_contact_is_production_deploy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "production")
+        assert contact_mod.contact_is_production_deploy() is True
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "PRODUCTION")
+        assert contact_mod.contact_is_production_deploy() is True
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        assert contact_mod.contact_is_production_deploy() is False
+        monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        assert contact_mod.contact_is_production_deploy() is False
+
+    def test_format_contact_reply_text_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        monkeypatch.setattr(contact_mod, "get_deploy_label", lambda: "staging")
+        assert contact_mod.format_contact_reply_text("hello") == "[staging] hello"
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "production")
+        assert contact_mod.format_contact_reply_text("hello") == "hello"
+
+    def test_post_contact_reply_calls_post_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        monkeypatch.setattr(contact_mod, "get_deploy_label", lambda: "staging")
+        posted = MagicMock(return_value={"ok": True, "ts": "1.0"})
+        monkeypatch.setattr(contact_mod, "post_message", posted)
+        out = contact_mod.post_contact_reply(
+            channel="C1", text="hi there", thread_ts="9.9"
+        )
+        assert out == {"ok": True, "ts": "1.0"}
+        posted.assert_called_once_with(
+            channel="C1", text="[staging] hi there", thread_ts="9.9"
+        )
 

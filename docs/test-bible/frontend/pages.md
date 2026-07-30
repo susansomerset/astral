@@ -1198,3 +1198,24 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
   ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx
 ```
+
+---
+
+### AST-1067 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
+
+Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; non-prod copy notes `[<environment>]` reply prefix. API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page render + toggle (§6c) | `AdminManageSlack.tsx` + route | **`test_AdminManageSlack.test.tsx`** |
+
+**Broken / obsolete:** none — new Admin page.
+
+**Integration:** no existing Manage Slack scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx
+```
