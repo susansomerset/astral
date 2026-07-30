@@ -1508,3 +1508,24 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt \
   -q
 ```
+
+
+### AST-1079 · AST-1045
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1079-unique-contact-field-contract`.
+
+`CANDIDATE_CONTACT_UNIQUENESS_CONFIG`: save-gate field vocabulary (paths + compare + scopes) sibling to `CANDIDATE_LOOKUP_CONFIG`; email/slack path **objects** shared by identity. Enforcement is **AST-1080**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared email/slack paths + scalar/list/compare/scopes | `src/utils/config.py` | **`TestAst1079ContactUniquenessConfig`** |
+
+**Broken / obsolete:** none — additive config block; no callers yet.
+
+**Integration:** none — config vocabulary only; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  -q
+```
