@@ -429,3 +429,14 @@ Stages 1–5 land: config/NAV, data JSON under db_dir, Contact hydrate/set + Sty
 Per-volume durable listen; default-off + fail-closed; Contact owns prefix / external stays dumb; auth on API + AdminRoute; NAV↔routes path match.
 
 context_tokens≈54000
+
+---
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Review tip:** `9b2c81ed` (`docs(AST-1067): Radia review — findings`)  
+**Overall:** DISCUSS — **no fix-now**
+
+- Acknowledged Radia **discuss** C4 stragglers (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.scripts-exempt-from-layer-rules`): tip-applicable via ancestry; all **conforms**. No product or plan ACL change.
+- No product code changes in resolve.
