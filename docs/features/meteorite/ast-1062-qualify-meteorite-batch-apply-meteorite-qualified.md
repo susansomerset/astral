@@ -184,3 +184,16 @@ No statute conflicts requiring `conf-!!-NONE`.
 
 ### Recommended actions
 - Hedy: acknowledge stragglers → resolve-child → User Testing.
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Commit:** `resolve(AST-1062): — clean`
+
+### Against Radia review (`3a05d08e` / Overall DISCUSS)
+
+- **fix-now:** none — no product changes.
+- **discuss (straggler ×5):** Acknowledged. Joan excluded at plan time; Radia re-checked on three-dot vs `origin/dev` via stacked siblings + Betty tests/docs — all substance **conforms** (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.standards.database-header-inventory`, `astral.ui.frontend-file-placement`). No further action.
+- **advisory:** none.
+
+Stages 1–2 product + Betty manifest green @ `748ffd39`; Radia docs intake @ `3a05d08e` already on publish-ref before this resolve commit.
