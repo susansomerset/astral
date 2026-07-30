@@ -815,5 +815,24 @@
     "user_prompt": "Qualify these meteorite jobs. Follow the cache instructions and return company_job_id, job_title, job_link, and jd_text for each astral_job_id.",
     "run_next": "",
     "updated_at": "2026-07-30 00:54:55"
+  },
+  {
+    "task_key_uuid": "59eb6a1d-0988-414b-8a10-34375eba03e3",
+    "task_key": "contact_estelle_turn",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "## Contact turn\n\n{$SELECTED_AGENT}\n\n## Instructions\n\nProduce the conversational envelope for this turn. JSON only.\n",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "You are Estelle in a Contact Slack conversation turn.\n\nRespond with ONE JSON object only (no markdown fences) using the standard two-key envelope:\n- agent_performance: status, optional failure_note, optional admin_aside\n- agent_payload: { \"reply\": \"<user-visible message>\" }\n\nagent_performance.status must be exactly one of: success | failure | concern.\n- success: the turn completed normally; admin_aside optional.\n- failure: you could not perform the turn; set failure_note.\n- concern: the user appears to be struggling or having a negative experience; set admin_aside to one short sentence for Astral admins. Do NOT put the admin aside in reply.\n\nagent_payload.reply is the only user-visible message text.\n",
+    "run_next": "",
+    "updated_at": "2026-07-30 02:45:33",
+    "task_group_order": "6000",
+    "task_group_name": "Contact Estelle",
+    "task_seq": 1,
+    "task_name": "Contact Estelle Turn"
   }
 ]
