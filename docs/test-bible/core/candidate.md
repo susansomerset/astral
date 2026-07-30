@@ -583,3 +583,51 @@ cd src/ui/frontend && npm run test:component -- \
   tests/component/core/test_candidate.py::TestAst1068CandidateSlackLookup \
   -q
 ```
+
+
+---
+
+### AST-1074 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1074-topic-menu-model-and-persistence`.
+
+`candidate_data.topic_menu` meta sibling: `empty_topic_menu` / `normalize_topic_menu` / `get_topic_menu` / `validate_topic` / `validate_topic_menu` / `revise_topic_menu` (missing ids → `retired`, no wipe) / `save_topic_menu` (default `revise=True`; Style D when `debug=True`). Config vocabulary: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate / revise / get / save Topic Menu | `src/core/candidate.py` | **`TestAst1074TopicMenuPersistence`** |
+
+**Broken / obsolete:** none — additive Topic Menu library API.
+
+**Integration:** no existing scenario asserts `topic_menu` persistence — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  -q
+```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+Optional `preamble_confirmed_at` on `candidate_data.topic_menu` (normalize / validate / revise prefer-incoming-else-existing) + `mark_topic_menu_preamble_confirmed` (stamp without wiping topics; Style D when `debug=True`). Orchestration: **`docs/test-bible/core/intake.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stamp preserve + mark helper | `src/core/candidate.py` | **`TestAst1075PreambleConfirmedAt`** |
+
+**Broken / obsolete:** none — additive meta key on AST-1074 Topic Menu envelope.
+
+**Integration:** no existing scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
+  -q
+```

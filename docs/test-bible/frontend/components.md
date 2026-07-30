@@ -534,3 +534,21 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
   --testNamePattern="AST-1064"
 ```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+`IntakeTopicMenuPanel` — ui_config `topic_menu_gen.ui` labels; first-turn Estelle confirm (“Anything here you would change?”); Accept → generate → menu summary; Send posts revise message without generate until `accepted`. Page handoff: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Confirm / accept / generate panel | `IntakeTopicMenuPanel.tsx` | **`test_IntakeTopicMenuPanel.test.tsx`** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx
+```
