@@ -560,3 +560,26 @@ cd src/ui/frontend && npm run test:component -- \
 **Broken / obsolete:** none — additive lookup API.
 
 **Integration:** no existing scenario asserts string→candidate lookup — no revision; do not invent new integration coverage.
+
+
+---
+
+### AST-1068 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
+
+`get_candidate_id_for_query` scans `slack_user_id_paths`; `initiate_prospect_candidate` creates `PROSPECT` with **name columns** (`first=`/`last=`) and `candidate_data.contact.slack_user_id` only — **no** legacy `profile` blob (AST-1014). Contact: **`docs/test-bible/core/contact.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Slack id lookup + prospect initiate (columns + contact) | `src/core/candidate.py` | **`TestAst1068CandidateSlackLookup`** |
+
+**Broken / obsolete:** initiate cases that put names under `candidate_data.profile` — revised for AST-1014 columns.
+
+**Integration:** no existing scenario — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1068CandidateSlackLookup \
+  -q
+```

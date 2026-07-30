@@ -262,6 +262,43 @@ def initiate_candidate(
         state_history=_append_candidate_state_history({}, "", initial, now),
     )
 
+
+
+def initiate_prospect_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+    *,
+    first: Optional[str] = None,
+    last: Optional[str] = None,
+) -> None:
+    """Create a candidate row in PROSPECT (Slack create-on-miss). Not NEW_CANDIDATE."""
+    cid = (astral_candidate_id or "").strip()
+    if not cid:
+        raise ValueError("astral_candidate_id is required")
+    if get_candidate(cid) is not None:
+        raise ValueError(f"candidate already exists: {cid}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cd = dict(candidate_data or {})
+    if "profile" in cd:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+    contact = cd.get("contact")
+    if isinstance(contact, dict):
+        normalize_contact_urls(contact)
+    first_v = "" if first is None else str(first)
+    last_v = "" if last is None else str(last)
+    full_v = recompute_full_name(first_v, last_v)
+    database.save_candidate(
+        cid,
+        state="PROSPECT",
+        candidate_data=cd,
+        first=first_v,
+        last=last_v,
+        full=full_v,
+        pronouns=PRONOUN_PREFERENCE_DEFAULT,
+        state_history=_append_candidate_state_history({}, "", "PROSPECT", now),
+    )
+
+
 def save_candidate_data(
     candidate_id: str,
     data: Dict[str, Any],
@@ -586,8 +623,10 @@ def get_candidate_id_for_query(
     needle_cmp = needle.casefold() if casefold else needle
 
     hit_ids: set[str] = set()
-    paths = tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"]) + tuple(
-        CANDIDATE_LOOKUP_CONFIG["name_paths"]
+    paths = (
+        tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["name_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"])
     )
     for candidate in list_candidates(include_deleted=False):
         values = []

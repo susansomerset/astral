@@ -2669,3 +2669,60 @@ class TestAst1047GetCandidateIdForQuery:
         dbg.reset_mock()
         candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=False)
         assert not dbg.called
+
+
+# Branches: slack_user_id path match; initiate_prospect_candidate PROSPECT (AST-1068).
+class TestAst1068CandidateSlackLookup:
+    def _cand(self, cid: str, **kwargs):
+        data = {"contact": {}, "profile": {}}
+        if "slack_user_id" in kwargs:
+            data["contact"]["slack_user_id"] = kwargs.pop("slack_user_id")
+        if "contact_email" in kwargs:
+            data["contact"]["contact_email"] = kwargs.pop("contact_email")
+        if "profile" in kwargs:
+            data["profile"] = kwargs.pop("profile")
+        return {"astral_candidate_id": cid, "candidate_data": data, **kwargs}
+
+    def test_lookup_matches_slack_user_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", slack_user_id="Uabc"),
+            self._cand("c2", contact_email="x@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Uabc") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("UABC") == "c1"
+
+    def test_initiate_prospect_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved = {}
+
+        def _save(cid, state=None, candidate_data=None, state_history=None, merge=None, **kwargs):
+            saved["cid"] = cid
+            saved["state"] = state
+            saved["candidate_data"] = candidate_data
+            saved["state_history"] = state_history
+            saved["kwargs"] = kwargs
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        # AST-1014: names are columns (first=/last=); contact blob holds slack_user_id only.
+        candidate_mod.initiate_prospect_candidate(
+            "slack-u1",
+            {"contact": {"slack_user_id": "U1"}},
+            first="Ada",
+            last="",
+        )
+        assert saved["cid"] == "slack-u1"
+        assert saved["state"] == "PROSPECT"
+        assert saved["candidate_data"] == {"contact": {"slack_user_id": "U1"}}
+        assert "profile" not in saved["candidate_data"]
+        assert saved["kwargs"].get("first") == "Ada"
+        assert saved["kwargs"].get("last") == ""
+        assert saved["state_history"] is not None
+
+    def test_initiate_rejects_empty_and_existing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with pytest.raises(ValueError, match="required"):
+            candidate_mod.initiate_prospect_candidate("")
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid})
+        with pytest.raises(ValueError, match="already exists"):
+            candidate_mod.initiate_prospect_candidate("slack-u1")
+
