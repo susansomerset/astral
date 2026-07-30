@@ -194,3 +194,99 @@ The plan is binding. Execute stages in order; one commit per stage on epic workt
 - **Publish ref:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`
 - **Tip:** `cb4f3227` — Contact scaffold + CONTACT_CONFIG (stages 1–2)
 - **Stage commits:** `db5e2b79` (config), `cb4f3227` (core module)
+
+---
+
+## Review (Radia / code-rubric.v1)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1066  
+**Publish ref:** `a106fadf` on `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`  
+**Overall:** DISCUSS
+
+**Diff change set:** `origin/dev...a106fadf` — layers `{core, utils, docs}`; paths `src/core/contact.py` (A), `src/utils/config.py` (M), plan + test-bible + component tests; change_types `{add, modify}`.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no graded agent tasks / confidence surfaces |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / TASK_CONFIG dispatch paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade vectors |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim API |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id generation |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no agent_data / entity refs |
+| astral.config.config-source-of-truth | scoped | conforms | CONTACT_CONFIG + slack_user_id_paths live in config.py |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | env *names* only; no Slack secret values / import-time reads |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plan only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan at docs/features/contact/ast-1066-… |
+| astral.git.betty-no-src-or-features | scoped | needs-discussion | merge-tests exception ok; follow-up scrub `a106fadf` still edits src/ |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty test/merge-tests vocabulary only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | contact.py config readers only; no Slack HTTP I/O |
+| astral.layers.import-direction | scoped | conforms | contact.py → utils only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui layer paths |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | no ui endpoints |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer work |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/schema paths |
+| astral.standards.debug-contract-gated | scoped | conforms | no found/recorded I/O / debug= surfaces this ticket |
+| astral.standards.dry-and-focused-functions | scoped | conforms | thin public helpers; meteorite-shaped scaffold |
+| astral.standards.in-scope-only | scoped | conforms | sibling scopes absent from product delta |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger from utils; no print/bare logging |
+| astral.standards.no-cross-contamination | scoped | conforms | TASK_CONFIG untouched; CONTACT_CONFIG separate ACL |
+| astral.standards.no-hardcoded-sets | scoped | conforms | paths / ACL / env names from config |
+| astral.standards.public-then-helpers | scoped | conforms | five public functions; no private helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py add has no data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no PROSPECT/state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state work |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch run_next |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend paths |
+| astral.ui.naming-conventions | scoped | not-applicable | no ui paths |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no gunicorn/worker changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single merge-tests SHA then restorative scrub |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests/fix vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish only on origin/sub/AST-1043/AST-1066-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe in product commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none in tip history |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1066-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held; Betty @susan on tests-branch bleed |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–2 match tip product |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute/pattern-catalog edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible; engineer owns src/plan |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Ada remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | CONTACT_CONFIG + CANDIDATE_LOOKUP slack_user_id_paths |
+| pattern.core.contact-agent (proposed) | conforms | src/core/contact.py scaffold exemplar |
+
+### Plan adherence
+
+Stages 1–2 land exactly: CONTACT_CONFIG distinct from TASK_CONFIG, env-name contracts, `slack_user_id_paths`, five public Contact helpers, no Slack HTTP / PROSPECT / UI / skill runners. Self-Assessment Single-Component / high / low matches footprint. Out-of-scope siblings clean on tip product (post-scrub).
+
+### Findings
+
+**discuss** — C4 straggler: Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` now in-scope on tip (docs/features + tests/bible). All three score **conforms** — no product action.
+
+**discuss** — `astral.git.betty-no-src-or-features`: merge-tests exception covers `25aa2de8`; follow-up `fix(AST-1066)` scrub `a106fadf` still edits `src/` / drops AST-1072 feature doc to restore Ada tip. Operational recovery after polluted `origin/tests` ancestry (Betty already @susan). Tip product matches Ada build — no Contact scaffold fix required.
+
+### What’s solid
+
+Config home + Contact scaffold mirror meteorite pattern; secrets deferred; listen default off; empty skills with TASK_CONFIG collision assert; Betty component coverage matches bible.
+
+context_tokens≈52000
