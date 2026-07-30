@@ -76,3 +76,30 @@ ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_dat
   tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi \
   -q
 ```
+
+---
+
+
+### AST-1067 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
+
+Manage Slack listen hydrate/set (`set_slack_listen_enabled` / durable JSON under `db_dir`), `contact_is_production_deploy`, `format_contact_reply_text` / `post_contact_reply` (non-prod `[<environment>] ` prefix). Data I/O: **`docs/test-bible/data/contact_listen.md`**. Config/NAV: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate/set listen; production gate; format prefix; post → `post_message` | `src/core/contact.py` | **`TestAst1067ContactListenCore`** |
+
+**Broken / obsolete:** none — additive listen/prefix surface on Contact.
+
+**Integration:** no existing scenario asserts Manage Slack listen / reply prefix — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1067ContactListenConfig \
+  tests/component/data/test_contact_listen.py::TestAst1067ContactListenData \
+  tests/component/core/test_contact.py::TestAst1067ContactListenCore \
+  tests/component/ui/api/test_api_contact.py::TestAst1067ContactListenApi \
+  -q
+```
+
