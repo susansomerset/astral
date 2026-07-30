@@ -1566,6 +1566,32 @@ class TestAst1014CandidateLibraryConfig:
         assert not any(p.startswith("profile.") for p in cfg.INTAKE_CONFIG["build_field_paths"])
 
 
+class TestAst1015PreambleValidationConfig:
+    """AST-1015: PREAMBLE_VALIDATION_CONFIG + TASK_CONFIG Ruth task_key."""
+
+    def test_validation_config_outcomes_and_task_key(self) -> None:
+        pvc = cfg.PREAMBLE_VALIDATION_CONFIG
+        assert pvc["task_key"] == "preamble_validate_response"
+        assert pvc["outcome_field"] == "outcome"
+        assert pvc["outcomes"] == ("Valid", "Try Again", "Escalate")
+        assert "preamble_validate_response" in cfg.get_task_keys()
+
+    def test_task_config_schema_requires_outcome(self) -> None:
+        entry = cfg.TASK_CONFIG["preamble_validate_response"]
+        assert entry["response_format"] == "json"
+        assert entry["requires_candidate_key"] is True
+        assert entry["entity_type"] == "candidate"
+        assert entry["response_schema"]["outcome"]["required"] is True
+
+    def test_task_key_matches_preamble_config_when_present(self) -> None:
+        # Sibling AST-1016 may land on the same tip via ftr; equality is the epic contract.
+        if hasattr(cfg, "PREAMBLE_CONFIG"):
+            assert (
+                cfg.PREAMBLE_VALIDATION_CONFIG["task_key"]
+                == cfg.PREAMBLE_CONFIG["validation_task_key"]
+            )
+
+
 class TestAst1016PreambleConfig:
     """AST-1016: PREAMBLE_CONFIG Intro + three context.raw_* steps + Ruth task_key."""
 
@@ -2084,6 +2110,21 @@ class TestAst972CandidateStageDispatch:
         assert d["trigger_state"] == "REQUESTED_RESUME"
 
 
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst1022HonorAutoOffStageDispatch:
+    """AST-1022: CANDIDATE_STAGE_DISPATCH seeds AUTO off for new stage rows."""
+
+    def test_stage_dispatch_auto_mode_seed_false(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["auto_mode"] is False
+        assert arts["auto_mode"] is False
+
+
 class TestAst973LegacyCandidateRemap:
     """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
 
@@ -2168,6 +2209,53 @@ class TestAst998ExperienceBodyKind:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
 
+class TestAst1020DefaultStyleColorTokens:
+    """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
+
+    def test_golden_text_and_border_color_tokens(self) -> None:
+        colors = cfg.BUILD_CONFIG["default_style"]["colors"]
+        assert colors["text_primary"] == "#1a1a1a"
+        assert colors["text_secondary"] == "#444"
+        assert colors["text_tertiary"] == "#666"
+        assert colors["border_light"] == "#e0e0e0"
+        assert colors["border_medium"] == "#ccc"
+        # Existing consumers keep ink/muted/rule/surface (not renamed).
+        assert "ink" in colors
+        assert "muted" in colors
+        assert "rule" in colors
+        assert "surface" in colors
+        assert colors["default_accent"] == "#3c2c6e"
+        assert colors["default_header"] == "#3c2c6e"
+        assert colors["page_background"] == "#f5f5f5"
+
+
+class TestAst1024SessionCoverLetterConfig:
+    """AST-1024: BUILD_CONFIG session_cover_letter field contract + document title."""
+
+    def test_document_title_and_field_required_flags(self) -> None:
+        block = cfg.BUILD_CONFIG["session_cover_letter"]
+        assert block["document_title"] == "SomersetCover"
+        fields = block["fields"]
+        assert fields["from_block"]["required"] is True
+        assert fields["letter_date"]["required"] is True
+        assert fields["to_block"]["required"] is False
+        assert fields["subject"]["required"] is False
+        assert fields["letter"]["required"] is True
+        assert fields["signoff_closing"]["required"] is True
+        assert fields["signature"]["required"] is True
+        # Job artifact shape stays separate (Subject/Letter/signature).
+        assert "cover_letter" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert set(fields) == {
+            "from_block",
+            "letter_date",
+            "to_block",
+            "subject",
+            "letter",
+            "signoff_closing",
+            "signature",
+        }
+
+
 class TestAst1010CandidateTaglineConfig:
     """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""
 
@@ -2200,3 +2288,412 @@ class TestAst1010CandidateTaglineConfig:
         assert "candidate_tagline" in keys
         assert keys.index("candidate_title") < keys.index("candidate_tagline")
         assert keys.index("candidate_tagline") < keys.index("candidate_contact_detail")
+
+
+class TestAst1025SessionCoverLetterNav:
+    """AST-1025: Admin NAV_CONFIG Session Cover Letter after Session Resume Paste."""
+
+    def test_session_cover_letter_follows_session_resume_paste(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        resume_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_resume_paste")
+        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
+        assert cover_i == resume_i + 1
+        assert items[cover_i]["label"] == "Session Cover Letter"
+
+
+class TestAst1033ReadEmailNav:
+    """AST-1033 / AST-1048: Admin NAV_CONFIG Manage Email after Session Cover Letter."""
+
+    def test_manage_email_follows_session_cover_letter(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
+        manage_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_email")
+        assert manage_i == cover_i + 1
+        assert items[manage_i]["label"] == "Manage Email"
+        assert not any(it.get("path") == "/admin/read_email" for it in items)
+
+
+class TestAst1037SimpleResumeParseConfig:
+    """AST-1037: shared craft-resume schema + simple_resume_parse TASK_CONFIG + normalize keys."""
+
+    def test_simple_resume_parse_shares_schema_object_with_craft_base(self) -> None:
+        assert "simple_resume_parse" in cfg.get_task_keys()
+        simple = cfg.TASK_CONFIG["simple_resume_parse"]
+        craft = cfg.TASK_CONFIG["craft_resume_base"]
+        assert simple["response_schema"] is craft["response_schema"]
+        assert simple["response_schema"] is cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert simple["response_format"] == "json"
+        assert simple["context_format"] == "simple_resume_parse_{index}"
+        assert simple["entity_type"] is None
+        assert simple["requires_candidate_key"] is False
+        assert simple["trigger_state"] is None
+
+    def test_craft_resume_base_meta_unchanged(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]
+        assert craft["requires_candidate_key"] is True
+        assert craft["context_format"] == "parse_resume_{index}"
+        assert craft["response_format"] == "json"
+        assert craft["entity_type"] is None
+        assert craft["trigger_state"] is None
+
+    def test_normalize_task_keys_frozenset_in_config(self) -> None:
+        keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
+        assert isinstance(keys, frozenset)
+        assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
+class TestAst1041MeteoriteConfig:
+    """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
+
+    def test_required_keys_and_ignore_state(self) -> None:
+        m = cfg.METEORITE_CONFIG
+        assert m["short_name_prefix"] == "meteorite-"
+        assert m["short_name_template"] == "meteorite-{candidate_id}"
+        assert m["company_name"] == "meteorite"
+        assert m["company_state"] == "IGNORE"
+        assert m["company_state"] in cfg.COMPANY_STATES
+        assert "note" in m["company_data"]
+        # AST-1056: create landing retargeted to METEORITE_NEW.
+        assert m["job_create_state"] == "METEORITE_NEW"
+        assert m["job_create_state"] in cfg.JOB_STATES
+        assert m["job_create_latest_score"] == 10.0
+
+    def test_template_matches_prefix_plus_candidate(self) -> None:
+        cid = "cand-42"
+        built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
+
+
+class TestAst1047CandidateLookupConfig:
+    """AST-1047: CANDIDATE_LOOKUP_CONFIG email/name paths + casefold."""
+
+    def test_lookup_paths_and_casefold(self) -> None:
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert luc["match_casefold"] is True
+        assert luc["email_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+            "profile.contact_email",
+            "profile.reply_email",
+        )
+        assert luc["name_paths"] == (
+            "first",
+            "last",
+            "full",
+            "profile.first",
+            "profile.last",
+        )
+
+class TestAst1049InboxCreateJobConfig:
+    """AST-1049: INBOX_CREATE_JOB_CONFIG strip sets + subject template."""
+
+    def test_strip_sets_and_subject_template(self) -> None:
+        ic = cfg.INBOX_CREATE_JOB_CONFIG
+        assert "script" in ic["strip_tags"]
+        assert "style" in ic["strip_attr_names"]
+        assert ic["strip_on_attrs"] is True
+        assert "{subject}" in ic["subject_html_template"]
+        assert "{body}" in ic["subject_html_template"]
+
+
+class TestAst1053MeteoriteGdlJobStates:
+    """AST-1053: parallel meteorite GDL JOB_STATES + In Review/Skipped manifests."""
+
+    _PASS = (
+        "METEORITE_NEW",
+        "METEORITE_QUALIFIED",  # AST-1060: pre-AI → Ruth qualify → GDL entry
+        "METEORITE_PASSED_JD",
+        "METEORITE_PASSED_DO",
+        "METEORITE_PASSED_GET",
+        "METEORITE_PASSED_LIKE",
+        "METEORITE_PASSED_LIKE_RETRY",
+    )
+    _FAIL = (
+        "METEORITE_FAILED_QUALIFY",  # AST-1060
+        "METEORITE_ERROR_QUALIFY",  # AST-1060
+        "METEORITE_FAILED_JD",
+        "METEORITE_ERROR_EVALUATE_JD",
+        "METEORITE_FAILED_DO",
+        "METEORITE_FAILED_TECHNICAL_DO",
+        "METEORITE_FAILED_GET",
+        "METEORITE_FAILED_TECHNICAL_GET",
+        "METEORITE_FAILED_LIKE",
+        "METEORITE_FAILED_TECHNICAL_LIKE",
+    )
+
+    def test_job_states_priors(self) -> None:
+        js = cfg.JOB_STATES
+        assert js["METEORITE_NEW"]["prior_states"] is None
+        # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
+        assert js["METEORITE_QUALIFIED"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_PASSED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_PASSED_LIKE_RETRY"]["prior_states"] == ["METEORITE_PASSED_LIKE"]
+        # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
+        assert "METEORITE_CULTURE_READY" not in js
+        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+
+    def test_in_review_and_skipped_membership(self) -> None:
+        for state in self._PASS:
+            assert state in cfg.IN_REVIEW_STATES, state
+            assert state not in cfg.SKIPPED_STATES, state
+        for state in self._FAIL:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state not in cfg.IN_REVIEW_STATES, state
+
+    def test_ui_sections_labels_order_and_grades(self) -> None:
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        for state in self._PASS:
+            assert state in review, state
+        assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_QUALIFIED")
+        assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
+        assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+        assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
+        assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
+        assert labels["METEORITE_PASSED_LIKE_RETRY"] == "Meteorite LIKE upshot (retry)"
+
+        order = cfg.JOBS_SKIPPED_SECTION_ORDER
+        for state in self._FAIL:
+            assert state in order, state
+            assert order.count(state) == 1, state
+        assert order.index("FAILED_TECHNICAL_LIKE") < order.index("METEORITE_FAILED_LIKE")
+        assert order.index("METEORITE_FAILED_LIKE") < order.index("FAILED_GET")
+        assert order.index("FAILED_JD") < order.index("METEORITE_FAILED_JD")
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_JD"] == "Meteorite Failed JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_EVALUATE_JD"] == "Meteorite Error Evaluate JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_QUALIFY"] == "Meteorite Failed Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_QUALIFY"] == "Meteorite Error Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_TECHNICAL_LIKE"] == (
+            "Meteorite Failed Technical LIKE"
+        )
+
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_JD"] == "jd_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_DO"] == "do_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_GET"] == "get_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE"] == "like_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE_RETRY"] == "like_grades"
+        assert "METEORITE_NEW" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert "METEORITE_QUALIFIED" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_JD"] == "jd_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_DO"] == "do_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_GET"] == "get_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_LIKE"] == "like_grades"
+        assert "METEORITE_FAILED_TECHNICAL_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_FAILED_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_ERROR_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+
+    def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
+        # AC2 smoke: score-gated exceptions + non-meteorite GDL priors.
+        # RECOMMENDED meteorite LIKE priors are AST-1055 (TestAst1055MeteoriteLikeUpshotTasks).
+        # AST-1054 adds METEORITE_PASSED_* (not METEORITE_NEW / fails) to PASSED_SCORE_GATED_STATES.
+        # Create landing retarget is AST-1056 (TestAst1056MeteoriteCreateLanding).
+        # AST-1060: QUALIFIED / FAILED_QUALIFY / ERROR_QUALIFY stay ungated.
+        for state in (
+            "METEORITE_NEW",
+            "METEORITE_QUALIFIED",
+            "METEORITE_PASSED_LIKE_RETRY",
+            *self._FAIL,
+        ):
+            assert state not in cfg.PASSED_SCORE_GATED_STATES, state
+        rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        assert "PASSED_LIKE" in rec_priors
+        assert "PASSED_LIKE_RETRY" in rec_priors
+        assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+        # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
+        # qualify_job_listings has no agent_task key — do not invent one.
+        qjl = cfg.TASK_CONFIG["qualify_job_listings"]
+        assert qjl["pass_state"] == "PASSED_JOBLIST"
+        assert qjl["fail_state"] == "FAILED_JOBLIST"
+        assert qjl["error_state"] == "ERROR_QUALIFY_JOB_LISTINGS"
+        assert "agent_task" not in qjl
+        assert cfg._dispatch_trigger_state_for_task_key("qualify_job_listings") == "NEW"
+
+
+class TestAst1056MeteoriteCreateLanding:
+    """AST-1056: meteorite create lands in METEORITE_NEW via METEORITE_CONFIG."""
+
+    def test_job_create_state_is_meteorite_new(self) -> None:
+        assert cfg.METEORITE_CONFIG["job_create_state"] == "METEORITE_NEW"
+        assert cfg.METEORITE_CONFIG["job_create_state"] in cfg.JOB_STATES
+        assert cfg.JOB_STATES["METEORITE_NEW"]["prior_states"] is None
+        # Score stand-in unchanged; meteorite score_floor dispatch is AST-1054.
+        assert cfg.METEORITE_CONFIG["job_create_latest_score"] == 10.0
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "METEORITE_DISPATCH_TASKS"),
+    reason="AST-1054 meteorite dispatch specs not on this publish tip",
+)
+class TestAst1054MeteoriteGdlDispatch:
+    """AST-1054: METEORITE_DISPATCH_TASKS, score_floor gating, overlay map, twin triggers."""
+
+    def test_dispatch_row_specs_and_job_states(self) -> None:
+        rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        # AST-1060: evaluate_jd claims METEORITE_QUALIFIED (not METEORITE_NEW).
+        assert ("evaluate_jd", "METEORITE_NEW") not in rows
+        assert rows[("evaluate_jd", "METEORITE_QUALIFIED")]["score_floor"] is None
+        assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
+        assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
+        assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
+        assert rows[("meteorite_upshot", "METEORITE_PASSED_LIKE")]["score_floor"] == 0.0
+        for e in cfg.METEORITE_DISPATCH_TASKS:
+            assert e["trigger_state"] in cfg.JOB_STATES
+            assert e["auto_mode"] is False
+        for task_key, overlay in cfg.METEORITE_GDL_OUTCOME_BY_TASK.items():
+            for sk in ("pass_state", "fail_state", "error_state"):
+                assert overlay[sk] in cfg.JOB_STATES, f"{task_key}.{sk}"
+
+    def test_score_floor_gating_and_trigger_defaults(self) -> None:
+        assert cfg.dispatch_claim_uses_score_floor("METEORITE_NEW") is False
+        assert cfg.dispatch_claim_uses_score_floor("METEORITE_QUALIFIED") is False
+        for state in (
+            "METEORITE_PASSED_JD",
+            "METEORITE_PASSED_DO",
+            "METEORITE_PASSED_GET",
+            "METEORITE_PASSED_LIKE",
+        ):
+            assert state in cfg.PASSED_SCORE_GATED_STATES
+            assert cfg.dispatch_claim_uses_score_floor(state) is True
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_like") == "METEORITE_PASSED_GET"
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_upshot") == "METEORITE_PASSED_LIKE"
+        assert cfg._dispatch_trigger_state_for_task_key("evaluate_jd") == "JD_READY"
+        assert cfg._dispatch_trigger_state_for_task_key("grade_do") == "PASSED_JD"
+        assert cfg._dispatch_trigger_state_for_task_key("grade_get") == "PASSED_DO"
+
+
+@pytest.mark.skipif(
+    "qualify_meteorite" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1060 qualify_meteorite TASK_CONFIG not on this publish tip",
+)
+class TestAst1060QualifyMeteoriteConfig:
+    """AST-1060: qualify states, TASK_CONFIG, dispatch claim, helper wiring."""
+
+    def test_qualify_task_config_and_dispatch_row(self) -> None:
+        tc = cfg.TASK_CONFIG["qualify_meteorite"]
+        assert tc["scored"] is False
+        assert tc["output_type"] == "fields"
+        assert tc["pass_state"] == "METEORITE_QUALIFIED"
+        assert tc["fail_state"] == "METEORITE_FAILED_QUALIFY"
+        assert tc["error_state"] == "METEORITE_ERROR_QUALIFY"
+        assert tc["agent_task"] == "qualify_meteorite"
+        assert tc["entity_type"] == "job"
+        assert tc["requires_candidate_key"] is True
+        assert tc["trigger_state"] is None
+        schema_items = tc["response_schema"]["jobs"]["items_schema"]
+        for key in ("astral_job_id", "company_job_id", "job_title", "job_link", "jd_text"):
+            assert schema_items[key]["required"] is True, key
+
+        rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        assert rows[("qualify_meteorite", "METEORITE_NEW")]["score_floor"] is None
+        # First METEORITE_DISPATCH_TASKS entry is qualify (before GDL).
+        assert cfg.METEORITE_DISPATCH_TASKS[0]["task_key"] == "qualify_meteorite"
+        assert cfg._dispatch_trigger_state_for_task_key("qualify_meteorite") == "METEORITE_NEW"
+        assert "qualify_meteorite" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert cfg._dispatch_entity_type_for_task_key("qualify_meteorite") == "job"
+        assert cfg._dispatch_entity_type_for_task_key("qualify_job_listings") == "job"
+
+
+class TestAst1055MeteoriteLikeUpshotTasks:
+    """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
+
+    def test_task_config_twins_and_schema_parity(self) -> None:
+        like = cfg.TASK_CONFIG["meteorite_like"]
+        upshot = cfg.TASK_CONFIG["meteorite_upshot"]
+        grade_like = cfg.TASK_CONFIG["grade_like"]
+        analysis = cfg.TASK_CONFIG["analysis_upshot"]
+
+        assert like["pass_state"] == "METEORITE_PASSED_LIKE"
+        assert like["fail_state"] == "METEORITE_FAILED_LIKE"
+        assert like["error_state"] == "METEORITE_FAILED_TECHNICAL_LIKE"
+        assert like["requires_company"] is False
+        assert like["rubric_artifact"] == "like_rubric"
+        assert like["grades_key"] == "like_grades"
+        assert like["agent_task"] == "meteorite_like"
+        assert like["response_schema"] == grade_like["response_schema"]
+
+        assert upshot["pass_state"] == "RECOMMENDED"
+        assert upshot["error_state"] == "METEORITE_PASSED_LIKE_RETRY"
+        assert upshot["requires_company"] is False
+        assert upshot["agent_task"] == "meteorite_upshot"
+        assert upshot["response_schema"] == analysis["response_schema"]
+        assert analysis["requires_company"] is True
+
+    def test_recommended_priors_include_meteorite_like_states(self) -> None:
+        priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        assert "METEORITE_PASSED_LIKE" in priors
+        assert "METEORITE_PASSED_LIKE_RETRY" in priors
+        assert "PASSED_LIKE" in priors
+        assert "PASSED_LIKE_RETRY" in priors
+
+    def test_rubric_owner_batch_and_encoded_membership(self) -> None:
+        from src.core import agent as agent_mod
+        from src.core import dispatcher as dispatcher_mod
+
+        assert cfg.rubric_owner_task_key("meteorite_like") == "grade_like"
+        assert cfg.rubric_owner_task_key("grade_like") == "grade_like"
+        assert "meteorite_like" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_upshot" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+        assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
+
+
+class TestAst1057MeteoriteRecommendedSection:
+    """AST-1057: Recommended Meteorites section config + state UI manifest."""
+
+    def test_jobs_recommended_meteorite_section_block(self) -> None:
+        sec = cfg.JOBS_RECOMMENDED_METEORITE_SECTION
+        assert sec["section_id"] == "meteorites"
+        assert sec["label"] == "Meteorites"
+        assert sec["company_prefix"] == cfg.METEORITE_CONFIG["short_name_prefix"]
+        assert sec["company_prefix"] == "meteorite-"
+
+    def test_manifest_exposes_meteorite_section(self) -> None:
+        rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
+        ms = rec["meteorite_section"]
+        assert ms == {
+            "section_id": "meteorites",
+            "label": "Meteorites",
+            "company_prefix": "meteorite-",
+        }
+        # Non-meteorite Recommended section contract unchanged (AST-522 smoke).
+        assert [row["state"] for row in rec["sections"]] == [
+            "RECOMMENDED",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "CANDIDATE_REVIEW",
+        ]
+
+
+
+# Branches: METEORITE_EMAIL_INGEST_CONFIG keys for gazer email ingest (AST-1061).
+class TestAst1061MeteoriteEmailIngestConfig:
+    def test_link_schemes_excludes_concurrency_min_jd(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        cfg = METEORITE_EMAIL_INGEST_CONFIG
+        assert set(cfg["link_schemes"]) == {"http", "https"}
+        excludes = {s.casefold() for s in cfg["link_exclude_substrings"]}
+        for frag in (
+            "unsubscribe",
+            "mailto:",
+            "list-manage.com",
+            "/preferences",
+            "/email-settings",
+        ):
+            assert frag in excludes
+        assert int(cfg["playwright_concurrency"]) == 3
+        assert int(cfg["min_jd_chars"]) == 40

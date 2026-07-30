@@ -58,3 +58,23 @@ Jobs UI below-floor helpers (`score_floor_by_trigger_for_candidate`, `list_jobs_
   tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor \
   tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_skipped_view_appends_virtual_rows
 ```
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+Global dedupe helpers for meteorite email ingest: `text_matches_known_company_job_id` (substring inverted match) and `job_link_exists` (exact link).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dedupe helpers | `src/data/database.py` | **`TestAst1061MeteoriteEmailDedupeHelpers`** |
+
+**Broken / obsolete:** none — additive helpers.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst1061MeteoriteEmailDedupeHelpers \
+  -q
+```

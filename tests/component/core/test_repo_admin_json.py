@@ -249,19 +249,29 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_build_request",
         "intake_candidate_response",
         "intake_initiate_candidate",
+        "meteorite_like",
+        "meteorite_upshot",
         "parse_job_list",
         "prefilter_company",
         "propose_application_responses",
         "qualify_job_listings",
+        "qualify_meteorite",
         "recheck_no_openings",
         "select_job_page",
+        "simple_resume_parse",
         "vet_inflow_discovery",
     },
 )
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (38 rows after AST-878)."""
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (42 rows after AST-1060).
+
+    Catalog membership tracks the active tip's `data/admin/agent_task.json`.
+    AST-1037 adds `simple_resume_parse`; AST-1055 adds `meteorite_like` + `meteorite_upshot`;
+    AST-1060 adds `qualify_meteorite`. Parallel AST-1015 (`preamble_validate_response`) is
+    not on this tip — its row assertion stays in TestAst1015PreambleValidateCatalogRow.
+    """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
         repo = Path("data/admin/agent_task.json")
@@ -269,9 +279,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_38_current_catalog_keys(self) -> None:
+    def test_repo_json_has_42_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 38
+        assert len(rows) == 42
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -287,7 +297,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_38_current_rows(
+    def test_startup_apply_loads_all_42_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -305,7 +315,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 38
+            assert count == 42
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -317,6 +327,59 @@ class TestAst786AgentTaskRepoJsonSeed:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         row = next(r for r in rows if r["task_key"] == "select_job_page")
         assert row["run_next"] == ""
+
+
+
+class TestAst1055MeteoriteCatalogRows:
+    """AST-1055: meteorite_like / meteorite_upshot prompt twins in repo agent_task JSON."""
+
+    def test_meteorite_like_cache_prompt_and_seq(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["meteorite_like"]
+        assert row["agent_id"] == "job_analyst_grace"
+        assert row["task_seq"] == 10
+        assert row["task_group_name"] == "Job Review"
+        cache = row["cache_prompt"]
+        assert "no employer website, culture pages, or vibe pages" in cache
+        assert "more liberally" in cache
+        assert "Meteorite — liberal X" in cache
+
+    def test_meteorite_upshot_user_prompt_context(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["meteorite_upshot"]
+        assert row["agent_id"] == "principal_recruiter_estelle"
+        assert row["task_seq"] == 11
+        prompt = row["user_prompt"]
+        assert "### Meteorite context" in prompt
+        assert "meteorite-sourced" in prompt
+        assert "culture visibility" in prompt
+        assert by["analysis_upshot"]["task_seq"] == 9
+        assert by["grade_like"]["task_seq"] == 8
+
+
+class TestAst1060QualifyMeteoriteCatalogRow:
+    """AST-1060: qualify_meteorite Ruth shell in repo agent_task JSON."""
+
+    def test_qualify_meteorite_ruth_shell_and_schema_fields(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["qualify_meteorite"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == "Qualify Meteorite"
+        assert row["task_seq"] == 2.5
+        cache = row["cache_prompt"]
+        assert "METEORITE" in cache
+        assert "company_job_id" in cache
+        assert "job_title" in cache
+        assert "job_link" in cache
+        assert "jd_text" in cache
+        assert "astral_job_id" in cache
+        user = row["user_prompt"]
+        assert "meteorite" in user.lower()
+        assert "company_job_id" in user
 
 
 class TestAst878FetchCulturePagesCatalogRow:
@@ -336,6 +399,53 @@ class TestAst878FetchCulturePagesCatalogRow:
         assert by["analysis_upshot"]["task_seq"] == 9
 
 
+class TestAst1015PreambleValidateCatalogRow:
+    """AST-1015: Ruth preamble_validate_response row in repo agent_task JSON."""
+
+    def test_ruth_preamble_validate_response_row(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["preamble_validate_response"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_name"] == "Validate Preamble Answer"
+        assert row["task_group_name"] == "Candidate Preamble"
+        assert "PREAMBLE ANSWER VALIDATION" in row["cache_prompt"]
+        assert "Valid | Try Again | Escalate" in row["cache_prompt"]
+        assert "agent_payload.outcome" in row["user_prompt"]
+
+
+class TestAst1037SimpleResumeParseCatalogRow:
+    """AST-1037: Ruth simple_resume_parse row + Judith craft_resume_base unchanged."""
+
+    def test_ruth_simple_resume_parse_row(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["simple_resume_parse"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_name"] == "Simple Resume Parse"
+        assert row["task_group_name"] == "Candidate Artifacts"
+        assert row["task_group_order"] == "2000"
+        assert row["task_seq"] == 6
+        assert row["task_key_uuid"] == "046ffb1c-9708-49af-9380-56d85136066b"
+        cache = row["cache_prompt"]
+        # Paste-faithful mechanical rules (session Open HTML contract).
+        assert "__" in cache and "~~" in cache
+        assert "candidate_tagline" in cache
+        assert "**Never** use `|`" in cache
+        assert "<no bullet>" in cache
+        assert "PARSE task" in cache
+        assert row["nocache_prompt"].strip().startswith("RESUME PASTE TEXT:")
+        assert "{$STARTING_RESUME_TEXT}" in row["nocache_prompt"]
+        assert "Map the pasted resume text" in row["user_prompt"]
+
+    def test_judith_craft_resume_base_row_unchanged(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        craft = by["craft_resume_base"]
+        assert craft["agent_id"] == "content_writer_judith"
+        assert craft["task_seq"] == 5
+        assert craft["task_name"] == "Craft Resume Base"
+        assert craft["task_group_name"] == "Candidate Artifacts"
 
 
 AST787_EXPECTED_AGENT_IDS = frozenset(

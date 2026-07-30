@@ -829,6 +829,10 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
 
+### AST-1022 · AST-1018
+
+Primary manifest: **`docs/test-bible/core/dispatcher.md`** § AST-1022. Config seed: **`CANDIDATE_STAGE_DISPATCH[*].auto_mode`** is **`False`** — **`TestAst1022HonorAutoOffStageDispatch`**.
+
 ### AST-973 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDATE_LEGACY_STATE_MAP`** / **`remap_legacy_candidate_state`**.
@@ -919,9 +923,101 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1020 · AST-1019
+
+**AST-1020:** `BUILD_CONFIG["default_style"]["colors"]` adds golden `text_primary` / `text_secondary` / `text_tertiary` / `border_light` / `border_medium` (existing `ink` / `muted` / `rule` / `surface` retained). Primary stylesheet emit: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Golden text/border tokens + accent/header/page_bg | `src/utils/config.py` | **`TestAst1020DefaultStyleColorTokens`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1020DefaultStyleColorTokens \
+  -q
+```
+
+---
+
+### AST-1024 · AST-1023
+
+**AST-1024:** `BUILD_CONFIG["session_cover_letter"]` — `document_title` `SomersetCover` + field map (`from_block` / `letter_date` / `letter` / `signoff_closing` / `signature` required; `to_block` / `subject` optional). Does **not** change `artifact_shapes["cover_letter"]`. Primary emit + admin route: **`docs/test-bible/core/builder.md`**, **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Field contract + title | `src/utils/config.py` | **`TestAst1024SessionCoverLetterConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1024SessionCoverLetterConfig \
+  -q
+```
+
+---
+
+### AST-1025 · AST-1023
+
+**AST-1025:** Admin `NAV_CONFIG` item **Session Cover Letter** (`/admin/session_cover_letter`) immediately after **Session Resume Paste**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nav order + label | `src/utils/config.py` | **`TestAst1025SessionCoverLetterNav`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  -q
+```
+
+---
+
+### AST-1033 · AST-1031
+
+**AST-1033:** Admin `NAV_CONFIG` item **Read email** (`/admin/read_email`) immediately after **Session Cover Letter**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nav order + label | `src/utils/config.py` | **`TestAst1033ReadEmailNav`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+```
+
+---
+
 ### AST-1014 · AST-952
 
 `CANDIDATE_LIBRARY_CONFIG` + DATA_SHAPES/TOKEN_SOURCES column/`contact`/`context.raw_*` paths; middle retired. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014CandidateLibraryConfig`**, revised **`TestAst510MiddleNameConfig`**.
+
+---
+
+---
+
+### AST-1015 · AST-952
+
+**AST-1015:** `PREAMBLE_VALIDATION_CONFIG` — task_key `preamble_validate_response`, closed outcomes Valid / Try Again / Escalate; `TASK_CONFIG` schema; equality with `PREAMBLE_CONFIG["validation_task_key"]` when both present. Ruth agent_task + core/API: **`docs/test-bible/core/intake.md`**, **`docs/test-bible/ui/api/api_intake.md`**, catalog: **`docs/test-bible/data/database/agent_tasks.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validation config + TASK_CONFIG | `src/utils/config.py` | **`TestAst1015PreambleValidationConfig`** |
+
+**Broken / obsolete:** AST-786 catalog count 38→39 — see agent_tasks.md.
+
+**Integration:** no existing scenario asserts preamble Ruth validation — no revision; do not invent new integration coverage.
+
+**AST-1015** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1015PreambleValidationConfig \
+  tests/component/core/test_intake.py::TestAst1015ValidatePreambleAnswer \
+  tests/component/ui/api/test_api_intake.py::TestAst1015PreambleValidateRoute \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1015PreambleValidateCatalogRow \
+  -q
+```
 
 ---
 
@@ -944,5 +1040,265 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1016PreambleConfig \
   tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_preamble_config \
+  -q
+```
+
+---
+
+### AST-1037 · AST-1036
+
+**AST-1037:** `TASK_CONFIG["simple_resume_parse"]` shares `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` with `craft_resume_base`; `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` frozenset in config (§1.4). Session wire = **AST-1038**. Agent gate: **`docs/test-bible/core/agent.md`**. Catalog seed: **`docs/test-bible/core/repo_admin_json.md`** / **`docs/test-bible/data/database/agent_tasks.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared schema + meta + normalize frozenset | `src/utils/config.py` | **`TestAst1037SimpleResumeParseConfig`** |
+
+**Broken / obsolete:** AST-786 catalog frozenset membership — `simple_resume_parse` on this tip (see agent_tasks.md).
+
+**Integration:** no existing scenario asserts simple_resume_parse — no revision; do not invent new integration coverage.
+
+**AST-1037** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1037SimpleResumeParseCatalogRow \
+  tests/component/core/test_agent.py::TestAst1037NormalizeGateMembership \
+  -q
+```
+---
+
+### AST-1041 · AST-1034
+
+**Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
+
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Template keys + IGNORE/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing assert revised **AST-1056**) |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
+
+
+### AST-1047 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`.
+
+`CANDIDATE_LOOKUP_CONFIG`: email/name dotted paths + `match_casefold` for reusable string→id lookup (Manage Email From bind first caller).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Lookup path tuples + casefold | `src/utils/config.py` | **`TestAst1047CandidateLookupConfig`** |
+
+**Broken / obsolete:** none — additive config block.
+
+**Integration:** no existing scenario asserts CANDIDATE_LOOKUP_CONFIG — no revision.
+
+
+### AST-1048 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`.
+
+Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read email** / `/admin/read_email`), still immediately after **Session Cover Letter**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nav order + label/path rename | `src/utils/config.py` | revised **`TestAst1033ReadEmailNav`** |
+
+**Broken / obsolete:** AST-1033 assertions on `/admin/read_email` and label **Read email** — revised for Manage Email.
+
+**Integration:** none.
+
+
+### AST-1049 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
+
+`INBOX_CREATE_JOB_CONFIG`: strip tag/attr sets + `subject_html_template` for Manage Email Create.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Strip sets + subject template | `src/utils/config.py` | **`TestAst1049InboxCreateJobConfig`** |
+
+**Broken / obsolete:** none — additive.
+
+**Integration:** none.
+
+---
+
+### AST-1053 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`.
+
+Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Score-floor gating for meteorite pass hops is **AST-1054**; RECOMMENDED meteorite LIKE priors are **AST-1055**; create landing retarget is **AST-1056**. **AST-1060** inserts **METEORITE_QUALIFIED** (+ fail/error qualify) and retargets GDL priors from **METEORITE_NEW** → **METEORITE_QUALIFIED**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** (priors/labels revised **AST-1060**) |
+
+**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**; GDL-entry priors + NEW label + QUALIFIED UI revised by **AST-1060**.
+
+**Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
+
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK`; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). **AST-1060** retargets `evaluate_jd` trigger to **METEORITE_QUALIFIED** and prepends `qualify_meteorite`@**METEORITE_NEW**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (evaluate_jd trigger revised **AST-1060**) |
+| Revised ungated smoke | `src/utils/config.py` | revised **`TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched`** |
+
+**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW row assert superseded by **AST-1060**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  -q
+```
+
+### AST-1055 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`.
+
+`TASK_CONFIG` twins `meteorite_like` / `meteorite_upshot` (`requires_company: False`; meteorite pass/fail/error; upshot → `RECOMMENDED` / `METEORITE_PASSED_LIKE_RETRY`); `RECOMMENDED` priors gain meteorite LIKE states; `rubric_owner_task_key("meteorite_like")` → `grade_like`; `meteorite_like` in batch-mode / strict-encoded / chunk-exhaust frozensets.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twins + RECOMMENDED priors + rubric/batch/encoded membership | `src/utils/config.py`, `src/core/agent.py`, `src/core/dispatcher.py` | **`TestAst1055MeteoriteLikeUpshotTasks`** |
+| Catalog rows + 41-key seed | `data/admin/agent_task.json` | **`TestAst1055MeteoriteCatalogRows`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+| Consult routes + upshot persist key | `src/core/consult.py` | **`TestAst1055MeteoriteConsultRoutes`** |
+
+**Broken / obsolete:** AST-1053 RECOMMENDED prior absence assert; AST-786 catalog **39 → 41** (+ UAT fixture byte lock).
+
+**Integration:** no existing scenarios assert these task keys — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
+  -q
+```
+
+---
+
+### AST-1056 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1056-create-lands-meteorite-jobs-in-meteorite-new`.
+
+`METEORITE_CONFIG["job_create_state"]` → **`METEORITE_NEW`** (meteorite GDL entry). Core `create_meteorite_job` already reads the config key (docstring honesty only). Score stand-in unchanged. Does **not** own dispatch / agent prompts / Recommended UI.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create landing key + unrestricted entry | `src/utils/config.py` | **`TestAst1056MeteoriteCreateLanding`**; revised **`TestAst1041MeteoriteConfig`** |
+| Insert uses config landing | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** |
+| API / inbox / Manage Email mock honesty | passthrough layers | revised **`TestAst1042MeteoriteCreateApi`**, **`TestAst1049CreateMeteoriteJobFromInboxMessage`**, **`TestAst1049InboxCreateJobApi`**, **`test_AdminManageEmail`** Create mock |
+
+**Broken / obsolete:** AST-1041 / AST-1042 / AST-1053 asserts that expected `JD_READY` create landing.
+
+**Integration:** no existing scenarios assert meteorite create landing state — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1056MeteoriteCreateLanding \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/ui/api/test_api_meteorite.py \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+---
+
+### AST-1057 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`.
+
+`JOBS_RECOMMENDED_METEORITE_SECTION` (`section_id` / `label` / `company_prefix` from `METEORITE_CONFIG["short_name_prefix"]`); `build_state_ui_manifest()["jobs"]["recommended"]["meteorite_section"]`. UI partition: **`docs/test-bible/frontend/pages.md`** (**AST-1057**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Section block + manifest wire | `src/utils/config.py` | **`TestAst1057MeteoriteRecommendedSection`** |
+
+**Broken / obsolete:** none — additive manifest field; existing Recommended section asserts stay.
+
+**Integration:** no existing scenarios assert Recommended meteorite membership — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1057MeteoriteRecommendedSection \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+### AST-1060 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
+
+Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**; reframes **METEORITE_NEW** as pre-AI; retargets meteorite `evaluate_jd` claim to **METEORITE_QUALIFIED**; `TASK_CONFIG["qualify_meteorite"]` + `METEORITE_DISPATCH_TASKS` row @ **METEORITE_NEW**. Apply / gazer are siblings.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Qualify states + TASK_CONFIG + dispatch row + helpers | `src/utils/config.py` | **`TestAst1060QualifyMeteoriteConfig`**; revised **`TestAst1053MeteoriteGdlJobStates`**, **`TestAst1054MeteoriteGdlDispatch`** |
+| Catalog shell | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** (42 keys) |
+| Retire stale `evaluate_jd`@METEORITE_NEW | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** (+ retire case) — see **`docs/test-bible/core/dispatcher.md`** |
+
+**Broken / obsolete:** AST-1053 GDL priors from METEORITE_NEW; AST-1054 evaluate_jd@METEORITE_NEW + insert counts; AST-786 **41 → 42** (+ UAT fixture byte lock).
+
+**Integration:** no existing scenarios assert qualify_meteorite / METEORITE_QUALIFIED — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1060QualifyMeteoriteConfig \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  -q
+```
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+`METEORITE_EMAIL_INGEST_CONFIG`: link schemes, exclude substrings, Playwright concurrency, `min_jd_chars` for gazer email→meteorite ingest.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Email ingest config | `src/utils/config.py` | **`TestAst1061MeteoriteEmailIngestConfig`** |
+
+**Broken / obsolete:** none — additive config dict.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1061MeteoriteEmailIngestConfig \
   -q
 ```

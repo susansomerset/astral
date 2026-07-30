@@ -165,3 +165,100 @@ class TestIntakeRoutes:
         body = resp.get_json()
         assert body["error"] == "model failed"
         assert body["batch_id"] == "intake-intake_candidate_response-x"
+
+
+class TestAst1015PreambleValidateRoute:
+    """AST-1015: POST /api/candidates/<id>/preamble/validate thin wrapper."""
+
+    def test_requires_auth(self, intake_client: FlaskClient) -> None:
+        assert (
+            intake_client.post(
+                "/api/candidates/cand-1/preamble/validate",
+                json={"question": "Q?", "answer": "A"},
+            ).status_code
+            == 401
+        )
+
+    def test_success_200_shape(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "outcome": "Valid",
+                    "error": None,
+                    "batch_id": "preamble-preamble_validate_response-x",
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/preamble/validate",
+            json={"question": "Q?", "answer": "A", "step_index": 1, "step_total": 3},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body == {
+            "success": True,
+            "outcome": "Valid",
+            "error": None,
+            "batch_id": "preamble-preamble_validate_response-x",
+        }
+
+    def test_candidate_missing_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(side_effect=ValueError("Candidate not found: missing")),
+        )
+        resp = intake_client.post(
+            "/api/candidates/missing/preamble/validate",
+            json={"question": "Q?", "answer": "A"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_question_required_400(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(side_effect=ValueError("question required")),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/preamble/validate",
+            json={"question": "", "answer": "A"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "question" in resp.get_json()["error"]
+
+    def test_structured_failure_still_200(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "outcome": None,
+                    "error": "invalid preamble validation outcome: 'Nope'",
+                    "batch_id": "preamble-preamble_validate_response-y",
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/preamble/validate",
+            json={"question": "Q?", "answer": "A"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is False
+        assert resp.get_json()["outcome"] is None

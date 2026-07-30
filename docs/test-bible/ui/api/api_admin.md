@@ -403,3 +403,22 @@ Primary data manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**
 Narrowed run: **`docs/test-bible/core/bootstrap.md`** (**AST-960**).
 
 **AST-962 (UAT):** cover-letter mid-hop default Input State — primary manifest **`docs/test-bible/utils/config.md`** (**AST-962**).
+
+---
+
+### AST-1024 · AST-1023
+
+**AST-1024:** Admin **`POST /api/admin/session_cover_letter/html`** (`@require_admin`) — JSON field keys from **`BUILD_CONFIG["session_cover_letter"]["fields"]`**; optional `candidate_id`; success **`text/html`**; validation / builder **`ValueError`** → **`{success:false,error}`** 400. Core emit: **`docs/test-bible/core/builder.md`** (**AST-1024**). React / localStorage = sibling **AST-1025**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Auth + body object + ValueError JSON | `src/ui/api/api_admin.py` | **`TestAst1024SessionCoverLetterHtmlApi`** |
+| Fields from config keys; candidate_id strip/null/non-str | same | same class |
+| Core SomersetCover emit | `src/core/builder.py` | **`TestAst1024BuildSessionCoverLetter`** |
+| Config spine | `src/utils/config.py` | **`TestAst1024SessionCoverLetterConfig`** |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** no existing scenario asserts this Admin HTML route — no revision.
+
+**AST-1024** narrowed run: **`docs/test-bible/core/builder.md`** (**AST-1024**).

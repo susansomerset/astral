@@ -701,3 +701,67 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
+
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`evaluate_jd` / `grade_do` / `grade_get`); vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Overlay + `_render_pass_fail` entity_state | `src/core/consult.py` | **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+
+**Broken / obsolete:** none — additive helper; existing `_render_pass_fail` call sites without `entity_state` unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  tests/component/core/test_consult.py::TestRenderPassFail \
+  -q
+```
+
+---
+
+### AST-1055 · AST-1052
+
+**Publish:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`.
+
+`run_consult_task` routes `meteorite_like` through encoded LIKE (`meteorite_like_batch`) and `meteorite_upshot` through `_run_analysis_upshot_batch(..., task_key=)`; upshot always persists `job_data.analysis_upshot`. Config/catalog: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin routes + persist key | `src/core/consult.py` | **`TestAst1055MeteoriteConsultRoutes`** |
+
+**Broken / obsolete:** none for consult paths — additive routing.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
+  -q
+```
+
+### AST-1063 · AST-1059
+
+**Parent:** [AST-1059 — Issue with the rubric grade displays on the Jobs List pages](https://linear.app/astralcareermatch/issue/AST-1059/issue-with-the-rubric-grade-displays-on-the-jobs-list-pages). **Publish:** `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`.
+
+Persist analysis-time rubric criteria as `{prefix}_rubric` beside every `{prefix}_grades` write (`_rubric_snapshot_for_job_data` omits `content`). Verdict / qualify / evaluate_jd paths all snapshot. List flatten is **`docs/test-bible/ui/api/api_jobs.md`** (**AST-1063**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Snapshot helper + write-path persist | `src/core/consult.py` | **`TestAst1063JobCarriedRubricHydration`** |
+
+**Broken / obsolete:** none — additive keys on save payloads; existing score/grade assertions unchanged.
+
+**Integration:** none revised (API shape only; no existing integration scenario asserts job-carried `*_rubric`).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1063JobCarriedRubricHydration \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```

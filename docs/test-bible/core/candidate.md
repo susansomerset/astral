@@ -276,7 +276,7 @@ Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch tr
 
 ### AST-986 · AST-985
 
-**AST-986:** Admin session resume parse — paste → `craft_resume_base` with **default** structure, response-only JSON (`resume_structure` / `base_resume` / `parsed_response`). Synthetic ctx omits `astral_candidate_id`; ledger sentinel `candidate_id="session"`; **never** `get_candidate` / `save_candidate`. Route: `POST /api/admin/session_resume/parse` (`@require_admin`). UI / HTML tab / session retention = sibling **AST-987**.
+**AST-986:** Admin session resume parse — paste → response-only JSON (`resume_structure` / `base_resume` / `parsed_response`). Synthetic ctx omits `astral_candidate_id`; ledger sentinel `candidate_id="session"`; **never** `get_candidate` / `save_candidate`. Route: `POST /api/admin/session_resume/parse` (`@require_admin`). UI / HTML tab / session retention = sibling **AST-987**. **Task key:** originally `craft_resume_base`; **AST-1038** re-keys to Ruth `simple_resume_parse` (revised **`TestAst986SessionResumeParse`**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -322,6 +322,118 @@ Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch tr
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
   --testNamePattern="AST-996"
+```
+
+---
+
+### AST-1027 · AST-1019
+
+**AST-1027 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` preserves `__` / `~~` typography digraphs (FORMATTING RULES + QUALITY CHECKLIST + skills/contact/prior/competencies separator fidelity). Builder expand remains **AST-1007** / **`TestAst1027UatMarkerExpand`** in **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt preserve / no-strip contract | `data/admin/agent_task.json` | **`TestAst1027CraftResumeBaseMarkerPreserve`** |
+| Experience job-array prompt still present | same | **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** (regression) |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** no existing scenario asserts craft_resume_base marker preserve language — no revision.
+
+**AST-1027** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1027UatMarkerExpand \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  -q
+```
+
+---
+
+### AST-1028 · AST-1019
+
+**AST-1028 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` adds `### candidate_tagline` (between title and contact) and tightens `### candidate_title` to title-only (no specialty/keyword / em-dash tails). Builder header/meta emit unchanged when fields are split (**AST-1010** / **AST-1021**). Primary prompt assert here; emit UAT sample: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt title/tagline split + checklist | `data/admin/agent_task.json` | **`TestAst1028CraftResumeBaseTitleTaglineSplit`** |
+| Marker preserve still present | same | **`TestAst1027CraftResumeBaseMarkerPreserve`** (regression) |
+| Job-array prompt still present | same | **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** (regression) |
+
+**Broken / obsolete this pass:** none — emit already excluded tagline from body; bug was parse folding keywords into title.
+
+**Integration:** no existing scenario asserts craft_resume_base title/tagline split — no revision.
+
+**AST-1028** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1028UatKeywordsMetaEmit \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/core/test_builder.py::TestAst1021DocumentTitleChrome \
+  -q
+```
+
+---
+
+### AST-1030 · AST-1019
+
+**AST-1030 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` requires preserving paste `<no bullet>` on role lead lines (do not invent). Builder `_split_role_accomplishments` already maps that prefix to `.role-description` (**AST-1008**); stripped prefix makes the lead a first `<li>`. Emit proof: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt preserve / do-not-invent + checklist | `data/admin/agent_task.json` | **`TestAst1030CraftResumeBaseNoBulletPreserve`** |
+| Marker / competencies / title-tagline / job-array regressions | same | **`TestAst1027CraftResumeBaseMarkerPreserve`**, **`TestAst1029CraftResumeBaseCompetenciesBullets`**, **`TestAst1028CraftResumeBaseTitleTaglineSplit`**, **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** |
+
+**Broken / obsolete this pass:** none — emit path unchanged; prompt was the gap.
+
+**Integration:** no existing scenario asserts `<no bullet>` preserve — no revision.
+
+**AST-1030** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1030UatNoBulletLeadEmit \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  -q
+```
+
+---
+
+### AST-1029 · AST-1019
+
+**AST-1029 (UAT):** Repo `data/admin/agent_task.json` → `craft_resume_base` `cache_prompt` hardens `### core_competencies` (and `### prior_experience`) to require `•` item separators and forbid `|` / `" | "` — replacing AST-1027 soft “prefer” language. Builder competencies emit remains escape-only (**AST-1009**). Emit proof: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt •-required / pipe-forbidden + checklist | `data/admin/agent_task.json` | **`TestAst1029CraftResumeBaseCompetenciesBullets`** |
+| Marker / title-tagline / job-array prompt regressions | same | **`TestAst1027CraftResumeBaseMarkerPreserve`**, **`TestAst1028CraftResumeBaseTitleTaglineSplit`**, **`TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract`** |
+
+**Broken / obsolete this pass:** none — soft prefer language retired by prompt harden (asserted gone).
+
+**Integration:** no existing scenario asserts competencies separators — no revision.
+
+**AST-1029** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior \
+  -q
 ```
 
 ---
@@ -408,3 +520,43 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
 ```
+
+---
+
+### AST-1038 · AST-1036
+
+**AST-1038:** `run_session_resume_parse` `do_task` key → `simple_resume_parse` (Ruth); non-dict error string + docstring; Admin `session_resume_parse` docstring only. Preserves AST-986 sentinel / no-persist / Style D. Judith `craft_resume_base` candidate craft unchanged. Catalog/seed = **AST-1037**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Core wire + craft-path unchanged | `src/core/candidate.py` | **`TestAst1038SessionResumeWire`**; revised **`TestAst986SessionResumeParse`** (`task_key` / error string) |
+| Admin thin route (docstring only) | `src/ui/api/api_admin.py` | **`TestAst986SessionResumeParseApi`** (existing — contract unchanged) |
+
+**Broken / obsolete:** **`TestAst986SessionResumeParse`** assertions on `craft_resume_base` task_key and non-dict error string → `simple_resume_parse`.
+
+**Integration:** no existing scenario asserts session-parse task key — no revision; do not invent new integration coverage.
+
+**AST-1038** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1038SessionResumeWire \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse \
+  tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
+  -q
+```
+
+
+### AST-1047 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1047-reusable-get-candidate-string-lookup-from-bind`.
+
+`get_candidate_id_for_query`: unique email/name hit via `CANDIDATE_LOOKUP_CONFIG`; `parseaddr` for display-name From; ambiguous/none → None; ID `get_candidate` unchanged. Style D when `debug=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| String → unique id / none / ambiguous / empty / parseaddr / casefold / Style D | `src/core/candidate.py` | **`TestAst1047GetCandidateIdForQuery`** |
+
+**Broken / obsolete:** none — additive lookup API.
+
+**Integration:** no existing scenario asserts string→candidate lookup — no revision; do not invent new integration coverage.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
@@ -1893,7 +1894,7 @@ class TestAst986SessionResumeParse:
         )
         body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
         assert status == 500
-        assert body["error"] == "craft_resume_base returned non-dict parsed_response"
+        assert body["error"] == "simple_resume_parse returned non-dict parsed_response"
         assert dbg.call_args.kwargs["outcome"] == "invalid payload"
 
     def test_500_non_dict_parsed_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1932,11 +1933,12 @@ class TestAst986SessionResumeParse:
         assert body["batch_id"].startswith("user-session-parse-resume-")
         assert "resume_structure" in body
         assert body["base_resume"]["experience"] == "Jobs"
-        assert calls[0]["task_key"] == "craft_resume_base"
+        assert calls[0]["task_key"] == "simple_resume_parse"
         assert calls[0]["live_content"] == "full resume text"
         assert calls[0]["index"] == body["batch_id"]
         assert "astral_candidate_id" not in calls[0]["ctx"]
-        assert calls[0]["ctx"]["candidate_data"]["context"]["raw_resume"] == "full resume text"
+        # Session synthetic ctx on this tip still uses starting_resume_text (AST-1014 raw_* not on base).
+        assert calls[0]["ctx"]["candidate_data"]["context"]["starting_resume_text"] == "full resume text"
         assert saves[0][0][2] == "session"
         assert updates[-1][1]["status"] == "COMPLETED"
         get_c.assert_not_called()
@@ -1961,6 +1963,23 @@ class TestAst986SessionResumeParse:
         detail_msgs = [c.args[0] for c in detail.call_args_list if c.args]
         assert any(m.startswith("experience[0] company=") for m in detail_msgs)
         assert any(m.startswith("experience[1] company=") for m in detail_msgs)
+
+
+class TestAst1038SessionResumeWire:
+    """AST-1038: session parse uses Ruth simple_resume_parse; Judith craft paths unchanged."""
+
+    def test_session_parse_wires_simple_resume_parse_not_craft_base(self) -> None:
+        src = inspect.getsource(candidate_mod.run_session_resume_parse)
+        assert 'task_key="simple_resume_parse"' in src
+        assert 'task_key="craft_resume_base"' not in src
+        assert "simple_resume_parse returned non-dict parsed_response" in src
+
+    def test_candidate_craft_paths_still_use_craft_resume_base(self) -> None:
+        parse_src = inspect.getsource(candidate_mod.parse_candidate_resume)
+        assert 'task_key="craft_resume_base"' in parse_src
+        # Artifact generation still accepts craft_resume_base as the catalog key for Judith.
+        gen_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
+        assert "craft_resume_base" in gen_src
 
 
 class TestAst996ExperienceJobArray:
@@ -2162,6 +2181,120 @@ class TestAst996ExperienceJobArray:
         assert "Ordered JSON array of jobs" in prompt
         assert "`accomplishments`" in prompt
         assert "Do **not** enrich, blend, or expand accomplishments from LinkedIn" in prompt
+
+
+class TestAst1027CraftResumeBaseMarkerPreserve:
+    """AST-1027: craft_resume_base cache_prompt preserves __ / ~~ for builder expand."""
+
+    def test_cache_prompt_preserves_typography_markers(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Preserve contract (replaces prior strip-to-space/hyphen rule).
+        assert "Typography markers (preserve)" in prompt
+        assert "Do **not** replace `__` with a space or `~~` with a hyphen" in prompt
+        assert "`__` → NBSP" in prompt
+        assert (
+            "When the resume/paste contains `__` or `~~`, those digraphs appear unchanged"
+            in prompt
+        )
+        # Old strip instructions must be gone.
+        assert "Strip ANY formatting artifacts" not in prompt
+        assert "All formatting codes stripped clean" not in prompt
+        assert "`__` (replace with space)" not in prompt
+        assert "`~~` (replace with hyphen)" not in prompt
+        # Segment instructions stay paste-faithful (UAT skills / contact / prior).
+        assert "do not rewrite marked bullet separators into pipes" in prompt
+        assert "Jira__•__Confluence__•__Linear" in prompt
+        assert "When the paste uses `__•__`" in prompt
+        assert "Preserve `__` / `~~` / `•` from the paste line" in prompt
+
+
+class TestAst1028CraftResumeBaseTitleTaglineSplit:
+    """AST-1028: craft_resume_base splits title vs specialty/keyword tagline."""
+
+    def test_cache_prompt_title_only_and_candidate_tagline_segment(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Segment order: title → tagline → contact.
+        title_i = prompt.find("### candidate_title")
+        tagline_i = prompt.find("### candidate_tagline")
+        contact_i = prompt.find("### candidate_contact_detail")
+        assert title_i >= 0 and tagline_i > title_i and contact_i > tagline_i
+        # Title must stay title-only (UAT mash was title + em-dash keywords).
+        assert "Put **only** the title in this field" in prompt
+        assert 'Do **not** append specialty phrases, keyword lists, "specializing in …"' in prompt
+        assert "em/en-dash–joined keyword tails" in prompt or "em/en-dash" in prompt
+        assert "belong in `candidate_tagline`, not here" in prompt
+        # Tagline feeds ATS meta only — not header/body.
+        assert "HTML emit uses it for ATS meta only" in prompt
+        assert "Do **not** duplicate this text into `candidate_title`" in prompt
+        assert "Enterprise Implementation • Service Delivery" in prompt
+        # Quality checklist locks the split.
+        assert (
+            "Title is title-only; when the paste has a separate specialty/keyword line, "
+            "it appears in `candidate_tagline`"
+            in prompt
+        )
+
+
+class TestAst1029CraftResumeBaseCompetenciesBullets:
+    """AST-1029: craft_resume_base requires • competencies separators; forbids pipes."""
+
+    def test_cache_prompt_requires_bullet_not_pipe_separators(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Soft AST-1027 prefer-language must be gone.
+        assert "Prefer separators from the paste" not in prompt
+        assert 'rather than rewriting to " | "' not in prompt
+        # Hard require • / forbid |
+        assert "Item separator is the bullet character `•`" in prompt
+        assert '**Do not** use `|` (pipe) as an item separator' in prompt
+        assert 'not `" | "`, not bare `|`' in prompt
+        assert "**join with ` • `**, never `|`" in prompt
+        # Prior experience same convention.
+        assert "Use `•` between role items (same convention as core competencies)" in prompt
+        assert "**Do not** use `|` as separators" in prompt
+        # Checklist.
+        assert (
+            "`core_competencies` (and `prior_experience` when non-empty) use `•` separators, not `|`"
+            in prompt
+        )
+
+
+class TestAst1030CraftResumeBaseNoBulletPreserve:
+    """AST-1030: craft_resume_base must preserve paste `<no bullet>` on role leads."""
+
+    def test_cache_prompt_preserves_no_bullet_lead_prefix(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        assert (
+            "copy that line into `accomplishments` **including the literal prefix** "
+            "`<no bullet>`"
+            in prompt
+        )
+        assert "Do **not** invent a `<no bullet>` lead when the paste has none." in prompt
+        assert (
+            "When the paste uses `<no bullet>` on a role lead, keep that exact prefix "
+            "on the corresponding `accomplishments` line(s)"
+            in prompt
+        )
+        assert (
+            "When the paste uses `<no bullet>` on a role lead, that prefix appears "
+            "unchanged on the corresponding `accomplishments` line(s)"
+            in prompt
+        )
 
 
 class TestAst997JobTailoredExperience:
@@ -2448,3 +2581,91 @@ class TestAst1014CandidateLibrary:
         candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=True)
         assert dbg.called
         candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=False)
+
+
+# AST-1047: reusable string → astral candidate id lookup (From bind).
+class TestAst1047GetCandidateIdForQuery:
+    def _cand(
+        self,
+        cid: str,
+        *,
+        contact_email: str = "",
+        reply_email: str = "",
+        first: str = "",
+        last: str = "",
+        full: str = "",
+        profile: dict | None = None,
+    ) -> dict:
+        cd: dict = {"contact": {}, "profile": dict(profile or {})}
+        if contact_email:
+            cd["contact"]["contact_email"] = contact_email
+        if reply_email:
+            cd["contact"]["reply_email"] = reply_email
+        return {
+            "astral_candidate_id": cid,
+            "first": first,
+            "last": last,
+            "full": full,
+            "state": "NEW_CANDIDATE",
+            "candidate_data": cd,
+        }
+
+    def test_unique_contact_email_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", contact_email="ada@ex.com", first="Ada"),
+            self._cand("c2", contact_email="other@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("ada@ex.com") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("ADA@EX.COM") == "c1"
+
+    def test_parseaddr_display_name_uses_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", contact_email="ada@ex.com")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Ada Lovelace <ada@ex.com>") == "c1"
+
+    def test_unique_name_column_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", first="Ada", last="Lovelace", full="Ada Lovelace")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Ada Lovelace") == "c1"
+
+    def test_transitional_profile_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", profile={"contact_email": "legacy@ex.com", "first": "Leg"}),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("legacy@ex.com") == "c1"
+
+    def test_none_and_ambiguous(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", contact_email="shared@ex.com"),
+            self._cand("c2", contact_email="shared@ex.com"),
+            self._cand("c3", contact_email="solo@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("missing@ex.com") is None
+        assert candidate_mod.get_candidate_id_for_query("shared@ex.com") is None
+        assert candidate_mod.get_candidate_id_for_query("solo@ex.com") == "c3"
+
+    def test_empty_query(self) -> None:
+        assert candidate_mod.get_candidate_id_for_query("") is None
+        assert candidate_mod.get_candidate_id_for_query("   ") is None
+
+    def test_get_candidate_id_fetch_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {"astral_candidate_id": "c1"}
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda cid: row)
+        assert candidate_mod.get_candidate("c1") is row
+
+    def test_debug_true_emits_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", contact_email="ada@ex.com")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        assert candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=True) == "c1"
+        assert dbg.called
+        assert dbg.call_args.kwargs["outcome"] == "found|matched"
+        dbg.reset_mock()
+        candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=False)
+        assert not dbg.called

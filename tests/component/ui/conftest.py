@@ -207,6 +207,32 @@ def admin_client() -> Iterator[FlaskClient]:
 
 
 @pytest.fixture
+def inbox_client() -> Iterator[FlaskClient]:
+    """AST-1033: dedicated Read-email admin blueprint."""
+    app = Flask(__name__)
+    from ui.api.api_inbox import inbox_bp
+
+    app.register_blueprint(inbox_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+
+
+@pytest.fixture
+def meteorite_client() -> Iterator[FlaskClient]:
+    """AST-1042: meteorite job-create blueprint (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api.api_meteorite import meteorite_bp
+
+    app.register_blueprint(meteorite_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
 def server_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[FlaskClient]:
     # AST-654: server import calls bootstrap_runtime(); stub before reload.
     monkeypatch.setattr("src.core.bootstrap.bootstrap_runtime", lambda: None)

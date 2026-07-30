@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786 / AST-878):** populated **38**-row catalog (includes **`fetch_culture_pages`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**).
+**UAT seed (AST-786 / AST-878 / AST-1037 / AST-1055 / AST-1060):** populated **42**-row catalog on the AST-1060 tip (includes **`fetch_culture_pages`**, **`simple_resume_parse`**, **`meteorite_like`**, **`meteorite_upshot`**, **`qualify_meteorite`**). Parallel **AST-1015** **`preamble_validate_response`** stays in **`TestAst1015PreambleValidateCatalogRow`** — not folded into AST-786 on this tip. See **`docs/test-bible/data/database/agent_tasks.md`**.
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
@@ -75,3 +75,39 @@ Repo **`agent_task.json`** catalog gains **`fetch_culture_pages`** — primary m
 ### AST-880 · AST-879
 
 **`vet_inflow_discovery`** repo JSON + UAT fixture carry AST-880 encoded A–F rubric marker — byte identity with **`docs/uat-fixtures/AST-756/expected-agent_task.json`** unchanged (**AST-786**). DB migration: **`docs/test-bible/data/database/agent_tasks.md`** / **`TestAst880VetInflowEncodedPromptMigration`**.
+
+---
+
+### AST-1055 · AST-1052
+
+Repo **`agent_task.json`** gains **`meteorite_like`** + **`meteorite_upshot`** (Grace / Estelle prompt twins). Catalog frozenset **39 → 41**; UAT fixture **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-locked. Primary TASK_CONFIG / consult: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + prompts | `data/admin/agent_task.json` | **`TestAst1055MeteoriteCatalogRows`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **39**-row asserts → **41** (superseded to **42** by **AST-1060**).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  -q
+```
+
+### AST-1060 · AST-1058
+
+Repo **`agent_task.json`** gains **`qualify_meteorite`** (Ruth enrichment shell). Catalog frozenset **41 → 42**; UAT fixture byte-locked. Primary config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + Ruth prompts | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **41**-row asserts → **42** (qualify only; do **not** fold AST-1015 preamble into this tip’s lock).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  -q
+```
