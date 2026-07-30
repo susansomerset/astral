@@ -87,3 +87,11 @@ After Estelle `intake_initiate_candidate` succeeds, `_store_response_block` pers
 ### Radia — code-rubric.v1 @ tip (post-docs)
 
 Three-dot `origin/dev...origin/sub/AST-952/AST-1083-uat-store-response-block-nameerror`: product delta is the one-line `result =` bind in `_store_response_block`; mirrors `_store_prompt_blocks` `_save`. Debug detail remains gated on `debug=True`. Plan Stage 1 + wrong-fix rejects held. Betty reused AST-1076 RESPONSE NameError coverage (no new cases). No fix-now / discuss.
+
+## Resolution
+
+**2026-07-30** — `resolve(AST-1083): — clean`
+
+- **fix-now:** none (Radia Overall CLEAN).
+- **discuss:** none.
+- Tip after resolve publish: `origin/sub/AST-952/AST-1083-uat-store-response-block-nameerror` (this commit).
