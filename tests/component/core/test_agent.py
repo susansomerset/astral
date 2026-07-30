@@ -5843,3 +5843,27 @@ class TestAst1037NormalizeGateMembership:
         src = inspect.getsource(agent_mod.do_task)
         assert "task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS" in src
         assert 'task_key == "craft_resume_base"' not in src
+
+# Branches: RESPONSE debug uses save_agent_data return as result (AST-1076 UAT NameError).
+class TestAst1076StoreResponseDebugResult:
+    def test_debug_true_does_not_nameerror_on_result(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "save_agent_data",
+            lambda **kwargs: {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": kwargs["agent_data_id"],
+                "ref_agent_data_id": None,
+            },
+        )
+        caplog.set_level("DEBUG")
+        # Pre-fix raised NameError: name 'result' is not defined when debug=True.
+        agent_mod._store_response_block(
+            "job", "qualify_meteorite", "batch-1076", "ok", index="job-1", debug=True
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "agent_data_write" in combined
+        assert "outcome=new_content" in combined

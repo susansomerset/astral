@@ -459,3 +459,24 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/core/test_agent.py::TestAst1037NormalizeGateMembership \
   -q
 ```
+
+### AST-1076 · AST-1058 (UAT)
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`.
+
+`_store_response_block` assigns `result = save_agent_data(...)` so debug `result.get("outcome")` does not NameError (mirrors prompt `_save`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| RESPONSE debug result bind | `src/core/agent.py` | **`TestAst1076StoreResponseDebugResult`** (also covered by **`TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome`**) |
+
+**Broken / obsolete:** none — bugfix for existing debug path.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1076StoreResponseDebugResult \
+  tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome \
+  -q
+```
