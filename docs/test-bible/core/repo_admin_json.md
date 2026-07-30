@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786 / AST-878 / AST-1037 / AST-1015 / AST-1060):** populated **43**-row catalog (includes **`fetch_culture_pages`**, **`simple_resume_parse`**, **`meteorite_like`**, **`meteorite_upshot`**, **`preamble_validate_response`**, **`qualify_meteorite`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**, **AST-1037**, **AST-1015**, **AST-1060**).
+**UAT seed (AST-786 / AST-878 / AST-1037 / AST-1055 / AST-1060):** populated **42**-row catalog on the AST-1060 tip (includes **`fetch_culture_pages`**, **`simple_resume_parse`**, **`meteorite_like`**, **`meteorite_upshot`**, **`qualify_meteorite`**). Parallel **AST-1015** **`preamble_validate_response`** stays in **`TestAst1015PreambleValidateCatalogRow`** — not folded into AST-786 on this tip. See **`docs/test-bible/data/database/agent_tasks.md`**.
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
@@ -103,7 +103,7 @@ Repo **`agent_task.json`** gains **`qualify_meteorite`** (Ruth enrichment shell)
 | --- | --- | --- |
 | Catalog + Ruth prompts | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
 
-**Broken / obsolete:** AST-786 **41**-row asserts → **42**.
+**Broken / obsolete:** AST-786 **41**-row asserts → **42** (qualify only; do **not** fold AST-1015 preamble into this tip’s lock).
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
