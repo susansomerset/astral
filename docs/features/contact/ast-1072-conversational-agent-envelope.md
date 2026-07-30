@@ -166,4 +166,110 @@ brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
 | 1–3 | `af00f02a` | CHAT envelope schema + do_task contract + contact_estelle_turn seed |
 
 **Tip:** `f6ce687e17ad39df28ce5182139d5240e1470a67` on `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1072  
+**Publish ref (pre-docs tip):** `912dc2c721c950f215300ce9eb8e8a901e6c4990`  
+**Overall:** DISCUSS
+
+### What’s solid
+
+- CHAT-only `CONVERSATIONAL_PERFORMANCE_SCHEMA` / `CONTACT_ESTELLE_CONFIG` leave `BASE_SCHEMA` and Estelle Big/upshot intact; brain override gated by `is_conversational_task`.
+- Concern requires non-empty `admin_aside` and is not treated as `Agent failure`; failure still short-circuits `do_task` with `success=False`.
+- Style D turn-outcome `debug_index` + `|` detail gated on `debug=True`; lengths only (no full reply/aside blobs).
+- Boundaries held: no Slack / turn-loop / `src/external` / Estelle agent-row brain mutation; Betty owns test-tree via one `merge-tests`.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` at plan time; all three are in-scope on `origin/dev...origin/sub/...` (plan file + Betty test-tree). Each scores **conforms** on the product diff — straggler callout only, no product fix.
+
+**advisory:** Validation-failure debug path labels `outcome="validation error"` for both schema errors and CHAT `status=failure` short-circuits; detail still emits. Prefer `failure` when the envelope status is failure if AST-1073 operators rely on the index outcome string.
+
+### Recommended actions
+
+- Engineer: no fix-now. Acknowledge stragglers / optional advisory polish, then proceed to User Testing when ready.
+- No product or test-tree edits from Radia.
+
+### Pattern conformance
+
+| Cited id | Verdict |
+|----------|---------|
+| `pattern.agent.conversational-envelope` | conforms |
+| `pattern.config.config-block` | conforms |
+| `astral.agent.do-task-delegation` | conforms (also statute) |
+| `astral.standards.debug-contract-gated` | conforms (also statute) |
+| `astral.layers.core-vs-external-bright-line` | conforms (also statute) |
+
+### Plan adherence
+
+Diff matches Self-Assessment Single-Component / high / Medium: config + `do_task` CHAT contract + one `agent_task` seed. Sibling AST-1073 / AST-1043 scope not smuggled. Review stub tip hash was stale vs merge-tests tip (docs note only).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | No graded confidence / scoring path touched |
+| astral.agent.do-task-delegation | scoped | conforms | Envelope via `do_task`; no new direct Anthropic assembly |
+| astral.agent.grade-vector-validation | scoped | conforms | No vectors / grade tasks |
+| astral.batch.batch-id-first | scoped | conforms | No batch claim/process work |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id invention |
+| astral.batch.claim-process-release | scoped | conforms | No dispatcher batch work |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Relies on existing do_task storage path |
+| astral.config.config-source-of-truth | scoped | conforms | Outcomes/schema/brain in config; BASE_SCHEMA untouched |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring/dispatch floor changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env for brain default |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths ∩ artifacts/spikes empty |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan doc in docs/features; not spike notes (C4 straggler) |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/contact/ast-1072-….md` (C4 straggler) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Engineer owns src/features; Betty did not touch them |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty `test` + one merge-tests (C4 straggler) |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | utils + core only; Slack/external left to siblings |
+| astral.layers.import-direction | scoped | conforms | core→utils imports; no layer inversion |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers ∩ scripts empty |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Config block; no UI business rules |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check work |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult/render_verdict work |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers ∩ ui empty |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No data-layer Python; admin JSON seed only |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers ∩ data empty |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D only when debug=True; lengths not full blobs |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single schema + `is_conversational_task` gate |
+| astral.standards.in-scope-only | scoped | conforms | Envelope contract only; Slack/turn loop excluded |
+| astral.standards.logging-via-utils | scoped | conforms | Uses existing `_do_task_debug_logger` helpers |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays utils/core + admin seed |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `CONVERSATIONAL_OUTCOMES` / schema in config |
+| astral.standards.public-then-helpers | scoped | conforms | Helpers colocated with validation; matches agent.py layout |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | scoped | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No run_next chain work |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers ∩ ui frontend empty |
+| astral.ui.naming-conventions | scoped | not-applicable | layers ∩ ui empty |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Touches config.py but not worker/RAILWAY |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Exactly one merge-tests SHA on sub |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Publish on origin/sub only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1046/AST-1072-…` |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in history |
+| orch.git.no-dev-agent-branches | universal | conforms | Uses sub publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree astral-AST-1046 |
+| orch.git.three-permanent-branches | universal | conforms | No permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Plan decisions explicit; no open product Q |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages + Files Changed match diff |
+| orch.pipeline.project-scoped-queues | universal | conforms | Contact child scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No canon/statutes edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty test + merge-tests ownership |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | No banned path commits by engineer |
+
+**Notes:** Joan plan-rubric APPROVED attached. C4 stragglers listed under Issues. Active statute count = 56.
+
+context_tokens≈52000
 )
