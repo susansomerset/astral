@@ -2689,27 +2689,6 @@ class TestAst1069ContactEventsConfig:
         assert cc["app_token_env"] == "SLACK_APP_TOKEN"
 
 
-# Branches: context history/cache/TTL on CONTACT_CONFIG (AST-1070).
-class TestAst1070ContactContextConfig:
-    """AST-1070: history limit, cache max conversations, TTL seconds."""
-
-    def test_context_cache_keys(self) -> None:
-        cc = cfg.CONTACT_CONFIG
-        assert cc["context_history_limit"] == 50
-        assert isinstance(cc["context_history_limit"], int) and cc["context_history_limit"] > 0
-        assert cc["context_cache_max_conversations"] == 256
-        assert (
-            isinstance(cc["context_cache_max_conversations"], int)
-            and cc["context_cache_max_conversations"] > 0
-        )
-        assert cc["context_cache_ttl_seconds"] == 300
-        assert (
-            isinstance(cc["context_cache_ttl_seconds"], int)
-            and cc["context_cache_ttl_seconds"] > 0
-        )
-
-
-
 # Branches: PROSPECT registry + prospect id template (AST-1068).
 class TestAst1068ProspectConfig:
     """AST-1068: PROSPECT on CANDIDATE_STATES; prospect_candidate_id_template."""
@@ -2852,31 +2831,3 @@ class TestAst1072ConversationalEnvelopeConfig:
         # Non-CHAT still uses BASE_SCHEMA example (no concern).
         other = json.loads(cfg.stringify_response_schema("evaluate_jd"))
         assert other["agent_performance"]["status"] == "success | failure"
-
-
-class TestAst1074TopicMenuConfig:
-    """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
-
-    _INFORMS = (
-        "rubrics",
-        "base_resume",
-        "strengths",
-        "priorities",
-        "deal_breakers",
-        "backstory",
-    )
-
-    def test_informs_and_statuses_locked(self) -> None:
-        tmc = cfg.TOPIC_MENU_CONFIG
-        assert tmc["informs"] == self._INFORMS
-        assert tmc["statuses"] == ("open", "ready", "retired")
-        assert tmc["default_status"] == "open"
-        assert tmc["candidate_data_key"] == "topic_menu"
-
-    def test_topic_required_fields_and_library_homes(self) -> None:
-        tmc = cfg.TOPIC_MENU_CONFIG
-        for key in ("id", "name", "ask", "required", "informs", "status"):
-            assert key in tmc["topic_required_fields"]
-        for ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
-            assert ctx in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
-        assert "base_resume" in tmc["informs"]

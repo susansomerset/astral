@@ -9,6 +9,9 @@ Required environment variables (set in Railway / .env):
   ASTRAL_ALLOWED_IPS    — Comma-separated list of allowed IP addresses for UI access
   ANTHROPIC_API_KEY     — Fallback Anthropic API key (candidates carry their own)
   LINEAR_API_KEY        — Linear GraphQL (admin deploy footer UAT ticket tooltip — AST-792)
+  SLACK_BOT_TOKEN       — Estelle bot token (Contact / external slack; AST-1069 reads)
+  SLACK_SIGNING_SECRET  — Slack Events signing secret (AST-1069 verifies)
+  SLACK_APP_TOKEN       — Socket Mode app token (local/dev only; AST-1069)
 
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
@@ -33,6 +36,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
+  CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
 """
 
 import json
@@ -956,9 +960,10 @@ COMPANY_STATES = {
 # CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
 # each value has prior_states (list or None), progress_rank, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
-# PROSPECT is conceptual only — not a registry key.
+# PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
+    "PROSPECT": {"prior_states": None, "progress_rank": -1},
     "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
     "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
     "REQUIRED_TOPICS_READY": {
@@ -1234,7 +1239,111 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.first", "profile.last",   # transitional
     ),
     "match_casefold": True,  # case-insensitive compare for emails and names
+    # Slack user id homes (AST-1066). Matcher inclusion is AST-1068 — config home only here.
+    "slack_user_id_paths": (
+        "contact.slack_user_id",
+    ),
 }
+
+# ---------------------------------------------------------------------------
+# CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).
+# Skills ACL is Contact-only — never dispatch TASK_CONFIG / agent_task catalog rows.
+# Secret *values* live in environ; this block stores env *names* + behavior flags.
+# ---------------------------------------------------------------------------
+CONTACT_CONFIG = {
+    # Default off. Manage Slack (AST-1067) owns the per-environment flip.
+    "listen_enabled": False,
+    # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
+    "listen_state_filename": "contact_slack_listen.json",
+    # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
+    "production_deploy_env": "production",
+    # Format with environment= (deploy label). AST-1067 applies when listen is on
+    # and deploy is not production.
+    "non_production_reply_prefix_template": "[{environment}] ",
+    # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
+    "bot_token_env": "SLACK_BOT_TOKEN",
+    "signing_secret_env": "SLACK_SIGNING_SECRET",
+    # skill_key → ACL metadata. Contact-only entity-save paths (AST-1071).
+    # Keys must never appear in TASK_CONFIG (assert below).
+    "skills": {
+        "save_candidate_profile": {
+            "entity": "candidate",
+            "write": True,
+            "description": (
+                "Merge allowlisted profile fields into candidate_data.profile "
+                "for Slack Contact intake."
+            ),
+            # Dotted paths under candidate_data. Payload field keys must match exactly.
+            "allowed_paths": (
+                "profile.first",
+                "profile.last",
+                "profile.pronoun_preference",
+                "profile.contact_email",
+            ),
+        },
+        "save_candidate_contact": {
+            "entity": "candidate",
+            "write": True,
+            "description": (
+                "Merge allowlisted contact.* fields into candidate_data "
+                "(not slack_user_id — AST-1068 owns that)."
+            ),
+            "allowed_paths": (
+                "contact.contact_email",
+                "contact.reply_email",
+            ),
+        },
+    },
+    # AST-1069: Events API Request URL path (Flask route under /api).
+    "events_http_path": "/slack/events",
+    # Bot events Contact accepts when listen is on (Slack Event Subscriptions must match).
+    "bot_event_types": ("app_mention", "message"),
+    # Process-local event_id dedupe capacity (single gunicorn worker — AST/Railway).
+    "event_id_dedupe_max": 4096,
+    # Socket Mode (local/dev only) — app-level token env name (xapp-…).
+    "app_token_env": "SLACK_APP_TOKEN",
+    # Deterministic astral_candidate_id for Slack-created PROSPECTs (format with slack_user_id=).
+    "prospect_candidate_id_template": "slack-{slack_user_id}",
+    # AST-1070: Slack history page size for context loads (Web API limit param).
+    "context_history_limit": 50,
+    # Process-local cache: max distinct (channel, thread) keys retained.
+    "context_cache_max_conversations": 256,
+    # Seconds before a cached conversation is considered stale (force Slack refetch).
+    "context_cache_ttl_seconds": 300,
+}
+
+assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
+assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
+assert isinstance(CONTACT_CONFIG["skills"], dict)
+assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
+assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+assert str(CONTACT_CONFIG["events_http_path"]).startswith("/")
+assert CONTACT_CONFIG["bot_event_types"] and all(
+    isinstance(_t, str) for _t in CONTACT_CONFIG["bot_event_types"]
+)
+assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
+assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
+assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
+assert "{slack_user_id}" in CONTACT_CONFIG["prospect_candidate_id_template"]
+assert isinstance(CONTACT_CONFIG["context_history_limit"], int)
+assert CONTACT_CONFIG["context_history_limit"] > 0
+assert isinstance(CONTACT_CONFIG["context_cache_max_conversations"], int)
+assert CONTACT_CONFIG["context_cache_max_conversations"] > 0
+assert isinstance(CONTACT_CONFIG["context_cache_ttl_seconds"], int)
+assert CONTACT_CONFIG["context_cache_ttl_seconds"] > 0
+# Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
+for _skill_key in CONTACT_CONFIG["skills"]:
+    assert _skill_key not in TASK_CONFIG, _skill_key
+for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
+    assert isinstance(_skill_meta, dict), _skill_key
+    assert _skill_meta.get("entity") == "candidate", _skill_key
+    assert _skill_meta.get("write") is True, _skill_key
+    assert isinstance(_skill_meta.get("description"), str) and _skill_meta["description"].strip(), _skill_key
+    _paths = _skill_meta.get("allowed_paths")
+    assert isinstance(_paths, tuple) and len(_paths) > 0, _skill_key
+    for _p in _paths:
+        assert isinstance(_p, str) and "." in _p, (_skill_key, _p)
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
@@ -1254,7 +1363,7 @@ INBOX_CREATE_JOB_CONFIG = {
         '<section class="email-body">{body}</section>'
     ),
 }
-assert "PROSPECT" not in CANDIDATE_STATES
+assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
@@ -3479,6 +3588,7 @@ NAV_CONFIG = [
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
             {"label": "Manage Email", "path": "/admin/manage_email"},
+            {"label": "Manage Slack", "path": "/admin/manage_slack"},
         ],
     },
 ]
