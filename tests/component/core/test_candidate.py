@@ -2695,21 +2695,28 @@ class TestAst1068CandidateSlackLookup:
     def test_initiate_prospect_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saved = {}
 
-        def _save(cid, state=None, candidate_data=None, state_history=None, merge=None):
+        def _save(cid, state=None, candidate_data=None, state_history=None, merge=None, **kwargs):
             saved["cid"] = cid
             saved["state"] = state
             saved["candidate_data"] = candidate_data
             saved["state_history"] = state_history
+            saved["kwargs"] = kwargs
 
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        # AST-1014: names are columns (first=/last=); contact blob holds slack_user_id only.
         candidate_mod.initiate_prospect_candidate(
             "slack-u1",
-            {"contact": {"slack_user_id": "U1"}, "profile": {"first": "Ada", "last": ""}},
+            {"contact": {"slack_user_id": "U1"}},
+            first="Ada",
+            last="",
         )
         assert saved["cid"] == "slack-u1"
         assert saved["state"] == "PROSPECT"
-        assert saved["candidate_data"]["contact"]["slack_user_id"] == "U1"
+        assert saved["candidate_data"] == {"contact": {"slack_user_id": "U1"}}
+        assert "profile" not in saved["candidate_data"]
+        assert saved["kwargs"].get("first") == "Ada"
+        assert saved["kwargs"].get("last") == ""
         assert saved["state_history"] is not None
 
     def test_initiate_rejects_empty_and_existing(self, monkeypatch: pytest.MonkeyPatch) -> None:
