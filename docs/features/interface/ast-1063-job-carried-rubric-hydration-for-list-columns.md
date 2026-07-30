@@ -168,3 +168,21 @@ Each `*_rubric` value is a **list** of criterion dicts:
 **Built:** `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns` @ `bb67d4920ec0d867473d46b04fc13202380a49ac`
 
 Stages 1–3: `_rubric_snapshot_for_job_data`; persist `*_rubric` on verdict / joblist / jd writes; `_flatten_grades` + detail lift. Stage 4 smoke: snapshot omits content, flatten lifts rubric/scores. Tests deferred to Betty.
+
+## Radia review (code-rubric.v1)
+
+**Date:** 2026-07-30  
+**Publish tip before this docs commit:** `b9b61e6352611e74034765165f5168ae62e53f4b`  
+**Overall:** DISCUSS — **fix-now:** none; **discuss:** statute straggler ×3 (substance **conforms**); no advisory.
+
+### What’s solid
+- `_rubric_snapshot_for_job_data` omits `content`, copies before `ensure_criterion_grade_table`, covers verdict / joblist / jd write sites.
+- `_flatten_grades` lifts all five `*_rubric` keys; detail now shares the helper; scores unchanged.
+- Boundaries held vs AST-1064 (no list React / grouping / live artifact remap).
+
+### Issues
+- **discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot vs `origin/dev` brings them in-scope — all score **conforms** (no product delta).
+
+### Recommended actions
+- Acknowledge stragglers → resolve-child → User Testing (same pattern as recent clean DISCUSS tips).
+
