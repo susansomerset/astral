@@ -133,11 +133,15 @@ def contact_post_message(
    - Else append `message` and trim to `context_history_limit` (keep newest).
    - `message` must be a `dict` with at least `text` and `ts` (string); raise `ValueError` otherwise.
 
-5. `contact_post_message`: call `post_message`; on success append `{ "user": "bot", "text", "ts": <from response or now>, "bot_id": "self" }` (use Slack response `ts` when present). Return the Web API JSON. AST-1046 should prefer this helper for outbound so cache stays warm.
+5. `contact_post_message`: call `post_message`; on success append an outbound message dict using Slack response fields when present (`ts` from the API response; `text` as posted). Placeholder `user`/`bot_id` only for cache-local identity of Estelle’s own outbound — document that load still returns Slack API shapes from history fetches. Return the Web API JSON. AST-1046 should prefer this helper for outbound so cache stays warm.
 
-6. Wire **inbound append** into existing `handle_slack_event`: when result `accepted` is True, call `append_slack_conversation_message` with channel / thread_ts (prefer `thread_ts` or `ts` for DM root) and a message dict from the event (`user`, `text`, `ts`). Do **not** fetch history inside `handle_slack_event` (ack path stays light).
+6. Wire **inbound append** into existing `handle_slack_event`: when result `accepted` is True, call `append_slack_conversation_message` with:
+   - `channel=event["channel"]`
+   - `thread_ts=event.get("thread_ts")` only — if missing/`None`, normalize to `""` for the cache key (channel-only DM / channel root). **Never** pass message `ts` as the cache-key thread component.
+   - `message={"user", "text", "ts"}` from the event (`ts` lives **inside** the message dict only).
+   Do **not** fetch history inside `handle_slack_event` (ack path stays light).
 
-⚠️ **Decision — cache key uses thread_ts when present:** Channel @-mention threads use `thread_ts`; DMs without threads use channel-only key (`thread_ts=""`). Document in code comment.
+⚠️ **Decision — cache key uses Slack thread_ts only:** Key is `(channel, thread_ts or "")`. Channel @-mention threads pass Slack’s `thread_ts`. DMs / channel roots without a thread use `""`. Message `ts` is never the key’s thread component (that would shard one DM into one key per message). Document in code comment.
 
 ⚠️ **Decision — no DB table:** Explicit parent boundary. Refresh always available via `refresh=True` / TTL expiry → Slack SoT.
 
@@ -172,3 +176,17 @@ def contact_post_message(
 **Conf:** `high` — Slack `conversations.history` / `replies` are fixed APIs; AST-1069 left `post_message` + Contact module; parent forbids transcript SoT so process-local cache is the matching design.
 
 **Risk:** `MEDIUM` — stale/wrong context could mislead Estelle turns (AST-1046); mitigated by TTL + `refresh=True` + Slack as SoT on miss/expiry. No open unauthenticated surface added.
+
+---
+
+## Revisions
+
+### Revision 1 — 2026-07-30
+
+Driven by: Joan `[plan-discuss] round=1 concern` — fix-now Stage 3.6 vs Decision contradict on DM cache key (`ts` vs `""`).
+
+Changes:
+
+- Stage 3 step 6: inbound append passes `thread_ts=event.get("thread_ts")` only; message `ts` stays inside the message dict, never as the cache-key thread component.
+- Decision wording aligned: key is `(channel, thread_ts or "")` only.
+- Step 5: clarify outbound append prefers Slack response fields; placeholder bot identity is cache-local only (Joan discuss non-blocking).
