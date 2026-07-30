@@ -55,6 +55,7 @@ import DataManagement from "./pages/AdminDataManagement"
 import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
+import AdminManageSlack from "./pages/AdminManageSlack"
 
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
@@ -121,6 +122,7 @@ const routes: RouteObject[] = [
           { path: "admin/session_resume_paste", element: <AdminRoute><SessionResumePaste /></AdminRoute> },
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
           { path: "admin/manage_email", element: <AdminRoute><AdminManageEmail /></AdminRoute> },
+          { path: "admin/manage_slack", element: <AdminRoute><AdminManageSlack /></AdminRoute> },
 
           // Catch-all
           { path: "*", element: <Navigate to="/jobs/recommended" replace /> },

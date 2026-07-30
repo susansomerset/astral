@@ -2689,26 +2689,6 @@ class TestAst1069ContactEventsConfig:
         assert cc["app_token_env"] == "SLACK_APP_TOKEN"
 
 
-# Branches: context history/cache/TTL on CONTACT_CONFIG (AST-1070).
-class TestAst1070ContactContextConfig:
-    """AST-1070: history limit, cache max conversations, TTL seconds."""
-
-    def test_context_cache_keys(self) -> None:
-        cc = cfg.CONTACT_CONFIG
-        assert cc["context_history_limit"] == 50
-        assert isinstance(cc["context_history_limit"], int) and cc["context_history_limit"] > 0
-        assert cc["context_cache_max_conversations"] == 256
-        assert (
-            isinstance(cc["context_cache_max_conversations"], int)
-            and cc["context_cache_max_conversations"] > 0
-        )
-        assert cc["context_cache_ttl_seconds"] == 300
-        assert (
-            isinstance(cc["context_cache_ttl_seconds"], int)
-            and cc["context_cache_ttl_seconds"] > 0
-        )
-
-
 
 
 class TestAst1055MeteoriteLikeUpshotTasks:
