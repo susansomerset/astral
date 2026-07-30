@@ -516,3 +516,21 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
   --testNamePattern="AST-996"
 ```
+
+### AST-1064 · AST-1059
+
+**Publish:** `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables`.
+
+`jobCarriedRubricKey` / fingerprint / `groupJobsByAlignedRubric` / `buildJobListRubricColumnsForGroup` / `analysisTimeScoreForJob` — list pages never read live candidate artifacts for columns. Page coverage: **`docs/test-bible/frontend/pages.md`** (**AST-1064**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job-carried list helpers | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1064 job-carried list helpers`** |
+
+**Broken / obsolete:** none — `buildJobListRubricColumns` live-artifact path retained for non-list callers.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  --testNamePattern="AST-1064"
+```
