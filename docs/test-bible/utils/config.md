@@ -1389,6 +1389,29 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   -q
 ```
 
+
+### AST-1068 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
+
+`CANDIDATE_STATES["PROSPECT"]`; `CONTACT_CONFIG["prospect_candidate_id_template"]`. Revised **`TestAst970CandidateStateRegistry`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PROSPECT registry + id template | `src/utils/config.py` | **`TestAst1068ProspectConfig`**; revised **`TestAst970CandidateStateRegistry`** |
+
+**Broken / obsolete:** AST-970 `assert "PROSPECT" not in CANDIDATE_STATES` — revised this pass.
+
+**Integration:** no existing scenario — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1068ProspectConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
+  -q
+```
+
+
 ### AST-1072 · AST-1046
 
 **Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`.

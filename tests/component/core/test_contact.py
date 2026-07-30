@@ -189,6 +189,20 @@ class TestAst1069ContactSlackIngress:
     def setup_method(self) -> None:
         contact_mod._seen_event_ids.clear()
 
+    def _stub_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1068 wires resolve on accept — stub so ingress tests stay transport-focused.
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c-stub",
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+
     def test_handle_listen_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
         out = contact_mod.handle_slack_event(
@@ -198,6 +212,7 @@ class TestAst1069ContactSlackIngress:
 
     def test_handle_app_mention_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
         out = contact_mod.handle_slack_event(
             {
                 "event_id": "Ev-mention",
@@ -221,6 +236,7 @@ class TestAst1069ContactSlackIngress:
 
     def test_handle_dm_message_accepted_channel_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
         dm = contact_mod.handle_slack_event(
             {
                 "event_id": "Ev-dm",
@@ -293,6 +309,7 @@ class TestAst1069ContactSlackIngress:
         secret = "signing-secret"
         monkeypatch.setenv(CONTACT_CONFIG["signing_secret_env"], secret)
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
         monkeypatch.setattr(contact_mod.threading, "Thread", _ImmediateThread)
         payload = {
             "type": "event_callback",
@@ -316,3 +333,110 @@ class TestAst1069ContactSlackIngress:
         assert out == ""
         # Handler ran via ImmediateThread — event remembered.
         assert "Ev-http" in contact_mod._seen_event_ids
+
+
+# Branches: resolve hit/miss/create gate; Events accept wires resolve (AST-1068).
+class TestAst1068ResolveSlackUser:
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_resolve_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value="c1"))
+        monkeypatch.setattr(
+            contact_mod, "get_candidate", MagicMock(return_value={"state": "INTAKE_INITIATED"})
+        )
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        out = contact_mod.resolve_slack_user("U1", estelle_in_play=True)
+        assert out == {"astral_candidate_id": "c1", "state": "INTAKE_INITIATED", "created": False}
+        create.assert_not_called()
+
+    def test_resolve_miss_without_estelle_does_not_create(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        fetch = MagicMock()
+        monkeypatch.setattr(contact_mod, "fetch_user_profile", fetch)
+        out = contact_mod.resolve_slack_user("Umiss", estelle_in_play=False)
+        assert out == {"astral_candidate_id": None, "state": None, "created": False}
+        create.assert_not_called()
+        fetch.assert_not_called()
+
+    def test_resolve_create_prospect(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
+        monkeypatch.setattr(
+            contact_mod,
+            "fetch_user_profile",
+            MagicMock(
+                return_value={
+                    "slack_user_id": "Unew",
+                    "first": "Ada",
+                    "last": "L",
+                    "display_name": "ada",
+                }
+            ),
+        )
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        out = contact_mod.resolve_slack_user("Unew", estelle_in_play=True)
+        assert out["created"] is True
+        assert out["state"] == "PROSPECT"
+        assert out["astral_candidate_id"] == "slack-unew"
+        create.assert_called_once()
+        assert create.call_args.args[0] == "slack-unew"
+        assert create.call_args.args[1]["contact"]["slack_user_id"] == "Unew"
+        assert create.call_args.args[1]["profile"]["first"] == "Ada"
+
+    def test_resolve_create_seeds_display_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
+        monkeypatch.setattr(
+            contact_mod,
+            "fetch_user_profile",
+            MagicMock(
+                return_value={
+                    "slack_user_id": "Ux",
+                    "first": "",
+                    "last": "",
+                    "display_name": "OnlyDisplay",
+                }
+            ),
+        )
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        contact_mod.resolve_slack_user("Ux", estelle_in_play=True)
+        assert create.call_args.args[1]["profile"]["first"] == "OnlyDisplay"
+
+    def test_resolve_rejects_empty(self) -> None:
+        with pytest.raises(ValueError, match="slack_user_id"):
+            contact_mod.resolve_slack_user("  ", estelle_in_play=True)
+
+    def test_handle_accept_wires_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        resolved = {
+            "astral_candidate_id": "slack-u9",
+            "state": "PROSPECT",
+            "created": True,
+        }
+        monkeypatch.setattr(contact_mod, "resolve_slack_user", MagicMock(return_value=resolved))
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-resolve",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U9",
+                    "channel": "C1",
+                    "text": "hi",
+                    "ts": "1.0",
+                },
+            }
+        )
+        assert out["accepted"] is True
+        assert out["astral_candidate_id"] == "slack-u9"
+        assert out["candidate_state"] == "PROSPECT"
+        assert out["candidate_created"] is True
+        contact_mod.resolve_slack_user.assert_called_once_with(
+            "U9", estelle_in_play=True, debug=False
+        )
+

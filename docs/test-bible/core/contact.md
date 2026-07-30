@@ -76,3 +76,29 @@ ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_dat
   tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi \
   -q
 ```
+
+---
+
+### AST-1068 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
+
+`resolve_slack_user`: lookup via `get_candidate_id_for_query`; create PROSPECT only when `estelle_in_play=True`; `handle_slack_event` accept wires resolve. Candidate: **`docs/test-bible/core/candidate.md`**. External: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve hit/miss/create; Events accept wire | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** |
+
+**Broken / obsolete:** **`TestAst1069ContactSlackIngress`** accept-path — revised to stub `resolve_slack_user`.
+
+**Integration:** no existing scenario asserts Slack resolve / PROSPECT create — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1068ProspectConfig \
+  tests/component/core/test_candidate.py::TestAst1068CandidateSlackLookup \
+  tests/component/external/test_slack.py::TestAst1068FetchUserProfile \
+  tests/component/core/test_contact.py::TestAst1068ResolveSlackUser \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  -q
+```
