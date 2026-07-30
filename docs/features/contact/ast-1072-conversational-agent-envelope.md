@@ -163,7 +163,7 @@ brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1–3 | *(this push)* | CHAT envelope schema + do_task contract + contact_estelle_turn seed |
+| 1–3 |  | CHAT envelope schema + do_task contract + contact_estelle_turn seed |
 
-**Tip:** set after publish
+**Tip:**  on 
 )
