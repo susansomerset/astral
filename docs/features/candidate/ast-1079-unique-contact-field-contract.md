@@ -150,3 +150,12 @@ assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"] == ("contact.s
 | §3.5 naming | `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` matches candidate + concern naming |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review
+
+| Field | Value |
+| -- | -- |
+| Ticket | AST-1079 |
+| Publish ref | `origin/sub/AST-1045/AST-1079-unique-contact-field-contract` |
+| Built | `fb4cd6e02c39ada87e5628f1177739f3cd536d8a` |
+| Notes | Stage 1 — `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` sibling to lookup; email/slack path objects shared by identity. |
