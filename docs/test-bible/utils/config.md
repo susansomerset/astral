@@ -1459,3 +1459,27 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
   -q
 ```
+
+
+---
+
+### AST-1074 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1074-topic-menu-model-and-persistence`.
+
+`TOPIC_MENU_CONFIG`: closed `informs` (`rubrics`, `base_resume`, `strengths`, `priorities`, `deal_breakers`, `backstory`), statuses `open`/`ready`/`retired`, `candidate_data_key: topic_menu`, required topic fields. Library homes for context informs live under `CANDIDATE_LIBRARY_CONFIG`. Core persistence: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Closed informs + status triad | `src/utils/config.py` | **`TestAst1074TopicMenuConfig`** |
+
+**Broken / obsolete:** none — additive config.
+
+**Integration:** no existing scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
+  -q
+```
