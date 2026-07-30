@@ -68,3 +68,14 @@ Rules (literal):
 - **§2.2 do-task-delegation / §2.6 core-decides-transitions:** Bind happens in consult before process; core still decides QUALIFIED vs FAILED_QUALIFY.
 - **§2.4 claim-process-release:** Claim surface unchanged; process receives correctly keyed response rows.
 - **§1.3 DRY:** One helper; listing + meteorite share bind via `_run_batch_consult`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`
+**Plan path:** `docs/features/meteorite/ast-1076-uat-qualify-meteorite-good-extract-error.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `9ac88ac7` | bind placeholder astral_job_id + RESPONSE debug NameError |
+
+**Tip:** `9ac88ac762e9816f0e4e74119958e98435236d30` on `origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`
