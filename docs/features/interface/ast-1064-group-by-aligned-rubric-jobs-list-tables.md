@@ -208,3 +208,11 @@ Convention: `gradeKey.replace("_grades", "_rubric")` / `"_score"`. Each `*_rubri
 - **§3.3 import-direction:** Frontend only; no UI→data. Does not call consult or invent hydration.
 - **§3.5 naming / file placement:** Helpers stay in `lib/rubricDisplay.ts`; pages stay under `pages/`.
 - **New pattern:** job-list tables keyed by job-carried rubric fingerprint (parent Architectural definition — Archie-approved).
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables` @ `707be3e69cf1bb637675eb7451c06779ae514a4a`
+
+Stages 1–3: `jobCarriedRubricKey` / fingerprint / `groupJobsByAlignedRubric` / `buildJobListRubricColumnsForGroup` / `analysisTimeScoreForJob` in `rubricDisplay.ts`; Skipped + In Review render one table per aligned group; live candidate artifacts no longer drive list columns; Score prefers `{prefix}_score` then `latest_score`. In Review Score header always-on when `gradeKey` set (Joan discuss). Stage 4 smoke: deferred to UAT / Betty. Tests deferred to Betty.
