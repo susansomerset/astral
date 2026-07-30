@@ -1327,13 +1327,13 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, empty `skills` ACL home. `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| CONTACT_CONFIG defaults + env names; slack lookup path home | `src/utils/config.py` | **`TestAst1066ContactConfig`** (empty-skills assert revised **AST-1071**) |
+| CONTACT_CONFIG defaults + env names; slack lookup path home | `src/utils/config.py` | **`TestAst1066ContactConfig`** |
 
-**Broken / obsolete:** empty-`skills == {}` — revised by **AST-1071**.
+**Broken / obsolete:** none — additive config + lookup path tuple.
 
 **Integration:** no existing scenario asserts CONTACT_CONFIG / slack_user_id_paths — no revision.
 
@@ -1344,25 +1344,26 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   -q
 ```
 
-### AST-1071 · AST-1043
+### AST-1069 · AST-1043
 
-**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`.
 
-`CONTACT_CONFIG["skills"]`: `save_candidate_profile` + `save_candidate_contact` with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+`CONTACT_CONFIG` Events/Socket Mode keys: `events_http_path`, `bot_event_types`, `event_id_dedupe_max`, `app_token_env`. Ingress handlers: **`docs/test-bible/core/contact.md`**. External verify/post: **`docs/test-bible/external/slack.md`**. HTTP blueprint: **`docs/test-bible/ui/api/api_slack.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
+| Events path / bot types / dedupe / app token env | `src/utils/config.py` | **`TestAst1069ContactEventsConfig`** |
 
-**Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+**Broken / obsolete:** none — additive keys on CONTACT_CONFIG.
 
-**Integration:** none.
+**Integration:** no existing scenario asserts Slack Events ingress — no revision.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestAst1071ContactSkillsConfig \
-  tests/component/core/test_contact.py::TestAst1071ContactSkillRunners \
-  tests/component/ui/api/test_api_contact.py::TestAst1071ContactSkillsApi \
+  tests/component/utils/test_config.py::TestAst1069ContactEventsConfig \
+  tests/component/external/test_slack.py::TestAst1069ExternalSlack \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi \
   -q
 ```
 

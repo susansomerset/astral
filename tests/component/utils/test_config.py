@@ -2622,17 +2622,17 @@ class TestAst1062QualifyMeteoriteThresholds:
         assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
 
 
-# Branches: CONTACT_CONFIG scaffold (AST-1066) + entity-save skills ACL (AST-1071).
+# Branches: CONTACT_CONFIG scaffold (AST-1066). Distinct from TASK_CONFIG.
 class TestAst1066ContactConfig:
-    """AST-1066: CONTACT_CONFIG listen/env-names + CANDIDATE_LOOKUP slack path."""
+    """AST-1066: CONTACT_CONFIG listen/skills/env-names + CANDIDATE_LOOKUP slack path."""
 
     def test_contact_config_defaults_and_env_names(self) -> None:
         cc = cfg.CONTACT_CONFIG
         assert cc["listen_enabled"] is False
+        assert cc["skills"] == {}
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
         assert cc["non_production_reply_prefix_template"] == "[{environment}] "
-        assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
 
@@ -2643,33 +2643,18 @@ class TestAst1066ContactConfig:
         assert "first" in luc["name_paths"]
 
 
-class TestAst1071ContactSkillsConfig:
-    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+# Branches: Events/Socket Mode contracts on CONTACT_CONFIG (AST-1069).
+class TestAst1069ContactEventsConfig:
+    """AST-1069: events path, bot_event_types, dedupe max, app_token_env."""
 
-    def test_two_skills_not_in_task_config(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
-        for key, meta in skills.items():
-            assert key not in cfg.TASK_CONFIG
-            assert meta["entity"] == "candidate"
-            assert meta["write"] is True
-            assert isinstance(meta["description"], str) and meta["description"].strip()
-            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
-
-    def test_allowlisted_paths_no_slack_user_id(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert skills["save_candidate_profile"]["allowed_paths"] == (
-            "profile.first",
-            "profile.last",
-            "profile.pronoun_preference",
-            "profile.contact_email",
-        )
-        assert skills["save_candidate_contact"]["allowed_paths"] == (
-            "contact.contact_email",
-            "contact.reply_email",
-        )
-        for meta in skills.values():
-            assert "contact.slack_user_id" not in meta["allowed_paths"]
+    def test_events_and_socket_mode_keys(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["events_http_path"] == "/slack/events"
+        assert str(cc["events_http_path"]).startswith("/")
+        assert cc["bot_event_types"] == ("app_mention", "message")
+        assert isinstance(cc["event_id_dedupe_max"], int) and cc["event_id_dedupe_max"] > 0
+        assert cc["event_id_dedupe_max"] == 4096
+        assert cc["app_token_env"] == "SLACK_APP_TOKEN"
 
 
 class TestAst1055MeteoriteLikeUpshotTasks:
