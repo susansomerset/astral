@@ -78,3 +78,55 @@ describe('FormFields', () => {
     expect(screen.getByText('Disabled')).toBeInTheDocument()
   })
 })
+
+// AST-1081: string_list shape type (websites multi-entry)
+describe('FormFields string_list (AST-1081)', () => {
+  it('renders rows, Add, edit, and Remove as string[]', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const { rerender } = render(
+      <FormFields
+        fields={[{ key: 'contact.websites', label: 'Websites', type: 'string_list' }]}
+        values={{ contact: { websites: ['https://a.example'] } }}
+        onChange={onChange}
+      />,
+    )
+
+    expect(screen.getByDisplayValue('https://a.example')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument()
+
+    await user.type(screen.getByDisplayValue('https://a.example'), 'x')
+    expect(onChange).toHaveBeenCalled()
+    const editCall = onChange.mock.calls.at(-1)
+    expect(editCall?.[0]).toBe('contact.websites')
+    expect(Array.isArray(editCall?.[1])).toBe(true)
+
+    onChange.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    expect(onChange).toHaveBeenCalledWith('contact.websites', ['https://a.example', ''])
+
+    // Remove first row after re-render with two entries
+    rerender(
+      <FormFields
+        fields={[{ key: 'contact.websites', label: 'Websites', type: 'string_list' }]}
+        values={{ contact: { websites: ['https://a.example', 'https://b.example'] } }}
+        onChange={onChange}
+      />,
+    )
+    onChange.mockClear()
+    await user.click(screen.getAllByRole('button', { name: 'Remove' })[0])
+    expect(onChange).toHaveBeenCalledWith('contact.websites', ['https://b.example'])
+  })
+
+  it('treats non-array values as empty list', () => {
+    render(
+      <FormFields
+        fields={[{ key: 'contact.websites', label: 'Websites', type: 'string_list' }]}
+        values={{ contact: { websites: 'https://not-a-list.example' } }}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument()
+  })
+})

@@ -631,3 +631,35 @@ Optional `preamble_confirmed_at` on `candidate_data.topic_menu` (normalize / val
   tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
   -q
 ```
+
+
+---
+
+### AST-1081 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1081-contact-shapes-websites-full`.
+
+`save_candidate_data`: empty/whitespace `full` → `recompute_full_name` (submitted first/last with existing-column fallback); non-empty `full` strip-persists as override; `contact.websites` coerced to trimmed non-empty `list[str]` (`None`→`[]`; non-list → `ValueError`). Shapes + FormFields: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/frontend/components.md`**. Profile page/nav = **AST-1082**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty-full recompute + websites coerce | `src/core/candidate.py` | **`TestAst1081ContactShapesSaveContract`** |
+| Contact Information shapes (`full` / `string_list` / reason_codes) | `src/utils/config.py` | **`TestAst1081ContactShapesConfig`** (map: **`docs/test-bible/utils/config.md`**) |
+| FormFields `string_list` Add/edit/Remove | `FormFields.tsx` | **`test_FormFields.test.tsx`** — **`FormFields string_list (AST-1081)`** (map: **`docs/test-bible/frontend/components.md`**) |
+
+**Existing coverage (still required):** **`TestAst1014CandidateLibrary`** (omit-full when first/last change; refuse `profile`; URL normalize).
+
+**Broken / obsolete:** none — additive empty-full branch + websites coerce; AST-1014 omit-full path unchanged.
+
+**Integration:** no existing scenario asserts Profile contact shapes / websites list / empty-full save — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1081ContactShapesSaveContract \
+  tests/component/core/test_candidate.py::TestAst1014CandidateLibrary \
+  tests/component/utils/test_config.py::TestAst1081ContactShapesConfig \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_FormFields.test.tsx
+```
