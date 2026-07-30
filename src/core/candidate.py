@@ -185,6 +185,26 @@ def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[s
         state_history=_append_candidate_state_history({}, "", initial, now),
     )
 
+
+def initiate_prospect_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Create a candidate row in PROSPECT (Slack create-on-miss). Not NEW_CANDIDATE."""
+    cid = (astral_candidate_id or "").strip()
+    if not cid:
+        raise ValueError("astral_candidate_id is required")
+    if get_candidate(cid) is not None:
+        raise ValueError(f"candidate already exists: {cid}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    database.save_candidate(
+        cid,
+        state="PROSPECT",
+        candidate_data=candidate_data or {},
+        state_history=_append_candidate_state_history({}, "", "PROSPECT", now),
+    )
+
+
 def save_candidate_data(candidate_id: str, data: Dict[str, Any], replace: bool = False) -> None:
     """Merge (or replace) candidate_data. Follows save_job_data pattern.
     Pure data persistence — no side effects, no AI calls."""
@@ -442,8 +462,10 @@ def get_candidate_id_for_query(
     needle_cmp = needle.casefold() if casefold else needle
 
     hit_ids: set[str] = set()
-    paths = tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"]) + tuple(
-        CANDIDATE_LOOKUP_CONFIG["name_paths"]
+    paths = (
+        tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["name_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"])
     )
     for candidate in list_candidates(include_deleted=False):
         values = []

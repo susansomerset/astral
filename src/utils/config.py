@@ -945,9 +945,10 @@ COMPANY_STATES = {
 # CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
 # each value has prior_states (list or None), progress_rank, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
-# PROSPECT is conceptual only — not a registry key.
+# PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
+    "PROSPECT": {"prior_states": None, "progress_rank": -1},
     "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
     "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
     "REQUIRED_TOPICS_READY": {
@@ -1125,6 +1126,8 @@ CONTACT_CONFIG = {
     "event_id_dedupe_max": 4096,
     # Socket Mode (local/dev only) — app-level token env name (xapp-…).
     "app_token_env": "SLACK_APP_TOKEN",
+    # Deterministic astral_candidate_id for Slack-created PROSPECTs (format with slack_user_id=).
+    "prospect_candidate_id_template": "slack-{slack_user_id}",
 }
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
@@ -1138,6 +1141,7 @@ assert CONTACT_CONFIG["bot_event_types"] and all(
 assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
 assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
 assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
+assert "{slack_user_id}" in CONTACT_CONFIG["prospect_candidate_id_template"]
 # Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
 for _skill_key in CONTACT_CONFIG["skills"]:
     assert _skill_key not in TASK_CONFIG, _skill_key
@@ -1170,7 +1174,7 @@ INBOX_CREATE_JOB_CONFIG = {
     ),
 }
 
-assert "PROSPECT" not in CANDIDATE_STATES
+assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
