@@ -160,3 +160,11 @@ Each `*_rubric` value is a **list** of criterion dicts:
 - **§3.3 imports:** `rubric_text.ensure_criterion_grade_table` stays utils→consult; API does not import consult — only lifts stored keys.
 - **§3.5 naming:** `*_rubric` parallel to `*_grades` / `*_score`; `jd_rubric` not `jobdesc_rubric` on job payload.
 - **import-direction / ui-config-driven:** API shapes job payloads; section→grade_field stays config/manifest; React (sibling) paints resolved shapes without inventing live rubric criteria.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns` @ `bb67d4920ec0d867473d46b04fc13202380a49ac`
+
+Stages 1–3: `_rubric_snapshot_for_job_data`; persist `*_rubric` on verdict / joblist / jd writes; `_flatten_grades` + detail lift. Stage 4 smoke: snapshot omits content, flatten lifts rubric/scores. Tests deferred to Betty.
