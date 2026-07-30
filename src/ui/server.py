@@ -43,6 +43,9 @@ app.register_blueprint(admin_bp)
 from ui.api.api_inbox import inbox_bp  # noqa: E402
 app.register_blueprint(inbox_bp)
 
+from ui.api.api_contact import contact_bp  # noqa: E402
+app.register_blueprint(contact_bp)
+
 from ui.api.api_companies import companies_bp  # noqa: E402
 app.register_blueprint(companies_bp)
 
