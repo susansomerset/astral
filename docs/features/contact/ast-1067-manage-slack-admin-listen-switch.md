@@ -333,3 +333,99 @@ def contact_put_listen():
 **Publish ref:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`  
 **Tip:** `dff0a9ae` — Manage Slack listen switch + non-prod reply tag (stages 1–5)  
 **Stage commits:** `e78c26ab` (config/NAV), `20279fb3` (data JSON), `6b169178` (core listen/prefix/post), `01a0df99` (admin API), `dff0a9ae` (Manage Slack page + route)
+
+---
+
+## Review (Radia / code-rubric.v1)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1067  
+**Publish ref:** `5a7659e5` on `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch` (docs tip follows)  
+**Overall:** DISCUSS
+
+**Diff change set:** `origin/dev...5a7659e5` — layers `{core, data, external, utils, ui, docs, scripts}`; tip carries AST-1066/1069/1071 ancestry plus AST-1067 Manage Slack listen; change_types `{add, modify}`.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | listen filename + production label + NAV in config |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no Slack secrets in config; deploy label via helpers |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plans only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file per ticket under docs/features/contact/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | merge-tests `5e9e94cb` tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty vocabulary |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | prefix/post in Contact; raw post_message stays external |
+| astral.layers.import-direction | scoped | conforms | ui→core→data/external; UI never imports external.slack |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Socket Mode script under scripts/ (ancestry) |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | production/listen decisions in core; React renders API state |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | GET/PUT listen `@require_admin`; page AdminRoute |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data silent; corrupt/missing → None; core/UI decide |
+| astral.standards.database-header-inventory | scoped | conforms | JSON under db_dir; no new SQLite tables |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D found→recorded on set/post when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses non_production_reply_prefix; one post helper |
+| astral.standards.in-scope-only | scoped | conforms | no Events/resolve/cache/turn-loop ownership |
+| astral.standards.logging-via-utils | scoped | conforms | Contact get_logger; data layer silent |
+| astral.standards.no-cross-contamination | scoped | conforms | listen keys only; skills/Events boundaries held |
+| astral.standards.no-hardcoded-sets | scoped | conforms | production label + filename from CONTACT_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | public set/format/post; private hydrate below |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py has no data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no candidate state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | AdminManageSlack in pages/; AdminRoute wired |
+| astral.ui.naming-conventions | scoped | conforms | snake_case /admin/manage_slack + API listen routes |
+| astral.ui.single-gunicorn-worker | scoped | conforms | in-process CONTACT_CONFIG hydrate; per-volume file |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single merge-tests SHA then origin/dev merge |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests/merge vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1067-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | merge origin/dev on tip present |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1067-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | durable-file Decision held |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–5 match tip product |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Katherine remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.manage-pages | conforms | AdminManageSlack + NAV + AdminRoute |
+| pattern.ui.admin-endpoint | conforms | thin GET/PUT /api/admin/contact/listen |
+| pattern.config.config-block | conforms | listen_state_filename + production_deploy_env |
+| pattern.core.contact-agent (proposed) | conforms | hydrate/set + format/post helpers |
+
+### Plan adherence
+
+Stages 1–5 land: config/NAV, data JSON under db_dir, Contact hydrate/set + Style D, `@require_admin` listen API, Manage Slack page. Fail-closed corrupt/missing file; production prefix skip via config; UI never imports external.slack. Self-Assessment MAJOR-CHANGE / high / HIGH matches listen risk and mitigations.
+
+### Findings
+
+**discuss** — C4 straggler: Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.scripts-exempt-from-layer-rules` now in-scope via tip ancestry (docs/tests/scripts). All score **conforms** — no product action.
+
+### What’s solid
+
+Per-volume durable listen; default-off + fail-closed; Contact owns prefix / external stays dumb; auth on API + AdminRoute; NAV↔routes path match.
+
+context_tokens≈54000
