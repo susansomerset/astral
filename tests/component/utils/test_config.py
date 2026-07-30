@@ -2622,6 +2622,56 @@ class TestAst1062QualifyMeteoriteThresholds:
         assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
 
 
+# Branches: CONTACT_CONFIG scaffold (AST-1066) + entity-save skills ACL (AST-1071).
+class TestAst1066ContactConfig:
+    """AST-1066: CONTACT_CONFIG listen/env-names + CANDIDATE_LOOKUP slack path."""
+
+    def test_contact_config_defaults_and_env_names(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["listen_enabled"] is False
+        assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
+        assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        assert isinstance(cc["skills"], dict)
+        for skill_key in cc["skills"]:
+            assert skill_key not in cfg.TASK_CONFIG
+
+    def test_slack_user_id_lookup_home(self) -> None:
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert luc["slack_user_id_paths"] == ("contact.slack_user_id",)
+        assert "contact.contact_email" in luc["email_paths"]
+        assert "first" in luc["name_paths"]
+
+
+class TestAst1071ContactSkillsConfig:
+    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+
+    def test_two_skills_not_in_task_config(self) -> None:
+        skills = cfg.CONTACT_CONFIG["skills"]
+        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
+        for key, meta in skills.items():
+            assert key not in cfg.TASK_CONFIG
+            assert meta["entity"] == "candidate"
+            assert meta["write"] is True
+            assert isinstance(meta["description"], str) and meta["description"].strip()
+            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
+
+    def test_allowlisted_paths_no_slack_user_id(self) -> None:
+        skills = cfg.CONTACT_CONFIG["skills"]
+        assert skills["save_candidate_profile"]["allowed_paths"] == (
+            "profile.first",
+            "profile.last",
+            "profile.pronoun_preference",
+            "profile.contact_email",
+        )
+        assert skills["save_candidate_contact"]["allowed_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+        )
+        for meta in skills.values():
+            assert "contact.slack_user_id" not in meta["allowed_paths"]
+
+
 class TestAst1055MeteoriteLikeUpshotTasks:
     """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
 
