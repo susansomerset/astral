@@ -206,3 +206,12 @@ candidate_data.topic_menu = {
 - **§1.3 DRY:** reuse `save_candidate_data` / `get_candidate`; do not reimplement JSON merge.
 - **debug-contract-gated:** Style D only when `debug=True` on `save_topic_menu`.
 - **Out of scope enforced:** no Estelle tasks, no state hops, no satisfaction UI, no `tests/` edits.
+
+---
+
+## Review
+
+**Publish ref:** `sub/AST-953/AST-1074-topic-menu-model-and-persistence`
+
+**Build tip:** filled in after Stage 3 commit on this ref.
+
