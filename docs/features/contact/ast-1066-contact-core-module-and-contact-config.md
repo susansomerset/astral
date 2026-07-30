@@ -188,3 +188,9 @@ def non_production_reply_prefix(environment: str) -> str:
 ## Execution contract
 
 The plan is binding. Execute stages in order; one commit per stage on epic worktree; publish to `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`. On ambiguity or codebase drift, stop and comment on parent **AST-1043** with the Stage-blocked format — do not improvise.
+
+## Review (build stub)
+
+- **Publish ref:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`
+- **Tip:** `cb4f3227` — Contact scaffold + CONTACT_CONFIG (stages 1–2)
+- **Stage commits:** `db5e2b79` (config), `cb4f3227` (core module)
