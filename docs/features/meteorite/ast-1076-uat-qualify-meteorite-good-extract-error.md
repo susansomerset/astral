@@ -79,3 +79,22 @@ Rules (literal):
 | 1 | `9ac88ac7` | bind placeholder astral_job_id + RESPONSE debug NameError |
 
 **Tip:** `9ac88ac762e9816f0e4e74119958e98435236d30` on `origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1076
+**Publish ref:** `d71086aa54b5195038683a7e938d46620cca0ed4` (`origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`)
+**Overall:** CLEAN
+
+### What’s solid
+- `_bind_response_jobs_to_claimed` before MISSING/FABRICATED; single-job any non-claimed; multi empty/`\d{1,3}` only.
+- `_store_response_block` assigns `result = save_agent_data(...)` — NameError fixed without deleting debug.
+- Content gates / QUALIFIED path unchanged; wrong-fix list avoided.
+
+### Issues
+(none)
+
+### Recommended actions
+- Hedy: resolve-child → User Testing.
