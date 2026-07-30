@@ -90,3 +90,23 @@ Config retarget only: create insert lands in **METEORITE_NEW**. Runtime body alr
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
 ```
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+Optional `job_link=` on `create_meteorite_job` for link-sourced ingest; `company_job_id` stays `None`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Optional job_link persist | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** (`test_optional_job_link_persists_company_job_id_none`) |
+
+**Broken / obsolete:** none — additive kwarg.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  -q
+```
