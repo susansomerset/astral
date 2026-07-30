@@ -215,3 +215,25 @@ candidate_data.topic_menu = {
 
 **Build tip:** `ce0c64c12fd413b66c3e43f0d627f65a2fa9a338`
 
+**Reviewed tip:** `9cb1928f` (`merge-tests(AST-1074)`) vs `origin/dev`
+
+**Overall:** DISCUSS (C4 straggler only; no product fix-now)
+
+### What’s solid
+
+- `TOPIC_MENU_CONFIG` closed informs + status triad with asserts; helpers validate/revise/save via `save_candidate_data`.
+- Style D on `save_topic_menu(..., debug=)` gated; default `revise=True` retires missing ids.
+- Boundaries held: no UI, no Estelle generation, no state hops.
+
+### Findings
+
+**discuss (C4):** Joan Excluded `astral.git.engineer-test-tree-ban` (plan paths); tip three-dot now includes Betty `tests/**` + bible. Statute still **conforms** (engineer SHAs omit test tree). No engineer action unless Archie wants plan-rubric exclude lists re-scored after Tests Ready.
+
+**discuss (carry Joan):** `revise=False` full-replace can drop retired history if callers omit them — AST-1075 must keep default revise or pass complete lists.
+
+**advisory:** `TOPIC_MENU_CONFIG` sits after `PREAMBLE_VALIDATION_CONFIG` asserts (plan said after PREAMBLE); placement-only.
+
+### Recommended actions
+
+None for resolve-child product code. Acknowledge discuss items or leave for AST-1075 caller contract.
+
