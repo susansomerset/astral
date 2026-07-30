@@ -14,6 +14,19 @@ Ship Topic Menu **step 1**: Estelle presents a confirmable preamble summary (“
 
 ---
 
+## Revisions
+
+### Revision 1 — 2026-07-30
+Driven by: Joan `[plan-discuss] round=1 concern` — fix-now: `preferred_name` is not in `CANDIDATE_LIBRARY_CONFIG["contact_keys"]` / name columns; Stage 1 lacked contact-key asserts.
+Changes:
+- Dropped `preferred_name` from `packet_contact_keys` (keep `title_patterns` only).
+- Added `packet_name_columns`: `("full", "first", "last")` from `CANDIDATE_LIBRARY_CONFIG["name_columns"]`; snapshot exposes them under a top-level `name` object (not fake contact keys).
+- Stage 1 asserts: every `packet_contact_keys` ∈ `contact_keys`; every `packet_name_columns` ∈ `name_columns`.
+- Discuss follow-through: include `hopes` / `interests` / `concerns` in `packet_context_keys` + `patchable_context_keys` (library seed fields on tip).
+- Discuss follow-through: after soft-dropping invalid generate topics, recompute `informs_covered` from surviving topics (do not trust Estelle’s list for the returned/persisted coverage claim).
+
+---
+
 ## Files Changed (planned)
 
 | File | Change | Layer |
@@ -46,7 +59,7 @@ TOPIC_MENU_GEN_CONFIG = {
     "generate_task_key": "topic_menu_generate",
     "confirm_outcomes": ("continue", "accepted"),
     "confirm_outcome_field": "outcome",
-    # Live packet fields Estelle must see (from candidate_data.context / contact).
+    # Live packet fields Estelle must see (from candidate_data.context / contact + name columns).
     "packet_context_keys": (
         "raw_resume",
         "raw_profile",
@@ -56,10 +69,19 @@ TOPIC_MENU_GEN_CONFIG = {
         "strengths",
         "priorities",
         "deal_breakers",
+        "hopes",
+        "interests",
+        "concerns",
     ),
+    # Real contact library keys only — never invent preferred_name (not in contact_keys).
     "packet_contact_keys": (
-        "preferred_name",
         "title_patterns",
+    ),
+    # Candidate table name columns (not contact blob keys) for display identity in the packet.
+    "packet_name_columns": (
+        "full",
+        "first",
+        "last",
     ),
     # Library paths Estelle may patch on revise (whitelist only).
     "patchable_context_keys": (
@@ -71,6 +93,9 @@ TOPIC_MENU_GEN_CONFIG = {
         "strengths",
         "priorities",
         "deal_breakers",
+        "hopes",
+        "interests",
+        "concerns",
     ),
     "estelle_agent_id": "principal_recruiter_estelle",
     # UI copy (exposed via ui_config).
@@ -90,11 +115,15 @@ TOPIC_MENU_GEN_CONFIG = {
    - `confirm_task_key` / `generate_task_key` are distinct non-empty `str`.
    - `confirm_outcomes == ("continue", "accepted")`.
    - Every `packet_context_keys` / `patchable_context_keys` entry is in `CANDIDATE_LIBRARY_CONFIG["context_keys"]`.
+   - Every `packet_contact_keys` entry is in `CANDIDATE_LIBRARY_CONFIG["contact_keys"]`.
+   - Every `packet_name_columns` entry is in `CANDIDATE_LIBRARY_CONFIG["name_columns"]`.
    - `estelle_agent_id == "principal_recruiter_estelle"` (same id as existing intake Estelle `agent_task` rows — do **not** use the stale `INTAKE_CONFIG["estelle_agent_id"]` `X00_estelle_recruiter` literal for new rows).
 
 ⚠️ **Decision:** New config block `TOPIC_MENU_GEN_CONFIG` rather than expanding `TOPIC_MENU_CONFIG`. Persistence catalog stays AST-1074-owned; generation/confirm orchestration keys stay here so Ada’s model contract does not churn when prompts/UI copy change.
 
 ⚠️ **Decision:** Confirm outcomes are `continue` | `accepted` (not Valid/Try Again). Ruth already owns Valid/Try Again for mechanical preamble; Estelle confirm is a different conversation.
+
+⚠️ **Decision (Joan round=1):** Display name comes from candidate **name columns** (`full` / `first` / `last`) under snapshot key `name`, not from a fabricated `contact.preferred_name`. `packet_contact_keys` stays a subset of real `contact_keys` (`title_patterns` only for this ticket).
 
 3. In `TASK_CONFIG`, after `preamble_validate_response`, add:
 
@@ -156,7 +185,7 @@ TOPIC_MENU_GEN_CONFIG = {
 - Live CONTENT includes a `PREAMBLE_PACKET` JSON snapshot and optional `CANDIDATE_MESSAGE`.
 - First turn (empty/absent candidate message): summarize the packet in plain language, then ask exactly: **Anything here you would change?** Set `outcome` to `continue`.
 - Later turns: if the candidate accepts (e.g. “looks good”, “nothing to change”), set `outcome` to `accepted` and keep `assistant_message` as a brief acknowledgment.
-- If the candidate requests changes: set `outcome` to `continue`, put allowed field updates in `library_patches` as `{"context": {<key>: <str>, ...}}` using **only** keys from the closed patchable list (raw_resume, raw_profile, raw_sample, bio_summary, backstory, strengths, priorities, deal_breakers). Omit `library_patches` or use `{}` when nothing to write. Re-summarize and re-ask the same confirm question.
+- If the candidate requests changes: set `outcome` to `continue`, put allowed field updates in `library_patches` as `{"context": {<key>: <str>, ...}}` using **only** keys from the closed patchable list (raw_resume, raw_profile, raw_sample, bio_summary, backstory, strengths, priorities, deal_breakers, hopes, interests, concerns). Omit `library_patches` or use `{}` when nothing to write. Never patch `name` columns or invent contact keys. Re-summarize and re-ask the same confirm question.
 - Never invent new library keys. Never generate a Topic Menu in this task.
 - `agent_payload.outcome` must be exactly `continue` or `accepted`.
 
@@ -214,7 +243,7 @@ TOPIC_MENU_GEN_CONFIG = {
 
 **Done when:** `src/core/intake.py` exposes public async callables that build the packet snapshot, run Estelle confirm turns (applying whitelisted patches), gate generation on confirm, validate/filter topics against `TOPIC_MENU_CONFIG`, and `save_topic_menu(..., revise=True)`; `debug=True` emits Style D found/recorded lines on both paths.
 
-1. Imports: `TOPIC_MENU_CONFIG`, `TOPIC_MENU_GEN_CONFIG`; from `src.core.candidate` import `get_topic_menu`, `validate_topic`, `validate_topic_menu`, `save_topic_menu`, `mark_topic_menu_preamble_confirmed`, `save_candidate_data`, `get_candidate`, `build_candidate_token_view` (if useful for name display — optional).
+1. Imports: `TOPIC_MENU_CONFIG`, `TOPIC_MENU_GEN_CONFIG`; from `src.core.candidate` import `get_topic_menu`, `validate_topic`, `validate_topic_menu`, `save_topic_menu`, `mark_topic_menu_preamble_confirmed`, `save_candidate_data`, `get_candidate`.
 
 2. Add `build_preamble_packet_snapshot(candidate_id: str) -> dict`:
 
@@ -224,12 +253,17 @@ TOPIC_MENU_GEN_CONFIG = {
 
 ```python
 {
+    "name": {
+        k: str(candidate.get(k) or "")
+        for k in TOPIC_MENU_GEN_CONFIG["packet_name_columns"]
+    },
     "context": {k: str(context.get(k) or "") for k in TOPIC_MENU_GEN_CONFIG["packet_context_keys"]},
     "contact": {k: str(contact.get(k) or "") for k in TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]},
 }
 ```
 
    - Gate for “Valid preamble packet exists”: require `context["raw_resume"].strip()` non-empty (same bar as CandidateIntake before Estelle). If empty, raise `ValueError("preamble packet incomplete: raw_resume required")`.
+   - Do **not** invent contact keys; name identity is only under `name` from table columns.
 
 3. Add `_apply_library_patches(candidate_id: str, patches: Any, *, debug: bool = False) -> list[str]`:
 
@@ -263,20 +297,21 @@ TOPIC_MENU_GEN_CONFIG = {
    - `live_content` = JSON `{"PREAMBLE_PACKET": <snapshot>, "INFORMS_CATALOG": list(TOPIC_MENU_CONFIG["informs"])}`.
    - `do_task` with `TOPIC_MENU_GEN_CONFIG["generate_task_key"]` (ledger prefix `topic-menu-generate-`).
    - On agent failure: return success False with error/batch_id.
-   - Parse: require `informs_coverage_confirmed is True` (bool); require `informs_covered` is a `list` (may be empty only if topics empty — still fail empty menu later).
+   - Parse: require `informs_coverage_confirmed is True` (bool); require `informs_covered` is a `list` (Estelle’s claim is advisory only after filtering — see next bullets).
    - For each element of `topics`:
      - If not a `dict`, skip (debug_detail count).
      - Ensure `status` defaults to `TOPIC_MENU_CONFIG["default_status"]` when missing.
      - Try `validate_topic(topic)`; on `ValueError`, skip that topic and debug_detail the reason (do **not** accept topics with empty/illegal informs).
    - If zero topics survive: return success False, error `"no valid topics after informs validation"`.
+   - **After soft-drop:** recompute `informs_covered_effective` as the unique union of `informs` across surviving validated topics (order = first-seen walk of `TOPIC_MENU_CONFIG["informs"]` then any remaining). Do **not** persist Estelle’s raw `informs_covered` list if it disagrees with survivors; return `informs_covered_effective` in the API payload for transparency. Estelle’s `informs_coverage_confirmed is True` remains a hard gate (she must assert she checked coverage before return); survivor recomputation is the authoritative coverage set after filtering.
    - Build `{"topics": <validated list>}` (preserve existing `preamble_confirmed_at` by loading current menu and setting it on the outgoing dict before save).
    - `saved = save_topic_menu(candidate_id, outgoing, revise=True, debug=debug)`.
-   - Debug Style D (`func="generate_topic_menu_from_preamble"`): found (raw topic count / coverage flag); recorded (stored open/ready/retired counts via saved menu).
-   - Return `{"success": True, "menu": saved, "batch_id": ..., "rejected_topic_count": N, "error": None}`.
+   - Debug Style D (`func="generate_topic_menu_from_preamble"`): found (raw topic count / coverage flag); recorded (stored open/ready/retired counts via saved menu + rejected_topic_count + effective informs_covered).
+   - Return `{"success": True, "menu": saved, "batch_id": ..., "rejected_topic_count": N, "informs_covered": informs_covered_effective, "error": None}`.
 
 ⚠️ **Decision:** Generation is gated on persisted `preamble_confirmed_at`, not on a UI-only flag — regenerations after refresh still require a prior accept (caller may re-run confirm).  
 
-⚠️ **Decision:** Soft-drop invalid Estelle topics rather than failing the whole menu when at least one valid topic remains; hard-fail only when none remain or coverage flag is not true.  
+⚠️ **Decision:** Soft-drop invalid Estelle topics rather than failing the whole menu when at least one valid topic remains; hard-fail only when none remain or coverage flag is not true. After soft-drop, coverage list is recomputed from survivors (Joan round=1 discuss).  
 
 ⚠️ **Decision:** Do **not** call `save_topic_menu(..., revise=False)`.
 
