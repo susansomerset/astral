@@ -277,3 +277,11 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 #### Notes
 Joan plan-rubric APPROVED. Tip and `origin/dev` report multiple merge bases — product judgment focused on AST-1017 delta; full-set sweep still vs three-dot.
+
+## Resolution
+
+**2026-07-30** — `resolve(AST-1017): — clean`
+
+1. **fix-now** — none (Radia Overall DISCUSS; recommended proceed).
+2. **discuss / C4 stragglers** — acknowledged; topology-only (tip↔`origin/dev` XOR). Statutes already **conform**; no AST-1017 product change.
+3. **advisory / Profile skip Ruth** — acknowledged as product policy from plan Decision; not a code defect for this child.
