@@ -218,3 +218,13 @@ result["estelle_turn"] = turn_out
 ## Execution contract
 
 The plan is binding. Execute stages in order. One commit per stage on the epic worktree, then `git push origin HEAD:sub/AST-1046/AST-1073-contact-estelle-turn-loop`. On ambiguity or codebase drift vs this plan — stop and comment on **parent AST-1046** with the 🛑 Stage N blocked template. Do not invent files outside the Files Changed table.
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1046/AST-1073-contact-estelle-turn-loop` |
+| Tip | (filled after stage-3 push) |
+| Branch | `sub/AST-1046/AST-1073-contact-estelle-turn-loop` |
+
