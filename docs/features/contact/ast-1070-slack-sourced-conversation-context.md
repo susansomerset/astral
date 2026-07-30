@@ -196,3 +196,107 @@ Changes:
 - **Publish ref:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`
 - **Tip:** `c34507c9` — Contact load/cache/append + inbound warm (stages 1–3)
 - **Stage commits:** `392d01f5` (config), `45ce50a0` (external), `c34507c9` (contact)
+
+---
+
+## Review (Radia / code-rubric.v1)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1070  
+**Publish ref:** `8f936a1b` on `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context` (docs tip follows)  
+**Overall:** FIX-NOW
+
+**Diff change set:** `origin/dev...8f936a1b` — layers `{core, external, utils, ui, docs, scripts}`; tip carries AST-1066/1069/1071 ancestry plus AST-1070 context load/cache; change_types `{add, modify}`.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | history limit / cache max / TTL in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | bot token via env name at call time in external |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plans only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file per ticket under docs/features/contact/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | merge-tests `5ce882c8` tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty vocabulary |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | history HTTP only in external fetch_conversation_history |
+| astral.layers.import-direction | scoped | conforms | core→external; no UI history fetch |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Socket Mode script under scripts/ (ancestry) |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | limits from config; thin API ancestry only |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | process-local cache only — no coat-check transcript |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | no new unprotected data routes this ticket |
+| astral.standards.data-raises-caller-logs | scoped | conforms | external raises; Contact decides |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/schema paths |
+| astral.standards.debug-contract-gated | scoped | needs-discussion | Style D present; detail omits plan `source=` field (tied to return-shape drift) |
+| astral.standards.dry-and-focused-functions | scoped | conforms | load/append/fetch/post split |
+| astral.standards.in-scope-only | scoped | conforms | no Manage Slack / resolve / turn-loop product |
+| astral.standards.logging-via-utils | scoped | conforms | Contact get_logger; external silent on outcomes |
+| astral.standards.no-cross-contamination | scoped | conforms | context keys only; skills/Events/ACL boundaries held |
+| astral.standards.no-hardcoded-sets | scoped | conforms | limit/max/TTL from CONTACT_CONFIG |
+| astral.standards.public-then-helpers | scoped | needs-discussion | `_context_cache_*` helpers sit above public load/append API |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py has no data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend paths |
+| astral.ui.naming-conventions | scoped | conforms | existing snake_case admin/events routes (ancestry) |
+| astral.ui.single-gunicorn-worker | scoped | conforms | process-local cache; multi-worker OOS |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests `5ce882c8` then publish-ref merge |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests/merge vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1070-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | merge origin/dev + publish-ref present |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1070-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Joan r1 DM-key Decision held in code |
+| orch.pipeline.plan-is-bible | universal | violates | load return type/shape + missing channel empty raise vs Stage 3 |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Hedy remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.core.contact-agent (proposed) | needs-discussion | load/append/post present; load return shape ≠ plan Stage 3 dict |
+| pattern.external.slack-events (proposed) | conforms | fetch_conversation_history on external slack |
+| pattern.config.config-block | conforms | context_history_limit / cache max / TTL |
+
+### Plan adherence
+
+Stages 1–2 and most of Stage 3 land (config keys, external fetch, process-local cache, DM key = `thread_ts` only, inbound append on accept, `contact_post_message`). **Breaks Stage 3 binding return contract** and channel normalize/raise. Betty already noted list return vs plan dict envelope. Self-Assessment MAJOR-CHANGE / high / MEDIUM still honest for the intended design.
+
+### Findings
+
+**fix-now** — `orch.pipeline.plan-is-bible` / Stage 3 `load_slack_conversation_context`  
+**Location:** `src/core/contact.py` `load_slack_conversation_context`  
+**Issue:** Plan requires `-> dict` returning `{"channel", "thread_ts", "messages", "source": "cache"|"slack"}`. Tip returns `list[dict]` (messages only). Also plan requires strip channel + `ValueError` on empty — not implemented.  
+**Action:** Restore Stage 3 envelope (and channel validate); Betty will need bible/test revision for the dict shape (or engineer `[qa-handoff]` if tests were written to the list drift).
+
+**discuss** — C4 straggler: Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.patterns.require-auth-on-protected-endpoints`, `astral.ui.naming-conventions` now in-scope via tip ancestry (docs/tests/scripts/ui). All score **conforms** / expected — no product action.
+
+**discuss** — `astral.standards.public-then-helpers`: `_context_cache_key` / `_context_cache_put` appear before public load/append (prefer public-first section then helpers).
+
+**discuss** — `astral.standards.debug-contract-gated`: Style D fires, but detail uses `count=` / outcomes `cache_hit`|`fetched` rather than plan’s `source=` field (same envelope drift).
+
+### What’s solid
+
+DM cache key uses Slack `thread_ts` only (Joan Revision 1); history I/O stays in external; TTL + `refresh=` + config caps; inbound append on accept; no DB transcript SoT.
+
+context_tokens≈56000
