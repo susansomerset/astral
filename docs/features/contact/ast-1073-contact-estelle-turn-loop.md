@@ -225,6 +225,6 @@ The plan is binding. Execute stages in order. One commit per stage on the epic w
 |-------|-------|
 | Status | Code Complete |
 | Publish ref | `origin/sub/AST-1046/AST-1073-contact-estelle-turn-loop` |
-| Tip |  |
+| Tip | `136b53d292248472ce76d14314a502a1fd72ef65` |
 | Branch | `sub/AST-1046/AST-1073-contact-estelle-turn-loop` |
 
