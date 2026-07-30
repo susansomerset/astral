@@ -201,5 +201,5 @@ Changes: Added `src/core/dispatcher.py` to Files Changed; Stage 1 Step 5 retires
 | 1 | `53df9c81` | JOB_STATES/UI + qualify_meteorite TASK_CONFIG/dispatch + retire evaluate_jd@METEORITE_NEW |
 | 2 | `c055015f` | data/admin agent_task.json Ruth shell |
 
-**Tip:** `TIP_PENDING` on `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`
+**Tip:** `7df5dec5c92d5dbf4ce708e18ab08eb5ca0b7648` on `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`
 
