@@ -869,6 +869,15 @@ TASK_CONFIG = {
         "response_format": "json",
         "response_schema": {
             "reply": {"type": "str", "required": True},
+            # Optional ACL skill requests — executed by Contact turn loop (AST-1073).
+            "skill_calls": {
+                "type": "list",
+                "required": False,
+                "items_schema": {
+                    "skill_key": {"type": "str", "required": True},
+                    "fields": {"type": "object", "required": True},
+                },
+            },
         },
         "entity_type": None,
         "requires_candidate_key": False,
@@ -3397,8 +3406,16 @@ BRAIN_MEDIUM = "Medium"
 CONTACT_ESTELLE_CONFIG = {
     "default_brain_setting": "Medium",
     "task_key": "contact_estelle_turn",
+    # Max Slack messages included in live_content (trim from oldest).
+    "turn_context_message_limit": 40,
+    # Max chars per message text in live_content (truncate with …).
+    "turn_context_text_max_chars": 500,
 }
 assert CONTACT_ESTELLE_CONFIG["default_brain_setting"] == BRAIN_MEDIUM
+assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"], int)
+assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
+assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
+assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
 
 BRAIN_BIG = "Big"
 BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
