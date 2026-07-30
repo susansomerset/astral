@@ -744,3 +744,24 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
   tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
   -q
 ```
+
+### AST-1063 · AST-1059
+
+**Parent:** [AST-1059 — Issue with the rubric grade displays on the Jobs List pages](https://linear.app/astralcareermatch/issue/AST-1059/issue-with-the-rubric-grade-displays-on-the-jobs-list-pages). **Publish:** `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`.
+
+Persist analysis-time rubric criteria as `{prefix}_rubric` beside every `{prefix}_grades` write (`_rubric_snapshot_for_job_data` omits `content`). Verdict / qualify / evaluate_jd paths all snapshot. List flatten is **`docs/test-bible/ui/api/api_jobs.md`** (**AST-1063**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Snapshot helper + write-path persist | `src/core/consult.py` | **`TestAst1063JobCarriedRubricHydration`** |
+
+**Broken / obsolete:** none — additive keys on save payloads; existing score/grade assertions unchanged.
+
+**Integration:** none revised (API shape only; no existing integration scenario asserts job-carried `*_rubric`).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1063JobCarriedRubricHydration \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```

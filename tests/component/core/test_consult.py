@@ -3777,3 +3777,182 @@ class TestAst1055MeteoriteConsultRoutes:
             TASK_CONFIG["meteorite_upshot"]["pass_state"],
         )
 
+
+@pytest.mark.skipif(
+    not hasattr(consult_mod, "_rubric_snapshot_for_job_data"),
+    reason="AST-1063 job-carried rubric snapshot not on this publish tip",
+)
+class TestAst1063JobCarriedRubricHydration:
+    """AST-1063: snapshot criteria at grade-write; persist *_rubric beside *_grades."""
+
+    def test_snapshot_omits_content_and_preserves_order(self) -> None:
+        raw = [
+            {
+                "label": "First",
+                "code": "F1",
+                "importance": 3,
+                "content": "SECRET body",
+                "grade_descriptions": [{"grade": "A", "description": "ok"}],
+            },
+            {
+                "label": "Second",
+                "code": "F2",
+                "importance": 1,
+                "content": "more secret",
+                "grade_descriptions": [{"grade": "B", "description": "meh"}],
+            },
+        ]
+        snap = consult_mod._rubric_snapshot_for_job_data(raw)
+        assert [c["code"] for c in snap] == ["F1", "F2"]
+        assert snap[0]["label"] == "First"
+        assert snap[0]["importance"] == 3
+        assert snap[0]["grade_descriptions"][0]["grade"] == "A"
+        assert "content" not in snap[0]
+        assert "content" not in snap[1]
+        # live criteria object unchanged (copy-only ensure path)
+        assert raw[0]["content"] == "SECRET body"
+
+    def test_snapshot_empty_and_non_list(self) -> None:
+        assert consult_mod._rubric_snapshot_for_job_data([]) == []
+        assert consult_mod._rubric_snapshot_for_job_data(None) == []  # type: ignore[arg-type]
+        assert consult_mod._rubric_snapshot_for_job_data("x") == []  # type: ignore[arg-type]
+
+    def test_snapshot_fills_grade_descriptions_on_working_copy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called: list[dict] = []
+
+        def _ensure(work: dict) -> None:
+            called.append(work)
+            work["grade_descriptions"] = [{"grade": "A", "description": "filled"}]
+
+        monkeypatch.setattr(rubric_text, "ensure_criterion_grade_table", _ensure)
+        item = {"label": "fit", "code": "CR", "importance": 5, "content": "body"}
+        snap = consult_mod._rubric_snapshot_for_job_data([item])
+        assert called and called[0] is not item
+        assert snap[0]["grade_descriptions"] == [{"grade": "A", "description": "filled"}]
+        assert "grade_descriptions" not in item
+        assert item["content"] == "body"
+
+    def test_apply_render_verdict_persists_prefix_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        rubric = [_rubric_item("fit", "DO")]
+        monkeypatch.setattr(
+            consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric
+        )
+        cfg_do = consult_mod._consult_orchestration("grade_do")
+        ctx = {"astral_candidate_id": "cand-1063", "candidate_data": {"artifacts": {}}}
+        consult_mod._apply_render_verdict_decoded_job(
+            "grade_do",
+            "job-1063",
+            {"grades": [_pass_grade()], "notes": "n"},
+            cfg_do,
+            ctx,
+        )
+        saved = save.call_args.args[1]
+        assert "do_grades" in saved
+        assert "do_rubric" in saved
+        assert saved["do_rubric"][0]["code"] == "DO"
+        assert saved["do_rubric"][0]["label"] == "fit"
+        assert "content" not in saved["do_rubric"][0]
+
+    @pytest.mark.asyncio
+    async def test_qualify_job_listings_persists_joblist_rubric(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        rubric = [_rubric_item("fit", "CS")]
+        monkeypatch.setattr(
+            consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-1063q",
+                                "grades": [_pass_grade()],
+                                "job_title": "Engineer",
+                                "job_link": "https://example.com/jobs/1063",
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {
+                "astral_job_id": "job-1063q",
+                "state": "VALID_TITLE",
+                "company": "co",
+                "job_title": "Engineer",
+                "job_site": "site",
+                "job_data": {"raw_job_listing": "listing text"},
+            }
+        ]
+        out = await consult_mod.qualify_job_listings(
+            "batch-1063",
+            jobs,
+            {"astral_candidate_id": "cand-1063", "candidate_data": {"artifacts": {}}},
+            debug=False,
+        )
+        assert out["passed"] == 1
+        saved = save.call_args.args[1]
+        assert "joblist_grades" in saved
+        assert "joblist_rubric" in saved
+        assert saved["joblist_rubric"][0]["code"] == "CS"
+        assert saved["joblist_rubric"][0]["label"] == "fit"
+        assert "content" not in saved["joblist_rubric"][0]
+
+    @pytest.mark.asyncio
+    async def test_evaluate_jd_persists_jd_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        rubric = [_rubric_item("fit", "CF")]
+        monkeypatch.setattr(
+            consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{"astral_job_id": "job-1063jd", "grades": [_pass_grade()]}]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jd_text = "x" * 80
+        jobs = [
+            {
+                "astral_job_id": "job-1063jd",
+                "state": "JD_READY",
+                "job_title": "Engineer",
+                "job_data": {"job_description": jd_text},
+            }
+        ]
+        out = await consult_mod.evaluate_jd_batch(
+            "batch-1063jd",
+            jobs,
+            {"astral_candidate_id": "cand-1063", "candidate_data": {"artifacts": {}}},
+            debug=False,
+        )
+        assert out["passed"] == 1
+        payload = save.call_args.args[1]
+        assert "jd_grades" in payload
+        assert "jd_rubric" in payload
+        assert payload["jd_rubric"][0]["code"] == "CF"
+        assert "content" not in payload["jd_rubric"][0]
+

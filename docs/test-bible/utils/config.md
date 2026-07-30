@@ -1134,13 +1134,13 @@ Admin `NAV_CONFIG`: **Manage Email** at `/admin/manage_email` (replaces **Read e
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`.
 
-Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Score-floor gating for meteorite pass hops is **AST-1054**; RECOMMENDED meteorite LIKE priors are **AST-1055**; create landing retarget is **AST-1056**.
+Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/LIKE + fail/technical/ERROR + `METEORITE_PASSED_LIKE_RETRY`); In Review / Skipped UI manifests + grade-field maps. Score-floor gating for meteorite pass hops is **AST-1054**; RECOMMENDED meteorite LIKE priors are **AST-1055**; create landing retarget is **AST-1056**. **AST-1060** inserts **METEORITE_QUALIFIED** (+ fail/error qualify) and retargets GDL priors from **METEORITE_NEW** → **METEORITE_QUALIFIED**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** |
+| Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** (priors/labels revised **AST-1060**) |
 
-**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**.
+**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**; GDL-entry priors + NEW label + QUALIFIED UI revised by **AST-1060**.
 
 **Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
 
@@ -1154,14 +1154,14 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ `METEORITE_NEW`, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK`; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055).
+`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK`; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). **AST-1060** retargets `evaluate_jd` trigger to **METEORITE_QUALIFIED** and prepends `qualify_meteorite`@**METEORITE_NEW**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** |
+| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (evaluate_jd trigger revised **AST-1060**) |
 | Revised ungated smoke | `src/utils/config.py` | revised **`TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched`** |
 
-**Broken / obsolete:** AST-1053 score-gated membership smoke — see above.
+**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW row assert superseded by **AST-1060**.
 
 **Integration:** none.
 
@@ -1254,4 +1254,31 @@ cd src/ui/frontend && npm run test:component -- \
 
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+### AST-1060 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
+
+Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**; reframes **METEORITE_NEW** as pre-AI; retargets meteorite `evaluate_jd` claim to **METEORITE_QUALIFIED**; `TASK_CONFIG["qualify_meteorite"]` + `METEORITE_DISPATCH_TASKS` row @ **METEORITE_NEW**. Apply / gazer are siblings.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Qualify states + TASK_CONFIG + dispatch row + helpers | `src/utils/config.py` | **`TestAst1060QualifyMeteoriteConfig`**; revised **`TestAst1053MeteoriteGdlJobStates`**, **`TestAst1054MeteoriteGdlDispatch`** |
+| Catalog shell | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** (42 keys) |
+| Retire stale `evaluate_jd`@METEORITE_NEW | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** (+ retire case) — see **`docs/test-bible/core/dispatcher.md`** |
+
+**Broken / obsolete:** AST-1053 GDL priors from METEORITE_NEW; AST-1054 evaluate_jd@METEORITE_NEW + insert counts; AST-786 **41 → 42** (+ UAT fixture byte lock).
+
+**Integration:** no existing scenarios assert qualify_meteorite / METEORITE_QUALIFIED — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1060QualifyMeteoriteConfig \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  -q
 ```

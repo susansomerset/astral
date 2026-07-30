@@ -17,6 +17,36 @@ class TestFlattenGrades:
         assert job["joblist_grades"] == [1]
         assert job["latest_score"] == 7.5
 
+    def test_ast1063_lifts_job_carried_rubrics_and_scores(self) -> None:
+        """AST-1063: list/detail flatten lifts *_rubric beside grades/scores; absent keys stay absent."""
+        rubric = [{"code": "CS", "label": "Company Stage", "importance": 5, "grade_descriptions": []}]
+        job = jobs_mod._flatten_grades(
+            {
+                "job_data": {
+                    "joblist_grades": [{"grade": "A"}],
+                    "joblist_score": 8.0,
+                    "joblist_rubric": rubric,
+                    "jd_grades": [{"grade": "B"}],
+                    "jd_score": 6.5,
+                    "jd_rubric": rubric,
+                    "get_rubric": rubric,
+                    "do_rubric": rubric,
+                    "like_rubric": rubric,
+                }
+            }
+        )
+        assert job["joblist_rubric"] == rubric
+        assert job["jd_rubric"] == rubric
+        assert job["get_rubric"] == rubric
+        assert job["do_rubric"] == rubric
+        assert job["like_rubric"] == rubric
+        assert job["joblist_score"] == 8.0
+        assert job["jd_score"] == 6.5
+        assert job["latest_score"] == 8.0
+        pre = jobs_mod._flatten_grades({"job_data": {"joblist_grades": [1]}})
+        assert "joblist_rubric" not in pre
+        assert "jd_rubric" not in pre
+
 
 class TestJobsRoutes:
     def test_list_in_review_view(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:

@@ -210,14 +210,14 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
+`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. **AST-1060** adds `retired` count + surgical delete of `evaluate_jd`@`METEORITE_NEW`. Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Ensure GDL + twin skip/insert; provision; scheduler hook | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** |
+| Ensure GDL + twin skip/insert; provision; scheduler hook | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (counts/trigger + retire revised **AST-1060**) |
 | Stage scheduler stub | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision`** (stubs meteorite provision) |
 
-**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB.
+**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB; insert-count / evaluate_jd@METEORITE_NEW asserts revised by **AST-1060**.
 
 **Integration:** none.
 
@@ -227,3 +227,17 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
   -q
 ```
+
+### AST-1060 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
+
+`ensure_meteorite_dispatch_tasks` retires live `evaluate_jd`@`METEORITE_NEW` after insert (`retired` in return; provision sums it). Config primary: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retire stale meteorite evaluate_jd row; insert counts | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (incl. `test_ensure_retires_stale_evaluate_jd_at_meteorite_new`) |
+
+**Broken / obsolete:** AST-1054 insert counts / trigger assert — see above.
+
+**Integration:** none.
