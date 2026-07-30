@@ -86,11 +86,28 @@ Repo **`agent_task.json`** gains **`meteorite_like`** + **`meteorite_upshot`** (
 | --- | --- | --- |
 | Catalog + prompts | `data/admin/agent_task.json` | **`TestAst1055MeteoriteCatalogRows`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
 
-**Broken / obsolete:** AST-786 **39**-row asserts → **41**.
+**Broken / obsolete:** AST-786 **39**-row asserts → **41** (superseded to **42** by **AST-1060**).
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
   tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  -q
+```
+
+### AST-1060 · AST-1058
+
+Repo **`agent_task.json`** gains **`qualify_meteorite`** (Ruth enrichment shell). Catalog frozenset **41 → 42**; UAT fixture byte-locked. Primary config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + Ruth prompts | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **41**-row asserts → **42**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
   -q
 ```

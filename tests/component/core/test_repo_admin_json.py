@@ -255,6 +255,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "prefilter_company",
         "propose_application_responses",
         "qualify_job_listings",
+        "qualify_meteorite",
         "recheck_no_openings",
         "select_job_page",
         "simple_resume_parse",
@@ -264,10 +265,11 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (41 rows after AST-1055).
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (42 rows after AST-1060).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
-    AST-1037 adds `simple_resume_parse`; AST-1055 adds `meteorite_like` + `meteorite_upshot`.
+    AST-1037 adds `simple_resume_parse`; AST-1055 adds `meteorite_like` + `meteorite_upshot`;
+    AST-1060 adds `qualify_meteorite`.
     Parallel AST-1015 (`preamble_validate_response`) is not on that base yet —
     its row assertion stays in TestAst1015PreambleValidateCatalogRow.
     """
@@ -278,9 +280,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_41_current_catalog_keys(self) -> None:
+    def test_repo_json_has_42_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 41
+        assert len(rows) == 42
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -296,7 +298,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_41_current_rows(
+    def test_startup_apply_loads_all_42_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -314,7 +316,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 41
+            assert count == 42
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -356,6 +358,29 @@ class TestAst1055MeteoriteCatalogRows:
         assert "culture visibility" in prompt
         assert by["analysis_upshot"]["task_seq"] == 9
         assert by["grade_like"]["task_seq"] == 8
+
+
+class TestAst1060QualifyMeteoriteCatalogRow:
+    """AST-1060: qualify_meteorite Ruth shell in repo agent_task JSON."""
+
+    def test_qualify_meteorite_ruth_shell_and_schema_fields(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["qualify_meteorite"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == "Qualify Meteorite"
+        assert row["task_seq"] == 2.5
+        cache = row["cache_prompt"]
+        assert "METEORITE" in cache
+        assert "company_job_id" in cache
+        assert "job_title" in cache
+        assert "job_link" in cache
+        assert "jd_text" in cache
+        assert "astral_job_id" in cache
+        user = row["user_prompt"]
+        assert "meteorite" in user.lower()
+        assert "company_job_id" in user
 
 
 class TestAst878FetchCulturePagesCatalogRow:
