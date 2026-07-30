@@ -2686,6 +2686,28 @@ class TestAst1069ContactEventsConfig:
         assert cc["app_token_env"] == "SLACK_APP_TOKEN"
 
 
+
+# Branches: listen filename + production deploy label + Manage Slack NAV (AST-1067).
+class TestAst1067ContactListenConfig:
+    """AST-1067: durable listen filename, production_deploy_env, Admin Manage Slack nav."""
+
+    def test_listen_filename_and_production_env(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["listen_state_filename"] == "contact_slack_listen.json"
+        assert str(cc["listen_state_filename"]).endswith(".json")
+        assert cc["production_deploy_env"] == "production"
+        assert str(cc["production_deploy_env"]).strip()
+
+    def test_manage_slack_follows_manage_email(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        email_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_email")
+        slack_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_slack")
+        assert slack_i == email_i + 1
+        assert items[slack_i]["label"] == "Manage Slack"
+
+
+
 class TestAst1055MeteoriteLikeUpshotTasks:
     """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
 

@@ -1389,6 +1389,30 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   -q
 ```
 
+### AST-1067 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
+
+`CONTACT_CONFIG["listen_state_filename"]` + `production_deploy_env`; Admin `NAV_CONFIG` **Manage Slack** (`/admin/manage_slack`) immediately after **Manage Email**. Core listen/prefix: **`docs/test-bible/core/contact.md`**. Data: **`docs/test-bible/data/contact_listen.md`**. API: **`docs/test-bible/ui/api/api_contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| listen filename + production_deploy_env; Manage Slack nav order | `src/utils/config.py` | **`TestAst1067ContactListenConfig`** |
+
+**Broken / obsolete:** none — additive keys + NAV item.
+
+**Integration:** no existing scenario asserts Manage Slack nav / listen filename — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1067ContactListenConfig \
+  -q
+```
+
+
+
+
+
 ### AST-1072 · AST-1046
 
 **Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`.
