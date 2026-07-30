@@ -1322,3 +1322,26 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   tests/component/utils/test_config.py::TestAst1062QualifyMeteoriteThresholds \
   -q
 ```
+
+### AST-1072 · AST-1046
+
+**Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`.
+
+CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_PERFORMANCE_SCHEMA` (do **not** mutate `BASE_SCHEMA`); `CONTACT_ESTELLE_CONFIG` Medium brain; `TASK_CONFIG["contact_estelle_turn"]` (`task_type="CHAT"`); `is_conversational_task` / `stringify_response_schema` concern path. Core `do_task` contract: **`docs/test-bible/core/agent.md`**. Catalog seed: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + CHAT registration + stringify | `src/utils/config.py` | **`TestAst1072ConversationalEnvelopeConfig`** |
+
+**Broken / obsolete:** AST-786 catalog **42 → 43** (`contact_estelle_turn`) — see repo_admin_json bible.
+
+**Integration:** no existing scenario asserts CHAT / contact_estelle_turn envelope — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+```
