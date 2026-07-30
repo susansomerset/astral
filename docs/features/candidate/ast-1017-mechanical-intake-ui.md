@@ -249,3 +249,16 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.5 naming / file placement | PascalCase component in `components/`; page stays `CandidateIntake.tsx`; CSS in `App.css` |
 | §2.6 state machine | No candidate state transitions |
 | New agents | Forbidden — Ruth via AST-1015 API only |
+
+---
+
+## Review
+
+**Publish ref:** `sub/AST-952/AST-1017-mechanical-intake-ui`  
+**Build tip:** `54ed55439c794c55c9b26796f6a87102598adfe3`
+
+### Stages delivered
+
+1. `IntakePreamblePanel` — loads `preamble` from `GET /api/ui_config`; Intro + ordered gap-fill steps; Ruth `POST …/preamble/validate`; PUT `context.<field>` only on Valid; Try Again / Escalate do not advance.
+2. `CandidateIntake` — new-intake / Start Over → preamble Modal → Estelle `IntakeChatModal`; Continue-on-active skips preamble; Profile resume hard-gate removed.
+3. `App.css` — Estelle-consistent preamble panel / input / actions.
