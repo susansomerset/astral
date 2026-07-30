@@ -1390,6 +1390,31 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 ```
 
 
+### AST-1070 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`.
+
+`CONTACT_CONFIG` context keys: `context_history_limit`, `context_cache_max_conversations`, `context_cache_ttl_seconds`. Core load/append: **`docs/test-bible/core/contact.md`**. External fetch: **`docs/test-bible/external/slack.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| History limit / cache max / TTL | `src/utils/config.py` | **`TestAst1070ContactContextConfig`** |
+
+**Broken / obsolete:** none — additive keys on CONTACT_CONFIG.
+
+**Integration:** no existing scenario asserts context cache config — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1070ContactContextConfig \
+  tests/component/external/test_slack.py::TestAst1070FetchConversationHistory \
+  tests/component/core/test_contact.py::TestAst1070ContactConversationContext \
+  -q
+```
+
+
+
+
 ### AST-1068 · AST-1043
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.

@@ -386,8 +386,9 @@ class TestAst1068ResolveSlackUser:
         assert out["astral_candidate_id"] == "slack-unew"
         create.assert_called_once()
         assert create.call_args.args[0] == "slack-unew"
-        assert create.call_args.args[1]["contact"]["slack_user_id"] == "Unew"
-        assert create.call_args.args[1]["profile"]["first"] == "Ada"
+        assert create.call_args.args[1] == {"contact": {"slack_user_id": "Unew"}}
+        assert create.call_args.kwargs.get("first") == "Ada"
+        assert create.call_args.kwargs.get("last") == "L"
 
     def test_resolve_create_seeds_display_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
@@ -406,7 +407,9 @@ class TestAst1068ResolveSlackUser:
         create = MagicMock()
         monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
         contact_mod.resolve_slack_user("Ux", estelle_in_play=True)
-        assert create.call_args.args[1]["profile"]["first"] == "OnlyDisplay"
+        assert create.call_args.args[1] == {"contact": {"slack_user_id": "Ux"}}
+        assert create.call_args.kwargs.get("first") == "OnlyDisplay"
+        assert create.call_args.kwargs.get("last") == ""
 
     def test_resolve_rejects_empty(self) -> None:
         with pytest.raises(ValueError, match="slack_user_id"):
@@ -439,4 +442,153 @@ class TestAst1068ResolveSlackUser:
         contact_mod.resolve_slack_user.assert_called_once_with(
             "U9", estelle_in_play=True, debug=False
         )
+
+
+# Branches: envelope hit/miss/TTL/refresh; empty channel; append; DM key; post append (AST-1070).
+class TestAst1070ContactConversationContext:
+    def setup_method(self) -> None:
+        contact_mod._context_cache.clear()
+        contact_mod._seen_event_ids.clear()
+
+    def test_load_rejects_empty_channel(self) -> None:
+        with pytest.raises(ValueError, match="channel"):
+            contact_mod.load_slack_conversation_context(channel="  ")
+
+    def test_load_fetches_then_cache_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(return_value=[{"ts": "1.0", "text": "a", "user": "U1"}])
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        first = contact_mod.load_slack_conversation_context(channel="C1", thread_ts=None)
+        assert first == {
+            "channel": "C1",
+            "thread_ts": "",
+            "messages": [{"ts": "1.0", "text": "a", "user": "U1"}],
+            "source": "slack",
+        }
+        fetch.assert_called_once_with(
+            channel="C1",
+            thread_ts=None,
+            limit=CONTACT_CONFIG["context_history_limit"],
+        )
+        second = contact_mod.load_slack_conversation_context(channel="C1")
+        assert second["source"] == "cache"
+        assert second["messages"] == first["messages"]
+        assert second["channel"] == "C1"
+        assert second["thread_ts"] == ""
+        fetch.assert_called_once()
+
+    def test_load_refresh_bypasses_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(
+            side_effect=[
+                [{"ts": "1.0", "text": "old"}],
+                [{"ts": "2.0", "text": "new"}],
+            ]
+        )
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        contact_mod.load_slack_conversation_context(channel="C1")
+        out = contact_mod.load_slack_conversation_context(channel="C1", refresh=True)
+        assert out == {
+            "channel": "C1",
+            "thread_ts": "",
+            "messages": [{"ts": "2.0", "text": "new"}],
+            "source": "slack",
+        }
+        assert fetch.call_count == 2
+
+    def test_load_ttl_expiry_refetches(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(
+            side_effect=[
+                [{"ts": "1.0", "text": "a"}],
+                [{"ts": "2.0", "text": "b"}],
+            ]
+        )
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        times = iter(
+            [1000.0, 1000.0 + float(CONTACT_CONFIG["context_cache_ttl_seconds"]) + 1.0]
+        )
+        monkeypatch.setattr(contact_mod.time, "time", lambda: next(times))
+        contact_mod.load_slack_conversation_context(channel="C1")
+        out = contact_mod.load_slack_conversation_context(channel="C1")
+        assert out["source"] == "slack"
+        assert out["messages"] == [{"ts": "2.0", "text": "b"}]
+        assert fetch.call_count == 2
+
+    def test_load_strips_channel(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(return_value=[])
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        out = contact_mod.load_slack_conversation_context(channel="  C1  ", thread_ts="9.0")
+        assert out["channel"] == "C1"
+        assert out["thread_ts"] == "9.0"
+        assert out["source"] == "slack"
+        fetch.assert_called_once_with(
+            channel="C1",
+            thread_ts="9.0",
+            limit=CONTACT_CONFIG["context_history_limit"],
+        )
+
+    def test_append_warms_and_trims(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "context_history_limit", 2)
+        contact_mod.append_slack_conversation_message(
+            channel="D1", thread_ts=None, message={"text": "1", "ts": "1.0"},
+        )
+        contact_mod.append_slack_conversation_message(
+            channel="D1", message={"text": "2", "ts": "2.0"},
+        )
+        contact_mod.append_slack_conversation_message(
+            channel="D1", message={"text": "3", "ts": "3.0"},
+        )
+        key = contact_mod._context_cache_key("D1", None)
+        msgs = contact_mod._context_cache[key]["messages"]
+        assert [m["ts"] for m in msgs] == ["2.0", "3.0"]
+
+    def test_append_rejects_bad_message(self) -> None:
+        with pytest.raises(ValueError, match="text and ts"):
+            contact_mod.append_slack_conversation_message(
+                channel="C1", message={"text": "x"}
+            )
+
+    def test_dm_cache_key_ignores_message_ts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        # Tip may wire resolve on accept — stub so DM path stays on cache assert.
+        if hasattr(contact_mod, "resolve_slack_user"):
+            monkeypatch.setattr(
+                contact_mod,
+                "resolve_slack_user",
+                MagicMock(
+                    return_value={
+                        "astral_candidate_id": None,
+                        "state": None,
+                        "created": False,
+                    }
+                ),
+            )
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-dm-cache",
+                "event": {
+                    "type": "message",
+                    "channel_type": "im",
+                    "channel": "Ddm",
+                    "user": "U1",
+                    "ts": "99.9",
+                    "text": "hello dm",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        assert ("Ddm", "") in contact_mod._context_cache
+        assert ("Ddm", "99.9") not in contact_mod._context_cache
+
+    def test_contact_post_message_appends_outbound(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "post_message",
+            MagicMock(return_value={"ok": True, "ts": "5.5"}),
+        )
+        resp = contact_mod.contact_post_message(channel="C1", text="bye", thread_ts="1.0")
+        assert resp["ok"] is True
+        key = contact_mod._context_cache_key("C1", "1.0")
+        msgs = contact_mod._context_cache[key]["messages"]
+        assert msgs[-1]["ts"] == "5.5"
+        assert msgs[-1]["text"] == "bye"
+        assert msgs[-1]["bot_id"] == "estelle"
 
