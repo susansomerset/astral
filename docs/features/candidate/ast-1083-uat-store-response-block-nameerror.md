@@ -73,3 +73,12 @@ After Estelle `intake_initiate_candidate` succeeds, `_store_response_block` pers
 | §2.2 | Core-only change; no UI→external |
 | §3.3 | No new imports |
 | Boundaries | No PREAMBLE_CONFIG / Ruth / library / Estelle prompt edits |
+
+## Review
+
+**Publish ref:** 
+**Build tip:** 
+
+### Stages delivered
+
+1.  —  so   detail line no longer NameErrors.
