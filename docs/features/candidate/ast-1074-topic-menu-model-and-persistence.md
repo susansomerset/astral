@@ -213,5 +213,5 @@ candidate_data.topic_menu = {
 
 **Publish ref:** `sub/AST-953/AST-1074-topic-menu-model-and-persistence`
 
-**Build tip:** filled in after Stage 3 commit on this ref.
+**Build tip:** `ce0c64c12fd413b66c3e43f0d627f65a2fa9a338`
 
