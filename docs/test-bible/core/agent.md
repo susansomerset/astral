@@ -501,3 +501,24 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome \
   -q
 ```
+
+### AST-1083 · AST-952 (UAT)
+
+**Parent:** [AST-952 — Candidate profile preamble to intake](https://linear.app/astralcareermatch/issue/AST-952). **Publish:** `origin/sub/AST-952/AST-1083-uat-store-response-block-nameerror`.
+
+Same `_store_response_block` / `debug=True` `result` bind as **AST-1076** (intake initiate path on Candidate Intake). Existing suites already assert the Correct outcome — no new cases.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| RESPONSE debug result bind | `src/core/agent.py` | **`TestAst1076StoreResponseDebugResult`** + **`TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1076StoreResponseDebugResult \
+  tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome \
+  -q
+```
