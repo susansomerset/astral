@@ -22,6 +22,7 @@ Config sections:
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
   PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
   TOPIC_MENU_CONFIG — closed informs + status triad for Topic Menu (AST-1074; generation = AST-1075)
+  TOPIC_MENU_GEN_CONFIG — Estelle confirm + Topic Menu generation keys (AST-1075)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
@@ -247,6 +248,31 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "context_format": "preamble_validate_{index}",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    # AST-1075: Estelle preamble confirm + Topic Menu generation.
+    "topic_menu_preamble_confirm": {
+        "response_schema": {
+            "assistant_message": {"type": "str", "required": True},
+            "outcome": {"type": "str", "required": True},
+            "library_patches": {"type": "dict", "required": False},
+        },
+        "response_format": "json",
+        "context_format": "topic_menu_confirm_{index}",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "topic_menu_generate": {
+        "response_schema": {
+            "topics": {"type": "list", "required": True},
+            "informs_coverage_confirmed": {"type": "bool", "required": True},
+            "informs_covered": {"type": "list", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "topic_menu_generate_{index}",
         "entity_type": "candidate",
         "requires_candidate_key": True,
         "trigger_state": None,
@@ -1223,6 +1249,79 @@ for _req in ("id", "name", "ask", "required", "informs", "status"):
 for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
     assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
 assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
+
+
+# AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).
+TOPIC_MENU_GEN_CONFIG = {
+    "confirm_task_key": "topic_menu_preamble_confirm",
+    "generate_task_key": "topic_menu_generate",
+    "confirm_outcomes": ("continue", "accepted"),
+    "confirm_outcome_field": "outcome",
+    # Live packet fields Estelle must see (from candidate_data.context / contact + name columns).
+    "packet_context_keys": (
+        "raw_resume",
+        "raw_profile",
+        "raw_sample",
+        "bio_summary",
+        "backstory",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "hopes",
+        "interests",
+        "concerns",
+    ),
+    # Real contact library keys only — never invent preferred_name (not in contact_keys).
+    "packet_contact_keys": (
+        "title_patterns",
+    ),
+    # Candidate table name columns (not contact blob keys) for display identity in the packet.
+    "packet_name_columns": (
+        "full",
+        "first",
+        "last",
+    ),
+    # Library paths Estelle may patch on revise (whitelist only).
+    "patchable_context_keys": (
+        "raw_resume",
+        "raw_profile",
+        "raw_sample",
+        "bio_summary",
+        "backstory",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "hopes",
+        "interests",
+        "concerns",
+    ),
+    "estelle_agent_id": "principal_recruiter_estelle",
+    # UI copy (exposed via ui_config).
+    "ui": {
+        "panel_title": "Confirm preamble with Estelle",
+        "accept_label": "Looks good — generate Topic Menu",
+        "send_label": "Send to Estelle",
+        "placeholder": "Tell Estelle what to change, or accept below.",
+        "generating_label": "Estelle is building your Topic Menu…",
+        "done_title": "Topic Menu ready",
+    },
+}
+
+assert isinstance(TOPIC_MENU_GEN_CONFIG["confirm_task_key"], str) and TOPIC_MENU_GEN_CONFIG["confirm_task_key"]
+assert isinstance(TOPIC_MENU_GEN_CONFIG["generate_task_key"], str) and TOPIC_MENU_GEN_CONFIG["generate_task_key"]
+assert TOPIC_MENU_GEN_CONFIG["confirm_task_key"] != TOPIC_MENU_GEN_CONFIG["generate_task_key"]
+assert TOPIC_MENU_GEN_CONFIG["confirm_outcomes"] == ("continue", "accepted")
+for _k in TOPIC_MENU_GEN_CONFIG["packet_context_keys"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["context_keys"], _k
+for _k in TOPIC_MENU_GEN_CONFIG["patchable_context_keys"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["context_keys"], _k
+for _k in TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["contact_keys"], _k
+for _k in TOPIC_MENU_GEN_CONFIG["packet_name_columns"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["name_columns"], _k
+assert TOPIC_MENU_GEN_CONFIG["estelle_agent_id"] == "principal_recruiter_estelle"
+assert TOPIC_MENU_GEN_CONFIG["confirm_task_key"] in TASK_CONFIG
+assert TOPIC_MENU_GEN_CONFIG["generate_task_key"] in TASK_CONFIG
 
 
 # AST-1047: reusable string → candidate-id match homes (Manage Email From bind first caller).
