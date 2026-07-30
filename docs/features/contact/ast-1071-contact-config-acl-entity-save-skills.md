@@ -363,3 +363,15 @@ Stages 1–3 land: two entity-save skills with narrow allowed_paths (no slack_us
 Narrow ACL tuples; reject-unknown paths; debug gated with ui_llm_debug on API; UI→core→candidate import chain; Betty revised AST-1066 empty-skills asserts for populated ACL.
 
 context_tokens≈56000
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Tip before resolve:** `93058b63` (Radia `docs(AST-1071): Radia review — findings`)  
+**Overall (Radia):** DISCUSS — **no fix-now**
+
+- **fix-now:** none — no product changes.
+- **discuss (C4 stragglers):** Joan Excluded statutes that became tip-applicable (`spikes-under-debug-dir`, `features-single-file-per-ticket`, `engineer-test-tree-ban`) scored **conforms** in Radia’s sweep — acknowledged; no plan/product edit.
+- **advisory:** none.
+
+Shipped product remains stages 1–3 @ `91ced0bc` (+ Betty merge-tests `da2d070b`).
