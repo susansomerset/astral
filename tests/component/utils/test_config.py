@@ -2854,6 +2854,26 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
+# Branches: turn-loop trim keys + optional skill_calls schema (AST-1073).
+class TestAst1073ContactEstelleTurnConfig:
+    def test_turn_context_trim_keys(self) -> None:
+        assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] == 40
+        assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] == 500
+        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+
+    def test_skill_calls_optional_on_chat_schema(self) -> None:
+        schema = cfg.TASK_CONFIG["contact_estelle_turn"]["response_schema"]
+        assert schema["reply"]["required"] is True
+        calls = schema["skill_calls"]
+        assert calls["required"] is False
+        assert calls["type"] == "list"
+        assert calls["items_schema"]["skill_key"]["required"] is True
+        assert calls["items_schema"]["fields"]["required"] is True
+        # stringify shows skill_calls example list
+        chat = json.loads(cfg.stringify_response_schema("contact_estelle_turn"))
+        assert "skill_calls" in chat["agent_payload"]
+
+
 class TestAst1074TopicMenuConfig:
     """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
 
@@ -2934,3 +2954,42 @@ class TestAst1075TopicMenuGenConfig:
             "done_title",
         ):
             assert isinstance(ui[key], str) and ui[key].strip()
+
+
+# Branches: uniqueness field contract sibling to lookup (AST-1079); enforce is AST-1080.
+class TestAst1079ContactUniquenessConfig:
+    """AST-1079: CANDIDATE_CONTACT_UNIQUENESS_CONFIG paths + compare + lookup identity."""
+
+    def test_email_and_slack_paths_shared_with_lookup(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert uniq["email_paths"] is luc["email_paths"]
+        assert uniq["slack_user_id_paths"] is luc["slack_user_id_paths"]
+        assert uniq["email_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+            "profile.contact_email",
+            "profile.reply_email",
+        )
+        assert uniq["slack_user_id_paths"] == ("contact.slack_user_id",)
+
+    def test_scalar_list_scopes_and_compare(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        assert uniq["scalar_paths"] == (
+            "contact.phone",
+            "contact.github",
+            "contact.linkedin_url",
+        )
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert uniq["scopes"] == ("within_candidate", "cross_candidate")
+        assert uniq["compare"] == {
+            "email": "casefold",
+            "scalar": "casefold",
+            "list": "casefold",
+            "slack_user_id": "exact",
+        }
+        assert cfg.CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True
+        contact_keys = set(cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"])
+        for path in uniq["scalar_paths"] + uniq["list_paths"]:
+            assert path.startswith("contact.")
+            assert path.split(".", 1)[1] in contact_keys

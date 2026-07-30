@@ -1508,3 +1508,44 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt \
   -q
 ```
+
+
+### AST-1079 · AST-1045
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1079-unique-contact-field-contract`.
+
+`CANDIDATE_CONTACT_UNIQUENESS_CONFIG`: save-gate field vocabulary (paths + compare + scopes) sibling to `CANDIDATE_LOOKUP_CONFIG`; email/slack path **objects** shared by identity. Enforcement is **AST-1080**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared email/slack paths + scalar/list/compare/scopes | `src/utils/config.py` | **`TestAst1079ContactUniquenessConfig`** |
+
+**Broken / obsolete:** none — additive config block; no callers yet.
+
+**Integration:** none — config vocabulary only; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  -q
+```
+
+### AST-1073 · AST-1046
+
+**Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1073-contact-estelle-turn-loop`.
+
+`CONTACT_ESTELLE_CONFIG` turn trim keys (`turn_context_message_limit`, `turn_context_text_max_chars`); optional `skill_calls` on `TASK_CONFIG["contact_estelle_turn"]["response_schema"]`. Core turn: **`docs/test-bible/core/contact.md`**. Envelope base: **AST-1072**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Trim keys + skill_calls schema | `src/utils/config.py` | **`TestAst1073ContactEstelleTurnConfig`** |
+
+**Broken / obsolete:** none for config asserts — additive keys on AST-1072 block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1073ContactEstelleTurnConfig \
+  -q
+```

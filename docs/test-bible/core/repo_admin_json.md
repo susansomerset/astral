@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786 / AST-878 / AST-1037 / AST-1055 / AST-1060 / AST-1072):** populated **43**-row catalog on the AST-1072 tip (includes **`fetch_culture_pages`**, **`simple_resume_parse`**, **`meteorite_like`**, **`meteorite_upshot`**, **`qualify_meteorite`**, **`contact_estelle_turn`**). Parallel **AST-1015** **`preamble_validate_response`** stays in **`TestAst1015PreambleValidateCatalogRow`** — not folded into AST-786 on this tip. See **`docs/test-bible/data/database/agent_tasks.md`**.
+**UAT seed (AST-786 / AST-878 / AST-1037 / AST-1055 / AST-1060 / AST-1072):** populated **46**-row catalog on the AST-1073 tip (includes **`contact_estelle_turn`**, **`preamble_validate_response`**, **`topic_menu_preamble_confirm`**, **`topic_menu_generate`**). Parallel **AST-1015** **`preamble_validate_response`** stays in **`TestAst1015PreambleValidateCatalogRow`** — not folded into AST-786 on this tip. See **`docs/test-bible/data/database/agent_tasks.md`**.
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
@@ -148,5 +148,22 @@ Repo `agent_task.json` gains Estelle rows `topic_menu_preamble_confirm` + `topic
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```
+
+### AST-1073 · AST-1046
+
+Repo **`agent_task.json`** enriches **`contact_estelle_turn`** prompts (ACL `skill_calls` + Slack/live_content). Catalog frozenset **43 → 46** on this tip (also carries preamble + topic_menu rows from rolled base); UAT fixture byte-locked. Primary: **`docs/test-bible/core/contact.md`** / **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt enrich + catalog lock | `data/admin/agent_task.json` | revised **`TestAst1072ContactEstelleTurnCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **43**-row asserts → **46**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
   -q
 ```
