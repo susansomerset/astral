@@ -148,3 +148,15 @@ Implementation rules (literal):
 - **§3.3 imports:** UI Ad Hoc may import `TRACKER_CONFIG` / database (existing pattern); no UI→core invent path for normalize.
 
 No statute conflicts requiring `conf-!!-NONE`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`
+**Plan path:** `docs/features/meteorite/ast-1062-qualify-meteorite-batch-apply-meteorite-qualified.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ffd116e7` | TASK_CONFIG min_job_title_length + min_jd_chars on qualify_meteorite |
+| 2 | `03b0ab1f` | qualify_meteorite consult wrapper + run_consult_task + chunk-exhaust + Ad Hoc assemble |
+
+**Tip:** `03b0ab1f2c8388ad32557e9254d85634a54c602d` on `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`
