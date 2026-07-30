@@ -301,3 +301,15 @@ ingest = ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=debug)
 - **§ debug-contract-gated:** Style D only when `debug=True` on gazer + inbox paths; no new contract lines from data layer.
 - **§1.3 DRY:** Reuse `create_meteorite_job`, `get_visible_text`, AST-80 LIKE shape (global variant); do not fork a second meteorite insert.
 - **In-scope only:** No qualify apply, no GDL edits, no tests/bible.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`
+**Plan path:** `docs/features/meteorite/ast-1061-gazer-email-meteorite-jobs-playwright-dedupe.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `8b01998c` | `METEORITE_EMAIL_INGEST_CONFIG` + global dedupe helpers |
+| 2 | `99c51148` | optional `job_link=` on `create_meteorite_job` |
+| 3 | `4b69107e` | gazer email ingest Playwright + dedupe |
+| 4 | `f82be0d6` | inbox / API / Manage Email multi-result Create |
