@@ -41,33 +41,25 @@ _context_lock = threading.Lock()
 _TEXT_DEBUG_MAX = 200
 
 
-def _context_cache_key(channel: str, thread_ts: Optional[str]) -> Tuple[str, str]:
-    """Cache key = (channel, Slack thread_ts only). Missing thread → \"\"."""
-    return (channel, thread_ts or "")
-
-
-def _context_cache_put(key: Tuple[str, str], entry: Dict[str, Any]) -> None:
-    """Insert/refresh cache entry; evict oldest when over max conversations."""
-    max_n = int(CONTACT_CONFIG["context_cache_max_conversations"])
-    with _context_lock:
-        if key in _context_cache:
-            del _context_cache[key]
-        _context_cache[key] = entry
-        while len(_context_cache) > max_n:
-            _context_cache.popitem(last=False)
-
-
 def load_slack_conversation_context(
     *,
     channel: str,
     thread_ts: Optional[str] = None,
     refresh: bool = False,
     debug: bool = False,
-) -> list[dict]:
-    """Return recent Slack messages for a conversation (cache + Slack SoT)."""
+) -> dict:
+    """Return recent conversation messages for a channel or thread.
+
+    SoT is Slack. Cache is process-local only — never a DB transcript store.
+    Envelope: ``{"channel", "thread_ts", "messages", "source": "cache"|"slack"}``.
+    """
     log = get_logger(__name__)
     log.set_debug_flag(debug)
-    key = _context_cache_key(channel, thread_ts)
+    channel_n = (channel or "").strip()
+    if not channel_n:
+        raise ValueError("channel must be a non-empty string")
+    thread_n = thread_ts or ""
+    key = _context_cache_key(channel_n, thread_n)
     now = time.time()
     ttl = float(CONTACT_CONFIG["context_cache_ttl_seconds"])
     limit = int(CONTACT_CONFIG["context_history_limit"])
@@ -76,36 +68,53 @@ def load_slack_conversation_context(
         with _context_lock:
             entry = _context_cache.get(key)
             if entry is not None and (now - float(entry["fetched_at"])) < ttl:
-                # Move to MRU end.
                 _context_cache.move_to_end(key)
                 messages = list(entry["messages"])
+                out = {
+                    "channel": channel_n,
+                    "thread_ts": thread_n,
+                    "messages": messages,
+                    "source": "cache",
+                }
                 if debug:
                     log.debug_index(
                         func="contact.load_slack_conversation_context",
                         index=1,
                         total=1,
-                        identifier=f"{key[0]}:{key[1] or '-'}",
-                        outcome="cache_hit",
+                        identifier=f"{channel_n}:{thread_n or '-'}",
+                        outcome="cache",
                     )
-                    log.debug_detail(f"count={len(messages)} refresh=False")
-                return messages
+                    log.debug_detail(
+                        f"source=cache channel={channel_n!r} thread_ts={thread_n!r} "
+                        f"len(messages)={len(messages)}"
+                    )
+                return out
 
     messages = fetch_conversation_history(
-        channel=channel,
-        thread_ts=thread_ts or None,
+        channel=channel_n,
+        thread_ts=thread_n or None,
         limit=limit,
     )
     _context_cache_put(key, {"messages": list(messages), "fetched_at": now})
+    out = {
+        "channel": channel_n,
+        "thread_ts": thread_n,
+        "messages": list(messages),
+        "source": "slack",
+    }
     if debug:
         log.debug_index(
             func="contact.load_slack_conversation_context",
             index=1,
             total=1,
-            identifier=f"{key[0]}:{key[1] or '-'}",
-            outcome="fetched",
+            identifier=f"{channel_n}:{thread_n or '-'}",
+            outcome="slack",
         )
-        log.debug_detail(f"count={len(messages)} refresh={refresh}")
-    return list(messages)
+        log.debug_detail(
+            f"source=slack channel={channel_n!r} thread_ts={thread_n!r} "
+            f"len(messages)={len(messages)} refresh={refresh}"
+        )
+    return out
 
 
 def append_slack_conversation_message(
@@ -115,7 +124,7 @@ def append_slack_conversation_message(
     message: dict,
     debug: bool = False,
 ) -> None:
-    """Append one message into the process-local cache (no Slack round-trip)."""
+    """Append one message into the process-local cache for that conversation key."""
     log = get_logger(__name__)
     log.set_debug_flag(debug)
     if not isinstance(message, dict) or "text" not in message or "ts" not in message:
@@ -164,7 +173,7 @@ def contact_post_message(
     thread_ts: Optional[str] = None,
     debug: bool = False,
 ) -> dict:
-    """Post via Slack Web API, then append outbound into process-local cache."""
+    """Post via external slack.post_message, then append outbound text into cache."""
     log = get_logger(__name__)
     log.set_debug_flag(debug)
     resp = post_message(channel=channel, text=text, thread_ts=thread_ts)
@@ -195,6 +204,22 @@ def contact_post_message(
         )
         log.debug_detail(f"ok={resp.get('ok')!r} error={resp.get('error')!r}")
     return resp
+
+
+def _context_cache_key(channel: str, thread_ts: Optional[str]) -> Tuple[str, str]:
+    """Cache key = (channel, Slack thread_ts only). Missing thread → \"\"."""
+    return (channel, thread_ts or "")
+
+
+def _context_cache_put(key: Tuple[str, str], entry: Dict[str, Any]) -> None:
+    """Insert/refresh cache entry; evict oldest when over max conversations."""
+    max_n = int(CONTACT_CONFIG["context_cache_max_conversations"])
+    with _context_lock:
+        if key in _context_cache:
+            del _context_cache[key]
+        _context_cache[key] = entry
+        while len(_context_cache) > max_n:
+            _context_cache.popitem(last=False)
 
 
 def slack_listen_enabled() -> bool:
