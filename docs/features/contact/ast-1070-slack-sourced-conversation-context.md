@@ -190,3 +190,9 @@ Changes:
 - Stage 3 step 6: inbound append passes `thread_ts=event.get("thread_ts")` only; message `ts` stays inside the message dict, never as the cache-key thread component.
 - Decision wording aligned: key is `(channel, thread_ts or "")` only.
 - Step 5: clarify outbound append prefers Slack response fields; placeholder bot identity is cache-local only (Joan discuss non-blocking).
+
+## Review (build stub)
+
+- **Publish ref:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`
+- **Tip:** `c34507c9` — Contact load/cache/append + inbound warm (stages 1–3)
+- **Stage commits:** `392d01f5` (config), `45ce50a0` (external), `c34507c9` (contact)
