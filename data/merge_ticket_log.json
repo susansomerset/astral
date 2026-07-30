@@ -1,14 +1,14 @@
 [
   {
-    "ticket_id": "AST-952",
-    "recorded_at": "2026-07-30T16:11:14Z"
-  },
-  {
     "ticket_id": "AST-1043",
     "recorded_at": "2026-07-30T16:42:57Z"
   },
   {
     "ticket_id": "AST-1058",
     "recorded_at": "2026-07-30T18:50:51Z"
+  },
+  {
+    "ticket_id": "AST-952",
+    "recorded_at": "2026-07-30T18:56:05Z"
   }
 ]
