@@ -290,3 +290,14 @@ Stages 1–2 land exactly: CONTACT_CONFIG distinct from TASK_CONFIG, env-name co
 Config home + Contact scaffold mirror meteorite pattern; secrets deferred; listen default off; empty skills with TASK_CONFIG collision assert; Betty component coverage matches bible.
 
 context_tokens≈52000
+
+## Resolution (2026-07-30)
+
+Radia **Overall: DISCUSS** @ `e8dd2a8b` — **no fix-now**.
+
+| Finding | Disposition |
+|---------|-------------|
+| C4 stragglers (`spikes-under-debug-dir`, `features-single-file-per-ticket`, `engineer-test-tree-ban`) | Acknowledged — all **conforms**; no product action |
+| `betty-no-src-or-features` / scrub `a106fadf` | Acknowledged — tip product matches Ada build; Betty already flagged `origin/tests` bleed to Susan; no Contact scaffold change |
+
+**Product delta this resolve:** none. Publish tip advances with this Resolution note only.
