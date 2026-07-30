@@ -1989,10 +1989,13 @@ class TestAst962CoverLetterMidHopDefaultTrigger:
 
 
 class TestAst970CandidateStateRegistry:
-    """AST-970: job-style CANDIDATE_STATES registry (no PROSPECT; prior_states + companions)."""
+    """AST-970: job-style CANDIDATE_STATES registry (prior_states + companions; PROSPECT added AST-1068)."""
 
-    def test_no_prospect_and_initial_state(self) -> None:
-        assert "PROSPECT" not in cfg.CANDIDATE_STATES
+    def test_initial_state_and_prospect_entry(self) -> None:
+        # AST-1068: PROSPECT is a real entry state; admin initiate stays NEW_CANDIDATE.
+        assert "PROSPECT" in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["progress_rank"] == -1
         assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
         assert cfg.CANDIDATE_CONFIG["initial_state"] in cfg.CANDIDATE_STATES
 
@@ -2704,6 +2707,7 @@ class TestAst1070ContactContextConfig:
             isinstance(cc["context_cache_ttl_seconds"], int)
             and cc["context_cache_ttl_seconds"] > 0
         )
+
 
 
 

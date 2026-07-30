@@ -68,6 +68,56 @@ class TestAst1069ExternalSlack:
         assert "Bearer xoxb-test" in post.call_args.kwargs["headers"]["Authorization"]
 
 
+# Branches: users.info profile parse; gate; ok:false (AST-1068).
+class TestAst1068FetchUserProfile:
+    def test_fetch_profile_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(
+            return_value={
+                "ok": True,
+                "user": {
+                    "profile": {
+                        "first_name": "Ada",
+                        "last_name": "Lovelace",
+                        "display_name": "ada",
+                    }
+                },
+            }
+        )
+        get = MagicMock(return_value=resp)
+        monkeypatch.setattr(slack_mod.requests, "get", get)
+        out = slack_mod.fetch_user_profile("U1")
+        assert out == {
+            "slack_user_id": "U1",
+            "first": "Ada",
+            "last": "Lovelace",
+            "display_name": "ada",
+        }
+        assert get.call_args.args[0].endswith("/users.info")
+        assert get.call_args.kwargs["params"]["user"] == "U1"
+
+    def test_fetch_requires_gate_and_ok_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(Exception):
+            slack_mod.fetch_user_profile("U1")
+
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"ok": False, "error": "user_not_found"})
+        monkeypatch.setattr(slack_mod.requests, "get", MagicMock(return_value=resp))
+        with pytest.raises(RuntimeError, match="user_not_found"):
+            slack_mod.fetch_user_profile("U1")
+
+    def test_fetch_rejects_empty_user(self) -> None:
+        with pytest.raises(ValueError, match="user_id"):
+            slack_mod.fetch_user_profile("  ")
+
+
 # Branches: history vs replies; gate; ok:false raises.
 class TestAst1070FetchConversationHistory:
     def test_history_and_replies(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -79,27 +79,53 @@ ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_dat
 
 ---
 
+### AST-1068 · AST-1043
 
-### AST-1067 · AST-1043
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
 
-**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
-
-Manage Slack listen hydrate/set (`set_slack_listen_enabled` / durable JSON under `db_dir`), `contact_is_production_deploy`, `format_contact_reply_text` / `post_contact_reply` (non-prod `[<environment>] ` prefix). Data I/O: **`docs/test-bible/data/contact_listen.md`**. Config/NAV: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+`resolve_slack_user`: lookup via `get_candidate_id_for_query`; create PROSPECT only when `estelle_in_play=True` via `initiate_prospect_candidate(..., first=, last=)` (names from `users.info`; display_name fills `first` when empty); `handle_slack_event` accept wires resolve. Candidate: **`docs/test-bible/core/candidate.md`**. External: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hydrate/set listen; production gate; format prefix; post → `post_message` | `src/core/contact.py` | **`TestAst1067ContactListenCore`** |
+| Resolve hit/miss/create; Events accept wire | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** |
 
-**Broken / obsolete:** none — additive listen/prefix surface on Contact.
+**Broken / obsolete:** **`TestAst1069ContactSlackIngress`** accept-path — revised to stub `resolve_slack_user`. Create asserts that expected `candidate_data.profile` — revised for AST-1014 `first=`/`last=` kwargs.
 
-**Integration:** no existing scenario asserts Manage Slack listen / reply prefix — no revision; do not invent new integration coverage.
+**Integration:** no existing scenario asserts Slack resolve / PROSPECT create — no revision.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestAst1067ContactListenConfig \
-  tests/component/data/test_contact_listen.py::TestAst1067ContactListenData \
-  tests/component/core/test_contact.py::TestAst1067ContactListenCore \
-  tests/component/ui/api/test_api_contact.py::TestAst1067ContactListenApi \
+  tests/component/utils/test_config.py::TestAst1068ProspectConfig \
+  tests/component/core/test_candidate.py::TestAst1068CandidateSlackLookup \
+  tests/component/external/test_slack.py::TestAst1068FetchUserProfile \
+  tests/component/core/test_contact.py::TestAst1068ResolveSlackUser \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  -q
+```
+
+
+---
+
+### AST-1070 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`.
+
+Process-local conversation cache: `load_slack_conversation_context` returns Stage 3 envelope
+`{"channel", "thread_ts", "messages", "source": "cache"|"slack"}` (cache hit / miss / TTL / `refresh=True`); empty/blank channel → `ValueError`; channel is stripped. `append_slack_conversation_message` warms+trims; `contact_post_message` appends outbound; inbound `handle_slack_event` keys DMs as `(channel, "")` never message `ts`. External fetch: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Envelope hit/miss/TTL/refresh; empty channel; append; DM key; post append | `src/core/contact.py` | **`TestAst1070ContactConversationContext`** |
+
+**Broken / obsolete:** list-return asserts from first Tests Ready pass — revised to Stage 3 dict envelope + `source` + empty-channel raise (Radia FIX-NOW / Hedy `[qa-handoff]`).
+
+**Integration:** no existing scenario asserts Slack conversation cache — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1070ContactContextConfig \
+  tests/component/external/test_slack.py::TestAst1070FetchConversationHistory \
+  tests/component/core/test_contact.py::TestAst1070ContactConversationContext \
   -q
 ```
 
