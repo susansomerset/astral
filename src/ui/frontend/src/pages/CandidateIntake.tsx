@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useCandidate } from "../contexts/CandidateContext"
 import IntakeChatModal, { type IntakeSourceMaterials } from "../components/IntakeChatModal"
 import IntakePreamblePanel from "../components/IntakePreamblePanel"
+import IntakeTopicMenuPanel from "../components/IntakeTopicMenuPanel"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useUserConfirm } from "../components/UserPrompt"
@@ -17,7 +18,7 @@ const emptyMaterials = (): IntakeSourceMaterials => ({
 const RESUME_INTAKE_TITLE = "Resume Intake"
 const RESUME_INTAKE_MESSAGE = "Would you like to continue your intake?"
 
-type IntakePhase = "idle" | "preamble" | "chat"
+type IntakePhase = "idle" | "preamble" | "topic_menu" | "chat"
 
 type IntakeResumeDialogProps = {
   onContinue: () => void
@@ -137,7 +138,7 @@ export default function CandidateIntake() {
         return
       }
       setMaterials(m)
-      setPhase("chat")
+      setPhase("topic_menu")
     },
     [goProfile],
   )
@@ -223,6 +224,15 @@ export default function CandidateIntake() {
             candidateId={selectedId}
             initialMaterials={materials}
             onComplete={handlePreambleComplete}
+            onCancel={goProfile}
+          />
+        </Modal>
+      )}
+      {phase === "topic_menu" && (
+        <Modal open onClose={goProfile} title="Candidate Intake" size="wide">
+          <IntakeTopicMenuPanel
+            candidateId={selectedId}
+            onDone={goProfile}
             onCancel={goProfile}
           />
         </Modal>
