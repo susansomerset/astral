@@ -55,9 +55,6 @@ from src.utils.config import (
     CRAFT_RUBRIC_MAX_TOKENS,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     is_rubric_backed_task,
-    is_conversational_task,
-    CONTACT_ESTELLE_CONFIG,
-    CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
 )
 from src.utils.rubric_feedback import (
@@ -1644,34 +1641,13 @@ def _validate_response_schema(
         perf = parsed
         payload = parsed
 
-    # AST-1072: CHAT ternary envelope — concern is not Agent failure; admin_aside required.
-    if is_conversational_task(task_key):
-        if isinstance(perf, dict):
-            perf_err = _validate_schema_object_fields(perf, CONVERSATIONAL_PERFORMANCE_SCHEMA)
-            if perf_err:
-                return perf_err
-            status = _agent_performance_status(perf)
-            if status == "failure":
-                note = perf.get("failure_note") or "Agent returned status=failure with no note"
-                return f"Agent failure: {note}"
-            if status == "concern":
-                aside = perf.get("admin_aside")
-                if not isinstance(aside, str) or not aside.strip():
-                    return "Conversational concern requires non-empty admin_aside"
-        elif perf == "failure":
-            note = parsed.get("failure_note") or "Agent returned failure with no note"
-            return f"Agent failure: {note}"
-        elif isinstance(perf, str) and perf.strip().lower() == "concern":
-            return "Conversational concern requires non-empty admin_aside"
-        # else: success / other handled via schema enum when dict
-    else:
-        # Handle both string ("failure") and legacy dict ({"status": "failure"}) forms
-        if perf == "failure":
-            note = parsed.get("failure_note") or "Agent returned failure with no note"
-            return f"Agent failure: {note}"
-        if isinstance(perf, dict) and perf.get("status") == "failure":
-            note = perf.get("failure_note") or "Agent returned status=failure with no note"
-            return f"Agent failure: {note}"
+    # Handle both string ("failure") and legacy dict ({"status": "failure"}) forms
+    if perf == "failure":
+        note = parsed.get("failure_note") or "Agent returned failure with no note"
+        return f"Agent failure: {note}"
+    if isinstance(perf, dict) and perf.get("status") == "failure":
+        note = perf.get("failure_note") or "Agent returned status=failure with no note"
+        return f"Agent failure: {note}"
 
     if payload is None:
         return "Response missing 'agent_payload'"
@@ -1686,61 +1662,6 @@ def _validate_response_schema(
     # Payload fields (incl. list items_schema) — not recursive envelope on nested objects.
     err = _validate_schema_object_fields(payload, schema, when_required=when_required)
     return err
-
-
-def conversational_turn_from_do_task_result(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Shape for AST-1073 callers: outcome, reply, admin_aside, success."""
-    if not isinstance(result, dict):
-        return {"success": False, "outcome": None, "reply": None, "admin_aside": None}
-    perf = result.get("agent_performance")
-    perf_dict = perf if isinstance(perf, dict) else {}
-    parsed = result.get("parsed_response")
-    reply = None
-    if isinstance(parsed, dict):
-        reply = parsed.get("reply")
-    elif isinstance(parsed, str):
-        reply = parsed
-    outcome = result.get("conversational_outcome") or _agent_performance_status(perf_dict or perf)
-    aside = perf_dict.get("admin_aside") if perf_dict else None
-    return {
-        "success": bool(result.get("success")),
-        "outcome": outcome,
-        "reply": reply,
-        "admin_aside": aside if isinstance(aside, str) else None,
-    }
-
-
-def _debug_conversational_turn(
-    *,
-    task_key: str,
-    debug: bool,
-    index: Optional[str],
-    outcome: str,
-    perf: Optional[Dict[str, Any]] = None,
-    reply: Any = None,
-) -> None:
-    """Style D turn-outcome lines for CHAT tasks (AST-1072)."""
-    if not debug or not is_conversational_task(task_key):
-        return
-    dbg = _do_task_debug_logger(debug)
-    dbg.debug_index(
-        func=f"do_task({task_key})",
-        index=1,
-        total=1,
-        identifier=(index or task_key or "?"),
-        outcome=outcome,
-    )
-    aside = (perf or {}).get("admin_aside") if isinstance(perf, dict) else None
-    aside_len = len(aside) if isinstance(aside, str) else 0
-    if isinstance(reply, str):
-        reply_len = len(reply)
-    elif isinstance(reply, dict) and isinstance(reply.get("reply"), str):
-        reply_len = len(reply["reply"])
-    else:
-        reply_len = 0
-    dbg.debug_detail(
-        f"conversational_outcome={outcome} admin_aside_len={aside_len} reply_len={reply_len}"
-    )
 
 
 def _validate_grades(grades: list, vectors: list) -> Optional[str]:
@@ -1972,10 +1893,7 @@ async def do_task(
             )
 
     brain_setting = (agent_row.get("brain_setting") or "").strip()
-    # AST-1072: conversational CHAT turns use CONTACT_ESTELLE_CONFIG Medium — leave Estelle Big for upshot.
-    if is_conversational_task(task_key):
-        brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
-    elif not brain_setting:
+    if not brain_setting:
         raise ValueError(
             f"Agent '{agent_row.get('agent_id')}' has no brain_setting configured."
         )
@@ -2373,16 +2291,6 @@ async def do_task(
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task validation failed. task_key=%r error=%s", task_key, err)
-            if is_conversational_task(task_key):
-                _perf_dbg = parsed.get("agent_performance") if isinstance(parsed, dict) else None
-                _debug_conversational_turn(
-                    task_key=task_key,
-                    debug=debug,
-                    index=index,
-                    outcome="validation error",
-                    perf=_perf_dbg if isinstance(_perf_dbg, dict) else None,
-                    reply=(parsed.get("agent_payload") if isinstance(parsed, dict) else None),
-                )
             if log_batch_id.get():
                 flush_log_buffer()
             if _should_store:
@@ -2469,20 +2377,6 @@ async def do_task(
                             "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
 
     if isinstance(parsed, dict) and "agent_payload" in parsed:
-        # AST-1072: preserve conversational outcome on result before unwrapping payload.
-        if is_conversational_task(task_key):
-            _perf_keep = parsed.get("agent_performance")
-            if isinstance(_perf_keep, dict):
-                result["agent_performance"] = _perf_keep
-                result["conversational_outcome"] = _agent_performance_status(_perf_keep)
-                _debug_conversational_turn(
-                    task_key=task_key,
-                    debug=debug,
-                    index=index,
-                    outcome=result["conversational_outcome"] or "success",
-                    perf=_perf_keep,
-                    reply=parsed.get("agent_payload"),
-                )
         parsed = parsed["agent_payload"]
         # Model occasionally wraps lines in a list instead of joining with \n — normalize it
         if isinstance(parsed, list):
