@@ -1322,3 +1322,24 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   tests/component/utils/test_config.py::TestAst1062QualifyMeteoriteThresholds \
   -q
 ```
+
+### AST-1066 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
+
+`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, empty `skills` ACL (distinct from `TASK_CONFIG`). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)` — matcher inclusion is AST-1068. Core scaffold: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| CONTACT_CONFIG defaults + env names; slack lookup path home | `src/utils/config.py` | **`TestAst1066ContactConfig`** |
+
+**Broken / obsolete:** none — additive config + lookup path tuple (AST-1047 email/name asserts unchanged).
+
+**Integration:** no existing scenario asserts CONTACT_CONFIG / slack_user_id_paths — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1066ContactConfig \
+  tests/component/core/test_contact.py::TestAst1066ContactScaffold \
+  -q
+```

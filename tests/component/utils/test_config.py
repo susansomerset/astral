@@ -2622,6 +2622,29 @@ class TestAst1062QualifyMeteoriteThresholds:
         assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
 
 
+# Branches: CONTACT_CONFIG + slack_user_id_paths home (AST-1066). Distinct from TASK_CONFIG.
+class TestAst1066ContactConfig:
+    """AST-1066: CONTACT_CONFIG listen/skills/env-names + CANDIDATE_LOOKUP slack path."""
+
+    def test_contact_config_defaults_and_env_names(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["listen_enabled"] is False
+        assert cc["skills"] == {}
+        assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
+        assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        # Skills ACL must never collide with dispatch TASK_CONFIG keys.
+        for skill_key in cc["skills"]:
+            assert skill_key not in cfg.TASK_CONFIG
+
+    def test_slack_user_id_lookup_home(self) -> None:
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert luc["slack_user_id_paths"] == ("contact.slack_user_id",)
+        # Email/name homes from AST-1047 remain (matcher scan of slack paths is AST-1068).
+        assert "contact.contact_email" in luc["email_paths"]
+        assert "first" in luc["name_paths"]
+
+
 class TestAst1055MeteoriteLikeUpshotTasks:
     """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
 
