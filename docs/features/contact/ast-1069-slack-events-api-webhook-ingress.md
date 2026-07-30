@@ -225,3 +225,99 @@ Changes:
 - **Publish ref:** `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`
 - **Tip:** `d00b8e7e` — Socket Mode script + websocket-client (stages 1–5 complete)
 - **Stage commits:** `8733b3ae` (config), `0dba2471` (external), `dc83dd82` (contact), `26584cad` (api_slack), `d00b8e7e` (script/deps)
+
+---
+
+## Review (Radia / code-rubric.v1)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1069  
+**Publish ref:** `650a0d51` on `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress` (docs tip follows)  
+**Overall:** DISCUSS
+
+**Diff change set:** `origin/dev...650a0d51` — layers `{core, external, utils, ui, docs, scripts}`; paths `src/external/slack.py` (A), `src/core/contact.py` (A), `src/ui/api/api_slack.py` (A), `src/ui/server.py` (M), `src/utils/config.py` (M), `scripts/slack_socket_mode_dev.py` (A), `requirements.txt` (M), plan/bible/tests; change_types `{add, modify}`. Tip carries AST-1066 scaffold ancestry (empty skills); not AST-1071.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task; CONTACT ≠ TASK_CONFIG |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim API |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data entity refs |
+| astral.config.config-source-of-truth | scoped | conforms | events path / bot_event_types / dedupe / env names in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | strict os.environ at call time in core/external; no import-time reads |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plans only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file per ticket under docs/features/contact/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | tip merge-tests `650a0d51` tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty test/merge-tests vocabulary |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | HMAC/HTTP/Socket I/O only in external |
+| astral.layers.import-direction | scoped | conforms | ui→core only; core→external; script exempt callers |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Socket Mode local script under scripts/ |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | path/event types/listen from config via Contact |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | Events route open; Slack signature auth via core |
+| astral.standards.data-raises-caller-logs | scoped | conforms | external raises on post; Contact decides verify outcomes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/schema paths |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on receive/handle when debug=True; quiet when False |
+| astral.standards.dry-and-focused-functions | scoped | conforms | receive / verify / post / handle split |
+| astral.standards.in-scope-only | scoped | conforms | no Manage Slack / resolve / skills / turn-loop |
+| astral.standards.logging-via-utils | scoped | conforms | Contact get_logger Style D; external does not log outcomes |
+| astral.standards.no-cross-contamination | scoped | conforms | skills stay empty; no TASK_CONFIG / sibling product |
+| astral.standards.no-hardcoded-sets | scoped | conforms | event types/path/dedupe from config; skew/timeout named module constants |
+| astral.standards.public-then-helpers | scoped | conforms | public ingress API present; private helpers grouped with handle path |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py has no data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state work |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch run_next |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no src/ui/frontend/** |
+| astral.ui.naming-conventions | scoped | conforms | snake_case /api/slack/events |
+| astral.ui.single-gunicorn-worker | scoped | conforms | process-local dedupe; multi-worker OOS as planned |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | authoritative merge-tests tip `650a0d51` (prior empty merge ignored) |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1069-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none in tip history |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1069-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Joan round=1 import-direction fixed; Decisions held |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–5 + Revision 1 match tip |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Hedy remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.external.slack-events (proposed) | conforms | verify / challenge / postMessage / Socket Mode helper |
+| pattern.api.routes | conforms | thin api_slack transport-only |
+| pattern.core.contact-agent (proposed) | conforms | receive_slack_events_http + handle_slack_event |
+| pattern.config.config-block | conforms | CONTACT_CONFIG Events/Socket keys |
+
+### Plan adherence
+
+Stages 1–5 land; Revision 1 import-direction fix present (UI never imports external; signing secret read in Contact). Listen gate, signature verify, URL challenge, daemon-thread ack, process-local dedupe, Socket Mode script local-only. Self-Assessment MAJOR-CHANGE / high / HIGH matches open-webhook risk and mitigations. Sibling scopes clean (empty skills; no resolve/Manage Slack/turn-loop).
+
+### Findings
+
+**discuss** — C4 straggler: Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` now in-scope on tip (docs/features + tests/bible). All three score **conforms** — no product action.
+
+### What’s solid
+
+ui→core→external after Joan Plan Discuss; HMAC + listen gate + empty 200 ack; config-driven path/types/dedupe; external silent on outcomes; Socket Mode confined to scripts/.
+
+context_tokens≈58000
