@@ -16,7 +16,7 @@ No batch primitives on candidate — candidates are not batch-processed.
 
 ## candidate_data (library + meta)
 
-Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`) are **siblings** of the three library blobs — not inside them.
+Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`, `topic_menu`) are **siblings** of the three library blobs — not inside them.
 
 Do **not** store first/last/full/pronouns inside contact/context/artifacts. Do **not** write a `profile` key (renamed to `contact`; writers refuse shadow copies).
 
@@ -85,6 +85,28 @@ Candidate-owned ordered section catalog (AST-477). Drives tab labels/order for B
 | `sections` | dict keyed by section id | Each value: `id`, `title`, `enabled`, `order`, `job_agent_editable` |
 
 `artifacts.base_resume` holds **string content only** keyed by enabled section ids from this catalog (no `accent_color` on `base_resume` after AST-517; legacy `base_resume.accent_color` is read only until regenerate). Contact/header section ids (`candidate_name`, `candidate_title`, `candidate_contact_detail`) are in the catalog with `job_agent_editable: false`.
+
+### topic_menu (AST-1074 / AST-953)
+
+Intake orchestration state for the durable Topic Menu. Config: `TOPIC_MENU_CONFIG` in `src/utils/config.py`. Core helpers: `get_topic_menu` / `validate_topic` / `revise_topic_menu` / `save_topic_menu` in `src/core/candidate.py`. Generation/confirm is **AST-1075**; `informs` declares intent only (does not craft artifacts).
+
+```text
+candidate_data.topic_menu = {
+  "topics": [
+    {
+      "id": "<stable str>",
+      "name": "<display name>",
+      "ask": "<directed question>",
+      "required": true|false,
+      "informs": ["backstory", ...],  # ⊆ TOPIC_MENU_CONFIG["informs"], non-empty
+      "status": "open" | "ready" | "retired"
+    }
+  ],
+  "preamble_confirmed_at": "<YYYY-MM-DD HH:MM:SS>"  # optional; AST-1075 after Estelle accept
+}
+```
+
+Revising keeps prior topics: dropped ids become `status: "retired"` rather than deleted from the list. Default save path is revise-by-id (`save_topic_menu(..., revise=True)`). Optional `preamble_confirmed_at` is stamped by `mark_topic_menu_preamble_confirmed` when Estelle confirm accepts (AST-1075); normalize/validate/revise preserve it.
 
 ## Token resolution
 

@@ -817,16 +817,26 @@
     "updated_at": "2026-07-30 00:54:55"
   },
   {
+<<<<<<< HEAD
     "task_key_uuid": "59eb6a1d-0988-414b-8a10-34375eba03e3",
     "task_key": "contact_estelle_turn",
     "current": 1,
     "agent_id": "principal_recruiter_estelle",
     "user_prompt": "## Contact turn\n\n{$SELECTED_AGENT}\n\n## Instructions\n\nProduce the conversational envelope for this turn. JSON only.\n",
     "cache_prompt": "",
+=======
+    "task_key_uuid": "7c1f30a8-a309-4481-b7ca-93f3706d1732",
+    "task_key": "topic_menu_preamble_confirm",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "Confirm the PREAMBLE_PACKET in CONTENT with the candidate. Follow your TOPIC MENU PREAMBLE CONFIRM instructions. Respond with the envelope and agent_payload only.",
+    "cache_prompt": "## TOPIC MENU PREAMBLE CONFIRM\n\nYou are Estelle confirming the candidate's preamble packet before inventing a Topic Menu.\n\nLive CONTENT is JSON with:\n- PREAMBLE_PACKET \u2014 name (table columns), context, and contact fields\n- CANDIDATE_MESSAGE \u2014 optional candidate reply (empty on the first turn)\n\n## First turn (empty / absent CANDIDATE_MESSAGE)\nSummarize the packet in plain language, then ask exactly: Anything here you would change?\nSet outcome to continue.\n\n## Later turns\n- If the candidate accepts (e.g. \"looks good\", \"nothing to change\"): set outcome to accepted; assistant_message is a brief acknowledgment.\n- If the candidate requests changes: set outcome to continue; put allowed field updates in library_patches as {\"context\": {<key>: <str>, ...}} using ONLY these keys: raw_resume, raw_profile, raw_sample, bio_summary, backstory, strengths, priorities, deal_breakers, hopes, interests, concerns. Omit library_patches or use {} when nothing to write. Never patch name columns or invent contact keys. Re-summarize and re-ask: Anything here you would change?\n\nNever invent new library keys. Never generate a Topic Menu in this task.\n\n## OUTPUT\nReturn the standard Astral JSON envelope only.\nagent_payload must include:\n- assistant_message (non-empty string)\n- outcome \u2014 exactly continue or accepted\n- library_patches (optional object)\n",
+>>>>>>> origin/dev
     "cache_prompt_b": "",
     "cache_prompt_c": "",
     "cache_prompt_d": "",
     "nocache_prompt": "",
+<<<<<<< HEAD
     "system_prompt": "You are Estelle in a Contact Slack conversation turn.\n\nRespond with ONE JSON object only (no markdown fences) using the standard two-key envelope:\n- agent_performance: status, optional failure_note, optional admin_aside\n- agent_payload: { \"reply\": \"<user-visible message>\" }\n\nagent_performance.status must be exactly one of: success | failure | concern.\n- success: the turn completed normally; admin_aside optional.\n- failure: you could not perform the turn; set failure_note.\n- concern: the user appears to be struggling or having a negative experience; set admin_aside to one short sentence for Astral admins. Do NOT put the admin aside in reply.\n\nagent_payload.reply is the only user-visible message text.\n",
     "run_next": "",
     "updated_at": "2026-07-30 02:45:33",
@@ -834,5 +844,33 @@
     "task_group_name": "Contact Estelle",
     "task_seq": 1,
     "task_name": "Contact Estelle Turn"
+=======
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-30 18:34:01",
+    "task_group_order": "2000",
+    "task_group_name": "Topic Menu",
+    "task_seq": 1,
+    "task_name": "Topic Menu Preamble Confirm"
+  },
+  {
+    "task_key_uuid": "e6a74312-7307-42bd-88d2-e81c0c5c6f28",
+    "task_key": "topic_menu_generate",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "Invent a Topic Menu from the confirmed PREAMBLE_PACKET in CONTENT. Follow your TOPIC MENU GENERATION instructions. Respond with the envelope and agent_payload only.",
+    "cache_prompt": "## TOPIC MENU GENERATION\n\nYou are Estelle inventing a directed Topic Menu from the confirmed PREAMBLE_PACKET in CONTENT (pure Estelle authorship \u2014 no seed-topic templates).\n\nCONTENT also includes INFORMS_CATALOG \u2014 the closed list of allowed informs targets.\n\n## Each topic MUST include\n- id \u2014 stable non-empty string\n- name \u2014 display name\n- ask \u2014 one directed question answerable in a few minutes\n- required \u2014 boolean\n- informs \u2014 non-empty list drawn ONLY from: rubrics, base_resume, strengths, priorities, deal_breakers, backstory\n\nOne topic may list multiple informs. Do not invent target kinds (no like_rubric, candidate_bio, etc.).\nOmit status (code defaults to open).\n\n## Coverage\nSet informs_coverage_confirmed to true only after you verify every topic has at least one allowed informs target and the menu reasonably covers the informs you intend (one ask may cover many).\nSet informs_covered to the unique list of informs targets that appear across topics (subset of INFORMS_CATALOG).\n\n## OUTPUT\nReturn the standard Astral JSON envelope only.\nagent_payload must include:\n- topics \u2014 JSON array of topic objects\n- informs_coverage_confirmed \u2014 boolean\n- informs_covered \u2014 list of strings\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-30 18:34:01",
+    "task_group_order": "2000",
+    "task_group_name": "Topic Menu",
+    "task_seq": 2,
+    "task_name": "Generate Topic Menu"
+>>>>>>> origin/dev
   }
 ]

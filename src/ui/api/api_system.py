@@ -16,6 +16,7 @@ from src.utils.config import (
     UI_CONFIG,
     BUILD_CONFIG,
     PREAMBLE_CONFIG,
+    TOPIC_MENU_GEN_CONFIG,
     build_state_ui_manifest,
 )
 from src.utils.logging import get_logger
@@ -160,6 +161,11 @@ def ui_config():
         "base_resume_accent_palette": BUILD_CONFIG.get("accent_palette", []),
         # AST-1016: Intro + mechanical steps for AST-1017 (no page chrome here).
         "preamble": PREAMBLE_CONFIG,
+        # AST-1075: Estelle Topic Menu confirm/generate UI labels.
+        "topic_menu_gen": {
+            "ui": TOPIC_MENU_GEN_CONFIG["ui"],
+            "confirm_outcomes": list(TOPIC_MENU_GEN_CONFIG["confirm_outcomes"]),
+        },
     })
 
 

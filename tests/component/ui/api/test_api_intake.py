@@ -262,3 +262,137 @@ class TestAst1015PreambleValidateRoute:
         assert resp.status_code == 200
         assert resp.get_json()["success"] is False
         assert resp.get_json()["outcome"] is None
+
+
+
+class TestAst1075TopicMenuRoutes:
+    """AST-1075: POST topic-menu/confirm and topic-menu/generate thin wrappers."""
+
+    def test_confirm_requires_auth(self, intake_client: FlaskClient) -> None:
+        assert (
+            intake_client.post(
+                "/api/candidates/cand-1/topic-menu/confirm",
+                json={},
+            ).status_code
+            == 401
+        )
+
+    def test_confirm_success_200(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "run_topic_menu_preamble_confirm",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "outcome": "continue",
+                    "assistant_message": "Anything here you would change?",
+                    "applied_patches": [],
+                    "packet": {"context": {"raw_resume": "x"}},
+                    "batch_id": "intake-topic_menu_preamble_confirm-x",
+                    "error": None,
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/confirm",
+            json={"message": ""},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["outcome"] == "continue"
+        assert "Anything here you would change?" in body["assistant_message"]
+
+    def test_confirm_candidate_missing_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda candidate_id: None)
+        resp = intake_client.post(
+            "/api/candidates/missing/topic-menu/confirm",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_confirm_structured_failure_500(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "run_topic_menu_preamble_confirm",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "invalid confirm outcome: 'Valid'",
+                    "batch_id": "b",
+                    "outcome": None,
+                    "assistant_message": None,
+                    "applied_patches": [],
+                    "packet": {},
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/confirm",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 500
+        assert "invalid confirm outcome" in resp.get_json()["error"]
+
+    def test_generate_success_200(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "generate_topic_menu_from_preamble",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "menu": {"topics": [{"id": "t1"}], "preamble_confirmed_at": "t"},
+                    "batch_id": "intake-topic_menu_generate-x",
+                    "rejected_topic_count": 0,
+                    "informs_covered": ["backstory"],
+                    "error": None,
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/generate",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["menu"]["topics"][0]["id"] == "t1"
+        assert body["informs_covered"] == ["backstory"]
+
+    def test_generate_not_confirmed_400(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "generate_topic_menu_from_preamble",
+            AsyncMock(side_effect=ValueError("preamble not confirmed; run confirm accept first")),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/generate",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "preamble not confirmed" in resp.get_json()["error"]

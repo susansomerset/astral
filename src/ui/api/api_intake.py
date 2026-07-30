@@ -12,9 +12,11 @@ from src.core.intake import (
     create_intake_session_and_start,
     fetch_active_intake_session,
     fetch_intake_session,
+    generate_topic_menu_from_preamble,
     get_intake_session_dto,
     post_intake_build,
     post_intake_turn,
+    run_topic_menu_preamble_confirm,
     validate_preamble_answer,
 )
 from src.utils.deploy_status import ui_llm_debug
@@ -161,4 +163,87 @@ def post_preamble_validate(candidate_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     return jsonify({k: result[k] for k in ("success", "outcome", "error", "batch_id")}), 200
+
+
+@intake_bp.route("/<candidate_id>/topic-menu/confirm", methods=["POST"])
+@require_auth
+def post_topic_menu_confirm(candidate_id):
+    """Estelle preamble confirm turn (AST-1075)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    body = request.get_json(silent=True) or {}
+    message = body.get("message")
+    try:
+        result = asyncio.run(
+            run_topic_menu_preamble_confirm(
+                candidate_id,
+                candidate_message=message if isinstance(message, str) else None,
+                debug=_debug_flag(),
+            )
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("Candidate not found"):
+            return jsonify({"error": msg}), 404
+        return jsonify({"error": msg}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    if not result.get("success"):
+        body_out = {"error": result.get("error") or "confirm failed"}
+        if result.get("batch_id"):
+            body_out["batch_id"] = result["batch_id"]
+        return jsonify(body_out), 500
+    return jsonify(
+        {
+            k: result[k]
+            for k in (
+                "success",
+                "outcome",
+                "assistant_message",
+                "applied_patches",
+                "packet",
+                "batch_id",
+                "error",
+            )
+        }
+    ), 200
+
+
+@intake_bp.route("/<candidate_id>/topic-menu/generate", methods=["POST"])
+@require_auth
+def post_topic_menu_generate(candidate_id):
+    """Estelle Topic Menu generation after preamble confirm (AST-1075)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        result = asyncio.run(
+            generate_topic_menu_from_preamble(candidate_id, debug=_debug_flag())
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("Candidate not found"):
+            return jsonify({"error": msg}), 404
+        return jsonify({"error": msg}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    if not result.get("success"):
+        body_out = {"error": result.get("error") or "generate failed"}
+        if result.get("batch_id"):
+            body_out["batch_id"] = result["batch_id"]
+        if "rejected_topic_count" in result:
+            body_out["rejected_topic_count"] = result["rejected_topic_count"]
+        return jsonify(body_out), 500
+    return jsonify(
+        {
+            k: result[k]
+            for k in (
+                "success",
+                "menu",
+                "batch_id",
+                "rejected_topic_count",
+                "informs_covered",
+                "error",
+            )
+        }
+    ), 200
 

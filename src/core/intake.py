@@ -18,11 +18,15 @@ from src.core.agent import compute_batch_cost, do_task, get_agent_data_by_batch
 from src.core.candidate import (
     check_context_complete,
     get_candidate,
+    get_topic_menu,
+    mark_topic_menu_preamble_confirmed,
     save_candidate_data,
+    save_topic_menu,
     sync_company_search_terms_from_text,
+    validate_topic,
 )
 from src.data import database
-from src.utils.config import INTAKE_CONFIG, PREAMBLE_VALIDATION_CONFIG
+from src.utils.config import INTAKE_CONFIG, PREAMBLE_VALIDATION_CONFIG, TOPIC_MENU_CONFIG, TOPIC_MENU_GEN_CONFIG
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -129,6 +133,320 @@ async def validate_preamble_answer(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+
+
+def build_preamble_packet_snapshot(candidate_id: str) -> dict:
+    """Snapshot name columns + context/contact packet fields for Estelle (AST-1075)."""
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = candidate.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    context = cd.get("context") if isinstance(cd.get("context"), dict) else {}
+    contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    snapshot = {
+        "name": {
+            k: str(candidate.get(k) or "")
+            for k in TOPIC_MENU_GEN_CONFIG["packet_name_columns"]
+        },
+        "context": {
+            k: str(context.get(k) or "")
+            for k in TOPIC_MENU_GEN_CONFIG["packet_context_keys"]
+        },
+        "contact": {
+            k: str(contact.get(k) or "")
+            for k in TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]
+        },
+    }
+    if not snapshot["context"]["raw_resume"].strip():
+        raise ValueError("preamble packet incomplete: raw_resume required")
+    return snapshot
+
+
+def _apply_library_patches(candidate_id: str, patches: Any, *, debug: bool = False) -> list:
+    """Apply Estelle context patches; whitelist only; non-empty strings only."""
+    if not isinstance(patches, dict):
+        return []
+    ctx = patches.get("context")
+    if not isinstance(ctx, dict):
+        return []
+    allowed = TOPIC_MENU_GEN_CONFIG["patchable_context_keys"]
+    applied: dict = {}
+    for key, val in ctx.items():
+        if key not in allowed:
+            continue
+        if not isinstance(val, str) or not val.strip():
+            continue
+        applied[key] = val.strip()
+    if not applied:
+        return []
+    save_candidate_data(candidate_id, {"context": applied}, debug=debug)
+    return list(applied.keys())
+
+
+async def run_topic_menu_preamble_confirm(
+    candidate_id: str,
+    candidate_message: Optional[str] = None,
+    *,
+    debug: bool = False,
+) -> dict:
+    """Estelle confirm turn; stamps preamble_confirmed_at on outcome=accepted."""
+    packet = build_preamble_packet_snapshot(candidate_id)
+    live_content = json.dumps(
+        {
+            "PREAMBLE_PACKET": packet,
+            "CANDIDATE_MESSAGE": (candidate_message or "").strip(),
+        }
+    )
+    task_key = TOPIC_MENU_GEN_CONFIG["confirm_task_key"]
+    run = await _run_intake_task(
+        candidate_id,
+        task_key,
+        live_content,
+        prompt_snapshot=None,
+        debug=debug,
+    )
+    if not run.get("success"):
+        return {
+            "success": False,
+            "error": run.get("error") or "confirm failed",
+            "batch_id": run.get("batch_id"),
+            "outcome": None,
+            "assistant_message": None,
+            "applied_patches": [],
+            "packet": packet,
+        }
+
+    parsed = run.get("parsed_response")
+    if not isinstance(parsed, dict):
+        return {
+            "success": False,
+            "error": "confirm response must be a JSON object",
+            "batch_id": run.get("batch_id"),
+            "outcome": None,
+            "assistant_message": None,
+            "applied_patches": [],
+            "packet": packet,
+        }
+    msg = (parsed.get("assistant_message") or "").strip()
+    if not msg:
+        return {
+            "success": False,
+            "error": "assistant_message is required",
+            "batch_id": run.get("batch_id"),
+            "outcome": None,
+            "assistant_message": None,
+            "applied_patches": [],
+            "packet": packet,
+        }
+    outcome = parsed.get(TOPIC_MENU_GEN_CONFIG["confirm_outcome_field"])
+    if outcome not in TOPIC_MENU_GEN_CONFIG["confirm_outcomes"]:
+        return {
+            "success": False,
+            "error": f"invalid confirm outcome: {outcome!r}",
+            "batch_id": run.get("batch_id"),
+            "outcome": None,
+            "assistant_message": None,
+            "applied_patches": [],
+            "packet": packet,
+        }
+
+    applied = _apply_library_patches(
+        candidate_id, parsed.get("library_patches"), debug=debug
+    )
+    if outcome == "accepted":
+        mark_topic_menu_preamble_confirmed(candidate_id, debug=debug)
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func="run_topic_menu_preamble_confirm",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome=f"found|{outcome}",
+        )
+        logger.debug_detail(f"assistant_message={truncate_debug_content(msg)!r}")
+        logger.debug_detail(f"applied_patches={applied}")
+        logger.debug_index(
+            func="run_topic_menu_preamble_confirm",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"accepted={outcome == 'accepted'}")
+
+    # Re-read packet so UI sees post-patch library.
+    packet_out = build_preamble_packet_snapshot(candidate_id)
+    return {
+        "success": True,
+        "outcome": outcome,
+        "assistant_message": msg,
+        "applied_patches": applied,
+        "batch_id": run.get("batch_id"),
+        "error": None,
+        "packet": packet_out,
+    }
+
+
+async def generate_topic_menu_from_preamble(candidate_id: str, *, debug: bool = False) -> dict:
+    """Pure-Estelle Topic Menu generation; save via revise=True (AST-1075)."""
+    current = get_topic_menu(candidate_id)
+    if not current.get("preamble_confirmed_at"):
+        raise ValueError("preamble not confirmed; run confirm accept first")
+
+    packet = build_preamble_packet_snapshot(candidate_id)
+    live_content = json.dumps(
+        {
+            "PREAMBLE_PACKET": packet,
+            "INFORMS_CATALOG": list(TOPIC_MENU_CONFIG["informs"]),
+        }
+    )
+    task_key = TOPIC_MENU_GEN_CONFIG["generate_task_key"]
+    run = await _run_intake_task(
+        candidate_id,
+        task_key,
+        live_content,
+        prompt_snapshot=None,
+        debug=debug,
+    )
+    if not run.get("success"):
+        return {
+            "success": False,
+            "error": run.get("error") or "generate failed",
+            "batch_id": run.get("batch_id"),
+            "menu": None,
+            "rejected_topic_count": 0,
+            "informs_covered": [],
+        }
+
+    parsed = run.get("parsed_response")
+    if not isinstance(parsed, dict):
+        return {
+            "success": False,
+            "error": "generate response must be a JSON object",
+            "batch_id": run.get("batch_id"),
+            "menu": None,
+            "rejected_topic_count": 0,
+            "informs_covered": [],
+        }
+    if parsed.get("informs_coverage_confirmed") is not True:
+        return {
+            "success": False,
+            "error": "informs_coverage_confirmed must be true",
+            "batch_id": run.get("batch_id"),
+            "menu": None,
+            "rejected_topic_count": 0,
+            "informs_covered": [],
+        }
+    if not isinstance(parsed.get("informs_covered"), list):
+        return {
+            "success": False,
+            "error": "informs_covered must be a list",
+            "batch_id": run.get("batch_id"),
+            "menu": None,
+            "rejected_topic_count": 0,
+            "informs_covered": [],
+        }
+
+    raw_topics = parsed.get("topics")
+    if not isinstance(raw_topics, list):
+        return {
+            "success": False,
+            "error": "topics must be a list",
+            "batch_id": run.get("batch_id"),
+            "menu": None,
+            "rejected_topic_count": 0,
+            "informs_covered": [],
+        }
+
+    validated: list = []
+    rejected = 0
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func="generate_topic_menu_from_preamble",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(
+            f"raw_topics={len(raw_topics)} coverage_confirmed={parsed.get('informs_coverage_confirmed')}"
+        )
+
+    for topic in raw_topics:
+        if not isinstance(topic, dict):
+            rejected += 1
+            if debug:
+                logger.debug_detail("reject=non_dict_topic")
+            continue
+        row = dict(topic)
+        if "status" not in row:
+            row["status"] = TOPIC_MENU_CONFIG["default_status"]
+        try:
+            validated.append(validate_topic(row))
+        except ValueError as exc:
+            rejected += 1
+            if debug:
+                logger.debug_detail(f"reject={exc}")
+
+    if not validated:
+        return {
+            "success": False,
+            "error": "no valid topics after informs validation",
+            "batch_id": run.get("batch_id"),
+            "menu": None,
+            "rejected_topic_count": rejected,
+            "informs_covered": [],
+        }
+
+    # Authoritative coverage from survivors (catalog order, then leftovers).
+    seen_informs: set = set()
+    for t in validated:
+        for inf in t["informs"]:
+            seen_informs.add(inf)
+    informs_covered_effective: list = []
+    for inf in TOPIC_MENU_CONFIG["informs"]:
+        if inf in seen_informs:
+            informs_covered_effective.append(inf)
+            seen_informs.discard(inf)
+    informs_covered_effective.extend(sorted(seen_informs))
+
+    outgoing: dict = {"topics": validated}
+    if current.get("preamble_confirmed_at"):
+        outgoing["preamble_confirmed_at"] = current["preamble_confirmed_at"]
+    saved = save_topic_menu(candidate_id, outgoing, revise=True, debug=debug)
+
+    if debug:
+        status_counts = {s: 0 for s in TOPIC_MENU_CONFIG["statuses"]}
+        for t in saved.get("topics") or []:
+            st = t.get("status")
+            if st in status_counts:
+                status_counts[st] += 1
+        logger.debug_index(
+            func="generate_topic_menu_from_preamble",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(
+            f"stored={len(saved.get('topics') or [])} rejected={rejected} "
+            f"open={status_counts['open']} ready={status_counts['ready']} "
+            f"retired={status_counts['retired']} informs_covered={informs_covered_effective}"
+        )
+
+    return {
+        "success": True,
+        "menu": saved,
+        "batch_id": run.get("batch_id"),
+        "rejected_topic_count": rejected,
+        "informs_covered": informs_covered_effective,
+        "error": None,
+    }
 
 
 def _ledger_task_key(task_key: str) -> str:
