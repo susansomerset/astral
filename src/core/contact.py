@@ -3,8 +3,9 @@ Contact: Slack foundation + CONTACT_CONFIG skills ACL (Astral Contact / AST-1066
 
 AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 (`handle_slack_event`). AST-1071: ACL-gated entity-save skill runners.
-Siblings: Manage Slack listen UI (AST-1067), resolve/PROSPECT (AST-1068),
-conversation context (AST-1070). Estelle turn loop: AST-1046 — not here.
+AST-1068: `resolve_slack_user` + PROSPECT create-on-miss (wired on accept).
+Siblings: Manage Slack listen UI (AST-1067), conversation context (AST-1070).
+Estelle turn loop: AST-1046 — not here.
 """
 
 from __future__ import annotations
@@ -15,8 +16,17 @@ import threading
 from collections import OrderedDict
 from typing import Any, Dict, List, Tuple
 
-from src.core.candidate import get_candidate, save_candidate_data
-from src.external.slack import parse_url_verification, verify_slack_signature
+from src.core.candidate import (
+    get_candidate,
+    get_candidate_id_for_query,
+    initiate_prospect_candidate,
+    save_candidate_data,
+)
+from src.external.slack import (
+    fetch_user_profile,
+    parse_url_verification,
+    verify_slack_signature,
+)
 from src.utils.config import CONTACT_CONFIG
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -188,6 +198,106 @@ def _is_dm_message(event: dict) -> bool:
     return isinstance(channel, str) and channel.startswith("D")
 
 
+def resolve_slack_user(
+    slack_user_id: str,
+    *,
+    estelle_in_play: bool,
+    debug: bool = False,
+) -> dict:
+    """Lookup Slack user → astral candidate; create PROSPECT only when estelle_in_play."""
+    if debug:
+        logger.set_debug_flag(True)
+
+    sid = (slack_user_id or "").strip()
+    if not sid:
+        raise ValueError("slack_user_id is required")
+
+    cid = get_candidate_id_for_query(sid, debug=debug)
+    if cid is not None:
+        row = get_candidate(cid)
+        state = (row or {}).get("state")
+        if debug:
+            logger.debug_index(
+                func="contact.resolve_slack_user",
+                index=1,
+                total=1,
+                identifier=sid[:80],
+                outcome="found|matched",
+            )
+            logger.debug_detail(f"slack_user_id={sid}")
+            logger.debug_detail(f"candidate_id={cid}")
+            logger.debug_detail(f"state={state}")
+        return {
+            "astral_candidate_id": cid,
+            "state": state,
+            "created": False,
+        }
+
+    if not estelle_in_play:
+        if debug:
+            logger.debug_index(
+                func="contact.resolve_slack_user",
+                index=1,
+                total=1,
+                identifier=sid[:80],
+                outcome="found|none",
+            )
+            logger.debug_detail(f"slack_user_id={sid}")
+        return {
+            "astral_candidate_id": None,
+            "state": None,
+            "created": False,
+        }
+
+    profile = fetch_user_profile(sid)
+    new_id = (
+        CONTACT_CONFIG["prospect_candidate_id_template"]
+        .format(slack_user_id=sid)
+        .strip()
+        .lower()
+    )
+    first = str(profile.get("first") or "").strip()
+    last = str(profile.get("last") or "").strip()
+    display = str(profile.get("display_name") or "").strip()
+    if not first and not last and display:
+        first = display
+    candidate_data = {
+        "contact": {"slack_user_id": sid},
+        "profile": {"first": first, "last": last},
+    }
+    try:
+        initiate_prospect_candidate(new_id, candidate_data)
+    except ValueError:
+        # Race: another accept already created — re-lookup.
+        cid = get_candidate_id_for_query(sid, debug=debug)
+        if cid is None:
+            raise
+        row = get_candidate(cid)
+        return {
+            "astral_candidate_id": cid,
+            "state": (row or {}).get("state"),
+            "created": False,
+        }
+
+    if debug:
+        logger.debug_index(
+            func="contact.resolve_slack_user",
+            index=1,
+            total=1,
+            identifier=sid[:80],
+            outcome="recorded|created",
+        )
+        logger.debug_detail(f"slack_user_id={sid}")
+        logger.debug_detail(f"candidate_id={new_id}")
+        logger.debug_detail("state=PROSPECT")
+
+    return {
+        "astral_candidate_id": new_id,
+        "state": "PROSPECT",
+        "created": True,
+    }
+
+
 def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
     """Route one Slack Events API payload into Contact (listen-gated)."""
     log = get_logger(__name__)
@@ -285,6 +395,16 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         "thread_ts": event.get("thread_ts"),
         "text": text,
     }
+    user = result.get("user")
+    if isinstance(user, str) and user.strip():
+        resolved = resolve_slack_user(user, estelle_in_play=True, debug=debug)
+        result["astral_candidate_id"] = resolved["astral_candidate_id"]
+        result["candidate_state"] = resolved["state"]
+        result["candidate_created"] = resolved["created"]
+    else:
+        result["astral_candidate_id"] = None
+        result["candidate_state"] = None
+        result["candidate_created"] = False
     if debug:
         preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
         log.debug_index(

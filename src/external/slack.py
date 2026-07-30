@@ -1,6 +1,6 @@
 """Slack Events API + Web API helpers (external layer only).
 
-Production: signature verify, URL challenge parse, chat.postMessage.
+Production: signature verify, URL challenge parse, chat.postMessage, users.info.
 Local/dev only: Socket Mode websocket helper (scripts/slack_socket_mode_dev.py).
 
 Secrets from ``os.environ[CONTACT_CONFIG[…_env]]`` at **call time** (strict) —
@@ -30,6 +30,7 @@ __all__ = [
     "verify_slack_signature",
     "parse_url_verification",
     "post_message",
+    "fetch_user_profile",
     "open_socket_mode_connection",
 ]
 
@@ -90,6 +91,42 @@ def post_message(
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_user_profile(user_id: str) -> dict:
+    """GET users.info; return a small profile dict. Call-time bot token. No logging."""
+    require_controlled_external_io("slack.fetch_user_profile")
+    sid = (user_id or "").strip()
+    if not sid:
+        raise ValueError("user_id is required")
+    token = os.environ[CONTACT_CONFIG["bot_token_env"]]
+    resp = requests.get(
+        f"{_SLACK_API}/users.info",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"user": sid},
+        timeout=_POST_TIMEOUT_SEC,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if not payload.get("ok"):
+        raise RuntimeError(f"users.info failed: {payload.get('error')}")
+    user = payload.get("user") or {}
+    if not isinstance(user, dict):
+        user = {}
+    profile = user.get("profile") or {}
+    if not isinstance(profile, dict):
+        profile = {}
+    first = str(profile.get("first_name") or "").strip()
+    last = str(profile.get("last_name") or "").strip()
+    display = str(
+        profile.get("display_name") or profile.get("real_name") or ""
+    ).strip()
+    return {
+        "slack_user_id": sid,
+        "first": first,
+        "last": last,
+        "display_name": display,
+    }
 
 
 def open_socket_mode_connection(handler: Callable[[dict], None]) -> None:
