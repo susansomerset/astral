@@ -330,9 +330,10 @@ context_tokens≈58000
 
 | Finding | Disposition |
 | -- | -- |
-| **fix-now** — restore AST-1017 frontend tests dropped when engineer merge of `origin/dev` stripped banned paths | **`[qa-handoff]` → Betty** — engineer cannot commit `tests/**`; Betty restores from `origin/dev` onto publish tip (no new assertions) |
+| **fix-now** — restore AST-1017 frontend tests dropped when engineer merge of `origin/dev` stripped banned paths | **Cleared** — Betty `merge-tests(AST-1068)` @ `4bdda264` (`origin/tests dad4818e`); tip matches `origin/dev` for the three paths |
 | **discuss** — Stage 2 plan still showed `profile` seed | **Addressed** — Stage 2 create path now documents AST-1014 name columns (`first=`/`last=`) + `contact.slack_user_id` only |
 | **discuss** — C4 ancestry statutes | **Noted** — no product change |
 
 Also merged `origin/ftr/AST-1043-slack-bot-agent` (AST-1070 context) keeping both `resolve_slack_user` / `fetch_user_profile` and conversation cache / `fetch_conversation_history`.
 
+**2026-07-30 (resume):** Absorbed Betty tip; AST-1017 paths verified identical to `origin/dev`; graduating to User Testing after §9a.
