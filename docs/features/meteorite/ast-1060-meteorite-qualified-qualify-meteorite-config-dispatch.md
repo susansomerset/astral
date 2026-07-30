@@ -193,13 +193,13 @@ Changes: Added `src/core/dispatcher.py` to Files Changed; Stage 1 Step 5 retires
 
 ## Review (build stub)
 
-**Publish ref:** 
-**Plan path:** 
+**Publish ref:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`
+**Plan path:** `docs/features/meteorite/ast-1060-meteorite-qualified-qualify-meteorite-config-dispatch.md`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 |  | JOB_STATES/UI + qualify_meteorite TASK_CONFIG/dispatch + retire evaluate_jd@METEORITE_NEW |
-| 2 |  | data/admin agent_task.json Ruth shell |
+| 1 | `53df9c81` | JOB_STATES/UI + qualify_meteorite TASK_CONFIG/dispatch + retire evaluate_jd@METEORITE_NEW |
+| 2 | `c055015f` | data/admin agent_task.json Ruth shell |
 
-**Tip:**  on 
+**Tip:** `c7a44e0a` on `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`
 
