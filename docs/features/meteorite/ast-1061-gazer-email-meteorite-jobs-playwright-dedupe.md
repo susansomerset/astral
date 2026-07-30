@@ -335,3 +335,12 @@ ingest = ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=debug)
 
 ### Recommended actions
 - Katherine: acknowledge stragglers → resolve-child → User Testing.
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Outcome:** clean — no product changes.
+
+- **fix-now:** none.
+- **discuss (straggler ×3):** Acknowledged. Three-dot vs `origin/dev` pulls plan docs + Betty `tests/` / bible into the statute window; all three statutes **conform** (single plan file under `docs/features/`; no spikes at repo root; engineer did not edit test-tree). No code or plan rewrite.
+- **advisory:** Global inverted-id false-positive remains a watch item; exact `job_link` gate stays the re-ingest mitigator (unchanged).
