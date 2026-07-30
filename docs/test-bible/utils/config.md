@@ -993,8 +993,6 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
----
-
 ### AST-1015 · AST-952
 
 **AST-1015:** `PREAMBLE_VALIDATION_CONFIG` — task_key `preamble_validate_response`, closed outcomes Valid / Try Again / Escalate; `TASK_CONFIG` schema; equality with `PREAMBLE_CONFIG["validation_task_key"]` when both present. Ruth agent_task + core/API: **`docs/test-bible/core/intake.md`**, **`docs/test-bible/ui/api/api_intake.md`**, catalog: **`docs/test-bible/data/database/agent_tasks.md`**.

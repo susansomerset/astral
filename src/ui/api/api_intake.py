@@ -15,6 +15,7 @@ from src.core.intake import (
     get_intake_session_dto,
     post_intake_build,
     post_intake_turn,
+    validate_preamble_answer,
 )
 from src.utils.deploy_status import ui_llm_debug
 from ui.auth import require_auth
@@ -125,3 +126,39 @@ def post_build(candidate_id, session_id):
     except RuntimeError as e:
         return _runtime_error_response(e)
     return jsonify(dto)
+
+
+@intake_bp.route("/<candidate_id>/preamble/validate", methods=["POST"])
+@require_auth
+def post_preamble_validate(candidate_id):
+    """Ruth Valid / Try Again / Escalate for one preamble answer (AST-1015). No library writes."""
+    body = request.get_json(silent=True) or {}
+    question = body.get("question")
+    answer = body.get("answer", "")
+    step_index = body.get("step_index", 1)
+    step_total = body.get("step_total", 1)
+    try:
+        step_index = int(step_index)
+        step_total = int(step_total)
+    except (TypeError, ValueError):
+        return jsonify({"error": "step_index and step_total must be integers"}), 400
+    try:
+        result = asyncio.run(
+            validate_preamble_answer(
+                candidate_id,
+                question,
+                answer,
+                step_index=step_index,
+                step_total=step_total,
+                debug=_debug_flag(),
+            )
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("Candidate not found"):
+            return jsonify({"error": msg}), 404
+        return jsonify({"error": msg}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({k: result[k] for k in ("success", "outcome", "error", "batch_id")}), 200
+

@@ -18,6 +18,7 @@ Config sections:
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
   PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
+  PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
@@ -210,6 +211,18 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "context_format": "intake_build_{index}",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    
+    # AST-1015: Ruth preamble Valid / Try Again / Escalate (task_key = AST-1016 validation_task_key).
+    "preamble_validate_response": {
+        "response_schema": {
+            "outcome": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "preamble_validate_{index}",
         "entity_type": "candidate",
         "requires_candidate_key": True,
         "trigger_state": None,
@@ -1035,6 +1048,16 @@ for _step in PREAMBLE_CONFIG["steps"]:
     assert isinstance(_step["prompt_1st_try"], str) and _step["prompt_1st_try"]
     assert isinstance(_step["prompt_2nd_try"], str) and _step["prompt_2nd_try"]
     assert isinstance(_step["validation_question"], str) and _step["validation_question"]
+
+# AST-1015: Ruth preamble answer validation (Valid / Try Again / Escalate).
+# task_key MUST match PREAMBLE_CONFIG["validation_task_key"] (AST-1016) = preamble_validate_response.
+PREAMBLE_VALIDATION_CONFIG = {
+    "task_key": "preamble_validate_response",
+    "outcomes": ("Valid", "Try Again", "Escalate"),
+    "outcome_field": "outcome",  # agent_payload key
+}
+
+assert PREAMBLE_VALIDATION_CONFIG["task_key"] == PREAMBLE_CONFIG["validation_task_key"]
 
 assert "PROSPECT" not in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
