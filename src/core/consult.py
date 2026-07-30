@@ -182,6 +182,31 @@ def _hydrate_grade_reasons_from_rubric(grades: list, rubric_criteria: list) -> N
         )
 
 
+def _rubric_snapshot_for_job_data(rubric_criteria: list) -> list:
+    """Analysis-time rubric criteria for list headers (AST-1063). Omits content."""
+    if not isinstance(rubric_criteria, list) or not rubric_criteria:
+        return []
+    out: list = []
+    for item in rubric_criteria:
+        if not isinstance(item, dict):
+            continue
+        work = dict(item)
+        gd = work.get("grade_descriptions")
+        if not gd:
+            try:
+                rubric_text.ensure_criterion_grade_table(work)
+                gd = work.get("grade_descriptions")
+            except ValueError:
+                gd = []
+        out.append({
+            "code": work.get("code"),
+            "label": work.get("label"),
+            "importance": work.get("importance"),
+            "grade_descriptions": gd if isinstance(gd, list) else [],
+        })
+    return out
+
+
 def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> None:
     for job in jobs:
         if not isinstance(job, dict):
@@ -889,6 +914,8 @@ def _apply_render_verdict_decoded_job(
     elif score is not None:
         save_data[f"{prefix}_score"] = score
     save_data[f"{prefix}_notes"] = notes_tail
+    # AST-1063: job-carried rubric for list headers (same criteria as hydrate/score)
+    save_data[f"{prefix}_rubric"] = _rubric_snapshot_for_job_data(rubric_criteria)
     tracker.save_job_data(astral_job_id, save_data)
     _transition_job_state_for_task(agent_task, [astral_job_id], to_state, score)
     return to_state, score, grades
@@ -1405,7 +1432,10 @@ async def qualify_job_listings(
         score = _score_from_grades()
 
         def _save_joblist_result() -> None:
-            save_data: Dict[str, Any] = {"joblist_grades": grades}
+            save_data: Dict[str, Any] = {
+                "joblist_grades": grades,
+                "joblist_rubric": _rubric_snapshot_for_job_data(rubric_list),
+            }
             normalized_score = _latest_score_value(score)
             if _task_config_scored(task_key) and normalized_score is not None:
                 save_data["joblist_score"] = normalized_score
@@ -1559,7 +1589,10 @@ async def evaluate_jd_batch(
         score = None
         if rubric_list:
             _, score = _render_score(cfg, rubric_list, grades, 0.0)
-        save_data: Dict[str, Any] = {"jd_grades": grades}
+        save_data: Dict[str, Any] = {
+            "jd_grades": grades,
+            "jd_rubric": _rubric_snapshot_for_job_data(rubric_list),
+        }
         normalized_score = _latest_score_value(score)
         if _task_config_scored(task_key) and normalized_score is not None:
             save_data["jd_score"] = normalized_score
