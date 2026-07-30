@@ -163,7 +163,7 @@ brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1–3 |  | CHAT envelope schema + do_task contract + contact_estelle_turn seed |
+| 1–3 | `af00f02a` | CHAT envelope schema + do_task contract + contact_estelle_turn seed |
 
-**Tip:**  on 
+**Tip:** `52a1619153a5a3f954709d75277db72c385ac6ba` on `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`
 )
