@@ -55,6 +55,9 @@ app.register_blueprint(meteorite_bp)
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
 
+from ui.api.api_slack import slack_bp  # noqa: E402
+app.register_blueprint(slack_bp)
+
 from ui.api_errors import server_error_from_exception  # noqa: E402
 
 
