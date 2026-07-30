@@ -1483,3 +1483,28 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
   -q
 ```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+`TOPIC_MENU_GEN_CONFIG`: confirm/generate task keys, `continue`/`accepted` outcomes, packet field whitelist (context + real `contact_keys` + `name_columns`; no fabricated `preferred_name`), patchable context keys, Estelle agent id, UI copy. Matching `TASK_CONFIG` schemas. Persistence catalog remains **AST-1074** (`TOPIC_MENU_CONFIG`). Core: **`docs/test-bible/core/intake.md`** / **`docs/test-bible/core/candidate.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gen config + TASK_CONFIG schemas | `src/utils/config.py` | **`TestAst1075TopicMenuGenConfig`** |
+
+**Broken / obsolete:** none — additive generation config beside AST-1074 persistence.
+
+**Integration:** no existing scenario covers Topic Menu confirm/generate — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig \
+  tests/component/core/test_intake.py::TestAst1075TopicMenuConfirmGenerate \
+  tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt \
+  -q
+```

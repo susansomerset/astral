@@ -129,3 +129,24 @@ Repo **`agent_task.json`** gains **`contact_estelle_turn`** (Estelle CHAT seed �
   tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
   -q
 ```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+Repo `agent_task.json` gains Estelle rows `topic_menu_preamble_confirm` + `topic_menu_generate` (Topic Menu group; confirm ask + closed informs generate prompts). Full AST-786 frozenset/UAT fixture lock stays tip-owned (parallel epics); this ticket asserts the two new rows only. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog Estelle Topic Menu rows | `data/admin/agent_task.json` | **`TestAst1075TopicMenuCatalogRows`** |
+
+**Broken / obsolete:** do **not** fold these keys into AST-786 tip lock from other epics in this pass — row-level assert only.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```

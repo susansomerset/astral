@@ -2871,3 +2871,85 @@ class TestAst1074TopicMenuPersistence:
         assert dbg_index.call_count == 2
         candidate_mod.save_topic_menu("c1", {"topics": [self._topic("t1")]}, debug=False)
         assert dbg_index.call_count == 2
+
+
+
+class TestAst1075PreambleConfirmedAt:
+    """AST-1075: optional preamble_confirmed_at on topic_menu + mark helper."""
+
+    def _topic(self, tid: str = "t1") -> dict:
+        return {
+            "id": tid,
+            "name": tid,
+            "ask": "What matters?",
+            "required": True,
+            "informs": ["backstory"],
+            "status": "open",
+        }
+
+    def test_normalize_and_validate_preserve_stamp(self) -> None:
+        raw = {"topics": [self._topic()], "preamble_confirmed_at": " 2026-07-30 12:00:00 "}
+        norm = candidate_mod.normalize_topic_menu(raw)
+        assert norm["preamble_confirmed_at"] == "2026-07-30 12:00:00"
+        validated = candidate_mod.validate_topic_menu(raw)
+        assert validated["preamble_confirmed_at"] == "2026-07-30 12:00:00"
+        assert candidate_mod.normalize_topic_menu({"topics": []}).get("preamble_confirmed_at") is None
+        assert "preamble_confirmed_at" not in candidate_mod.normalize_topic_menu(
+            {"topics": [], "preamble_confirmed_at": "   "}
+        )
+
+    def test_revise_prefers_incoming_stamp(self) -> None:
+        existing = {
+            "topics": [self._topic("old")],
+            "preamble_confirmed_at": "2026-07-30 10:00:00",
+        }
+        incoming = {
+            "topics": [self._topic("new")],
+            "preamble_confirmed_at": "2026-07-30 11:00:00",
+        }
+        out = candidate_mod.revise_topic_menu(existing, incoming)
+        assert out["preamble_confirmed_at"] == "2026-07-30 11:00:00"
+        keep = candidate_mod.revise_topic_menu(
+            existing, {"topics": [self._topic("new")]}
+        )
+        assert keep["preamble_confirmed_at"] == "2026-07-30 10:00:00"
+
+    def test_mark_stamps_without_wiping_topics(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stored = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {"topic_menu": {"topics": [self._topic("keep")]}},
+        }
+        saves: list = []
+
+        def _save(cid, data, replace=False, debug=False):
+            saves.append({"data": data, "debug": debug})
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save)
+        out = candidate_mod.mark_topic_menu_preamble_confirmed(
+            "c1", when="2026-07-30 15:00:00"
+        )
+        assert out["preamble_confirmed_at"] == "2026-07-30 15:00:00"
+        assert [t["id"] for t in out["topics"]] == ["keep"]
+        assert saves[0]["data"]["topic_menu"]["topics"][0]["id"] == "keep"
+        assert saves[0]["data"]["topic_menu"]["preamble_confirmed_at"] == "2026-07-30 15:00:00"
+
+    def test_mark_debug_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        candidate_mod.mark_topic_menu_preamble_confirmed("c1", debug=True)
+        assert dbg.call_count == 2
+        assert dbg.call_args_list[0].kwargs["func"] == "candidate.mark_topic_menu_preamble_confirmed"
+        candidate_mod.mark_topic_menu_preamble_confirmed("c1", debug=False)
+        assert dbg.call_count == 2

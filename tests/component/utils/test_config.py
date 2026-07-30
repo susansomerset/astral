@@ -2880,3 +2880,57 @@ class TestAst1074TopicMenuConfig:
         for ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
             assert ctx in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
         assert "base_resume" in tmc["informs"]
+
+
+
+class TestAst1075TopicMenuGenConfig:
+    """AST-1075: TOPIC_MENU_GEN_CONFIG + TASK_CONFIG confirm/generate schemas."""
+
+    def test_task_keys_outcomes_and_packet_whitelist(self) -> None:
+        g = cfg.TOPIC_MENU_GEN_CONFIG
+        assert g["confirm_task_key"] == "topic_menu_preamble_confirm"
+        assert g["generate_task_key"] == "topic_menu_generate"
+        assert g["confirm_task_key"] != g["generate_task_key"]
+        assert g["confirm_outcomes"] == ("continue", "accepted")
+        assert g["confirm_outcome_field"] == "outcome"
+        assert g["estelle_agent_id"] == "principal_recruiter_estelle"
+        lib = cfg.CANDIDATE_LIBRARY_CONFIG
+        for key in g["packet_context_keys"]:
+            assert key in lib["context_keys"]
+        for key in g["patchable_context_keys"]:
+            assert key in lib["context_keys"]
+        for key in g["packet_contact_keys"]:
+            assert key in lib["contact_keys"]
+        for key in g["packet_name_columns"]:
+            assert key in lib["name_columns"]
+        # Joan r1: preferred_name is not a contact key — must not appear.
+        assert "preferred_name" not in g["packet_contact_keys"]
+        assert g["confirm_task_key"] in cfg.TASK_CONFIG
+        assert g["generate_task_key"] in cfg.TASK_CONFIG
+        assert g["confirm_task_key"] in cfg.get_task_keys()
+        assert g["generate_task_key"] in cfg.get_task_keys()
+
+    def test_task_config_response_schemas(self) -> None:
+        confirm = cfg.TASK_CONFIG["topic_menu_preamble_confirm"]
+        assert confirm["response_format"] == "json"
+        assert confirm["entity_type"] == "candidate"
+        assert confirm["requires_candidate_key"] is True
+        assert set(confirm["response_schema"]) >= {"assistant_message", "outcome"}
+        gen = cfg.TASK_CONFIG["topic_menu_generate"]
+        assert set(gen["response_schema"]) >= {
+            "topics",
+            "informs_coverage_confirmed",
+            "informs_covered",
+        }
+
+    def test_ui_copy_keys_present(self) -> None:
+        ui = cfg.TOPIC_MENU_GEN_CONFIG["ui"]
+        for key in (
+            "panel_title",
+            "accept_label",
+            "send_label",
+            "placeholder",
+            "generating_label",
+            "done_title",
+        ):
+            assert isinstance(ui[key], str) and ui[key].strip()

@@ -449,3 +449,251 @@ class TestAst1015ValidatePreambleAnswer:
         assert dbg.call_args.kwargs["index"] == 2
         assert dbg.call_args.kwargs["total"] == 3
         assert any("question=" in str(c.args[0]) for c in detail.call_args_list)
+
+
+
+class TestAst1075TopicMenuConfirmGenerate:
+    """AST-1075: preamble packet snapshot, Estelle confirm, Topic Menu generate."""
+
+    def _cand(self, **ctx_extra):
+        context = {
+            "raw_resume": "Resume body",
+            "raw_profile": "LinkedIn",
+            "raw_sample": "Cover",
+            "bio_summary": "",
+            "backstory": "",
+            "strengths": "focus",
+            "priorities": "",
+            "deal_breakers": "",
+            "hopes": "",
+            "interests": "",
+            "concerns": "",
+        }
+        context.update(ctx_extra)
+        return {
+            "astral_candidate_id": "cand-1",
+            "full": "Ada Lovelace",
+            "first": "Ada",
+            "last": "Lovelace",
+            "candidate_data": {
+                "context": context,
+                "contact": {"title_patterns": "engineer"},
+                "topic_menu": {"topics": []},
+            },
+        }
+
+    def test_build_preamble_packet_snapshot_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: self._cand())
+        snap = intake_mod.build_preamble_packet_snapshot("cand-1")
+        assert snap["name"] == {"full": "Ada Lovelace", "first": "Ada", "last": "Lovelace"}
+        assert snap["context"]["raw_resume"] == "Resume body"
+        assert snap["contact"]["title_patterns"] == "engineer"
+        assert "preferred_name" not in snap["contact"]
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            intake_mod.build_preamble_packet_snapshot("missing")
+        monkeypatch.setattr(
+            intake_mod,
+            "get_candidate",
+            lambda cid: self._cand(raw_resume="   "),
+        )
+        with pytest.raises(ValueError, match="raw_resume required"):
+            intake_mod.build_preamble_packet_snapshot("cand-1")
+
+    @pytest.mark.asyncio
+    async def test_confirm_continue_and_accepted_stamp(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TOPIC_MENU_GEN_CONFIG
+
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: self._cand())
+        mark = MagicMock(return_value={"topics": [], "preamble_confirmed_at": "t"})
+        monkeypatch.setattr(intake_mod, "mark_topic_menu_preamble_confirmed", mark)
+        save = MagicMock()
+        monkeypatch.setattr(intake_mod, "save_candidate_data", save)
+
+        async def _run_continue(cid, task_key, live_content, *, prompt_snapshot, debug=False):
+            assert task_key == TOPIC_MENU_GEN_CONFIG["confirm_task_key"]
+            assert "PREAMBLE_PACKET" in live_content
+            return {
+                "success": True,
+                "batch_id": "intake-topic_menu_preamble_confirm-x",
+                "parsed_response": {
+                    "assistant_message": "Anything here you would change?",
+                    "outcome": "continue",
+                },
+            }
+
+        monkeypatch.setattr(intake_mod, "_run_intake_task", _run_continue)
+        cont = await intake_mod.run_topic_menu_preamble_confirm("cand-1")
+        assert cont["success"] is True
+        assert cont["outcome"] == "continue"
+        assert "Anything here you would change?" in cont["assistant_message"]
+        mark.assert_not_called()
+
+        async def _run_accept(cid, task_key, live_content, *, prompt_snapshot, debug=False):
+            return {
+                "success": True,
+                "batch_id": "intake-topic_menu_preamble_confirm-y",
+                "parsed_response": {
+                    "assistant_message": "Great — locking this in.",
+                    "outcome": "accepted",
+                    "library_patches": {
+                        "context": {"strengths": "updated strength", "bogus": "nope"},
+                    },
+                },
+            }
+
+        monkeypatch.setattr(intake_mod, "_run_intake_task", _run_accept)
+        acc = await intake_mod.run_topic_menu_preamble_confirm(
+            "cand-1", candidate_message="looks good",
+        )
+        assert acc["success"] is True
+        assert acc["outcome"] == "accepted"
+        assert "strengths" in acc["applied_patches"]
+        assert "bogus" not in acc["applied_patches"]
+        save.assert_called()
+        mark.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_confirm_rejects_invalid_outcome(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: self._cand())
+
+        async def _run(cid, task_key, live_content, *, prompt_snapshot, debug=False):
+            return {
+                "success": True,
+                "batch_id": "b",
+                "parsed_response": {
+                    "assistant_message": "hi",
+                    "outcome": "Valid",
+                },
+            }
+
+        monkeypatch.setattr(intake_mod, "_run_intake_task", _run)
+        result = await intake_mod.run_topic_menu_preamble_confirm("cand-1")
+        assert result["success"] is False
+        assert "invalid confirm outcome" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_generate_requires_confirm_filters_informs_and_saves(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TOPIC_MENU_GEN_CONFIG
+
+        menu_state = {"topics": [], "preamble_confirmed_at": "2026-07-30 12:00:00"}
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: self._cand())
+        monkeypatch.setattr(intake_mod, "get_topic_menu", lambda cid: dict(menu_state))
+        saved: list = []
+
+        def _save(cid, menu, revise=True, debug=False):
+            saved.append({"menu": menu, "revise": revise, "debug": debug})
+            return {"topics": menu["topics"], "preamble_confirmed_at": menu.get("preamble_confirmed_at")}
+
+        monkeypatch.setattr(intake_mod, "save_topic_menu", _save)
+
+        async def _run(cid, task_key, live_content, *, prompt_snapshot, debug=False):
+            assert task_key == TOPIC_MENU_GEN_CONFIG["generate_task_key"]
+            assert "INFORMS_CATALOG" in live_content
+            return {
+                "success": True,
+                "batch_id": "intake-topic_menu_generate-z",
+                "parsed_response": {
+                    "informs_coverage_confirmed": True,
+                    "informs_covered": ["backstory", "like_rubric"],
+                    "topics": [
+                        {
+                            "id": "t-good",
+                            "name": "Story",
+                            "ask": "Tell me a short win?",
+                            "required": True,
+                            "informs": ["backstory", "strengths"],
+                        },
+                        {
+                            "id": "t-bad",
+                            "name": "Bad",
+                            "ask": "Nope",
+                            "required": True,
+                            "informs": ["like_rubric"],
+                        },
+                    ],
+                },
+            }
+
+        monkeypatch.setattr(intake_mod, "_run_intake_task", _run)
+        out = await intake_mod.generate_topic_menu_from_preamble("cand-1")
+        assert out["success"] is True
+        assert out["rejected_topic_count"] == 1
+        assert [t["id"] for t in out["menu"]["topics"]] == ["t-good"]
+        # Authoritative coverage from survivors — ignore Estelle leftovers.
+        assert out["informs_covered"] == ["strengths", "backstory"]
+        assert saved[0]["revise"] is True
+        assert saved[0]["menu"]["preamble_confirmed_at"] == "2026-07-30 12:00:00"
+
+        menu_state.pop("preamble_confirmed_at", None)
+        with pytest.raises(ValueError, match="preamble not confirmed"):
+            await intake_mod.generate_topic_menu_from_preamble("cand-1")
+
+    @pytest.mark.asyncio
+    async def test_confirm_and_generate_debug_gated(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda cid: self._cand())
+        monkeypatch.setattr(
+            intake_mod,
+            "get_topic_menu",
+            lambda cid: {"topics": [], "preamble_confirmed_at": "t"},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "save_topic_menu",
+            lambda cid, menu, revise=True, debug=False: menu,
+        )
+        monkeypatch.setattr(intake_mod, "mark_topic_menu_preamble_confirmed", MagicMock())
+        dbg = MagicMock()
+        monkeypatch.setattr(intake_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(intake_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(intake_mod.logger, "set_debug_flag", MagicMock())
+
+        async def _run_confirm(cid, task_key, live_content, *, prompt_snapshot, debug=False):
+            return {
+                "success": True,
+                "batch_id": "b",
+                "parsed_response": {
+                    "assistant_message": "ok",
+                    "outcome": "accepted",
+                },
+            }
+
+        monkeypatch.setattr(intake_mod, "_run_intake_task", _run_confirm)
+        await intake_mod.run_topic_menu_preamble_confirm("cand-1", debug=True)
+        assert any(
+            c.kwargs.get("func") == "run_topic_menu_preamble_confirm" for c in dbg.call_args_list
+        )
+        dbg.reset_mock()
+
+        async def _run_gen(cid, task_key, live_content, *, prompt_snapshot, debug=False):
+            return {
+                "success": True,
+                "batch_id": "b2",
+                "parsed_response": {
+                    "informs_coverage_confirmed": True,
+                    "informs_covered": ["backstory"],
+                    "topics": [
+                        {
+                            "id": "t1",
+                            "name": "N",
+                            "ask": "A?",
+                            "required": False,
+                            "informs": ["backstory"],
+                        }
+                    ],
+                },
+            }
+
+        monkeypatch.setattr(intake_mod, "_run_intake_task", _run_gen)
+        await intake_mod.generate_topic_menu_from_preamble("cand-1", debug=True)
+        assert any(
+            c.kwargs.get("func") == "generate_topic_menu_from_preamble" for c in dbg.call_args_list
+        )

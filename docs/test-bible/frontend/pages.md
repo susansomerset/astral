@@ -1219,3 +1219,27 @@ Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx
 ```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+`CandidateIntake` (§6c): after mechanical preamble complete → **`topic_menu`** phase (`IntakeTopicMenuPanel`), not auto-open legacy Estelle chat. Active-session resume still opens chat. Panel: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page preamble → Topic Menu (§6c) | `CandidateIntake.tsx` | revised **`test_CandidateIntake.test.tsx`** — **`preamble Valid handoff opens Topic Menu confirm`** |
+| Topic Menu panel | `IntakeTopicMenuPanel.tsx` | **`test_IntakeTopicMenuPanel.test.tsx`** |
+
+**Broken / obsolete:** **`preamble Valid handoff opens Estelle chat`** — product now routes to Topic Menu confirm (AST-1075); revised in-place.
+
+**Integration:** no existing intake Topic Menu scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
+  ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx
+```

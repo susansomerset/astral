@@ -101,7 +101,41 @@ function installIntakeMocks(state: IntakeMockState = {}) {
 
   installBaseApiMocks(mockedApi, (url, init) => {
     if ((url === "/api/ui_config" || url === "/api/system/ui_config") && !init) {
-      return jsonResponse({ preamble: AST1017_PREAMBLE_CONFIG, column_types: {} })
+      return jsonResponse({
+        preamble: AST1017_PREAMBLE_CONFIG,
+        topic_menu_gen: {
+          ui: {
+            panel_title: "Confirm preamble with Estelle",
+            accept_label: "Looks good — generate Topic Menu",
+            send_label: "Send to Estelle",
+            placeholder: "Tell Estelle what to change, or accept below.",
+            generating_label: "Estelle is building your Topic Menu…",
+            done_title: "Topic Menu ready",
+          },
+        },
+        column_types: {},
+      })
+    }
+    if (url === `/api/candidates/${candidateId}/topic-menu/confirm` && init?.method === "POST") {
+      return jsonResponse({
+        success: true,
+        outcome: "continue",
+        assistant_message: "Anything here you would change?",
+        applied_patches: [],
+        packet: {},
+        batch_id: "intake-topic_menu_preamble_confirm-x",
+        error: null,
+      })
+    }
+    if (url === `/api/candidates/${candidateId}/topic-menu/generate` && init?.method === "POST") {
+      return jsonResponse({
+        success: true,
+        menu: { topics: [{ id: "t1", name: "Story", ask: "Win?", required: true, informs: ["backstory"], status: "open" }] },
+        rejected_topic_count: 0,
+        informs_covered: ["backstory"],
+        batch_id: "intake-topic_menu_generate-x",
+        error: null,
+      })
     }
     if (url === `/api/candidates/${candidateId}` && !init) {
       return jsonResponse({
@@ -298,7 +332,7 @@ describe("CandidateIntake page", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("preamble Valid handoff opens Estelle chat (§6c)", async () => {
+  it("preamble Valid handoff opens Topic Menu confirm (§6c AST-1075)", async () => {
     const fullGaps: IntakeSourceMaterials = {
       starting_resume_text: "",
       sample_cover_text: "",
@@ -317,13 +351,13 @@ describe("CandidateIntake page", () => {
       await userEvent.click(screen.getByRole("button", { name: "Submit" }))
       await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
     }
-    await waitFor(() => expect(sessionCreateBodies).toHaveLength(1))
-    await waitFor(() => expect(screen.getByText("Estelle welcomes you.")).toBeInTheDocument())
-    expect(sessionCreateBodies[0]).toEqual({
-      starting_resume_text: "Resume body",
-      linkedin_profile_text: "LinkedIn body",
-      sample_cover_text: "Cover body",
-    })
+    // AST-1075: mechanical preamble complete → Topic Menu phase (not legacy Estelle chat).
+    await waitFor(() =>
+      expect(screen.getByText("Confirm preamble with Estelle")).toBeInTheDocument(),
+    )
+    expect(screen.getByText("Anything here you would change?")).toBeInTheDocument()
+    expect(sessionCreateBodies).toHaveLength(0)
+    expect(screen.queryByText("Estelle welcomes you.")).not.toBeInTheDocument()
   })
 
   it("shows resume dialog when active session exists (not Start Intake confirm)", async () => {

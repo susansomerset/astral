@@ -635,3 +635,36 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         user = row["user_prompt"]
         assert "{$SELECTED_AGENT}" in user
         assert "JSON only" in user
+
+
+
+class TestAst1075TopicMenuCatalogRows:
+    """AST-1075: Estelle topic_menu_preamble_confirm + topic_menu_generate catalog rows."""
+
+    def test_estelle_topic_menu_rows(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        confirm = by["topic_menu_preamble_confirm"]
+        assert confirm["agent_id"] == "principal_recruiter_estelle"
+        assert confirm["task_name"] == "Topic Menu Preamble Confirm"
+        assert confirm["task_group_name"] == "Topic Menu"
+        assert confirm["task_seq"] == 1
+        assert "Anything here you would change?" in confirm["cache_prompt"]
+        assert "library_patches" in confirm["cache_prompt"]
+        assert "continue" in confirm["cache_prompt"] and "accepted" in confirm["cache_prompt"]
+        gen = by["topic_menu_generate"]
+        assert gen["agent_id"] == "principal_recruiter_estelle"
+        assert gen["task_name"] == "Generate Topic Menu"
+        assert gen["task_group_name"] == "Topic Menu"
+        assert gen["task_seq"] == 2
+        cache = gen["cache_prompt"]
+        assert "informs_coverage_confirmed" in cache
+        for informs in (
+            "rubrics",
+            "base_resume",
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+        ):
+            assert informs in cache
