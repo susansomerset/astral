@@ -720,5 +720,24 @@
     "task_group_name": "Job Artifacts",
     "task_seq": 9,
     "task_name": "Finalize Cover Letter"
+  },
+  {
+    "task_key_uuid": "8080f2cd-a895-4554-8b7d-1e1e0d56fdfa",
+    "task_key": "preamble_validate_response",
+    "current": 1,
+    "agent_id": "college_intern_ruth",
+    "user_prompt": "Validate the QUESTION/ANSWER pair in the CONTENT block using your PREAMBLE ANSWER VALIDATION instructions. Respond with the envelope and agent_payload.outcome only.",
+    "cache_prompt": "## PREAMBLE ANSWER VALIDATION\n\nYou judge whether a candidate ANSWER is a valid response to a QUESTION.\nThe QUESTION and ANSWER are in the live CONTENT / TASK block as:\n\nQUESTION:\n<question text>\n\nANSWER:\n<answer text>\n\n## OUTCOMES (pick exactly one)\n\n- Valid \u2014 the answer is recognizably the kind of content the question asked for (even if imperfect, informal, or short).\n- Try Again \u2014 empty, whitespace-only, off-topic, nonsense, or clearly not what the question asked; the candidate should re-enter.\n- Escalate \u2014 cannot be judged safely (ambiguous, contradictory, or needs human review). Escalate is never Valid.\n\n## OUTPUT\n\nReturn the standard Astral JSON envelope only.\nagent_payload must be a JSON object with exactly one key: \"outcome\"\n\"outcome\" must be exactly one of: Valid | Try Again | Escalate\nNo extra keys. No commentary outside the envelope. Prefer Try Again over Valid when the answer type is doubtful. Use Escalate only when human review is truly needed.\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "task_group_order": 1,
+    "task_group_name": "Candidate Preamble",
+    "task_seq": 1,
+    "task_name": "Validate Preamble Answer",
+    "updated_at": "2026-07-28 19:11:40"
   }
 ]
