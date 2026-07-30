@@ -9,6 +9,8 @@ Required environment variables (set in Railway / .env):
   ASTRAL_ALLOWED_IPS    — Comma-separated list of allowed IP addresses for UI access
   ANTHROPIC_API_KEY     — Fallback Anthropic API key (candidates carry their own)
   LINEAR_API_KEY        — Linear GraphQL (admin deploy footer UAT ticket tooltip — AST-792)
+  SLACK_BOT_TOKEN       — Estelle bot token (Contact / external slack; AST-1069 reads)
+  SLACK_SIGNING_SECRET  — Slack Events signing secret (AST-1069 verifies)
 
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
@@ -30,6 +32,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
+  CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
 """
 
 import json
@@ -1062,7 +1065,37 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.first", "profile.last",   # transitional
     ),
     "match_casefold": True,  # case-insensitive compare for emails and names
+    # Slack user id homes (AST-1066). Matcher inclusion is AST-1068 — config home only here.
+    "slack_user_id_paths": (
+        "contact.slack_user_id",
+    ),
 }
+
+# ---------------------------------------------------------------------------
+# CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).
+# Skills ACL is Contact-only — never dispatch TASK_CONFIG / agent_task catalog rows.
+# Secret *values* live in environ; this block stores env *names* + behavior flags.
+# ---------------------------------------------------------------------------
+CONTACT_CONFIG = {
+    # Default off. Manage Slack (AST-1067) owns the per-environment flip.
+    "listen_enabled": False,
+    # Format with environment= (deploy label). AST-1067 applies when listen is on
+    # and deploy is not production.
+    "non_production_reply_prefix_template": "[{environment}] ",
+    # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
+    "bot_token_env": "SLACK_BOT_TOKEN",
+    "signing_secret_env": "SLACK_SIGNING_SECRET",
+    # skill_key → ACL metadata dict. Empty until AST-1071 registers entity-save skills.
+    "skills": {},
+}
+
+assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
+assert isinstance(CONTACT_CONFIG["skills"], dict)
+assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
+assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+# Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
+for _skill_key in CONTACT_CONFIG["skills"]:
+    assert _skill_key not in TASK_CONFIG, _skill_key
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
