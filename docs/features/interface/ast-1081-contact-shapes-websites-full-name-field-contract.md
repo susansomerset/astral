@@ -106,3 +106,9 @@ Expose the missing Profile contact field contracts (`full`, `contact.websites`, 
 | §3.3 imports | FormFields stays UI-only; core still imports config/database only |
 | §3.5 naming | `string_list` snake_case type string matches existing shape types (`signature_image`, `textarea`) |
 | Boundaries | No `CandidateProfile.tsx`, no nav, no Admin `edit.manage` expansion, no new contact blob keys |
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1065/AST-1081-contact-shapes-websites-full` @ `de354de123ab419a547a97587f7c870b4e14f090`
+
+Stages 1–3: `DATA_SHAPES` Contact Information adds `full`, `contact.websites` (`string_list`), `contact.reason_codes`; FormFields `string_list` Add/Remove (label `Add`); `save_candidate_data` empty-`full` → `recompute_full_name` + websites list coerce. Profile page/nav deferred to AST-1082. Tests deferred to Betty.
