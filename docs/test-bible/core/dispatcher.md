@@ -241,3 +241,23 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 **Broken / obsolete:** AST-1054 insert counts / trigger assert — see above.
 
 **Integration:** none.
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+`qualify_meteorite` joins `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` (same widen-claim + chunk waves as listing qualify).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chunk exhaust membership | `src/core/dispatcher.py` | **`TestAst1062QualifyMeteoriteChunkExhaust`** |
+
+**Broken / obsolete:** none — additive frozenset member.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1062QualifyMeteoriteChunkExhaust \
+  -q
+```

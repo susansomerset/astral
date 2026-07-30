@@ -1198,26 +1198,3 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
   ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx
 ```
-
-
----
-
-### AST-1017 · AST-952
-
-**AST-1017:** Mechanical preamble front door on **`CandidateIntake`** — Intro + config-driven gap-fill steps via **`IntakePreamblePanel`**; Ruth `POST …/preamble/validate`; PUT `context.<field>` only on Valid; then Estelle `IntakeChatModal`. Continue-on-active skips preamble; Profile resume hard-gate removed. Component unit: **`docs/test-bible/frontend/components.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Routed page §6c — confirm → preamble → Estelle; Start Over → preamble; skip hard-gate | `src/ui/frontend/src/pages/CandidateIntake.tsx` | **`tests/component/frontend/pages/test_CandidateIntake.test.tsx`** (`CandidateIntake page` describe) |
-
-**Broken / obsolete:** Profile resume hard-gate redirect toast; Start Over auto-start Estelle before preamble; Start Intake confirm copy “saved resume…” → collect missing materials.
-
-**Integration:** no existing scenario asserts mechanical preamble UI — no revision; do not invent new integration coverage.
-
-**AST-1017** narrowed run:
-
-```bash
-cd src/ui/frontend && npm run test:component -- --run \
-  ../../../tests/component/frontend/components/test_IntakePreamblePanel.test.tsx \
-  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
-```

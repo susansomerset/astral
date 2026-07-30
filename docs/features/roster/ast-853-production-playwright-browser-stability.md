@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-853 archived 2026-07-29 -->
+
+## Linear archive (AST-853)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-853/production-playwright-browser-stability-fetch-website-didnt-finish-in  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-850 — fetch_website didn't finish in production  
+**Blocked by / blocks / related:** parent: AST-850; blocks: AST-854
+
+### Description
+
+## What this implements
+
+Harden headless browser launch and session lifecycle on the production Railway host so Playwright/Firefox failures (launch timeout, crash, channel error, lost browser context) recover or fail fast without destabilizing long-running roster batches.
+
+## Acceptance criteria
+
+1. When headless browser launch or context loss occurs, logs identify the failure class and affected company within one batch item — not only a wall of identical launch errors — and the batch does not hang silently afterward.
+
+## Boundaries
+
+Does not change fetch_website per-company state routing (sibling ticket). Does not fix gaze or other dispatches (AST-851 retest after ship). Does not change local dev browser setup.
+
+## Notes for planning
+
+Primary layers: external Playwright integration and gazer connectivity checks. Follow AST-317 resilience patterns and AST-538 debug contract when debug=True. Railway PLAYWRIGHT_BROWSERS_PATH per build_railway.sh.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-850-fetch-website-didnt-finish-in-production**, child **sub/AST-850/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-10T02:26:21.113Z
+### Radia review @ `2d29bb4`
+
+**Diff:** `origin/dev...origin/sub/AST-850/AST-853-production-playwright-browser-stability`
+**Doc:** `docs/features/roster/ast-853-production-playwright-browser-stability.md` (Radia review section)
+
+#### fix-now
+
+- **`BatchBrowserSession.ensure_context`** (`src/external/playwright.py` ~L164–172): when `_browser.is_connected()` is false or raises, `_open_fresh_locked()` runs without `_close_handles_best_effort()` first — stale handles overwritten; can leak Firefox processes on Railway. `recover()` already closes first; `ensure_context` should mirror that prelude.
+
+#### discuss
+
+- **`_launch_browser` error detail** (`src/external/playwright.py`): final failure is `PlaywrightInfraError(detail=str(last_err))` only — dropped prior `PLAYWRIGHT_BROWSERS_PATH` / `playwright install firefox` hint. Keep classified WARNING-only ops path, or restore one-line install guidance in `detail`?
+
+#### advisory
+
+- `connectivity_failure` is in `PLAYWRIGHT_INFRA_FAILURE_CLASSES` but classifier never emits it — reserved for AST-854?
+- `scrape_timeout` path omits `debug_index` when `debug=True` (WARNING only).
+- Publish ref includes `merge-tests` bible rollup; product footprint vs `origin/dev` is AST-853-only.
+
+**Counts:** 1 fix-now · 1 discuss · 3 advisory
+
+**Layering / plan:** Stages 1–3 match plan; AST-854 boundary respected; bible manifest aligned.
+
+#### betty — 2026-07-10T02:23:15.901Z
+## QA test manifest (AST-853)
+
+**Publish:** `origin/sub/AST-850/AST-853-production-playwright-browser-stability` @ `d7fe04a` (`merge-tests(AST-853): origin/tests 5eff7eb`)
+
+**Broken / revised:** `TestFetchWebsiteBatch` mocked `create_browser_context` — product now uses `create_batch_browser_session`; mocks updated + `batch_session` pass-through assert.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/external/playwright.md` — `e6a6436c88769b98c4f24bc33432233c7f73afdb953294147199511f1e5a27e0`
+- `docs/test-bible/core/gazer.md` — `00a5872bb94739cfac09b3e6ef9e8b0b237ef41daeaa2e777ab9df936f4af7e9`
+- `docs/test-bible/core/roster.md` — `12bb9d9959af1a68c86897e62e564ee42db5ef5b6397f687055c9f7d24dd303c`
+- `docs/test-bible/utils/config.md` — `52e7ecf4df2f721dfce6278e4b2d934830ce53dce0dfa5386176b44e4e301183`
+
+**Manifest (test-child) — narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/external/test_playwright.py::TestClassifyPlaywrightFailure   tests/component/external/test_playwright.py::TestPlaywrightInfraError   tests/component/external/test_playwright.py::TestGetPageBatchRecovery   tests/component/utils/test_config.py::TestAst853PlaywrightConfig   tests/component/core/test_gazer.py::TestFetchWebsiteBatch   tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class   -q
+```
+
+1. **Failure taxonomy** — `TestClassifyPlaywrightFailure`, `TestPlaywrightInfraError` (`test_playwright.py`)
+2. **`get_page` batch recovery** — `TestGetPageBatchRecovery` (`test_playwright.py`)
+3. **`PLAYWRIGHT_CONFIG` literals** — `TestAst853PlaywrightConfig` (`test_config.py`)
+4. **`fetch_website_batch` batch session wiring** — `TestFetchWebsiteBatch` incl. scrape-timeout infra label (`test_gazer.py`)
+5. **Roster infra error prefix** — `test_playwright_infra_error_prefixes_failure_class` (`test_roster.py`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### hedy — 2026-07-10T02:17:57.932Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-850/AST-853-production-playwright-browser-stability/docs/features/roster/ast-853-production-playwright-browser-stability.md @ `b97bedb`
+
+**Self-assessment**
+- **Scope:** Single-Component — `PLAYWRIGHT_CONFIG`, hardened launch/recovery in `playwright.py`, and minimal `fetch_website_batch` / `scrape_company_homepage_content` wiring for labeled infra failures.
+- **Conf:** Medium — reuses AST-317 launch/sandbox patterns; Railway channel-error recovery is new but bounded by config caps and lock-serialized session recreate.
+- **Risk:** Medium — `fetch_website` session lifecycle changes; mitigated by scoping gazer changes to this batch only and leaving state transitions to AST-854.
+
+---
+
 # AST-853 — Production Playwright browser stability (fetch_website didn't finish in production)
 
 **Linear:** [AST-853 — Production Playwright browser stability](https://linear.app/astralcareermatch/issue/AST-853/production-playwright-browser-stability-fetch-website-didnt-finish-in-production)

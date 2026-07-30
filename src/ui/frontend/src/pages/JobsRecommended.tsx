@@ -88,8 +88,13 @@ export default function Recommended() {
 
   const sections = useMemo(() => {
     if (!manifest) return []
+    const meteoriteSection = manifest.jobs.recommended.meteorite_section
+    const prefix = meteoriteSection?.company_prefix ?? ""
+    const isMeteoriteJob = (job: Job) => Boolean(prefix) && job.company.startsWith(prefix)
+    const meteoriteRows = rows.filter(isMeteoriteJob)
+    const normalRows = rows.filter(job => !isMeteoriteJob(job))
     const byState: Record<string, Job[]> = {}
-    for (const job of rows) {
+    for (const job of normalRows) {
       if (!byState[job.state]) byState[job.state] = []
       byState[job.state].push(job)
     }
@@ -101,14 +106,23 @@ export default function Recommended() {
         label: row.label,
         jobs: byState[row.state],
       }))
-    const legacy = unmappedJobStates(rows, knownStates)
+    const legacy = unmappedJobStates(normalRows, knownStates)
       .filter(s => byState[s]?.length)
       .map(s => ({
         state: s,
         label: legacyStateSectionLabel(s),
         jobs: byState[s],
       }))
-    return [...normal, ...legacy]
+    const out = [...normal, ...legacy]
+    // AST-1057: prepend Meteorites when any post-upshot meteorite-company jobs exist.
+    if (meteoriteSection && meteoriteRows.length > 0) {
+      out.unshift({
+        state: meteoriteSection.section_id,
+        label: meteoriteSection.label,
+        jobs: meteoriteRows,
+      })
+    }
+    return out
   }, [rows, manifest])
 
   function handleSort(sectionState: string, col: string) {

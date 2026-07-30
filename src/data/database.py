@@ -74,6 +74,7 @@ from src.utils.config import (
     CANDIDATE_STATES,
     remap_legacy_candidate_state,
     COMPANY_STATES,
+    METEORITE_CONFIG,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -201,6 +202,7 @@ def claim_company_batch(
     last_scan_at NULL or stale. candidate_id scopes to a single candidate's companies. Returns count updated.
     score_floor: when set, only companies with company_data.prefilter_score >= floor are claimed (AST-508).
     exclude_prefilter_second_strike: when True, skip WEBSITE_FOUND_RETRY rows with homepage_text (AST-892).
+    Claim excludes short names matching METEORITE_CONFIG["short_name_prefix"] (AST-1041).
     """
     return set_company_batch(
         batch_id,
@@ -950,6 +952,7 @@ def set_company_batch(
     When clear=True: set batch_id and batch_created_at to NULL where batch_id matches. batch_id required.
     When clear=False: set batch_id, batch_created_at on up to limit rows where state=? AND batch_id IS NULL.
     candidate_id: when provided, scopes claim to companies belonging to this candidate.
+    Claim excludes short names matching METEORITE_CONFIG["short_name_prefix"] (AST-1041).
     """
     def _with_conn() -> int:
         conn = _get_connection()
@@ -993,6 +996,10 @@ def set_company_batch(
                         f" )"
                     )
                     params.append(retry_state)
+                # AST-1041: never claim meteorite placeholder companies
+                meteorite_prefix = METEORITE_CONFIG["short_name_prefix"]
+                where_base += " AND short_name NOT LIKE ?"
+                params.append(meteorite_prefix + "%")
                 order_clause = (
                     f"ORDER BY {sort_by} ASC NULLS FIRST" if sort_by and sort_by in COMPANY_BATCH_SORT_COLUMNS
                     else "ORDER BY rowid"
@@ -1727,6 +1734,58 @@ def raw_job_listing_is_duplicate(company: str, raw_job_listing: str) -> bool:
         return _do(conn)
     finally:
         conn.close()
+
+
+def text_matches_known_company_job_id(text: str) -> Optional[str]:
+    """Global inverted match (AST-80 shape, no company filter).
+
+    Returns the matched company_job_id when any non-empty company_job_id
+    appears as a substring of text; else None.
+    """
+    if not text:
+        return None
+
+    def _do(c: sqlite3.Connection) -> Optional[str]:
+        _ensure_job_schema(c)
+        cursor = c.execute(
+            """SELECT company_job_id FROM job
+               WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+                 AND ? LIKE '%' || company_job_id || '%'
+               LIMIT 1""",
+            (text,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
+def job_link_exists(job_link: str) -> bool:
+    """True when any job row has this exact job_link (non-empty)."""
+    link = (job_link or "").strip()
+    if not link:
+        return False
+
+    def _do(c: sqlite3.Connection) -> bool:
+        _ensure_job_schema(c)
+        cursor = c.execute(
+            """SELECT 1 FROM job
+               WHERE job_link = ? AND job_link IS NOT NULL AND TRIM(job_link) != ''
+               LIMIT 1""",
+            (link,),
+        )
+        return cursor.fetchone() is not None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
 
 def claim_job_batch(
     batch_id: str, state: str, limit: int, sort_by: Optional[str] = None,

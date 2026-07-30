@@ -33,6 +33,7 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
+    METEORITE_DISPATCH_TASKS,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
     dispatch_chain_claim_states_for_row,
@@ -179,7 +180,7 @@ def ensure_candidate_stage_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
             candidate_id=cid,
             task_key=tk,
             min_count=1,
-            auto_mode=True,
+            auto_mode=bool(entry.get("auto_mode", False)),
             trigger_state=ts,
             batch_size=1,
             freq_hrs=0,
@@ -212,6 +213,84 @@ def provision_candidate_stage_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of meteorite dispatch_task rows; retire stale evaluate_jd@METEORITE_NEW (AST-1060)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    added = 0
+    skipped = 0
+    skipped_missing_config = 0
+    for entry in METEORITE_DISPATCH_TASKS:
+        tk = str(entry["task_key"]).strip()
+        ts = str(entry["trigger_state"]).strip()
+        if tk not in TASK_CONFIG:
+            skipped_missing_config += 1
+            continue
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=int(entry.get("min_count") or 1),
+            auto_mode=bool(entry.get("auto_mode", False)),
+            trigger_state=ts,
+            batch_size=entry.get("batch_size"),
+            freq_hrs=float(entry.get("freq_hrs") or 0),
+            score_floor=entry.get("score_floor"),
+        )
+        added += 1
+    # AST-1060: live claim surface — drop evaluate_jd@METEORITE_NEW (keep JD_READY).
+    retired = 0
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        tk = (row.get("task_key") or "").strip()
+        ts = (row.get("trigger_state") or "").strip()
+        if tk == "evaluate_jd" and ts == "METEORITE_NEW":
+            delete_dispatch_task(int(row["id"]))
+            retired += 1
+    return {
+        "candidate_id": cid,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+        "retired": retired,
+    }
+
+
+def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
+    """Seed template + every candidate that already has dispatch rows (AST-1054)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    tstats = ensure_meteorite_dispatch_tasks(template_id)
+    added = int(tstats.get("added") or 0)
+    skipped = int(tstats.get("skipped") or 0)
+    skipped_missing_config = int(tstats.get("skipped_missing_config") or 0)
+    retired = int(tstats.get("retired") or 0)
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_meteorite_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
+        retired += int(stats.get("retired") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+        "retired": retired,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -226,10 +305,12 @@ _SUMMARY_ZERO: Dict[str, int] = {
 # batch_call_mode job consult exhaustion (AST-502): widen claim + chunk parallel waves for encoded batch consult (AST-501/503).
 _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "qualify_job_listings",
+    "qualify_meteorite",
     "evaluate_jd",
     "grade_do",
     "grade_get",
     "grade_like",
+    "meteorite_like",
 })
 
 
@@ -909,6 +990,43 @@ def task_status_all() -> Dict[int, Dict[str, Any]]:
         }
 
 
+def _debug_log_auto_off_stage_skips() -> None:
+    """Style D: stage rows with AUTO off + debug on that would have met min_count (AST-1022)."""
+    stage_keys = frozenset(
+        str(entry["task_key"]).strip() for entry in CANDIDATE_STAGE_DISPATCH.values()
+    )
+    # Collect would-have-run skips first so index N/M is honest across the batch.
+    eligible: List[tuple] = []
+    for task in database.list_dispatch_tasks():
+        tk = str(task.get("task_key") or "").strip()
+        if tk not in stage_keys:
+            continue
+        if bool(task.get("auto_mode")) or not bool(task.get("debug")):
+            continue
+        if not task.get("entity_type") or not task.get("trigger_state") or not task.get("candidate_id"):
+            continue
+        avail = database.count_eligible_for_dispatch_task(task)
+        if avail < (task.get("min_count") or 1):
+            continue
+        eligible.append((task, avail))
+    total = len(eligible)
+    if not total:
+        return
+    logger.set_debug_flag(True)
+    for i, (task, avail) in enumerate(eligible, start=1):
+        logger.debug_index(
+            func="dispatcher._tick_loop",
+            index=i,
+            total=total,
+            identifier=task.get("task_key"),
+            outcome="skipped — AUTO off",
+        )
+        logger.debug_detail(
+            f"candidate_id={task.get('candidate_id')!r} task_id={task.get('id')} "
+            f"available={avail} min_count={task.get('min_count') or 1} auto_mode={task.get('auto_mode')}"
+        )
+
+
 def _tick_loop() -> None:
     """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
     # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
@@ -923,6 +1041,7 @@ def _tick_loop() -> None:
             # Note: freq_hrs is an entity-level filter (applied during batch claim to exclude
             # recently-processed entities), NOT a task-level cooldown. The tick spawns any
             # auto_mode=1 task that has available entities; if none qualify, the runner exits cleanly.
+            _debug_log_auto_off_stage_skips()
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
                 running_ids = set(_task_registry.keys())
@@ -963,6 +1082,19 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-972 stage dispatch provision failed")
+    try:
+        mstats = provision_meteorite_dispatch_tasks()
+        _sched_log.info(
+            "AST-1054 meteorite dispatch provision template=%s touched=%s added=%s "
+            "skipped=%s skipped_missing_config=%s",
+            mstats.get("template_candidate_id"),
+            mstats.get("candidates_touched"),
+            mstats.get("added"),
+            mstats.get("skipped"),
+            mstats.get("skipped_missing_config"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1054 meteorite dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",

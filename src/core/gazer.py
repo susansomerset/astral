@@ -1,15 +1,20 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_culture_pages_batch, fetch_website_batch, fetch_job_pages_batch, validate_title_batch. Re-exports get_new_company_batch and clear_company_batch
-from roster for callers that want a single import from core.
-Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record); batch lifecycle (claim, release) is owned by CLI.
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_culture_pages_batch,
+fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
+ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
+Re-exports get_new_company_batch and clear_company_batch from roster for callers
+that want a single import from core.
+Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record);
+batch lifecycle (claim, release) is owned by CLI.
 """
 
 import asyncio
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from src.core.roster import (
     get_company_data,
@@ -24,12 +29,21 @@ from src.core.roster import (
     _pjl_scrape_ledger_keys,
     _scrape_pjl_page,
 )
-from src.utils.config import GAZER_CONFIG, ROSTER_CONFIG, TRACKER_CONFIG, PLAYWRIGHT_CONFIG
+from src.utils.config import (
+    GAZER_CONFIG,
+    METEORITE_EMAIL_INGEST_CONFIG,
+    ROSTER_CONFIG,
+    TRACKER_CONFIG,
+    PLAYWRIGHT_CONFIG,
+)
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
+from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
+    job_link_exists,
     record_to_company_job_scan,
     raw_job_listing_is_duplicate,
+    text_matches_known_company_job_id,
     update_company_last_scan_at,
 )
 from src.external.playwright import create_browser_context, create_batch_browser_session, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
@@ -1098,3 +1112,275 @@ async def process_gazer_batch(
         )
 
     return outcomes
+
+
+# ---------------------------------------------------------------------------
+# AST-1061: gazer reads email → meteorite create (Playwright + dedupe)
+# ---------------------------------------------------------------------------
+
+
+def _meteorite_email_candidate_links(html: str) -> List[str]:
+    """Ordered unique http(s) hrefs from html, minus METEORITE_EMAIL_INGEST_CONFIG excludes."""
+    # B1 lazy import: bs4 only on the email-ingest path.
+    from bs4 import BeautifulSoup
+
+    cfg = METEORITE_EMAIL_INGEST_CONFIG
+    schemes = {s.casefold() for s in cfg["link_schemes"]}
+    excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
+    soup = BeautifulSoup(html or "", "html.parser")
+    seen: set[str] = set()
+    out: List[str] = []
+    for tag in soup.find_all("a", href=True):
+        href = (tag.get("href") or "").strip()
+        if not href or href in seen:
+            continue
+        parsed = urlparse(href)
+        scheme = (parsed.scheme or "").casefold()
+        if scheme not in schemes:
+            continue
+        low = href.casefold()
+        if any(frag in low for frag in excludes):
+            continue
+        seen.add(href)
+        out.append(href)
+    return out
+
+
+def _meteorite_email_body_text(html: str) -> str:
+    """Plain visible-ish text from stripped email HTML for body/forward shapes."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    return (soup.get_text("\n", strip=True) or "").strip()
+
+
+async def _meteorite_fetch_link_visible_text(
+    url: str, *, debug: bool = False
+) -> Tuple[str, str]:
+    """Return (visible_text, final_url) via get_visible_text(..., return_final_url=True)."""
+    result = await get_visible_text(url=url, return_final_url=True)
+    if isinstance(result, tuple):
+        text, final_url = result
+        return (text or ""), (final_url or url)
+    return (result or ""), url
+
+
+async def ingest_meteorite_jobs_from_email_html(
+    candidate_id: str,
+    html: str,
+    *,
+    debug: bool = False,
+) -> dict[str, Any]:
+    """Classify email HTML → optional Playwright → dedupe → create_meteorite_job.
+
+    Returns:
+      {
+        "astral_candidate_id": str,
+        "mode": "links" | "body",
+        "created": [ create_meteorite_job result dicts ... ],
+        "skipped": [ {"reason": str, "url": Optional[str], "matched_company_job_id": Optional[str]} ... ],
+      }
+    """
+    candidate_id = (candidate_id or "").strip()
+    if not candidate_id:
+        raise ValueError("candidate_id is required")
+    if not isinstance(html, str) or not html.strip():
+        raise ValueError("html is required")
+
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cfg = METEORITE_EMAIL_INGEST_CONFIG
+    min_chars = int(cfg["min_jd_chars"])
+    created: List[dict[str, Any]] = []
+    skipped: List[dict[str, Any]] = []
+
+    links = _meteorite_email_candidate_links(html)
+    if links:
+        mode = "links"
+        n = len(links)
+        sem = asyncio.Semaphore(int(cfg["playwright_concurrency"]))
+
+        async def _one(i: int, url: str) -> None:
+            async with sem:
+                try:
+                    text, final_url = await _meteorite_fetch_link_visible_text(url, debug=debug)
+                except Exception as e:
+                    log.warning("[gazer] meteorite email Playwright failed url=%s: %s", url[:120], e)
+                    skipped.append({
+                        "reason": "playwright_error",
+                        "url": url,
+                        "matched_company_job_id": None,
+                    })
+                    if debug:
+                        log.debug_index(
+                            func="gazer.meteorite_email_ingest",
+                            index=i,
+                            total=n,
+                            identifier=url[:80],
+                            outcome="skipped-error",
+                        )
+                        log.debug_detail(f"reason=playwright_error error={e!s}")
+                    return
+
+                link = (final_url or url).strip() or url
+                haystack = f"{link}\n{text}"
+                if job_link_exists(link):
+                    skipped.append({
+                        "reason": "known_job_link",
+                        "url": link,
+                        "matched_company_job_id": None,
+                    })
+                    if debug:
+                        log.debug_index(
+                            func="gazer.meteorite_email_ingest",
+                            index=i,
+                            total=n,
+                            identifier=link[:80],
+                            outcome="skipped-duplicate",
+                        )
+                        log.debug_detail("reason=known_job_link")
+                    return
+
+                matched = text_matches_known_company_job_id(haystack)
+                if matched:
+                    skipped.append({
+                        "reason": "known_company_job_id",
+                        "url": link,
+                        "matched_company_job_id": matched,
+                    })
+                    if debug:
+                        log.debug_index(
+                            func="gazer.meteorite_email_ingest",
+                            index=i,
+                            total=n,
+                            identifier=link[:80],
+                            outcome="skipped-duplicate",
+                        )
+                        log.debug_detail(f"reason=known_company_job_id matched={matched}")
+                    return
+
+                if len((text or "").strip()) < min_chars:
+                    skipped.append({
+                        "reason": "jd_too_short",
+                        "url": link,
+                        "matched_company_job_id": None,
+                    })
+                    if debug:
+                        log.debug_index(
+                            func="gazer.meteorite_email_ingest",
+                            index=i,
+                            total=n,
+                            identifier=link[:80],
+                            outcome="skipped-short",
+                        )
+                        log.debug_detail(f"reason=jd_too_short len={len((text or '').strip())}")
+                    return
+
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="found",
+                    )
+                    log.debug_detail(f"visible_text_len={len(text or '')}")
+
+                result = create_meteorite_job(
+                    candidate_id, text, job_link=link, debug=debug
+                )
+                created.append(result)
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="recorded",
+                    )
+                    log.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
+
+        await asyncio.gather(*[_one(i, url) for i, url in enumerate(links, start=1)])
+    else:
+        mode = "body"
+        text = _meteorite_email_body_text(html)
+        if not text and not html.strip():
+            raise ValueError("email body is empty")
+        if not text:
+            text = html.strip()
+
+        matched = text_matches_known_company_job_id(text)
+        if matched:
+            skipped.append({
+                "reason": "known_company_job_id",
+                "url": None,
+                "matched_company_job_id": matched,
+            })
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=1,
+                    total=1,
+                    identifier=candidate_id[:80],
+                    outcome="skipped-duplicate",
+                )
+                log.debug_detail(f"reason=known_company_job_id matched={matched}")
+        elif len(text.strip()) < min_chars:
+            skipped.append({
+                "reason": "jd_too_short",
+                "url": None,
+                "matched_company_job_id": None,
+            })
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=1,
+                    total=1,
+                    identifier=candidate_id[:80],
+                    outcome="skipped-short",
+                )
+                log.debug_detail(f"reason=jd_too_short len={len(text.strip())}")
+        else:
+            # Prefer stripped HTML JD (subject wrapper) when present.
+            jd_payload = html if html.strip() else text
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=1,
+                    total=1,
+                    identifier=candidate_id[:80],
+                    outcome="found",
+                )
+                log.debug_detail(f"mode=body jd_len={len(jd_payload)}")
+            result = create_meteorite_job(
+                candidate_id, jd_payload, job_link=None, debug=debug
+            )
+            created.append(result)
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=1,
+                    total=1,
+                    identifier=candidate_id[:80],
+                    outcome="recorded",
+                )
+                log.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
+
+    return {
+        "astral_candidate_id": candidate_id,
+        "mode": mode,
+        "created": created,
+        "skipped": skipped,
+    }
+
+
+def ingest_meteorite_jobs_from_email_html_sync(
+    candidate_id: str,
+    html: str,
+    *,
+    debug: bool = False,
+) -> dict[str, Any]:
+    """Sync wrapper for Flask/inbox callers (asyncio.run)."""
+    return asyncio.run(
+        ingest_meteorite_jobs_from_email_html(candidate_id, html, debug=debug)
+    )

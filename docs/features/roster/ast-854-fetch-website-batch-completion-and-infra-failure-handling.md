@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-854 archived 2026-07-29 -->
+
+## Linear archive (AST-854)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-854/fetch-website-batch-completion-and-infra-failure-handling-fetch  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-850 — fetch_website didn't finish in production  
+**Blocked by / blocks / related:** parent: AST-850
+
+### Description
+
+## What this implements
+
+Make fetch_website batches complete all claimed companies on production without multi-day stall or manual admin kill: per-company browser infra failures route to WEBSITE_FOUND_RETRY and the batch continues; interrupted batches release claims so WEBSITE_FOUND companies are automatically re-eligible; production observability meets AST-538 when debug=True.
+
+## Acceptance criteria
+
+1. On production Railway, Susan triggers fetch_website on a queue of WEBSITE_FOUND companies (including the ~144 left from the interrupted batch) and the batch reaches a normal terminal finish (completed or INTERRUPTED only when Susan explicitly cancels) without multi-day stall.
+2. Batch summary counts (processed, passed, failed, errors) match observable company state transitions; no companies remain indefinitely claimed or mid-batch invisible to the next dispatch.
+3. With debug=True on a production test batch, Susan sees per-company index headers and substantive detail lines per AST-538 (what was attempted, what was recorded, pass/fail outcome) for fetch_website steps.
+4. Susan does not need to admin-kill fetch_website to unblock the roster pipeline after deploy.
+
+## Boundaries
+
+Does not change prefilter, fetch_job_pages, or gaze. Does not change dispatch scheduling UI or batch size defaults. Genuine site unreadability still lands in CANNOT_READ_WEBSITE after retry exhaustion. Browser launch fixes are prerequisite (blockedBy sibling).
+
+## Notes for planning
+
+Primary: gazer.fetch_website_batch, roster homepage scrape helper, consult routing, dispatcher batch loop. Infra failure → WEBSITE_FOUND_RETRY per Susan; persistent failure → CANNOT_READ_WEBSITE. Automatic re-eligibility for admin-killed batch companies — no one-time migration.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-850-fetch-website-didnt-finish-in-production**, child **sub/AST-850/<child-segment>**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-10T02:35:34.515Z
+### Radia review @ `adef399`
+
+**Diff:** `origin/dev...origin/sub/AST-850/AST-854-fetch-website-batch-completion-and-infra-failure-handling`
+**Doc:** `docs/features/roster/ast-854-fetch-website-batch-completion-and-infra-failure-handling.md` (Radia review section)
+
+#### fix-now
+
+None.
+
+#### discuss
+
+None.
+
+#### advisory
+
+- Publish ref rollup includes AST-853 prerequisite + `75be04f` (AST-853 Radia resolve) — expected; AST-854 product commits are `fb7be4a` / `411e212` / `79f366d`.
+- Unhandled `gather` exception: `errors` increments, no per-company transition — claim cleared in dispatcher `finally`; re-eligible per plan.
+- `docs/test-bible/core/gazer.md` AST-701 prose still cites `_RETRY_TASK_SEED` (AST-745 retired) — pre-existing bible debt.
+
+**Counts:** 0 fix-now · 0 discuss · 3 advisory
+
+**Layering / plan:** Stages 1–3 match plan; infra `[playwright:` → retry once then terminal; resilient `gather` + consult `total_errors`; dispatcher audit confirmed.
+
+#### betty — 2026-07-10T02:33:25.842Z
+## QA test manifest (AST-854)
+
+**Publish:** `origin/sub/AST-850/AST-854-fetch-website-batch-completion-and-infra-failure-handling` @ `0779b1a` (`merge-tests(AST-854): origin/tests 92cc444`)
+
+**Broken / revised (AST-853 carryover):** `TestFetchWebsiteBatch` return dict now includes **`errors`**; scrape-timeout path routes to **`WEBSITE_FOUND_RETRY`** (AST-854), not terminal **`CANNOT_READ_WEBSITE`**.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/gazer.md` — `5a693014a03c6f46b3353f9bae2ee3638c0c77a804898880acdfc7f043905957`
+- `docs/test-bible/core/consult.md` — `625f987254e74d6de964c3193758f344e4afc5f8573b488cbdd767ceaafe6df1`
+- `docs/test-bible/utils/config.md` — `bbc725e8bf13d467eff5f1c3b29d292788a007b708b1f3273ebcfc8ea2ba77d9`
+
+**Manifest (test-child) — narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchWebsiteFailRouting \
+  tests/component/core/test_gazer.py::TestFetchWebsiteBatch \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig \
+  tests/component/utils/test_config.py::TestAst854FetchWebsiteRetryConfig \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_errors_count \
+  -q
+```
+
+1. **Fail-routing helpers** — `TestFetchWebsiteFailRouting` (`test_gazer.py`)
+2. **Infra retry / terminal + `errors` in batch return** — `TestFetchWebsiteFailRouting` async + `TestFetchWebsiteBatch` (`test_gazer.py`)
+3. **`retry_state` in `GAZER_CONFIG["fetch_website"]`** — `TestAst701FetchWebsiteConfig`, `TestAst854FetchWebsiteRetryConfig` (`test_config.py`)
+4. **Consult `total_errors` from batch `errors`** — `test_routes_fetch_website_batch`, `test_routes_fetch_website_batch_errors_count` (`test_consult.py`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### hedy — 2026-07-10T02:30:29.184Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-850/AST-854-fetch-website-batch-completion-and-infra-failure-handling/docs/features/roster/ast-854-fetch-website-batch-completion-and-infra-failure-handling.md @ `c9a66c1`
+
+**Self-assessment**
+- **Scope:** Single-Component — `GAZER_CONFIG` retry_state, `fetch_website_batch` fail routing + resilient gather, consult errors passthrough; dispatcher audit-only unless clear gap.
+- **Conf:** Medium — mirrors existing WEBSITE_FOUND_RETRY / prefilter retry patterns; infra detection via AST-853 `[playwright:` prefix contract.
+- **Risk:** Medium — changes production fail destinations on fetch_website hot path; mitigated by prefix-gated routing and Betty manifest for retry vs terminal states.
+
+---
+
 # AST-854 — fetch_website batch completion and infra failure handling
 
 **Linear:** [AST-854 — fetch_website batch completion and infra failure handling](https://linear.app/astralcareermatch/issue/AST-854/fetch-website-batch-completion-and-infra-failure-handling-fetch-website-didnt-finish-in-production)

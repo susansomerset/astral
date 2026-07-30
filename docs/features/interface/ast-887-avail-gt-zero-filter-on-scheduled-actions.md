@@ -1,3 +1,119 @@
+<!-- linear-archive: AST-887 archived 2026-07-29 -->
+
+## Linear archive (AST-887)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-887/avail-0-filter-on-scheduled-actions-add-filter-flag-to-scheduled  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-885 — Add filter flag to scheduled_actions for Avail > 0  
+**Blocked by / blocks / related:** parent: AST-885
+
+### Description
+
+## What this implements
+
+Add an on-page filter control on Admin → Scheduled Actions that, when engaged, shows only rows whose Available count is greater than zero. When not engaged, Available does not constrain visibility. The filter intersects (AND) with existing Candidate, Task, Floor, AUTO, Debug, Freq, Min count, Batch size, and Run-count filters. Zero or empty Available rows are excluded when engaged (same cases the Avail column shows as an em dash). Empty section/group headers are omitted after filtering; section AUTO summaries reflect the filtered set. Default: filter not engaged.
+
+## Acceptance criteria
+
+1. On Admin → Scheduled Actions, a filter control is available that can be engaged to mean “Avail > 0.”
+2. With that filter engaged and no other narrowing filters, every visible row shows a numeric Avail greater than zero (no em-dash Avail rows).
+3. With that filter engaged together with any other existing filter(s), only rows that satisfy all engaged filters remain visible.
+4. With that filter not engaged, rows with Avail zero or empty remain visible when they would otherwise match the other filters.
+5. Engaging the filter removes empty section/group headers; clearing it restores sections that again have matching rows.
+6. Page load / default view does not engage the Avail > 0 filter.
+
+## Boundaries
+
+* Does not change how Available is calculated, claimed, or dispatched.
+* Does not change Avail column formatting.
+* Does not add server-side query parameters or alter the dispatch-tasks list API payload.
+* Does not change Run / Stop / AUTO / edit-modal / Manage Tasks behavior.
+* Does not add Available min/max range filters — greater-than-zero flag only.
+
+## Notes for planning
+
+* Follow the existing client-side filter bar on Scheduled Actions (AST-751 pattern: AUTO/Debug-style controls, AND intersection, omit empty sections after filter).
+* Primary surface is the Scheduled Actions admin page; no API payload change expected.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Engineers publish to origin sub/ftr refs — never Linear gitBranchName when it disagrees.
+
+### Comments
+
+#### radia — 2026-07-13T18:40:57.060Z
+Review: [https://github.com/susansomerset/astral/blob/sub/AST-885/AST-887-avail-gt-zero-filter/docs/features/interface/ast-887-avail-gt-zero-filter-on-scheduled-actions.md](https://github.com/susansomerset/astral/blob/sub/AST-885/AST-887-avail-gt-zero-filter/docs/features/interface/ast-887-avail-gt-zero-filter-on-scheduled-actions.md)
+
+**Diff:** `origin/dev...origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `cc9d6e801c2bc4cd8461028da7cff967ca2b7ad5`
+
+**fix-now:** none
+
+**What's solid:** Stage 1 exact (`availGtZeroFilter`, predicate after Debug / before Freq, Avail select). `(available_count ?? 0) > 0` matches `formatAvailableCount` em-dash (`null`/`0`). Client-side triage justified by plan Decision + AST-751/768. Betty covers default / engage / AND AUTO / clear + AST-785 race hardening.
+
+**Advisory:** `DispatchTask.available_count` typed `number` while runtime already allows `null` — pre-existing; filter uses `?? 0`.
+
+**Verdict:** Clean — `resolve-child` may proceed.
+
+#### betty — 2026-07-13T18:38:45.707Z
+[check-linear]
+Cleared [qa-handoff]: AST-751 auto-open race — `expandFirstPhaseSection` waits for table or Expand; em-dash case clicks Expand only when present. Manifest smoke `AST-887|AST-751|AST-768` green (17).
+
+**Publish:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `21e461e` (`test(AST-887):` cherry-pick; one `merge-tests` kept)
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `bbd319ddb7e95a488a952236f82c3f2a390a31f9`
+**Assignee:** Katherine for test-child — stay Tests Ready.
+
+#### katherine — 2026-07-13T18:36:50.279Z
+[qa-handoff]
+@Betty White
+
+AST-887 product cases green; smoke item 2 is a **test** problem, not product.
+
+**Green**
+```
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-887"
+```
+→ 4 passed.
+
+**Red (manifest item 2)**
+```
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-751|AST-768"
+```
+→ 2 failed | 11 passed:
+1. `AST-751 … places Candidate, Avail, and Last Run as rightmost columns` — `expandFirstPhaseSection` waits for `Expand section`, but the sole section is already auto-opened (`Collapse section` + table present). Race/`didAutoOpenSectionRef` vs single-section fixture.
+2. `AST-751 … renders em dash for zero or null available count` — after `selectAllCandidatesFilter()`, roster panel auto-opens; test still `getByRole("button", { name: "Expand section" })` inside the panel.
+
+**Why test/manifest (not product):** Avail filter only adds `availGtZeroFilter` state + predicate + filter-bar select. No change to section auto-open, column order, or `formatAvailableCount`. AST-887 describe already tolerates auto-open; these two AST-751 cases need the same (wait for table / Collapse, or skip Expand when already open).
+
+**Publish tip used:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `1ade3eb` (Betty's merge-tests tip). No product commits from this pass.
+
+#### betty — 2026-07-13T18:34:59.384Z
+**QA test manifest — AST-887**
+
+1. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-887"`
+   - **`AST-887 Avail > 0 filter`** (4 cases): default All still shows zero/null Avail rows; engage `> 0` hides 0/null + omits empty sections; ANDs with AUTO; clear restores sections.
+2. Re-run smoke (same file): `--testNamePattern="AST-751|AST-768"` — filter bar + section intersection still green around the new Avail control.
+
+**Publish:** `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `1ade3eb` (`merge-tests(AST-887): origin/tests 6dd3586b5a64cb1e7a46604272fc13acd23389d7`)
+
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `95ee64e6c7c1b25d6057423710da5a251bbde72e`
+
+— Betty
+
+#### katherine — 2026-07-13T18:30:35.150Z
+Plan: [https://github.com/susansomerset/astral/blob/sub/AST-885/AST-887-avail-gt-zero-filter/docs/features/interface/ast-887-avail-gt-zero-filter-on-scheduled-actions.md](https://github.com/susansomerset/astral/blob/sub/AST-885/AST-887-avail-gt-zero-filter/docs/features/interface/ast-887-avail-gt-zero-filter-on-scheduled-actions.md)
+
+**Scope:** Single-Component — one React admin page (`AdminScheduledActions.tsx`); filter bar + `filteredRows` only.
+**Conf:** high — copies the existing AUTO/Debug filter-hook / select / AND-intersection pattern; Avail semantics already defined by `formatAvailableCount`.
+**Risk:** low — additive client-side filter; default All leaves current visibility unchanged; no API, dispatch, or Available math changes.
+
+Publish tip: `origin/sub/AST-885/AST-887-avail-gt-zero-filter` @ `03c562d`.
+
+---
+
 # Avail > 0 filter on Scheduled Actions (Add filter flag to scheduled_actions for Avail > 0)
 
 **Linear:** [AST-887](https://linear.app/astralcareermatch/issue/AST-887)  

@@ -745,23 +745,23 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
   -q
 ```
 
-### AST-1063 · AST-1059
+### AST-1062 · AST-1058
 
-**Parent:** [AST-1059 — Issue with the rubric grade displays on the Jobs List pages](https://linear.app/astralcareermatch/issue/AST-1059/issue-with-the-rubric-grade-displays-on-the-jobs-list-pages). **Publish:** `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`.
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
 
-Persist analysis-time rubric criteria as `{prefix}_rubric` beside every `{prefix}_grades` write (`_rubric_snapshot_for_job_data` omits `content`). Verdict / qualify / evaluate_jd paths all snapshot. List flatten is **`docs/test-bible/ui/api/api_jobs.md`** (**AST-1063**).
+`qualify_meteorite` Pattern-A fields batch: content gates → FAILED_QUALIFY; pass → `initialize_job` + METEORITE_QUALIFIED; collision → fail count without transition; Style D only when `debug=True`. Not in `_STRICT_ENCODED_BATCH_CONSULT_KEYS`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Snapshot helper + write-path persist | `src/core/consult.py` | **`TestAst1063JobCarriedRubricHydration`** |
+| Batch apply + gates | `src/core/consult.py` | **`TestAst1062QualifyMeteorite`**; revised **`TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches`** |
 
-**Broken / obsolete:** none — additive keys on save payloads; existing score/grade assertions unchanged.
+**Broken / obsolete:** route test omitted `qualify_meteorite` arm (revised).
 
-**Integration:** none revised (API shape only; no existing integration scenario asserts job-carried `*_rubric`).
+**Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_consult.py::TestAst1063JobCarriedRubricHydration \
-  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
   -q
 ```

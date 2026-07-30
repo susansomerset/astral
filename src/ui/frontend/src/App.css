@@ -2045,6 +2045,46 @@ input.side-tab-heading-editable:focus {
   padding: 0;
 }
 
+/* AST-1040: Gmail HTML source fills wide modal; scroll inside the pre */
+.email-html-frame {
+  height: 100%;
+  overflow: hidden;
+}
+.email-html-source {
+  margin: 0;
+  padding: 16px 20px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  background: #fff;
+  color: var(--text-primary);
+}
+
+/* AST-1048: Manage Email match bind + Create enablement */
+.manage-email-match {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.manage-email-match--modal {
+  margin: 0;
+  padding: 12px 20px 0;
+  font-size: 13px;
+}
+.manage-email-create {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.manage-email-create:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* SideTabPanel fills the modal-body */
 .modal-card--wide .side-tab-panel {
   height: 100%;

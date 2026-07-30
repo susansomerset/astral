@@ -1300,3 +1300,23 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   tests/component/utils/test_config.py::TestAst1061MeteoriteEmailIngestConfig \
   -q
 ```
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+`TASK_CONFIG["qualify_meteorite"]` content-gate mins: `min_job_title_length` + `min_jd_chars`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Threshold keys | `src/utils/config.py` | **`TestAst1062QualifyMeteoriteThresholds`** |
+
+**Broken / obsolete:** none — additive keys on existing AST-1060 task block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1062QualifyMeteoriteThresholds \
+  -q
+```

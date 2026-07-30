@@ -15,6 +15,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from email.utils import parseaddr
 from typing import Any, Dict, Optional, Tuple
 
 from src.data import database
@@ -33,6 +34,7 @@ from src.utils.config import (
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
+    CANDIDATE_LOOKUP_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
@@ -533,6 +535,107 @@ def list_candidates(include_deleted: bool = False) -> list:
     if include_deleted:
         return all_candidates
     return [c for c in all_candidates if c.get("state") != "DELETED"]
+
+
+def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
+    """Resolve one CANDIDATE_LOOKUP_CONFIG path against a candidate row + candidate_data."""
+    parts = dotted_path.split(".")
+    if len(parts) == 1:
+        val = candidate.get(parts[0])
+    else:
+        cur: Any = candidate.get("candidate_data") or {}
+        if not isinstance(cur, dict):
+            return ""
+        for seg in parts:
+            if not isinstance(cur, dict):
+                return ""
+            cur = cur.get(seg)
+        val = cur
+    if not isinstance(val, str):
+        return ""
+    return val.strip()
+
+
+def get_candidate_id_for_query(
+    query: str,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """Match a string against configured email/name homes; return id only on unique hit."""
+    if debug:
+        logger.set_debug_flag(True)
+
+    raw = (query or "").strip()
+    if not raw:
+        if debug:
+            logger.debug_index(
+                func="get_candidate_id_for_query",
+                index=1,
+                total=1,
+                identifier="",
+                outcome="found|empty_query",
+            )
+            logger.debug_detail("query=")
+            logger.debug_detail("needle=")
+        return None
+
+    _display, parsed_email = parseaddr(raw)
+    addr = (parsed_email or "").strip()
+    needle = addr if "@" in addr else raw
+    casefold = bool(CANDIDATE_LOOKUP_CONFIG["match_casefold"])
+    needle_cmp = needle.casefold() if casefold else needle
+
+    hit_ids: set[str] = set()
+    paths = tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"]) + tuple(
+        CANDIDATE_LOOKUP_CONFIG["name_paths"]
+    )
+    for candidate in list_candidates(include_deleted=False):
+        values = []
+        for path in paths:
+            v = _lookup_path_value(candidate, path)
+            if v:
+                values.append(v.casefold() if casefold else v)
+        if needle_cmp not in values:
+            continue
+        cid = (candidate.get("astral_candidate_id") or "").strip()
+        if cid:
+            hit_ids.add(cid)
+
+    if len(hit_ids) == 1:
+        matched_id = next(iter(hit_ids))
+        if debug:
+            ident = next(iter(truncate_debug_content(needle)), needle[:80])
+            logger.debug_index(
+                func="get_candidate_id_for_query",
+                index=1,
+                total=1,
+                identifier=ident,
+                outcome="found|matched",
+            )
+            for line in truncate_debug_content(raw):
+                logger.debug_detail(f"query={line}")
+            for line in truncate_debug_content(needle):
+                logger.debug_detail(f"needle={line}")
+            logger.debug_detail(f"candidate_id={matched_id}")
+        return matched_id
+
+    if debug:
+        ident = next(iter(truncate_debug_content(needle)), needle[:80])
+        outcome = "found|ambiguous" if len(hit_ids) >= 2 else "found|none"
+        logger.debug_index(
+            func="get_candidate_id_for_query",
+            index=1,
+            total=1,
+            identifier=ident,
+            outcome=outcome,
+        )
+        for line in truncate_debug_content(raw):
+            logger.debug_detail(f"query={line}")
+        for line in truncate_debug_content(needle):
+            logger.debug_detail(f"needle={line}")
+        if len(hit_ids) >= 2:
+            logger.debug_detail(f"candidate_ids={sorted(hit_ids)}")
+    return None
 
 
 def preview_task_prompt(
@@ -1507,9 +1610,9 @@ def run_session_resume_parse(
     *,
     debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
-    """Parse pasted resume text via craft_resume_base with default structure; no candidate bind/persist.
+    """Parse pasted resume text via simple_resume_parse (Ruth / Little); no candidate bind/persist.
 
-    Returns (json_body, http_status) for Admin session-resume paste (AST-986).
+    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038).
     """
     if not isinstance(resume_text, str) or not resume_text.strip():
         return ({"success": False, "error": "resume_text is required"}, 400)
@@ -1541,7 +1644,7 @@ def run_session_resume_parse(
         try:
             result = asyncio.run(
                 do_task(
-                    task_key="craft_resume_base",
+                    task_key="simple_resume_parse",
                     live_content=paste,
                     index=batch_id,
                     ctx=ctx,
@@ -1617,7 +1720,7 @@ def run_session_resume_parse(
                 total_failed=1,
                 total_cost=total_cost,
             )
-            err = "craft_resume_base returned non-dict parsed_response"
+            err = "simple_resume_parse returned non-dict parsed_response"
             if debug:
                 logger.debug_index(
                     func="run_session_resume_parse",

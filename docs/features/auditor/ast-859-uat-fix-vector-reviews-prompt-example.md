@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-859 archived 2026-07-29 -->
+
+## Linear archive (AST-859)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-859/uat-fix-vector-reviews-prompt-example-raocvk-racovk  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+Susan UAT 2026-07-10: compact `vector_reviews` strings still fail to hydrate because the **model follows a contradictory example** in `RUBRIC_FEEDBACK_CONFIG.prompt_suffix` in `config.py`.
+
+Current prompt says format `CODE + R + rel + C + cla + V + ver` but example is `"Q1RAOCVK"` which decodes as Q1 + R + **A** + **O** + C + V + K — the clarity letter **O** appears **before** the `C` delimiter. Model output matches the bad example (`CLRAOCVK`, `BSRAOCVK`, … use `RAOCVK` tail instead of correct `RACOVK`).
+
+## Expected
+
+1. `prompt_suffix` example and wording match the parse regex (`CODE R rel C cla V ver`) — e.g. `"Q1RACOVK"` for relevance=A, clarity=O, verdict=K.
+2. After deploy, model-emitted compact strings parse via `parse_vector_review_string` and hydrate in Admin / FEEDBACK / debug.
+3. No change to lenient run-success semantics.
+
+## Repro
+
+1. Run rubric-backed task (e.g. `evaluate_jd`) on staging with current prompt.
+2. Model returns `vector_reviews` like `CLRAOCVK` (RAOCVK tail).
+3. Parse/hydrate fails or stores raw FEEDBACK only.
+4. Inspect `RUBRIC_FEEDBACK_CONFIG.prompt_suffix` — example contradicts delimiter spec.
+
+## Parent AC (quoted inline)
+
+> 1. Every rubric-backed agent task returns per-vector feedback (Relevance, Clarity, Verdict) for every vector in the active rubric when the model complies, using only config-allowed value codes.
+
+> 7. With debug enabled, rubric-backed runs log each vector feedback found and recorded, or log that raw FEEDBACK was stored due to parse failure.
+
+## Boundaries
+
+* Fix prompt/example in config only — do not change parse regex unless example fix is insufficient.
+* Does not change agent_payload grading format.
+
+### Comments
+
+#### radia — 2026-07-10T21:47:50.251Z
+### AST-859 review
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example` (code `6a83783`, doc after push)
+**Plan:** `docs/features/auditor/ast-859-uat-fix-vector-reviews-prompt-example.md` § Review (Radia)
+
+**What looks good**
+- Config-only fix: `RUBRIC_FEEDBACK_CONFIG.prompt_suffix` example `Q1RAOCVK` → `Q1RACOVK` with explicit literal R/C/V delimiter wording.
+- Aligns model instruction with existing `parse_vector_review_string` regex — Susan staging `CLRAOCVK` tails correctly remain parse failures until re-dispatch.
+- No regex/capture lenience added; tests guard suffix content + Q1/CLR parse matrix.
+
+**advisory**
+- Historical AST-724 plan doc still shows old example (explicitly out of scope).
+- Stored FEEDBACK with bad-shaped strings stay unparseable until new runs — expected.
+
+**Verdict:** Clean — approve for User Testing. No fix-now.
+
+#### betty — 2026-07-10T21:46:48.882Z
+## QA test manifest (AST-859)
+
+**Publish ref:** `origin/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example` @ `6a83783` (`merge-tests(AST-859): origin/tests e298b4d`)
+
+**Pass criterion:** manifest lines green on publish ref — not zero-arg harness / branch-lock gate.
+
+1. **Prompt suffix example (required):** `tests/component/utils/test_config.py::TestAst859VectorReviewsPromptExample` — `prompt_suffix` contains `Q1RACOVK`, not `Q1RAOCVK`; explicit delimiter wording.
+
+2. **Parse regression (required):** `tests/component/utils/test_rubric_feedback.py::TestAst859CompactStringParseExamples` — `Q1RACOVK` and `CLRRACOVK` parse; `Q1RAOCVK` and Susan staging `CLRAOCVK` fail.
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst859VectorReviewsPromptExample \
+  tests/component/utils/test_rubric_feedback.py::TestAst859CompactStringParseExamples \
+  -q
+```
+
+**Regression:** existing `G1RAOCVK` parse-failure fixtures in `test_rubric_feedback.py` unchanged (intentional bad-line cases).
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/utils/config.md`: ffb9d59f232bb228dd06c01c4f85c86d7f550ffe6c61a2d0973bcbf1820959bf
+- `docs/test-bible/utils/rubric_feedback.md`: ad583a63115939bcf628d9c4a2748218c2e201d983a5340e52494d0e12d4c4c4
+
+— Betty
+
+#### ada — 2026-07-10T21:44:30.044Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-859-uat-fix-vector-reviews-prompt-example/docs/features/auditor/ast-859-uat-fix-vector-reviews-prompt-example.md
+
+**Scope:** minor — single `RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]` string in `config.py`; fix example `Q1RAOCVK` → `Q1RACOVK` and clarify literal `R`, `C`, `V` delimiters so models stop emitting unparseable `RAOCVK` tails.
+
+**Conf:** high — Susan UAT root cause; regex and bad example verified; tests already use correct `RACOVK` shape (`G1RACOVK`, `CLRRACOVK`).
+
+**Risk:** low — prompt-only; existing stored runs with wrong-shaped output still lenient-fail until next dispatch sees corrected suffix.
+
+---
+
 # AST-859 — UAT: Fix vector_reviews prompt example (RAOCVK → RACOVK)
 
 - **Linear:** [AST-859](https://linear.app/astralcareermatch/issue/AST-859/uat-fix-vector-reviews-prompt-example-racovk)

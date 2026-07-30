@@ -36,7 +36,7 @@ from src.core.candidate import (
     preview_task_prompt,
     run_session_resume_parse,
 )
-from src.core.builder import build_session_base_resume
+from src.core.builder import build_session_base_resume, build_session_cover_letter
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
     get_repo_admin_json_divergence_status,
@@ -45,6 +45,7 @@ from src.core.repo_admin_json import (
 from src.utils.config import (
     ASTRAL_CONFIG,
     AGENT_CONFIG,
+    BUILD_CONFIG,
     DEEPSEEK_MODEL_PRICING,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
@@ -54,6 +55,7 @@ from src.utils.config import (
     admin_brain_setting_catalog,
     brain_setting_for_anthropic_agent_key,
     TASK_CONFIG,
+    TRACKER_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
     CANDIDATE_STATES,
@@ -1196,6 +1198,20 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
             return (
                 "JOB LISTINGS:\n" + "\n".join(f"{i:03d}: {item}" for i, item in enumerate(raw_htmls))
             ) if astral_ids else ""
+        # batch mode: qualify_meteorite — lockstep with consult.qualify_meteorite assemble
+        if task_key == "qualify_meteorite":
+            ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
+            jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+            lines = []
+            for jid in ids:
+                job = database.get_job(jid)
+                if not job:
+                    continue
+                lines.append(
+                    f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
+                    f"job_description: {(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                )
+            return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
         job = database.get_job(entity_id)
         if not job:
@@ -1456,7 +1472,7 @@ def _decode_blob_values(row: dict) -> dict:
 @admin_bp.route("/session_resume/parse", methods=["POST"])
 @require_admin
 def session_resume_parse():
-    """AST-986: paste → craft_resume_base (default structure); response-only, no candidate bind."""
+    """AST-986/AST-1038: paste → simple_resume_parse (Ruth); response-only, no candidate bind."""
     body = request.get_json(silent=True) or {}
     resume_text = body.get("resume_text")
     result_body, status = run_session_resume_parse(
@@ -1488,6 +1504,32 @@ def session_resume_html():
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
     return Response(html, mimetype="text/html; charset=utf-8")
+
+
+# AST-1024 session cover letter HTML
+@admin_bp.route("/session_cover_letter/html", methods=["POST"])
+@require_admin
+def session_cover_letter_html():
+    """AST-1024: in-memory cover fields → SomersetCover HTML (optional candidate signature image)."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"success": False, "error": "JSON object body is required"}), 400
+    # Field keys from config only — do not hardcode the key list here (Joan plan-discuss round=1).
+    field_defs = BUILD_CONFIG["session_cover_letter"]["fields"]
+    fields = {k: body.get(k, "") for k in field_defs}
+    raw_cid = body.get("candidate_id")
+    candidate_id = raw_cid.strip() if isinstance(raw_cid, str) else None
+    if candidate_id == "":
+        candidate_id = None
+    try:
+        html_out = build_session_cover_letter(
+            fields,
+            candidate_id=candidate_id,
+            debug=ui_llm_debug(),
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    return Response(html_out, mimetype="text/html; charset=utf-8")
 
 
 @admin_bp.route("/data/sql", methods=["POST"])

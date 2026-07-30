@@ -27,10 +27,15 @@ jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
 
 
 def _flatten_grades(job: dict) -> dict:
-    """Lift grade dicts and scores from job_data to top-level for column display."""
+    """Lift grade dicts, scores, and job-carried rubrics from job_data for list/detail."""
     jd = job.get("job_data") or {}
-    for key in ("joblist_grades", "joblist_score", "jd_grades", "jd_score", "get_grades", "get_score",
-                "do_grades", "do_score", "like_grades", "like_score"):
+    for key in (
+        "joblist_grades", "joblist_score", "joblist_rubric",
+        "jd_grades", "jd_score", "jd_rubric",
+        "get_grades", "get_score", "get_rubric",
+        "do_grades", "do_score", "do_rubric",
+        "like_grades", "like_score", "like_rubric",
+    ):
         if key in jd:
             job[key] = jd[key]
     # Prefer column latest_score; blob-only joblist_score (legacy) fills gap for list UI
@@ -105,6 +110,7 @@ def detail(astral_job_id):
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
+    job = _flatten_grades(job)
     job["agent_story"] = get_entity_agent_story(job)
     return jsonify(job)
 

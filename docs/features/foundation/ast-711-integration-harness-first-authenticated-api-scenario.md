@@ -1,3 +1,185 @@
+<!-- linear-archive: AST-711 archived 2026-07-29 -->
+
+## Linear archive (AST-711)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-711/integration-harness-and-first-authenticated-api-scenario-astral  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-512 — Astral Integration Testing  
+**Blocked by / blocks / related:** parent: AST-512; blocks: AST-712
+
+### Description
+
+## What this implements
+
+Slice 1 of the integration-test program: standalone `run_integration_tests.sh`, Test Bible tier definition, controlled-vs-live external I/O contract, shared fixture/env rules, and the first scenario — seeded real SQLite plus an authenticated candidate or nav API round-trip with stubbed externals only.
+
+## Acceptance criteria
+
+1. `docs/ASTRAL_TEST_BIBLE.md` (and/or `docs/test-bible/` tree) describes the integration tier (location, how it differs from component tests, external-I/O policy, controlled-vs-live rule, who maintains it).
+2. `tests/integration/` contains at least one automated integration test (not merely `.gitkeep`) that runs green via `run_integration_tests.sh`.
+3. The first scenario uses a real test database (same family of isolation as component data fixtures), exercises at least two layers (persistence + HTTP API with auth), and uses stubbed externals only.
+4. A developer can run **only** integration tests with one documented command; the component suite does not require integration tests unless explicitly combined.
+5. CI (or the project's standard test script invoked in CI) can execute the integration suite and fail the build on regression.
+6. Adding a second scenario later does not require restructuring the first (clear module/file layout and shared fixtures documented in the Bible).
+
+## Boundaries
+
+* Does **not** replace or relax the component-test program or branch-coverage locks.
+* Does **not** include live Anthropic, Playwright, Gmail, or Google CSE in the default suite.
+* Does **not** include Railway deploy wiring or Joan automation — sibling **Slice 2** ticket.
+* Must not break existing component or frontend test gates.
+
+## Notes for planning
+
+* Reuse component data fixtures (`seeded_db`, `db_factory`) where possible; integration tests stub `src/external/*` only — do not mock core↔data or API↔core seams.
+* First scenario: **(b) seeded DB + authenticated candidate/nav API round-trip** per parent Decisions.
+* Standalone harness only — not pytest-marker-only.
+* Betty owns bible updates when manifest lands.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-512-astral-integration-testing`, child `sub/AST-512/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-16T20:27:55.569Z
+### Review — `origin/dev...origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` @ `13f76cc` (doc: `e8c309d`)
+
+**Plan fidelity:** Stages 1–4 match spec — `integration_io.py`, six external guards, standalone harness, CI workflow, integration scenario + bible tier. Real SQLite + minimal Flask (`system_bp` + `candidate_bp`); no API↔core mocks. `run_component_tests.sh` unchanged vs `origin/dev`. Integration harness green locally (3 passed).
+
+**§3.3 / §5g:** External modules import `utils` only; playwright guard on `_launch_browser` covers all launch paths; harness flags env-only (§2.1).
+
+**discuss:** `docs/test-bible/integration/README.md` § AST-711 — plan QA + feature doc **test-child manifest** still require zero-arg `./scripts/testing/run_component_tests.sh` on publish ref; `cec444b` narrows pass criterion to integration-only and documents unrelated roster red on `origin/dev`. Confirm Susan override is the closure bar vs updating plan/manifest.
+
+**Doc:** `docs/features/foundation/ast-711-integration-harness-first-authenticated-api-scenario.md` — Radia review section.
+
+**No fix-now product items** — Ada may proceed via `resolve-child` after discuss alignment (or treat discuss as advisory if Susan confirms integration-only gate).
+
+#### betty — 2026-06-16T20:25:42.438Z
+[check-linear]
+
+Cleared [qa-handoff]: narrowed Tests Ready manifest to integration harness only (`cec444b` → `13f76cc`). Zero-arg component gate removed — roster failures are dev-baseline drift, not AST-711. Reassigned Ada for test-child.
+
+#### betty — 2026-06-16T20:25:42.089Z
+## QA test manifest (AST-711) — narrowed per [qa-handoff]
+
+**Publish ref:** `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` @ `13f76cc`
+**Tests SHA:** `cec444b` (`merge-tests(AST-711): origin/tests cec444b`)
+
+1. **Integration harness (required — sole AST-711 gate):**
+```bash
+./scripts/testing/run_integration_tests.sh
+```
+
+**Pass criterion:** exit 0 on publish ref tip.
+
+**Removed from gate:** zero-arg `./scripts/testing/run_component_tests.sh` — roster prefilter failures reproduce on `origin/dev` baseline; unrelated to AST-711 product. Track separately.
+
+**Bible shasum (publish ref):** `docs/test-bible/integration/README.md` → `8c0f0e8b8e8f0e8b` placeholder
+
+— Betty
+
+#### ada — 2026-06-16T20:24:33.702Z
+[qa-handoff]
+
+**Manifest run (epic worktree @ `eab7ca7`, Python 3.14 venv):**
+
+1. `./scripts/testing/run_integration_tests.sh` — **PASS** (3/3 integration scenarios)
+
+2. `./scripts/testing/run_component_tests.sh` — **FAIL** (10 failed, 1618 passed)
+
+**Not AST-711 product regressions** — same roster failures reproduce on **`origin/dev`** (`701cd83`) in a detached worktree, e.g. `TestPrefilterCompany::test_pass_and_fail_grades_persist_data` (expected `TO_WATCH`, got `WEBSITE_FOUND_RETRY`). Ada changes on this ticket are `integration_io` + harness + CI only.
+
+**Failure bucket (component):**
+- 9× `tests/component/core/test_roster.py` — prefilter / coat-check paths (`WEBSITE_FOUND_RETRY` vs `TO_WATCH`/`PREFILTER_PASSED`, `_fetch_prefilter_notes` returns `None` when rubric hydration rejects vector `fit`)
+- 1× `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_ast649_hides_gaze_board_from_scheduled_actions` — fails only in full-suite order (SQLite schema path in `_ensure_gaze_board_dispatch_tasks`); passes in isolation
+
+**Ask:** Narrow AST-711 **Tests Ready** manifest to integration harness only, **or** fix roster/admin test expectations on **`origin/tests`** for the current dev prefilter/rubric behavior and re-`merge-tests`. Full zero-arg component gate blocks AST-711 closure without unrelated roster scope.
+
+@Betty White
+
+#### hedy — 2026-06-16T20:23:40.348Z
+**[qa-handoff]**
+
+@Betty White — manifest item 1 green; item 2 blocked by pre-existing roster component failures (not AST-711 product).
+
+**Publish ref:** `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` @ `eab7ca7` (verified before run)
+
+### 1. Integration harness — PASS
+```bash
+./scripts/testing/run_integration_tests.sh
+# 3 passed in tests/integration/scenarios/test_candidate_nav_api.py
+```
+
+### 2. Component regression — FAIL (9)
+```bash
+./scripts/testing/run_component_tests.sh
+# 9 failed, 1621 passed — all in tests/component/core/test_roster.py (prefilter / notes paths)
+```
+
+**Representative failure:**
+```
+TestPrefilterCompany::test_redirect_and_empty_text_paths
+AssertionError: assert 'WEBSITE_FOUND_RETRY' == 'TO_WATCH'
+```
+
+**Root cause (product path, test data stale):** `_apply_prefilter_decoded_company_outcome` calls `_render_score` when `verdict_state == pass_state` and `rubric_list` is non-empty. `_rubric_criteria_from_cd(..., "company_prefilter")` always prepends `EMBEDDED_COMPANY_PREFILTER_CRITERIA`. Tests supply grades with vector `"fit"` only → `_render_score` raises `ValueError: missing vectors [...]` → caught as retryable `_prefilter_fail` → `WEBSITE_FOUND_RETRY` / `RETRY`.
+
+**Not AST-711 regression:** same 9 failures on `origin/dev` @ `701cd838` (prefilter test classes only). AST-711 product diff is only `integration_io` guards in six `src/external/*` entry points.
+
+**Ask:** Either (a) update affected roster component tests to grade all embedded prefilter vectors (or adjust mocks for `_render_score` / shared outcome helper), or (b) narrow AST-711 manifest to integration harness only — full `./run_component_tests.sh` is red on dev baseline today.
+
+Reassign me when manifest is updated; I will re-run §5–6.
+
+#### betty — 2026-06-16T20:17:01.128Z
+## QA test manifest (AST-711)
+
+**Publish ref:** `origin/sub/AST-512/AST-711-integration-harness-first-api-scenario` @ `eab7ca7`
+**Tests SHA:** `12784e5` (`merge-tests(AST-711): origin/tests 12784e5`)
+
+1. **Integration harness (required):**
+```bash
+./scripts/testing/run_integration_tests.sh
+```
+
+2. **Component regression (required):**
+```bash
+./scripts/testing/run_component_tests.sh
+```
+
+**Pass criterion:** both commands exit 0 on publish ref tip.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/integration/README.md` → `fd3f862ca9ce6db166b4bb6866a0c7df72acff16`
+- `docs/test-bible/README.md` → `b1ac02ac05c8cc16bb7bf6029e1502dea9af72ca`
+
+**Scenarios added:**
+- `tests/integration/scenarios/test_candidate_nav_api.py` — real SQLite + `GET /api/candidates` + `GET /api/nav_config` with Bearer auth; 401 without auth
+
+— Betty
+
+#### chuckles — 2026-06-16T20:10:16.291Z
+**APPROVED** — plan aligns with AST-512 Slice 1 AC; controlled I/O at external boundaries; Betty owns tests/bible per hook law.
+
+— Chuckles
+
+#### ada — 2026-06-16T20:09:53.078Z
+Plan: `docs/features/foundation/ast-711-integration-harness-first-authenticated-api-scenario.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-512/AST-711-integration-harness-first-api-scenario/docs/features/foundation/ast-711-integration-harness-first-authenticated-api-scenario.md
+
+**Scope:** MAJOR-CHANGE — new `run_integration_tests.sh`, CI workflow, `integration_io` guard across six external entry points; Betty owns first `tests/integration/` scenario + bible tier docs.
+
+**Conf:** Medium — component conftest/auth/SQLite patterns apply; guard placement and nav assertion need careful build.
+
+**Risk:** Medium — external guards must not break component mocks; new CI gate on dev/ftr pushes.
+
+---
+
 # AST-711 — Integration harness and first authenticated API scenario
 
 - **Linear (this ticket):** [AST-711](https://linear.app/astralcareermatch/issue/AST-711/integration-harness-and-first-authenticated-api-scenario-astral-integration)

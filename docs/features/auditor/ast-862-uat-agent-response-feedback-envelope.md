@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-862 archived 2026-07-29 -->
+
+## Linear archive (AST-862)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-862/uat-agent-performancefeedback-missing-from-agent-data-agent-response  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What failed
+
+Susan UAT 2026-07-11 00:08: Parsing/hydration now works (`grade_like` debug shows capture start, all 13 lines `parse=ok`), but **agent_performance / FEEDBACK does not appear in the stored** `agent_response` **on** `agent_data`.
+
+Susan: "Looks like it's parsing correctly, now, but the agent performance envelope or feedback does not appear in the agent_response in agent_data table."
+
+Log shows SUCCESS with RACOVK `vector_reviews`, full pipeline trace, then consult continues — but inspecting `agent_data.agent_response` for the job batch lacks `agent_performance` envelope and/or FEEDBACK block reference.
+
+Example: `grade_like` batch `grade_like-c6c2e008-…`, job `532bf4b1-…`, candidate `somerset` — capture trace present in log.
+
+## Expected
+
+1. When vector feedback capture runs on SUCCESS, the persisted `agent_ref` **/** `agent_response` on the entity (and retrievable `agent_data` rows) includes:
+   * **FEEDBACK** block in `prompt_blocks` when raw/unparseable fallback applies, OR
+   * `agent_performance` (including `vector_reviews`) preserved in the stored response envelope Susan can inspect via agent_data / Performance Monitor / FEEDBACK tab.
+2. Admin Vector Feedback rows from `vector_feedback` table remain queryable (capture may already persist DB rows — this bug is **agent_data visibility**).
+
+## Repro
+
+1. Staging: run `grade_like` (or `grade_get`) with debug enabled for candidate `somerset`.
+2. Confirm debug log shows `vector feedback capture start` and `parse=ok` for all lines.
+3. Query or UI-inspect `agent_data` for that batch/job — `agent_response` / prompt_blocks lack FEEDBACK and/or `agent_performance`.
+4. Expected: stored agent_response reflects feedback envelope for Susan's inspection.
+
+## Parent AC (quoted inline)
+
+> 2. When `agent_performance.status = success` but vector feedback is missing or unparseable, the run **still succeeds** for task payload purposes; raw feedback is stored in **agent_data** **FEEDBACK**; **no** **vector_feedback** rows are created for that run.
+
+> 7. With debug enabled, rubric-backed runs log each vector feedback found and recorded, or log that raw FEEDBACK was stored due to parse failure.
+
+## Boundaries
+
+* Does not change lenient run success or consult scoring.
+* Does not revert AST-859/860 parse/capture fixes.
+
+### Comments
+
+#### radia — 2026-07-11T00:16:13.938Z
+### AST-862 review (FIX-UAT)
+
+**Diff:** `origin/dev...origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope` (code `265b552`, doc after push)
+**Plan:** `docs/features/auditor/ast-862-uat-agent-response-feedback-envelope.md` § Review (Radia)
+
+**What looks good**
+- Clean-parse success path now mirrors unparseable branch: `store_feedback_block` + FEEDBACK ref in `prompt_blocks` after successful `insert_vector_feedback_rows`.
+- Fixes Susan repro: `vector_feedback` rows persisted but no FEEDBACK in agent_data / Performance Monitor tab.
+- RESPONSE / encoded consult decode unchanged; additive inspection only.
+- Tests: FEEDBACK JSON content, AST-724 clean-parse expectation updated, store_feedback failure does not undo rows.
+
+**advisory**
+- If FEEDBACK store fails after row insert, Admin still has rows but agent_data lacks FEEDBACK (existing lenient swallow pattern).
+- Pre-862 clean-parse batches need re-dispatch for FEEDBACK block — expected.
+
+**Verdict:** Clean — approve for User Testing. No fix-now.
+
+#### betty — 2026-07-11T00:15:15.915Z
+## QA test manifest (AST-862)
+
+**Publish ref:** `origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope` @ `265b552` (`merge-tests(AST-862): origin/tests 41db321`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+1. **Clean parse → FEEDBACK block (required):** `tests/component/core/test_agent.py::TestAst862CleanParseFeedbackBlock::test_clean_parse_feedback_block_has_vector_reviews_json` — after successful `insert_vector_feedback_rows`, `prompt_blocks` gains FEEDBACK ref and `agent_data` row holds `vector_reviews` JSON via `format_vector_reviews_raw`.
+
+2. **FEEDBACK store failure non-fatal (required):** `tests/component/core/test_agent.py::TestAst862CleanParseFeedbackBlock::test_store_feedback_block_failure_still_inserts_vector_feedback_rows` — `vector_feedback` rows persist when `store_feedback_block` raises.
+
+3. **AST-724 regression (required):** `tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows` — revised assertion: clean parse now expects rows **and** FEEDBACK block (was empty `prompt_blocks` pre-862).
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst862CleanParseFeedbackBlock \
+  tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture::test_clean_parse_inserts_vector_feedback_rows \
+  -q
+```
+
+**3 passed** on replay against publish ref.
+
+**Test bible shasums** (`origin/sub/AST-378/AST-862-uat-agent-response-feedback-envelope` @ `265b552`):
+- `docs/test-bible/core/agent.md`: 37d14ff67dcf6ed58372a16e8ee8c85fa2787275
+
+— Betty
+
+#### ada — 2026-07-11T00:12:43.826Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-862-uat-agent-response-feedback-envelope/docs/features/auditor/ast-862-uat-agent-response-feedback-envelope.md
+
+**Scope:** minor — single clean-parse branch in `_capture_rubric_vector_feedback`: append FEEDBACK block to `prompt_blocks` via existing `store_feedback_block` / `format_vector_reviews_raw` after successful `insert_vector_feedback_rows`.
+
+**Conf:** high — Susan repro + code confirms clean-parse path omits FEEDBACK while unparseable path already stores it; FEEDBACK tab (AST-808) consumes this block shape.
+
+**Risk:** low — intentional inspection duplicate alongside `vector_feedback` rows; no RESPONSE decode or consult scoring change.
+
+---
+
 # AST-862 — UAT: agent_performance/FEEDBACK missing from agent_data agent_response
 
 - **Linear:** [AST-862](https://linear.app/astralcareermatch/issue/AST-862/uat-agent-performancefeedback-missing-from-agent-data-agent-response)

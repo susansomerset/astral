@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-882 archived 2026-07-29 -->
+
+## Linear archive (AST-882)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-882/prefilter-one-retry-then-error-prefilter-failed-prefiter-companies-are  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-881 — failed prefiter companies are not getting transitioned to an error state  
+**Blocked by / blocks / related:** parent: AST-881
+
+### Description
+
+## What this implements
+
+When a company fails prefilter for a retryable technical reason, it must move to the established prefilter retry holding state once; when it fails again while already in that retry state, it must move to the established prefilter error state and leave the automatic prefilter claim pool. Batch summaries and monitor auto-run error reporting must reflect exhausted retries rather than an unbounded retry pool of the same companies. With debug enabled, each company outcome must record what was found and what state was written (retry vs error) per the backend debug contract.
+
+## Acceptance criteria
+
+1. A company that fails prefilter for a retryable technical reason while in the primary prefilter-eligible state is observable in `WEBSITE_FOUND_RETRY` afterward.
+2. The same company, claimed again from `WEBSITE_FOUND_RETRY` and failing prefilter again, is observable in `ERROR_PREFILTER` afterward — not still in `WEBSITE_FOUND_RETRY`.
+3. Companies in `ERROR_PREFILTER` are not re-claimed by automatic prefilter dispatch on later scheduler loops.
+4. Re-running prefilter against a set that previously produced repeated monitor alerts for the same technical failures no longer leaves those companies cycling forever in `WEBSITE_FOUND_RETRY`; after one retry they are in `ERROR_PREFILTER`.
+5. Companies that evaluate cleanly still reach the same pass / fail / no-joblists outcomes as today.
+
+## Boundaries
+
+* Does not change successful evaluate outcomes: `PREFILTER_PASSED`, `PREFILTER_FAILED`, or `NO_PREFILTER_JOBLISTS`.
+* Does not redesign `fetch_website` infra retry or other roster stages’ retry/error maps.
+* Does not require fixing LLM grade quality or malformed vector labels as a deliverable.
+* Does not add new company states beyond the established prefilter retry and error states.
+* Does not require a one-time production data migration unless Susan later asks for cleanup of companies already stuck in retry.
+
+## Notes for planning
+
+* Product contract was established in AST-606 / AST-702: first-strike retryable technical failure → `WEBSITE_FOUND_RETRY`; second strike from retry → `ERROR_PREFILTER`.
+* Primary domain: roster prefilter failure routing and any batch path that currently re-applies retry instead of error on second strike. Config/dispatch seeds for the legitimate single retry must keep working.
+* Parent definition lives on [AST-881](https://linear.app/astralcareermatch/issue/AST-881/failed-prefiter-companies-are-not-getting-transitioned-to-an-error) Description (Chuckles block above Original brief).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-07-13T17:04:14.899Z
+**Diff:** `origin/dev...origin/sub/AST-881/AST-882-prefilter-one-retry-error` @ `e8f0414`
+
+### What’s solid
+- Stages 1–3 match plan: registry `retry_state` claim companion (HOMEPAGE_READY → WEBSITE_FOUND_RETRY), `_prefilter_fail` → `_prefilter_batch_fail_dest` (one retry then ERROR_PREFILTER), not-ready WFR left alone, `fetch_website_batch` skips homepage-ready WFR.
+- Boundaries held — no new states, no evaluate routing / infra-fail redesign; ERROR_PREFILTER has no `batch_criteria`.
+- §1.3 / §2.1 / §2.6 / §1.5.1 satisfied; Self-Assessment Scope matches footprint.
+
+### Issues
+None.
+
+### Recommended actions
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory |
+
+**Doc:** `docs/features/roster/ast-882-prefilter-one-retry-error.md` — `docs(AST-882): Radia review — clean` → `origin/sub/AST-881/AST-882-prefilter-one-retry-error` @ `e8f0414`
+
+#### betty — 2026-07-13T16:58:04.029Z
+1. `tests/component/utils/test_config.py::TestAst882DispatchClaimStates` — `HOMEPAGE_READY` claims `WEBSITE_FOUND_RETRY`; `WEBSITE_FOUND` companion unchanged
+2. `tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError` — `_prefilter_fail` first/second strike; batch do_task fail from WFR → `ERROR_PREFILTER`; not-ready WFR leave-alone
+3. `tests/component/core/test_roster.py::TestPrefilterCompany::test_api_failure_and_missing_parsed_response` — revised scrape + `HOMEPAGE_READY` get_company mock
+4. `tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip` — homepage-ready WFR skip; bare WFR infra still terminals
+5. `tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr` — primary `prefilter`/`HOMEPAGE_READY` count+claim unions WFR
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst882DispatchClaimStates \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError \
+  tests/component/core/test_roster.py::TestPrefilterCompany::test_api_failure_and_missing_parsed_response \
+  tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr \
+  -q
+```
+
+`origin/sub/AST-881/AST-882-prefilter-one-retry-error` @ `cdcd3296d2af575ad83e63f375663d6a4556d1f6` (`merge-tests(AST-882): origin/tests c65ac459cbbd4427d2c631ca40abd6fd367aca20`)
+
+Bible shasums on publish ref:
+- `docs/test-bible/core/roster.md` `34481ed926819673e7ca55184f05d97923673b9f`
+- `docs/test-bible/core/gazer.md` `e1e7bd25ea88e698ec7469005455341a012b94c0`
+- `docs/test-bible/utils/config.md` `108a996d02c12c4ad54f2985e1b99f02ba2f8eab`
+- `docs/test-bible/data/database/dispatch_tasks.md` `a43455d862a46a6888fcd7196dec3b017afd2d82`
+
+#### hedy — 2026-07-13T16:49:53.821Z
+Plan: [`docs/features/roster/ast-882-prefilter-one-retry-error.md`](https://github.com/susansomerset/astral/blob/sub/AST-881/AST-882-prefilter-one-retry-error/docs/features/roster/ast-882-prefilter-one-retry-error.md)
+
+`origin/sub/AST-881/AST-882-prefilter-one-retry-error` @ `01c1f201af8a4180b8bd145dbec77abb30c521c2`
+
+**Self-assessment**
+- **Scope:** Single-Component — `dispatch_claim_states` retry_state companion for `HOMEPAGE_READY`, roster fail/readiness alignment, and a homepage_text skip in `fetch_website_batch` so prefilter can take the second strike.
+- **Conf:** high — dest map already encodes one-retry-then-error; bug is companion claim naming (`HOMEPAGE_READY_RETRY` vs configured `WEBSITE_FOUND_RETRY`) plus fetch_website recycling homepage-ready WFR.
+- **Risk:** Medium — shared `WEBSITE_FOUND_RETRY` between prefilter and fetch_website; wrong skip/leave-alone could strand scrape infra retries or re-open the loop.
+
+---
+
 # AST-882 — Prefilter one-retry then ERROR_PREFILTER
 
 - **Linear:** [AST-882 — Prefilter one-retry then ERROR_PREFILTER](https://linear.app/astralcareermatch/issue/AST-882/prefilter-one-retry-then-error-prefilter-failed-prefiter-companies-are)

@@ -30,6 +30,8 @@ Config sections:
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
+  INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
+  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
 """
 
 import json
@@ -134,6 +136,26 @@ _RESUME_ARTIFACT_HOP_TASK_KEYS = (
     "finalize_job_resume",
 )
 
+# Shared by craft_resume_base + simple_resume_parse (AST-1037) so contracts cannot drift.
+_CRAFT_RESUME_BASE_RESPONSE_SCHEMA: Dict[str, Any] = {
+    "resume_structure": {"type": "dict", "required": True},
+    "candidate_name": {"type": "str", "required": True},
+    "candidate_title": {"type": "str", "required": True},
+    "candidate_contact_detail": {"type": "str", "required": True},
+    "candidate_tagline": {"type": "str", "required": False},
+    "professional_summary": {"type": "str", "required": True},
+    "core_competencies": {"type": "str", "required": True},
+    "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
+    "prior_experience": {"type": "str", "required": False},
+    "education_certifications": {"type": "str", "required": False},
+    "technical_skills": {"type": "str", "required": False},
+}
+# do_task normalize gate — membership lives here (§1.4), not inline in agent.py.
+_CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
+    "craft_resume_base",
+    "simple_resume_parse",
+})
+
 # ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
 # task_prompt, cached_blocks, uncached_blocks) now lives in the agent_task
@@ -143,23 +165,20 @@ TASK_CONFIG = {
     # PREP CANDIDATE ARTIFACTS PROMPTS
     # CRAFT RESUME BASE - Judith 3
     "craft_resume_base": {
-        "response_schema": {
-            "resume_structure": {"type": "dict", "required": True},
-            "candidate_name": {"type": "str", "required": True},
-            "candidate_title": {"type": "str", "required": True},
-            "candidate_contact_detail": {"type": "str", "required": True},
-            "candidate_tagline": {"type": "str", "required": False},
-            "professional_summary": {"type": "str", "required": True},
-            "core_competencies": {"type": "str", "required": True},
-            "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
-            "prior_experience": {"type": "str", "required": False},
-            "education_certifications": {"type": "str", "required": False},
-            "technical_skills": {"type": "str", "required": False},
-        },
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
         "response_format": "json",
         "context_format": "parse_resume_{index}",
         "entity_type": None,
         "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    # SIMPLE RESUME PARSE - Ruth / Little (AST-1037); Admin session wire = AST-1038
+    "simple_resume_parse": {
+        "response_schema": _CRAFT_RESUME_BASE_RESPONSE_SCHEMA,
+        "response_format": "json",
+        "context_format": "simple_resume_parse_{index}",
+        "entity_type": None,
+        "requires_candidate_key": False,
         "trigger_state": None,
     },
     # BOOTSTRAP CANDIDATE CONTEXT - Estelle 3
@@ -421,6 +440,37 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1058 / AST-1060: Ruth meteorite qualify (pre-AI → METEORITE_QUALIFIED).
+    # Same claim/batch shape as qualify_job_listings; apply wiring is AST-1062.
+    "qualify_meteorite": {
+        "response_format": "json",
+        "output_type": "fields",
+        "scored": False,
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "astral_job_id":   {"type": "str", "required": True},
+                    "company_job_id":  {"type": "str", "required": True},  # external job UUID
+                    "job_title":       {"type": "str", "required": True},
+                    "job_link":        {"type": "str", "required": True},
+                    "jd_text":         {"type": "str", "required": True},  # visible JD content
+                },
+            },
+        },
+        "fallback_batch_size": 30,
+        "min_job_title_length": 5,   # same role as qualify_job_listings title gate
+        "min_jd_chars": 40,          # usable visible JD floor (align with METEORITE_EMAIL_INGEST_CONFIG)
+        "pass_state": "METEORITE_QUALIFIED",
+        "fail_state": "METEORITE_FAILED_QUALIFY",
+        "error_state": "METEORITE_ERROR_QUALIFY",
+        "context_format": "qualify_meteorite_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "qualify_meteorite",
+    },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
@@ -569,6 +619,72 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "requires_company": True,
         "agent_task": "analysis_upshot",
+        "trigger_state": None,
+    },
+    # AST-1052 / AST-1055: company-absent twins (no CULTURE_READY / vibe pages).
+    # Dispatch rows + trigger_state rules are AST-1054 — keys must match that sibling.
+    "meteorite_like": {
+        "scored": True,
+        "grades_key": "like_grades",
+        "rubric_artifact": "like_rubric",
+        "response_format": "json",
+        "output_type": "grades_encoded_notes",
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": _ENCODED_CONSULT_JOB_ITEM_SCHEMA,
+            },
+        },
+        "fallback_batch_size": 10,
+        "pass_state": "METEORITE_PASSED_LIKE",
+        "fail_state": "METEORITE_FAILED_LIKE",
+        "error_state": "METEORITE_FAILED_TECHNICAL_LIKE",
+        "save_prefix": "like",
+        "pass_threshold": 6.0,
+        "requires_company": False,
+        "grading_mode": "scored",
+        "context_format": "meteorite_like_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "meteorite_like",
+    },
+    "meteorite_upshot": {
+        "scored": True,
+        "response_format": "json",
+        "response_schema": {
+            "take_jd": {"type": "str", "required": True},
+            "take_get": {"type": "str", "required": True},
+            "take_do": {"type": "str", "required": True},
+            "take_like": {"type": "str", "required": True},
+            "whole_jd_upshot": {"type": "str", "required": True},
+            "segment_upshots": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "segment_key": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                },
+            },
+            "candidate_questions": {
+                "type": "list",
+                "required": True,
+                "items_schema": {"text": {"type": "str", "required": True}},
+            },
+            "caveats": {
+                "type": "list",
+                "required": True,
+                "items_schema": {"text": {"type": "str", "required": True}},
+            },
+        },
+        "pass_state": "RECOMMENDED",
+        "error_state": "METEORITE_PASSED_LIKE_RETRY",
+        "context_format": "meteorite_upshot_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "requires_company": False,
+        "agent_task": "meteorite_upshot",
         "trigger_state": None,
     },
 
@@ -1059,6 +1175,40 @@ PREAMBLE_VALIDATION_CONFIG = {
 
 assert PREAMBLE_VALIDATION_CONFIG["task_key"] == PREAMBLE_CONFIG["validation_task_key"]
 
+# AST-1047: reusable string → candidate-id match homes (Manage Email From bind first caller).
+CANDIDATE_LOOKUP_CONFIG = {
+    # Dotted paths resolved against a full candidate row (top-level columns + candidate_data).
+    "email_paths": (
+        "contact.contact_email",   # AST-1014 contact blob
+        "contact.reply_email",
+        "profile.contact_email",   # transitional pre-1014
+        "profile.reply_email",
+    ),
+    "name_paths": (
+        "first", "last", "full",           # AST-1014 name columns when present
+        "profile.first", "profile.last",   # transitional
+    ),
+    "match_casefold": True,  # case-insensitive compare for emails and names
+}
+
+# AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
+INBOX_CREATE_JOB_CONFIG = {
+    # Tags removed entirely (and their children) before job HTML is recorded.
+    "strip_tags": (
+        "script", "style", "noscript", "iframe", "object", "embed", "link", "meta",
+    ),
+    # Attribute names removed from every remaining tag (casefold compare).
+    "strip_attr_names": (
+        "style", "onclick", "onload", "onerror", "onmouseover", "srcset",
+    ),
+    # True → also drop any attribute whose name starts with "on".
+    "strip_on_attrs": True,
+    # Format with subject= (HTML-escaped) and body= (already-stripped HTML fragment).
+    "subject_html_template": (
+        '<header class="email-subject"><h1>{subject}</h1></header>\n'
+        '<section class="email-body">{body}</section>'
+    ),
+}
 assert "PROSPECT" not in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
@@ -1279,12 +1429,14 @@ CANDIDATE_STAGE_DISPATCH = {
         "task_key": "candidate_requested_resume",
         "trigger_state": "REQUESTED_RESUME",
         "pass_state": "RESUME_READY",
+        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
         "craft_task_key": "craft_resume_base",
     },
     "requested_artifacts": {
         "task_key": "candidate_requested_artifacts",
         "trigger_state": "REQUESTED_ARTIFACTS",
         "pass_state": "ARTIFACTS_READY",
+        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
         # Sequential fan-in — not run_next daisy-chain. Title patterns stay profile/intake.
         "craft_task_keys": [
             "craft_company_search_terms",
@@ -1415,6 +1567,10 @@ def rubric_owner_task_key(task_key: str) -> Optional[str]:
     artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
     if artifact:
         return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact)
+    # Twin consumers (e.g. meteorite_like) resolve via TASK_CONFIG.rubric_artifact.
+    rk = (TASK_CONFIG.get(task_key) or {}).get("rubric_artifact")
+    if isinstance(rk, str) and rk.strip():
+        return RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk.strip())
     return None
 
 
@@ -1512,7 +1668,7 @@ JOB_STATES = {
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
     ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
     "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
@@ -1524,10 +1680,161 @@ JOB_STATES = {
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
     "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY"]},
+    # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
+    # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
+    # METEORITE_QUALIFIED (GDL entry). evaluate_jd claims METEORITE_QUALIFIED only (AST-1060).
+    "METEORITE_NEW":                  {"prior_states": None},
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
+    "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
+    "METEORITE_FAILED_TECHNICAL_GET": {"prior_states": ["METEORITE_PASSED_DO"]},
+    # LIKE claimed from METEORITE_PASSED_GET (no CULTURE_READY) — sibling AST-1054/1055.
+    "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
+    "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
+    "METEORITE_FAILED_TECHNICAL_LIKE":{"prior_states": ["METEORITE_PASSED_GET"]},
+    # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
+    "METEORITE_PASSED_LIKE_RETRY":    {"prior_states": ["METEORITE_PASSED_LIKE"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
     "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
 }
+
+# ---------------------------------------------------------------------------
+# METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
+# Lazy-ensure inserts meteorite-<candidate_id> on demand — never bulk at server start.
+# Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
+# (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
+# ---------------------------------------------------------------------------
+METEORITE_CONFIG = {
+    "short_name_prefix": "meteorite-",
+    "short_name_template": "meteorite-{candidate_id}",  # format with candidate_id=
+    "company_name": "meteorite",
+    "company_state": "IGNORE",
+    "company_data": {
+        "note": (
+            "The company for this job has not been identified, and cannot be "
+            "vetted without a website url."
+        ),
+    },
+    # AST-1042 / AST-1056 job-create defaults (consumed by create_meteorite_job)
+    "job_create_state": "METEORITE_NEW",
+    "job_create_latest_score": 10.0,
+}
+
+assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
+assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
+
+# AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
+METEORITE_EMAIL_INGEST_CONFIG = {
+    # Only http(s) hrefs are job-link candidates (mailto:/tel: excluded by scheme).
+    "link_schemes": ("http", "https"),
+    # Lowercased path/host fragments that disqualify an href (unsubscribe, tracking, etc.).
+    "link_exclude_substrings": (
+        "unsubscribe",
+        "mailto:",
+        "list-manage.com",
+        "/preferences",
+        "/email-settings",
+    ),
+    # Max concurrent Playwright fetches for a link list (same idea as gazer JD scrape caps).
+    "playwright_concurrency": 3,
+    # Skip create when visible/body text length is below this after strip/fetch.
+    "min_jd_chars": 40,
+}
+
+# AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
+# score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
+# Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
+METEORITE_DISPATCH_TASKS = (
+    {
+        "task_key": "qualify_meteorite",
+        "trigger_state": "METEORITE_NEW",
+        "score_floor": None,
+        "auto_mode": False,
+        "batch_size": 30,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "evaluate_jd",
+        "trigger_state": "METEORITE_QUALIFIED",
+        "score_floor": None,  # ungated GDL entry (AST-1060 — was METEORITE_NEW)
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "grade_do",
+        "trigger_state": "METEORITE_PASSED_JD",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "grade_get",
+        "trigger_state": "METEORITE_PASSED_DO",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "meteorite_like",
+        "trigger_state": "METEORITE_PASSED_GET",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 10,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "meteorite_upshot",
+        "trigger_state": "METEORITE_PASSED_LIKE",
+        "score_floor": 0.0,
+        "auto_mode": False,
+        "batch_size": 1,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+)
+
+# Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
+METEORITE_GDL_OUTCOME_BY_TASK = {
+    "evaluate_jd": {
+        "pass_state": "METEORITE_PASSED_JD",
+        "fail_state": "METEORITE_FAILED_JD",
+        "error_state": "METEORITE_ERROR_EVALUATE_JD",
+    },
+    "grade_do": {
+        "pass_state": "METEORITE_PASSED_DO",
+        "fail_state": "METEORITE_FAILED_DO",
+        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
+    },
+    "grade_get": {
+        "pass_state": "METEORITE_PASSED_GET",
+        "fail_state": "METEORITE_FAILED_GET",
+        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
+    },
+}
+
+assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
+assert all(
+    st in JOB_STATES
+    for overlay in METEORITE_GDL_OUTCOME_BY_TASK.values()
+    for st in overlay.values()
+)
 
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
@@ -1620,6 +1927,8 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
+    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET",
+    "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
 ]
 # Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
 # Claim uses latest_score >= score_floor on these states; UI treats misses as Skipped while DB
@@ -1631,6 +1940,8 @@ IN_REVIEW_STATES = [
 # PASSED_JOBLIST here (would change claim sort_by for that trigger).
 PASSED_SCORE_GATED_STATES = frozenset({
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE",
+    # AST-1054: meteorite gated hops (score_floor 0 on dispatch rows — not METEORITE_NEW).
+    "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET", "METEORITE_PASSED_LIKE",
 })
 
 # Admin Edit Dispatch Task modal — score_floor dropdown (AST-743 / AST-750).
@@ -1705,8 +2016,8 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like", "vet_inflow_discovery",
+    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "grade_do", "grade_get",
+    "grade_like", "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -1750,6 +2061,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
         return "NEW"
+    if task_key == "qualify_meteorite":
+        return "METEORITE_NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
     if task_key == "fetch_culture_pages":
@@ -1767,8 +2080,12 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "PASSED_DO"
     if task_key == "grade_like":
         return "CULTURE_READY"
+    if task_key == "meteorite_like":
+        return "METEORITE_PASSED_GET"
     if task_key == "analysis_upshot":
         return "PASSED_LIKE"
+    if task_key == "meteorite_upshot":
+        return "METEORITE_PASSED_LIKE"
     if task_key in resume_artifact_hop_task_keys():
         return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
@@ -1799,7 +2116,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "evaluate_jd",
+        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
@@ -1958,6 +2275,11 @@ SKIPPED_STATES = [
     "NEED_WEBSITE_CONTENT",
     "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS",
     "FAILED_LIKE", "FAILED_TECHNICAL_LIKE",
+    "METEORITE_FAILED_QUALIFY", "METEORITE_ERROR_QUALIFY",
+    "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD",
+    "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
+    "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
+    "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
     "CANDIDATE_SKIPPED",
 ]
@@ -1983,6 +2305,13 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "CULTURE_READY", "label": "Culture Ready"},
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
+    {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
+    {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
+    {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
+    {"state": "METEORITE_PASSED_DO", "label": "Meteorite Passed DO"},
+    {"state": "METEORITE_PASSED_GET", "label": "Meteorite Passed GET"},
+    {"state": "METEORITE_PASSED_LIKE", "label": "Meteorite Passed LIKE"},
+    {"state": "METEORITE_PASSED_LIKE_RETRY", "label": "Meteorite LIKE upshot (retry)"},
 ]
 
 JOBS_RECOMMENDED_UI_SECTIONS = [
@@ -1990,6 +2319,21 @@ JOBS_RECOMMENDED_UI_SECTIONS = [
     {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "In Progress"},
     {"state": "CANDIDATE_REVIEW", "label": "Ready"},
 ]
+
+# AST-1052 / AST-1057: Recommended page — distinct Meteorites section membership.
+# Jobs already land in RECOMMENDED / BUILD_ARTIFACTS / CANDIDATE_REVIEW after meteorite_upshot
+# (AST-1055); partition by company short_name prefix, not by a new job state.
+JOBS_RECOMMENDED_METEORITE_SECTION = {
+    "section_id": "meteorites",
+    "label": "Meteorites",
+    "company_prefix": METEORITE_CONFIG["short_name_prefix"],  # "meteorite-"
+}
+assert isinstance(JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"], str)
+assert JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
+assert (
+    JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
+    == METEORITE_CONFIG["short_name_prefix"]
+)
 
 JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
     {"field": "jd_score", "label": "JD"},
@@ -2003,15 +2347,25 @@ assert all(row["state"] in RECOMMENDED_JOB_STATES for row in JOBS_RECOMMENDED_UI
 JOBS_SKIPPED_SECTION_ORDER = [
     "FAILED_LIKE",
     "FAILED_TECHNICAL_LIKE",
+    "METEORITE_FAILED_LIKE",
+    "METEORITE_FAILED_TECHNICAL_LIKE",
     "FAILED_GET",
     "FAILED_TECHNICAL_GET",
+    "METEORITE_FAILED_GET",
+    "METEORITE_FAILED_TECHNICAL_GET",
     "FAILED_DO",
     "FAILED_TECHNICAL_DO",
+    "METEORITE_FAILED_DO",
+    "METEORITE_FAILED_TECHNICAL_DO",
     "NEED_WEBSITE_CONTENT",
     "NEED_CULTURE_CONTENT",
     "NO_CULTURE_LINKS",
     "FAILED_JD",
     "FAILED_TECHNICAL",
+    "METEORITE_FAILED_JD",
+    "METEORITE_ERROR_EVALUATE_JD",
+    "METEORITE_FAILED_QUALIFY",
+    "METEORITE_ERROR_QUALIFY",
     "FAILED_JOBLIST",
     "INVALID_TITLE",
     "JD_SCRAPE_FAIL",
@@ -2037,6 +2391,16 @@ JOBS_SKIPPED_SECTION_LABELS = {
     "NO_CULTURE_LINKS": "No Culture Links",
     "FAILED_LIKE": "Failed LIKE",
     "FAILED_TECHNICAL_LIKE": "Failed Technical LIKE",
+    "METEORITE_FAILED_QUALIFY": "Meteorite Failed Qualify",
+    "METEORITE_ERROR_QUALIFY": "Meteorite Error Qualify",
+    "METEORITE_FAILED_JD": "Meteorite Failed JD",
+    "METEORITE_ERROR_EVALUATE_JD": "Meteorite Error Evaluate JD",
+    "METEORITE_FAILED_DO": "Meteorite Failed DO",
+    "METEORITE_FAILED_TECHNICAL_DO": "Meteorite Failed Technical DO",
+    "METEORITE_FAILED_GET": "Meteorite Failed GET",
+    "METEORITE_FAILED_TECHNICAL_GET": "Meteorite Failed Technical GET",
+    "METEORITE_FAILED_LIKE": "Meteorite Failed LIKE",
+    "METEORITE_FAILED_TECHNICAL_LIKE": "Meteorite Failed Technical LIKE",
 }
 
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
@@ -2051,6 +2415,11 @@ JOBS_IN_REVIEW_GRADE_FIELD = {
     "PASSED_GET": "get_grades",
     "PASSED_LIKE": "like_grades",
     "PASSED_LIKE_RETRY": "like_grades",
+    "METEORITE_PASSED_JD": "jd_grades",
+    "METEORITE_PASSED_DO": "do_grades",
+    "METEORITE_PASSED_GET": "get_grades",
+    "METEORITE_PASSED_LIKE": "like_grades",
+    "METEORITE_PASSED_LIKE_RETRY": "like_grades",
 }
 JOBS_SKIPPED_GRADE_FIELD = {
     "FAILED_JOBLIST": "joblist_grades",
@@ -2058,6 +2427,10 @@ JOBS_SKIPPED_GRADE_FIELD = {
     "FAILED_GET": "get_grades",
     "FAILED_DO": "do_grades",
     "FAILED_LIKE": "like_grades",
+    "METEORITE_FAILED_JD": "jd_grades",
+    "METEORITE_FAILED_DO": "do_grades",
+    "METEORITE_FAILED_GET": "get_grades",
+    "METEORITE_FAILED_LIKE": "like_grades",
 }
 JOBS_UI_GRADE_RUBRIC = {
     "joblist_grades": "joblist_rubric",
@@ -2123,6 +2496,11 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_artifact_tabs": list(JOBS_RECOMMENDED_ARTIFACT_TABS),
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
+                "meteorite_section": {
+                    "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
+                    "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],
+                    "company_prefix": JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"],
+                },
             },
         },
         "candidate": {"artifact_generate_states": gen_states},
@@ -3054,6 +3432,8 @@ NAV_CONFIG = [
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
+            {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
+            {"label": "Manage Email", "path": "/admin/manage_email"},
         ],
     },
 ]
@@ -3316,6 +3696,12 @@ BUILD_CONFIG = {
             "default_accent": "#3c2c6e",
             "default_header": "#3c2c6e",
             "page_background": "#f5f5f5",
+            # Golden resume :root text/border tokens (AST-1020).
+            "text_primary": "#1a1a1a",
+            "text_secondary": "#444",
+            "text_tertiary": "#666",
+            "border_light": "#e0e0e0",
+            "border_medium": "#ccc",
         },
         # Visually hidden ATS keyword strip — builder emits class ats-keywords; all knobs here (§1.4).
         "ats_keyword_block": {
@@ -3481,6 +3867,19 @@ BUILD_CONFIG = {
     # AST-301 / AST-368 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
+    },
+    # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
+    "session_cover_letter": {
+        "document_title": "SomersetCover",
+        "fields": {
+            "from_block": {"required": True},
+            "letter_date": {"required": True},
+            "to_block": {"required": False},
+            "subject": {"required": False},
+            "letter": {"required": True},
+            "signoff_closing": {"required": True},
+            "signature": {"required": True},
+        },
     },
 }
 
