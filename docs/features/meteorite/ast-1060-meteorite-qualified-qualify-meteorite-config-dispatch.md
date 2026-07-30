@@ -4,20 +4,21 @@
 **Parent:** [AST-1058](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite) — Qualify Meteorite
 **Publish ref:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`
 
-Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**, updates UI manifests, reframes **METEORITE_NEW** as pre-AI entry, retargets meteorite `evaluate_jd` claim from **METEORITE_NEW** → **METEORITE_QUALIFIED**, and adds `TASK_CONFIG` + `agent_task` shell + meteorite `dispatch_task` row for `qualify_meteorite` claiming **METEORITE_NEW**. Does **not** own gazer Playwright ingest (AST-1061) or core/consult batch apply (AST-1062).
+Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**, updates UI manifests, reframes **METEORITE_NEW** as pre-AI entry, retargets meteorite `evaluate_jd` claim from **METEORITE_NEW** → **METEORITE_QUALIFIED** (config **and** live `dispatch_task` rows), and adds `TASK_CONFIG` + `agent_task` shell + meteorite `dispatch_task` row for `qualify_meteorite` claiming **METEORITE_NEW**. Does **not** own gazer Playwright ingest (AST-1061) or core/consult batch apply (AST-1062).
 
 ## Files Changed (planned)
 
 | File | Change | Layer |
 |------|--------|-------|
 | `src/utils/config.py` | New qualify states + UI; retarget GDL priors/`METEORITE_DISPATCH_TASKS` evaluate_jd trigger; `TASK_CONFIG["qualify_meteorite"]`; dispatch helper rules | utils |
+| `src/core/dispatcher.py` | Extend `ensure_meteorite_dispatch_tasks` to retire stale `evaluate_jd`@`METEORITE_NEW` after insert | core |
 | `data/admin/agent_task.json` | `qualify_meteorite` shell row (Ruth) | data/admin |
 
 No `consult.py` / `meteorite.py` apply path, no gazer, no frontend TS, no `tests/` / bible (Betty after Code Complete).
 
 ## Stage 1: Qualify states, UI, GDL retarget, `qualify_meteorite` TASK_CONFIG + dispatch
 
-**Done when:** Config imports with the three new states; GDL `evaluate_jd` meteorite dispatch claims **METEORITE_QUALIFIED**; `TASK_CONFIG["qualify_meteorite"]` and a `METEORITE_DISPATCH_TASKS` row claim **METEORITE_NEW**; Jobs In Review / Skipped manifests include the new states; non-meteorite qualify/`JOB_STATES` priors unchanged.
+**Done when:** Config imports with the three new states; GDL `evaluate_jd` meteorite dispatch claims **METEORITE_QUALIFIED** in config **and** on live rows after provision (no remaining `evaluate_jd`@`METEORITE_NEW`); `TASK_CONFIG["qualify_meteorite"]` and a `METEORITE_DISPATCH_TASKS` row claim **METEORITE_NEW**; Jobs In Review / Skipped manifests include the new states; non-meteorite qualify/`JOB_STATES` priors / `evaluate_jd`@`JD_READY` unchanged.
 
 1. In `src/utils/config.py` `JOB_STATES`, **replace** the meteorite GDL block comment and entries so the chain is:
 
@@ -55,8 +56,6 @@ Keep **METEORITE_NEW** `prior_states: None` (create / ingest unrestricted entry)
 
 3. Retarget meteorite GDL entry in `METEORITE_DISPATCH_TASKS`: change the `evaluate_jd` entry’s `"trigger_state"` from `"METEORITE_NEW"` to `"METEORITE_QUALIFIED"`. Keep `"score_floor": None` (ungated GDL entry, mirrors prior METEORITE_NEW / normal JD_READY).
 
-⚠️ **Decision — do not mutate existing DB rows in this ticket:** `ensure_meteorite_dispatch_tasks` only **inserts** missing `(task_key, trigger_state)` pairs. After this change, provisioning adds `evaluate_jd` @ **METEORITE_QUALIFIED**; a stale `evaluate_jd` @ **METEORITE_NEW** row may remain until ops/admin clears it. That is acceptable for AST-1060 — do **not** add a one-shot migrator here. Document in Linear if Chuckles wants a cleanup task later.
-
 4. Append a new first entry to `METEORITE_DISPATCH_TASKS` (before `evaluate_jd`):
 
 ```python
@@ -71,9 +70,18 @@ Keep **METEORITE_NEW** `prior_states: None` (create / ingest unrestricted entry)
     },
 ```
 
-Existing `ensure_meteorite_dispatch_tasks` already seeds every `METEORITE_DISPATCH_TASKS` entry whose `task_key` is in `TASK_CONFIG` — no `dispatcher.py` body change required once Step 5 lands.
+5. In `src/core/dispatcher.py`, extend `ensure_meteorite_dispatch_tasks` so the **live claim surface** matches config (parent AC5 / Boundaries — meteorite `evaluate_jd` must not claim unenriched **METEORITE_NEW**):
 
-5. In `TASK_CONFIG`, immediately after `"qualify_job_listings"`, add:
+- Keep the existing insert loop over `METEORITE_DISPATCH_TASKS` (adds `evaluate_jd`@`METEORITE_QUALIFIED` and `qualify_meteorite`@`METEORITE_NEW` when missing).
+- **After** inserts, scan `database.list_dispatch_tasks_for_candidate(cid)` and **retire** every row where `task_key == "evaluate_jd"` and `trigger_state == "METEORITE_NEW"` by calling `database.delete_dispatch_task(row["id"])` (thin wrapper `delete_dispatch_task` already exists in this module — use that).
+- Do **not** delete `evaluate_jd`@`JD_READY` (or any other non-meteorite trigger). Only the stale meteorite pair `"METEORITE_NEW"`.
+- Prefer **delete** over `update_dispatch_task(... trigger_state=METEORITE_QUALIFIED)` so a candidate that already received the new insert does not hit a duplicate `(task_key, trigger_state)` collision.
+- Include `retired` (int) in the function’s return dict alongside `added` / `skipped` / `skipped_missing_config`.
+- `provision_meteorite_dispatch_tasks` already calls `ensure_meteorite_dispatch_tasks` for template + every candidate with dispatch rows — no second provision entry-point; optionally sum `retired` into its return stats the same way it sums `added`.
+
+⚠️ **Decision — retire inside `ensure_meteorite_dispatch_tasks`:** Joan fix-now: insert-only leaves a claimable stale row. Surgical delete of `evaluate_jd`@`METEORITE_NEW` (not a blanket “mismatched trigger” cleanup) satisfies AC5 without touching normal `evaluate_jd`@`JD_READY`. Config retarget alone is not enough.
+
+6. In `TASK_CONFIG`, immediately after `"qualify_job_listings"`, add:
 
 ```python
     # AST-1058 / AST-1060: Ruth meteorite qualify (pre-AI → METEORITE_QUALIFIED).
@@ -111,15 +119,15 @@ Existing `ensure_meteorite_dispatch_tasks` already seeds every `METEORITE_DISPAT
 
 ⚠️ **Decision — do not edit `qualify_job_listings` TASK_CONFIG or normal `NEW`/`PASSED_JOBLIST` priors:** Non-meteorite path must stay byte-stable (parent AC7 smoke).
 
-6. Wire dispatch defaults for the new task key:
+7. Wire dispatch defaults for the new task key:
 
 - In `_dispatch_trigger_state_for_task_key`, add `if task_key == "qualify_meteorite": return "METEORITE_NEW"` (near the `qualify_job_listings` → `"NEW"` branch).
 - In `_dispatch_entity_type_for_task_key`, add `"qualify_meteorite"` to the job-entity tuple that already lists `"qualify_job_listings", "evaluate_jd", …`.
 - Add `"qualify_meteorite"` to `_DISPATCH_BATCH_CALL_MODE_ONE` (next to `"qualify_job_listings"`).
 
-7. Do **not** edit `consult.py`, `agent.py`, `dispatcher.py` runners, `meteorite.py`, gazer, or frontend. Do **not** set `auto_mode: True`. Do **not** change `METEORITE_CONFIG["job_create_state"]` (stays **METEORITE_NEW**).
+8. Do **not** edit `consult.py`, `agent.py`, batch runners, `meteorite.py`, gazer, or frontend. Do **not** set `auto_mode: True`. Do **not** change `METEORITE_CONFIG["job_create_state"]` (stays **METEORITE_NEW**). The only `dispatcher.py` change is Step 5 (`ensure_meteorite_dispatch_tasks` + optional provision stats).
 
-**Done when (recheck):** `JOB_STATES["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]`; `METEORITE_DISPATCH_TASKS` has `qualify_meteorite`@`METEORITE_NEW` and `evaluate_jd`@`METEORITE_QUALIFIED`; `TASK_CONFIG["qualify_meteorite"]["pass_state"] == "METEORITE_QUALIFIED"`; `_dispatch_trigger_state_for_task_key("qualify_meteorite") == "METEORITE_NEW"`; import/asserts on `METEORITE_DISPATCH_TASKS` / `JOB_STATES` pass; `python3 -m py_compile src/utils/config.py` succeeds.
+**Done when (recheck):** `JOB_STATES["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]`; `METEORITE_DISPATCH_TASKS` has `qualify_meteorite`@`METEORITE_NEW` and `evaluate_jd`@`METEORITE_QUALIFIED`; after `ensure_meteorite_dispatch_tasks(cid)` a candidate that previously had `evaluate_jd`@`METEORITE_NEW` has that row gone and `evaluate_jd`@`METEORITE_QUALIFIED` present; `evaluate_jd`@`JD_READY` untouched; `TASK_CONFIG["qualify_meteorite"]["pass_state"] == "METEORITE_QUALIFIED"`; `_dispatch_trigger_state_for_task_key("qualify_meteorite") == "METEORITE_NEW"`; `python3 -m py_compile src/utils/config.py src/core/dispatcher.py` succeeds.
 
 ## Stage 2: `agent_task.json` shell for `qualify_meteorite`
 
@@ -160,19 +168,25 @@ Existing `ensure_meteorite_dispatch_tasks` already seeds every `METEORITE_DISPAT
 - Editing non-meteorite `qualify_job_listings` behavior or prompts.
 - Frontend React enums (manifest is config-driven).
 - `tests/` / `docs/test-bible/**` (Betty after Code Complete).
-- One-shot deletion of stale `evaluate_jd`@`METEORITE_NEW` dispatch rows.
+- Deleting or rewriting normal-track `evaluate_jd`@`JD_READY` (or any non-`METEORITE_NEW` evaluate_jd row).
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — `config.py` state/dispatch/TASK_CONFIG + one `agent_task.json` row; no core apply / gazer / UI TS.
+**Scope:** `Single-Component` — `config.py` state/dispatch/TASK_CONFIG + `ensure_meteorite_dispatch_tasks` retire + one `agent_task.json` row; no consult apply / gazer / UI TS.
 
-**Conf:** `high` — mirrors AST-1053/1054/1055 meteorite state + dispatch + agent_task shell patterns; retarget is a literal prior/`trigger_state` swap already named on the parent.
+**Conf:** `high` — mirrors AST-1053/1054/1055 patterns; Joan fix-now is a surgical delete of one stale `(task_key, trigger_state)` using existing `delete_dispatch_task`.
 
-**Risk:** `Medium` — wrong prior retarget would leave `evaluate_jd` claiming unenriched **METEORITE_NEW** or block lawful GDL transitions; mitigated by explicit `JOB_STATES` + `METEORITE_DISPATCH_TASKS` edits and left `auto_mode: False` until AST-1062.
+**Risk:** `Medium` — wrong retire predicate could drop normal `evaluate_jd`@`JD_READY`; mitigated by hard-matching only `trigger_state == "METEORITE_NEW"`. Stale claim surface is closed by the retire step (AC5).
 
 ## Rules self-review
 
-- **§2.1 / no-hardcoded-sets / config-source-of-truth:** All states, task keys, schema, dispatch triggers in config / repo agent_task JSON.
-- **§2.6 / job-prior-states-enforced:** GDL outcomes only from **METEORITE_QUALIFIED**; qualify outcomes only from **METEORITE_NEW**.
-- **§3.3 imports:** No new core↔UI edges; dispatcher already imports `METEORITE_DISPATCH_TASKS` / `TASK_CONFIG`.
+- **§2.1 / no-hardcoded-sets / config-source-of-truth:** All states, task keys, schema, dispatch triggers in config / repo agent_task JSON; retire target is the prior meteorite GDL pair named in AC5.
+- **§2.6 / job-prior-states-enforced:** GDL outcomes only from **METEORITE_QUALIFIED**; claim surface for meteorite `evaluate_jd` matches that; qualify outcomes only from **METEORITE_NEW**.
+- **§3.3 imports:** Dispatcher already imports data + `METEORITE_DISPATCH_TASKS` / `TASK_CONFIG`; no new core↔UI edges.
 - **In-scope only:** No gazer / consult apply / tests / bible.
+
+## Revisions
+
+**Revision 1 — 2026-07-30**
+Driven by: Joan `[plan-discuss] round=1 concern` / plan-rubric fix-now — insert-only provision leaves claimable stale `evaluate_jd`@`METEORITE_NEW` (AC5).
+Changes: Added `src/core/dispatcher.py` to Files Changed; Stage 1 Step 5 retires that pair via `delete_dispatch_task` after inserts; removed the old “do not mutate DB rows” decision and the out-of-scope “cleanup later” line; Done-when / Self-Assessment / Rules updated for live claim-surface match.
