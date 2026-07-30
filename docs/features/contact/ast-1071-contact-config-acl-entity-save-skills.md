@@ -262,3 +262,9 @@ app.register_blueprint(contact_bp)
 ## Execution contract
 
 The plan is binding. Execute stages in order; one commit per stage on epic worktree; publish to `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`. On ambiguity or codebase drift, stop and comment on parent **AST-1043** with the Stage-blocked format — do not improvise.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`  
+**Tip:** `91ced0bc` — Contact skills ACL + runners + admin API (stages 1–3)  
+**Stage commits:** `615f39b6` (config), `20361b54` (core runners), `91ced0bc` (admin API)
