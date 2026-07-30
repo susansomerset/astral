@@ -216,3 +216,20 @@ Convention: `gradeKey.replace("_grades", "_rubric")` / `"_score"`. Each `*_rubri
 **Built:** `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables` @ `707be3e69cf1bb637675eb7451c06779ae514a4a`
 
 Stages 1–3: `jobCarriedRubricKey` / fingerprint / `groupJobsByAlignedRubric` / `buildJobListRubricColumnsForGroup` / `analysisTimeScoreForJob` in `rubricDisplay.ts`; Skipped + In Review render one table per aligned group; live candidate artifacts no longer drive list columns; Score prefers `{prefix}_score` then `latest_score`. In Review Score header always-on when `gradeKey` set (Joan discuss). Stage 4 smoke: deferred to UAT / Betty. Tests deferred to Betty.
+
+## Radia review (code-rubric.v1)
+
+**Date:** 2026-07-30  
+**Publish tip before this docs commit:** `bd51dbfac475c4e73e202caf2923bc348cb69655`  
+**Overall:** DISCUSS — **fix-now:** none; **discuss:** statute straggler ×17 (substance **conforms**; tip includes AST-1063 + Betty tests vs Joan UI-only exclusion set); no advisory.
+
+### What’s solid
+- Dropped live-artifact column source on Skipped + In Review; `groupJobsByAlignedRubric` + `buildJobListRubricColumnsForGroup` + `analysisTimeScoreForJob`.
+- In Review Score header always-on when `gradeKey` set (addresses Joan plan discuss).
+- Boundaries vs AST-1063 / Recommended held in this ticket’s `code(AST-1064)` commit.
+
+### Issues
+- **discuss (straggler ×17):** Joan excluded core/batch/docs/test-tree statutes at plan time (UI-only Files Changed); three-dot vs `origin/dev` brings AST-1063 + features + Betty tests in-scope — all score **conforms**.
+
+### Recommended actions
+- Acknowledge stragglers → resolve-child → User Testing (no product delta).
