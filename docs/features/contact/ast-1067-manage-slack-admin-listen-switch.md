@@ -325,3 +325,11 @@ def contact_put_listen():
 | No-hardcoded-sets | Production env string + filename from config |
 | Debug contract | Style D only when `debug=True` on set/post |
 | Database header inventory | N/A — no SQLite table |
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`  
+**Tip:** `dff0a9ae` — Manage Slack listen switch + non-prod reply tag (stages 1–5)  
+**Stage commits:** `e78c26ab` (config/NAV), `20279fb3` (data JSON), `6b169178` (core listen/prefix/post), `01a0df99` (admin API), `dff0a9ae` (Manage Slack page + route)
