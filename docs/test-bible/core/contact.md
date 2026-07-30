@@ -14,15 +14,15 @@
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys`, `slack_env_names`, `non_production_reply_prefix`. Config: **`docs/test-bible/utils/config.md`**.
+Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys`, `slack_env_names`, `non_production_reply_prefix` — reads `CONTACT_CONFIG` only; no Slack HTTP / DB / skill runners. Config block: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Listen default / empty skills copy / env names / prefix / no TASK_CONFIG collision | `src/core/contact.py` | **`TestAst1066ContactScaffold`** |
+| Listen default / skills shallow copy / env names / prefix / no TASK_CONFIG collision | `src/core/contact.py` | **`TestAst1066ContactScaffold`** |
 
-**Broken / obsolete:** none — new module.
+**Broken / obsolete:** empty-`skills` asserts superseded by **AST-1071** (scaffold still requires shallow-copy + collision checks).
 
-**Integration:** no existing scenario asserts Contact — no revision.
+**Integration:** no existing scenario asserts Contact / CONTACT_CONFIG — no revision; do not invent new integration coverage.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -32,6 +32,28 @@ Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys
 ```
 
 ---
+
+### AST-1071 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
+
+ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_data` paths only via `save_candidate_data`; Style D when `debug=True`. Config inventory: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Meta / allowlisted write / reject path·skill·missing / Style D on+off | `src/core/contact.py` | **`TestAst1071ContactSkillRunners`** |
+
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised in **`TestAst1066ContactScaffold`** / **`TestAst1066ContactConfig`**.
+
+**Integration:** no existing scenario asserts Contact skill runners — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1071ContactSkillsConfig \
+  tests/component/core/test_contact.py::TestAst1071ContactSkillRunners \
+  tests/component/ui/api/test_api_contact.py::TestAst1071ContactSkillsApi \
+  -q
+```
 
 ### AST-1069 · AST-1043
 
@@ -54,3 +76,30 @@ Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys
   tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi \
   -q
 ```
+
+---
+
+
+### AST-1067 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
+
+Manage Slack listen hydrate/set (`set_slack_listen_enabled` / durable JSON under `db_dir`), `contact_is_production_deploy`, `format_contact_reply_text` / `post_contact_reply` (non-prod `[<environment>] ` prefix). Data I/O: **`docs/test-bible/data/contact_listen.md`**. Config/NAV: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate/set listen; production gate; format prefix; post → `post_message` | `src/core/contact.py` | **`TestAst1067ContactListenCore`** |
+
+**Broken / obsolete:** none — additive listen/prefix surface on Contact.
+
+**Integration:** no existing scenario asserts Manage Slack listen / reply prefix — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1067ContactListenConfig \
+  tests/component/data/test_contact_listen.py::TestAst1067ContactListenData \
+  tests/component/core/test_contact.py::TestAst1067ContactListenCore \
+  tests/component/ui/api/test_api_contact.py::TestAst1067ContactListenApi \
+  -q
+```
+

@@ -1,4 +1,4 @@
-"""Component tests for src/core/contact.py (AST-1066 scaffold + AST-1069 Events ingress)."""
+"""Component tests for src/core/contact.py (AST-1066 scaffold + AST-1069 ingress + AST-1071 skill runners)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ import hashlib
 import hmac
 import json
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.core import contact as contact_mod
+from src.core import candidate as candidate_mod
 from src.utils.config import CONTACT_CONFIG, TASK_CONFIG
 
 
@@ -38,13 +39,16 @@ class TestAst1066ContactScaffold:
         assert contact_mod.slack_listen_enabled() is False
         assert CONTACT_CONFIG["listen_enabled"] is False
 
-    def test_contact_skills_empty_shallow_copy(self) -> None:
+    def test_contact_skills_shallow_copy(self) -> None:
+        # AST-1071 populates skills; AST-1066 still requires a non-mutating shallow copy.
         skills = contact_mod.contact_skills()
-        assert skills == {}
-        assert contact_mod.contact_skill_keys() == ()
+        assert isinstance(skills, dict)
+        assert set(skills.keys()) == set(CONTACT_CONFIG["skills"].keys())
+        keys = contact_mod.contact_skill_keys()
+        assert keys == tuple(CONTACT_CONFIG["skills"].keys())
         skills["should_not_leak"] = {}
         assert "should_not_leak" not in CONTACT_CONFIG["skills"]
-        assert contact_mod.contact_skill_keys() == ()
+        assert contact_mod.contact_skill_keys() == keys
 
     def test_slack_env_names_are_names_only(self) -> None:
         names = contact_mod.slack_env_names()
@@ -53,17 +57,134 @@ class TestAst1066ContactScaffold:
             "signing_secret": "SLACK_SIGNING_SECRET",
         }
         assert "xoxb-" not in str(names.values())
+        assert names["bot_token"] == CONTACT_CONFIG["bot_token_env"]
+        assert names["signing_secret"] == CONTACT_CONFIG["signing_secret_env"]
 
     def test_non_production_reply_prefix(self) -> None:
         assert contact_mod.non_production_reply_prefix("staging") == "[staging] "
+        assert contact_mod.non_production_reply_prefix("  prod-like  ") == "[prod-like] "
         assert contact_mod.non_production_reply_prefix("") == "[] "
+        assert contact_mod.non_production_reply_prefix("   ") == "[] "
 
     def test_skill_keys_do_not_collide_with_task_config(self) -> None:
         for skill_key in contact_mod.contact_skill_keys():
             assert skill_key not in TASK_CONFIG
 
 
-# Branches: listen_off; dedupe; type filter; DM vs channel; app_mention accept; HTTP verify/challenge/ack.
+# Branches: ACL inventory; meta; allowlisted write; reject path/skill/missing; Style D on/off.
+class TestAst1071ContactSkillRunners:
+    _PROFILE = "save_candidate_profile"
+    _CONTACT = "save_candidate_contact"
+
+    def test_contact_skill_meta_and_unknown(self) -> None:
+        meta = contact_mod.contact_skill_meta(self._PROFILE)
+        assert meta["entity"] == "candidate"
+        assert meta["write"] is True
+        assert meta["allowed_paths"] == (
+            "profile.first",
+            "profile.last",
+            "profile.pronoun_preference",
+            "profile.contact_email",
+        )
+        assert isinstance(meta["allowed_paths"], tuple)
+        with pytest.raises(ValueError, match="unknown contact skill"):
+            contact_mod.contact_skill_meta("not_a_skill")
+
+    def test_run_writes_allowlisted_profile_path(self, sqlite_in_memory) -> None:
+        cid = "c-1071-prof"
+        from src.utils.config import CANDIDATE_STATES
+
+        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
+        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
+        out = contact_mod.run_contact_skill(
+            self._PROFILE,
+            astral_candidate_id=cid,
+            fields={"profile.first": "Ada"},
+        )
+        assert out["ok"] is True
+        assert out["paths_written"] == ["profile.first"]
+        row = candidate_mod.get_candidate(cid)
+        assert (row.get("candidate_data") or {}).get("profile", {}).get("first") == "Ada"
+
+    def test_run_writes_allowlisted_contact_path(self, sqlite_in_memory) -> None:
+        cid = "c-1071-contact"
+        from src.utils.config import CANDIDATE_STATES
+
+        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
+        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
+        out = contact_mod.run_contact_skill(
+            self._CONTACT,
+            astral_candidate_id=cid,
+            fields={"contact.contact_email": "ada@example.com"},
+        )
+        assert out["ok"] is True
+        assert "contact.contact_email" in out["paths_written"]
+        row = candidate_mod.get_candidate(cid)
+        assert (row.get("candidate_data") or {})["contact"]["contact_email"] == "ada@example.com"
+
+    def test_run_rejects_non_allowlisted_and_unknown_skill(self, sqlite_in_memory) -> None:
+        cid = "c-1071-reject"
+        from src.utils.config import CANDIDATE_STATES
+
+        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
+        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
+        with pytest.raises(ValueError, match="path not allowlisted"):
+            contact_mod.run_contact_skill(
+                self._PROFILE,
+                astral_candidate_id=cid,
+                fields={"profile.middle": "X"},
+            )
+        with pytest.raises(ValueError, match="unknown contact skill"):
+            contact_mod.run_contact_skill(
+                "save_everything",
+                astral_candidate_id=cid,
+                fields={"profile.first": "Ada"},
+            )
+        with pytest.raises(ValueError, match="candidate not found"):
+            contact_mod.run_contact_skill(
+                self._PROFILE,
+                astral_candidate_id="missing",
+                fields={"profile.first": "Ada"},
+            )
+
+    def test_run_debug_true_emits_style_d(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(contact_mod, "logger", log)
+        cid = "c-1071-dbg"
+        from src.utils.config import CANDIDATE_STATES
+
+        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
+        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
+        contact_mod.run_contact_skill(
+            self._PROFILE,
+            astral_candidate_id=cid,
+            fields={"profile.first": "Ada"},
+            debug=True,
+        )
+        log.set_debug_flag.assert_called_with(True)
+        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
+        assert outcomes == ["found", "recorded"]
+        assert log.debug_detail.call_count >= 2
+
+    def test_run_debug_false_skips_style_d(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(contact_mod, "logger", log)
+        cid = "c-1071-quiet"
+        from src.utils.config import CANDIDATE_STATES
+
+        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
+        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
+        contact_mod.run_contact_skill(
+            self._PROFILE,
+            astral_candidate_id=cid,
+            fields={"profile.first": "Ada"},
+            debug=False,
+        )
+        log.set_debug_flag.assert_not_called()
+        log.debug_index.assert_not_called()
+        log.debug_detail.assert_not_called()
+
+
 class TestAst1069ContactSlackIngress:
     def setup_method(self) -> None:
         contact_mod._seen_event_ids.clear()
@@ -195,3 +316,106 @@ class TestAst1069ContactSlackIngress:
         assert out == ""
         # Handler ran via ImmediateThread — event remembered.
         assert "Ev-http" in contact_mod._seen_event_ids
+
+# Branches: cache hit/miss/TTL/refresh; append warm+trim; DM key thread_ts=""; post appends outbound.
+class TestAst1070ContactConversationContext:
+    def setup_method(self) -> None:
+        contact_mod._context_cache.clear()
+        contact_mod._seen_event_ids.clear()
+
+    def test_load_fetches_then_cache_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(return_value=[{"ts": "1.0", "text": "a", "user": "U1"}])
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        first = contact_mod.load_slack_conversation_context(channel="C1", thread_ts=None)
+        assert first == [{"ts": "1.0", "text": "a", "user": "U1"}]
+        fetch.assert_called_once_with(
+            channel="C1",
+            thread_ts=None,
+            limit=CONTACT_CONFIG["context_history_limit"],
+        )
+        second = contact_mod.load_slack_conversation_context(channel="C1")
+        assert second == first
+        fetch.assert_called_once()
+
+    def test_load_refresh_bypasses_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(
+            side_effect=[
+                [{"ts": "1.0", "text": "old"}],
+                [{"ts": "2.0", "text": "new"}],
+            ]
+        )
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        contact_mod.load_slack_conversation_context(channel="C1")
+        out = contact_mod.load_slack_conversation_context(channel="C1", refresh=True)
+        assert out == [{"ts": "2.0", "text": "new"}]
+        assert fetch.call_count == 2
+
+    def test_load_ttl_expiry_refetches(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fetch = MagicMock(
+            side_effect=[
+                [{"ts": "1.0", "text": "a"}],
+                [{"ts": "2.0", "text": "b"}],
+            ]
+        )
+        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
+        times = iter(
+            [1000.0, 1000.0 + float(CONTACT_CONFIG["context_cache_ttl_seconds"]) + 1.0]
+        )
+        monkeypatch.setattr(contact_mod.time, "time", lambda: next(times))
+        contact_mod.load_slack_conversation_context(channel="C1")
+        out = contact_mod.load_slack_conversation_context(channel="C1")
+        assert out == [{"ts": "2.0", "text": "b"}]
+        assert fetch.call_count == 2
+
+    def test_append_warms_and_trims(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "context_history_limit", 2)
+        contact_mod.append_slack_conversation_message(
+            channel="D1", thread_ts=None, message={"text": "1", "ts": "1.0"},
+        )
+        contact_mod.append_slack_conversation_message(
+            channel="D1", message={"text": "2", "ts": "2.0"},
+        )
+        contact_mod.append_slack_conversation_message(
+            channel="D1", message={"text": "3", "ts": "3.0"},
+        )
+        key = contact_mod._context_cache_key("D1", None)
+        msgs = contact_mod._context_cache[key]["messages"]
+        assert [m["ts"] for m in msgs] == ["2.0", "3.0"]
+
+    def test_append_rejects_bad_message(self) -> None:
+        with pytest.raises(ValueError, match="text and ts"):
+            contact_mod.append_slack_conversation_message(
+                channel="C1", message={"text": "x"}
+            )
+
+    def test_dm_cache_key_ignores_message_ts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-dm-cache",
+                "event": {
+                    "type": "message",
+                    "channel_type": "im",
+                    "channel": "Ddm",
+                    "user": "U1",
+                    "ts": "99.9",
+                    "text": "hello dm",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        assert ("Ddm", "") in contact_mod._context_cache
+        assert ("Ddm", "99.9") not in contact_mod._context_cache
+
+    def test_contact_post_message_appends_outbound(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod, "post_message", MagicMock(return_value={"ok": True, "ts": "5.5"}),
+        )
+        resp = contact_mod.contact_post_message(channel="C1", text="bye", thread_ts="1.0")
+        assert resp["ok"] is True
+        key = contact_mod._context_cache_key("C1", "1.0")
+        msgs = contact_mod._context_cache[key]["messages"]
+        assert msgs[-1]["ts"] == "5.5"
+        assert msgs[-1]["text"] == "bye"
+        assert msgs[-1]["bot_id"] == "estelle"
+
