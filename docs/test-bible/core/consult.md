@@ -744,3 +744,24 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
   tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
   -q
 ```
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+`qualify_meteorite` Pattern-A fields batch: content gates → FAILED_QUALIFY; pass → `initialize_job` + METEORITE_QUALIFIED; collision → fail count without transition; Style D only when `debug=True`. Not in `_STRICT_ENCODED_BATCH_CONSULT_KEYS`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch apply + gates | `src/core/consult.py` | **`TestAst1062QualifyMeteorite`**; revised **`TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches`** |
+
+**Broken / obsolete:** route test omitted `qualify_meteorite` arm (revised).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
+  -q
+```

@@ -422,3 +422,23 @@ Narrowed run: **`docs/test-bible/core/bootstrap.md`** (**AST-960**).
 **Integration:** no existing scenario asserts this Admin HTML route — no revision.
 
 **AST-1024** narrowed run: **`docs/test-bible/core/builder.md`** (**AST-1024**).
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+Ad Hoc `_build_adhoc_live_content("qualify_meteorite")` lockstep with consult assemble (`METEORITE JOBS:` + job_link/jd).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ad Hoc assemble | `src/ui/api/api_admin.py` | **`TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite`** |
+
+**Broken / obsolete:** none — additive branch.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite \
+  -q
+```

@@ -1259,6 +1259,27 @@ class TestAdhocHelpers:
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("evaluate_jd", "missing") == ""
 
+    def test_build_adhoc_live_content_qualify_meteorite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "job"})
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "job_link": f"https://jobs.example.com/{job_id}",
+                "job_data": {jd_key: f"jd-{job_id}"},
+            },
+        )
+        batch = admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["j1", "j2"])
+        assert batch.startswith("METEORITE JOBS:")
+        assert "000: job_link:" in batch
+        assert "jd-j1" in batch and "jd-j2" in batch
+        monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
+        assert admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["missing"]) == ""
+
     def test_adhoc_entities_and_resolve(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: None)
         assert admin_client.get("/api/admin/adhoc/entities?task_key=missing", headers=auth_headers).status_code == 404

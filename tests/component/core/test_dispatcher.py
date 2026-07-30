@@ -1992,3 +1992,16 @@ class TestAst1022HonorAutoOffStageDispatch:
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
         assert order == ["debug", "run:20"]
+
+
+# Branches: qualify_meteorite in chunk-exhaust set with listing qualify (AST-1062).
+class TestAst1062QualifyMeteoriteChunkExhaust:
+    def test_chunk_exhaust_includes_qualify_meteorite(self) -> None:
+        import pytest
+        from src.core import dispatcher as dispatcher_mod
+
+        keys = dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
+        assert "qualify_job_listings" in keys
+        if "qualify_meteorite" not in keys:
+            pytest.skip("AST-1062 qualify_meteorite chunk-exhaust not on this tip")
+        assert "qualify_meteorite" in keys

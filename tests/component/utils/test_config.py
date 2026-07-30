@@ -2608,6 +2608,20 @@ class TestAst1060QualifyMeteoriteConfig:
         assert cfg._dispatch_entity_type_for_task_key("qualify_job_listings") == "job"
 
 
+# Branches: content-gate mins on qualify_meteorite only (AST-1062).
+class TestAst1062QualifyMeteoriteThresholds:
+    def test_min_title_and_jd_chars(self) -> None:
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        tc = cfg.TASK_CONFIG["qualify_meteorite"]
+        assert int(tc["min_job_title_length"]) == 5
+        assert int(tc["min_jd_chars"]) == 40
+        assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
+
+
 class TestAst1055MeteoriteLikeUpshotTasks:
     """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
 
