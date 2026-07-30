@@ -300,3 +300,18 @@ Stages 1–2 and most of Stage 3 land (config keys, external fetch, process-loca
 DM cache key uses Slack `thread_ts` only (Joan Revision 1); history I/O stays in external; TTL + `refresh=` + config caps; inbound append on accept; no DB transcript SoT.
 
 context_tokens≈56000
+
+---
+
+## Resolution
+
+**2026-07-30** — Radia FIX-NOW (`orch.pipeline.plan-is-bible` / Stage 3 load contract).
+
+- `load_slack_conversation_context` now returns Stage 3 envelope
+  `{"channel", "thread_ts", "messages", "source": "cache"|"slack"}` (was bare `list[dict]`).
+- Channel strip + `ValueError` on empty restored.
+- Style D detail includes `source=` / channel / thread_ts / `len(messages)`.
+- `_context_cache_*` helpers moved below public load/append/post (public-then-helpers discuss).
+- C4 straggler discuss: no product action (ancestry statutes scored conforms).
+
+**Blocked on Betty:** existing `TestAst1070ContactConversationContext` asserts list return — `[qa-handoff]` for bible/test revision to dict envelope + empty-channel raise.

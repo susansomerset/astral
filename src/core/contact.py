@@ -207,7 +207,7 @@ def contact_post_message(
 
 
 def _context_cache_key(channel: str, thread_ts: Optional[str]) -> Tuple[str, str]:
-    """Cache key = (channel, Slack thread_ts only). Missing thread → \"\"."""
+    """Cache key = (channel, Slack thread_ts only). Missing thread → empty string."""
     return (channel, thread_ts or "")
 
 
