@@ -277,3 +277,23 @@ Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils
 ### AST-1014 · AST-952
 
 `title_patterns` under `contact`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — revised **`TestCompiledTitlePatterns`**.
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+`ingest_meteorite_jobs_from_email_html(_sync)`: body vs links modes; Playwright fetch (mocked); `known_job_link` / `known_company_job_id` / `jd_too_short` skips; Style D when `debug=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Email ingest + dedupe | `src/core/gazer.py` | **`TestAst1061MeteoriteEmailIngest`** (appended to **`test_gazer.py`**) |
+
+**Broken / obsolete:** none — additive ingest path.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
+  -q
+```

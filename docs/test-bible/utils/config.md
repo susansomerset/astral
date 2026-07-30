@@ -1282,3 +1282,23 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
   -q
 ```
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+`METEORITE_EMAIL_INGEST_CONFIG`: link schemes, exclude substrings, Playwright concurrency, `min_jd_chars` for gazer email→meteorite ingest.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Email ingest config | `src/utils/config.py` | **`TestAst1061MeteoriteEmailIngestConfig`** |
+
+**Broken / obsolete:** none — additive config dict.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1061MeteoriteEmailIngestConfig \
+  -q
+```

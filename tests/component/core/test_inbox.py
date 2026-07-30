@@ -144,25 +144,35 @@ class TestAst1049CreateMeteoriteJobFromInboxMessage:
         monkeypatch.setattr(
             inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
         )
-        create = MagicMock(
+        # AST-1061: orchestration calls gazer ingest sync (not create_meteorite_job).
+        created_row = {
+            "astral_job_id": "job-1",
+            "company": "meteorite-cand-1",
+            "state": "METEORITE_NEW",
+            "latest_score": 10.0,
+            "company_inserted": True,
+        }
+        ingest = MagicMock(
             return_value={
-                "astral_job_id": "job-1",
-                "company": "meteorite-cand-1",
-                "state": "METEORITE_NEW",
-                "latest_score": 10.0,
-                "company_inserted": True,
+                "astral_candidate_id": "cand-1",
+                "mode": "body",
+                "created": [created_row],
+                "skipped": [],
             }
         )
-        monkeypatch.setattr(inbox_mod, "create_meteorite_job", create)
+        monkeypatch.setattr(inbox_mod, "ingest_meteorite_jobs_from_email_html_sync", ingest)
         out = inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
         assert out["astral_job_id"] == "job-1"
         assert out["astral_candidate_id"] == "cand-1"
-        create.assert_called_once()
-        assert create.call_args.args[0] == "cand-1"
-        html = create.call_args.args[1]
+        assert out["mode"] == "body"
+        assert out["created"] == [created_row]
+        assert out["skipped"] == []
+        ingest.assert_called_once()
+        assert ingest.call_args.args[0] == "cand-1"
+        html = ingest.call_args.args[1]
         assert "Engineer" in html
         assert "JD body" in html
-        assert create.call_args.kwargs.get("debug") is False
+        assert ingest.call_args.kwargs.get("debug") is False
 
     def test_unmatched_and_empty_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -203,14 +213,21 @@ class TestAst1049CreateMeteoriteJobFromInboxMessage:
         )
         monkeypatch.setattr(
             inbox_mod,
-            "create_meteorite_job",
+            "ingest_meteorite_jobs_from_email_html_sync",
             MagicMock(
                 return_value={
-                    "astral_job_id": "job-9",
-                    "company": "meteorite-cand-1",
-                    "state": "METEORITE_NEW",
-                    "latest_score": 10.0,
-                    "company_inserted": False,
+                    "astral_candidate_id": "cand-1",
+                    "mode": "body",
+                    "created": [
+                        {
+                            "astral_job_id": "job-9",
+                            "company": "meteorite-cand-1",
+                            "state": "METEORITE_NEW",
+                            "latest_score": 10.0,
+                            "company_inserted": False,
+                        }
+                    ],
+                    "skipped": [],
                 }
             ),
         )
@@ -224,3 +241,50 @@ class TestAst1049CreateMeteoriteJobFromInboxMessage:
         dbg.reset_mock()
         inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
         assert not dbg.called
+
+    def test_all_skipped_style_d_outcome_skipped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "id": "m1",
+                    "html_body": "<p>" + ("x" * 50) + "</p>",
+                    "subject": "Sub",
+                    "from_address": "ada@ex.com",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "ingest_meteorite_jobs_from_email_html_sync",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "cand-1",
+                    "mode": "body",
+                    "created": [],
+                    "skipped": [
+                        {
+                            "reason": "known_company_job_id",
+                            "url": None,
+                            "matched_company_job_id": "EXT-1",
+                        }
+                    ],
+                }
+            ),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(inbox_mod.logger, "debug_detail", MagicMock())
+        out = inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=True)
+        assert out["astral_job_id"] is None
+        assert out["created"] == []
+        assert len(out["skipped"]) == 1
+        outcomes = [c.kwargs.get("outcome") for c in dbg.call_args_list]
+        assert outcomes == ["found", "matched", "extracted", "skipped"]

@@ -2677,3 +2677,23 @@ class TestAst1057MeteoriteRecommendedSection:
             "CANDIDATE_REVIEW",
         ]
 
+
+
+# Branches: METEORITE_EMAIL_INGEST_CONFIG keys for gazer email ingest (AST-1061).
+class TestAst1061MeteoriteEmailIngestConfig:
+    def test_link_schemes_excludes_concurrency_min_jd(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        cfg = METEORITE_EMAIL_INGEST_CONFIG
+        assert set(cfg["link_schemes"]) == {"http", "https"}
+        excludes = {s.casefold() for s in cfg["link_exclude_substrings"]}
+        for frag in (
+            "unsubscribe",
+            "mailto:",
+            "list-manage.com",
+            "/preferences",
+            "/email-settings",
+        ):
+            assert frag in excludes
+        assert int(cfg["playwright_concurrency"]) == 3
+        assert int(cfg["min_jd_chars"]) == 40

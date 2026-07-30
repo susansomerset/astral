@@ -115,3 +115,17 @@ class TestAst1042CreateMeteoriteJob:
         assert out2["company_inserted"] is False
         assert out2["astral_job_id"] != out["astral_job_id"]
         assert out2["job"]["job_data"][jd_key] == "<p>second</p>"
+
+
+    def test_optional_job_link_persists_company_job_id_none(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1061-link"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        link = "https://jobs.example.com/role/42"
+        out = meteorite_mod.create_meteorite_job(
+            cid, "<p>" + ("x" * 50) + "</p>", job_link=link
+        )
+        row = db.get_job(out["astral_job_id"])
+        assert row is not None
+        assert row["job_link"] == link
+        assert row["company_job_id"] is None
