@@ -4,7 +4,8 @@ Contact: Slack foundation + CONTACT_CONFIG skills ACL (Astral Contact / AST-1066
 AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 (`handle_slack_event`). AST-1071: ACL-gated entity-save skill runners.
 AST-1068: `resolve_slack_user` + PROSPECT create-on-miss (wired on accept).
-Siblings: Manage Slack listen UI (AST-1067), conversation context (AST-1070).
+AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
+Sibling: conversation context (AST-1070).
 Estelle turn loop: AST-1046 — not here.
 """
 
@@ -14,7 +15,7 @@ import json
 import os
 import threading
 from collections import OrderedDict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import (
     get_candidate,
@@ -22,12 +23,18 @@ from src.core.candidate import (
     initiate_prospect_candidate,
     save_candidate_data,
 )
+from src.data.contact_listen import (
+    load_contact_listen_enabled,
+    save_contact_listen_enabled,
+)
 from src.external.slack import (
     fetch_user_profile,
     parse_url_verification,
+    post_message,
     verify_slack_signature,
 )
 from src.utils.config import CONTACT_CONFIG
+from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -37,10 +44,12 @@ _seen_event_ids: "OrderedDict[str, None]" = OrderedDict()
 _seen_lock = threading.Lock()
 
 _TEXT_DEBUG_MAX = 200
+_listen_hydrated = False
 
 
 def slack_listen_enabled() -> bool:
-    """Return CONTACT_CONFIG listen flag (default False until Manage Slack flips it)."""
+    """Return Contact listen flag (durable override under db_dir, else CONTACT_CONFIG default)."""
+    _hydrate_listen_state()
     return bool(CONTACT_CONFIG["listen_enabled"])
 
 
@@ -68,6 +77,88 @@ def non_production_reply_prefix(environment: str) -> str:
     return str(CONTACT_CONFIG["non_production_reply_prefix_template"]).format(
         environment=env
     )
+
+
+def contact_is_production_deploy() -> bool:
+    """True when ASTRAL_DEPLOY_ENV matches CONTACT_CONFIG production_deploy_env (case-insensitive)."""
+    raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip()
+    return raw.lower() == str(CONTACT_CONFIG["production_deploy_env"]).strip().lower()
+
+
+def set_slack_listen_enabled(enabled: bool, *, debug: bool = False) -> bool:
+    """Persist + apply listen flag for this deploy environment. Returns the stored bool."""
+    global _listen_hydrated
+    if debug:
+        logger.set_debug_flag(True)
+    if not isinstance(enabled, bool):
+        raise TypeError("enabled must be bool")
+    save_contact_listen_enabled(enabled)
+    CONTACT_CONFIG["listen_enabled"] = enabled
+    _listen_hydrated = True
+    if debug:
+        logger.debug_index(
+            func="contact.set_slack_listen_enabled",
+            index=1,
+            total=2,
+            identifier="listen",
+            outcome="found",
+        )
+        logger.debug_detail(f"requested={enabled}")
+        logger.debug_index(
+            func="contact.set_slack_listen_enabled",
+            index=2,
+            total=2,
+            identifier="listen",
+            outcome="recorded",
+        )
+        logger.debug_detail(
+            f"listen_enabled={CONTACT_CONFIG['listen_enabled']} "
+            f"environment={get_deploy_label()}"
+        )
+    return bool(CONTACT_CONFIG["listen_enabled"])
+
+
+def format_contact_reply_text(text: str) -> str:
+    """Prefix non-production Contact replies with ``[<environment>] ``; production unchanged."""
+    body = text if isinstance(text, str) else ""
+    if contact_is_production_deploy():
+        return body
+    return non_production_reply_prefix(get_deploy_label()) + body
+
+
+def post_contact_reply(
+    *,
+    channel: str,
+    text: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """Format outbound text (non-prod prefix) then ``external.slack.post_message``."""
+    if debug:
+        logger.set_debug_flag(True)
+    outbound = format_contact_reply_text(text)
+    if debug:
+        logger.debug_index(
+            func="contact.post_contact_reply",
+            index=1,
+            total=2,
+            identifier=str(channel)[:80],
+            outcome="found",
+        )
+        for line in truncate_debug_content(str(text) if text is not None else ""):
+            logger.debug_detail(f"text={line}")
+        logger.debug_index(
+            func="contact.post_contact_reply",
+            index=2,
+            total=2,
+            identifier=str(channel)[:80],
+            outcome="recorded",
+        )
+        prefixed = outbound != (text if isinstance(text, str) else "")
+        logger.debug_detail(f"prefixed={prefixed}")
+        for line in truncate_debug_content(outbound):
+            logger.debug_detail(f"outbound={line}")
+    return post_message(channel=channel, text=outbound, thread_ts=thread_ts)
 
 
 def contact_skill_meta(skill_key: str) -> Dict[str, Any]:
@@ -156,6 +247,17 @@ def run_contact_skill(
         "astral_candidate_id": cid,
         "paths_written": paths_written,
     }
+
+
+def _hydrate_listen_state() -> None:
+    """Load durable listen override into CONTACT_CONFIG once per process."""
+    global _listen_hydrated
+    if _listen_hydrated:
+        return
+    loaded = load_contact_listen_enabled()
+    if loaded is not None:
+        CONTACT_CONFIG["listen_enabled"] = loaded
+    _listen_hydrated = True
 
 
 def _nest_dotted_path(path: str, value: Any) -> Dict[str, Any]:

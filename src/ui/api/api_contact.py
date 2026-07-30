@@ -1,15 +1,60 @@
-"""Admin Contact skill ACL API (AST-1071). Thin wrappers over src.core.contact."""
+"""Admin Contact skill ACL + Manage Slack listen API (AST-1071 / AST-1067).
+
+Thin wrappers over src.core.contact.
+"""
 
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_admin
-from src.core.contact import contact_skills, run_contact_skill
-from src.utils.deploy_status import ui_llm_debug
+from src.core.contact import (
+    contact_is_production_deploy,
+    contact_skills,
+    run_contact_skill,
+    set_slack_listen_enabled,
+    slack_listen_enabled,
+)
+from src.utils.deploy_status import get_deploy_label, ui_llm_debug
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 contact_bp = Blueprint("contact", __name__, url_prefix="/api/admin/contact")
+
+
+def _listen_payload() -> dict:
+    return {
+        "listen_enabled": slack_listen_enabled(),
+        "environment": get_deploy_label(),
+        "is_production": contact_is_production_deploy(),
+    }
+
+
+@contact_bp.route("/listen", methods=["GET"])
+@require_admin
+def contact_get_listen():
+    return jsonify(_listen_payload()), 200
+
+
+@contact_bp.route("/listen", methods=["PUT"])
+@require_admin
+def contact_put_listen():
+    body = request.get_json(silent=True) or {}
+    enabled = body.get("listen_enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "listen_enabled must be a bool"}), 400
+    explicit = (
+        request.args.get("debug", "").lower() in ("1", "true", "yes")
+        or bool(body.get("debug"))
+    )
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        set_slack_listen_enabled(enabled, debug=debug)
+    except TypeError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.warning("[api_contact] listen set failed: %s", e)
+        return jsonify({"error": str(e)}), 502
+    return jsonify(_listen_payload()), 200
 
 
 @contact_bp.route("/skills", methods=["GET"])
