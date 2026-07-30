@@ -233,3 +233,31 @@ Stages 1–3: `jobCarriedRubricKey` / fingerprint / `groupJobsByAlignedRubric` /
 
 ### Recommended actions
 - Acknowledge stragglers → resolve-child → User Testing (no product delta).
+
+---
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Publish tip before resolve:** `69240a7a` (`docs(AST-1064): Radia review — findings` on `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — statute stragglers ×17 (all conforms) | **No action** — informational plan-vs-diff predicate drift only (AST-1063 + Betty tests on tip). |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Publish tip before resolve:** `69240a7a` (`docs(AST-1064): Radia review — findings` on `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — statute stragglers ×17 (all conforms) | **No action** — informational plan-vs-diff predicate drift only (AST-1063 + Betty tests on tip vs Joan UI-only exclusion set). |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
