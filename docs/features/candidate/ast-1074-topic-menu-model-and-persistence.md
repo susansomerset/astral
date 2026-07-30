@@ -237,3 +237,20 @@ candidate_data.topic_menu = {
 
 None for resolve-child product code. Acknowledge discuss items or leave for AST-1075 caller contract.
 
+---
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Review:** Radia `[code-rubric] revision=1` Overall DISCUSS @ `b4b0cfb3` (product tip `9cb1928f`).
+
+**fix-now:** none — no product code changes.
+
+**discuss (C4 straggler):** Acknowledged. Joan Excluded `astral.git.engineer-test-tree-ban` on plan paths; post–Tests Ready tip includes Betty `tests/**` + bible. Statute remains conforms (engineer SHAs omit test tree). No Archie re-score requested; no plan-rubric rewrite.
+
+**discuss (carry Joan / AST-1075 caller contract):** Acknowledged. `save_topic_menu(..., revise=False)` can drop retired topics if the caller omits them. Callers (AST-1075) must keep default `revise=True` or pass a complete list including retired rows. Documented here for Hedy; no API change on this tip.
+
+**advisory:** Acknowledged. `TOPIC_MENU_CONFIG` placement after `PREAMBLE_VALIDATION_CONFIG` asserts is intentional adjacency; no move.
+
+**Outcome:** resolve clean → User Testing.
+
