@@ -29,6 +29,7 @@ Config sections:
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
+  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
 """
 
 import json
@@ -1602,6 +1603,24 @@ METEORITE_CONFIG = {
 
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
+
+# AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
+METEORITE_EMAIL_INGEST_CONFIG = {
+    # Only http(s) hrefs are job-link candidates (mailto:/tel: excluded by scheme).
+    "link_schemes": ("http", "https"),
+    # Lowercased path/host fragments that disqualify an href (unsubscribe, tracking, etc.).
+    "link_exclude_substrings": (
+        "unsubscribe",
+        "mailto:",
+        "list-manage.com",
+        "/preferences",
+        "/email-settings",
+    ),
+    # Max concurrent Playwright fetches for a link list (same idea as gazer JD scrape caps).
+    "playwright_concurrency": 3,
+    # Skip create when visible/body text length is below this after strip/fetch.
+    "min_jd_chars": 40,
+}
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.

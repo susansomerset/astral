@@ -1734,6 +1734,58 @@ def raw_job_listing_is_duplicate(company: str, raw_job_listing: str) -> bool:
     finally:
         conn.close()
 
+
+def text_matches_known_company_job_id(text: str) -> Optional[str]:
+    """Global inverted match (AST-80 shape, no company filter).
+
+    Returns the matched company_job_id when any non-empty company_job_id
+    appears as a substring of text; else None.
+    """
+    if not text:
+        return None
+
+    def _do(c: sqlite3.Connection) -> Optional[str]:
+        _ensure_job_schema(c)
+        cursor = c.execute(
+            """SELECT company_job_id FROM job
+               WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+                 AND ? LIKE '%' || company_job_id || '%'
+               LIMIT 1""",
+            (text,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
+def job_link_exists(job_link: str) -> bool:
+    """True when any job row has this exact job_link (non-empty)."""
+    link = (job_link or "").strip()
+    if not link:
+        return False
+
+    def _do(c: sqlite3.Connection) -> bool:
+        _ensure_job_schema(c)
+        cursor = c.execute(
+            """SELECT 1 FROM job
+               WHERE job_link = ? AND job_link IS NOT NULL AND TRIM(job_link) != ''
+               LIMIT 1""",
+            (link,),
+        )
+        return cursor.fetchone() is not None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
 def claim_job_batch(
     batch_id: str, state: str, limit: int, sort_by: Optional[str] = None,
     candidate_id: Optional[str] = None,
