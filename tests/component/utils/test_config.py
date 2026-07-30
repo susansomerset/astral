@@ -1566,6 +1566,33 @@ class TestAst1014CandidateLibraryConfig:
         assert not any(p.startswith("profile.") for p in cfg.INTAKE_CONFIG["build_field_paths"])
 
 
+
+class TestAst1015PreambleValidationConfig:
+    """AST-1015: PREAMBLE_VALIDATION_CONFIG + TASK_CONFIG Ruth task_key."""
+
+    def test_validation_config_outcomes_and_task_key(self) -> None:
+        pvc = cfg.PREAMBLE_VALIDATION_CONFIG
+        assert pvc["task_key"] == "preamble_validate_response"
+        assert pvc["outcome_field"] == "outcome"
+        assert pvc["outcomes"] == ("Valid", "Try Again", "Escalate")
+        assert "preamble_validate_response" in cfg.get_task_keys()
+
+    def test_task_config_schema_requires_outcome(self) -> None:
+        entry = cfg.TASK_CONFIG["preamble_validate_response"]
+        assert entry["response_format"] == "json"
+        assert entry["requires_candidate_key"] is True
+        assert entry["entity_type"] == "candidate"
+        assert entry["response_schema"]["outcome"]["required"] is True
+
+    def test_task_key_matches_preamble_config_when_present(self) -> None:
+        # Sibling AST-1016 may land on the same tip via ftr; equality is the epic contract.
+        if hasattr(cfg, "PREAMBLE_CONFIG"):
+            assert (
+                cfg.PREAMBLE_VALIDATION_CONFIG["task_key"]
+                == cfg.PREAMBLE_CONFIG["validation_task_key"]
+            )
+
+
 class TestAst1016PreambleConfig:
     """AST-1016: PREAMBLE_CONFIG Intro + three context.raw_* steps + Ruth task_key."""
 

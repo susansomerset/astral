@@ -925,6 +925,32 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1015 · AST-952
+
+**AST-1015:** `PREAMBLE_VALIDATION_CONFIG` — task_key `preamble_validate_response`, closed outcomes Valid / Try Again / Escalate; `TASK_CONFIG` schema; equality with `PREAMBLE_CONFIG["validation_task_key"]` when both present. Ruth agent_task + core/API: **`docs/test-bible/core/intake.md`**, **`docs/test-bible/ui/api/api_intake.md`**, catalog: **`docs/test-bible/data/database/agent_tasks.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validation config + TASK_CONFIG | `src/utils/config.py` | **`TestAst1015PreambleValidationConfig`** |
+
+**Broken / obsolete:** AST-786 catalog count 38→39 — see agent_tasks.md.
+
+**Integration:** no existing scenario asserts preamble Ruth validation — no revision; do not invent new integration coverage.
+
+**AST-1015** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1015PreambleValidationConfig \
+  tests/component/core/test_intake.py::TestAst1015ValidatePreambleAnswer \
+  tests/component/ui/api/test_api_intake.py::TestAst1015PreambleValidateRoute \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1015PreambleValidateCatalogRow \
+  -q
+```
+
+---
+
 ### AST-1016 · AST-952
 
 **AST-1016:** `PREAMBLE_CONFIG` — Intro + three ordered mechanical steps targeting `context.raw_resume` / `raw_profile` / `raw_sample`, Archie placeholder 1st/2nd Try copy, `validation_task_key` = `preamble_validate_response`. Asserts step targets ⊆ `CANDIDATE_LIBRARY_CONFIG["context_keys"]`. Exposed on `GET /api/ui_config` as `preamble` (**AST-1017** renders; **AST-1015** owns Ruth task body).
@@ -946,3 +972,5 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_preamble_config \
   -q
 ```
+
+
