@@ -534,3 +534,14 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
   --testNamePattern="AST-1064"
 ```
+
+
+---
+
+### AST-1017 · AST-952
+
+**AST-1017:** **`IntakePreamblePanel`** — `GET /api/ui_config` preamble Intro + ordered pending steps; Valid → PUT; Try Again / Escalate do not advance. Page wiring: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Intro / skip-filled / Valid PUT / Try Again / Escalate | `src/ui/frontend/src/components/IntakePreamblePanel.tsx` | **`tests/component/frontend/components/test_IntakePreamblePanel.test.tsx`** |
