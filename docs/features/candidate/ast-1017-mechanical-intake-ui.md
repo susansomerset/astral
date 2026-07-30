@@ -262,3 +262,18 @@ Proposed resolutions: <2-3 options, or "need guidance">
 1. `IntakePreamblePanel` — loads `preamble` from `GET /api/ui_config`; Intro + ordered gap-fill steps; Ruth `POST …/preamble/validate`; PUT `context.<field>` only on Valid; Try Again / Escalate do not advance.
 2. `CandidateIntake` — new-intake / Start Over → preamble Modal → Estelle `IntakeChatModal`; Continue-on-active skips preamble; Profile resume hard-gate removed.
 3. `App.css` — Estelle-consistent preamble panel / input / actions.
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Tip reviewed:** `417778929d12a8c8bf4ba8fbe4dc3ec1f14f6d16` (`origin/sub/AST-952/AST-1017-mechanical-intake-ui` vs `origin/dev`)
+**Overall:** DISCUSS
+
+#### What’s solid
+- Stages 1–3 match plan: config-driven steps from `/api/ui_config`; Ruth validate before PUT; Valid-only persist; Escalate ≠ Valid; Continue-on-active skips preamble; Profile resume hard-gate removed.
+- File placement / naming / import-direction clean (React → API only). AST-1017 `code` commit is exactly the three planned UI files.
+
+#### Issues
+1. **discuss** — C4 stragglers: Joan excluded statutes that the three-dot tip scores in-scope because tip↔`origin/dev` have diverged (425-path XOR incl. siblings/other epics). Listed in Linear comment; all **conform** on tip; no AST-1017 product fix.
+
+#### Notes
+Joan plan-rubric APPROVED. Tip and `origin/dev` report multiple merge bases — product judgment focused on AST-1017 delta; full-set sweep still vs three-dot.
