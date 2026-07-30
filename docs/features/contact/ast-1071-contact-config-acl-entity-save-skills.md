@@ -268,3 +268,98 @@ The plan is binding. Execute stages in order; one commit per stage on epic workt
 **Publish ref:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`  
 **Tip:** `91ced0bc` — Contact skills ACL + runners + admin API (stages 1–3)  
 **Stage commits:** `615f39b6` (config), `20361b54` (core runners), `91ced0bc` (admin API)
+
+---
+
+## Review (Radia / code-rubric.v1)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1071  
+**Publish ref:** `da2d070b` on `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills` (docs tip follows)  
+**Overall:** DISCUSS
+
+**Diff change set:** `origin/dev...da2d070b` — layers `{core, utils, ui, docs}`; paths include `src/core/contact.py` (A), `src/utils/config.py` (M), `src/ui/api/api_contact.py` (A), `src/ui/server.py` (M), plan/bible/tests; change_types `{add, modify}`. Tip carries AST-1066 scaffold ancestry not yet on `origin/dev`.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | Contact skills are ACL saves, not graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | CONTACT_CONFIG skills stay out of TASK_CONFIG / do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim API |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id generation |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data entity refs |
+| astral.config.config-source-of-truth | scoped | conforms | skill keys + allowed_paths only in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | Slack env names only; no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plans only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file per ticket under docs/features/contact/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | merge-tests `da2d070b` tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty test/merge-tests vocabulary |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no Slack I/O; persist via candidate core |
+| astral.layers.import-direction | scoped | conforms | UI→core contact→core candidate; no UI→data |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | ACL in config; thin API; logic in core |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | GET/POST skills routes `@require_admin` |
+| astral.standards.data-raises-caller-logs | scoped | conforms | core ValueError; API maps 400/502 |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/schema paths |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D found→recorded only in run_contact_skill when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses get_candidate / save_candidate_data |
+| astral.standards.in-scope-only | scoped | conforms | no Slack Events / PROSPECT / turn-loop / Manage Slack |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger + truncate_debug_content |
+| astral.standards.no-cross-contamination | scoped | conforms | TASK_CONFIG untouched; skill keys collision-asserted |
+| astral.standards.no-hardcoded-sets | scoped | conforms | paths/skills from CONTACT_CONFIG only |
+| astral.standards.public-then-helpers | scoped | conforms | meta/run public before private nest/merge |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py has no data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state work |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch run_next |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no src/ui/frontend/** |
+| astral.ui.naming-conventions | scoped | conforms | snake_case /api/admin/contact/skills |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no gunicorn/worker changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single merge-tests SHA on tip |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1071-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | depends on AST-1066 on ftr; no illegal merge |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none in tip history |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1071-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | v1 skill inventory Decision held |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–3 match tip product |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Katherine remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | CONTACT_CONFIG skills ACL populated |
+| pattern.core.contact-agent (proposed) | conforms | contact_skill_meta / run_contact_skill |
+| pattern.ui.admin-endpoint | conforms | thin api_contact list/run under /api/admin/contact |
+
+### Plan adherence
+
+Stages 1–3 land: two entity-save skills with narrow allowed_paths (no slack_user_id), ACL-gated runners + Style D, `@require_admin` GET/POST + server register. Self-Assessment Single-Component / high / Medium matches write-power risk and mitigations. Sibling scopes clean.
+
+### Findings
+
+**discuss** — C4 straggler: Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` now in-scope on tip (docs/features + tests/bible). All three score **conforms** — no product action.
+
+### What’s solid
+
+Narrow ACL tuples; reject-unknown paths; debug gated with ui_llm_debug on API; UI→core→candidate import chain; Betty revised AST-1066 empty-skills asserts for populated ACL.
+
+context_tokens≈56000
