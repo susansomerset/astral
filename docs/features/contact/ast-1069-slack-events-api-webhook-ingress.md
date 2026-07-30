@@ -217,3 +217,11 @@ Changes:
 - Stage 4: blueprint is transport-only (raw body + Slack headers → core → status/body); **forbids** ui→external imports and environ signing-secret reads.
 - Stage 2 / Files Changed: document callers of external = core + scripts only.
 - Stage 5: clarify Slack subscription name `message.im` vs payload `event.type == "message"` in `bot_event_types` (Joan discuss non-blocking).
+
+---
+
+## Review (build stub)
+
+- **Publish ref:** `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`
+- **Tip:** `d00b8e7e` — Socket Mode script + websocket-client (stages 1–5 complete)
+- **Stage commits:** `8733b3ae` (config), `0dba2471` (external), `dc83dd82` (contact), `26584cad` (api_slack), `d00b8e7e` (script/deps)
