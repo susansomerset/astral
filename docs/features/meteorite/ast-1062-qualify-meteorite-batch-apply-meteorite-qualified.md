@@ -159,4 +159,4 @@ No statute conflicts requiring `conf-!!-NONE`.
 | 1 | `ffd116e7` | TASK_CONFIG min_job_title_length + min_jd_chars on qualify_meteorite |
 | 2 | `03b0ab1f` | qualify_meteorite consult wrapper + run_consult_task + chunk-exhaust + Ad Hoc assemble |
 
-**Tip:** `d829eaf2cb37cfb8f8218c4043ec63f915b47e9f` on `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`
+**Tip:** `392e436ec797839f88eae5200affed595782d51e` on `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`
