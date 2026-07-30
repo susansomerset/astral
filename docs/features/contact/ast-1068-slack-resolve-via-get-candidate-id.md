@@ -218,3 +218,9 @@ def resolve_slack_user(
 ## Execution contract
 
 The plan is binding. Execute stages in order; one commit per stage on epic worktree; publish to `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`. On ambiguity or drift, stop and comment on parent **AST-1043** with the Stage-blocked format — do not improvise.
+
+## Review (build stub)
+
+- **Publish ref:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`
+- **Tip:** `7216151c` — resolve_slack_user + users.info + Events wire
+- **Stage commits:** `0856416a` (PROSPECT registry + lookup), `7216151c` (resolve + wire)
