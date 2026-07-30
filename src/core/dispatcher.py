@@ -214,7 +214,7 @@ def provision_candidate_stage_dispatch_tasks() -> Dict[str, Any]:
 
 
 def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent insert of AST-1054 meteorite GDL dispatch_task rows for one candidate."""
+    """Idempotent insert of meteorite dispatch_task rows; retire stale evaluate_jd@METEORITE_NEW (AST-1060)."""
     cid = str(candidate_id or "").strip()
     if not cid:
         raise ValueError("candidate_id is required")
@@ -245,11 +245,20 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
             score_floor=entry.get("score_floor"),
         )
         added += 1
+    # AST-1060: live claim surface — drop evaluate_jd@METEORITE_NEW (keep JD_READY).
+    retired = 0
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        tk = (row.get("task_key") or "").strip()
+        ts = (row.get("trigger_state") or "").strip()
+        if tk == "evaluate_jd" and ts == "METEORITE_NEW":
+            delete_dispatch_task(int(row["id"]))
+            retired += 1
     return {
         "candidate_id": cid,
         "added": added,
         "skipped": skipped,
         "skipped_missing_config": skipped_missing_config,
+        "retired": retired,
     }
 
 
@@ -260,16 +269,18 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
         raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
     if database.get_candidate(template_id) is None:
         raise LookupError(f"Template candidate not found: {template_id}")
-    ensure_meteorite_dispatch_tasks(template_id)
-    added = 0
-    skipped = 0
-    skipped_missing_config = 0
+    tstats = ensure_meteorite_dispatch_tasks(template_id)
+    added = int(tstats.get("added") or 0)
+    skipped = int(tstats.get("skipped") or 0)
+    skipped_missing_config = int(tstats.get("skipped_missing_config") or 0)
+    retired = int(tstats.get("retired") or 0)
     touched = 0
     for cid in database.list_candidate_ids_with_dispatch_tasks():
         stats = ensure_meteorite_dispatch_tasks(cid)
         added += int(stats.get("added") or 0)
         skipped += int(stats.get("skipped") or 0)
         skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
+        retired += int(stats.get("retired") or 0)
         touched += 1
     return {
         "template_candidate_id": template_id,
@@ -277,6 +288,7 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
         "added": added,
         "skipped": skipped,
         "skipped_missing_config": skipped_missing_config,
+        "retired": retired,
     }
 
 

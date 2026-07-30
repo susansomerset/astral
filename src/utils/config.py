@@ -425,6 +425,35 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1058 / AST-1060: Ruth meteorite qualify (pre-AI → METEORITE_QUALIFIED).
+    # Same claim/batch shape as qualify_job_listings; apply wiring is AST-1062.
+    "qualify_meteorite": {
+        "response_format": "json",
+        "output_type": "fields",
+        "scored": False,
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "astral_job_id":   {"type": "str", "required": True},
+                    "company_job_id":  {"type": "str", "required": True},  # external job UUID
+                    "job_title":       {"type": "str", "required": True},
+                    "job_link":        {"type": "str", "required": True},
+                    "jd_text":         {"type": "str", "required": True},  # visible JD content
+                },
+            },
+        },
+        "fallback_batch_size": 30,
+        "pass_state": "METEORITE_QUALIFIED",
+        "fail_state": "METEORITE_FAILED_QUALIFY",
+        "error_state": "METEORITE_ERROR_QUALIFY",
+        "context_format": "qualify_meteorite_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "qualify_meteorite",
+    },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
@@ -1522,12 +1551,16 @@ JOB_STATES = {
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
     "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY"]},
-    # AST-1052 / AST-1053: parallel meteorite GDL track (no CULTURE_READY hop).
-    # Entry METEORITE_NEW is unrestricted (create landing — sibling AST-1056).
+    # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
+    # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
+    # METEORITE_QUALIFIED (GDL entry). evaluate_jd claims METEORITE_QUALIFIED only (AST-1060).
     "METEORITE_NEW":                  {"prior_states": None},
-    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_QUALIFIED"]},
     "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
     "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
     "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD"]},
@@ -1575,9 +1608,18 @@ assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 # Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
 METEORITE_DISPATCH_TASKS = (
     {
-        "task_key": "evaluate_jd",
+        "task_key": "qualify_meteorite",
         "trigger_state": "METEORITE_NEW",
-        "score_floor": None,  # ungated entry (mirrors JD_READY / evaluate_jd)
+        "score_floor": None,
+        "auto_mode": False,
+        "batch_size": 30,
+        "min_count": 1,
+        "freq_hrs": 0,
+    },
+    {
+        "task_key": "evaluate_jd",
+        "trigger_state": "METEORITE_QUALIFIED",
+        "score_floor": None,  # ungated GDL entry (AST-1060 — was METEORITE_NEW)
         "auto_mode": False,
         "batch_size": 10,
         "min_count": 1,
@@ -1738,7 +1780,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
-    "METEORITE_NEW", "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET",
+    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET",
     "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
 ]
 # Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
@@ -1827,7 +1869,7 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "evaluate_jd", "grade_do", "grade_get",
+    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "grade_do", "grade_get",
     "grade_like", "meteorite_like", "vet_inflow_discovery",
 })
 
@@ -1872,6 +1914,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
         return "NEW"
+    if task_key == "qualify_meteorite":
+        return "METEORITE_NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
     if task_key == "fetch_culture_pages":
@@ -1925,7 +1969,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "evaluate_jd",
+        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
@@ -2084,6 +2128,7 @@ SKIPPED_STATES = [
     "NEED_WEBSITE_CONTENT",
     "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS",
     "FAILED_LIKE", "FAILED_TECHNICAL_LIKE",
+    "METEORITE_FAILED_QUALIFY", "METEORITE_ERROR_QUALIFY",
     "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD",
     "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
     "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
@@ -2113,7 +2158,8 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "CULTURE_READY", "label": "Culture Ready"},
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
-    {"state": "METEORITE_NEW", "label": "Meteorite New"},
+    {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
+    {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
     {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
     {"state": "METEORITE_PASSED_DO", "label": "Meteorite Passed DO"},
     {"state": "METEORITE_PASSED_GET", "label": "Meteorite Passed GET"},
@@ -2171,6 +2217,8 @@ JOBS_SKIPPED_SECTION_ORDER = [
     "FAILED_TECHNICAL",
     "METEORITE_FAILED_JD",
     "METEORITE_ERROR_EVALUATE_JD",
+    "METEORITE_FAILED_QUALIFY",
+    "METEORITE_ERROR_QUALIFY",
     "FAILED_JOBLIST",
     "INVALID_TITLE",
     "JD_SCRAPE_FAIL",
@@ -2196,6 +2244,8 @@ JOBS_SKIPPED_SECTION_LABELS = {
     "NO_CULTURE_LINKS": "No Culture Links",
     "FAILED_LIKE": "Failed LIKE",
     "FAILED_TECHNICAL_LIKE": "Failed Technical LIKE",
+    "METEORITE_FAILED_QUALIFY": "Meteorite Failed Qualify",
+    "METEORITE_ERROR_QUALIFY": "Meteorite Error Qualify",
     "METEORITE_FAILED_JD": "Meteorite Failed JD",
     "METEORITE_ERROR_EVALUATE_JD": "Meteorite Error Evaluate JD",
     "METEORITE_FAILED_DO": "Meteorite Failed DO",
