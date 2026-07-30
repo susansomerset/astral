@@ -172,6 +172,17 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
           latest_score: 10,
           company_inserted: true,
           astral_candidate_id: "cand-ada",
+          mode: "body",
+          created: [
+            {
+              astral_job_id: "job-42",
+              company: "meteorite-cand-ada",
+              state: "METEORITE_NEW",
+              latest_score: 10,
+              company_inserted: true,
+            },
+          ],
+          skipped: [],
         })
       }
     })
@@ -186,6 +197,40 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
       expect.objectContaining({ method: "POST" }),
     )
     expect(mockedApi).not.toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
+  })
+
+  it("list-row Create all-skipped toasts skip message (AST-1061)", async () => {
+    mockApis(async (url, init) => {
+      if (
+        url === "/api/admin/inbox/messages/m1/create-job" &&
+        init?.method === "POST"
+      ) {
+        return jsonResponse({
+          astral_job_id: null,
+          company: "meteorite-cand-ada",
+          state: null,
+          latest_score: null,
+          company_inserted: false,
+          astral_candidate_id: "cand-ada",
+          mode: "links",
+          created: [],
+          skipped: [
+            {
+              reason: "known_job_link",
+              url: "https://jobs.example.com/x",
+              matched_company_job_id: null,
+            },
+          ],
+        })
+      }
+    })
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
+    await userEvent.click(matchedRow.querySelector("button.manage-email-create")!)
+    await waitFor(() =>
+      expect(screen.getByText("Skipped 1 (already known or empty)")).toBeInTheDocument(),
+    )
   })
 
   it("list-row Create failure toasts error (AST-1051)", async () => {

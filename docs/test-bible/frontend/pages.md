@@ -1156,3 +1156,22 @@ Recommended list partitions jobs whose `company` starts with manifest `meteorite
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
 ```
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+Manage Email Create toasts use `created`/`skipped` arrays (`Created job …` / `Created N jobs` / `Skipped N (already known or empty)`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Multi-result toasts | `AdminManageEmail.tsx` | revised **`test_AdminManageEmail.test.tsx`** (+ all-skipped) |
+
+**Broken / obsolete:** toast assumed single `astral_job_id` only — still works as fallback; mocks now include `created`/`skipped`.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```

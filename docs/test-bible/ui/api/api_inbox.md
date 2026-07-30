@@ -57,3 +57,23 @@ Thin `@require_admin` Flask wrappers over `src.core.inbox` — list/get JSON; up
 **Broken / obsolete:** none — additive route.
 
 **Integration:** none.
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, **200** when only skips.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Multi-result create-job | `src/ui/api/api_inbox.py` | revised **`TestAst1049InboxCreateJobApi`** (+ all-skipped 200) |
+
+**Broken / obsolete:** single-job-only payload assumptions (revised).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
+  -q
+```

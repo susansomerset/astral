@@ -114,10 +114,18 @@ class TestAst1033InboxApi:
 
 
 # AST-1049: POST create-job orchestration endpoint.
+# AST-1061: multi created/skipped payload; 201 if any created, 200 if only skips.
 class TestAst1049InboxCreateJobApi:
     def test_create_job_201(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        created_row = {
+            "astral_job_id": "job-1",
+            "company": "meteorite-cand-1",
+            "state": "METEORITE_NEW",
+            "latest_score": 10.0,
+            "company_inserted": True,
+        }
         create = MagicMock(
             return_value={
                 "astral_job_id": "job-1",
@@ -126,6 +134,9 @@ class TestAst1049InboxCreateJobApi:
                 "latest_score": 10.0,
                 "company_inserted": True,
                 "astral_candidate_id": "cand-1",
+                "mode": "body",
+                "created": [created_row],
+                "skipped": [],
             }
         )
         monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
@@ -136,9 +147,57 @@ class TestAst1049InboxCreateJobApi:
             json={},
         )
         assert resp.status_code == 201
-        assert resp.get_json()["astral_job_id"] == "job-1"
-        assert resp.get_json()["astral_candidate_id"] == "cand-1"
+        body = resp.get_json()
+        assert body["astral_job_id"] == "job-1"
+        assert body["astral_candidate_id"] == "cand-1"
+        assert body["mode"] == "body"
+        assert body["created"] == [
+            {
+                "astral_job_id": "job-1",
+                "company": "meteorite-cand-1",
+                "state": "METEORITE_NEW",
+                "latest_score": 10.0,
+                "company_inserted": True,
+            }
+        ]
+        assert body["skipped"] == []
         create.assert_called_once_with("m1", debug=False)
+
+    def test_create_job_all_skipped_200(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        skipped = [
+            {
+                "reason": "known_job_link",
+                "url": "https://jobs.example.com/x",
+                "matched_company_job_id": None,
+            }
+        ]
+        create = MagicMock(
+            return_value={
+                "astral_job_id": None,
+                "company": "meteorite-cand-1",
+                "state": None,
+                "latest_score": None,
+                "company_inserted": False,
+                "astral_candidate_id": "cand-1",
+                "mode": "links",
+                "created": [],
+                "skipped": skipped,
+            }
+        )
+        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.post(
+            "/api/admin/inbox/messages/m1/create-job",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["created"] == []
+        assert body["skipped"] == skipped
+        assert body["astral_job_id"] is None
 
     def test_create_job_passes_debug(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -151,6 +210,17 @@ class TestAst1049InboxCreateJobApi:
                 "latest_score": 10.0,
                 "company_inserted": False,
                 "astral_candidate_id": "cand-1",
+                "mode": "body",
+                "created": [
+                    {
+                        "astral_job_id": "job-1",
+                        "company": "meteorite-cand-1",
+                        "state": "METEORITE_NEW",
+                        "latest_score": 10.0,
+                        "company_inserted": False,
+                    }
+                ],
+                "skipped": [],
             }
         )
         monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)

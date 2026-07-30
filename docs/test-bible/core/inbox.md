@@ -58,3 +58,23 @@ List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_
 **Broken / obsolete:** none — additive orchestration.
 
 **Integration:** none; do not invent new integration coverage.
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+`create_meteorite_job_from_inbox_message` routes through `ingest_meteorite_jobs_from_email_html_sync`; returns `created`/`skipped`/`mode`; Style D step 4 outcome `recorded` or `skipped`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create → gazer ingest | `src/core/inbox.py` | revised **`TestAst1049CreateMeteoriteJobFromInboxMessage`** |
+
+**Broken / obsolete:** AST-1049 mocks of `create_meteorite_job` — product now calls gazer ingest sync (revised).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  -q
+```
