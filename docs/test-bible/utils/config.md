@@ -1390,6 +1390,31 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 ```
 
 
+### AST-1070 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`.
+
+`CONTACT_CONFIG` context keys: `context_history_limit`, `context_cache_max_conversations`, `context_cache_ttl_seconds`. Core load/append: **`docs/test-bible/core/contact.md`**. External fetch: **`docs/test-bible/external/slack.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| History limit / cache max / TTL | `src/utils/config.py` | **`TestAst1070ContactContextConfig`** |
+
+**Broken / obsolete:** none — additive keys on CONTACT_CONFIG.
+
+**Integration:** no existing scenario asserts context cache config — no revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1070ContactContextConfig \
+  tests/component/external/test_slack.py::TestAst1070FetchConversationHistory \
+  tests/component/core/test_contact.py::TestAst1070ContactConversationContext \
+  -q
+```
+
+
+
+
 ### AST-1068 · AST-1043
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
@@ -1432,5 +1457,54 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
   tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
   tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+```
+
+
+---
+
+### AST-1074 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1074-topic-menu-model-and-persistence`.
+
+`TOPIC_MENU_CONFIG`: closed `informs` (`rubrics`, `base_resume`, `strengths`, `priorities`, `deal_breakers`, `backstory`), statuses `open`/`ready`/`retired`, `candidate_data_key: topic_menu`, required topic fields. Library homes for context informs live under `CANDIDATE_LIBRARY_CONFIG`. Core persistence: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Closed informs + status triad | `src/utils/config.py` | **`TestAst1074TopicMenuConfig`** |
+
+**Broken / obsolete:** none — additive config.
+
+**Integration:** no existing scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence \
+  -q
+```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+`TOPIC_MENU_GEN_CONFIG`: confirm/generate task keys, `continue`/`accepted` outcomes, packet field whitelist (context + real `contact_keys` + `name_columns`; no fabricated `preferred_name`), patchable context keys, Estelle agent id, UI copy. Matching `TASK_CONFIG` schemas. Persistence catalog remains **AST-1074** (`TOPIC_MENU_CONFIG`). Core: **`docs/test-bible/core/intake.md`** / **`docs/test-bible/core/candidate.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gen config + TASK_CONFIG schemas | `src/utils/config.py` | **`TestAst1075TopicMenuGenConfig`** |
+
+**Broken / obsolete:** none — additive generation config beside AST-1074 persistence.
+
+**Integration:** no existing scenario covers Topic Menu confirm/generate — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig \
+  tests/component/core/test_intake.py::TestAst1075TopicMenuConfirmGenerate \
+  tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt \
   -q
 ```

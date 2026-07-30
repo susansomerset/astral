@@ -3949,3 +3949,123 @@ class TestAst1062QualifyMeteorite:
         if "qualify_meteorite" not in TASK_CONFIG:
             pytest.skip("qualify_meteorite not on tip")
         assert "qualify_meteorite" not in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+
+
+# Branches: single-job / ordered placeholder bind; "000" qualify path (AST-1076 UAT).
+class TestAst1076BindResponseJobsToClaimed:
+    def test_single_job_rewrites_non_claimed_echo(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_to_claimed"):
+            pytest.skip("AST-1076 bind helper not on tip")
+        claimed = [{"astral_job_id": "real-uuid-1"}]
+        response = [{"astral_job_id": "000", "job_title": "Eng"}]
+        consult_mod._bind_response_jobs_to_claimed(response, claimed)
+        assert response[0]["astral_job_id"] == "real-uuid-1"
+
+    def test_single_job_keeps_matching_id(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_to_claimed"):
+            pytest.skip("AST-1076 bind helper not on tip")
+        claimed = [{"astral_job_id": "real-uuid-1"}]
+        response = [{"astral_job_id": "real-uuid-1"}]
+        consult_mod._bind_response_jobs_to_claimed(response, claimed)
+        assert response[0]["astral_job_id"] == "real-uuid-1"
+
+    def test_ordered_digit_and_empty_placeholders(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_to_claimed"):
+            pytest.skip("AST-1076 bind helper not on tip")
+        claimed = [{"astral_job_id": "a"}, {"astral_job_id": "b"}, {"astral_job_id": "c"}]
+        response = [
+            {"astral_job_id": "000"},
+            {"astral_job_id": ""},
+            {"astral_job_id": "001"},
+        ]
+        consult_mod._bind_response_jobs_to_claimed(response, claimed)
+        assert [r["astral_job_id"] for r in response] == ["a", "b", "c"]
+
+    def test_ordered_does_not_overwrite_non_digit_fabricated(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_to_claimed"):
+            pytest.skip("AST-1076 bind helper not on tip")
+        claimed = [{"astral_job_id": "a"}, {"astral_job_id": "b"}]
+        response = [
+            {"astral_job_id": "000"},
+            {"astral_job_id": "not-a-claim-uuid"},
+        ]
+        consult_mod._bind_response_jobs_to_claimed(response, claimed)
+        assert response[0]["astral_job_id"] == "a"
+        assert response[1]["astral_job_id"] == "not-a-claim-uuid"
+
+    def test_length_mismatch_noop(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_to_claimed"):
+            pytest.skip("AST-1076 bind helper not on tip")
+        claimed = [{"astral_job_id": "a"}, {"astral_job_id": "b"}]
+        response = [{"astral_job_id": "000"}]
+        consult_mod._bind_response_jobs_to_claimed(response, claimed)
+        assert response[0]["astral_job_id"] == "000"
+
+
+class TestAst1076QualifyMeteoritePlaceholderId:
+    """UAT: usable fields + astral_job_id '000' bind → QUALIFIED (not ERROR)."""
+
+    def _jd(self) -> str:
+        return "Visible JD body text enough characters here. " * 2
+
+    @pytest.mark.asyncio
+    async def test_zero_echo_id_binds_and_qualifies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_bind_response_jobs_to_claimed"):
+            pytest.skip("AST-1076 bind helper not on tip")
+        aid = "claimed-meteorite-uuid"
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": "EXT-1",
+                    "job_title": "Engineer Role",
+                    "job_link": "https://jobs.example.com/1",
+                    "job_data": {jd_key: self._jd()},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "000",
+                                "company_job_id": "EXT-1",
+                                "job_title": "Engineer Role",
+                                "job_link": "https://jobs.example.com/1",
+                                "jd_text": self._jd(),
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        job = {
+            "astral_job_id": aid,
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-x",
+            "job_link": "https://jobs.example.com/old",
+            "job_data": {jd_key: self._jd()},
+        }
+        out = await consult_mod.qualify_meteorite("batch-1076", [job], {}, debug=False)
+        assert out.get("errors", 0) == 0 or "errors" not in out or out.get("failed", 0) + out.get("passed", 0) >= 1
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        initialize.assert_called_once()
+        assert initialize.call_args.args[0] == aid
+        assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]

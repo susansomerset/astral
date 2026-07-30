@@ -224,6 +224,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "check_cover_letter",
         "check_job_resume",
         "contemplate_job",
+        "contact_estelle_turn",
         "craft_company_search_terms",
         "craft_do_rubric",
         "craft_get_rubric",
@@ -265,12 +266,13 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (42 rows after AST-1060).
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (43 rows after AST-1072).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
     AST-1037 adds `simple_resume_parse`; AST-1055 adds `meteorite_like` + `meteorite_upshot`;
-    AST-1060 adds `qualify_meteorite`. Parallel AST-1015 (`preamble_validate_response`) is
-    not on this tip — its row assertion stays in TestAst1015PreambleValidateCatalogRow.
+    AST-1060 adds `qualify_meteorite`; AST-1072 adds `contact_estelle_turn`. Parallel AST-1015
+    (`preamble_validate_response`) is not on this tip — its row assertion stays in
+    TestAst1015PreambleValidateCatalogRow.
     """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
@@ -279,9 +281,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_42_current_catalog_keys(self) -> None:
+    def test_repo_json_has_43_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 42
+        assert len(rows) == 43
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -297,7 +299,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_42_current_rows(
+    def test_startup_apply_loads_all_43_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -315,7 +317,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 42
+            assert count == 44
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -611,3 +613,58 @@ class TestAst793AgentTaskRevertDivergence:
         repo_json_mod.revert_repo_admin_json_table("agent_task")
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent_task"]["diverged"] is False
 
+
+
+
+class TestAst1072ContactEstelleTurnCatalogRow:
+    """AST-1072: contact_estelle_turn Estelle CHAT seed in repo agent_task JSON."""
+
+    def test_contact_estelle_turn_envelope_prompts(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["contact_estelle_turn"]
+        assert row["agent_id"] == "principal_recruiter_estelle"
+        assert row["task_group_name"] == "Contact Estelle"
+        assert row["task_name"] == "Contact Estelle Turn"
+        assert row["task_seq"] == 1
+        assert row["run_next"] == ""
+        system = row["system_prompt"]
+        assert "success" in system and "failure" in system and "concern" in system
+        assert "admin_aside" in system
+        assert "reply" in system
+        user = row["user_prompt"]
+        assert "{$SELECTED_AGENT}" in user
+        assert "JSON only" in user
+
+
+
+class TestAst1075TopicMenuCatalogRows:
+    """AST-1075: Estelle topic_menu_preamble_confirm + topic_menu_generate catalog rows."""
+
+    def test_estelle_topic_menu_rows(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        confirm = by["topic_menu_preamble_confirm"]
+        assert confirm["agent_id"] == "principal_recruiter_estelle"
+        assert confirm["task_name"] == "Topic Menu Preamble Confirm"
+        assert confirm["task_group_name"] == "Topic Menu"
+        assert confirm["task_seq"] == 1
+        assert "Anything here you would change?" in confirm["cache_prompt"]
+        assert "library_patches" in confirm["cache_prompt"]
+        assert "continue" in confirm["cache_prompt"] and "accepted" in confirm["cache_prompt"]
+        gen = by["topic_menu_generate"]
+        assert gen["agent_id"] == "principal_recruiter_estelle"
+        assert gen["task_name"] == "Generate Topic Menu"
+        assert gen["task_group_name"] == "Topic Menu"
+        assert gen["task_seq"] == 2
+        cache = gen["cache_prompt"]
+        assert "informs_coverage_confirmed" in cache
+        for informs in (
+            "rubrics",
+            "base_resume",
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+        ):
+            assert informs in cache

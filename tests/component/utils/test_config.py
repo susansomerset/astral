@@ -2689,6 +2689,27 @@ class TestAst1069ContactEventsConfig:
         assert cc["app_token_env"] == "SLACK_APP_TOKEN"
 
 
+# Branches: context history/cache/TTL on CONTACT_CONFIG (AST-1070).
+class TestAst1070ContactContextConfig:
+    """AST-1070: history limit, cache max conversations, TTL seconds."""
+
+    def test_context_cache_keys(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["context_history_limit"] == 50
+        assert isinstance(cc["context_history_limit"], int) and cc["context_history_limit"] > 0
+        assert cc["context_cache_max_conversations"] == 256
+        assert (
+            isinstance(cc["context_cache_max_conversations"], int)
+            and cc["context_cache_max_conversations"] > 0
+        )
+        assert cc["context_cache_ttl_seconds"] == 300
+        assert (
+            isinstance(cc["context_cache_ttl_seconds"], int)
+            and cc["context_cache_ttl_seconds"] > 0
+        )
+
+
+
 # Branches: PROSPECT registry + prospect id template (AST-1068).
 class TestAst1068ProspectConfig:
     """AST-1068: PROSPECT on CANDIDATE_STATES; prospect_candidate_id_template."""
@@ -2831,3 +2852,85 @@ class TestAst1072ConversationalEnvelopeConfig:
         # Non-CHAT still uses BASE_SCHEMA example (no concern).
         other = json.loads(cfg.stringify_response_schema("evaluate_jd"))
         assert other["agent_performance"]["status"] == "success | failure"
+
+
+class TestAst1074TopicMenuConfig:
+    """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
+
+    _INFORMS = (
+        "rubrics",
+        "base_resume",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "backstory",
+    )
+
+    def test_informs_and_statuses_locked(self) -> None:
+        tmc = cfg.TOPIC_MENU_CONFIG
+        assert tmc["informs"] == self._INFORMS
+        assert tmc["statuses"] == ("open", "ready", "retired")
+        assert tmc["default_status"] == "open"
+        assert tmc["candidate_data_key"] == "topic_menu"
+
+    def test_topic_required_fields_and_library_homes(self) -> None:
+        tmc = cfg.TOPIC_MENU_CONFIG
+        for key in ("id", "name", "ask", "required", "informs", "status"):
+            assert key in tmc["topic_required_fields"]
+        for ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+            assert ctx in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+        assert "base_resume" in tmc["informs"]
+
+
+
+class TestAst1075TopicMenuGenConfig:
+    """AST-1075: TOPIC_MENU_GEN_CONFIG + TASK_CONFIG confirm/generate schemas."""
+
+    def test_task_keys_outcomes_and_packet_whitelist(self) -> None:
+        g = cfg.TOPIC_MENU_GEN_CONFIG
+        assert g["confirm_task_key"] == "topic_menu_preamble_confirm"
+        assert g["generate_task_key"] == "topic_menu_generate"
+        assert g["confirm_task_key"] != g["generate_task_key"]
+        assert g["confirm_outcomes"] == ("continue", "accepted")
+        assert g["confirm_outcome_field"] == "outcome"
+        assert g["estelle_agent_id"] == "principal_recruiter_estelle"
+        lib = cfg.CANDIDATE_LIBRARY_CONFIG
+        for key in g["packet_context_keys"]:
+            assert key in lib["context_keys"]
+        for key in g["patchable_context_keys"]:
+            assert key in lib["context_keys"]
+        for key in g["packet_contact_keys"]:
+            assert key in lib["contact_keys"]
+        for key in g["packet_name_columns"]:
+            assert key in lib["name_columns"]
+        # Joan r1: preferred_name is not a contact key — must not appear.
+        assert "preferred_name" not in g["packet_contact_keys"]
+        assert g["confirm_task_key"] in cfg.TASK_CONFIG
+        assert g["generate_task_key"] in cfg.TASK_CONFIG
+        assert g["confirm_task_key"] in cfg.get_task_keys()
+        assert g["generate_task_key"] in cfg.get_task_keys()
+
+    def test_task_config_response_schemas(self) -> None:
+        confirm = cfg.TASK_CONFIG["topic_menu_preamble_confirm"]
+        assert confirm["response_format"] == "json"
+        assert confirm["entity_type"] == "candidate"
+        assert confirm["requires_candidate_key"] is True
+        assert set(confirm["response_schema"]) >= {"assistant_message", "outcome"}
+        gen = cfg.TASK_CONFIG["topic_menu_generate"]
+        assert set(gen["response_schema"]) >= {
+            "topics",
+            "informs_coverage_confirmed",
+            "informs_covered",
+        }
+
+    def test_ui_copy_keys_present(self) -> None:
+        ui = cfg.TOPIC_MENU_GEN_CONFIG["ui"]
+        for key in (
+            "panel_title",
+            "accept_label",
+            "send_label",
+            "placeholder",
+            "generating_label",
+            "done_title",
+        ):
+            assert isinstance(ui[key], str) and ui[key].strip()

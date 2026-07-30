@@ -5843,3 +5843,229 @@ class TestAst1037NormalizeGateMembership:
         src = inspect.getsource(agent_mod.do_task)
         assert "task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS" in src
         assert 'task_key == "craft_resume_base"' not in src
+
+
+
+class TestAst1072ConversationalEnvelope:
+    """AST-1072: CHAT ternary envelope — concern ≠ failure; Medium brain; Style D debug."""
+
+    _TASK = "contact_estelle_turn"
+    _SCHEMA = {"reply": {"type": "str", "required": True}}
+
+    def _ok_envelope(
+        self,
+        *,
+        status: str = "success",
+        reply: str = "hello",
+        admin_aside: str | None = None,
+        failure_note: str | None = None,
+    ) -> Dict[str, Any]:
+        perf: Dict[str, Any] = {"status": status}
+        if admin_aside is not None:
+            perf["admin_aside"] = admin_aside
+        if failure_note is not None:
+            perf["failure_note"] = failure_note
+        return {"agent_performance": perf, "agent_payload": {"reply": reply}}
+
+    def test_validate_success_and_concern_with_aside(self) -> None:
+        assert (
+            agent_mod._validate_response_schema(
+                self._ok_envelope(), self._SCHEMA, self._TASK
+            )
+            is None
+        )
+        assert (
+            agent_mod._validate_response_schema(
+                self._ok_envelope(status="concern", admin_aside="user struggling"),
+                self._SCHEMA,
+                self._TASK,
+            )
+            is None
+        )
+
+    def test_validate_concern_requires_admin_aside(self) -> None:
+        err = agent_mod._validate_response_schema(
+            self._ok_envelope(status="concern"), self._SCHEMA, self._TASK
+        )
+        assert err is not None
+        assert "admin_aside" in err
+        err_blank = agent_mod._validate_response_schema(
+            self._ok_envelope(status="concern", admin_aside="  "),
+            self._SCHEMA,
+            self._TASK,
+        )
+        assert err_blank is not None and "admin_aside" in err_blank
+
+    def test_validate_failure_still_agent_failure(self) -> None:
+        err = agent_mod._validate_response_schema(
+            self._ok_envelope(status="failure", failure_note="could not reply"),
+            self._SCHEMA,
+            self._TASK,
+        )
+        assert err is not None
+        assert "Agent failure" in err
+        assert "could not reply" in err
+
+    def test_non_chat_unchanged_binary_failure(self) -> None:
+        err = agent_mod._validate_response_schema(
+            {"agent_performance": {"status": "failure"}, "agent_payload": {"reply": "x"}},
+            self._SCHEMA,
+            "evaluate_jd",
+        )
+        assert err is not None and "Agent failure" in err
+
+    def test_conversational_turn_helper_shape(self) -> None:
+        shaped = agent_mod.conversational_turn_from_do_task_result(
+            {
+                "success": True,
+                "conversational_outcome": "concern",
+                "agent_performance": {"status": "concern", "admin_aside": "aside"},
+                "parsed_response": {"reply": "hi"},
+            }
+        )
+        assert shaped == {
+            "success": True,
+            "outcome": "concern",
+            "reply": "hi",
+            "admin_aside": "aside",
+        }
+
+    @pytest.mark.asyncio
+    async def test_do_task_concern_preserves_outcome_and_uses_medium_brain(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # Estelle row stays Big for upshot; CHAT overrides to CONTACT_ESTELLE Medium.
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        tier_meta = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
+        send_ds = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": self._ok_envelope(
+                    status="concern",
+                    reply="Sorry this is hard",
+                    admin_aside="User sounding frustrated",
+                ),
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        out = await agent_mod.do_task(self._TASK, index="turn-1", ctx={}, debug=False)
+        assert out["success"] is True
+        assert out["conversational_outcome"] == "concern"
+        assert out["agent_performance"]["admin_aside"] == "User sounding frustrated"
+        assert out["parsed_response"] == {"reply": "Sorry this is hard"}
+        assert send_ds.await_args is not None
+        assert send_ds.await_args.kwargs.get("tier_meta") == tier_meta
+        shaped = agent_mod.conversational_turn_from_do_task_result(out)
+        assert shaped["outcome"] == "concern"
+        assert shaped["reply"] == "Sorry this is hard"
+        assert shaped["admin_aside"] == "User sounding frustrated"
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_emits_style_d_on_concern(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": self._ok_envelope(
+                        status="concern",
+                        reply="ok",
+                        admin_aside="note",
+                    ),
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        out = await agent_mod.do_task(self._TASK, index="turn-dbg", ctx={}, debug=True)
+        assert out["success"] is True
+        index_calls = dbg.debug_index.call_args_list
+        assert any(
+            (c.kwargs.get("func") == f"do_task({self._TASK})" and c.kwargs.get("outcome") == "concern")
+            for c in index_calls
+        )
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any("conversational_outcome=concern" in str(m) for m in detail_msgs)
+
+    @pytest.mark.asyncio
+    async def test_do_task_failure_status_returns_success_false(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": self._ok_envelope(
+                        status="failure", failure_note="blocked"
+                    ),
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        out = await agent_mod.do_task(self._TASK, index="turn-fail", ctx={}, debug=False)
+        assert out["success"] is False
+        assert "Agent failure" in str(out.get("error") or "")
+
+
+# Branches: RESPONSE debug uses save_agent_data return as result (AST-1076 UAT NameError).
+class TestAst1076StoreResponseDebugResult:
+    def test_debug_true_does_not_nameerror_on_result(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "save_agent_data",
+            lambda **kwargs: {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": kwargs["agent_data_id"],
+                "ref_agent_data_id": None,
+            },
+        )
+        caplog.set_level("DEBUG")
+        # Pre-fix raised NameError: name 'result' is not defined when debug=True.
+        agent_mod._store_response_block(
+            "job", "qualify_meteorite", "batch-1076", "ok", index="job-1", debug=True
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "agent_data_write" in combined
+        assert "outcome=new_content" in combined
