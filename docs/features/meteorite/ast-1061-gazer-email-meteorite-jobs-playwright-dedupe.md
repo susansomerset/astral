@@ -313,3 +313,25 @@ ingest = ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=debug)
 | 2 | `99c51148` | optional `job_link=` on `create_meteorite_job` |
 | 3 | `4b69107e` | gazer email ingest Playwright + dedupe |
 | 4 | `f82be0d6` | inbox / API / Manage Email multi-result Create |
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1061
+**Publish ref:** `259ebb336d4265633f7f21e4ee47071d3a5bbcde` (`origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`)
+**Overall:** DISCUSS
+
+### What’s solid
+- `METEORITE_EMAIL_INGEST_CONFIG` + global `text_matches_known_company_job_id` / `job_link_exists`; optional `job_link` on create (still `company_job_id=None`).
+- Gazer ingest: link→Playwright→dedupe→create; body path without PW; Style D gated; inbox/API/UI multi-result.
+- Playwright only via `get_visible_text`; non-meteorite gazer scrape untouched.
+
+### Issues
+- **discuss (straggler ×3):** Joan excluded at plan time; in-scope on three-dot vs `origin/dev` via plan docs + Betty tests/bible — all substance **conforms**:
+  - `astral.debug.spikes-under-debug-dir`
+  - `astral.docs.features-single-file-per-ticket`
+  - `astral.git.engineer-test-tree-ban`
+
+### Recommended actions
+- Katherine: acknowledge stragglers → resolve-child → User Testing.
