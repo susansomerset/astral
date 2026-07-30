@@ -160,3 +160,27 @@ No statute conflicts requiring `conf-!!-NONE`.
 | 2 | `03b0ab1f` | qualify_meteorite consult wrapper + run_consult_task + chunk-exhaust + Ad Hoc assemble |
 
 **Tip:** `21fe8f774b0dc87110c6350b5dae3d83382415af` on `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1062
+**Publish ref:** `748ffd39bc1454b5cd7cd93f64e2642f06ed680d` (`origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`)
+**Overall:** DISCUSS
+
+### What’s solid
+- `qualify_meteorite` Pattern A wrapper over `_run_batch_consult`; content gates → FAILED_QUALIFY; pass via `initialize_job` + QUALIFIED; Style D gated.
+- Chunk-exhaust + Ad Hoc `METEORITE JOBS:` assemble lockstep; min_* thresholds on TASK_CONFIG only.
+- No `qualify_job_listings` / gazer edits on this ticket’s code commits.
+
+### Issues
+- **discuss (straggler ×5):** Joan excluded at plan time; in-scope on three-dot vs `origin/dev` via stacked siblings + Betty tests/docs — all substance **conforms**:
+  - `astral.debug.spikes-under-debug-dir`
+  - `astral.docs.features-single-file-per-ticket`
+  - `astral.git.engineer-test-tree-ban`
+  - `astral.standards.database-header-inventory`
+  - `astral.ui.frontend-file-placement`
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
