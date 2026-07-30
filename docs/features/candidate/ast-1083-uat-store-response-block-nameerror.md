@@ -78,7 +78,12 @@ After Estelle `intake_initiate_candidate` succeeds, `_store_response_block` pers
 
 **Publish ref:** `sub/AST-952/AST-1083-uat-store-response-block-nameerror`
 **Build tip:** `51de0897`
+**code-rubric:** revision=1 — **Overall: CLEAN** (tip after this docs append)
 
 ### Stages delivered
 
 1. `_store_response_block` — bind `result = save_agent_data(...)` so `debug=True` `agent_data_write` detail line no longer NameErrors.
+
+### Radia — code-rubric.v1 @ tip (post-docs)
+
+Three-dot `origin/dev...origin/sub/AST-952/AST-1083-uat-store-response-block-nameerror`: product delta is the one-line `result =` bind in `_store_response_block`; mirrors `_store_prompt_blocks` `_save`. Debug detail remains gated on `debug=True`. Plan Stage 1 + wrong-fix rejects held. Betty reused AST-1076 RESPONSE NameError coverage (no new cases). No fix-now / discuss.
