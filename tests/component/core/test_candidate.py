@@ -2953,3 +2953,99 @@ class TestAst1075PreambleConfirmedAt:
         assert dbg.call_args_list[0].kwargs["func"] == "candidate.mark_topic_menu_preamble_confirmed"
         candidate_mod.mark_topic_menu_preamble_confirmed("c1", debug=False)
         assert dbg.call_count == 2
+
+
+# AST-1081: empty-full recompute + contact.websites list coercion on save.
+class TestAst1081ContactShapesSaveContract:
+    """AST-1081: save_candidate_data empty/whitespace full → join; websites list coerce."""
+
+    def test_empty_full_recomputes_from_submitted_first_last(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Old", "last": "Name"},
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"first": "Ada", "last": "Lovelace", "full": "   "},
+        )
+        assert save.call_args.kwargs["full"] == "Ada Lovelace"
+        assert save.call_args.kwargs["first"] == "Ada"
+        assert save.call_args.kwargs["last"] == "Lovelace"
+
+    def test_empty_full_falls_back_to_existing_columns(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        candidate_mod.save_candidate_data("c1", {"full": ""})
+        assert save.call_args.kwargs["full"] == "Ada Lovelace"
+
+    def test_nonempty_full_override_is_stripped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"full": "  Countess of Lovelace  "},
+        )
+        assert save.call_args.kwargs["full"] == "Countess of Lovelace"
+
+    def test_websites_none_becomes_empty_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"websites": None, "phone": "555"}}
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == []
+
+    def test_websites_list_strips_and_drops_empties(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "websites": ["  https://a.example  ", "", "  ", "https://b.example"],
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == [
+            "https://a.example",
+            "https://b.example",
+        ]
+
+    def test_websites_non_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        with pytest.raises(ValueError, match="contact.websites must be a list"):
+            candidate_mod.save_candidate_data(
+                "c1", {"contact": {"websites": "https://not-a-list.example"}}
+            )

@@ -2993,3 +2993,44 @@ class TestAst1079ContactUniquenessConfig:
         for path in uniq["scalar_paths"] + uniq["list_paths"]:
             assert path.startswith("contact.")
             assert path.split(".", 1)[1] in contact_keys
+
+
+class TestAst1081ContactShapesConfig:
+    """AST-1081: DATA_SHAPES Contact Information exposes full / websites / reason_codes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_full_websites_reason_codes_in_contact_shapes(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["full"]["label"] == "Full Name"
+        assert by_key["full"]["type"] == "text"
+        assert by_key["contact.websites"]["label"] == "Websites"
+        assert by_key["contact.websites"]["type"] == "string_list"
+        assert by_key["contact.reason_codes"]["label"] == "Reason Codes"
+        assert by_key["contact.reason_codes"]["type"] == "textarea"
+        # Still columns + contact.* — never profile.*
+        keys = list(by_key)
+        assert "first" in keys and "last" in keys
+        assert not any(k.startswith("profile.") for k in keys)
+
+    def test_field_order_full_after_last_websites_after_linkedin(self) -> None:
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("full") == keys.index("last") + 1
+        assert keys.index("contact.websites") == keys.index("contact.linkedin_url") + 1
+        assert keys.index("contact.reason_codes") > keys.index("pronouns")
+
+    def test_admin_manage_shapes_unchanged_no_websites(self) -> None:
+        # Boundary: Admin Manage Candidates stays on its narrow field set
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        list_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["list"]["manage"]]
+        assert "contact.websites" not in edit_keys
+        assert "contact.reason_codes" not in edit_keys
+        assert "full" not in edit_keys
+        assert "contact.websites" not in list_keys
+        assert "full" not in list_keys

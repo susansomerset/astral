@@ -1549,3 +1549,26 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/utils/test_config.py::TestAst1073ContactEstelleTurnConfig \
   -q
 ```
+
+
+---
+
+### AST-1081 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1081-contact-shapes-websites-full`.
+
+`DATA_SHAPES["candidates"]["detail"]["profile"]` Contact Information: editable `full`, `contact.websites` (`type: string_list`), `contact.reason_codes` (`textarea`); Admin `list.manage` / `edit.manage` unchanged. Save contract + FormFields: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Contact shapes + Admin boundary | `src/utils/config.py` | **`TestAst1081ContactShapesConfig`** |
+
+**Broken / obsolete:** none — additive shape fields.
+
+**Integration:** none — shapes vocabulary only; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1081ContactShapesConfig \
+  -q
+```
