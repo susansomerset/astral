@@ -30,6 +30,7 @@ __all__ = [
     "verify_slack_signature",
     "parse_url_verification",
     "post_message",
+    "fetch_conversation_history",
     "fetch_user_profile",
     "open_socket_mode_connection",
 ]
@@ -91,6 +92,38 @@ def post_message(
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_conversation_history(
+    *,
+    channel: str,
+    thread_ts: Optional[str] = None,
+    limit: int,
+) -> list[dict]:
+    """Fetch recent messages from Slack (SoT). Raise on HTTP/transport / ok:false."""
+    require_controlled_external_io("slack.fetch_conversation_history")
+    token = os.environ[CONTACT_CONFIG["bot_token_env"]]
+    params: Dict[str, Any] = {"channel": channel, "limit": int(limit)}
+    if thread_ts:
+        # Thread replies — ts is the parent message timestamp.
+        method = "conversations.replies"
+        params["ts"] = thread_ts
+    else:
+        method = "conversations.history"
+    resp = requests.get(
+        f"{_SLACK_API}/{method}",
+        headers={"Authorization": f"Bearer {token}"},
+        params=params,
+        timeout=_POST_TIMEOUT_SEC,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if not payload.get("ok"):
+        raise RuntimeError(f"{method} failed: {payload.get('error')}")
+    messages = payload.get("messages") or []
+    if not isinstance(messages, list):
+        return []
+    return [m for m in messages if isinstance(m, dict)]
 
 
 def fetch_user_profile(user_id: str) -> dict:

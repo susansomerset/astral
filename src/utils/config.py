@@ -1259,6 +1259,12 @@ CONTACT_CONFIG = {
     "app_token_env": "SLACK_APP_TOKEN",
     # Deterministic astral_candidate_id for Slack-created PROSPECTs (format with slack_user_id=).
     "prospect_candidate_id_template": "slack-{slack_user_id}",
+    # AST-1070: Slack history page size for context loads (Web API limit param).
+    "context_history_limit": 50,
+    # Process-local cache: max distinct (channel, thread) keys retained.
+    "context_cache_max_conversations": 256,
+    # Seconds before a cached conversation is considered stale (force Slack refetch).
+    "context_cache_ttl_seconds": 300,
 }
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
@@ -1275,6 +1281,12 @@ assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
 assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
 assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
 assert "{slack_user_id}" in CONTACT_CONFIG["prospect_candidate_id_template"]
+assert isinstance(CONTACT_CONFIG["context_history_limit"], int)
+assert CONTACT_CONFIG["context_history_limit"] > 0
+assert isinstance(CONTACT_CONFIG["context_cache_max_conversations"], int)
+assert CONTACT_CONFIG["context_cache_max_conversations"] > 0
+assert isinstance(CONTACT_CONFIG["context_cache_ttl_seconds"], int)
+assert CONTACT_CONFIG["context_cache_ttl_seconds"] > 0
 # Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
 for _skill_key in CONTACT_CONFIG["skills"]:
     assert _skill_key not in TASK_CONFIG, _skill_key
