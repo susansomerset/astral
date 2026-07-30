@@ -272,4 +272,10 @@ Diff matches Self-Assessment Single-Component / high / Medium: config + `do_task
 **Notes:** Joan plan-rubric APPROVED attached. C4 stragglers listed under Issues. Active statute count = 56.
 
 context_tokens≈52000
-)
+
+## Resolution (2026-07-30)
+
+- **fix-now:** none.
+- **discuss (C4 stragglers):** acknowledged — Joan plan-time exclusions are in-scope on tip and already **conforms**; no product change.
+- **advisory:** deferred — `outcome="validation error"` vs `failure` index label left as-is for AST-1073 operators to decide; not blocking UT.
+- Manifest green at tip `912dc2c7` (19 passed); Radia docs tip `5b47c4e0` merged.
