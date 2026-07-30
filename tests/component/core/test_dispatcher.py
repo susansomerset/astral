@@ -1627,31 +1627,38 @@ class TestAst1054MeteoriteDispatchProvision:
         def _save(**kwargs):
             saves.append(kwargs)
             existing.append(
-                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]}
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"], "id": len(existing) + 1}
             )
 
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", MagicMock())
         twins_present = {"meteorite_like", "meteorite_upshot"} <= set(dispatcher_mod.TASK_CONFIG)
+        qualify_present = "qualify_meteorite" in dispatcher_mod.TASK_CONFIG
+        # Base GDL = 3; +qualify (AST-1060) = 4; +twins = 6.
+        expect_add = (6 if twins_present else 4) if qualify_present else (5 if twins_present else 3)
+        expect_missing = 0 if twins_present else 2
         first = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
-        if twins_present:
-            assert first["added"] == 5 and first["skipped_missing_config"] == 0
-        else:
-            assert first["added"] == 3 and first["skipped_missing_config"] == 2
+        assert first["added"] == expect_add and first["skipped_missing_config"] == expect_missing
         assert first["skipped"] == 0
+        assert first.get("retired", 0) == 0
         by_key = {s["task_key"]: s for s in saves}
-        assert by_key["evaluate_jd"]["trigger_state"] == "METEORITE_NEW"
+        # AST-1060: evaluate_jd inserts at METEORITE_QUALIFIED.
+        assert by_key["evaluate_jd"]["trigger_state"] == "METEORITE_QUALIFIED"
         assert by_key["evaluate_jd"]["score_floor"] is None
         assert by_key["grade_do"]["score_floor"] == 0.0
         assert by_key["grade_get"]["score_floor"] == 0.0
+        if qualify_present:
+            assert by_key["qualify_meteorite"]["trigger_state"] == "METEORITE_NEW"
+            assert by_key["qualify_meteorite"]["score_floor"] is None
         if twins_present:
             assert by_key["meteorite_like"]["score_floor"] == 0.0
             assert by_key["meteorite_upshot"]["batch_size"] == 1
         else:
             assert "meteorite_like" not in by_key
         second = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
-        expect_skip = 5 if twins_present else 3
-        assert second["added"] == 0 and second["skipped"] == expect_skip
-        assert second["skipped_missing_config"] == (0 if twins_present else 2)
+        assert second["added"] == 0 and second["skipped"] == expect_add
+        assert second["skipped_missing_config"] == expect_missing
+        assert second.get("retired", 0) == 0
 
     def test_ensure_inserts_twins_when_task_config_present(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1667,22 +1674,71 @@ class TestAst1054MeteoriteDispatchProvision:
         def _save(**kwargs):
             saves.append(kwargs)
             existing.append(
-                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]}
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"], "id": len(existing) + 1}
             )
 
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", MagicMock())
         patched = dict(dispatcher_mod.TASK_CONFIG)
         patched["meteorite_like"] = {"agent_task": "meteorite_like"}
         patched["meteorite_upshot"] = {"agent_task": "meteorite_upshot"}
         monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", patched)
         out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
-        assert out["added"] == 5 and out["skipped_missing_config"] == 0
+        qualify_present = "qualify_meteorite" in patched
+        expect_add = 6 if qualify_present else 5
+        assert out["added"] == expect_add and out["skipped_missing_config"] == 0
         by_key = {s["task_key"]: s for s in saves}
         assert by_key["meteorite_like"]["trigger_state"] == "METEORITE_PASSED_GET"
         assert by_key["meteorite_like"]["score_floor"] == 0.0
         assert by_key["meteorite_upshot"]["trigger_state"] == "METEORITE_PASSED_LIKE"
         assert by_key["meteorite_upshot"]["score_floor"] == 0.0
         assert by_key["meteorite_upshot"]["batch_size"] == 1
+
+    def test_ensure_retires_stale_evaluate_jd_at_meteorite_new(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1060: delete evaluate_jd@METEORITE_NEW; leave evaluate_jd@JD_READY."""
+        if "qualify_meteorite" not in dispatcher_mod.TASK_CONFIG:
+            pytest.skip("AST-1060 qualify_meteorite not on this tip")
+        existing = [
+            {"id": 10, "task_key": "evaluate_jd", "trigger_state": "METEORITE_NEW"},
+            {"id": 11, "task_key": "evaluate_jd", "trigger_state": "JD_READY"},
+        ]
+        saves: list[dict] = []
+        deleted: list[int] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {
+                    "id": 100 + len(saves),
+                    "task_key": kwargs["task_key"],
+                    "trigger_state": kwargs["trigger_state"],
+                }
+            )
+
+        def _delete(row_id: int) -> None:
+            deleted.append(row_id)
+            existing[:] = [r for r in existing if int(r["id"]) != int(row_id)]
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", _delete)
+        out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert out["retired"] == 1
+        assert deleted == [10]
+        assert any(
+            s["task_key"] == "evaluate_jd" and s["trigger_state"] == "METEORITE_QUALIFIED"
+            for s in saves
+        )
+        assert any(r["task_key"] == "evaluate_jd" and r["trigger_state"] == "JD_READY" for r in existing)
+        assert not any(
+            r["task_key"] == "evaluate_jd" and r["trigger_state"] == "METEORITE_NEW" for r in existing
+        )
 
     def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
@@ -1705,6 +1761,7 @@ class TestAst1054MeteoriteDispatchProvision:
                 "added": 0,
                 "skipped": 3,
                 "skipped_missing_config": 2,
+                "retired": 0,
             }
 
         monkeypatch.setattr(dispatcher_mod, "ensure_meteorite_dispatch_tasks", _ensure)
@@ -1712,7 +1769,9 @@ class TestAst1054MeteoriteDispatchProvision:
         assert calls[0] == "tmpl"
         assert "tmpl" in calls and "c2" in calls
         assert out["candidates_touched"] == 2
-        assert out["skipped_missing_config"] == 4
+        # Template ensure + loop over ["tmpl","c2"] → 3 ensures × stub 2 = 6.
+        assert out["skipped_missing_config"] == 6
+        assert out.get("retired", 0) == 0
 
     def test_start_scheduler_invokes_meteorite_provision(
         self, monkeypatch: pytest.MonkeyPatch

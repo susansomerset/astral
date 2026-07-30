@@ -2401,6 +2401,7 @@ class TestAst1053MeteoriteGdlJobStates:
 
     _PASS = (
         "METEORITE_NEW",
+        "METEORITE_QUALIFIED",  # AST-1060: pre-AI → Ruth qualify → GDL entry
         "METEORITE_PASSED_JD",
         "METEORITE_PASSED_DO",
         "METEORITE_PASSED_GET",
@@ -2408,6 +2409,8 @@ class TestAst1053MeteoriteGdlJobStates:
         "METEORITE_PASSED_LIKE_RETRY",
     )
     _FAIL = (
+        "METEORITE_FAILED_QUALIFY",  # AST-1060
+        "METEORITE_ERROR_QUALIFY",  # AST-1060
         "METEORITE_FAILED_JD",
         "METEORITE_ERROR_EVALUATE_JD",
         "METEORITE_FAILED_DO",
@@ -2421,9 +2424,13 @@ class TestAst1053MeteoriteGdlJobStates:
     def test_job_states_priors(self) -> None:
         js = cfg.JOB_STATES
         assert js["METEORITE_NEW"]["prior_states"] is None
-        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_NEW"]
-        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_NEW"]
-        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_NEW"]
+        # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
+        assert js["METEORITE_QUALIFIED"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
         assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
         assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
         assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
@@ -2451,10 +2458,12 @@ class TestAst1053MeteoriteGdlJobStates:
         for state in self._PASS:
             assert state in review, state
         assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
-        assert review.index("METEORITE_NEW") < review.index("METEORITE_PASSED_JD")
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_QUALIFIED")
+        assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
         assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
         labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
-        assert labels["METEORITE_NEW"] == "Meteorite New"
+        assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
+        assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
         assert labels["METEORITE_PASSED_LIKE_RETRY"] == "Meteorite LIKE upshot (retry)"
 
         order = cfg.JOBS_SKIPPED_SECTION_ORDER
@@ -2466,6 +2475,8 @@ class TestAst1053MeteoriteGdlJobStates:
         assert order.index("FAILED_JD") < order.index("METEORITE_FAILED_JD")
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_JD"] == "Meteorite Failed JD"
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_EVALUATE_JD"] == "Meteorite Error Evaluate JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_QUALIFY"] == "Meteorite Failed Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_QUALIFY"] == "Meteorite Error Qualify"
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_TECHNICAL_LIKE"] == (
             "Meteorite Failed Technical LIKE"
         )
@@ -2476,20 +2487,25 @@ class TestAst1053MeteoriteGdlJobStates:
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE"] == "like_grades"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE_RETRY"] == "like_grades"
         assert "METEORITE_NEW" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert "METEORITE_QUALIFIED" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_JD"] == "jd_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_DO"] == "do_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_GET"] == "get_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_LIKE"] == "like_grades"
         assert "METEORITE_FAILED_TECHNICAL_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
         assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_FAILED_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_ERROR_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
 
     def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
         # AC2 smoke: score-gated exceptions + non-meteorite GDL priors.
         # RECOMMENDED meteorite LIKE priors are AST-1055 (TestAst1055MeteoriteLikeUpshotTasks).
         # AST-1054 adds METEORITE_PASSED_* (not METEORITE_NEW / fails) to PASSED_SCORE_GATED_STATES.
         # Create landing retarget is AST-1056 (TestAst1056MeteoriteCreateLanding).
+        # AST-1060: QUALIFIED / FAILED_QUALIFY / ERROR_QUALIFY stay ungated.
         for state in (
             "METEORITE_NEW",
+            "METEORITE_QUALIFIED",
             "METEORITE_PASSED_LIKE_RETRY",
             *self._FAIL,
         ):
@@ -2498,6 +2514,14 @@ class TestAst1053MeteoriteGdlJobStates:
         assert "PASSED_LIKE" in rec_priors
         assert "PASSED_LIKE_RETRY" in rec_priors
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+        # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
+        # qualify_job_listings has no agent_task key — do not invent one.
+        qjl = cfg.TASK_CONFIG["qualify_job_listings"]
+        assert qjl["pass_state"] == "PASSED_JOBLIST"
+        assert qjl["fail_state"] == "FAILED_JOBLIST"
+        assert qjl["error_state"] == "ERROR_QUALIFY_JOB_LISTINGS"
+        assert "agent_task" not in qjl
+        assert cfg._dispatch_trigger_state_for_task_key("qualify_job_listings") == "NEW"
 
 
 class TestAst1056MeteoriteCreateLanding:
@@ -2520,7 +2544,9 @@ class TestAst1054MeteoriteGdlDispatch:
 
     def test_dispatch_row_specs_and_job_states(self) -> None:
         rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
-        assert rows[("evaluate_jd", "METEORITE_NEW")]["score_floor"] is None
+        # AST-1060: evaluate_jd claims METEORITE_QUALIFIED (not METEORITE_NEW).
+        assert ("evaluate_jd", "METEORITE_NEW") not in rows
+        assert rows[("evaluate_jd", "METEORITE_QUALIFIED")]["score_floor"] is None
         assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
         assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
         assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
@@ -2534,6 +2560,7 @@ class TestAst1054MeteoriteGdlDispatch:
 
     def test_score_floor_gating_and_trigger_defaults(self) -> None:
         assert cfg.dispatch_claim_uses_score_floor("METEORITE_NEW") is False
+        assert cfg.dispatch_claim_uses_score_floor("METEORITE_QUALIFIED") is False
         for state in (
             "METEORITE_PASSED_JD",
             "METEORITE_PASSED_DO",
@@ -2547,6 +2574,38 @@ class TestAst1054MeteoriteGdlDispatch:
         assert cfg._dispatch_trigger_state_for_task_key("evaluate_jd") == "JD_READY"
         assert cfg._dispatch_trigger_state_for_task_key("grade_do") == "PASSED_JD"
         assert cfg._dispatch_trigger_state_for_task_key("grade_get") == "PASSED_DO"
+
+
+@pytest.mark.skipif(
+    "qualify_meteorite" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1060 qualify_meteorite TASK_CONFIG not on this publish tip",
+)
+class TestAst1060QualifyMeteoriteConfig:
+    """AST-1060: qualify states, TASK_CONFIG, dispatch claim, helper wiring."""
+
+    def test_qualify_task_config_and_dispatch_row(self) -> None:
+        tc = cfg.TASK_CONFIG["qualify_meteorite"]
+        assert tc["scored"] is False
+        assert tc["output_type"] == "fields"
+        assert tc["pass_state"] == "METEORITE_QUALIFIED"
+        assert tc["fail_state"] == "METEORITE_FAILED_QUALIFY"
+        assert tc["error_state"] == "METEORITE_ERROR_QUALIFY"
+        assert tc["agent_task"] == "qualify_meteorite"
+        assert tc["entity_type"] == "job"
+        assert tc["requires_candidate_key"] is True
+        assert tc["trigger_state"] is None
+        schema_items = tc["response_schema"]["jobs"]["items_schema"]
+        for key in ("astral_job_id", "company_job_id", "job_title", "job_link", "jd_text"):
+            assert schema_items[key]["required"] is True, key
+
+        rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        assert rows[("qualify_meteorite", "METEORITE_NEW")]["score_floor"] is None
+        # First METEORITE_DISPATCH_TASKS entry is qualify (before GDL).
+        assert cfg.METEORITE_DISPATCH_TASKS[0]["task_key"] == "qualify_meteorite"
+        assert cfg._dispatch_trigger_state_for_task_key("qualify_meteorite") == "METEORITE_NEW"
+        assert "qualify_meteorite" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert cfg._dispatch_entity_type_for_task_key("qualify_meteorite") == "job"
+        assert cfg._dispatch_entity_type_for_task_key("qualify_job_listings") == "job"
 
 
 class TestAst1055MeteoriteLikeUpshotTasks:
