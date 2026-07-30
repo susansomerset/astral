@@ -7,7 +7,14 @@ import JobDetailModal from "../components/JobDetailModal"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
 import Time from "../components/Time"
-import { buildJobListRubricColumns, formatGradeDotTooltip, RUBRIC_DEFAULT_IMPORTANCE, type JobListRubricColumn } from "../lib/rubricDisplay"
+import {
+  analysisTimeScoreForJob,
+  buildJobListRubricColumnsForGroup,
+  formatGradeDotTooltip,
+  groupJobsByAlignedRubric,
+  RUBRIC_DEFAULT_IMPORTANCE,
+  type JobListRubricColumn,
+} from "../lib/rubricDisplay"
 
 interface Job {
   astral_job_id: string
@@ -85,8 +92,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
     } else if (col === "latest_score") {
-      const av = a.latest_score ?? null
-      const bv = b.latest_score ?? null
+      const av = analysisTimeScoreForJob(a as Record<string, unknown>, gradeKey)
+      const bv = analysisTimeScoreForJob(b as Record<string, unknown>, gradeKey)
       if (av === null && bv === null) cmp = 0
       else if (av === null) cmp = 1
       else if (bv === null) cmp = -1
@@ -103,16 +110,11 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
 
 export default function InReview() {
   const { manifest, loadState } = useStateUi()
-  const { selectedId, candidates } = useCandidate()
+  const { selectedId } = useCandidate()
   const [rows, setRows]     = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [sorts, setSorts]   = useState<Record<string, SortState>>({})
-
-  const artifacts = useMemo(() => {
-    const c = candidates.find(x => x.astral_candidate_id === selectedId)
-    return (c?.candidate_data?.artifacts as Record<string, unknown>) ?? {}
-  }, [candidates, selectedId])
 
   const load = useCallback(() => {
     if (!selectedId) return
@@ -158,25 +160,15 @@ export default function InReview() {
   const { isExpanded, onExpandedChange, setExpandedKeys } = useSectionExpandPolicy({ sectionKeys })
   useEffect(() => { setExpandedKeys(new Set()) }, [selectedId, setExpandedKeys])
 
-  function getRubricCols(gradeKey: string, jobs: Job[]): JobListRubricColumn[] {
-    const rubricKey = manifest?.jobs.grade_rubric_by_field[gradeKey]
-    return buildJobListRubricColumns({
-      rubricArtifactKey: rubricKey || undefined,
-      artifacts,
-      gradeKey,
-      jobs: jobs as Array<Record<string, unknown>>,
-    })
-  }
-
-  function handleSort(sectionState: string, col: string) {
+  function handleSort(sortKey: string, col: string) {
     setSorts(prev => {
-      const cur = prev[sectionState] ?? { col: "state_changed_at", asc: false }
-      return { ...prev, [sectionState]: { col, asc: cur.col === col ? !cur.asc : true } }
+      const cur = prev[sortKey] ?? { col: "state_changed_at", asc: false }
+      return { ...prev, [sortKey]: { col, asc: cur.col === col ? !cur.asc : true } }
     })
   }
 
-  function sortIndicator(sectionState: string, col: string) {
-    const s = sorts[sectionState]
+  function sortIndicator(sortKey: string, col: string) {
+    const s = sorts[sortKey]
     return s?.col === col ? <span style={{ fontSize: 10, marginLeft: 3 }}>{s.asc ? "▲" : "▼"}</span> : null
   }
 
@@ -196,10 +188,10 @@ export default function InReview() {
       ) : (
         sections.map(sec => {
           const sectionOpen = isExpanded(sec.state)
-          const cols = sec.gradeKey ? getRubricCols(sec.gradeKey, sec.jobs) : []
-          const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
-          const sorted = sortJobs(sec.jobs, sort.col, sort.asc, sec.gradeKey, cols)
-          // Match grade-dot sections: always show Score when we show rubric columns (e.g. Passed Job List uses latest_score from qualify).
+          const groups = sec.gradeKey
+            ? groupJobsByAlignedRubric(sec.jobs as Array<Record<string, unknown>>, sec.gradeKey)
+            : [{ fingerprint: sec.state, jobs: sec.jobs as Array<Record<string, unknown>>, columnSourceJob: (sec.jobs[0] ?? {}) as Record<string, unknown> }]
+          // Always-on Score header when gradeKey set (Joan discuss — In Review parity)
           const showScore = Boolean(sec.gradeKey)
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
@@ -215,37 +207,46 @@ export default function InReview() {
                 <span style={{ transform: sectionOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
                 {sec.label} ({sec.jobs.length})
               </button>
-              {sectionOpen && (
-                <div className="list-page-table-wrap">
+              {sectionOpen && groups.map(group => {
+                const sortKey = `${sec.state}::${group.fingerprint}`
+                const cols = sec.gradeKey
+                  ? buildJobListRubricColumnsForGroup({ gradeKey: sec.gradeKey, columnSourceJob: group.columnSourceJob })
+                  : []
+                const sort = sorts[sortKey] ?? { col: "state_changed_at", asc: false }
+                const sorted = sortJobs(group.jobs as Job[], sort.col, sort.asc, sec.gradeKey, cols)
+                return (
+                <div key={sortKey} className="list-page-table-wrap" style={{ marginBottom: groups.length > 1 ? 12 : 0 }}>
                   <table className="list-page-table">
                     <thead>
                       <tr>
-                        <th className="sortable" onClick={() => handleSort(sec.state, "job_title")}>
-                          Job Title{sortIndicator(sec.state, "job_title")}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "job_title")}>
+                          Job Title{sortIndicator(sortKey, "job_title")}
                         </th>
-                        <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
-                          Company{sortIndicator(sec.state, "company")}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "company")}>
+                          Company{sortIndicator(sortKey, "company")}
                         </th>
                         {cols.map(c => (
                           <th key={c.code} className="sortable" title={c.headerTooltip}
                             style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
-                            onClick={() => handleSort(sec.state, c.code)}>
-                            {c.headerCode}{sortIndicator(sec.state, c.code)}
+                            onClick={() => handleSort(sortKey, c.code)}>
+                            {c.headerCode}{sortIndicator(sortKey, c.code)}
                           </th>
                         ))}
                         {showScore && (
                           <th className="sortable" style={{ textAlign: "center", minWidth: 60 }}
-                            onClick={() => handleSort(sec.state, "latest_score")}>
-                            Score{sortIndicator(sec.state, "latest_score")}
+                            onClick={() => handleSort(sortKey, "latest_score")}>
+                            Score{sortIndicator(sortKey, "latest_score")}
                           </th>
                         )}
-                        <th className="sortable" onClick={() => handleSort(sec.state, "state_changed_at")}>
-                          Updated{sortIndicator(sec.state, "state_changed_at")}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
+                          Updated{sortIndicator(sortKey, "state_changed_at")}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sorted.map(job => (
+                      {sorted.map(job => {
+                        const rowScore = analysisTimeScoreForJob(job as Record<string, unknown>, sec.gradeKey)
+                        return (
                         <tr key={job.astral_job_id} className="clickable" onClick={() => setViewingId(job.astral_job_id)}>
                           <td>{job.job_title || "\u2014"}</td>
                           <td>{job.company}</td>
@@ -266,16 +267,18 @@ export default function InReview() {
                           })}
                           {showScore && (
                             <td style={{ textAlign: "center" }}>
-                              {job.latest_score != null ? (job.latest_score as number).toFixed(2) : "\u2014"}
+                              {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
                             </td>
                           )}
                           <td><Time value={job.state_changed_at} /></td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
-              )}
+                )
+              })}
             </div>
           )
         })
