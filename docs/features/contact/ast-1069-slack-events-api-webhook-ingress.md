@@ -328,4 +328,4 @@ context_tokens≈58000
 
 **2026-07-30** — Radia Overall **DISCUSS**; **no fix-now**. Discuss C4 straggler (Excluded→in-scope statutes on tip) scored conforms — no product change.
 
-Also merged `origin/ftr/AST-1043-slack-bot-agent` (AST-1071 skills ACL on tip) into this publish ref so Events ingress + skill runners coexist: CONTACT_CONFIG keeps Events/Socket keys **and** AST-1071 `skills`; `contact.py` keeps `receive_slack_events_http` / `handle_slack_event` **and** `run_contact_skill`; both blueprints registered.
+Also merged `origin/ftr/AST-1043-slack-bot-agent` (AST-1071 skills ACL on tip) into this publish ref so Events ingress + skill runners coexist: CONTACT_CONFIG keeps Events/Socket keys **and** AST-1071 `skills`; `contact.py` keeps `receive_slack_events_http` / `handle_slack_event` **and** `run_contact_skill`; both blueprints registered. Merge commit: `b62a2a8e`.
