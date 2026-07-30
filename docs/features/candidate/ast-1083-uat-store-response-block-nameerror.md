@@ -76,9 +76,9 @@ After Estelle `intake_initiate_candidate` succeeds, `_store_response_block` pers
 
 ## Review
 
-**Publish ref:** 
-**Build tip:** 
+**Publish ref:** `sub/AST-952/AST-1083-uat-store-response-block-nameerror`
+**Build tip:** `51de0897`
 
 ### Stages delivered
 
-1.  —  so   detail line no longer NameErrors.
+1. `_store_response_block` — bind `result = save_agent_data(...)` so `debug=True` `agent_data_write` detail line no longer NameErrors.
