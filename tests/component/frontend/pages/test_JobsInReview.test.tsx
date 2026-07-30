@@ -91,4 +91,53 @@ describe("JobsInReview", () => {
       expect(screen.queryByText("Alpha Role")).not.toBeInTheDocument()
     })
   })
+
+  describe("AST-1064 group-by job-carried rubric", () => {
+    it("splits Passed Job List into tables by joblist_rubric fingerprint", async () => {
+      const narrow = [{ code: "JL", label: "Job List", importance: 5, grade_descriptions: [] }]
+      const wide = [
+        { code: "JL", label: "Job List", importance: 5, grade_descriptions: [] },
+        { code: "TT", label: "Title Match", importance: 4, grade_descriptions: [] },
+      ]
+      const grouped = [
+        {
+          astral_job_id: "g1",
+          job_title: "Group Narrow",
+          company: "Acme",
+          state: "PASSED_JOBLIST",
+          state_changed_at: "2026-01-03T00:00:00Z",
+          joblist_rubric: narrow,
+          joblist_grades: [{ vector: "Job List", grade: "A", confidence: 0.8 }],
+          joblist_score: 7.1,
+          latest_score: 0.1,
+        },
+        {
+          astral_job_id: "g2",
+          job_title: "Group Wide",
+          company: "Beta",
+          state: "PASSED_JOBLIST",
+          state_changed_at: "2026-01-02T00:00:00Z",
+          joblist_rubric: wide,
+          joblist_grades: [
+            { vector: "Job List", grade: "B", confidence: 0.5 },
+            { vector: "Title Match", grade: "A", confidence: 0.9 },
+          ],
+          joblist_score: 8.2,
+          latest_score: 0.2,
+        },
+      ]
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", grouped))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      expect(document.querySelectorAll(".list-page-table").length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByRole("columnheader", { name: "TT" })).toBeInTheDocument()
+      expect(screen.getAllByRole("columnheader", { name: "JL" }).length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByText("Group Narrow")).toBeInTheDocument()
+      expect(screen.getByText("Group Wide")).toBeInTheDocument()
+      expect(screen.getByText("7.10")).toBeInTheDocument()
+      expect(screen.getByText("8.20")).toBeInTheDocument()
+      expect(document.querySelectorAll(".grade-dot").length).toBeGreaterThanOrEqual(3)
+    })
+  })
 })
