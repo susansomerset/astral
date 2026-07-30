@@ -198,7 +198,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   }, [manifest, job])
 
   const profile = useMemo(() => {
-    const raw = (candidate?.candidate_data as Record<string, unknown> | undefined)?.profile
+    const raw = (candidate?.candidate_data as Record<string, unknown> | undefined)?.contact
     if (!raw || typeof raw !== "object") return null
     return raw as Record<string, unknown>
   }, [candidate])

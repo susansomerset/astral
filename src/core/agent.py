@@ -1808,7 +1808,15 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
-    cd = (ctx.get("candidate_data") or {}) if ctx else (candidate_data or {})
+    # AST-1014: full candidate rows → token view (columns + contact/context/artifacts).
+    if ctx and ctx.get("astral_candidate_id"):
+        # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
+        from src.core.candidate import build_candidate_token_view
+        cd = build_candidate_token_view(ctx)
+    elif ctx:
+        cd = ctx.get("candidate_data") or {}
+    else:
+        cd = candidate_data or {}
 
     if task_config.get("requires_candidate_key") and not cd:
         logger.warning("do_task(%s): requires_candidate_key is True but no candidate_data provided", task_key)

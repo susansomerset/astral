@@ -252,6 +252,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "meteorite_like",
         "meteorite_upshot",
         "parse_job_list",
+        "preamble_validate_response",
         "prefilter_company",
         "propose_application_responses",
         "qualify_job_listings",
@@ -265,12 +266,11 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (42 rows after AST-1060).
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (43 rows after AST-1015 stack).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
-    AST-1037 adds `simple_resume_parse`; AST-1055 adds `meteorite_like` + `meteorite_upshot`;
-    AST-1060 adds `qualify_meteorite`. Parallel AST-1015 (`preamble_validate_response`) is
-    not on this tip — its row assertion stays in TestAst1015PreambleValidateCatalogRow.
+    Includes `preamble_validate_response` (AST-1015), `simple_resume_parse` (AST-1037),
+    `meteorite_like` / `meteorite_upshot` (AST-1055), and `qualify_meteorite` (AST-1060).
     """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
@@ -279,9 +279,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_42_current_catalog_keys(self) -> None:
+    def test_repo_json_has_43_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 42
+        assert len(rows) == 43
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -297,7 +297,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_42_current_rows(
+    def test_startup_apply_loads_all_43_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -315,7 +315,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 42
+            assert count == 43
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -446,7 +446,6 @@ class TestAst1037SimpleResumeParseCatalogRow:
         assert craft["task_seq"] == 5
         assert craft["task_name"] == "Craft Resume Base"
         assert craft["task_group_name"] == "Candidate Artifacts"
-
 
 AST787_EXPECTED_AGENT_IDS = frozenset(
     {

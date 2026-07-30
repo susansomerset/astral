@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Candidate intake chat session orchestration (Estelle-led multi-turn + build).
+Candidate intake orchestration (mechanical preamble validation + Estelle multi-turn sessions).
 
 Layer: core → data, agent, candidate, utils  (never ← ui)
 """
@@ -22,8 +22,113 @@ from src.core.candidate import (
     sync_company_search_terms_from_text,
 )
 from src.data import database
-from src.utils.config import INTAKE_CONFIG
-from src.utils.logging import flush_log_buffer, log_batch_id
+from src.utils.config import INTAKE_CONFIG, PREAMBLE_VALIDATION_CONFIG
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
+
+logger = get_logger(__name__)
+
+
+
+async def validate_preamble_answer(
+    candidate_id: str,
+    question: str,
+    answer: str,
+    *,
+    step_index: int = 1,
+    step_total: int = 1,
+    debug: bool = False,
+) -> dict:
+    """Ruth Valid / Try Again / Escalate for one preamble Q/A. Never writes library fields."""
+    task_key = PREAMBLE_VALIDATION_CONFIG["task_key"]
+    q = (question or "").strip()
+    a = (answer or "").strip()
+    if not q:
+        raise ValueError("question required")
+
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+
+    live_content = f"QUESTION:\n{q}\n\nANSWER:\n{a}"
+    batch_id = f"preamble-{task_key}-{uuid.uuid4()}"
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    database.save_dispatch_ledger(
+        batch_id,
+        f"preamble-{task_key}",
+        candidate_id,
+        started_at,
+        entity_type="candidate",
+        batch_size=1,
+    )
+    log_batch_id.set(batch_id)
+    outcome = None
+    err = None
+    success = False
+    try:
+        result = await do_task(
+            task_key=task_key,
+            live_content=live_content,
+            index=candidate_id,
+            ctx=candidate,
+            debug=debug,
+        )
+        completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if not result or not result.get("success"):
+            err = result.get("error", "preamble validation failed") if result else "do_task returned None"
+            total_cost = compute_batch_cost(batch_id)
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=completed_at,
+                total_processed=1,
+                total_failed=1,
+                total_cost=total_cost,
+            )
+        else:
+            parsed = result.get("parsed_response")
+            raw = parsed.get(PREAMBLE_VALIDATION_CONFIG["outcome_field"]) if isinstance(parsed, dict) else None
+            if raw not in PREAMBLE_VALIDATION_CONFIG["outcomes"]:
+                err = f"invalid preamble validation outcome: {raw!r}"
+                total_cost = compute_batch_cost(batch_id)
+                database.update_dispatch_ledger(
+                    batch_id,
+                    status="FAILED",
+                    completed_at=completed_at,
+                    total_processed=1,
+                    total_failed=1,
+                    total_cost=total_cost,
+                )
+            else:
+                outcome = raw
+                success = True
+                total_cost = compute_batch_cost(batch_id)
+                database.update_dispatch_ledger(
+                    batch_id,
+                    status="COMPLETED",
+                    completed_at=completed_at,
+                    total_processed=1,
+                    total_passed=1,
+                    total_failed=0,
+                    total_cost=total_cost,
+                )
+        if debug:
+            dbg_outcome = f"found|{outcome}" if success else "found|error"
+            logger.set_debug_flag(True)
+            logger.debug_index(
+                func="validate_preamble_answer",
+                index=step_index,
+                total=step_total,
+                identifier=candidate_id,
+                outcome=dbg_outcome,
+            )
+            logger.debug_detail(f"question={truncate_debug_content(q)!r}")
+            logger.debug_detail(f"answer={truncate_debug_content(a)!r}")
+            if err:
+                logger.debug_detail(f"error={err}")
+        return {"success": success, "outcome": outcome, "error": err, "batch_id": batch_id}
+    finally:
+        flush_log_buffer()
+        log_batch_id.set(None)
 
 
 def _ledger_task_key(task_key: str) -> str:
@@ -36,15 +141,16 @@ def _persist_source_materials(
     sample_cover_text: Optional[str],
     linkedin_profile_text: Optional[str],
 ) -> None:
+    # Call-boundary names keep legacy param labels; storage keys are AST-1014 remaps.
     if not (starting_resume_text or "").strip():
         raise ValueError("starting_resume_text is required")
     save_candidate_data(
         candidate_id,
         {
             "context": {
-                "starting_resume_text": starting_resume_text.strip(),
-                "sample_cover_text": (sample_cover_text or "").strip(),
-                "linkedin_profile_text": (linkedin_profile_text or "").strip(),
+                "raw_resume": starting_resume_text.strip(),
+                "raw_sample": (sample_cover_text or "").strip(),
+                "raw_profile": (linkedin_profile_text or "").strip(),
             }
         },
     )

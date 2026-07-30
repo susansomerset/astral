@@ -33,12 +33,15 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
+    CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
+    PRONOUN_PREFERENCE_DEFAULT,
+    PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
@@ -49,6 +52,56 @@ from src.utils.config import (
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
+
+
+_NAME_COLUMNS = CANDIDATE_LIBRARY_CONFIG["name_columns"]
+_LIBRARY_BLOB_KEYS = ("contact", "context", "artifacts")
+
+
+def build_candidate_token_view(candidate: dict) -> dict:
+    """Walkable dict for resolve_tokens: name columns + library blobs (no meta)."""
+    cd = candidate.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return {
+        "first": candidate.get("first") or "",
+        "last": candidate.get("last") or "",
+        "full": candidate.get("full") or "",
+        "pronouns": candidate.get("pronouns") or "",
+        "contact": cd.get("contact") if isinstance(cd.get("contact"), dict) else {},
+        "context": cd.get("context") if isinstance(cd.get("context"), dict) else {},
+        "artifacts": cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {},
+        "_astral_candidate_id": candidate.get("astral_candidate_id") or "",
+    }
+
+
+def recompute_full_name(first: str, last: str) -> str:
+    join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
+    parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
+    return join.join(parts)
+
+
+def normalize_contact_urls(contact: dict) -> None:
+    """URL-or-username → URL for linkedin_url / github (mutates in place)."""
+    if not isinstance(contact, dict):
+        return
+    for key, base in (
+        ("linkedin_url", CANDIDATE_LIBRARY_CONFIG["linkedin_url_base"]),
+        ("github", CANDIDATE_LIBRARY_CONFIG["github_url_base"]),
+    ):
+        raw = contact.get(key)
+        if not isinstance(raw, str):
+            continue
+        val = raw.strip()
+        if not val:
+            continue
+        if "://" in val:
+            contact[key] = val
+            continue
+        handle = val.lstrip("@").strip()
+        contact[key] = f"{base}{handle}" if handle else val
+
+
 
 _PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
 
@@ -174,21 +227,112 @@ def _append_candidate_state_history(
     return history
 
 
-def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[str, Any]] = None) -> None:
+def initiate_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+    *,
+    first: Optional[str] = None,
+    last: Optional[str] = None,
+    full: Optional[str] = None,
+    pronouns: Optional[str] = None,
+) -> None:
     """Create a new candidate record with CANDIDATE_CONFIG initial_state."""
     initial = CANDIDATE_CONFIG["initial_state"]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cd = dict(candidate_data or {})
+    if "profile" in cd:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+    contact = cd.get("contact")
+    if isinstance(contact, dict):
+        normalize_contact_urls(contact)
+    first_v = "" if first is None else str(first)
+    last_v = "" if last is None else str(last)
+    full_v = full if full is not None else recompute_full_name(first_v, last_v)
+    pronouns_v = ("" if pronouns is None else str(pronouns)).strip()
+    if pronouns_v not in PRONOUN_PREFERENCE_OPTIONS:
+        pronouns_v = PRONOUN_PREFERENCE_DEFAULT
     database.save_candidate(
         astral_candidate_id,
         state=initial,
-        candidate_data=candidate_data or {},
+        candidate_data=cd,
+        first=first_v,
+        last=last_v,
+        full=full_v,
+        pronouns=pronouns_v,
         state_history=_append_candidate_state_history({}, "", initial, now),
     )
 
-def save_candidate_data(candidate_id: str, data: Dict[str, Any], replace: bool = False) -> None:
-    """Merge (or replace) candidate_data. Follows save_job_data pattern.
-    Pure data persistence — no side effects, no AI calls."""
-    database.save_candidate(candidate_id, candidate_data=data, merge=not replace)
+def save_candidate_data(
+    candidate_id: str,
+    data: Dict[str, Any],
+    replace: bool = False,
+    *,
+    debug: bool = False,
+) -> None:
+    """Merge (or replace) library blobs + optional name columns (AST-1014).
+    Pure data persistence — no AI calls. Rejects legacy ``profile`` writes."""
+    logger.set_debug_flag(debug)
+    if not isinstance(data, dict):
+        raise ValueError("candidate data must be a dict")
+    if "profile" in data:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+
+    col_kwargs: Dict[str, Any] = {}
+    blob: Dict[str, Any] = {}
+    for key, val in data.items():
+        if key in _NAME_COLUMNS:
+            col_kwargs[key] = "" if val is None else str(val)
+        else:
+            blob[key] = val
+
+    if "first" in col_kwargs or "last" in col_kwargs:
+        if "full" not in col_kwargs:
+            # Merge with existing columns when only one side provided
+            existing = database.get_candidate(candidate_id) or {}
+            first = col_kwargs.get("first", existing.get("first") or "")
+            last = col_kwargs.get("last", existing.get("last") or "")
+            col_kwargs["full"] = recompute_full_name(str(first), str(last))
+
+    if "pronouns" in col_kwargs:
+        pref = (col_kwargs["pronouns"] or "").strip()
+        if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
+            raise ValueError(f"Invalid pronouns value: {pref!r}")
+
+    contact = blob.get("contact")
+    if isinstance(contact, dict):
+        normalize_contact_urls(contact)
+
+    steps = []
+    if col_kwargs:
+        steps.append(("columns", sorted(col_kwargs.keys())))
+    for bk in _LIBRARY_BLOB_KEYS:
+        if bk in blob:
+            steps.append((bk, "recorded"))
+    meta_keys = [k for k in blob if k not in _LIBRARY_BLOB_KEYS]
+    if meta_keys:
+        steps.append(("meta", meta_keys))
+
+    if debug and steps:
+        total = len(steps)
+        for i, (label, detail) in enumerate(steps, start=1):
+            logger.debug_index(
+                func="save_candidate_data",
+                index=i,
+                total=total,
+                identifier=candidate_id,
+                outcome=f"recorded|{label}",
+            )
+            logger.debug_detail(f"{label}={detail!r}")
+
+    save_kwargs: Dict[str, Any] = dict(col_kwargs)
+    if blob:
+        save_kwargs["candidate_data"] = blob
+        save_kwargs["merge"] = not replace
+    elif col_kwargs:
+        pass
+    else:
+        return
+    database.save_candidate(candidate_id, **save_kwargs)
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
@@ -1182,8 +1326,8 @@ def filter_content_to_resume_structure(
 
 
 async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> Dict[str, Any]:
-    """Parse context.starting_resume_text via do_task('craft_resume_base').
-    Reads from candidate_data.context.starting_resume_text, writes parsed
+    """Parse context.raw_resume via do_task('craft_resume_base').
+    Reads from candidate_data.context.raw_resume, writes parsed
     result to candidate_data.artifacts.base_resume.
     Does not change candidate state (AST-970 — no PROFILE_READY auto-hop).
 
@@ -1192,9 +1336,9 @@ async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> D
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {"success": False, "error": f"Candidate not found: {candidate_id}"}
-    resume_raw = (candidate.get("candidate_data") or {}).get("context", {}).get("starting_resume_text", "")
+    resume_raw = (candidate.get("candidate_data") or {}).get("context", {}).get("raw_resume", "")
     if not resume_raw or not resume_raw.strip():
-        return {"success": False, "error": "No starting_resume_text in candidate_data.context"}
+        return {"success": False, "error": "No raw_resume in candidate_data.context"}
 
     response = await do_task(
         task_key="craft_resume_base",
@@ -1395,7 +1539,7 @@ async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = Fals
     pass_state = stage["pass_state"]
     craft_key = stage["craft_task_key"]
     current = (candidate.get("state") or "").strip()
-    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("starting_resume_text") or ""
+    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
     try:
         response = await do_task(
             task_key=craft_key,
@@ -1479,7 +1623,7 @@ def run_session_resume_parse(
     # Synthetic token ctx only — no astral_candidate_id (do not load a real candidate).
     ctx = {
         "candidate_data": {
-            "context": {"starting_resume_text": paste},
+            "context": {"raw_resume": paste},
             "artifacts": {"resume_structure": structure},
         },
     }
