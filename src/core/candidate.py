@@ -35,6 +35,7 @@ from src.utils.config import (
     CANDIDATE_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    TOPIC_MENU_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
@@ -333,6 +334,169 @@ def save_candidate_data(
     else:
         return
     database.save_candidate(candidate_id, **save_kwargs)
+
+
+def _topic_menu_key() -> str:
+    return str(TOPIC_MENU_CONFIG["candidate_data_key"])
+
+
+def empty_topic_menu() -> dict:
+    """Empty Topic Menu envelope (AST-1074)."""
+    return {"topics": []}
+
+
+def normalize_topic_menu(raw: Any) -> dict:
+    """Coerce stored/raw menu to ``{"topics": list}`` without validating members."""
+    if not isinstance(raw, dict):
+        return empty_topic_menu()
+    topics = raw.get("topics")
+    if not isinstance(topics, list):
+        return empty_topic_menu()
+    return {"topics": list(topics)}
+
+
+def get_topic_menu(candidate_id: str) -> dict:
+    """Load ``candidate_data.topic_menu`` (normalized). Raises if candidate missing."""
+    cand = get_candidate(candidate_id)
+    if not cand:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = cand.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return normalize_topic_menu(cd.get(_topic_menu_key()))
+
+
+def validate_topic(topic: Any) -> dict:
+    """Return a normalized topic dict or raise ValueError."""
+    if not isinstance(topic, dict):
+        raise ValueError("topic must be a dict")
+    tid = topic.get("id")
+    if not isinstance(tid, str) or not tid.strip():
+        raise ValueError("topic id must be a non-empty string")
+    tid = tid.strip()
+    name = topic.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"topic {tid!r}: name must be a non-empty string")
+    name = name.strip()
+    ask = topic.get("ask")
+    if not isinstance(ask, str) or not ask.strip():
+        raise ValueError(f"topic {tid!r}: ask must be a non-empty string")
+    ask = ask.strip()
+    required = topic.get("required")
+    if not isinstance(required, bool):
+        raise ValueError(f"topic {tid!r}: required must be a bool")
+    informs_raw = topic.get("informs")
+    if not isinstance(informs_raw, list) or not informs_raw:
+        raise ValueError(f"topic {tid!r}: informs must be a non-empty list")
+    allowed = TOPIC_MENU_CONFIG["informs"]
+    seen: set = set()
+    informs: list = []
+    for item in informs_raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"topic {tid!r}: informs entries must be non-empty strings")
+        key = item.strip()
+        if key not in allowed:
+            raise ValueError(f"topic {tid!r}: informs target {key!r} not in TOPIC_MENU_CONFIG")
+        if key in seen:
+            continue
+        seen.add(key)
+        informs.append(key)
+    if not informs:
+        raise ValueError(f"topic {tid!r}: informs must be non-empty after dedupe")
+    status = topic.get("status", TOPIC_MENU_CONFIG["default_status"])
+    if status not in TOPIC_MENU_CONFIG["statuses"]:
+        raise ValueError(f"topic {tid!r}: status {status!r} not in TOPIC_MENU_CONFIG")
+    return {
+        "id": tid,
+        "name": name,
+        "ask": ask,
+        "required": required,
+        "informs": informs,
+        "status": status,
+    }
+
+
+def validate_topic_menu(menu: Any) -> dict:
+    """Validate a full menu; raise on duplicate topic ids."""
+    normalized = normalize_topic_menu(menu)
+    out: list = []
+    seen_ids: set = set()
+    for topic in normalized["topics"]:
+        row = validate_topic(topic)
+        if row["id"] in seen_ids:
+            raise ValueError(f"duplicate topic id: {row['id']!r}")
+        seen_ids.add(row["id"])
+        out.append(row)
+    return {"topics": out}
+
+
+def revise_topic_menu(existing: Any, incoming: Any) -> dict:
+    """Merge incoming topics onto existing by id; missing ids become retired (no wipe)."""
+    existing_n = validate_topic_menu(existing)
+    incoming_n = validate_topic_menu(incoming)
+    incoming_ids = {t["id"] for t in incoming_n["topics"]}
+    out: list = []
+    for topic in incoming_n["topics"]:
+        out.append(topic)
+    for topic in existing_n["topics"]:
+        if topic["id"] in incoming_ids:
+            continue
+        retired = dict(topic)
+        retired["status"] = "retired"
+        out.append(retired)
+    return {"topics": out}
+
+
+def save_topic_menu(
+    candidate_id: str,
+    menu: Any,
+    *,
+    revise: bool = True,
+    debug: bool = False,
+) -> dict:
+    """Persist Topic Menu under candidate_data; default revise keeps retired history."""
+    logger.set_debug_flag(debug)
+    current = get_topic_menu(candidate_id)
+    if revise:
+        to_store = revise_topic_menu(current, menu)
+    else:
+        to_store = validate_topic_menu(menu)
+
+    if debug:
+        cur_ids = [t.get("id") for t in current.get("topics") or [] if isinstance(t, dict)]
+        logger.debug_index(
+            func="candidate.save_topic_menu",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"current_count={len(cur_ids)} revise={revise}")
+        id_blob = ",".join(str(x) for x in cur_ids)
+        for line in truncate_debug_content(id_blob):
+            logger.debug_detail(f"current_ids={line}")
+
+    save_candidate_data(candidate_id, {_topic_menu_key(): to_store}, debug=debug)
+
+    if debug:
+        status_counts = {s: 0 for s in TOPIC_MENU_CONFIG["statuses"]}
+        for t in to_store["topics"]:
+            st = t.get("status")
+            if st in status_counts:
+                status_counts[st] += 1
+        logger.debug_index(
+            func="candidate.save_topic_menu",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(
+            f"stored_count={len(to_store['topics'])} "
+            f"open={status_counts['open']} ready={status_counts['ready']} "
+            f"retired={status_counts['retired']} revise={revise}"
+        )
+    return to_store
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
