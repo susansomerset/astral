@@ -186,3 +186,15 @@ Stages 1–3: `_rubric_snapshot_for_job_data`; persist `*_rubric` on verdict / j
 ### Recommended actions
 - Acknowledge stragglers → resolve-child → User Testing (same pattern as recent clean DISCUSS tips).
 
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Publish tip before resolve:** `c5a92b2f` (`docs(AST-1063): Radia review — findings` on `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — statute stragglers ×3 (all conforms) | **No action** — informational plan-vs-diff predicate drift only. |
+
+No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
