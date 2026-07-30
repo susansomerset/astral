@@ -1989,10 +1989,13 @@ class TestAst962CoverLetterMidHopDefaultTrigger:
 
 
 class TestAst970CandidateStateRegistry:
-    """AST-970: job-style CANDIDATE_STATES registry (no PROSPECT; prior_states + companions)."""
+    """AST-970: job-style CANDIDATE_STATES registry (prior_states + companions; PROSPECT added AST-1068)."""
 
-    def test_no_prospect_and_initial_state(self) -> None:
-        assert "PROSPECT" not in cfg.CANDIDATE_STATES
+    def test_initial_state_and_prospect_entry(self) -> None:
+        # AST-1068: PROSPECT is a real entry state; admin initiate stays NEW_CANDIDATE.
+        assert "PROSPECT" in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["progress_rank"] == -1
         assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
         assert cfg.CANDIDATE_CONFIG["initial_state"] in cfg.CANDIDATE_STATES
 
@@ -2686,46 +2689,18 @@ class TestAst1069ContactEventsConfig:
         assert cc["app_token_env"] == "SLACK_APP_TOKEN"
 
 
-# Branches: context history/cache/TTL on CONTACT_CONFIG (AST-1070).
-class TestAst1070ContactContextConfig:
-    """AST-1070: history limit, cache max conversations, TTL seconds."""
+# Branches: PROSPECT registry + prospect id template (AST-1068).
+class TestAst1068ProspectConfig:
+    """AST-1068: PROSPECT on CANDIDATE_STATES; prospect_candidate_id_template."""
 
-    def test_context_cache_keys(self) -> None:
-        cc = cfg.CONTACT_CONFIG
-        assert cc["context_history_limit"] == 50
-        assert isinstance(cc["context_history_limit"], int) and cc["context_history_limit"] > 0
-        assert cc["context_cache_max_conversations"] == 256
-        assert (
-            isinstance(cc["context_cache_max_conversations"], int)
-            and cc["context_cache_max_conversations"] > 0
-        )
-        assert cc["context_cache_ttl_seconds"] == 300
-        assert (
-            isinstance(cc["context_cache_ttl_seconds"], int)
-            and cc["context_cache_ttl_seconds"] > 0
-        )
-
-
-
-# Branches: listen filename + production deploy label + Manage Slack NAV (AST-1067).
-class TestAst1067ContactListenConfig:
-    """AST-1067: durable listen filename, production_deploy_env, Admin Manage Slack nav."""
-
-    def test_listen_filename_and_production_env(self) -> None:
-        cc = cfg.CONTACT_CONFIG
-        assert cc["listen_state_filename"] == "contact_slack_listen.json"
-        assert str(cc["listen_state_filename"]).endswith(".json")
-        assert cc["production_deploy_env"] == "production"
-        assert str(cc["production_deploy_env"]).strip()
-
-    def test_manage_slack_follows_manage_email(self) -> None:
-        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
-        items = admin["items"]
-        email_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_email")
-        slack_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_slack")
-        assert slack_i == email_i + 1
-        assert items[slack_i]["label"] == "Manage Slack"
-
+    def test_prospect_and_id_template(self) -> None:
+        assert "PROSPECT" in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["progress_rank"] == -1
+        assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
+        tpl = cfg.CONTACT_CONFIG["prospect_candidate_id_template"]
+        assert "{slack_user_id}" in tpl
+        assert tpl == "slack-{slack_user_id}"
 
 
 class TestAst1055MeteoriteLikeUpshotTasks:

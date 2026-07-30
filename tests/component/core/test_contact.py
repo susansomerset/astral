@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import hashlib
 import hmac
 import json
@@ -14,7 +12,7 @@ import pytest
 
 from src.core import contact as contact_mod
 from src.core import candidate as candidate_mod
-from src.utils.config import ASTRAL_CONFIG, CONTACT_CONFIG, TASK_CONFIG
+from src.utils.config import CONTACT_CONFIG, TASK_CONFIG
 
 
 def _sign(secret: str, timestamp: str, body: bytes) -> str:
@@ -191,6 +189,20 @@ class TestAst1069ContactSlackIngress:
     def setup_method(self) -> None:
         contact_mod._seen_event_ids.clear()
 
+    def _stub_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1068 wires resolve on accept — stub so ingress tests stay transport-focused.
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c-stub",
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+
     def test_handle_listen_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
         out = contact_mod.handle_slack_event(
@@ -200,6 +212,7 @@ class TestAst1069ContactSlackIngress:
 
     def test_handle_app_mention_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
         out = contact_mod.handle_slack_event(
             {
                 "event_id": "Ev-mention",
@@ -223,6 +236,7 @@ class TestAst1069ContactSlackIngress:
 
     def test_handle_dm_message_accepted_channel_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
         dm = contact_mod.handle_slack_event(
             {
                 "event_id": "Ev-dm",
@@ -295,6 +309,7 @@ class TestAst1069ContactSlackIngress:
         secret = "signing-secret"
         monkeypatch.setenv(CONTACT_CONFIG["signing_secret_env"], secret)
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
         monkeypatch.setattr(contact_mod.threading, "Thread", _ImmediateThread)
         payload = {
             "type": "event_callback",
@@ -319,183 +334,109 @@ class TestAst1069ContactSlackIngress:
         # Handler ran via ImmediateThread — event remembered.
         assert "Ev-http" in contact_mod._seen_event_ids
 
-# Branches: cache hit/miss/TTL/refresh; append warm+trim; DM key thread_ts=""; post appends outbound.
-class TestAst1070ContactConversationContext:
+
+# Branches: resolve hit/miss/create gate; Events accept wires resolve (AST-1068).
+class TestAst1068ResolveSlackUser:
     def setup_method(self) -> None:
-        contact_mod._context_cache.clear()
         contact_mod._seen_event_ids.clear()
 
-    def test_load_fetches_then_cache_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fetch = MagicMock(return_value=[{"ts": "1.0", "text": "a", "user": "U1"}])
-        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
-        first = contact_mod.load_slack_conversation_context(channel="C1", thread_ts=None)
-        assert first == [{"ts": "1.0", "text": "a", "user": "U1"}]
-        fetch.assert_called_once_with(
-            channel="C1",
-            thread_ts=None,
-            limit=CONTACT_CONFIG["context_history_limit"],
+    def test_resolve_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value="c1"))
+        monkeypatch.setattr(
+            contact_mod, "get_candidate", MagicMock(return_value={"state": "INTAKE_INITIATED"})
         )
-        second = contact_mod.load_slack_conversation_context(channel="C1")
-        assert second == first
-        fetch.assert_called_once()
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        out = contact_mod.resolve_slack_user("U1", estelle_in_play=True)
+        assert out == {"astral_candidate_id": "c1", "state": "INTAKE_INITIATED", "created": False}
+        create.assert_not_called()
 
-    def test_load_refresh_bypasses_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fetch = MagicMock(
-            side_effect=[
-                [{"ts": "1.0", "text": "old"}],
-                [{"ts": "2.0", "text": "new"}],
-            ]
-        )
-        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
-        contact_mod.load_slack_conversation_context(channel="C1")
-        out = contact_mod.load_slack_conversation_context(channel="C1", refresh=True)
-        assert out == [{"ts": "2.0", "text": "new"}]
-        assert fetch.call_count == 2
+    def test_resolve_miss_without_estelle_does_not_create(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        fetch = MagicMock()
+        monkeypatch.setattr(contact_mod, "fetch_user_profile", fetch)
+        out = contact_mod.resolve_slack_user("Umiss", estelle_in_play=False)
+        assert out == {"astral_candidate_id": None, "state": None, "created": False}
+        create.assert_not_called()
+        fetch.assert_not_called()
 
-    def test_load_ttl_expiry_refetches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fetch = MagicMock(
-            side_effect=[
-                [{"ts": "1.0", "text": "a"}],
-                [{"ts": "2.0", "text": "b"}],
-            ]
+    def test_resolve_create_prospect(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
+        monkeypatch.setattr(
+            contact_mod,
+            "fetch_user_profile",
+            MagicMock(
+                return_value={
+                    "slack_user_id": "Unew",
+                    "first": "Ada",
+                    "last": "L",
+                    "display_name": "ada",
+                }
+            ),
         )
-        monkeypatch.setattr(contact_mod, "fetch_conversation_history", fetch)
-        times = iter(
-            [1000.0, 1000.0 + float(CONTACT_CONFIG["context_cache_ttl_seconds"]) + 1.0]
-        )
-        monkeypatch.setattr(contact_mod.time, "time", lambda: next(times))
-        contact_mod.load_slack_conversation_context(channel="C1")
-        out = contact_mod.load_slack_conversation_context(channel="C1")
-        assert out == [{"ts": "2.0", "text": "b"}]
-        assert fetch.call_count == 2
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        out = contact_mod.resolve_slack_user("Unew", estelle_in_play=True)
+        assert out["created"] is True
+        assert out["state"] == "PROSPECT"
+        assert out["astral_candidate_id"] == "slack-unew"
+        create.assert_called_once()
+        assert create.call_args.args[0] == "slack-unew"
+        assert create.call_args.args[1]["contact"]["slack_user_id"] == "Unew"
+        assert create.call_args.args[1]["profile"]["first"] == "Ada"
 
-    def test_append_warms_and_trims(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(CONTACT_CONFIG, "context_history_limit", 2)
-        contact_mod.append_slack_conversation_message(
-            channel="D1", thread_ts=None, message={"text": "1", "ts": "1.0"},
+    def test_resolve_create_seeds_display_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
+        monkeypatch.setattr(
+            contact_mod,
+            "fetch_user_profile",
+            MagicMock(
+                return_value={
+                    "slack_user_id": "Ux",
+                    "first": "",
+                    "last": "",
+                    "display_name": "OnlyDisplay",
+                }
+            ),
         )
-        contact_mod.append_slack_conversation_message(
-            channel="D1", message={"text": "2", "ts": "2.0"},
-        )
-        contact_mod.append_slack_conversation_message(
-            channel="D1", message={"text": "3", "ts": "3.0"},
-        )
-        key = contact_mod._context_cache_key("D1", None)
-        msgs = contact_mod._context_cache[key]["messages"]
-        assert [m["ts"] for m in msgs] == ["2.0", "3.0"]
+        create = MagicMock()
+        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        contact_mod.resolve_slack_user("Ux", estelle_in_play=True)
+        assert create.call_args.args[1]["profile"]["first"] == "OnlyDisplay"
 
-    def test_append_rejects_bad_message(self) -> None:
-        with pytest.raises(ValueError, match="text and ts"):
-            contact_mod.append_slack_conversation_message(
-                channel="C1", message={"text": "x"}
-            )
+    def test_resolve_rejects_empty(self) -> None:
+        with pytest.raises(ValueError, match="slack_user_id"):
+            contact_mod.resolve_slack_user("  ", estelle_in_play=True)
 
-    def test_dm_cache_key_ignores_message_ts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_handle_accept_wires_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        resolved = {
+            "astral_candidate_id": "slack-u9",
+            "state": "PROSPECT",
+            "created": True,
+        }
+        monkeypatch.setattr(contact_mod, "resolve_slack_user", MagicMock(return_value=resolved))
         out = contact_mod.handle_slack_event(
             {
-                "event_id": "Ev-dm-cache",
+                "event_id": "Ev-resolve",
                 "event": {
-                    "type": "message",
-                    "channel_type": "im",
-                    "channel": "Ddm",
-                    "user": "U1",
-                    "ts": "99.9",
-                    "text": "hello dm",
+                    "type": "app_mention",
+                    "user": "U9",
+                    "channel": "C1",
+                    "text": "hi",
+                    "ts": "1.0",
                 },
-            },
+            }
         )
         assert out["accepted"] is True
-        assert ("Ddm", "") in contact_mod._context_cache
-        assert ("Ddm", "99.9") not in contact_mod._context_cache
-
-    def test_contact_post_message_appends_outbound(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            contact_mod, "post_message", MagicMock(return_value={"ok": True, "ts": "5.5"}),
-        )
-        resp = contact_mod.contact_post_message(channel="C1", text="bye", thread_ts="1.0")
-        assert resp["ok"] is True
-        key = contact_mod._context_cache_key("C1", "1.0")
-        msgs = contact_mod._context_cache[key]["messages"]
-        assert msgs[-1]["ts"] == "5.5"
-        assert msgs[-1]["text"] == "bye"
-        assert msgs[-1]["bot_id"] == "estelle"
-
-
-# Branches: hydrate/set listen; production gate; format prefix; post_contact_reply (AST-1067).
-class TestAst1067ContactListenCore:
-    def setup_method(self) -> None:
-        contact_mod._listen_hydrated = False
-
-    def test_hydrate_from_durable_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", tmp_path)
-        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
-        contact_mod._listen_hydrated = False
-        (tmp_path / CONTACT_CONFIG["listen_state_filename"]).write_text(
-            '{"listen_enabled": true}\n', encoding="utf-8"
-        )
-        assert contact_mod.slack_listen_enabled() is True
-        assert CONTACT_CONFIG["listen_enabled"] is True
-        (tmp_path / CONTACT_CONFIG["listen_state_filename"]).write_text(
-            '{"listen_enabled": false}\n', encoding="utf-8"
-        )
-        assert contact_mod.slack_listen_enabled() is True
-
-    def test_set_slack_listen_persists_and_applies(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", tmp_path)
-        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
-        contact_mod._listen_hydrated = False
-        assert contact_mod.set_slack_listen_enabled(True) is True
-        assert CONTACT_CONFIG["listen_enabled"] is True
-        assert contact_mod.slack_listen_enabled() is True
-        path = tmp_path / CONTACT_CONFIG["listen_state_filename"]
-        assert path.is_file()
-        assert contact_mod.set_slack_listen_enabled(False) is False
-        assert CONTACT_CONFIG["listen_enabled"] is False
-
-    def test_set_rejects_non_bool(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", tmp_path)
-        contact_mod._listen_hydrated = False
-        with pytest.raises(TypeError, match="bool"):
-            contact_mod.set_slack_listen_enabled("yes")  # type: ignore[arg-type]
-
-    def test_contact_is_production_deploy(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "production")
-        assert contact_mod.contact_is_production_deploy() is True
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "PRODUCTION")
-        assert contact_mod.contact_is_production_deploy() is True
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
-        assert contact_mod.contact_is_production_deploy() is False
-        monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
-        assert contact_mod.contact_is_production_deploy() is False
-
-    def test_format_contact_reply_text_prefix(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
-        monkeypatch.setattr(contact_mod, "get_deploy_label", lambda: "staging")
-        assert contact_mod.format_contact_reply_text("hello") == "[staging] hello"
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "production")
-        assert contact_mod.format_contact_reply_text("hello") == "hello"
-
-    def test_post_contact_reply_calls_post_message(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
-        monkeypatch.setattr(contact_mod, "get_deploy_label", lambda: "staging")
-        posted = MagicMock(return_value={"ok": True, "ts": "1.0"})
-        monkeypatch.setattr(contact_mod, "post_message", posted)
-        out = contact_mod.post_contact_reply(
-            channel="C1", text="hi there", thread_ts="9.9"
-        )
-        assert out == {"ok": True, "ts": "1.0"}
-        posted.assert_called_once_with(
-            channel="C1", text="[staging] hi there", thread_ts="9.9"
+        assert out["astral_candidate_id"] == "slack-u9"
+        assert out["candidate_state"] == "PROSPECT"
+        assert out["candidate_created"] is True
+        contact_mod.resolve_slack_user.assert_called_once_with(
+            "U9", estelle_in_play=True, debug=False
         )
 

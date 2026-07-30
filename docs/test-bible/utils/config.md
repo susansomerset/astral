@@ -1389,28 +1389,27 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
   -q
 ```
 
-### AST-1067 · AST-1043
 
-**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
+### AST-1068 · AST-1043
 
-`CONTACT_CONFIG["listen_state_filename"]` + `production_deploy_env`; Admin `NAV_CONFIG` **Manage Slack** (`/admin/manage_slack`) immediately after **Manage Email**. Core listen/prefix: **`docs/test-bible/core/contact.md`**. Data: **`docs/test-bible/data/contact_listen.md`**. API: **`docs/test-bible/ui/api/api_contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
+
+`CANDIDATE_STATES["PROSPECT"]`; `CONTACT_CONFIG["prospect_candidate_id_template"]`. Revised **`TestAst970CandidateStateRegistry`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| listen filename + production_deploy_env; Manage Slack nav order | `src/utils/config.py` | **`TestAst1067ContactListenConfig`** |
+| PROSPECT registry + id template | `src/utils/config.py` | **`TestAst1068ProspectConfig`**; revised **`TestAst970CandidateStateRegistry`** |
 
-**Broken / obsolete:** none — additive keys + NAV item.
+**Broken / obsolete:** AST-970 `assert "PROSPECT" not in CANDIDATE_STATES` — revised this pass.
 
-**Integration:** no existing scenario asserts Manage Slack nav / listen filename — no revision.
+**Integration:** no existing scenario — no revision.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestAst1067ContactListenConfig \
+  tests/component/utils/test_config.py::TestAst1068ProspectConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry \
   -q
 ```
-
-
-
 
 
 ### AST-1072 · AST-1046
