@@ -263,10 +263,9 @@ def resolve_slack_user(
         first = display
     candidate_data = {
         "contact": {"slack_user_id": sid},
-        "profile": {"first": first, "last": last},
     }
     try:
-        initiate_prospect_candidate(new_id, candidate_data)
+        initiate_prospect_candidate(new_id, candidate_data, first=first, last=last)
     except ValueError:
         # Race: another accept already created — re-lookup.
         cid = get_candidate_id_for_query(sid, debug=debug)
