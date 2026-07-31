@@ -41,6 +41,7 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `astral.standards.dry-and-focused-functions` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.dry-and-focused-functions.md` |
 | create (AST-921) | `astral.standards.in-scope-only` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.in-scope-only.md` |
 | create (AST-921) | `astral.standards.logging-via-utils` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.logging-via-utils.md` |
+| create (AST-1108) | `astral.standards.names-not-ticket-ids` | scoped | judgment | AST-1108 / seed discussion | `astral/standards/astral.standards.names-not-ticket-ids.md` |
 | create (AST-921) | `astral.standards.no-cross-contamination` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.no-cross-contamination.md` |
 | create (AST-921) | `astral.standards.no-hardcoded-sets` | scoped | ci | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.no-hardcoded-sets.md` |
 | create (AST-921) | `astral.standards.public-then-helpers` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.public-then-helpers.md` |

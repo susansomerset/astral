@@ -18,11 +18,11 @@ approved_at: "2026-07-31"
 
 # Statement
 
-Product seed and catalog provision run at server boot (or via an explicit operator or CI script under `scripts/migrations/`). They must not run as side effects of per-request work or recurring `_ensure_*_schema` hot paths. Seed or migration helpers in `src/` must not be named after Linear ticket ids.
+Product seed and catalog provision run at server boot (or via an explicit operator or CI script under `scripts/migrations/`). They must not run as side effects of per-request work or recurring `_ensure_*_schema` hot paths. Naming of seed or migration helpers follows `astral.standards.names-not-ticket-ids`.
 
 ## Rationale
 
-Hot-path “migrations” re-fire forever and hide one-shot intent. Ticket-id function names rot the moment the ticket closes.
+Hot-path “migrations” re-fire forever and hide one-shot intent.
 
 ## Examples
 
@@ -32,5 +32,5 @@ Hot-path “migrations” re-fire forever and hide one-shot intent. Ticket-id fu
 
 ### Violating
 
-- An `_apply_ast561_*_seed` helper inside schema ensure on every connection open.
+- A prompt-seed helper inside schema ensure on every connection open.
 - Auto-insert seed rows from an API request handler.

@@ -72,6 +72,7 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.standards.dry-and-focused-functions` | scoped | judgment | `astral/standards/astral.standards.dry-and-focused-functions.md` |
 | `astral.standards.in-scope-only` | scoped | judgment | `astral/standards/astral.standards.in-scope-only.md` |
 | `astral.standards.logging-via-utils` | scoped | judgment | `astral/standards/astral.standards.logging-via-utils.md` |
+| `astral.standards.names-not-ticket-ids` | scoped | judgment | `astral/standards/astral.standards.names-not-ticket-ids.md` |
 | `astral.standards.no-cross-contamination` | scoped | judgment | `astral/standards/astral.standards.no-cross-contamination.md` |
 | `astral.standards.no-hardcoded-sets` | scoped | ci | `astral/standards/astral.standards.no-hardcoded-sets.md` |
 | `astral.standards.public-then-helpers` | scoped | judgment | `astral/standards/astral.standards.public-then-helpers.md` |
@@ -101,4 +102,4 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `orch.roles.engineer-assignee-through-resolve` | universal | judgment | `orchestration/roles/orch.roles.engineer-assignee-through-resolve.md` |
 | `orch.roles.pre-commit-path-bans` | universal | hook | `orchestration/roles/orch.roles.pre-commit-path-bans.md` |
 
-Full harvest crosswalk and narrative leftovers: [HARVEST.md](HARVEST.md). **63** active statutes in corpus.
+Full harvest crosswalk and narrative leftovers: [HARVEST.md](HARVEST.md). **64** active statutes in corpus.
