@@ -37,7 +37,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
-  GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088)
+  GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2213,7 +2213,8 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 
 # AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id row).
 # Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
-# Runner bind/route/create is AST-1090; Ruth parse task is AST-1089.
+# AST-1090 runner extends this block (schemes / ledger placeholder / Style D func).
+# Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
 GAZE_EMAIL_CONFIG = {
     "task_key": "gaze_email",
     "account_address": "astral.career.match@gmail.com",
@@ -2225,11 +2226,19 @@ GAZE_EMAIL_CONFIG = {
     # Mailbox poller — no entity claim queue on the dispatch_task row.
     "entity_type": None,
     "trigger_state": None,
+    # AST-1090 runner — subject-is-URL detection (urlparse.scheme).
+    "subject_url_schemes": ("http", "https"),
+    # Ledger / registry placeholder when dispatch_task.candidate_id is NULL.
+    "dispatch_ledger_candidate_id": "",
+    # Style D func= string for the runner.
+    "debug_func": "gaze_email.run",
 }
 
 assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
 assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
 assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
+assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
+assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
 # AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
 # Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
 # must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).

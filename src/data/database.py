@@ -1788,6 +1788,32 @@ def job_link_exists(job_link: str) -> bool:
         conn.close()
 
 
+def job_link_exists_for_candidate(candidate_id: str, job_link: str) -> bool:
+    """True when a job under this candidate's meteorite company has this exact job_link."""
+    cid = (candidate_id or "").strip()
+    link = (job_link or "").strip()
+    if not cid or not link:
+        return False
+    company = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+
+    def _do(c: sqlite3.Connection) -> bool:
+        _ensure_job_schema(c)
+        cursor = c.execute(
+            """SELECT 1 FROM job
+               WHERE company = ? AND job_link = ?
+                 AND job_link IS NOT NULL AND TRIM(job_link) != ''
+               LIMIT 1""",
+            (company, link),
+        )
+        return cursor.fetchone() is not None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
 def claim_job_batch(
     batch_id: str, state: str, limit: int, sort_by: Optional[str] = None,
     candidate_id: Optional[str] = None,

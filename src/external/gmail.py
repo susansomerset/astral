@@ -49,6 +49,8 @@ class GmailInboxMessage(TypedDict):
     from_address: str
     date: str
     unread: bool
+    # Gmail internalDate as ms since epoch; 0 if missing/unparseable (AST-1090 retention).
+    internal_date_ms: int
 
 
 class GmailMessageHtml(TypedDict):
@@ -229,6 +231,17 @@ def _extract_html_body(payload: dict) -> str:
     return ""
 
 
+def _internal_date_ms(raw: dict) -> int:
+    # Gmail API returns internalDate as a string of epoch milliseconds.
+    val = raw.get("internalDate")
+    if val is None or val == "":
+        return 0
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _message_metadata(raw: dict) -> GmailInboxMessage:
     payload = raw.get("payload") if isinstance(raw.get("payload"), dict) else {}
     headers = _header_map(payload.get("headers"))
@@ -242,4 +255,5 @@ def _message_metadata(raw: dict) -> GmailInboxMessage:
         "from_address": headers.get("from", ""),
         "date": headers.get("date", ""),
         "unread": "UNREAD" in label_ids if isinstance(label_ids, list) else False,
+        "internal_date_ms": _internal_date_ms(raw),
     }
