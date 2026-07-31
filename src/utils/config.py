@@ -929,26 +929,6 @@ def is_conversational_task(task_key: str) -> bool:
     return cfg.get("task_type") == "CHAT"
 
 
-# Dispatch consult hops that enter the job-artifact chain (AST-534 / AST-740).
-# Excludes draft_cover_letter — cover-letter chain uses _run_craft_job_cover_letter_batch.
-JOB_ARTIFACT_ENTRY_TASK_KEYS = frozenset({
-    "anticipate_scan",
-    "contemplate_job",
-    "advise_job_resume",
-    "draft_job_resume",
-    "check_job_resume",
-    "finalize_job_resume",
-    "check_cover_letter",
-    "finalize_cover_letter",
-    "propose_application_responses",
-})
-
-
-def build_artifacts_chain_task_keys() -> frozenset[str]:
-    """All consult hops in the BUILD_ARTIFACTS CHAIN except draft_cover_letter (separate batch)."""
-    return frozenset(JOB_ARTIFACT_ENTRY_TASK_KEYS) - frozenset({"draft_cover_letter"})
-
-
 # ---------------------------------------------------------------------------
 # CONFIDENCE_* — AST-357: per-grade confidence for density scoring & prompts.
 # Multipliers keyed 1–5 (admin-tunable). Descriptions duplicated in output_types
