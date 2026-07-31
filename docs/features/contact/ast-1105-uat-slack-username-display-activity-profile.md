@@ -208,3 +208,102 @@ Exact insertion: after `{"key": "full", ...}` and before `contact.contact_email`
 
 Stages 1–5 landed: `fetch_user_profile.username`, activity identity fields, resolve persist/backfill + activity wiring, Profile Slack fields, Manage Slack Username/Display columns.
 
+
+---
+
+## Radia review — code-rubric.v1
+
+**Overall:** FIX-NOW  
+**Publish tip reviewed:** `a39f94db` (`origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`)  
+**Diff:** `origin/dev...a39f94db` — layers `{core, data, external, utils, ui, docs}`; change_types `{add, modify}`; 16 paths (AST-1105 product + Betty bible/tests, with sibling-epic test bleed).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | Profile Slack keys in DATA_SHAPES; username from Slack |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1105 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits touch src only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | users.info username in external; Contact orchestrates |
+| astral.layers.import-direction | scoped | conforms | ui→core→data/external; UI never imports slack |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in tip |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | table renders API identity fields; Profile via config |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | no new unauth surface; existing admin/Profile auth |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data silent; core logs fetch/backfill failures |
+| astral.standards.database-header-inventory | scoped | conforms | JSON activity fields only; no new SQLite table |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D details include slack_username when debug |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuse fetch_user_profile; thin activity field extend |
+| astral.standards.in-scope-only | scoped | conforms | product stages stay on identity/UI; no Events/listen/turn |
+| astral.standards.logging-via-utils | scoped | conforms | Contact logger; external silent |
+| astral.standards.no-cross-contamination | scoped | violates | tip adds AST-1099 pin tests/bible without pin product on tip |
+| astral.standards.no-hardcoded-sets | scoped | conforms | identity from Slack payload / contact paths |
+| astral.standards.public-then-helpers | scoped | conforms | public resolve/record surfaces; private identity helper |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | no state transition ownership |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | extends AdminManageSlack.tsx; Profile via DATA_SHAPES |
+| astral.ui.naming-conventions | scoped | conforms | contact.slack_* keys; activity snake_case |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no worker config change |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHA a39f94db |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1105-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | needs-discussion | merge-tests ancestry left AST-1099/1100 bible/test bleed |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1105-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held (user.name; no skill ACL; no fabricate) |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–5 product land as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | needs-discussion | Betty must scrub orphan AST-1099 tests off this tip |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Katherine remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.external.slack-web-api | conforms | fetch_user_profile.username from user.name |
+| pattern.core.contact-agent (proposed) | conforms | persist/backfill + activity identity |
+| pattern.config.config-block | conforms | Profile DATA_SHAPES Slack fields |
+
+### Plan adherence
+
+Stages 1–5 product match: external username, activity optional identity with prior-keep, resolve create/match backfill, Profile fields (not skill ACL), Manage Slack Username/Display columns. Self-Assessment MAJOR-CHANGE / high / Medium matches.
+
+### Findings
+
+**fix-now** — `astral.standards.no-cross-contamination` / merge integrity  
+**Location:** tip vs `origin/dev` — `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig` + `docs/test-bible/utils/config.md` AST-1099 / AST-1100 sections.  
+**Why:** Asserts `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` and pin slots on `JOB_BUILD_ARTIFACT_CLEAR_KEYS` that are **not** on this Contact tip (pin map absent; clear keys still legacy-only). Orphan sibling-epic (AST-1091) test/bible bleed via merge-tests ancestry — would AttributeError/fail if run.  
+**Action:** Betty scrub those AST-1099/1100 fragments off this publish tip (keep AST-1105 `TestAst1105ProfileSlackFields` + matching bible). Do not invent AST-1099 product on Contact tip.
+
+**discuss** — `orch.git.merge-on-checkout` / `orch.roles.betty-owns-test-tree` — same bleed; engineer product is fine; test-tree scrub is Betty.
+
+### What’s solid
+
+Username from Slack `user.name` only; match-path backfill; activity preserves prior names on None; Profile keys not in Contact skill ACL; no second matcher; UI columns additive.
+
+### Notes
+
+no plan-rubric verdict attached
+
