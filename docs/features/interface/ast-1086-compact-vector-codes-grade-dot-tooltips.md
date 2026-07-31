@@ -133,6 +133,6 @@ Do **not** edit: `recommendedJobReport.tsx` (out of Boundaries), `ConfidenceBull
 | Field | Value |
 |-------|-------|
 | Branch | `sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips` |
-| Build tip |  |
+| Build tip | `ec36ef4fb76e73729cc73efafb77c909e62efd3e` |
 | Status | Code Complete |
 
