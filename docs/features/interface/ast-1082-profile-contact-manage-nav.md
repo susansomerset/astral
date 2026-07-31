@@ -93,3 +93,9 @@ Wire Candidate Profile load/save so Contact Information (name columns + `contact
 | §3.5 naming / file placement | Page stays `CandidateProfile.tsx`; no new page file |
 | `astral.layers.ui-config-driven-business-logic` | Renders resolved shapes; no invented contact vocabulary |
 | Boundaries | No AST-1081 shape/type work, no Admin contact, no preamble, no library migration, no engineer test-tree edits |
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav` @ `071960d900b69d20c73e278c901d209a9f3eba9d`
+
+Stages 1–2: `editValuesFromCandidate` always includes `full` and normalizes `contact.websites` to `string[]`; `DATA_SHAPES` GitHub/LinkedIn labels say username-or-URL; Candidate `NAV_CONFIG` / routes already omit title-patterns (no nav edit). Tests deferred to Betty.
