@@ -37,7 +37,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
-  METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
+  GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
@@ -886,6 +886,12 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
+    },
+    # AST-1088: mailbox dispatch shell (no Ruth prompts — AST-1089; runner — AST-1090).
+    "gaze_email": {
+        "entity_type": None,
+        "requires_candidate_key": False,
+        "trigger_state": None,
     },
 }
 
@@ -2177,6 +2183,27 @@ METEORITE_EMAIL_INGEST_CONFIG = {
     "min_jd_chars": 40,
 }
 
+
+# AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id row).
+# Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
+# Runner bind/route/create is AST-1090; Ruth parse task is AST-1089.
+GAZE_EMAIL_CONFIG = {
+    "task_key": "gaze_email",
+    "account_address": "astral.career.match@gmail.com",
+    "unbound_retention_days": 7,
+    "auto_mode": True,
+    "min_count": 1,
+    "batch_size": 1,
+    "freq_hrs": 0,
+    # Mailbox poller — no entity claim queue on the dispatch_task row.
+    "entity_type": None,
+    "trigger_state": None,
+}
+
+assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
+assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
+assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
+
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
 # Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
@@ -2632,6 +2659,14 @@ def dispatch_task_admin_defaults(
         raise KeyError(retired)
     if tk not in TASK_CONFIG:
         raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}")
+    # Mailbox poller — no ENTITY_TYPES claim queue (do not use entity/trigger/sort helpers).
+    if tk == GAZE_EMAIL_CONFIG["task_key"]:
+        return {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
     entity_type = _dispatch_entity_type_for_task_key(tk)
     override = (trigger_state or "").strip()
     effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
