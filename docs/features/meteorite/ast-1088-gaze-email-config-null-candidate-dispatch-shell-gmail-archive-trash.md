@@ -210,3 +210,15 @@ _GMAIL_SCOPES = [
 - **§3.3 imports:** data←utils, core←data/utils, external←utils only.
 - **in-scope-only:** No Ruth prompts, no runner decision tree, no AUTO subtype, no permanent delete, no Manage Email UI redesign.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`
+**Tip:** `7dc42f3d` (`7dc42f3d`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `852d76cb` | GAZE_EMAIL_CONFIG + TASK_CONFIG shell |
+| 2 | `d138f905` | nullable candidate_id + save gate |
+| 3 | `090c0abc` | provision null-candidate gaze_email row |
+| 4 | `7dc42f3d` | Gmail archive + trash under gmail.modify |
