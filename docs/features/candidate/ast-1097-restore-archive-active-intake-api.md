@@ -68,3 +68,14 @@ UAT Start Over posts `POST /api/candidates/{id}/intake/sessions/active/archive` 
 | Publish ref | `origin/sub/AST-1096/AST-1097-restore-archive-active-intake-api` |
 | Built | `094477b9` |
 | Notes | Stage 1 — `POST …/sessions/active/archive` in `api_intake.py`. |
+
+### Radia — code-rubric.v1 (revision=1)
+
+**Publish tip at review:** `d50bcfbbc3a16fdd8a7323d247fc3039e112ac7d`  
+**Overall:** DISCUSS (product CLEAN; C4 stragglers only)
+
+**What’s solid:** Thin `@require_auth` archive route matches Stage 1 verbatim; UI→core only; LookupError/ValueError→404; Betty owns test-tree; no scope creep into React/preamble/core.
+
+**Issues (discuss):** C4 stragglers — Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot diff brings them in-scope. All three score **conforms** (plan doc not a spike; single features file; Betty `test()`/`merge-tests` for test-tree). No product fix-now.
+
+**Recommended actions:** Resolve-child can treat as paperwork; no code change required for the stragglers.
