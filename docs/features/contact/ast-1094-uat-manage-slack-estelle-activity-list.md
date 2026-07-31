@@ -506,3 +506,14 @@ JSON-under-`db_dir` summary (not conversation SoT); record after resolve / befor
 
 no plan-rubric verdict attached
 
+---
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Review tip:** `dae36e8c` (`docs(AST-1094): Radia review — clean`)  
+**Overall:** CLEAN — **no fix-now**
+
+- Acknowledged Radia **CLEAN** (`[code-rubric] revision=1`): Findings none; Stages 1–5 match plan; sibling boundaries held.
+- No product or plan ACL changes in resolve.
+
