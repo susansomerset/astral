@@ -3203,7 +3203,8 @@ class TestAst1088GazeEmailConfig:
         assert g["task_key"] == "gaze_email"
         assert g["account_address"] == "astral.career.match@gmail.com"
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
-        assert g["auto_mode"] is True
+        # AST-1098: seed law CLICK (was True on AST-1088 tip).
+        assert g["auto_mode"] is False
         assert g["min_count"] == 1
         assert g["batch_size"] == 1
         assert g["freq_hrs"] == 0
@@ -3231,6 +3232,38 @@ class TestAst1088GazeEmailConfig:
         assert "gaze_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "gaze_email" not in cfg.DISPATCH_RETIRED_TASK_KEYS
         assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
+
+
+# Branches: gaze_email seed CLICK + catalog seed locks (AST-1098).
+@pytest.mark.skipif(
+    getattr(cfg, "GAZE_EMAIL_CONFIG", {}).get("auto_mode") is not False,
+    reason="AST-1098 GAZE_EMAIL_CONFIG auto_mode CLICK not on this publish tip",
+)
+class TestAst1098GazeEmailSeedClick:
+    def test_gaze_and_catalog_seeds_are_click(self) -> None:
+        assert cfg.GAZE_EMAIL_CONFIG["auto_mode"] is False
+        assert all(not bool(e.get("auto_mode")) for e in cfg.METEORITE_DISPATCH_TASKS)
+        assert all(
+            not bool(e.get("auto_mode"))
+            for e in cfg.CANDIDATE_STAGE_DISPATCH.values()
+            if "auto_mode" in e
+        )
+
+    def test_seed_auto_false_statute_registered(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        statute = root / "canon/statutes/astral/dispatch/astral.dispatch.seed-auto-false.md"
+        assert statute.is_file()
+        body = statute.read_text()
+        assert "id: astral.dispatch.seed-auto-false" in body
+        assert "status: active" in body
+        readme = (root / "canon/statutes/README.md").read_text()
+        assert "astral.dispatch.seed-auto-false" in readme
+        assert "**57** active" in readme or "57 active" in readme
+        harvest = (root / "canon/statutes/HARVEST.md").read_text()
+        assert "astral.dispatch.seed-auto-false" in harvest
+        assert "AST-1098" in harvest
 
 
 # Branches: GAZE_EMAIL_CONFIG runner literals (AST-1090).
@@ -3291,6 +3324,16 @@ class TestAst1089ParseMeteoriteEmailConfig:
 
 
 # Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
+
+# Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).
+class TestAst1101HearAckConfig:
+    """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
+
+    def test_hear_ack_reply_text(self) -> None:
+        text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
+        assert isinstance(text, str) and text.strip()
+
+
 class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"

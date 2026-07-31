@@ -907,3 +907,154 @@ class TestAst1094EstelleActivity:
         )
         assert out == {"accepted": False, "reason": "listen_off"}
         assert contact_mod.list_estelle_activity() == []
+
+# Branches: listen re-read; hear-ack fallback; background log wrap (AST-1101).
+class TestAst1101ChannelHearEvidence:
+    """AST-1101: durable listen SoT; hear-ack when Estelle turn does not post."""
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def _stub_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+
+    def test_slack_listen_rereads_durable_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.data.contact_listen import save_contact_listen_enabled
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        save_contact_listen_enabled(True)
+        assert contact_mod.slack_listen_enabled() is True
+        assert CONTACT_CONFIG["listen_enabled"] is True
+        save_contact_listen_enabled(False)
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        assert contact_mod.slack_listen_enabled() is False
+
+    def test_hear_ack_when_turn_does_not_post(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
+        monkeypatch.setattr(
+            contact_mod,
+            "run_contact_estelle_turn",
+            MagicMock(
+                return_value={
+                    "ok": False,
+                    "outcome": "failure",
+                    "reply": None,
+                    "slack_post": {"ok": False, "error": "no_token"},
+                    "error": "no_token",
+                }
+            ),
+        )
+        post = MagicMock(return_value={"ok": True, "ts": "10.0"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        monkeypatch.setattr(
+            contact_mod, "contact_is_production_deploy", MagicMock(return_value=False)
+        )
+        monkeypatch.setattr(contact_mod, "get_deploy_label", MagicMock(return_value="staging"))
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-hear-1",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U-hear",
+                    "channel": "C-hear",
+                    "ts": "3.3",
+                    "text": "<@BOT> ping",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        assert out["hear_ack_post"]["ok"] is True
+        post.assert_called_once()
+        assert post.call_args.kwargs["channel"] == "C-hear"
+        assert post.call_args.kwargs["thread_ts"] == "3.3"
+        text = post.call_args.kwargs["text"]
+        assert text.startswith("[staging] ")
+        assert CONTACT_CONFIG["hear_ack_reply_text"] in text
+        rows = contact_mod.list_estelle_activity()
+        assert len(rows) == 1
+        assert rows[0]["slack_user_id"] == "U-hear"
+        assert rows[0]["last_channel"] == "C-hear"
+
+    def test_no_hear_ack_when_turn_posted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        self._stub_resolve(monkeypatch)
+        _stub_estelle_turn(monkeypatch)
+        post = MagicMock(return_value={"ok": True, "ts": "11.0"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-hear-skip",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U2",
+                    "channel": "C2",
+                    "ts": "4.0",
+                    "text": "hi",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        assert "hear_ack_post" not in out
+        post.assert_not_called()
+
+    def test_listen_off_skips_hear_ack(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        post = MagicMock()
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-hear-off",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U3",
+                    "channel": "C3",
+                    "ts": "5.0",
+                    "text": "x",
+                },
+            },
+        )
+        assert out == {"accepted": False, "reason": "listen_off"}
+        post.assert_not_called()
+
+    def test_background_wrapper_logs_exception(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        monkeypatch.setattr(
+            contact_mod,
+            "handle_slack_event",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        with caplog.at_level(logging.ERROR):
+            contact_mod._run_handle_slack_event_background({"event_id": "Ev-x"}, False)
+        assert "handle_slack_event background failed" in caplog.text
+        assert "boom" in caplog.text
+
