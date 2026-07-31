@@ -164,7 +164,7 @@ After AST-1087 UAT, the shared null-`candidate_id` `gaze_email` dispatch row is 
 ## Review
 
 **Publish ref:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`
-**Tip:** `ee05c771`
+**Tip:** `64431acd`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
@@ -172,3 +172,6 @@ After AST-1087 UAT, the shared null-`candidate_id` `gaze_email` dispatch row is 
 | 2 | `31f34265` | list_dtasks stamps `always_visible_under_avail_gt0` |
 | 3 | `7c32fd19` | SA Avail gt0 keeps API always-visible rows |
 | 4 | `ee05c771` | gaze_email agent_task catalog + AST-756 fixture |
+| 4b | `64431acd` | null-safe Candidate cell (Betty product return) |
+
+**Betty product return (`64431acd`):** the Stage 3 carve-out surfaced the shared mailbox row, and `ListTableTruncatedCell text={row.candidate_id}` crashed `truncateForDisplay` on the null `candidate_id` (AST-1088). `DispatchTask.candidate_id` is now typed `string | null` to match the API, the Candidate cell renders `"—"` like its sibling cells, and `openEdit` coerces to `""` (the edit PUT never sends `candidate_id`). Avail carve-out and `available_count` computation unchanged; no invented candidate id.
