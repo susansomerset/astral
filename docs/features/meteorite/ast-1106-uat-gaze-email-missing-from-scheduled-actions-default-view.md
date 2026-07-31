@@ -174,4 +174,58 @@ After AST-1087 UAT, the shared null-`candidate_id` `gaze_email` dispatch row is 
 | 4 | `ee05c771` | gaze_email agent_task catalog + AST-756 fixture |
 | 4b | `64431acd` | null-safe Candidate cell (Betty product return) |
 
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1106
+**Publish ref tip (at review):** `a08eb40d0c6fb326c57f39c4bfe8495080bc9351`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–4(+4b) match plan: `ADMIN_CONFIG` always-visible keys seeded from `GAZE_EMAIL_CONFIG["task_key"]`; API stamps boolean; SA Avail gt0 honors flag without faking avail; `gaze_email` catalog + AST-756 sync; null-safe Candidate cell.
+- No React `"gaze_email"` visibility set; `available_count` gate unchanged.
+
+### Issues
+
+**discuss:** Tip has **two** `merge-tests(AST-1106)` commits (`6c612416`, `625b2f08`) after conflict-marker recovery. `orch.git.betty-merge-tests-one-sha` letter wants one SHA — product tip intact; clarify with Betty/Chuckles whether recovery merge is acceptable.
+
+**advisory:** No Joan plan-rubric verdict attachment on the ticket.
+
+### Recommended actions
+
+None for product fix-now. Process discuss only.
+
+### Statutes checked (summary)
+
+57 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1106-…`. One **needs-discussion** (merge-tests one-sha). Full table in Linear review comment.
+
 **Betty product return (`64431acd`):** the Stage 3 carve-out surfaced the shared mailbox row, and `ListTableTruncatedCell text={row.candidate_id}` crashed `truncateForDisplay` on the null `candidate_id` (AST-1088). `DispatchTask.candidate_id` is now typed `string | null` to match the API, the Candidate cell renders `"—"` like its sibling cells, and `openEdit` coerces to `""` (the edit PUT never sends `candidate_id`). Avail carve-out and `available_count` computation unchanged; no invented candidate id.
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1106
+**Publish ref tip (at review):** `a08eb40d0c6fb326c57f39c4bfe8495080bc9351`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–4(+4b) match plan: `ADMIN_CONFIG` always-visible keys seeded from `GAZE_EMAIL_CONFIG["task_key"]`; API stamps boolean; SA Avail gt0 honors flag without faking avail; `gaze_email` catalog + AST-756 sync; null-safe Candidate cell.
+- No React `"gaze_email"` visibility set; `available_count` gate unchanged.
+
+### Issues
+
+**discuss:** Tip has **two** `merge-tests(AST-1106)` commits (`6c612416`, `625b2f08`) after conflict-marker recovery. `orch.git.betty-merge-tests-one-sha` letter wants one SHA — product tip intact; clarify with Betty/Chuckles whether recovery merge is acceptable.
+
+**advisory:** No Joan plan-rubric verdict attachment on the ticket.
+
+### Recommended actions
+
+None for product fix-now. Process discuss only.
+
+### Statutes checked (summary)
+
+57 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1106-…`. One **needs-discussion** (merge-tests one-sha). Full table in Linear review comment.
