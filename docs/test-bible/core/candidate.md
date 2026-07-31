@@ -707,3 +707,27 @@ Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evalua
   tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
   -q
 ```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+`save_candidate_data` coerces `contact.extra_emails` like websites; `get_candidate_id_for_query` expands `email_list_paths` only (not uniqueness websites). Config/Profile: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Coerce + bind via extra_emails | `src/core/candidate.py` | **`TestAst1092ExtraBindingEmails`** |
+
+**Broken / obsolete:** none for core — websites coerce path shared; AST-1081 websites asserts still match.
+
+**Integration:** none — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1092ExtraBindingEmails \
+  tests/component/core/test_candidate.py::TestAst1081ContactShapesSaveContract \
+  -q
+```

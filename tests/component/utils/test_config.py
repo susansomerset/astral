@@ -2980,7 +2980,7 @@ class TestAst1079ContactUniquenessConfig:
             "contact.github",
             "contact.linkedin_url",
         )
-        assert uniq["list_paths"] == ("contact.websites",)
+        assert uniq["list_paths"] == ("contact.websites", "contact.extra_emails")
         assert uniq["scopes"] == ("within_candidate", "cross_candidate")
         assert uniq["compare"] == {
             "email": "casefold",
@@ -3068,6 +3068,39 @@ class TestAst1082ProfileContactLabelsNav:
         sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
         title = next(s for s in sections if s["label"] == "Title Patterns")
         assert title["fields"][0]["key"] == "contact.title_patterns"
+
+
+class TestAst1092ExtraBindingEmailsConfig:
+    """AST-1092: Resume/Messages labels, extra_emails key, lookup email_list_paths."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_resume_messages_labels_and_extra_emails_shape(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.contact_email"]["label"] == "Email for Resume"
+        assert by_key["contact.reply_email"]["label"] == "Email for Messages (if different)"
+        assert by_key["contact.extra_emails"]["label"] == "Extra emails (binding)"
+        assert by_key["contact.extra_emails"]["type"] == "string_list"
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("contact.extra_emails") == keys.index("contact.reply_email") + 1
+
+    def test_library_lookup_uniqueness_extra_emails_aligned(self) -> None:
+        assert "extra_emails" in cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        assert luc["email_list_paths"] == ("contact.extra_emails",)
+        assert "contact.extra_emails" in uniq["list_paths"]
+        # Bind list emails must not be scalar email_paths (str-only reader)
+        assert "contact.extra_emails" not in luc["email_paths"]
+        # Admin manage still unchanged (Profile owns this UAT surface)
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        assert "contact.extra_emails" not in edit_keys
 
 
 class TestAst1084EvaluateJdCriteria:
