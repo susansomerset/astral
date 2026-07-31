@@ -373,7 +373,7 @@ class TestAst1060QualifyMeteoriteCatalogRow:
         row = by["qualify_meteorite"]
         assert row["agent_id"] == "college_intern_ruth"
         assert row["task_group_name"] == "Job Review"
-        assert row["task_name"] == "Qualify Meteorite"
+        assert row["task_name"] == row["task_key"] == "qualify_meteorite"
         assert row["task_seq"] == 2.5
         cache = row["cache_prompt"]
         assert "METEORITE" in cache
@@ -398,7 +398,7 @@ class TestAst878FetchCulturePagesCatalogRow:
         assert row["task_seq"] == 7
         assert row["task_group_name"] == "Job Review"
         assert row["agent_id"] == "n/a"
-        assert row["task_name"] == "Fetch Culture Pages"
+        assert row["task_name"] == row["task_key"] == "fetch_culture_pages"
         assert by["grade_get"]["task_seq"] == 6
         assert by["grade_like"]["task_seq"] == 8
         assert by["analysis_upshot"]["task_seq"] == 9
@@ -412,7 +412,7 @@ class TestAst1015PreambleValidateCatalogRow:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["preamble_validate_response"]
         assert row["agent_id"] == "college_intern_ruth"
-        assert row["task_name"] == "Validate Preamble Answer"
+        assert row["task_name"] == row["task_key"] == "preamble_validate_response"
         assert row["task_group_name"] == "Candidate Preamble"
         assert "PREAMBLE ANSWER VALIDATION" in row["cache_prompt"]
         assert "Valid | Try Again | Escalate" in row["cache_prompt"]
@@ -427,7 +427,7 @@ class TestAst1037SimpleResumeParseCatalogRow:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["simple_resume_parse"]
         assert row["agent_id"] == "college_intern_ruth"
-        assert row["task_name"] == "Simple Resume Parse"
+        assert row["task_name"] == row["task_key"] == "simple_resume_parse"
         assert row["task_group_name"] == "Candidate Artifacts"
         assert row["task_group_order"] == "2000"
         assert row["task_seq"] == 6
@@ -449,7 +449,7 @@ class TestAst1037SimpleResumeParseCatalogRow:
         craft = by["craft_resume_base"]
         assert craft["agent_id"] == "content_writer_judith"
         assert craft["task_seq"] == 5
-        assert craft["task_name"] == "Craft Resume Base"
+        assert craft["task_name"] == craft["task_key"] == "craft_resume_base"
         assert craft["task_group_name"] == "Candidate Artifacts"
 
 
@@ -628,7 +628,7 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         row = by["contact_estelle_turn"]
         assert row["agent_id"] == "principal_recruiter_estelle"
         assert row["task_group_name"] == "Contact Estelle"
-        assert row["task_name"] == "Contact Estelle Turn"
+        assert row["task_name"] == row["task_key"] == "contact_estelle_turn"
         assert row["task_seq"] == 1
         assert row["run_next"] == ""
         system = row["system_prompt"]
@@ -650,7 +650,7 @@ class TestAst1075TopicMenuCatalogRows:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         confirm = by["topic_menu_preamble_confirm"]
         assert confirm["agent_id"] == "principal_recruiter_estelle"
-        assert confirm["task_name"] == "Topic Menu Preamble Confirm"
+        assert confirm["task_name"] == confirm["task_key"] == "topic_menu_preamble_confirm"
         assert confirm["task_group_name"] == "Topic Menu"
         assert confirm["task_seq"] == 1
         assert "Anything here you would change?" in confirm["cache_prompt"]
@@ -658,7 +658,7 @@ class TestAst1075TopicMenuCatalogRows:
         assert "continue" in confirm["cache_prompt"] and "accepted" in confirm["cache_prompt"]
         gen = by["topic_menu_generate"]
         assert gen["agent_id"] == "principal_recruiter_estelle"
-        assert gen["task_name"] == "Generate Topic Menu"
+        assert gen["task_name"] == gen["task_key"] == "topic_menu_generate"
         assert gen["task_group_name"] == "Topic Menu"
         assert gen["task_seq"] == 2
         cache = gen["cache_prompt"]
@@ -683,7 +683,7 @@ class TestAst1089ParseMeteoriteEmailCatalogRow:
         row = by["parse_meteorite_email"]
         assert row["agent_id"] == "college_intern_ruth"
         assert row["task_group_name"] == "Job Review"
-        assert row["task_name"] == "Parse Meteorite Email"
+        assert row["task_name"] == row["task_key"] == "parse_meteorite_email"
         assert row["task_seq"] == 2.4
         cache = row["cache_prompt"]
         assert "html_links" in cache
@@ -706,10 +706,26 @@ class TestAst1106GazeEmailCatalogRow:
         assert "gaze_email" in by
         row = by["gaze_email"]
         assert row["task_group_name"] == "Job Review"
-        assert row["task_name"] == "gaze_email"
+        assert row["task_name"] == row["task_key"] == "gaze_email"
         assert row["task_seq"] == 2.3
         assert row["agent_id"] == "n/a"
         assert row["user_prompt"] == ""
         assert by["parse_meteorite_email"]["task_seq"] == 2.4
         assert by["qualify_meteorite"]["task_seq"] == 2.5
+
+
+class TestAst1107TaskNameEqualsTaskKey:
+    """AST-1107: temporary UAT clarity — every current agent_task.task_name == task_key."""
+
+    def test_every_current_row_task_name_equals_task_key(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        current = [r for r in rows if r.get("current") == 1]
+        assert current
+        bad = [(r.get("task_key"), r.get("task_name")) for r in current if r.get("task_name") != r.get("task_key")]
+        assert not bad, bad
+
+    def test_fixture_byte_locked_after_rename(self) -> None:
+        repo = Path("data/admin/agent_task.json")
+        fixture = Path("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert repo.read_bytes() == fixture.read_bytes()
 
