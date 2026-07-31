@@ -59,3 +59,12 @@ UAT Start Over posts `POST /api/candidates/{id}/intake/sessions/active/archive` 
 | `astral.standards.data-raises-caller-logs` | Core raises; API maps to status codes — no swallowed errors |
 | `astral.standards.in-scope-only` | No React, preamble, topic-menu, or core archive edits |
 | §1.3 DRY | Reuse `archive_active_intake_session` — do not duplicate archive / `intakes_old` logic in UI |
+
+## Review
+
+| Field | Value |
+| -- | -- |
+| Ticket | AST-1097 |
+| Publish ref | `origin/sub/AST-1096/AST-1097-restore-archive-active-intake-api` |
+| Built |  |
+| Notes | Stage 1 — `POST …/sessions/active/archive` in `api_intake.py`. |
