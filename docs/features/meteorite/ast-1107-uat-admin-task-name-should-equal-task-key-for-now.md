@@ -100,3 +100,28 @@ cmp -s data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.
 | 1 | `3356309c` | agent_task task_name equals task_key (47 rows rewritten) |
 | 2 | `adb30fc1` | AST-756 fixture sync after task_name rewrite |
 
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1107
+**Publish ref tip (at review):** `9b93389d7e290bb0651a8e02c8aeefb02734d390`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stages 1–2 match plan: every catalog row `task_name == task_key` (48 rows / 0 mismatches); `task_group_*` untouched; AST-756 fixture byte-identical.
+- No React name map; no `task_key` renames; single `merge-tests(AST-1107)`.
+
+### Issues
+
+**advisory:** Three-dot vs `origin/dev` also carries sibling AST-1106 visibility work via ftr. No Joan plan-rubric verdict attachment.
+
+### Recommended actions
+
+None.
+
+### Statutes checked (summary)
+
+57 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1107-…`. No violates. Full table in Linear review comment.
+
