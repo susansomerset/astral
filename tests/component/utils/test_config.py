@@ -3269,3 +3269,10 @@ class TestAst1089ParseMeteoriteEmailConfig:
         assert "parse_meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         with pytest.raises(KeyError, match="parse_meteorite_email"):
             cfg._dispatch_trigger_state_for_task_key("parse_meteorite_email")
+
+
+# Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
+class TestAst1094ActivityConfig:
+    def test_activity_state_filename(self) -> None:
+        assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
+        assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")

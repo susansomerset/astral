@@ -207,3 +207,52 @@ class TestAst1067ContactListenApi:
             == 403
         )
 
+
+# Branches: GET estelle_activity users; 502; auth 401/403 (AST-1094).
+class TestAst1094EstelleActivityApi:
+    def test_get_activity_ok(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_api,
+            "list_estelle_activity",
+            MagicMock(
+                return_value=[
+                    {
+                        "slack_user_id": "U1",
+                        "bind_ok": True,
+                        "astral_candidate_id": "c1",
+                        "candidate_state": "PROSPECT",
+                        "inbound_message_count": 2,
+                        "last_channel": "C1",
+                        "last_message_ts": "1.0",
+                    }
+                ]
+            ),
+        )
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        resp = contact_client.get("/api/admin/contact/estelle_activity", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert "users" in body
+        assert body["users"][0]["slack_user_id"] == "U1"
+        assert body["users"][0]["bind_ok"] is True
+
+    def test_get_activity_upstream_502(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_api,
+            "list_estelle_activity",
+            MagicMock(side_effect=RuntimeError("disk full")),
+        )
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        warn = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "warning", warn)
+        resp = contact_client.get("/api/admin/contact/estelle_activity", headers=auth_headers)
+        assert resp.status_code == 502
+        assert resp.get_json() == {"error": "disk full"}
+        warn.assert_called_once()
+
+    def test_activity_requires_auth(self, contact_client: FlaskClient) -> None:
+        assert contact_client.get("/api/admin/contact/estelle_activity").status_code == 401

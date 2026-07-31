@@ -49,3 +49,25 @@ Admin Manage Slack listen: `GET`/`PUT /api/admin/contact/listen` (`@require_admi
   tests/component/ui/api/test_api_contact.py::TestAst1067ContactListenApi \
   -q
 ```
+
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+Admin GET `/api/admin/contact/estelle_activity` (`@require_admin`) → `{users: [...]}`. Core: **`docs/test-bible/core/contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET users + 502 + auth 401 | `src/ui/api/api_contact.py` | **`TestAst1094EstelleActivityApi`** |
+
+**Broken / obsolete:** none — additive route on `contact_bp`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_contact.py::TestAst1094EstelleActivityApi \
+  -q
+```
+

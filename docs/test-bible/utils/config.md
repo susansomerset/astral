@@ -1705,3 +1705,25 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
   -q
 ```
+
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+`CONTACT_CONFIG["activity_state_filename"]` = `contact_estelle_activity.json` (durable @Estelle activity summary under `db_dir`). Data/core/API/UI: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| activity_state_filename | `src/utils/config.py` | **`TestAst1094ActivityConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG key.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1094ActivityConfig \
+  -q
+```
+
