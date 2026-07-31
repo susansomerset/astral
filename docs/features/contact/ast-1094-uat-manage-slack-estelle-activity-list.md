@@ -398,4 +398,17 @@ type EstelleActivityRow = {
 - SQLite new tables / `database.py` header inventory
 - Clearing or editing activity rows from the UI
 - Backfilling historical Slack messages into the summary file
-`)
+
+---
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list` |
+| Tip | `568af0b6` |
+| Branch | `sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list` |
+
+Stages 1–5 landed: `activity_state_filename`, `contact_estelle_activity.py`, record on accept + `list_estelle_activity`, GET `/estelle_activity`, Manage Slack activity table.
+
