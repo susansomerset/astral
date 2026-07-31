@@ -315,3 +315,14 @@ return {
 - **debug-contract-gated:** Style D only when `debug=True`.
 - **in-scope-only:** No Ruth catalog edits, no schema shell rework, no qualify/GDL, no Manage Email redesign, no global AST-1061 dedupe on this path.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`
+**Tip:** `0966f52b`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `a5581978` | GAZE_EMAIL_CONFIG runner literals + per-cand link helper + internalDate |
+| 2 | `88f96e2b` | due-task + `_dispatch_one` gaze_email wiring + stub |
+| 3 | `0966f52b` | gaze_email runner bind/route/Ruth/scrape/dedupe/mailbox + Style D |
