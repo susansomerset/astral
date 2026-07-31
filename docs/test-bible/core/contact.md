@@ -151,3 +151,27 @@ Process-local conversation cache: `load_slack_conversation_context` returns Stag
   tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
   -q
 ```
+
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+Durable @Estelle per–Slack-user activity summary (JSON under `db_dir`): `list_estelle_activity`; record on accepted `handle_slack_event` after resolve (not on listen_off). Data module: **`docs/test-bible/data/contact_estelle_activity.md`**. Config: **`docs/test-bible/utils/config.md`**. API/UI: **`docs/test-bible/ui/api/api_contact.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Data load/record/list | `src/data/contact_estelle_activity.py` | **`TestAst1094EstelleActivityData`** |
+| Core list + record on accept | `src/core/contact.py` | **`TestAst1094EstelleActivity`** |
+
+**Broken / obsolete:** none — additive; existing ingress tests stub Estelle turn and still accept.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_contact_estelle_activity.py::TestAst1094EstelleActivityData \
+  tests/component/core/test_contact.py::TestAst1094EstelleActivity \
+  -q
+```
+

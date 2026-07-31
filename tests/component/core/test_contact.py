@@ -828,3 +828,82 @@ class TestAst1073ContactEstelleTurnLoop:
         turn.assert_called_once()
         assert turn.call_args.kwargs["channel"] == "C1"
         assert turn.call_args.kwargs["astral_candidate_id"] == "c1"
+
+
+# Branches: list_estelle_activity; record on accept; listen_off skips (AST-1094).
+class TestAst1094EstelleActivity:
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_list_estelle_activity_delegates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [{"slack_user_id": "U1", "bind_ok": True, "inbound_message_count": 1}]
+        monkeypatch.setattr(
+            "src.data.contact_estelle_activity.list_estelle_activity_rows",
+            lambda: rows,
+        )
+        assert contact_mod.list_estelle_activity() == rows
+
+    def test_handle_records_activity_on_accept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+        _stub_estelle_turn(monkeypatch)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-act-1",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U-act",
+                    "channel": "C-act",
+                    "ts": "9.9",
+                    "text": "<@BOT> hi",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        rows = contact_mod.list_estelle_activity()
+        assert len(rows) == 1
+        assert rows[0]["slack_user_id"] == "U-act"
+        assert rows[0]["bind_ok"] is True
+        assert rows[0]["astral_candidate_id"] == "c1"
+        assert rows[0]["inbound_message_count"] == 1
+        assert rows[0]["last_channel"] == "C-act"
+        assert rows[0]["last_message_ts"] == "9.9"
+
+    def test_listen_off_does_not_record(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-off",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U-off",
+                    "channel": "C1",
+                    "ts": "1.0",
+                    "text": "x",
+                },
+            },
+        )
+        assert out == {"accepted": False, "reason": "listen_off"}
+        assert contact_mod.list_estelle_activity() == []
