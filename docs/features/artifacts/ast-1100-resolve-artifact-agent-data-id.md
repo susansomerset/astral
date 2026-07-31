@@ -144,8 +144,34 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 | §3.3 import-direction | UI → core → data; lazy imports for cycles |
 | in-scope-only | Three UAT surfaces / three pin keys only |
 
-## Review (build)
+## Review
 
-**Branch:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`  
-**Tip:** `b6be8d5e`  
-**Built:** Stages 1–5 — tab remap to pin slots; `resolve_job_artifact_agent_data_body` + `hydrate_job_artifacts_for_display`; job GET hydrate; PUT aliases for `job_resume` / `proposed_answers`; builder pin resolve; FE visibility helpers. Tests/bible deferred to Betty.
+**Branch:** `sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`  
+**Code:** `b6be8d5e`  
+**Publish tip reviewed:** `7eb0759b` (`merge-tests(AST-1100)`)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1100  
+**Overall:** DISCUSS
+
+### What’s solid
+- Tab remap to AST-1099 pin slots; GET hydrate via core helper; PUT aliases under remapped keys with `@require_auth`.
+- `resolve_job_artifact_agent_data_body` coat-checks blank/missing; Style D gated; lazy agent parse import documented.
+- Builder prefers legacy body then pin resolve then fallback; FE visibility accepts pin strings + hydrated bodies.
+- UI imports core only (no `src.data` / `src.external`); Betty owns tests/bible + fixture align.
+
+### Issues
+**discuss (C4 straggler):** Joan excluded `astral.docs.features-single-file-per-ticket` and `astral.debug.spikes-under-debug-dir`; ticket-scoped diff makes them in-scope. Both **conform**. No product fix-now.
+
+### Recommended actions
+- Engineer: no fix-now. Acknowledge stragglers on resolve-child / move to User Testing if no disagreement.
+- Pointer overwrite on human PUT remains intentional (plan Medium risk).
+
+### Notes
+- Statute applies_when + product judgment used AST-1100 commit change set (formal `origin/dev...` three-dot may include epic ancestry).
+- Plan-rubric verdict attached (Joan APPROVED). Active statute set count=57 (includes `astral.dispatch.seed-auto-false`).
+
+context_tokens≈45000
+
+— Radia
