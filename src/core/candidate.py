@@ -553,16 +553,19 @@ def save_candidate_data(
 
     contact = blob.get("contact")
     if isinstance(contact, dict):
-        if "websites" in contact:
-            raw_sites = contact["websites"]
-            if raw_sites is None:
-                contact["websites"] = []
-            elif isinstance(raw_sites, list):
-                contact["websites"] = [
-                    str(x).strip() for x in raw_sites if str(x).strip()
+        # Coerce websites / extra_emails to trimmed string lists (AST-1081 / AST-1092).
+        for list_key in ("websites", "extra_emails"):
+            if list_key not in contact:
+                continue
+            raw_list = contact[list_key]
+            if raw_list is None:
+                contact[list_key] = []
+            elif isinstance(raw_list, list):
+                contact[list_key] = [
+                    str(x).strip() for x in raw_list if str(x).strip()
                 ]
             else:
-                raise ValueError("contact.websites must be a list of strings")
+                raise ValueError(f"contact.{list_key} must be a list of strings")
         normalize_contact_urls(contact)
         # Proposed contact after merge (merge=True) or replace payload (merge=False).
         if not replace:
@@ -1112,12 +1115,20 @@ def get_candidate_id_for_query(
         + tuple(CANDIDATE_LOOKUP_CONFIG["name_paths"])
         + tuple(CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"])
     )
+    # List-valued binding emails only — do not walk all uniqueness list_paths
+    # (that would treat contact.websites as bind emails).
+    email_list_paths = tuple(CANDIDATE_LOOKUP_CONFIG["email_list_paths"])
     for candidate in list_candidates(include_deleted=False):
         values = []
         for path in paths:
             v = _lookup_path_value(candidate, path)
             if v:
                 values.append(v.casefold() if casefold else v)
+        for list_path in email_list_paths:
+            for raw in _iter_uniqueness_path_values(candidate, list_path):
+                if not isinstance(raw, str) or not raw.strip():
+                    continue
+                values.append(raw.casefold() if casefold else raw.strip())
         if needle_cmp not in values:
             continue
         cid = (candidate.get("astral_candidate_id") or "").strip()
