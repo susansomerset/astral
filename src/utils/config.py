@@ -1498,6 +1498,8 @@ CONTACT_CONFIG = {
     "listen_enabled": False,
     # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
     "listen_state_filename": "contact_slack_listen.json",
+    # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
+    "activity_state_filename": "contact_estelle_activity.json",
     # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
     "production_deploy_env": "production",
     # Format with environment= (deploy label). AST-1067 applies when listen is on
@@ -1557,6 +1559,7 @@ CONTACT_CONFIG = {
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
