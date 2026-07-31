@@ -127,3 +127,16 @@ Expected chain (former `craft_task_keys` order → terminal empty):
 - Boot migration + admin JSON match expected seven-hop craft topology; missing rows skipped (no AST-1108 invent).
 
 **Discuss (C4 stragglers)** — Joan excluded; three-dot in-scope (scores `conforms`): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `9182b95c` (`docs(AST-1113): Radia review — findings`)
+
+Radia overall **DISCUSS** — no fix-now product or plan-doc edits. Deliverable statutes all **conforms**.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss (C4 stragglers: spikes-under-debug-dir, features-single-file-per-ticket, engineer-test-tree-ban) | Accepted as non-blocking; each scored **conforms** in Radia’s sweep; no product change. |
+
+No product commits on this resolve pass.
