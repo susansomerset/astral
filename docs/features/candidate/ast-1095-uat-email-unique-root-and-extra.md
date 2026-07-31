@@ -117,18 +117,16 @@ No conflicts requiring `conf-!!-NONE`.
 ## Resolution
 
 **Date:** 2026-07-31  
-**Outcome:** clean (FIX-UAT) — Betty manifest green (17 passed); no Radia fix-now; publish tip rebuilt on `origin/ftr` without pull-merge ancestry.
+**Review tip:** `adb3f86a` (`docs(AST-1095): Radia review — FIX-NOW scope creep`)  
+**Outcome:** findings addressed — product tip rebuilt from `origin/ftr` with Stage 1 uniqueness + minimal prereqs only.
+
+| Finding | Disposition |
+| -- | -- |
+| fix-now — strip unrelated AST-1085/1087–1090 / DATA_SHAPES / full-name / craft hunks | Restored `config.py` + `candidate.py` from `origin/ftr`; re-applied uniqueness email pool + `contact_keys`/`email_list_paths` prereqs only |
+| fix-now — revert `get_candidate_id_for_query` | Confirmed no hunk vs ftr (bind expansion not on tip) |
+| discuss — premature resolve docs | Superseded by this Resolution |
+| Betty `TestAst1092…labels_and_extra_emails_shape` | `[qa-handoff]` — Profile DATA_SHAPES labels out of Files Changed; Betty revise/drop that assert for this tip |
 
 ### Radia — code-rubric.v1
 
-`[code-rubric] revision=1` · **Overall:** FIX-NOW
-
-**What’s solid**
-- Intended Stage 1 shape is present: uniqueness `email_list_paths` by identity from lookup; websites-only `list_paths`; gate collect/dedupe/cross walk email list under email compare; initiate coerce before gate.
-
-**Issues (fix-now)**
-- `code(AST-1095)` vs `origin/ftr` also lands unrelated AST-1085/1087–1090 / DATA_SHAPES / full-name / craft-rubric hunks outside Files Changed. Strip to uniqueness + minimal `extra_emails` prerequisites (or land AST-1092 on ftr first, then redo a clean 1095 tip).
-- Plan excluded `get_candidate_id_for_query` edits; tip still expands bind via `email_list_paths` — revert unless scope is expanded.
-
-**Recommended actions**
-- Ada `resolve-child`: rewrite publish tip to plan Files Changed only; re-run Betty as needed; do not treat premature Resolution “clean” as review sign-off.
+`[code-rubric] revision=1` · **Overall:** FIX-NOW → addressed in product above.
