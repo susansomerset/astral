@@ -1,12 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import api from '../../../../src/ui/frontend/src/lib/api'
 import Time from '../../../../src/ui/frontend/src/components/Time'
 import { renderWithProviders } from '../test-utils'
 
-vi.mock('../../../../src/ui/frontend/src/lib/api', () => ({
-  default: vi.fn(),
-}))
+vi.mock('../../../../src/ui/frontend/src/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/ui/frontend/src/lib/api')>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -23,7 +24,7 @@ describe('Time', () => {
         {
           astral_candidate_id: 'c1',
           state: 'ACTIVE',
-          candidate_data: { profile: { timezone: 'America/New_York' } },
+          candidate_data: { contact: { timezone: 'America/New_York' } },
         },
       ],
     } as Response)
@@ -39,7 +40,24 @@ describe('Time', () => {
         {
           astral_candidate_id: 'c1',
           state: 'ACTIVE',
-          candidate_data: { profile: {} },
+          candidate_data: { contact: {} },
+        },
+      ],
+    } as Response)
+    localStorage.setItem('astral_selected_candidate', 'c1')
+
+    renderWithProviders(<Time value="2026-05-14T16:48:11Z" />)
+    expect(await screen.findByText('5/14/26, 4:48:11 PM')).toBeInTheDocument()
+  })
+
+  // AST-1104: invalid contact.timezone must not unmount the tree
+  it('falls back to UTC when the selected candidate timezone is invalid', async () => {
+    mockedApi.mockResolvedValue({
+      json: async () => [
+        {
+          astral_candidate_id: 'c1',
+          state: 'ACTIVE',
+          candidate_data: { contact: { timezone: 'Not/AZone' } },
         },
       ],
     } as Response)

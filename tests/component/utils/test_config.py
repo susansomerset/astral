@@ -3326,6 +3326,34 @@ class TestAst1089ParseMeteoriteEmailConfig:
 # Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
 
 # Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).
+
+# Branches: Profile Contact Information Slack id/username fields (AST-1105).
+class TestAst1105ProfileSlackFields:
+    """AST-1105: contact.slack_user_id + contact.slack_username on Profile shapes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_slack_id_and_username_fields(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.slack_user_id"]["label"] == "Slack user id"
+        assert by_key["contact.slack_user_id"]["type"] == "text"
+        assert by_key["contact.slack_username"]["label"] == "Slack username"
+        assert by_key["contact.slack_username"]["type"] == "text"
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("contact.slack_user_id") < keys.index("contact.contact_email")
+        assert keys.index("contact.slack_username") == keys.index("contact.slack_user_id") + 1
+        # Resolve owns writes — not Contact skill ACL
+        paths = cfg.CONTACT_CONFIG["skills"]["save_candidate_contact"]["allowed_paths"]
+        assert "contact.slack_user_id" not in paths
+        assert "contact.slack_username" not in paths
+
+
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
 
@@ -3338,3 +3366,23 @@ class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
         assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")
+
+
+class TestAst1099JobArtifactAgentDataPinConfig:
+    """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
+
+    def test_pin_by_task_map(self) -> None:
+        assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
+            "finalize_job_resume": "job_resume",
+            "finalize_cover_letter": "cover_letter",
+            "propose_application_responses": "proposed_answers",
+        }
+
+    def test_clear_keys_include_pin_slots(self) -> None:
+        keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "job_resume" in keys
+        assert "proposed_answers" in keys
+        assert "cover_letter" in keys
+        # Legacy body keys remain for cancel of older rows / manual PUTs.
+        assert "resume_content" in keys
+        assert "application_responses" in keys
