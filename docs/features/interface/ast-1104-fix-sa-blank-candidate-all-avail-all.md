@@ -10,9 +10,11 @@ On Admin → Scheduled Actions, setting **Candidate: All** together with **Avail
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | Only if Stage 1 pins the throw here: harden the offending render/effect path (cell format, expand/prune, or table mount) so Candidate All + Avail All cannot unmount the tree | ui |
-| `src/ui/frontend/src/lib/fmt.ts` | Only if Stage 1 pins `fmtTime` / invalid `timeZone`: catch `RangeError` (and equivalent) from `toLocaleString` and fall back to UTC formatting (or raw ISO when the date itself is unusable) so Last Run cells cannot blank the SPA | ui |
-| `src/ui/frontend/src/components/Time.tsx` | Only if Stage 1 pins `<Time>` / candidate timezone: coerce missing/invalid IANA timezone to `"UTC"` before calling `fmtTime` (same fallback rule as `fmt.ts`) | ui |
+| `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | Only if Stage 1 pins the throw here (Branch B score_floor cell, and/or Branch C expand-prune / table-mount effect in this page): harden the offending render/effect path so Candidate All + Avail All cannot unmount the tree | ui |
+| `src/ui/frontend/src/lib/fmt.ts` | Only if Stage 1 pins `fmtTime` / invalid `timeZone` (Branch A): catch `RangeError` (and equivalent) from `toLocaleString` and fall back to UTC formatting (or raw ISO when the date itself is unusable) so Last Run cells cannot blank the SPA | ui |
+| `src/ui/frontend/src/components/Time.tsx` | Only if Stage 1 pins `<Time>` / candidate timezone (Branch A): coerce missing/invalid IANA timezone to `"UTC"` before calling `fmtTime` (same fallback rule as `fmt.ts`); prefer absorption in `fmt.ts` when that alone stops the throw | ui |
+| `src/ui/frontend/src/lib/useListTableColumnMeasure.ts` | Only if Stage 1 pin stack is in this hook (Branch C): minimal stability fix (e.g. keep/strengthen `widthsEqual` so measure cannot loop) — do not change sticky math semantics beyond stopping the update-depth crash | ui |
+| `src/ui/frontend/src/hooks/useSectionExpandPolicy.ts` | Only if Stage 1 pin stack is in this hook (Branch C): minimal stability fix for expand-key updates — do not change Expand All / Expand One policy defaults or Avail predicates | ui |
 
 **Out of scope (this ticket):** Available calculation / claim / dispatch; Avail column formatting semantics (zero/empty still em dash); new Avail modes or filter-bar redesign; Run / Stop / AUTO / edit-modal / Manage Tasks; Recommended Jobs or other sectioned screens; a new global React error-boundary epic; API / `api_admin.py` payload changes unless Stage 1 proves a server fault as root cause (then stop and comment — do not invent backend work); `tests/` and `docs/test-bible/**` (Betty at Code Complete).
 
@@ -72,7 +74,11 @@ Execute **exactly one** branch matching the Stage 1 pin. Do not apply the other 
 
 ### Branch C — expand / measure maximum update depth
 
-1. In `AdminScheduledActions.tsx` and/or `useListTableColumnMeasure.ts` / `useSectionExpandPolicy.ts`, apply the **minimal** stability fix indicated by the stack (e.g. avoid `setExpandedKeys` when the pruned set equals current membership; keep `widthsEqual` guard; do not re-expand on every filter change — AST-894 once-gate stays). Touch only the file(s) named in the Stage 1 pin comment.
+1. Touch **only** the Files Changed row(s) named in the Stage 1 pin comment. Allowed paths for this branch:
+   - `src/ui/frontend/src/pages/AdminScheduledActions.tsx` — e.g. avoid `setExpandedKeys` when the pruned set equals current membership; do not re-expand on every filter change (AST-894 once-gate stays).
+   - `src/ui/frontend/src/lib/useListTableColumnMeasure.ts` — e.g. keep/strengthen `widthsEqual` so measure cannot loop.
+   - `src/ui/frontend/src/hooks/useSectionExpandPolicy.ts` — e.g. stabilize expand-key updates if the stack lands here.
+   Apply the **minimal** stability fix indicated by the stack. Do **not** edit any path outside the Files Changed table; if the stack names a different file, 🛑 stop and amend the plan before coding.
 
 2. Do not change Expand All policy defaults or Avail filter predicates.
 
@@ -112,7 +118,7 @@ Execute **exactly one** branch matching the Stage 1 pin. Do not apply the other 
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — Scheduled Actions blank-page survival; expected touch is SA page and/or shared `fmtTime`/`Time` used by Last Run cells, not Avail math or dispatch.
+**Scope:** `Single-Component` — Scheduled Actions blank-page survival; Files Changed covers SA page, `fmtTime`/`Time`, and (Branch C only) the two expand/measure hooks — not Avail math or dispatch.
 
 **Conf:** `Medium` — empty `#root` plus confirmed `fmtTime` RangeError on bad `timeZone` strongly suggest an uncaught render throw when wider filters mount more Last Run cells, but Stage 1 must pin the live stack before coding (B/C remain possible).
 
@@ -130,4 +136,10 @@ Execute **exactly one** branch matching the Stage 1 pin. Do not apply the other 
 | §3.3 imports | Pass — frontend-only; no new layer violations |
 | §3.5 naming / file placement | Pass — stay in `pages/` / `lib/` / `components/` |
 | `astral.layers.ui-config-driven-business-logic` | Pass — no new business rules in React; formatting/error absorption only |
+
+## Revisions
+
+Revision 1 — 2026-07-31  
+Driven by: Joan `[plan-discuss] round=1 concern` — Stage 2 Branch C vs Files Changed (`orch.pipeline.plan-is-bible` / `astral.standards.in-scope-only`)  
+Changes: Added conditional Files Changed rows for `useListTableColumnMeasure.ts` and `useSectionExpandPolicy.ts`; rewrote Branch C to authorize only those table paths (plus SA page when pinned there) and to 🛑 + amend if the stack names anything else.
 
