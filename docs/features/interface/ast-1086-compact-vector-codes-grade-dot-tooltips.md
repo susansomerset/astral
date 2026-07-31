@@ -136,3 +136,24 @@ Do **not** edit: `recommendedJobReport.tsx` (out of Boundaries), `ConfidenceBull
 | Build tip | `ec36ef4fb76e73729cc73efafb77c909e62efd3e` |
 | Status | Code Complete |
 
+---
+
+## Radia code-rubric review
+
+**Rubric:** code-rubric.v1 (`[code-rubric] revision=1`)  
+**Publish ref tip:** `b91f64a42de2fc11442d5ed8b376cbc8a2553d19`  
+**Overall:** DISCUSS (straggler callouts only — no product fix-now)
+
+### What’s solid
+
+- Shared `rubricDisplay` grades-only path parses `Name (XX)` → compact `headerCode` + clean label/tooltip; Skipped paints `{c.headerCode}` like In Review; sort keys stay on `c.code`.
+- `formatGradeDotTooltip` + `CONFIDENCE_DESCRIPTIONS` mirror matches `src/utils/config.py` byte-for-byte; both Jobs pages pass confidence on the array path.
+- Scope stays in frontend lib + two Jobs pages; Betty owns `tests/` / bible; engineer `code(AST-1086)` commit is src-only.
+
+### Issues
+
+**discuss (straggler):** `astral.debug.spikes-under-debug-dir` and `astral.docs.features-single-file-per-ticket` were Joan-excluded at plan time (plan layers `{ui}`) but the three-dot diff adds `docs/features/interface/ast-1086-…md`, so both score in-scope here. Verdict on each: **conforms** (normal plan file, not spike notes; single features file). No product action — belt-and-suspenders C4 only.
+
+### Recommended actions
+
+- Engineer: none for product. Acknowledge stragglers if desired, then resolve-child → User Testing.
