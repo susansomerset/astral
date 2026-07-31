@@ -143,3 +143,17 @@ None for fix-now.
 ### Statutes checked (summary)
 
 57 active statutes swept vs `origin/dev...origin/sub/AST-1093/AST-1098-…`. No violates. Full table in Linear review comment.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `d89d0793` (`docs(AST-1098): Radia review — CLEAN with Joan straggler discuss`)
+
+Radia overall **CLEAN** — no fix-now product or plan-doc edits.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss (Joan Excluded stragglers on three-dot tip) | Accepted as non-blocking; statutes still **conforms**; no product change |
+| advisory (boot-reconcile clears operator AUTO; provision INFO omits `reconciled=`) | Accepted — boot-reconcile matches plan Decision / AC3; log field optional, not fix-now |
+
+No product commits on this resolve pass. Merge of `origin/dev` kept Betty AST-1098 test tip (engineer hook excludes foreign test-tree paths from the merge commit).
