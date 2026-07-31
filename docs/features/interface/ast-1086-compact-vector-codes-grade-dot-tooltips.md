@@ -125,3 +125,14 @@ Do **not** edit: `recommendedJobReport.tsx` (out of Boundaries), `ConfidenceBull
 - **§1.4 no-hardcoded-sets:** Confidence copy mirrors `config.py` with an explicit Decision (no API in scope); not a new invented vocabulary.
 - **§3.5 frontend-file-placement:** Changes stay in `src/lib/rubricDisplay.ts` and existing `src/pages/Jobs*.tsx`.
 - **§2.1 / ui-config-driven:** Grade letters and confidence numbers still come from job payload; description text is the approved config mirror.
+
+---
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Branch | `sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips` |
+| Build tip |  |
+| Status | Code Complete |
+
