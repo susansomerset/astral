@@ -1681,3 +1681,27 @@ Extends `GAZE_EMAIL_CONFIG` with runner literals: `subject_url_schemes`, `dispat
   tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
   -q
 ```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library + lookup `email_list_paths` + uniqueness `list_paths`. Save/bind + Profile: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Labels + key + email_list_paths + uniqueness align | `src/utils/config.py` | **`TestAst1092ExtraBindingEmailsConfig`**; revised **`TestAst1079ContactUniquenessConfig`** (`list_paths` + `extra_emails`) |
+
+**Broken / obsolete:** AST-1079 `list_paths == ("contact.websites",)` — revised to include `contact.extra_emails`.
+
+**Integration:** no existing Profile extra-email bind scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  -q
+```

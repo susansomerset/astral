@@ -3322,3 +3322,74 @@ class TestAst1085EvaluateJdEmbeddedMerge:
         assert synced[0][1] == "evaluate_jd"
         assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
 
+
+
+# AST-1092: extra_emails coerce + bind via email_list_paths (not websites).
+class TestAst1092ExtraBindingEmails:
+    """AST-1092: save coerce extra_emails; get_candidate_id_for_query expands email_list_paths."""
+
+    def test_extra_emails_none_and_list_coerce(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"extra_emails": None, "phone": "555"}}
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["extra_emails"] == []
+        save.reset_mock()
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "extra_emails": ["  a@ex.com  ", "", "  ", "b@ex.com"],
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["extra_emails"] == [
+            "a@ex.com",
+            "b@ex.com",
+        ]
+
+    def test_extra_emails_non_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        with pytest.raises(ValueError, match="contact.extra_emails must be a list"):
+            candidate_mod.save_candidate_data(
+                "c1", {"contact": {"extra_emails": "solo@ex.com"}}
+            )
+
+    def test_lookup_binds_extra_email_not_websites(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [
+            {
+                "astral_candidate_id": "c1",
+                "first": "",
+                "last": "",
+                "full": "",
+                "candidate_data": {
+                    "contact": {
+                        "extra_emails": ["Extra@Ex.com"],
+                        "websites": ["https://not-an-email.example"],
+                    }
+                },
+            }
+        ]
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: rows
+        )
+        assert candidate_mod.get_candidate_id_for_query("extra@ex.com") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("EXTRA@EX.COM") == "c1"
+        # Websites must not participate in email bind
+        assert (
+            candidate_mod.get_candidate_id_for_query("https://not-an-email.example")
+            is None
+        )
