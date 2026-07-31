@@ -765,24 +765,3 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
   tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
   -q
 ```
-
-### AST-1076 · AST-1058 (UAT)
-
-**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`.
-
-`_bind_response_jobs_to_claimed` before MISSING/FABRICATED: single-job any non-claimed echo → claim id; ordered empty/`\d{1,3}` only. Usable `qualify_meteorite` extract with `astral_job_id` `"000"` → **METEORITE_QUALIFIED**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Bind helper + zero-echo qualify | `src/core/consult.py` | **`TestAst1076BindResponseJobsToClaimed`**; **`TestAst1076QualifyMeteoritePlaceholderId`** |
-
-**Broken / obsolete:** none — additive bind; AST-1062 content-gate cases unchanged.
-
-**Integration:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_consult.py::TestAst1076BindResponseJobsToClaimed \
-  tests/component/core/test_consult.py::TestAst1076QualifyMeteoritePlaceholderId \
-  -q
-```

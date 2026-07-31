@@ -9,6 +9,8 @@ from src.core.tracker import (
     cancel_artifact_build,
     count_jobs,
     get_job,
+    get_job_artifacts,
+    hydrate_job_artifacts_for_display,
     job_misses_dispatch_score_floor,
     list_jobs,
     list_jobs_below_dispatch_score_floor,
@@ -111,6 +113,10 @@ def detail(astral_job_id):
     if not job:
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
+    # AST-1100: pin-slot strings → resolved bodies for JAR / ArtifactEditor (no persist).
+    jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
+    art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
+    job["job_data"] = {**jd, "artifacts": art}
     job["agent_story"] = get_entity_agent_story(job)
     return jsonify(job)
 
@@ -127,6 +133,21 @@ def put_job_resume_content(astral_job_id):
     if not isinstance(body, dict):
         return jsonify({"error": "resume_content must be a dict"}), 400
     save_job_artifact_resume_content(astral_job_id, body)
+    return jsonify({"ok": True})
+
+
+@jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
+@require_auth
+def put_job_resume_pin_key(astral_job_id):
+    """AST-1100: ArtifactEditor saves under remapped job_resume key (body dict replaces pin)."""
+    job = get_job(astral_job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(force=True) or {}
+    body = data.get("job_resume")
+    if not isinstance(body, dict):
+        return jsonify({"error": "job_resume must be a dict"}), 400
+    save_job_data(astral_job_id, {"artifacts": {"job_resume": body}})
     return jsonify({"ok": True})
 
 
@@ -160,6 +181,21 @@ def put_job_application_responses(astral_job_id):
         astral_job_id,
         {"artifacts": {"application_responses": body}},
     )
+    return jsonify({"ok": True})
+
+
+@jobs_bp.route("/<astral_job_id>/artifacts/proposed_answers", methods=["PUT"])
+@require_auth
+def put_job_proposed_answers(astral_job_id):
+    """AST-1100: ArtifactEditor saves under remapped proposed_answers key."""
+    job = get_job(astral_job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(force=True) or {}
+    body = data.get("proposed_answers")
+    if not isinstance(body, dict):
+        return jsonify({"error": "proposed_answers must be a dict"}), 400
+    save_job_data(astral_job_id, {"artifacts": {"proposed_answers": body}})
     return jsonify({"ok": True})
 
 

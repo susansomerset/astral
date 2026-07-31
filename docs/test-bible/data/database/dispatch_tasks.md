@@ -312,17 +312,3 @@ Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NU
   -q
 ```
 
-### AST-1098 · AST-1093
-
-**Parent:** [AST-1093](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
-
-No data-layer API change. Revised **`TestAst1088NullCandidateGazeEmail::test_save_null_candidate_for_gaze_email`** — insert via `GAZE_EMAIL_CONFIG["auto_mode"]` now expects `auto_mode == 0` (CLICK). Primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/dispatcher.md`**.
-
-**Broken / obsolete:** AST-1088 assert `auto_mode == 1` when saving from config.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail \
-  -q
-```
-

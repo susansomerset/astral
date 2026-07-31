@@ -87,7 +87,7 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 - **TRACKER_CONFIG**: Job ingest config and JD processing rules. `job_state_transitions` has been removed — transitions are now validated using `prior_states` in `JOB_STATES`.
 - **`dispatch_tasks` DB table**: Sole source of truth for dispatchable batch tasks. Each row carries `entity_type`, `trigger_state`, `sort_by`, `batch_call_mode`, `batch_size`, and scheduling config. Unique constraint: **`(candidate_id, task_key, trigger_state)`** — multiple rows may share a `trigger_state` when `task_key` differs (e.g. TO_WATCH trio: `find_job_page`, `select_job_page`, `parse_job_list`). **Company roster dispatch:** `trigger_state` selects companies; **`task_key` on the row** selects the roster entry (`find_job_page` vs `select_job_page` vs `parse_job_list`), not a hardcoded default. `DISPATCH_TASKS` config block has been removed.
 - **COMPANY_STATES**: Company state list and batch criteria per state (limit, sort_by, scan_interval_hours).
-- **CANDIDATE_STATES**: Candidate state registry; each entry has `prior_states` (list or `None`), optional `stale_after_hours`/`stale_state`, optional `retry_state`/`error_state`, `progress_rank`; `DELETED` carries `reap_after_hours`. No `PROSPECT`.
+- **CANDIDATE_STATES**: Candidate state registry; each entry has `prior_states` (list or `None`), optional `stale_after_hours`/`stale_state`, optional `retry_state`/`error_state`, `progress_rank`; `DELETED` carries `reap_after_hours`. Includes `PROSPECT` (Slack create-on-miss; AST-1068).
 - **ROSTER_CONFIG**: Roster flows (prefilter, locate_job_page, parse_job_list), ats_vendor_patterns.
 - **AGENT_CONFIG**: Anthropic model catalog — model_code (alias), model_label, cpm_input, cpm_output, cpm_cache_write, cpm_cache_read, default_temperature, default_max_tokens, cache_min_tokens. Keyed by model_code alias for O(1) lookup. Use `get_model(model_code)` helper.
 - **ASTRAL_CONFIG**: Paths, company_state_transitions, gazer, tick_rate_minutes, max_auto_threads, dispatch_timeout_seconds, db_retry, html_cull, cookie_dismiss_selectors, support_email (alert recipient for monitor.py), etc.
@@ -232,7 +232,11 @@ Every company and every job has a `state`. Entities are processed in batches bas
 
 **Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.0-run-next-carveout-detail`
 
+**Statute:** `astral.dispatch.run-next-is-chain-authority`
+
 Within a **single** `do_task` invocation, when `ctx` carries `dispatch_trigger_state`, successful hops may write runtime DB labels `{trigger}.{task_key}` and recurse via `run_next` until the terminal hop. Terminal graduation to a registered `JOB_STATES` key happens in the same invocation when `dispatch_chain_graduate_on_terminal` is true and the last hop's `run_next` is empty. Runtime hop labels are **not** `JOB_STATES` registry keys; batch claim may accept them (see `is_valid_job_batch_claim_state` in `config.py`). This carve-out does **not** apply to roster/consult score transitions (`render_verdict`) or company batches.
+
+Config must not define parallel hop-membership or hop-order lists that restate chains already encoded in `agent_task.run_next` — see statute `astral.dispatch.run-next-is-chain-authority`.
 
 State transitions are config-driven and managed by the core layer only. The data layer (`database.py`) and its core wrappers (`tracker.py`, `roster.py`) accept the target state as a parameter from the caller and perform the database update — they do not decide what the next state should be.
 

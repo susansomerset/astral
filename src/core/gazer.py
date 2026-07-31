@@ -801,14 +801,14 @@ async def fetch_job_pages_batch(
 
 
 def _compiled_title_patterns(ctx: Dict[str, Any]) -> List[Any]:
-    """Parse profile.title_patterns (newline-delimited regexes). Skip invalid lines; empty / missing => []."""
-    cd = ctx.get("candidate_data") or {}
+    """Parse contact.title_patterns (newline-delimited regexes). Skip invalid lines; empty / missing => []."""
+    cd = ctx.get("candidate_data") if isinstance(ctx.get("candidate_data"), dict) else ctx
     if not isinstance(cd, dict):
         return []
-    profile = cd.get("profile") or {}
-    if not isinstance(profile, dict):
+    contact = cd.get("contact") or {}
+    if not isinstance(contact, dict):
         return []
-    raw = profile.get("title_patterns") or profile.get("TITLE_PATTERNS") or ""
+    raw = contact.get("title_patterns") or contact.get("TITLE_PATTERNS") or ""
     if not isinstance(raw, str):
         raw = str(raw) if raw else ""
     out: List[Any] = []

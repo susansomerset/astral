@@ -1,15 +1,17 @@
 """
-Gmail API send + inbox read for ASTRAL.
+Gmail API send + inbox read + archive/trash for ASTRAL.
 
-Owns Gmail send and inbox list/get via one dual-scope OAuth client
-(gmail.send + gmail.readonly). send_email returns True/False and never raises
-on transient failures; list/get raise so callers can map hard failures.
+Owns Gmail send, inbox list/get, archive (remove INBOX), and trash via one
+modify-capable OAuth client (gmail.modify). send_email returns True/False and
+never raises on transient failures; list/get/archive/trash raise so callers can
+map hard failures. Live UAT must confirm GOOGLE_REFRESH_TOKEN includes modify;
+remint is ops-only if verification fails.
 
 Required env vars (validated at import time — missing vars raise RuntimeError at server startup):
   GMAIL_USER            — mailbox identity (e.g. astral.career.match@gmail.com)
   GOOGLE_CLIENT_ID      — OAuth2 client ID
   GOOGLE_CLIENT_SECRET  — OAuth2 client secret
-  GOOGLE_REFRESH_TOKEN  — OAuth2 refresh token (long-lived, dual-scope)
+  GOOGLE_REFRESH_TOKEN  — OAuth2 refresh token (long-lived, modify-capable)
 
 Optional env vars:
   GOOGLE_TOKEN_URI      — defaults to https://oauth2.googleapis.com/token
@@ -35,6 +37,8 @@ __all__ = [
     "send_email",
     "list_inbox_messages",
     "get_message_html",
+    "archive_message",
+    "trash_message",
 ]
 
 
@@ -45,6 +49,8 @@ class GmailInboxMessage(TypedDict):
     from_address: str
     date: str
     unread: bool
+    # Gmail internalDate as ms since epoch; 0 if missing/unparseable (AST-1090 retention).
+    internal_date_ms: int
 
 
 class GmailMessageHtml(TypedDict):
@@ -67,8 +73,7 @@ _GMAIL_USER = os.environ["GMAIL_USER"]
 _TOKEN_URI = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
 
 _GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
 ]
 _LIST_PAGE_SIZE = 500  # Gmail API page size only — not a result cap; paginate until exhausted
 
@@ -151,6 +156,26 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
     }
 
 
+
+
+def archive_message(message_id: str) -> None:
+    """Remove INBOX label from a message (archive). Raises on failure."""
+    require_controlled_external_io("gmail.archive_message")
+    service = _build_service()
+    service.users().messages().modify(
+        userId="me",
+        id=message_id,
+        body={"removeLabelIds": ["INBOX"]},
+    ).execute()
+
+
+def trash_message(message_id: str) -> None:
+    """Move a message to Gmail Trash (not permanent delete). Raises on failure."""
+    require_controlled_external_io("gmail.trash_message")
+    service = _build_service()
+    service.users().messages().trash(userId="me", id=message_id).execute()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -206,6 +231,17 @@ def _extract_html_body(payload: dict) -> str:
     return ""
 
 
+def _internal_date_ms(raw: dict) -> int:
+    # Gmail API returns internalDate as a string of epoch milliseconds.
+    val = raw.get("internalDate")
+    if val is None or val == "":
+        return 0
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _message_metadata(raw: dict) -> GmailInboxMessage:
     payload = raw.get("payload") if isinstance(raw.get("payload"), dict) else {}
     headers = _header_map(payload.get("headers"))
@@ -219,4 +255,5 @@ def _message_metadata(raw: dict) -> GmailInboxMessage:
         "from_address": headers.get("from", ""),
         "date": headers.get("date", ""),
         "unread": "UNREAD" in label_ids if isinstance(label_ids, list) else False,
+        "internal_date_ms": _internal_date_ms(raw),
     }

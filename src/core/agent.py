@@ -48,7 +48,6 @@ from src.utils.config import (
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
     get_task_keys,
-    resume_artifact_hop_task_keys,
     dispatch_chain_graduation_target,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
@@ -59,6 +58,7 @@ from src.utils.config import (
     CONTACT_ESTELLE_CONFIG,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
+    JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
 )
 from src.utils.rubric_feedback import (
     format_hydrated_review_debug_line,
@@ -564,25 +564,13 @@ def _do_task_debug_entry(
         return
     dbg = _do_task_debug_logger(debug)
     entity_id = (index or task_key or "?").strip()
-    if task_key in resume_artifact_hop_task_keys():
-        keys = resume_artifact_hop_task_keys()
-        hop_idx = keys.index(task_key) + 1
-        hop_total = len(keys)
-        dbg.debug_index(
-            func=f"do_task({task_key})",
-            index=hop_idx,
-            total=hop_total,
-            identifier=entity_id,
-            outcome="hop",
-        )
-    else:
-        dbg.debug_index(
-            func="do_task",
-            index=1,
-            total=1,
-            identifier=entity_id,
-            outcome="task start",
-        )
+    dbg.debug_index(
+        func="do_task",
+        index=1,
+        total=1,
+        identifier=entity_id,
+        outcome="task start",
+    )
     dbg.debug_detail(
         f"task_key={task_key} batch_id={batch_id or ''} index={index or ''} "
         f"in_run_next_chain={in_chain}"
@@ -619,16 +607,6 @@ def _mid_chain_empty_caller_tokens(
 
 
 # AST-597: mid-chain resume — hydrate {$CALLER_*} from stored agent_data
-def _resume_artifact_parent_hop_key(entry_task_key: str) -> Optional[str]:
-    keys = resume_artifact_hop_task_keys()
-    if entry_task_key not in keys:
-        return None
-    idx = keys.index(entry_task_key)
-    if idx == 0:
-        return None
-    return keys[idx - 1]
-
-
 _HOP_FAILURE_RESPONSE_PREFIXES = (
     "Validation failed:",
     "Schema parse failed:",
@@ -756,8 +734,6 @@ def _parent_hop_task_key_for_child(child_task_key: str) -> Optional[str]:
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        if child_task_key in resume_artifact_hop_task_keys():
-            return _resume_artifact_parent_hop_key(child_task_key)
         logger.warning(
             "ambiguous run_next parents for %s: %s",
             child_task_key,
@@ -894,7 +870,7 @@ def _hydrate_resume_entry_chain_context(
     astral_job_id: str,
     entry_task_key: str,
 ) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
-    parent = _resume_artifact_parent_hop_key(entry_task_key)
+    parent = _parent_hop_task_key_for_child(entry_task_key)
     if parent is None:
         return ({}, None)
     return _hydrate_caller_chain_context(
@@ -939,17 +915,6 @@ def _resume_hop_debug_index(
             outcome="hop",
         )
         return
-    if task_key not in resume_artifact_hop_task_keys():
-        return
-    keys = resume_artifact_hop_task_keys()
-    dbg = get_logger(__name__, debug_flag=True)
-    dbg.debug_index(
-        func=f"do_task({task_key})",
-        index=keys.index(task_key) + 1,
-        total=len(keys),
-        identifier=task_key,
-        outcome="hop",
-    )
 
 
 def _dispatch_chain_ctx(ctx: Optional[Dict[str, Any]]) -> tuple[str, bool]:
@@ -1535,7 +1500,7 @@ def _store_response_block(
     ).hexdigest()[:16]
     agent_data_id = f"{batch_id}-response-{content_hash}"
     # AST-984: tag RESPONSE with entity_id for list_entity_latest_agent_refs
-    save_agent_data(
+    result = save_agent_data(
         agent_data_id=agent_data_id,
         entity_type=entity_type,
         task_key=task_key,
@@ -2685,13 +2650,32 @@ async def do_task(
                     completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
+    # AST-1099: pin RESPONSE id into job_data.artifacts after successful store (mid-chain + terminal).
+    resp_id = None
+    store_failed = False
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
             resp_id = _store_response_block(entity_type, task_key, batch_id, store_content, index=index, debug=debug)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
+            store_failed = True
             logger.debug("_store_response_block failed", exc_info=True)
+
+    pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
+    if pin_slot and result.get("success"):
+        if index and resp_id:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import pin_job_artifact_agent_data_id
+            pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
+        elif debug:
+            reason = (
+                "store_failed" if store_failed
+                else ("missing_index" if not index else "missing_resp_id")
+            )
+            _do_task_debug_logger(debug).debug_detail(
+                f"artifact_pin key={pin_slot} skipped reason={reason}"
+            )
 
     # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:
@@ -2721,6 +2705,9 @@ async def do_task(
 
     planned_next = (agent_task_row.get("run_next") or "").strip()
     effective_next = planned_next
+    # AST-1113: caller walks run_next itself (per-hop persist) — do not recurse here.
+    if (ctx or {}).get("suppress_run_next"):
+        effective_next = ""
     # AST-469: roster select_job_page chains to parse_job_list only when titles were confirmed —
     # DB run_next may be set unconditionally; suppress for other response_type values.
     if effective_next and task_key == "select_job_page":  # pragma: no branch
@@ -2765,23 +2752,7 @@ async def do_task(
             effective_next = ""
 
     if not effective_next:
-        if (
-            result.get("success")
-            and entity_type == "job"
-            and index
-            and isinstance(parsed, dict)
-        ):
-            # Lazy import breaks agent↔tracker cycle (consult imports agent).
-            from src.core.tracker import persist_job_artifact_from_parsed
-            allow_resume = task_key == "finalize_job_resume"
-            allow_cover = task_key == "finalize_cover_letter"
-            if allow_resume or allow_cover:
-                persist_job_artifact_from_parsed(
-                    index,
-                    parsed,
-                    allow_resume=allow_resume,
-                    allow_cover_letter=allow_cover,
-                )
+        # AST-1099: finalize_* hops pin agent_data_id (above); no terminal body-copy here.
         if result.get("success") and index:
             _maybe_graduate_dispatch_chain(
                 job_id=index,

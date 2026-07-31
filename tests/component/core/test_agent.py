@@ -6326,3 +6326,33 @@ class TestAst1099DoTaskArtifactPin:
         pin.assert_not_called()
         combined = "\n".join(r.message for r in caplog.records)
         assert "artifact_pin key=cover_letter skipped reason=store_failed" in combined
+# Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
+class TestAst1083StoreResponseDebugResult:
+    def test_intake_initiate_debug_binds_save_agent_data_result(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "save_agent_data",
+            lambda **kwargs: {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": kwargs["agent_data_id"],
+                "ref_agent_data_id": None,
+            },
+        )
+        caplog.set_level("DEBUG")
+        # Candidate intake Estelle initiate — same NameError when result unbound.
+        agent_data_id = agent_mod._store_response_block(
+            "candidate",
+            "intake_initiate_candidate",
+            "batch-1083",
+            "ok",
+            index="mcevoy",
+            debug=True,
+        )
+        assert agent_data_id.startswith("batch-1083-response-")
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "agent_data_write" in combined
+        assert "block_type=RESPONSE" in combined
+        assert "outcome=new_content" in combined

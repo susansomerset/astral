@@ -3950,7 +3950,6 @@ class TestAst1062QualifyMeteorite:
             pytest.skip("qualify_meteorite not on tip")
         assert "qualify_meteorite" not in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
 
-
 # Branches: single-job / ordered placeholder bind; "000" qualify path (AST-1076 UAT).
 class TestAst1076BindResponseJobsToClaimed:
     def test_single_job_rewrites_non_claimed_echo(self) -> None:

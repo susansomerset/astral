@@ -31,7 +31,11 @@ from src.core.dispatcher import (
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
 )
-from src.core.candidate import preview_task_prompt, run_session_resume_parse
+from src.core.candidate import (
+    build_candidate_token_view,
+    preview_task_prompt,
+    run_session_resume_parse,
+)
 from src.core.builder import build_session_base_resume, build_session_cover_letter
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
@@ -59,6 +63,7 @@ from src.utils.config import (
     dispatch_entity_state_registry,
     ADMIN_CONFIG,
     admin_hidden_dispatch_task_keys,
+    admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
@@ -160,7 +165,8 @@ def _resolve_agent_preview_candidate(candidate_id: str):
         if not candidates:
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
-    cd = candidate.get("candidate_data") or {}
+    # AST-1014: columns + contact.* live on the row, not raw candidate_data alone.
+    cd = build_candidate_token_view(candidate)
     cid = candidate.get("astral_candidate_id") or candidate_id
     return cid, cd
 
@@ -338,7 +344,8 @@ def _enrich_tasks(candidate_id: str) -> list:
     and fetches timesheet averages per task version."""
     tasks = database.list_candidate_tasks()
     candidate = database.get_candidate(candidate_id) if candidate_id else None
-    cd = (candidate.get("candidate_data") or {}) if candidate else {}
+    # AST-1014: token view merges name columns + library blobs for resolve_tokens.
+    cd = build_candidate_token_view(candidate) if candidate else {}
 
     conn = _get_connection()
     try:
@@ -872,6 +879,9 @@ def list_dtasks():
                 exc,
             )
             row["available_count"] = 0
+        row["always_visible_under_avail_gt0"] = (
+            row.get("task_key") in admin_always_visible_under_avail_gt0_dispatch_task_keys()
+        )
     hidden = admin_hidden_dispatch_task_keys()
     rows = [r for r in rows if r.get("task_key") not in hidden]
     if request.args.get("req_dict"):
@@ -1301,7 +1311,8 @@ def _resolve_adhoc(body):
     if candidate_id:
         candidate = database.get_candidate(candidate_id)
         if candidate:
-            cd = candidate.get("candidate_data") or {}
+            # AST-1014: adhoc resolve needs columns + contact.* (not raw blob only).
+            cd = build_candidate_token_view(candidate)
 
     task_key = (body.get("task_key") or "adhoc").strip()
 

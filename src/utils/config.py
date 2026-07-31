@@ -9,6 +9,9 @@ Required environment variables (set in Railway / .env):
   ASTRAL_ALLOWED_IPS    — Comma-separated list of allowed IP addresses for UI access
   ANTHROPIC_API_KEY     — Fallback Anthropic API key (candidates carry their own)
   LINEAR_API_KEY        — Linear GraphQL (admin deploy footer UAT ticket tooltip — AST-792)
+  SLACK_BOT_TOKEN       — Estelle bot token (Contact / external slack; AST-1069 reads)
+  SLACK_SIGNING_SECRET  — Slack Events signing secret (AST-1069 verifies)
+  SLACK_APP_TOKEN       — Socket Mode app token (local/dev only; AST-1069)
 
 Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
@@ -17,6 +20,10 @@ Config sections:
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
+  PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
+  TOPIC_MENU_CONFIG — closed informs + status triad for Topic Menu (AST-1074; generation = AST-1075)
+  TOPIC_MENU_GEN_CONFIG — Estelle confirm + Topic Menu generation keys (AST-1075)
+  PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
@@ -25,11 +32,16 @@ Config sections:
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
   AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
+  ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
+  GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
+  METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
+  CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
+  CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
 import json
@@ -65,7 +77,6 @@ BASE_SCHEMA = {
     "failure_note": {"type": "str", "required": False},
 }
 
-# AST-1072: CHAT-only agent_performance — do not mutate BASE_SCHEMA.
 CONVERSATIONAL_OUTCOMES = ("success", "failure", "concern")
 CONVERSATIONAL_PERFORMANCE_SCHEMA = {
     "status": {
@@ -76,6 +87,7 @@ CONVERSATIONAL_PERFORMANCE_SCHEMA = {
     "failure_note": {"type": "str", "required": False},
     "admin_aside": {"type": "str", "required": False},
 }
+
 
 # Post-decode jobs[] item for grade_do / grade_get / grade_like (grades_encoded_notes).
 _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
@@ -137,14 +149,6 @@ RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
 DISPATCH_CHAIN_TERMINAL_GRADUATION: dict[str, str] = {
     BUILD_ARTIFACTS_BASE_STATE: "CANDIDATE_REVIEW",
 }
-_RESUME_ARTIFACT_HOP_TASK_KEYS = (
-    "anticipate_scan",
-    "contemplate_job",
-    "advise_job_resume",
-    "draft_job_resume",
-    "check_job_resume",
-    "finalize_job_resume",
-)
 
 # Shared by craft_resume_base + simple_resume_parse (AST-1037) so contracts cannot drift.
 _CRAFT_RESUME_BASE_RESPONSE_SCHEMA: Dict[str, Any] = {
@@ -235,11 +239,48 @@ TASK_CONFIG = {
             "context.strengths": {"type": "str", "required": True},
             "context.priorities": {"type": "str", "required": True},
             "context.deal_breakers": {"type": "str", "required": True},
-            "profile.title_patterns": {"type": "str", "required": True},
+            "contact.title_patterns": {"type": "str", "required": True},
             "company_search_terms": {"type": "str", "required": True},
         },
         "response_format": "json",
         "context_format": "intake_build_{index}",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    
+    # AST-1015: Ruth preamble Valid / Try Again / Escalate (task_key = AST-1016 validation_task_key).
+    "preamble_validate_response": {
+        "response_schema": {
+            "outcome": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "preamble_validate_{index}",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    # AST-1075: Estelle preamble confirm + Topic Menu generation.
+    "topic_menu_preamble_confirm": {
+        "response_schema": {
+            "assistant_message": {"type": "str", "required": True},
+            "outcome": {"type": "str", "required": True},
+            "library_patches": {"type": "dict", "required": False},
+        },
+        "response_format": "json",
+        "context_format": "topic_menu_confirm_{index}",
+        "entity_type": "candidate",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
+    "topic_menu_generate": {
+        "response_schema": {
+            "topics": {"type": "list", "required": True},
+            "informs_coverage_confirmed": {"type": "bool", "required": True},
+            "informs_covered": {"type": "list", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "topic_menu_generate_{index}",
         "entity_type": "candidate",
         "requires_candidate_key": True,
         "trigger_state": None,
@@ -468,6 +509,32 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "agent_task": "qualify_meteorite",
+    },
+    # AST-1087 / AST-1089: Ruth parse of bound meteorite email HTML (not a dispatch claim task).
+    # AST-1090 calls do_task with METEORITE_EMAIL_PARSE_CONFIG["task_key"] + candidate ctx.
+    "parse_meteorite_email": {
+        "response_format": "json",
+        "output_type": "fields",
+        "scored": False,
+        "response_schema": {
+            "parse_mode": {"type": "str", "required": True},
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "job_link": {"type": "str", "required": True},
+                    "job_title": {"type": "str", "required": False},
+                    "metadata": {"type": "str", "required": False},
+                },
+            },
+            "jd_link": {"type": "str", "required": False},
+            "content_text": {"type": "str", "required": False},
+        },
+        "context_format": "parse_meteorite_email_{index}",
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "parse_meteorite_email",
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
@@ -819,12 +886,20 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
-    # AST-1072: conversational Contact Estelle turn (envelope only — Slack/loop = AST-1073).
     "contact_estelle_turn": {
         "print_label": "Contact Estelle Turn",
         "response_format": "json",
         "response_schema": {
             "reply": {"type": "str", "required": True},
+            # Optional ACL skill requests — executed by Contact turn loop (AST-1073).
+            "skill_calls": {
+                "type": "list",
+                "required": False,
+                "items_schema": {
+                    "skill_key": {"type": "str", "required": True},
+                    "fields": {"type": "object", "required": True},
+                },
+            },
         },
         "entity_type": None,
         "requires_candidate_key": False,
@@ -832,26 +907,18 @@ TASK_CONFIG = {
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
+    # AST-1088: mailbox dispatch shell (no Ruth prompts — AST-1089; runner — AST-1090).
+    "gaze_email": {
+        "entity_type": None,
+        "requires_candidate_key": False,
+        "trigger_state": None,
+    },
 }
 
-# Dispatch consult hops that enter the job-artifact chain (AST-534 / AST-740).
-# Excludes draft_cover_letter — cover-letter chain uses _run_craft_job_cover_letter_batch.
-JOB_ARTIFACT_ENTRY_TASK_KEYS = frozenset({
-    "anticipate_scan",
-    "contemplate_job",
-    "advise_job_resume",
-    "draft_job_resume",
-    "check_job_resume",
-    "finalize_job_resume",
-    "check_cover_letter",
-    "finalize_cover_letter",
-    "propose_application_responses",
-})
-
-
-def build_artifacts_chain_task_keys() -> frozenset[str]:
-    """All consult hops in the BUILD_ARTIFACTS CHAIN except draft_cover_letter (separate batch)."""
-    return frozenset(JOB_ARTIFACT_ENTRY_TASK_KEYS) - frozenset({"draft_cover_letter"})
+def is_conversational_task(task_key: str) -> bool:
+    """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
+    cfg = TASK_CONFIG.get(task_key) or {}
+    return cfg.get("task_type") == "CHAT"
 
 
 # ---------------------------------------------------------------------------
@@ -966,9 +1033,10 @@ COMPANY_STATES = {
 # CANDIDATE_STATES: job-style registry (AST-970). Keys are runtime states;
 # each value has prior_states (list or None), progress_rank, and optional
 # stale_after_hours/stale_state, retry_state/error_state, reap_after_hours.
-# PROSPECT is conceptual only — not a registry key.
+# PROSPECT = Slack-created candidate (AST-1068); prior_states None (entry state).
 # ---------------------------------------------------------------------------
 CANDIDATE_STATES = {
+    "PROSPECT": {"prior_states": None, "progress_rank": -1},
     "NEW_CANDIDATE": {"prior_states": None, "progress_rank": 0},
     "INTAKE_INITIATED": {"prior_states": ["NEW_CANDIDATE"], "progress_rank": 1},
     "REQUIRED_TOPICS_READY": {
@@ -1073,6 +1141,236 @@ CANDIDATE_CONFIG = {
     "initial_state": "NEW_CANDIDATE",
 }
 
+# AST-1014: contact/context/artifacts library vocabulary + name-column contract.
+CANDIDATE_LIBRARY_CONFIG = {
+    "contact_keys": (
+        "contact_email", "reply_email", "phone", "location",
+        "github", "linkedin_url", "websites", "extra_emails", "timezone",
+        "cover_letter_signature", "cover_letter_signature_image",
+        "title_patterns", "reason_codes",
+    ),
+    "context_keys": (
+        "bio_summary", "backstory", "strengths", "priorities", "deal_breakers",
+        "writing_preferences", "hopes", "interests", "concerns",
+        "raw_resume", "raw_profile", "raw_sample",
+    ),
+    "context_key_remap": {
+        "starting_resume_text": "raw_resume",
+        "linkedin_profile_text": "raw_profile",
+        "sample_cover_text": "raw_sample",
+    },
+    "name_columns": ("first", "last", "full", "pronouns"),
+    "linkedin_url_base": "https://www.linkedin.com/in/",
+    "github_url_base": "https://github.com/",
+    "full_name_join": " ",
+}
+
+# AST-1016: mechanical preamble script (Intro + steps). UI = AST-1017; Ruth task = AST-1015.
+PREAMBLE_CONFIG = {
+    "intro": (
+        "[PLACEHOLDER — Archie] Before we start with Estelle, we'll collect three "
+        "source materials: your latest resume, your LinkedIn profile, and a sample "
+        "cover letter from a past application."
+    ),
+    # AST-1015 must register an agent_task with this exact task_key (Ruth / Little Brain).
+    "validation_task_key": "preamble_validate_response",
+    "steps": [
+        {
+            "id": "raw_resume",
+            "order": 1,
+            "prompt_1st_try": (
+                "[PLACEHOLDER — Archie] Let's start with your existing/latest resume. "
+                "Paste the full text (or upload content) so we can store it as your raw resume."
+            ),
+            "prompt_2nd_try": (
+                "[PLACEHOLDER — Archie] That didn't look like resume text. Please paste "
+                "your full resume again — include roles, dates, and education if you have them."
+            ),
+            "target": {"blob": "context", "field": "raw_resume"},
+            "validation_question": (
+                "Does this response look like a valid answer to: paste your resume text?"
+            ),
+        },
+        {
+            "id": "raw_profile",
+            "order": 2,
+            "prompt_1st_try": (
+                "[PLACEHOLDER — Archie] Next, paste your LinkedIn profile content "
+                "(About, Experience, Education — the text you'd want Estelle to read)."
+            ),
+            "prompt_2nd_try": (
+                "[PLACEHOLDER — Archie] That didn't look like a LinkedIn profile. "
+                "Paste the profile text again (not just the profile URL)."
+            ),
+            "target": {"blob": "context", "field": "raw_profile"},
+            "validation_question": (
+                "Does this response look like a valid answer to: paste your LinkedIn profile text?"
+            ),
+        },
+        {
+            "id": "raw_sample",
+            "order": 3,
+            "prompt_1st_try": (
+                "[PLACEHOLDER — Archie] Finally, paste a sample cover letter from a past "
+                "application so we can learn your writing style."
+            ),
+            "prompt_2nd_try": (
+                "[PLACEHOLDER — Archie] That didn't look like a cover letter. "
+                "Paste a full sample cover letter (greeting through sign-off) again."
+            ),
+            "target": {"blob": "context", "field": "raw_sample"},
+            "validation_question": (
+                "Does this response look like a valid answer to: paste a sample cover letter?"
+            ),
+        },
+    ],
+}
+
+_PREAMBLE_STEP_KEYS = (
+    "id", "order", "prompt_1st_try", "prompt_2nd_try", "target", "validation_question",
+)
+assert isinstance(PREAMBLE_CONFIG["validation_task_key"], str) and PREAMBLE_CONFIG["validation_task_key"]
+assert isinstance(PREAMBLE_CONFIG["intro"], str) and PREAMBLE_CONFIG["intro"]
+assert isinstance(PREAMBLE_CONFIG["steps"], list) and PREAMBLE_CONFIG["steps"]
+_preamble_orders = sorted(s["order"] for s in PREAMBLE_CONFIG["steps"])
+assert _preamble_orders == list(range(1, len(PREAMBLE_CONFIG["steps"]) + 1))
+for _step in PREAMBLE_CONFIG["steps"]:
+    assert all(k in _step for k in _PREAMBLE_STEP_KEYS), _step.get("id")
+    _tgt = _step["target"]
+    assert _tgt.get("blob") == "context", _step["id"]
+    assert _tgt.get("field") in CANDIDATE_LIBRARY_CONFIG["context_keys"], _step["id"]
+    assert _step["id"] == _tgt["field"], _step["id"]
+    assert isinstance(_step["prompt_1st_try"], str) and _step["prompt_1st_try"]
+    assert isinstance(_step["prompt_2nd_try"], str) and _step["prompt_2nd_try"]
+    assert isinstance(_step["validation_question"], str) and _step["validation_question"]
+
+# AST-1015: Ruth preamble answer validation (Valid / Try Again / Escalate).
+# task_key MUST match PREAMBLE_CONFIG["validation_task_key"] (AST-1016) = preamble_validate_response.
+PREAMBLE_VALIDATION_CONFIG = {
+    "task_key": "preamble_validate_response",
+    "outcomes": ("Valid", "Try Again", "Escalate"),
+    "outcome_field": "outcome",  # agent_payload key
+}
+
+assert PREAMBLE_VALIDATION_CONFIG["task_key"] == PREAMBLE_CONFIG["validation_task_key"]
+
+
+# AST-1074: Topic Menu closed informs + status triad (generation = AST-1075).
+TOPIC_MENU_CONFIG = {
+    # Parent AC closed vocabulary — Estelle may not invent new target kinds.
+    "informs": (
+        "rubrics",
+        "base_resume",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "backstory",
+    ),
+    "statuses": ("open", "ready", "retired"),
+    "default_status": "open",
+    # Stable key under candidate_data (meta sibling of contact/context/artifacts).
+    "candidate_data_key": "topic_menu",
+    "topic_required_fields": ("id", "name", "ask", "required", "informs", "status"),
+}
+
+assert TOPIC_MENU_CONFIG["informs"] == (
+    "rubrics",
+    "base_resume",
+    "strengths",
+    "priorities",
+    "deal_breakers",
+    "backstory",
+)
+assert len(TOPIC_MENU_CONFIG["informs"]) == len(set(TOPIC_MENU_CONFIG["informs"]))
+assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["informs"])
+assert TOPIC_MENU_CONFIG["statuses"] == ("open", "ready", "retired")
+assert TOPIC_MENU_CONFIG["default_status"] in TOPIC_MENU_CONFIG["statuses"]
+assert TOPIC_MENU_CONFIG["candidate_data_key"] == "topic_menu"
+assert isinstance(TOPIC_MENU_CONFIG["topic_required_fields"], tuple)
+assert TOPIC_MENU_CONFIG["topic_required_fields"]
+assert len(TOPIC_MENU_CONFIG["topic_required_fields"]) == len(set(TOPIC_MENU_CONFIG["topic_required_fields"]))
+assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["topic_required_fields"])
+for _req in ("id", "name", "ask", "required", "informs", "status"):
+    assert _req in TOPIC_MENU_CONFIG["topic_required_fields"], _req
+# Library homes (string contract): context keys + base_resume artifact name.
+for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+    assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
+assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
+
+
+# AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).
+TOPIC_MENU_GEN_CONFIG = {
+    "confirm_task_key": "topic_menu_preamble_confirm",
+    "generate_task_key": "topic_menu_generate",
+    "confirm_outcomes": ("continue", "accepted"),
+    "confirm_outcome_field": "outcome",
+    # Live packet fields Estelle must see (from candidate_data.context / contact + name columns).
+    "packet_context_keys": (
+        "raw_resume",
+        "raw_profile",
+        "raw_sample",
+        "bio_summary",
+        "backstory",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "hopes",
+        "interests",
+        "concerns",
+    ),
+    # Real contact library keys only — never invent preferred_name (not in contact_keys).
+    "packet_contact_keys": (
+        "title_patterns",
+    ),
+    # Candidate table name columns (not contact blob keys) for display identity in the packet.
+    "packet_name_columns": (
+        "full",
+        "first",
+        "last",
+    ),
+    # Library paths Estelle may patch on revise (whitelist only).
+    "patchable_context_keys": (
+        "raw_resume",
+        "raw_profile",
+        "raw_sample",
+        "bio_summary",
+        "backstory",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "hopes",
+        "interests",
+        "concerns",
+    ),
+    "estelle_agent_id": "principal_recruiter_estelle",
+    # UI copy (exposed via ui_config).
+    "ui": {
+        "panel_title": "Confirm preamble with Estelle",
+        "accept_label": "Looks good — generate Topic Menu",
+        "send_label": "Send to Estelle",
+        "placeholder": "Tell Estelle what to change, or accept below.",
+        "generating_label": "Estelle is building your Topic Menu…",
+        "done_title": "Topic Menu ready",
+    },
+}
+
+assert isinstance(TOPIC_MENU_GEN_CONFIG["confirm_task_key"], str) and TOPIC_MENU_GEN_CONFIG["confirm_task_key"]
+assert isinstance(TOPIC_MENU_GEN_CONFIG["generate_task_key"], str) and TOPIC_MENU_GEN_CONFIG["generate_task_key"]
+assert TOPIC_MENU_GEN_CONFIG["confirm_task_key"] != TOPIC_MENU_GEN_CONFIG["generate_task_key"]
+assert TOPIC_MENU_GEN_CONFIG["confirm_outcomes"] == ("continue", "accepted")
+for _k in TOPIC_MENU_GEN_CONFIG["packet_context_keys"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["context_keys"], _k
+for _k in TOPIC_MENU_GEN_CONFIG["patchable_context_keys"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["context_keys"], _k
+for _k in TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["contact_keys"], _k
+for _k in TOPIC_MENU_GEN_CONFIG["packet_name_columns"]:
+    assert _k in CANDIDATE_LIBRARY_CONFIG["name_columns"], _k
+assert TOPIC_MENU_GEN_CONFIG["estelle_agent_id"] == "principal_recruiter_estelle"
+assert TOPIC_MENU_GEN_CONFIG["confirm_task_key"] in TASK_CONFIG
+assert TOPIC_MENU_GEN_CONFIG["generate_task_key"] in TASK_CONFIG
+
+
 # AST-1047: reusable string → candidate-id match homes (Manage Email From bind first caller).
 CANDIDATE_LOOKUP_CONFIG = {
     # Dotted paths resolved against a full candidate row (top-level columns + candidate_data).
@@ -1082,12 +1380,196 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.contact_email",   # transitional pre-1014
         "profile.reply_email",
     ),
+    # List-valued binding emails (AST-1092) — not in scalar email_paths (_lookup_path_value is str-only).
+    "email_list_paths": (
+        "contact.extra_emails",
+    ),
     "name_paths": (
         "first", "last", "full",           # AST-1014 name columns when present
         "profile.first", "profile.last",   # transitional
     ),
     "match_casefold": True,  # case-insensitive compare for emails and names
+    # Slack user id homes (AST-1066). Matcher inclusion is AST-1068 — config home only here.
+    "slack_user_id_paths": (
+        "contact.slack_user_id",
+    ),
 }
+
+# ---------------------------------------------------------------------------
+# CANDIDATE_CONTACT_UNIQUENESS_CONFIG: save-gate field contract (AST-1079 / AST-1045).
+# Vocabulary only — within-candidate dedupe + cross-candidate collision enforcement
+# is AST-1080. Email / slack path tuples must stay aligned with CANDIDATE_LOOKUP_CONFIG.
+# ---------------------------------------------------------------------------
+CANDIDATE_CONTACT_UNIQUENESS_CONFIG = {
+    # Same object as lookup — bind/lookup and uniqueness share one email vocabulary
+    # (including transitional profile.* until gone).
+    "email_paths": CANDIDATE_LOOKUP_CONFIG["email_paths"],
+    # List emails (AST-1095): same object as lookup — email pool =
+    # email_paths ∪ email_list_paths under compare["email"] (not generic list_paths).
+    "email_list_paths": CANDIDATE_LOOKUP_CONFIG["email_list_paths"],
+    # Non-email identity handles under the AST-1014 contact blob.
+    "scalar_paths": (
+        "contact.phone",
+        "contact.github",
+        "contact.linkedin_url",
+    ),
+    # Non-email list identity fields; each non-empty entry is one uniqueness token.
+    "list_paths": (
+        "contact.websites",
+    ),
+    # Same object as lookup Slack homes (AST-1066 / AST-1068).
+    "slack_user_id_paths": CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"],
+    # Compare mode per path group. Enforcement (AST-1080 / AST-1095) must:
+    #   - strip whitespace on all string values before compare
+    #   - for "casefold": compare with str.casefold()
+    #   - for "exact": compare stripped strings as-is (no casefold)
+    #   - skip empty / missing values (not uniqueness tokens)
+    "compare": {
+        "email": "casefold",
+        "scalar": "casefold",
+        "list": "casefold",
+        "slack_user_id": "exact",
+    },
+    # Both scopes use the same path set. Semantics of refuse vs collapse are AST-1080
+    # (parent OQ: avoid adding the same contact info twice; hard-fail cross-candidate).
+    "scopes": (
+        "within_candidate",
+        "cross_candidate",
+    ),
+}
+
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"] is CANDIDATE_LOOKUP_CONFIG["email_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"] is CANDIDATE_LOOKUP_CONFIG["email_list_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"] is CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"]["email"] == "casefold"
+assert CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True  # email uniqueness must stay casefold while lookup is
+assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]
+assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]
+assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"], tuple)
+assert isinstance(CANDIDATE_LOOKUP_CONFIG["email_list_paths"], tuple)
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scopes"] == ("within_candidate", "cross_candidate")
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+_contact_key_set = set(CANDIDATE_LIBRARY_CONFIG["contact_keys"])
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"] + CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]:
+    _key = _p.split(".", 1)[1]
+    assert _key in _contact_key_set, _p
+# List emails live on email_list_paths (email compare), not list_paths (websites).
+_uniqueness_list_set = set(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+    assert _p.split(".", 1)[1] in _contact_key_set, _p
+    assert _p not in _uniqueness_list_set, _p
+for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
+    assert _mode in ("casefold", "exact"), _mode
+
+# ---------------------------------------------------------------------------
+# CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).
+# Skills ACL is Contact-only — never dispatch TASK_CONFIG / agent_task catalog rows.
+# Secret *values* live in environ; this block stores env *names* + behavior flags.
+# ---------------------------------------------------------------------------
+CONTACT_CONFIG = {
+    # Default off. Manage Slack (AST-1067) owns the per-environment flip.
+    "listen_enabled": False,
+    # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
+    "listen_state_filename": "contact_slack_listen.json",
+    # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
+    "activity_state_filename": "contact_estelle_activity.json",
+    # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
+    "production_deploy_env": "production",
+    # Format with environment= (deploy label). AST-1067 applies when listen is on
+    # and deploy is not production.
+    "non_production_reply_prefix_template": "[{environment}] ",
+    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
+    "hear_ack_reply_text": "Heard you — Estelle is listening.",
+    # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
+    "bot_token_env": "SLACK_BOT_TOKEN",
+    "signing_secret_env": "SLACK_SIGNING_SECRET",
+    # skill_key → ACL metadata. Contact-only entity-save paths (AST-1071).
+    # Keys must never appear in TASK_CONFIG (assert below).
+    "skills": {
+        "save_candidate_profile": {
+            "entity": "candidate",
+            "write": True,
+            "description": (
+                "Merge allowlisted profile fields into candidate_data.profile "
+                "for Slack Contact intake."
+            ),
+            # Dotted paths under candidate_data. Payload field keys must match exactly.
+            "allowed_paths": (
+                "profile.first",
+                "profile.last",
+                "profile.pronoun_preference",
+                "profile.contact_email",
+            ),
+        },
+        "save_candidate_contact": {
+            "entity": "candidate",
+            "write": True,
+            "description": (
+                "Merge allowlisted contact.* fields into candidate_data "
+                "(not slack_user_id — AST-1068 owns that)."
+            ),
+            "allowed_paths": (
+                "contact.contact_email",
+                "contact.reply_email",
+            ),
+        },
+    },
+    # AST-1069: Events API Request URL path (Flask route under /api).
+    "events_http_path": "/slack/events",
+    # Bot events Contact accepts when listen is on (Slack Event Subscriptions must match).
+    "bot_event_types": ("app_mention", "message"),
+    # Process-local event_id dedupe capacity (single gunicorn worker — AST/Railway).
+    "event_id_dedupe_max": 4096,
+    # Socket Mode (local/dev only) — app-level token env name (xapp-…).
+    "app_token_env": "SLACK_APP_TOKEN",
+    # Deterministic astral_candidate_id for Slack-created PROSPECTs (format with slack_user_id=).
+    "prospect_candidate_id_template": "slack-{slack_user_id}",
+    # AST-1070: Slack history page size for context loads (Web API limit param).
+    "context_history_limit": 50,
+    # Process-local cache: max distinct (channel, thread) keys retained.
+    "context_cache_max_conversations": 256,
+    # Seconds before a cached conversation is considered stale (force Slack refetch).
+    "context_cache_ttl_seconds": 300,
+}
+
+assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
+assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
+assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["skills"], dict)
+assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
+assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+assert str(CONTACT_CONFIG["events_http_path"]).startswith("/")
+assert CONTACT_CONFIG["bot_event_types"] and all(
+    isinstance(_t, str) for _t in CONTACT_CONFIG["bot_event_types"]
+)
+assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
+assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
+assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
+assert "{slack_user_id}" in CONTACT_CONFIG["prospect_candidate_id_template"]
+assert isinstance(CONTACT_CONFIG["context_history_limit"], int)
+assert CONTACT_CONFIG["context_history_limit"] > 0
+assert isinstance(CONTACT_CONFIG["context_cache_max_conversations"], int)
+assert CONTACT_CONFIG["context_cache_max_conversations"] > 0
+assert isinstance(CONTACT_CONFIG["context_cache_ttl_seconds"], int)
+assert CONTACT_CONFIG["context_cache_ttl_seconds"] > 0
+# Contact skills must not collide with dispatch/agent TASK_CONFIG keys.
+for _skill_key in CONTACT_CONFIG["skills"]:
+    assert _skill_key not in TASK_CONFIG, _skill_key
+for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
+    assert isinstance(_skill_meta, dict), _skill_key
+    assert _skill_meta.get("entity") == "candidate", _skill_key
+    assert _skill_meta.get("write") is True, _skill_key
+    assert isinstance(_skill_meta.get("description"), str) and _skill_meta["description"].strip(), _skill_key
+    _paths = _skill_meta.get("allowed_paths")
+    assert isinstance(_paths, tuple) and len(_paths) > 0, _skill_key
+    for _p in _paths:
+        assert isinstance(_p, str) and "." in _p, (_skill_key, _p)
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
@@ -1107,8 +1589,7 @@ INBOX_CREATE_JOB_CONFIG = {
         '<section class="email-body">{body}</section>'
     ),
 }
-
-assert "PROSPECT" not in CANDIDATE_STATES
+assert "PROSPECT" in CANDIDATE_STATES
 for _name, _cfg in CANDIDATE_STATES.items():
     assert "progress_rank" in _cfg, _name
     assert "prior_states" in _cfg, _name
@@ -1169,7 +1650,7 @@ INTAKE_CONFIG = {
         "context.strengths",
         "context.priorities",
         "context.deal_breakers",
-        "profile.title_patterns",
+        "contact.title_patterns",
         "company_search_terms",
     ],
 }
@@ -1336,27 +1817,17 @@ CANDIDATE_STAGE_DISPATCH = {
         "trigger_state": "REQUESTED_ARTIFACTS",
         "pass_state": "ARTIFACTS_READY",
         "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
-        # Sequential fan-in — not run_next daisy-chain. Title patterns stay profile/intake.
-        "craft_task_keys": [
-            "craft_company_search_terms",
-            "craft_joblist_rubric",
-            "craft_jobdesc_rubric",
-            "craft_do_rubric",
-            "craft_get_rubric",
-            "craft_like_rubric",
-            "craft_prefilter_rubric",
-        ],
+        # Entry hop only — succession via agent_task.run_next (AST-1113).
+        "craft_task_key": "craft_company_search_terms",
     },
 }
 assert all(
     k in TASK_CONFIG
     for k in (
-        [CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"]]
-        + list(CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"])
-        + [
-            CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-        ]
+        CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
     )
 )
 
@@ -1515,16 +1986,85 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     },
 )
 
+# AST-1084 / AST-1077: embedded evaluate_jd vectors — definitions only;
+# merge/append into jobdesc / evaluate_jd hydration is AST-1085.
+EMBEDDED_EVALUATE_JD_CRITERIA: tuple[dict, ...] = (
+    {
+        "code": "QC",
+        "label": "Quality Check",
+        "importance": 1,
+        "content": (
+            "Quality Check — is this enough of a JD to analyze?\n"
+            "A = This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.\n"
+            "B = This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.\n"
+            "C = This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.\n"
+            "F = This is not enough information to perform job fit analysis, either because it is not a job description, or it is too vague to determine fit for the candidate."
+        ),
+        "grade_descriptions": [
+            {
+                "grade": "A",
+                "description": "This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.",
+            },
+            {
+                "grade": "B",
+                "description": "This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.",
+            },
+            {
+                "grade": "C",
+                "description": "This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.",
+            },
+            {
+                "grade": "F",
+                "description": "This is not enough information to perform job fit analysis, either because it is not a job description, or it is too vague to determine fit for the candidate.",
+            },
+        ],
+    },
+    {
+        "code": "GC",
+        "label": "Gut Check",
+        "importance": 1,
+        "content": (
+            "Gut Check — is this even plausible for this candidate?\n"
+            "A = Based on the candidate's bio provided, this job would be a slam dunk for them.\n"
+            "B = Based on the candidate's bio provided, this job could be a good fit for them.\n"
+            "C = Based on the candidate's bio, this job would be doable, with caveats, for them.\n"
+            "D = Based on the candidate's bio, this job would be a stretch-to-impossible for them.\n"
+            "F = There's really no way this candidate could ever do this job.\n"
+            "X = There's not enough information about the job to make this determination with certainty."
+        ),
+        "grade_descriptions": [
+            {
+                "grade": "A",
+                "description": "Based on the candidate's bio provided, this job would be a slam dunk for them.",
+            },
+            {
+                "grade": "B",
+                "description": "Based on the candidate's bio provided, this job could be a good fit for them.",
+            },
+            {
+                "grade": "C",
+                "description": "Based on the candidate's bio, this job would be doable, with caveats, for them.",
+            },
+            {
+                "grade": "D",
+                "description": "Based on the candidate's bio, this job would be a stretch-to-impossible for them.",
+            },
+            {
+                "grade": "F",
+                "description": "There's really no way this candidate could ever do this job.",
+            },
+            {
+                "grade": "X",
+                "description": "There's not enough information about the job to make this determination with certainty.",
+            },
+        ],
+    },
+)
+
 # AST-803: legacy BUILD_ARTIFACTS.<hop> names for in-flight rows (mid-chain resume until flattened).
 def _legacy_build_artifacts_compound_state_for_hop(task_key: str) -> str:
     return f"{LEGACY_BUILD_ARTIFACTS_PREFIX}{task_key}"
 
-
-def _legacy_build_artifacts_compound_state_names() -> tuple[str, ...]:
-    return tuple(_legacy_build_artifacts_compound_state_for_hop(tk) for tk in _RESUME_ARTIFACT_HOP_TASK_KEYS)
-
-
-_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES = _legacy_build_artifacts_compound_state_names()
 
 # ---------------------------------------------------------------------------
 # JOB_STATES: job state registry.
@@ -1567,13 +2107,13 @@ JOB_STATES = {
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "PASSED_LIKE_RETRY", "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE]},
     BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
-    ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
-    "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES]},
+    ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]},
+    "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]},
     # AST-311/312: return-to-review from skipped and post-outcome states
-    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
-    "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
+    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
+    "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
@@ -1603,7 +2143,7 @@ JOB_STATES = {
     "METEORITE_PASSED_LIKE_RETRY":    {"prior_states": ["METEORITE_PASSED_LIKE"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
-    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES, "RECOMMENDED"]},
+    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
 }
 
 # ---------------------------------------------------------------------------
@@ -1648,6 +2188,54 @@ METEORITE_EMAIL_INGEST_CONFIG = {
     # Skip create when visible/body text length is below this after strip/fetch.
     "min_jd_chars": 40,
 }
+
+
+# AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id row).
+# Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
+# AST-1090 runner extends this block (schemes / ledger placeholder / Style D func).
+# Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
+# AST-1098: seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
+GAZE_EMAIL_CONFIG = {
+    "task_key": "gaze_email",
+    "account_address": "astral.career.match@gmail.com",
+    "unbound_retention_days": 7,
+    "auto_mode": False,
+    "min_count": 1,
+    "batch_size": 1,
+    "freq_hrs": 0,
+    # Mailbox poller — no entity claim queue on the dispatch_task row.
+    "entity_type": None,
+    "trigger_state": None,
+    # AST-1090 runner — subject-is-URL detection (urlparse.scheme).
+    "subject_url_schemes": ("http", "https"),
+    # Ledger / registry placeholder when dispatch_task.candidate_id is NULL.
+    "dispatch_ledger_candidate_id": "",
+    # Style D func= string for the runner.
+    "debug_func": "gaze_email.run",
+}
+
+assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
+assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
+assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
+assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
+assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
+assert GAZE_EMAIL_CONFIG["auto_mode"] is False
+# AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
+assert all(
+    not bool(e.get("auto_mode"))
+    for e in CANDIDATE_STAGE_DISPATCH.values()
+    if "auto_mode" in e
+)
+# AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
+# Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
+# must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
+METEORITE_EMAIL_PARSE_CONFIG = {
+    "task_key": "parse_meteorite_email",
+    # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
+    "parse_modes": ("html_links", "subject_body"),
+}
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
+assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -1708,6 +2296,8 @@ METEORITE_DISPATCH_TASKS = (
         "freq_hrs": 0,
     },
 )
+# AST-1098: meteorite seed catalog stays CLICK.
+assert all(not bool(e.get("auto_mode")) for e in METEORITE_DISPATCH_TASKS)
 
 # Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
 METEORITE_GDL_OUTCOME_BY_TASK = {
@@ -1742,7 +2332,16 @@ JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
     "cover_letter",
     "application_responses",
+    "job_resume",
+    "proposed_answers",
 )
+
+# AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
+JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
+    "finalize_job_resume": "job_resume",
+    "finalize_cover_letter": "cover_letter",
+    "propose_application_responses": "proposed_answers",
+}
 
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",
@@ -1798,11 +2397,12 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_resume",
         "nav_label": "Job Resume",
-        "artifact_key": "resume_content",
+        "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
     },
@@ -1816,7 +2416,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_application",
         "nav_label": "Application Questions",
-        "artifact_key": "application_responses",
+        "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
     },
@@ -1985,7 +2585,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "PASSED_LIKE"
     if task_key == "meteorite_upshot":
         return "METEORITE_PASSED_LIKE"
-    if task_key in resume_artifact_hop_task_keys():
+    _tc = TASK_CONFIG.get(task_key) or {}
+    if _tc.get("task_type") == "CHAIN" and _tc.get("error_state") == ERROR_BUILD_ARTIFACTS_STATE:
         return BUILD_ARTIFACTS_BASE_STATE
     if task_key == "draft_cover_letter":
         return "CANDIDATE_REVIEW"
@@ -2104,6 +2705,14 @@ def dispatch_task_admin_defaults(
         raise KeyError(retired)
     if tk not in TASK_CONFIG:
         raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}")
+    # Mailbox poller — no ENTITY_TYPES claim queue (do not use entity/trigger/sort helpers).
+    if tk == GAZE_EMAIL_CONFIG["task_key"]:
+        return {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
     entity_type = _dispatch_entity_type_for_task_key(tk)
     override = (trigger_state or "").strip()
     effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
@@ -2901,12 +3510,6 @@ def is_rubric_backed_task(task_key: str) -> bool:
     return rubric_owner_task_key(task_key) is not None
 
 
-def is_conversational_task(task_key: str) -> bool:
-    """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
-    cfg = TASK_CONFIG.get(task_key) or {}
-    return cfg.get("task_type") == "CHAT"
-
-
 def importance_multiplier(n: int) -> float:
     """Return the configured multiplier for rubric importance (AST-359 / AST-358)."""
     ci = ASTRAL_CONFIG["consult_importance"]
@@ -3016,15 +3619,22 @@ def get_model(model_code: str) -> dict:
 # ---------------------------------------------------------------------------
 BRAIN_LITTLE = "Little"
 BRAIN_MEDIUM = "Medium"
-BRAIN_BIG = "Big"
-BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
-
-# AST-1072: conversational Contact turns — Medium / non-thinking; Estelle agent row stays Big for upshot.
 CONTACT_ESTELLE_CONFIG = {
     "default_brain_setting": "Medium",
     "task_key": "contact_estelle_turn",
+    # Max Slack messages included in live_content (trim from oldest).
+    "turn_context_message_limit": 40,
+    # Max chars per message text in live_content (truncate with …).
+    "turn_context_text_max_chars": 500,
 }
 assert CONTACT_ESTELLE_CONFIG["default_brain_setting"] == BRAIN_MEDIUM
+assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"], int)
+assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
+assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
+assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
+
+BRAIN_BIG = "Big"
+BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
 
 
 def infer_brain_setting_from_legacy_model_code(model_code: Optional[str]) -> str:
@@ -3210,12 +3820,22 @@ ADMIN_CONFIG = {
         # Prefix for downloaded reconciliation CSV filenames.
         "export_filename_prefix": "astral",
     },
+    # AST-1106: mailbox shells kept under Scheduled Actions default Avail > 0 (zero entity avail).
+    "always_visible_under_avail_gt0_dispatch_task_keys": (
+        GAZE_EMAIL_CONFIG["task_key"],
+    ),
 }
 
 
 def admin_hidden_dispatch_task_keys() -> frozenset:
     """task_key values hidden from Scheduled Actions admin UI (dispatch backend unchanged)."""
     raw = ADMIN_CONFIG.get("hidden_dispatch_task_keys") or ()
+    return frozenset(raw)
+
+
+def admin_always_visible_under_avail_gt0_dispatch_task_keys() -> frozenset:
+    """task_key values kept visible under Scheduled Actions Avail > 0 (mailbox shells)."""
+    raw = ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
     return frozenset(raw)
 
 # ---------------------------------------------------------------------------
@@ -3266,7 +3886,7 @@ UI_CONFIG = {
     # AST-647: shared list-table layout — default frozen data columns (N) and cell truncate length.
     "list_table_frozen_data_columns": 2,
     "list_table_cell_truncate_chars": 30,
-    # AST-366: client + API validation for profile.cover_letter_signature_image (JPEG data URL).
+    # AST-366: client + API validation for contact.cover_letter_signature_image (JPEG data URL).
     "cover_letter_signature_image": {
         "max_width_px": 400,
         "max_height_px": 90,
@@ -3346,6 +3966,7 @@ NAV_CONFIG = [
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
             {"label": "Manage Email", "path": "/admin/manage_email"},
+            {"label": "Manage Slack", "path": "/admin/manage_slack"},
         ],
     },
 ]
@@ -3391,15 +4012,20 @@ DATA_SHAPES = {
                 {
                     "label": "Contact Information",
                     "fields": [
-                        {"key": "profile.first", "label": "First Name", "type": "text"},
-                        {"key": "profile.last", "label": "Last Name", "type": "text"},
-                        {"key": "profile.contact_email", "label": "Contact Email", "type": "text"},
-                        {"key": "profile.reply_email", "label": "Reply Email", "type": "text"},
-                        {"key": "profile.phone", "label": "Phone", "type": "text"},
-                        {"key": "profile.location", "label": "Location", "type": "text"},
-                        {"key": "profile.github", "label": "GitHub", "type": "text"},
-                        {"key": "profile.linkedin_url", "label": "LinkedIn URL", "type": "text"},
-                        {"key": "profile.timezone", "label": "Timezone", "type": "select", "options": [
+                        {"key": "first", "label": "First Name", "type": "text"},
+                        {"key": "last", "label": "Last Name", "type": "text"},
+                        {"key": "full", "label": "Full Name", "type": "text"},
+                        {"key": "contact.slack_user_id", "label": "Slack user id", "type": "text"},
+                        {"key": "contact.slack_username", "label": "Slack username", "type": "text"},
+                        {"key": "contact.contact_email", "label": "Email for Resume", "type": "text"},
+                        {"key": "contact.reply_email", "label": "Email for Messages (if different)", "type": "text"},
+                        {"key": "contact.extra_emails", "label": "Extra emails (binding)", "type": "string_list"},
+                        {"key": "contact.phone", "label": "Phone", "type": "text"},
+                        {"key": "contact.location", "label": "Location", "type": "text"},
+                        {"key": "contact.github", "label": "GitHub (username or URL)", "type": "text"},
+                        {"key": "contact.linkedin_url", "label": "LinkedIn (username or URL)", "type": "text"},
+                        {"key": "contact.websites", "label": "Websites", "type": "string_list"},
+                        {"key": "contact.timezone", "label": "Timezone", "type": "select", "options": [
                             {"value": "", "label": "(UTC)"},
                             {"value": "America/New_York", "label": "Eastern"},
                             {"value": "America/Chicago", "label": "Central"},
@@ -3408,7 +4034,7 @@ DATA_SHAPES = {
                             {"value": "America/Anchorage", "label": "Alaska"},
                             {"value": "Pacific/Honolulu", "label": "Hawaii"},
                         ]},
-                        {"key": "profile.pronoun_preference", "label": "Pronoun preference", "type": "select", "options": [
+                        {"key": "pronouns", "label": "Pronoun preference", "type": "select", "options": [
                             {"value": "", "label": "(not set)"},
                             {"value": "they/them", "label": "they/them"},
                             {"value": "she/her", "label": "she/her"},
@@ -3416,6 +4042,7 @@ DATA_SHAPES = {
                             {"value": "ze/zir", "label": "ze/zir"},
                             {"value": "e/eir", "label": "e/eir"},
                         ]},
+                        {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
                     ],
                 },
                 {
@@ -3427,20 +4054,20 @@ DATA_SHAPES = {
                 {
                     "label": "Sample Cover Letter",
                     "fields": [
-                        {"key": "context.sample_cover_text", "label": "Sample Cover Letter", "type": "textarea"},
+                        {"key": "context.raw_sample", "label": "Sample Cover Letter", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "Cover Letter Signature",
                     "fields": [
-                        {"key": "profile.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "Signature Image",
                     "fields": [
                         {
-                            "key": "profile.cover_letter_signature_image",
+                            "key": "contact.cover_letter_signature_image",
                             "label": "Signature Image",
                             "type": "signature_image",
                         },
@@ -3449,19 +4076,19 @@ DATA_SHAPES = {
                 {
                     "label": "Title Patterns",
                     "fields": [
-                        {"key": "profile.title_patterns", "label": "Title Patterns (one regex per line)", "type": "textarea"},
+                        {"key": "contact.title_patterns", "label": "Title Patterns (one regex per line)", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "LinkedIn Profile Text",
                     "fields": [
-                        {"key": "context.linkedin_profile_text", "label": "LinkedIn Profile Text", "type": "textarea"},
+                        {"key": "context.raw_profile", "label": "LinkedIn Profile Text", "type": "textarea"},
                     ],
                 },
                 {
                     "label": "Original Resume Text",
                     "fields": [
-                        {"key": "context.starting_resume_text", "label": "Original Resume Text", "type": "textarea"},
+                        {"key": "context.raw_resume", "label": "Original Resume Text", "type": "textarea"},
                     ],
                 },
             ],
@@ -3774,7 +4401,6 @@ BUILD_CONFIG = {
     # AST-300 / AST-370 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "resume_artifact_chain": {
         "first_task_key": "contemplate_job",
-        "hop_task_keys": _RESUME_ARTIFACT_HOP_TASK_KEYS,
     },
     # AST-301 / AST-368 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "cover_letter_artifact_chain": {
@@ -3795,15 +4421,7 @@ BUILD_CONFIG = {
     },
 }
 
-# AST-803: BUILD_ARTIFACTS chain helpers (hop order from BUILD_CONFIG).
-def resume_artifact_hop_task_keys() -> tuple[str, ...]:
-    chain = BUILD_CONFIG.get("resume_artifact_chain") or {}
-    keys = chain.get("hop_task_keys")
-    if not keys:
-        raise KeyError("BUILD_CONFIG resume_artifact_chain.hop_task_keys missing")
-    return tuple(keys)
-
-
+# AST-803: BUILD_ARTIFACTS legacy compound helpers (membership via TASK_CONFIG / run_next, not hop lists).
 def resume_artifact_compound_state(task_key: str) -> str:
     """Legacy compound label BUILD_ARTIFACTS.<hop> — in-flight rows only."""
     return _legacy_build_artifacts_compound_state_for_hop(task_key)
@@ -3814,7 +4432,7 @@ def legacy_build_artifacts_hop(state: str) -> str | None:
     if not st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX):
         return None
     hop = st[len(LEGACY_BUILD_ARTIFACTS_PREFIX):]
-    return hop if hop in resume_artifact_hop_task_keys() else None
+    return hop if hop and hop in TASK_CONFIG else None
 
 
 def is_valid_job_batch_claim_state(state: str) -> bool:
@@ -3950,19 +4568,11 @@ def is_build_artifacts_in_progress(state: str) -> bool:
 is_resume_artifact_in_progress = is_build_artifacts_in_progress
 
 
-def build_artifacts_claim_states() -> tuple[str, ...]:
-    return (BUILD_ARTIFACTS_BASE_STATE, *_LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES)
-
-
-def all_resume_artifact_compound_states() -> tuple[str, ...]:
-    return _LEGACY_BUILD_ARTIFACTS_COMPOUND_STATES
-
-
-_RAH = resume_artifact_hop_task_keys()
-assert len(_RAH) >= 1
+_rac = BUILD_CONFIG.get("resume_artifact_chain") or {}
+_rac_first = (_rac.get("first_task_key") or "").strip()
+assert _rac_first and _rac_first in TASK_CONFIG
+assert (TASK_CONFIG[_rac_first] or {}).get("entity_type") == "job"
 assert all(v in JOB_STATES for v in DISPATCH_CHAIN_TERMINAL_GRADUATION.values())
-assert all(tk in TASK_CONFIG for tk in _RAH)
-assert all((TASK_CONFIG[tk] or {}).get("entity_type") == "job" for tk in _RAH)
 for _tk, _tc in TASK_CONFIG.items():
     _tt = (_tc or {}).get("task_type")
     if _tt is not None:
@@ -4086,28 +4696,29 @@ PRONOUN_FORMS: dict[str, dict[str, str]] = {
 # Adding a new token = adding one entry here, no code change needed.
 # ---------------------------------------------------------------------------
 TOKEN_SOURCES = {
-    # profile (identity / contact)
-    "FIRST_NAME":           {"source": "candidate", "path": "profile.first"},
-    "LAST_NAME":            {"source": "candidate", "path": "profile.last"},
-    "CONTACT_EMAIL":        {"source": "candidate", "path": "profile.contact_email"},
-    "REPLY_EMAIL":          {"source": "candidate", "path": "profile.reply_email"},
-    "PHONE":                {"source": "candidate", "path": "profile.phone"},
-    "LOCATION":             {"source": "candidate", "path": "profile.location"},
-    "GITHUB":               {"source": "candidate", "path": "profile.github"},
-    "LINKEDIN_URL":         {"source": "candidate", "path": "profile.linkedin_url"},
+    # name columns + contact blob (AST-1014)
+    "FIRST_NAME":           {"source": "candidate", "path": "first"},
+    "LAST_NAME":            {"source": "candidate", "path": "last"},
+    "FULL_NAME":            {"source": "candidate", "path": "full"},
+    "CONTACT_EMAIL":        {"source": "candidate", "path": "contact.contact_email"},
+    "REPLY_EMAIL":          {"source": "candidate", "path": "contact.reply_email"},
+    "PHONE":                {"source": "candidate", "path": "contact.phone"},
+    "LOCATION":             {"source": "candidate", "path": "contact.location"},
+    "GITHUB":               {"source": "candidate", "path": "contact.github"},
+    "LINKEDIN_URL":         {"source": "candidate", "path": "contact.linkedin_url"},
 
     # context (candidate-provided, unaltered)
-    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.starting_resume_text"},
-    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.linkedin_profile_text"},
-    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.sample_cover_text"},
+    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume"},
+    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile"},
+    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample"},
     "STRENGTHS":            {"source": "candidate", "path": "context.strengths"},
     "PRIORITIES":           {"source": "candidate", "path": "context.priorities"},
     "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers"},
     "BACKSTORY":            {"source": "candidate", "path": "context.backstory"},
     "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences"},
-    "TITLE_PATTERNS":       {"source": "candidate", "path": "profile.title_patterns"},
-    "REASON_CODES":         {"source": "candidate", "path": "profile.reason_codes"},
-    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "profile.cover_letter_signature"},
+    "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns"},
+    "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes"},
+    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature"},
     "THEY":     {"source": "pronoun"},
     "THEIR":    {"source": "pronoun"},
     "THEIRS":   {"source": "pronoun"},
@@ -4249,7 +4860,8 @@ def _walk_dot_path(obj: object, path: str) -> object:
 
 
 def _pronoun_preference_key(candidate_data: dict) -> str:
-    raw = _walk_dot_path(candidate_data, "profile.pronoun_preference")
+    # AST-1014: pronouns column on the token view (was profile.pronoun_preference).
+    raw = candidate_data.get("pronouns") if isinstance(candidate_data, dict) else None
     if not isinstance(raw, str):
         return PRONOUN_PREFERENCE_DEFAULT
     key = raw.strip()

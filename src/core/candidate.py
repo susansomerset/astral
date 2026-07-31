@@ -2,7 +2,8 @@
 Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
-transition_candidate_state, parse_candidate_resume, check_context_complete.
+transition_candidate_state, parse_candidate_resume, check_context_complete,
+contact uniqueness enforcement on save (AST-1080).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -33,12 +34,18 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
+    CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
+    CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    TOPIC_MENU_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
+    EMBEDDED_EVALUATE_JD_CRITERIA,
+    PRONOUN_PREFERENCE_DEFAULT,
+    PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
@@ -49,6 +56,288 @@ from src.utils.config import (
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
+
+
+_NAME_COLUMNS = CANDIDATE_LIBRARY_CONFIG["name_columns"]
+_LIBRARY_BLOB_KEYS = ("contact", "context", "artifacts")
+
+
+def build_candidate_token_view(candidate: dict) -> dict:
+    """Walkable dict for resolve_tokens: name columns + library blobs (no meta)."""
+    cd = candidate.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return {
+        "first": candidate.get("first") or "",
+        "last": candidate.get("last") or "",
+        "full": candidate.get("full") or "",
+        "pronouns": candidate.get("pronouns") or "",
+        "contact": cd.get("contact") if isinstance(cd.get("contact"), dict) else {},
+        "context": cd.get("context") if isinstance(cd.get("context"), dict) else {},
+        "artifacts": cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {},
+        "_astral_candidate_id": candidate.get("astral_candidate_id") or "",
+    }
+
+
+def recompute_full_name(first: str, last: str) -> str:
+    join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
+    parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
+    return join.join(parts)
+
+
+def normalize_contact_urls(contact: dict) -> None:
+    """URL-or-username → URL for linkedin_url / github (mutates in place)."""
+    if not isinstance(contact, dict):
+        return
+    for key, base in (
+        ("linkedin_url", CANDIDATE_LIBRARY_CONFIG["linkedin_url_base"]),
+        ("github", CANDIDATE_LIBRARY_CONFIG["github_url_base"]),
+    ):
+        raw = contact.get(key)
+        if not isinstance(raw, str):
+            continue
+        val = raw.strip()
+        if not val:
+            continue
+        if "://" in val:
+            contact[key] = val
+            continue
+        handle = val.lstrip("@").strip()
+        contact[key] = f"{base}{handle}" if handle else val
+
+
+def _uniqueness_compare_token(raw: Any, mode: str) -> str:
+    """Strip + compare-mode normalize for uniqueness tokens (AST-1080)."""
+    if not isinstance(raw, str):
+        return ""
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    if mode == "exact":
+        return stripped
+    return stripped.casefold()
+
+
+def _iter_uniqueness_path_values(source: Dict[str, Any], dotted_path: str) -> list:
+    """Raw stripped string values for one uniqueness path (scalar or list)."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    # List-valued: non-email list_paths + email_list_paths (shared email pool).
+    if dotted_path in cfg["list_paths"] or dotted_path in cfg["email_list_paths"]:
+        parts = dotted_path.split(".")
+        cur: Any = source.get("candidate_data") or {}
+        if not isinstance(cur, dict):
+            return []
+        for seg in parts:
+            if not isinstance(cur, dict):
+                return []
+            cur = cur.get(seg)
+        out: list = []
+        if isinstance(cur, list):
+            for item in cur:
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+        elif isinstance(cur, str) and cur.strip():
+            out.append(cur.strip())
+        return out
+    v = _lookup_path_value(source, dotted_path)
+    return [v] if v else []
+
+
+def _collect_uniqueness_tokens_from_candidate(candidate: Dict[str, Any]) -> list:
+    """Return [(compare_token, path), ...] in config path order."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    compare = cfg["compare"]
+    out: list = []
+    # Email pool first (scalars then list emails), then other identity groups.
+    groups = (
+        (cfg["email_paths"], compare["email"]),
+        (cfg["email_list_paths"], compare["email"]),
+        (cfg["scalar_paths"], compare["scalar"]),
+        (cfg["list_paths"], compare["list"]),
+        (cfg["slack_user_id_paths"], compare["slack_user_id"]),
+    )
+    for paths, mode in groups:
+        for path in paths:
+            for raw in _iter_uniqueness_path_values(candidate, path):
+                tok = _uniqueness_compare_token(raw, mode)
+                if tok:
+                    out.append((tok, path))
+    return out
+
+
+def _collect_uniqueness_tokens_from_contact(contact: Dict[str, Any]) -> list:
+    """Tokens from a bare contact dict (write-side proposed blob)."""
+    return _collect_uniqueness_tokens_from_candidate(
+        {"candidate_data": {"contact": contact}}
+    )
+
+
+
+def _dedupe_contact_list_path(
+    contact: dict, path: str, mode: str, seen: set, notes: list
+) -> None:
+    """Keep-first rebuild for one contact.* list uniqueness path."""
+    if not path.startswith("contact."):
+        return
+    key = path.split(".", 1)[1]
+    raw_list = contact.get(key)
+    if not isinstance(raw_list, list):
+        return
+    kept: list = []
+    for item in raw_list:
+        if not isinstance(item, str):
+            kept.append(item)
+            continue
+        tok = _uniqueness_compare_token(item, mode)
+        if not tok:
+            kept.append(item)
+            continue
+        if tok in seen:
+            notes.append(f"removed duplicate from {path}")
+            continue
+        seen.add(tok)
+        kept.append(item)
+    contact[key] = kept
+
+
+def _dedupe_contact_within(contact: dict) -> list:
+    """Collapse duplicate uniqueness tokens inside one contact blob (mutates)."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    compare = cfg["compare"]
+    seen: set = set()
+    notes: list = []
+    # Scalar / email / slack under contact.* — keep first, clear later dups.
+    scalar_groups = (
+        (cfg["email_paths"], compare["email"]),
+        (cfg["scalar_paths"], compare["scalar"]),
+        (cfg["slack_user_id_paths"], compare["slack_user_id"]),
+    )
+    for paths, mode in scalar_groups:
+        for path in paths:
+            if not path.startswith("contact."):
+                continue
+            key = path.split(".", 1)[1]
+            raw = contact.get(key)
+            tok = _uniqueness_compare_token(raw, mode)
+            if not tok:
+                continue
+            if tok in seen:
+                contact[key] = ""
+                notes.append(f"cleared {path} (duplicate)")
+            else:
+                seen.add(tok)
+    # Email list paths (extra_emails) then non-email lists (websites).
+    for path in cfg["email_list_paths"]:
+        _dedupe_contact_list_path(contact, path, compare["email"], seen, notes)
+    for path in cfg["list_paths"]:
+        _dedupe_contact_list_path(contact, path, compare["list"], seen, notes)
+    return notes
+
+
+def _find_cross_candidate_contact_collision(
+    candidate_id: str, contact: dict
+) -> Optional[Tuple[str, str, str]]:
+    """Return (display_value, path, other_id) on first cross-candidate token hit."""
+    mine = _collect_uniqueness_tokens_from_contact(contact)
+    if not mine:
+        return None
+    mine_map = {tok: path for tok, path in mine}
+    self_id = (candidate_id or "").strip()
+    # Display values from this contact (path → first stripped raw).
+    display_by_path: Dict[str, str] = {}
+    for path in (
+        tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"])
+    ):
+        if not path.startswith("contact."):
+            continue
+        for raw in _iter_uniqueness_path_values(
+            {"candidate_data": {"contact": contact}}, path
+        ):
+            display_by_path.setdefault(path, raw)
+    for other in list_candidates(include_deleted=False):
+        other_id = (other.get("astral_candidate_id") or "").strip()
+        if not other_id or other_id == self_id:
+            continue
+        for tok, _opath in _collect_uniqueness_tokens_from_candidate(other):
+            if tok not in mine_map:
+                continue
+            path = mine_map[tok]
+            display = display_by_path.get(path) or tok
+            return (display, path, other_id)
+    return None
+
+
+
+def _coerce_contact_string_lists(contact: dict) -> None:
+    """Trim websites / extra_emails lists in place (AST-1081 / AST-1092 / AST-1095)."""
+    for list_key in ("websites", "extra_emails"):
+        if list_key not in contact:
+            continue
+        raw_list = contact[list_key]
+        if raw_list is None:
+            contact[list_key] = []
+        elif isinstance(raw_list, list):
+            contact[list_key] = [
+                str(x).strip() for x in raw_list if str(x).strip()
+            ]
+        else:
+            raise ValueError(f"contact.{list_key} must be a list of strings")
+
+
+def _enforce_contact_uniqueness(
+    candidate_id: str, contact: dict, *, debug: bool = False
+) -> None:
+    """Within-candidate collapse + cross-candidate hard-fail (AST-1080)."""
+    notes = _dedupe_contact_within(contact)
+    if debug:
+        logger.debug_index(
+            func="enforce_contact_uniqueness",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded|within_dedupe" if notes else "found|within_clean",
+        )
+        if notes:
+            for line in truncate_debug_content("; ".join(notes)):
+                logger.debug_detail(f"within={line}")
+        else:
+            logger.debug_detail("within=clean")
+        logger.debug_detail(
+            f"token_count={len(_collect_uniqueness_tokens_from_contact(contact))}"
+        )
+    hit = _find_cross_candidate_contact_collision(candidate_id, contact)
+    if hit:
+        display, path, other_id = hit
+        if debug:
+            logger.debug_index(
+                func="enforce_contact_uniqueness",
+                index=2,
+                total=2,
+                identifier=candidate_id,
+                outcome="found|cross_collision",
+            )
+            logger.debug_detail(f"path={path}")
+            for line in truncate_debug_content(display):
+                logger.debug_detail(f"value={line}")
+            logger.debug_detail(f"other_candidate_id={other_id}")
+        shown = display if len(display) <= 80 else display[:80]
+        raise ValueError(
+            f"This contact info is already used by another candidate ({shown})."
+        )
+    if debug:
+        logger.debug_index(
+            func="enforce_contact_uniqueness",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded|cross_clear",
+        )
+        logger.debug_detail("cross=clear")
+
 
 _PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
 
@@ -174,21 +463,399 @@ def _append_candidate_state_history(
     return history
 
 
-def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[str, Any]] = None) -> None:
+def initiate_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+    *,
+    first: Optional[str] = None,
+    last: Optional[str] = None,
+    full: Optional[str] = None,
+    pronouns: Optional[str] = None,
+) -> None:
     """Create a new candidate record with CANDIDATE_CONFIG initial_state."""
     initial = CANDIDATE_CONFIG["initial_state"]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cd = dict(candidate_data or {})
+    if "profile" in cd:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+    contact = cd.get("contact")
+    if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
+        normalize_contact_urls(contact)
+        _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
+    first_v = "" if first is None else str(first)
+    last_v = "" if last is None else str(last)
+    full_v = full if full is not None else recompute_full_name(first_v, last_v)
+    pronouns_v = ("" if pronouns is None else str(pronouns)).strip()
+    if pronouns_v not in PRONOUN_PREFERENCE_OPTIONS:
+        pronouns_v = PRONOUN_PREFERENCE_DEFAULT
     database.save_candidate(
         astral_candidate_id,
         state=initial,
-        candidate_data=candidate_data or {},
+        candidate_data=cd,
+        first=first_v,
+        last=last_v,
+        full=full_v,
+        pronouns=pronouns_v,
         state_history=_append_candidate_state_history({}, "", initial, now),
     )
 
-def save_candidate_data(candidate_id: str, data: Dict[str, Any], replace: bool = False) -> None:
-    """Merge (or replace) candidate_data. Follows save_job_data pattern.
-    Pure data persistence — no side effects, no AI calls."""
-    database.save_candidate(candidate_id, candidate_data=data, merge=not replace)
+
+
+def initiate_prospect_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+    *,
+    first: Optional[str] = None,
+    last: Optional[str] = None,
+) -> None:
+    """Create a candidate row in PROSPECT (Slack create-on-miss). Not NEW_CANDIDATE."""
+    cid = (astral_candidate_id or "").strip()
+    if not cid:
+        raise ValueError("astral_candidate_id is required")
+    if get_candidate(cid) is not None:
+        raise ValueError(f"candidate already exists: {cid}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cd = dict(candidate_data or {})
+    if "profile" in cd:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+    contact = cd.get("contact")
+    if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
+        normalize_contact_urls(contact)
+        _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
+    first_v = "" if first is None else str(first)
+    last_v = "" if last is None else str(last)
+    full_v = recompute_full_name(first_v, last_v)
+    database.save_candidate(
+        cid,
+        state="PROSPECT",
+        candidate_data=cd,
+        first=first_v,
+        last=last_v,
+        full=full_v,
+        pronouns=PRONOUN_PREFERENCE_DEFAULT,
+        state_history=_append_candidate_state_history({}, "", "PROSPECT", now),
+    )
+
+
+def save_candidate_data(
+    candidate_id: str,
+    data: Dict[str, Any],
+    replace: bool = False,
+    *,
+    debug: bool = False,
+) -> None:
+    """Merge (or replace) library blobs + optional name columns (AST-1014).
+    Pure data persistence — no AI calls. Rejects legacy ``profile`` writes."""
+    logger.set_debug_flag(debug)
+    if not isinstance(data, dict):
+        raise ValueError("candidate data must be a dict")
+    if "profile" in data:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+
+    col_kwargs: Dict[str, Any] = {}
+    blob: Dict[str, Any] = {}
+    for key, val in data.items():
+        if key in _NAME_COLUMNS:
+            col_kwargs[key] = "" if val is None else str(val)
+        else:
+            blob[key] = val
+
+    # Empty/whitespace full → library join; omit full when first/last change → same
+    if "full" in col_kwargs:
+        full_stripped = str(col_kwargs["full"]).strip()
+        if not full_stripped:
+            existing = database.get_candidate(candidate_id) or {}
+            first = col_kwargs.get("first", existing.get("first") or "")
+            last = col_kwargs.get("last", existing.get("last") or "")
+            col_kwargs["full"] = recompute_full_name(str(first), str(last))
+        else:
+            col_kwargs["full"] = full_stripped
+    elif "first" in col_kwargs or "last" in col_kwargs:
+        existing = database.get_candidate(candidate_id) or {}
+        first = col_kwargs.get("first", existing.get("first") or "")
+        last = col_kwargs.get("last", existing.get("last") or "")
+        col_kwargs["full"] = recompute_full_name(str(first), str(last))
+
+    if "pronouns" in col_kwargs:
+        pref = (col_kwargs["pronouns"] or "").strip()
+        if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
+            raise ValueError(f"Invalid pronouns value: {pref!r}")
+
+    contact = blob.get("contact")
+    if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
+        normalize_contact_urls(contact)
+        # Proposed contact after merge (merge=True) or replace payload (merge=False).
+        if not replace:
+            existing = database.get_candidate(candidate_id) or {}
+            existing_cd = existing.get("candidate_data") or {}
+            if not isinstance(existing_cd, dict):
+                existing_cd = {}
+            existing_contact = existing_cd.get("contact")
+            if isinstance(existing_contact, dict):
+                proposed = copy.deepcopy(existing_contact)
+                # Match database._deep_merge overwrite/list-replace for contact keys.
+                for k, v in contact.items():
+                    if (
+                        k in proposed
+                        and isinstance(proposed[k], dict)
+                        and isinstance(v, dict)
+                    ):
+                        inner = copy.deepcopy(proposed[k])
+                        for ik, iv in v.items():
+                            inner[ik] = iv
+                        proposed[k] = inner
+                    else:
+                        proposed[k] = v
+            else:
+                proposed = copy.deepcopy(contact)
+        else:
+            proposed = copy.deepcopy(contact)
+        _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
+        blob["contact"] = proposed
+
+    steps = []
+    if col_kwargs:
+        steps.append(("columns", sorted(col_kwargs.keys())))
+    for bk in _LIBRARY_BLOB_KEYS:
+        if bk in blob:
+            steps.append((bk, "recorded"))
+    meta_keys = [k for k in blob if k not in _LIBRARY_BLOB_KEYS]
+    if meta_keys:
+        steps.append(("meta", meta_keys))
+
+    if debug and steps:
+        total = len(steps)
+        for i, (label, detail) in enumerate(steps, start=1):
+            logger.debug_index(
+                func="save_candidate_data",
+                index=i,
+                total=total,
+                identifier=candidate_id,
+                outcome=f"recorded|{label}",
+            )
+            logger.debug_detail(f"{label}={detail!r}")
+
+    save_kwargs: Dict[str, Any] = dict(col_kwargs)
+    if blob:
+        save_kwargs["candidate_data"] = blob
+        save_kwargs["merge"] = not replace
+    elif col_kwargs:
+        pass
+    else:
+        return
+    database.save_candidate(candidate_id, **save_kwargs)
+
+
+def _topic_menu_key() -> str:
+    return str(TOPIC_MENU_CONFIG["candidate_data_key"])
+
+
+def empty_topic_menu() -> dict:
+    """Empty Topic Menu envelope (AST-1074)."""
+    return {"topics": []}
+
+
+def normalize_topic_menu(raw: Any) -> dict:
+    """Coerce stored/raw menu to ``{"topics": list}`` without validating members."""
+    if not isinstance(raw, dict):
+        return empty_topic_menu()
+    topics = raw.get("topics")
+    if not isinstance(topics, list):
+        return empty_topic_menu()
+    out: dict = {"topics": list(topics)}
+    confirmed = raw.get("preamble_confirmed_at")
+    if isinstance(confirmed, str) and confirmed.strip():
+        out["preamble_confirmed_at"] = confirmed.strip()
+    return out
+
+
+def get_topic_menu(candidate_id: str) -> dict:
+    """Load ``candidate_data.topic_menu`` (normalized). Raises if candidate missing."""
+    cand = get_candidate(candidate_id)
+    if not cand:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = cand.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return normalize_topic_menu(cd.get(_topic_menu_key()))
+
+
+def validate_topic(topic: Any) -> dict:
+    """Return a normalized topic dict or raise ValueError."""
+    if not isinstance(topic, dict):
+        raise ValueError("topic must be a dict")
+    tid = topic.get("id")
+    if not isinstance(tid, str) or not tid.strip():
+        raise ValueError("topic id must be a non-empty string")
+    tid = tid.strip()
+    name = topic.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"topic {tid!r}: name must be a non-empty string")
+    name = name.strip()
+    ask = topic.get("ask")
+    if not isinstance(ask, str) or not ask.strip():
+        raise ValueError(f"topic {tid!r}: ask must be a non-empty string")
+    ask = ask.strip()
+    required = topic.get("required")
+    if not isinstance(required, bool):
+        raise ValueError(f"topic {tid!r}: required must be a bool")
+    informs_raw = topic.get("informs")
+    if not isinstance(informs_raw, list) or not informs_raw:
+        raise ValueError(f"topic {tid!r}: informs must be a non-empty list")
+    allowed = TOPIC_MENU_CONFIG["informs"]
+    seen: set = set()
+    informs: list = []
+    for item in informs_raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"topic {tid!r}: informs entries must be non-empty strings")
+        key = item.strip()
+        if key not in allowed:
+            raise ValueError(f"topic {tid!r}: informs target {key!r} not in TOPIC_MENU_CONFIG")
+        if key in seen:
+            continue
+        seen.add(key)
+        informs.append(key)
+    if not informs:
+        raise ValueError(f"topic {tid!r}: informs must be non-empty after dedupe")
+    status = topic.get("status", TOPIC_MENU_CONFIG["default_status"])
+    if status not in TOPIC_MENU_CONFIG["statuses"]:
+        raise ValueError(f"topic {tid!r}: status {status!r} not in TOPIC_MENU_CONFIG")
+    return {
+        "id": tid,
+        "name": name,
+        "ask": ask,
+        "required": required,
+        "informs": informs,
+        "status": status,
+    }
+
+
+def validate_topic_menu(menu: Any) -> dict:
+    """Validate a full menu; raise on duplicate topic ids."""
+    normalized = normalize_topic_menu(menu)
+    out: list = []
+    seen_ids: set = set()
+    for topic in normalized["topics"]:
+        row = validate_topic(topic)
+        if row["id"] in seen_ids:
+            raise ValueError(f"duplicate topic id: {row['id']!r}")
+        seen_ids.add(row["id"])
+        out.append(row)
+    result: dict = {"topics": out}
+    if "preamble_confirmed_at" in normalized:
+        result["preamble_confirmed_at"] = normalized["preamble_confirmed_at"]
+    return result
+
+
+def revise_topic_menu(existing: Any, incoming: Any) -> dict:
+    """Merge incoming topics onto existing by id; missing ids become retired (no wipe)."""
+    existing_n = validate_topic_menu(existing)
+    incoming_n = validate_topic_menu(incoming)
+    incoming_ids = {t["id"] for t in incoming_n["topics"]}
+    out: list = []
+    for topic in incoming_n["topics"]:
+        out.append(topic)
+    for topic in existing_n["topics"]:
+        if topic["id"] in incoming_ids:
+            continue
+        retired = dict(topic)
+        retired["status"] = "retired"
+        out.append(retired)
+    result: dict = {"topics": out}
+    # Prefer incoming stamp when both set; else keep existing.
+    if "preamble_confirmed_at" in incoming_n:
+        result["preamble_confirmed_at"] = incoming_n["preamble_confirmed_at"]
+    elif "preamble_confirmed_at" in existing_n:
+        result["preamble_confirmed_at"] = existing_n["preamble_confirmed_at"]
+    return result
+
+
+def save_topic_menu(
+    candidate_id: str,
+    menu: Any,
+    *,
+    revise: bool = True,
+    debug: bool = False,
+) -> dict:
+    """Persist Topic Menu under candidate_data; default revise keeps retired history."""
+    logger.set_debug_flag(debug)
+    current = get_topic_menu(candidate_id)
+    if revise:
+        to_store = revise_topic_menu(current, menu)
+    else:
+        to_store = validate_topic_menu(menu)
+
+    if debug:
+        cur_ids = [t.get("id") for t in current.get("topics") or [] if isinstance(t, dict)]
+        logger.debug_index(
+            func="candidate.save_topic_menu",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"current_count={len(cur_ids)} revise={revise}")
+        id_blob = ",".join(str(x) for x in cur_ids)
+        for line in truncate_debug_content(id_blob):
+            logger.debug_detail(f"current_ids={line}")
+
+    save_candidate_data(candidate_id, {_topic_menu_key(): to_store}, debug=debug)
+
+    if debug:
+        status_counts = {s: 0 for s in TOPIC_MENU_CONFIG["statuses"]}
+        for t in to_store["topics"]:
+            st = t.get("status")
+            if st in status_counts:
+                status_counts[st] += 1
+        logger.debug_index(
+            func="candidate.save_topic_menu",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(
+            f"stored_count={len(to_store['topics'])} "
+            f"open={status_counts['open']} ready={status_counts['ready']} "
+            f"retired={status_counts['retired']} revise={revise}"
+        )
+    return to_store
+
+
+def mark_topic_menu_preamble_confirmed(
+    candidate_id: str,
+    *,
+    when: str | None = None,
+    debug: bool = False,
+) -> dict:
+    """Stamp ``preamble_confirmed_at`` on topic_menu without wiping topics (AST-1075)."""
+    logger.set_debug_flag(debug)
+    menu = get_topic_menu(candidate_id)
+    if debug:
+        logger.debug_index(
+            func="candidate.mark_topic_menu_preamble_confirmed",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"topics={len(menu.get('topics') or [])}")
+    stamp = when or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    menu["preamble_confirmed_at"] = stamp
+    save_candidate_data(candidate_id, {_topic_menu_key(): menu}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.mark_topic_menu_preamble_confirmed",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"preamble_confirmed_at={stamp}")
+    return menu
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
@@ -240,6 +907,22 @@ def _rubric_rows_to_criteria(rows: list) -> list:
     return out
 
 
+def _merge_embedded_evaluate_jd_criteria(criteria: list) -> list:
+    """Append EMBEDDED_EVALUATE_JD_CRITERIA; embedded wins on duplicate code (AST-1085)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_EVALUATE_JD_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    head = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return head + list(EMBEDDED_EVALUATE_JD_CRITERIA)
+
+
 def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
     if not candidate_id or not owner_task_key:
@@ -258,6 +941,8 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+    if owner_task_key == "evaluate_jd":
+        return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
 
@@ -283,6 +968,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
             raise ValueError(f"No rubric owner task_key for artifact {key!r}")
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
+        # AST-1085: restore QC/GC on save (append; embedded wins on code).
+        if owner == "evaluate_jd":
+            val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 
@@ -442,8 +1130,10 @@ def get_candidate_id_for_query(
     needle_cmp = needle.casefold() if casefold else needle
 
     hit_ids: set[str] = set()
-    paths = tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"]) + tuple(
-        CANDIDATE_LOOKUP_CONFIG["name_paths"]
+    paths = (
+        tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["name_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"])
     )
     for candidate in list_candidates(include_deleted=False):
         values = []
@@ -1182,8 +1872,8 @@ def filter_content_to_resume_structure(
 
 
 async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> Dict[str, Any]:
-    """Parse context.starting_resume_text via do_task('craft_resume_base').
-    Reads from candidate_data.context.starting_resume_text, writes parsed
+    """Parse context.raw_resume via do_task('craft_resume_base').
+    Reads from candidate_data.context.raw_resume, writes parsed
     result to candidate_data.artifacts.base_resume.
     Does not change candidate state (AST-970 — no PROFILE_READY auto-hop).
 
@@ -1192,9 +1882,9 @@ async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> D
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {"success": False, "error": f"Candidate not found: {candidate_id}"}
-    resume_raw = (candidate.get("candidate_data") or {}).get("context", {}).get("starting_resume_text", "")
+    resume_raw = (candidate.get("candidate_data") or {}).get("context", {}).get("raw_resume", "")
     if not resume_raw or not resume_raw.strip():
-        return {"success": False, "error": "No starting_resume_text in candidate_data.context"}
+        return {"success": False, "error": "No raw_resume in candidate_data.context"}
 
     response = await do_task(
         task_key="craft_resume_base",
@@ -1366,6 +2056,9 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         criteria = parsed.get("criteria")
         if not isinstance(criteria, list) or len(criteria) == 0:
             raise ValueError(f"{task_key} returned no criteria")
+        # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
+        if artifact_key == "jobdesc_rubric":
+            criteria = _merge_embedded_evaluate_jd_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
@@ -1395,7 +2088,7 @@ async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = Fals
     pass_state = stage["pass_state"]
     craft_key = stage["craft_task_key"]
     current = (candidate.get("state") or "").strip()
-    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("starting_resume_text") or ""
+    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
     try:
         response = await do_task(
             task_key=craft_key,
@@ -1423,7 +2116,7 @@ async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = Fals
 
 
 async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → sequential craft_* → ARTIFACTS_READY / retry / error."""
+    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
@@ -1433,15 +2126,21 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
     primary = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
+    craft_key = (stage.get("craft_task_key") or "").strip()
+    seen: set[str] = set()
     try:
-        for craft_key in stage["craft_task_keys"]:
+        while craft_key:
+            if craft_key in seen:
+                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
+            seen.add(craft_key)
             # Refresh ctx each hop so later crafts see earlier persists.
             candidate = database.get_candidate(candidate_id) or candidate
+            task_ctx = {**(candidate or {}), "suppress_run_next": True}
             response = await do_task(
                 task_key=craft_key,
                 live_content="",
                 index=candidate_id,
-                ctx=candidate,
+                ctx=task_ctx,
                 debug=debug,
             )
             if not response or not response.get("success"):
@@ -1449,6 +2148,7 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
                     (response or {}).get("error") if response else f"do_task None for {craft_key}"
                 )
             _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
+            craft_key = _current_agent_task_run_next(craft_key)
         transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
@@ -1479,7 +2179,7 @@ def run_session_resume_parse(
     # Synthetic token ctx only — no astral_candidate_id (do not load a real candidate).
     ctx = {
         "candidate_data": {
-            "context": {"starting_resume_text": paste},
+            "context": {"raw_resume": paste},
             "artifacts": {"resume_structure": structure},
         },
     }
@@ -1665,7 +2365,7 @@ def run_candidate_artifact_generation(
                     task_key=task_key,
                     live_content=live_content or "",
                     index=candidate_id,
-                    ctx=candidate,
+                    ctx={**(candidate or {}), "suppress_run_next": True},
                     debug=debug,
                 )
             )
@@ -1758,6 +2458,12 @@ def run_candidate_artifact_generation(
                     },
                     500,
                 )
+            # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
+            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
             if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
             ):
