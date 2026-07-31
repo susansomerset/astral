@@ -121,3 +121,22 @@ cd src/ui/frontend && npm run test:component -- \
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-951** | Artifacts action / content helpers | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-951 Artifacts helpers`** |
+
+---
+
+### AST-1086 · AST-1078
+
+**Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
+
+Compact grades-only `headerCode` (`Technical (TE)` → `TE`), clean label tooltips, and grade-dot confidence parenthetical via `formatGradeDotTooltip` / `CONFIDENCE_DESCRIPTIONS` mirror. Page coverage: **`docs/test-bible/frontend/pages.md`** (**AST-1086**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grades-only parse + grade-dot tooltip | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1086 compact headers and grade-dot confidence tooltips`** (+ grades-only expectation in **`AST-1064 job-carried list helpers`**) |
+
+**Broken / obsolete:** grades-only fallback expected `headerCode === "Technical (TE)"` — revised to `"TE"` / tooltip `"Technical (5)"`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts
+```
