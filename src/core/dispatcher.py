@@ -160,60 +160,6 @@ def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict
 
 
 
-def ensure_candidate_stage_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent upsert of REQUESTED_* orchestration rows for one candidate (AST-972)."""
-    cid = str(candidate_id or "").strip()
-    if not cid:
-        raise ValueError("candidate_id is required")
-    existing = {
-        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
-        for r in database.list_dispatch_tasks_for_candidate(cid)
-    }
-    added = 0
-    skipped = 0
-    for entry in CANDIDATE_STAGE_DISPATCH.values():
-        tk = str(entry["task_key"]).strip()
-        ts = str(entry["trigger_state"]).strip()
-        if (tk, ts) in existing:
-            skipped += 1
-            continue
-        database.save_dispatch_task(
-            candidate_id=cid,
-            task_key=tk,
-            min_count=1,
-            auto_mode=bool(entry.get("auto_mode", False)),
-            trigger_state=ts,
-            batch_size=1,
-            freq_hrs=0,
-        )
-        added += 1
-    return {"candidate_id": cid, "added": added, "skipped": skipped}
-
-
-def provision_candidate_stage_dispatch_tasks() -> Dict[str, Any]:
-    """Seed template + every candidate that already has dispatch rows (AST-972)."""
-    template_id = template_candidate_id()
-    if not template_id:
-        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
-    if database.get_candidate(template_id) is None:
-        raise LookupError(f"Template candidate not found: {template_id}")
-    ensure_candidate_stage_dispatch_tasks(template_id)
-    added = 0
-    skipped = 0
-    touched = 0
-    for cid in database.list_candidate_ids_with_dispatch_tasks():
-        stats = ensure_candidate_stage_dispatch_tasks(cid)
-        added += int(stats.get("added") or 0)
-        skipped += int(stats.get("skipped") or 0)
-        touched += 1
-    return {
-        "template_candidate_id": template_id,
-        "candidates_touched": touched,
-        "added": added,
-        "skipped": skipped,
-    }
-
-
 def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
     """Idempotent insert of meteorite dispatch_task rows; retire stale evaluate_jd@METEORITE_NEW (AST-1060)."""
     cid = str(candidate_id or "").strip()
@@ -1227,17 +1173,6 @@ def start_scheduler() -> None:
     n = database.mark_stale_ledger_interrupted(_now_iso())
     if n:
         _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
-    try:
-        stats = provision_candidate_stage_dispatch_tasks()
-        _sched_log.info(
-            "AST-972 stage dispatch provision template=%s touched=%s added=%s skipped=%s",
-            stats.get("template_candidate_id"),
-            stats.get("candidates_touched"),
-            stats.get("added"),
-            stats.get("skipped"),
-        )
-    except Exception:
-        _sched_log.exception("AST-972 stage dispatch provision failed")
     try:
         mstats = provision_meteorite_dispatch_tasks()
         _sched_log.info(
