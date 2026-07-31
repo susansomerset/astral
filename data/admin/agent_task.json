@@ -734,7 +734,7 @@
     "nocache_prompt": "",
     "system_prompt": "",
     "run_next": "",
-    "task_group_order": 1,
+    "task_group_order": "1",
     "task_group_name": "Candidate Preamble",
     "task_seq": 1,
     "task_name": "Validate Preamble Answer",
