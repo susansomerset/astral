@@ -314,9 +314,10 @@ no plan-rubric verdict attached
 
 **Date:** 2026-07-31  
 **Review tip:** `253200ee` (`docs(AST-1105): Radia review — include seed-auto-false statute`)  
-**Overall:** FIX-NOW — **test-tree only** (no product fix)
+**Betty scrub tip:** `618c7ee9` (`test(AST-1105): scrub orphan AST-1099/1100 test+bible bleed`)  
+**Overall:** FIX-NOW closed — **test-tree only** (no product fix)
 
-- Radia **fix-now** `astral.standards.no-cross-contamination`: orphan AST-1099/1100 pin tests + bible sections on this Contact tip without pin product. Action is Betty scrub of `tests/` + `docs/test-bible/**` — engineer must not invent AST-1099 product here.
-- **discuss** `orch.git.merge-on-checkout` / `orch.roles.betty-owns-test-tree`: same bleed; product Stages 1–5 held.
-- **`[qa-handoff]`** to Betty; status stays **Review Posted** until scrub lands and Betty reassigns.
+- Radia **fix-now** `astral.standards.no-cross-contamination`: Betty removed `TestAst1099JobArtifactAgentDataPinConfig` + AST-1099/1100 bible blocks from this tip; kept `TestAst1105ProfileSlackFields`.
+- **discuss** `orch.git.merge-on-checkout` / `orch.roles.betty-owns-test-tree`: closed by same scrub.
+- Manifest re-run after scrub: 14 pytest + 5 vitest green. No product code changes in resolve.
 
