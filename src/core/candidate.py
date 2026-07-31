@@ -121,7 +121,8 @@ def _uniqueness_compare_token(raw: Any, mode: str) -> str:
 def _iter_uniqueness_path_values(source: Dict[str, Any], dotted_path: str) -> list:
     """Raw stripped string values for one uniqueness path (scalar or list)."""
     cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
-    if dotted_path in cfg["list_paths"]:
+    # List-valued: non-email list_paths + email_list_paths (shared email pool).
+    if dotted_path in cfg["list_paths"] or dotted_path in cfg["email_list_paths"]:
         parts = dotted_path.split(".")
         cur: Any = source.get("candidate_data") or {}
         if not isinstance(cur, dict):
@@ -147,8 +148,10 @@ def _collect_uniqueness_tokens_from_candidate(candidate: Dict[str, Any]) -> list
     cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
     compare = cfg["compare"]
     out: list = []
+    # Email pool first (scalars then list emails), then other identity groups.
     groups = (
         (cfg["email_paths"], compare["email"]),
+        (cfg["email_list_paths"], compare["email"]),
         (cfg["scalar_paths"], compare["scalar"]),
         (cfg["list_paths"], compare["list"]),
         (cfg["slack_user_id_paths"], compare["slack_user_id"]),
@@ -167,6 +170,34 @@ def _collect_uniqueness_tokens_from_contact(contact: Dict[str, Any]) -> list:
     return _collect_uniqueness_tokens_from_candidate(
         {"candidate_data": {"contact": contact}}
     )
+
+
+
+def _dedupe_contact_list_path(
+    contact: dict, path: str, mode: str, seen: set, notes: list
+) -> None:
+    """Keep-first rebuild for one contact.* list uniqueness path."""
+    if not path.startswith("contact."):
+        return
+    key = path.split(".", 1)[1]
+    raw_list = contact.get(key)
+    if not isinstance(raw_list, list):
+        return
+    kept: list = []
+    for item in raw_list:
+        if not isinstance(item, str):
+            kept.append(item)
+            continue
+        tok = _uniqueness_compare_token(item, mode)
+        if not tok:
+            kept.append(item)
+            continue
+        if tok in seen:
+            notes.append(f"removed duplicate from {path}")
+            continue
+        seen.add(tok)
+        kept.append(item)
+    contact[key] = kept
 
 
 def _dedupe_contact_within(contact: dict) -> list:
@@ -195,30 +226,11 @@ def _dedupe_contact_within(contact: dict) -> list:
                 notes.append(f"cleared {path} (duplicate)")
             else:
                 seen.add(tok)
-    # List paths (websites): keep first unique entries; drop tokens already seen.
+    # Email list paths (extra_emails) then non-email lists (websites).
+    for path in cfg["email_list_paths"]:
+        _dedupe_contact_list_path(contact, path, compare["email"], seen, notes)
     for path in cfg["list_paths"]:
-        if not path.startswith("contact."):
-            continue
-        key = path.split(".", 1)[1]
-        mode = compare["list"]
-        raw_list = contact.get(key)
-        if not isinstance(raw_list, list):
-            continue
-        kept: list = []
-        for item in raw_list:
-            if not isinstance(item, str):
-                kept.append(item)
-                continue
-            tok = _uniqueness_compare_token(item, mode)
-            if not tok:
-                kept.append(item)
-                continue
-            if tok in seen:
-                notes.append(f"removed duplicate from {path}")
-                continue
-            seen.add(tok)
-            kept.append(item)
-        contact[key] = kept
+        _dedupe_contact_list_path(contact, path, compare["list"], seen, notes)
     return notes
 
 
@@ -235,6 +247,7 @@ def _find_cross_candidate_contact_collision(
     display_by_path: Dict[str, str] = {}
     for path in (
         tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"])
         + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"])
         + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
         + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"])
@@ -256,6 +269,23 @@ def _find_cross_candidate_contact_collision(
             display = display_by_path.get(path) or tok
             return (display, path, other_id)
     return None
+
+
+
+def _coerce_contact_string_lists(contact: dict) -> None:
+    """Trim websites / extra_emails lists in place (AST-1081 / AST-1092 / AST-1095)."""
+    for list_key in ("websites", "extra_emails"):
+        if list_key not in contact:
+            continue
+        raw_list = contact[list_key]
+        if raw_list is None:
+            contact[list_key] = []
+        elif isinstance(raw_list, list):
+            contact[list_key] = [
+                str(x).strip() for x in raw_list if str(x).strip()
+            ]
+        else:
+            raise ValueError(f"contact.{list_key} must be a list of strings")
 
 
 def _enforce_contact_uniqueness(
@@ -450,6 +480,7 @@ def initiate_candidate(
         raise ValueError("profile was renamed to contact; refuse shadow write")
     contact = cd.get("contact")
     if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
     first_v = "" if first is None else str(first)
@@ -490,6 +521,7 @@ def initiate_prospect_candidate(
         raise ValueError("profile was renamed to contact; refuse shadow write")
     contact = cd.get("contact")
     if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
     first_v = "" if first is None else str(first)
@@ -553,16 +585,7 @@ def save_candidate_data(
 
     contact = blob.get("contact")
     if isinstance(contact, dict):
-        if "websites" in contact:
-            raw_sites = contact["websites"]
-            if raw_sites is None:
-                contact["websites"] = []
-            elif isinstance(raw_sites, list):
-                contact["websites"] = [
-                    str(x).strip() for x in raw_sites if str(x).strip()
-                ]
-            else:
-                raise ValueError("contact.websites must be a list of strings")
+        _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         # Proposed contact after merge (merge=True) or replace payload (merge=False).
         if not replace:

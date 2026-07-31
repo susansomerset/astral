@@ -65,12 +65,15 @@ export default function Profile() {
     const websites = Array.isArray(raw.websites)
       ? raw.websites.map(v => String(v))
       : []
+    const extra_emails = Array.isArray(raw.extra_emails)
+      ? raw.extra_emails.map(v => String(v))
+      : []
     return {
       first: c.first ?? "",
       last: c.last ?? "",
       full: c.full ?? "",
       pronouns: c.pronouns ?? "",
-      contact: { ...raw, websites },
+      contact: { ...raw, websites, extra_emails },
       context: (d.context as Record<string, unknown>) ?? {},
       artifacts: (d.artifacts as Record<string, unknown>) ?? {},
     }

@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 
 from src.core.candidate import get_candidate
 from src.core.intake import (
+    archive_active_intake_session,
     create_intake_session_and_start,
     fetch_active_intake_session,
     fetch_intake_session,
@@ -87,6 +88,20 @@ def get_active_session(candidate_id):
     if not row:
         return jsonify({"error": "no active intake session"}), 404
     return jsonify(get_intake_session_dto(row))
+
+
+@intake_bp.route("/<candidate_id>/intake/sessions/active/archive", methods=["POST"])
+@require_auth
+def archive_active_session(candidate_id):
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        result = archive_active_intake_session(candidate_id)
+    except LookupError as e:
+        return jsonify({"error": str(e)}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    return jsonify(result), 200
 
 
 @intake_bp.route("/<candidate_id>/intake/sessions/<session_id>/turns", methods=["POST"])

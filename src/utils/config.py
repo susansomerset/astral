@@ -1173,7 +1173,7 @@ CANDIDATE_CONFIG = {
 CANDIDATE_LIBRARY_CONFIG = {
     "contact_keys": (
         "contact_email", "reply_email", "phone", "location",
-        "github", "linkedin_url", "websites", "timezone",
+        "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
         "title_patterns", "reason_codes",
     ),
@@ -1408,6 +1408,10 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.contact_email",   # transitional pre-1014
         "profile.reply_email",
     ),
+    # List-valued binding emails (AST-1092) — not in scalar email_paths (_lookup_path_value is str-only).
+    "email_list_paths": (
+        "contact.extra_emails",
+    ),
     "name_paths": (
         "first", "last", "full",           # AST-1014 name columns when present
         "profile.first", "profile.last",   # transitional
@@ -1428,19 +1432,22 @@ CANDIDATE_CONTACT_UNIQUENESS_CONFIG = {
     # Same object as lookup — bind/lookup and uniqueness share one email vocabulary
     # (including transitional profile.* until gone).
     "email_paths": CANDIDATE_LOOKUP_CONFIG["email_paths"],
+    # List emails (AST-1095): same object as lookup — email pool =
+    # email_paths ∪ email_list_paths under compare["email"] (not generic list_paths).
+    "email_list_paths": CANDIDATE_LOOKUP_CONFIG["email_list_paths"],
     # Non-email identity handles under the AST-1014 contact blob.
     "scalar_paths": (
         "contact.phone",
         "contact.github",
         "contact.linkedin_url",
     ),
-    # List-valued contact fields: each non-empty entry is one uniqueness token.
+    # Non-email list identity fields; each non-empty entry is one uniqueness token.
     "list_paths": (
         "contact.websites",
     ),
     # Same object as lookup Slack homes (AST-1066 / AST-1068).
     "slack_user_id_paths": CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"],
-    # Compare mode per path group. Enforcement (AST-1080) must:
+    # Compare mode per path group. Enforcement (AST-1080 / AST-1095) must:
     #   - strip whitespace on all string values before compare
     #   - for "casefold": compare with str.casefold()
     #   - for "exact": compare stripped strings as-is (no casefold)
@@ -1460,11 +1467,14 @@ CANDIDATE_CONTACT_UNIQUENESS_CONFIG = {
 }
 
 assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"] is CANDIDATE_LOOKUP_CONFIG["email_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"] is CANDIDATE_LOOKUP_CONFIG["email_list_paths"]
 assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"] is CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]
 assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"]["email"] == "casefold"
 assert CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True  # email uniqueness must stay casefold while lookup is
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]
+assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"], tuple)
+assert isinstance(CANDIDATE_LOOKUP_CONFIG["email_list_paths"], tuple)
 assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scopes"] == ("within_candidate", "cross_candidate")
 for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]:
     assert isinstance(_p, str) and _p.startswith("contact."), _p
@@ -1474,6 +1484,12 @@ _contact_key_set = set(CANDIDATE_LIBRARY_CONFIG["contact_keys"])
 for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"] + CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]:
     _key = _p.split(".", 1)[1]
     assert _key in _contact_key_set, _p
+# List emails live on email_list_paths (email compare), not list_paths (websites).
+_uniqueness_list_set = set(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+    assert _p.split(".", 1)[1] in _contact_key_set, _p
+    assert _p not in _uniqueness_list_set, _p
 for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
     assert _mode in ("casefold", "exact"), _mode
 
@@ -1487,11 +1503,15 @@ CONTACT_CONFIG = {
     "listen_enabled": False,
     # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
     "listen_state_filename": "contact_slack_listen.json",
+    # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
+    "activity_state_filename": "contact_estelle_activity.json",
     # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
     "production_deploy_env": "production",
     # Format with environment= (deploy label). AST-1067 applies when listen is on
     # and deploy is not production.
     "non_production_reply_prefix_template": "[{environment}] ",
+    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
+    "hear_ack_reply_text": "Heard you — Estelle is listening.",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
@@ -1546,7 +1566,9 @@ CONTACT_CONFIG = {
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
+assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -2216,11 +2238,12 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 # Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
 # AST-1090 runner extends this block (schemes / ledger placeholder / Style D func).
 # Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
+# AST-1098: seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 GAZE_EMAIL_CONFIG = {
     "task_key": "gaze_email",
     "account_address": "astral.career.match@gmail.com",
     "unbound_retention_days": 7,
-    "auto_mode": True,
+    "auto_mode": False,
     "min_count": 1,
     "batch_size": 1,
     "freq_hrs": 0,
@@ -2240,6 +2263,13 @@ assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
 assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
 assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
 assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
+assert GAZE_EMAIL_CONFIG["auto_mode"] is False
+# AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
+assert all(
+    not bool(e.get("auto_mode"))
+    for e in CANDIDATE_STAGE_DISPATCH.values()
+    if "auto_mode" in e
+)
 # AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
 # Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
 # must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
@@ -2310,6 +2340,8 @@ METEORITE_DISPATCH_TASKS = (
         "freq_hrs": 0,
     },
 )
+# AST-1098: meteorite seed catalog stays CLICK.
+assert all(not bool(e.get("auto_mode")) for e in METEORITE_DISPATCH_TASKS)
 
 # Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
 METEORITE_GDL_OUTCOME_BY_TASK = {
@@ -2344,7 +2376,16 @@ JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
     "cover_letter",
     "application_responses",
+    "job_resume",
+    "proposed_answers",
 )
+
+# AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
+JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
+    "finalize_job_resume": "job_resume",
+    "finalize_cover_letter": "cover_letter",
+    "propose_application_responses": "proposed_answers",
+}
 
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",
@@ -2400,11 +2441,12 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_resume",
         "nav_label": "Job Resume",
-        "artifact_key": "resume_content",
+        "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
     },
@@ -2418,7 +2460,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_application",
         "nav_label": "Application Questions",
-        "artifact_key": "application_responses",
+        "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
     },
@@ -4016,8 +4058,11 @@ DATA_SHAPES = {
                         {"key": "first", "label": "First Name", "type": "text"},
                         {"key": "last", "label": "Last Name", "type": "text"},
                         {"key": "full", "label": "Full Name", "type": "text"},
-                        {"key": "contact.contact_email", "label": "Contact Email", "type": "text"},
-                        {"key": "contact.reply_email", "label": "Reply Email", "type": "text"},
+                        {"key": "contact.slack_user_id", "label": "Slack user id", "type": "text"},
+                        {"key": "contact.slack_username", "label": "Slack username", "type": "text"},
+                        {"key": "contact.contact_email", "label": "Email for Resume", "type": "text"},
+                        {"key": "contact.reply_email", "label": "Email for Messages (if different)", "type": "text"},
+                        {"key": "contact.extra_emails", "label": "Extra emails (binding)", "type": "string_list"},
                         {"key": "contact.phone", "label": "Phone", "type": "text"},
                         {"key": "contact.location", "label": "Location", "type": "text"},
                         {"key": "contact.github", "label": "GitHub (username or URL)", "type": "text"},

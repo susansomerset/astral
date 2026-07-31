@@ -59,6 +59,7 @@ from src.utils.config import (
     CONTACT_ESTELLE_CONFIG,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
+    JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
 )
 from src.utils.rubric_feedback import (
     format_hydrated_review_debug_line,
@@ -2685,13 +2686,32 @@ async def do_task(
                     completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
+    # AST-1099: pin RESPONSE id into job_data.artifacts after successful store (mid-chain + terminal).
+    resp_id = None
+    store_failed = False
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
             resp_id = _store_response_block(entity_type, task_key, batch_id, store_content, index=index, debug=debug)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
+            store_failed = True
             logger.debug("_store_response_block failed", exc_info=True)
+
+    pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
+    if pin_slot and result.get("success"):
+        if index and resp_id:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import pin_job_artifact_agent_data_id
+            pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
+        elif debug:
+            reason = (
+                "store_failed" if store_failed
+                else ("missing_index" if not index else "missing_resp_id")
+            )
+            _do_task_debug_logger(debug).debug_detail(
+                f"artifact_pin key={pin_slot} skipped reason={reason}"
+            )
 
     # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:
@@ -2765,23 +2785,7 @@ async def do_task(
             effective_next = ""
 
     if not effective_next:
-        if (
-            result.get("success")
-            and entity_type == "job"
-            and index
-            and isinstance(parsed, dict)
-        ):
-            # Lazy import breaks agent↔tracker cycle (consult imports agent).
-            from src.core.tracker import persist_job_artifact_from_parsed
-            allow_resume = task_key == "finalize_job_resume"
-            allow_cover = task_key == "finalize_cover_letter"
-            if allow_resume or allow_cover:
-                persist_job_artifact_from_parsed(
-                    index,
-                    parsed,
-                    allow_resume=allow_resume,
-                    allow_cover_letter=allow_cover,
-                )
+        # AST-1099: finalize_* hops pin agent_data_id (above); no terminal body-copy here.
         if result.get("success") and index:
             _maybe_graduate_dispatch_chain(
                 job_id=index,

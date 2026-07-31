@@ -23,6 +23,9 @@ const profileSections = {
           { key: "first", label: "First Name", type: "text" },
           { key: "last", label: "Last Name", type: "text" },
           { key: "full", label: "Full Name", type: "text" },
+          { key: "contact.contact_email", label: "Email for Resume", type: "text" },
+          { key: "contact.reply_email", label: "Email for Messages (if different)", type: "text" },
+          { key: "contact.extra_emails", label: "Extra emails (binding)", type: "string_list" },
           {
             key: "pronouns",
             label: "Pronoun preference",
@@ -267,8 +270,9 @@ describe("CandidateProfile AST-1082 contact manage", () => {
     })
     renderWithProviders(<CandidateProfile />)
     await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
-    // Missing blob websites → string_list starts empty (Add only)
-    const addBtn = screen.getByRole("button", { name: "Add" })
+    // Scope Add to Websites — Profile also has Extra emails string_list (AST-1092)
+    const websitesField = screen.getByText("Websites", { selector: "label.dep-field-label" }).closest(".dep-field")!
+    const addBtn = within(websitesField as HTMLElement).getByRole("button", { name: "Add" })
     const list = addBtn.closest(".dep-string-list") as HTMLElement
     await userEvent.click(addBtn)
     const siteInput = within(list).getByRole("textbox")
@@ -315,5 +319,60 @@ describe("CandidateProfile AST-1082 contact manage", () => {
     await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
     expect(Object.prototype.hasOwnProperty.call(savedBody, "full")).toBe(true)
     expect(savedBody?.full).toBe("")
+  })
+})
+
+// AST-1092: Resume/Messages labels + extra_emails string_list round-trip (binding list)
+describe("CandidateProfile AST-1092 extra binding emails", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("renders Resume/Messages labels and Extra emails string_list", async () => {
+    installProfileMocks()
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    expect(screen.getByText("Email for Resume", { selector: "label.dep-field-label" })).toBeInTheDocument()
+    expect(
+      screen.getByText("Email for Messages (if different)", { selector: "label.dep-field-label" }),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Extra emails (binding)", { selector: "label.dep-field-label" })).toBeInTheDocument()
+  })
+
+  it("normalizes missing extra_emails to [] and round-trips Add on Save", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      candidate: {
+        contact: { contact_email: "ada@ex.com" },
+        context: { bio_summary: "builder", raw_resume: "resume text" },
+      },
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({
+          first: "Ada",
+          last: "Lovelace",
+          full: "Ada Lovelace",
+          pronouns: "they/them",
+          candidate_data: {
+            contact: { contact_email: "ada@ex.com", extra_emails: ["extra@ex.com"] },
+            context: { bio_summary: "builder", raw_resume: "resume text" },
+          },
+        })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    const extrasField = screen
+      .getByText("Extra emails (binding)", { selector: "label.dep-field-label" })
+      .closest(".dep-field")!
+    const addBtn = within(extrasField as HTMLElement).getByRole("button", { name: "Add" })
+    const list = addBtn.closest(".dep-string-list") as HTMLElement
+    await userEvent.click(addBtn)
+    await userEvent.type(within(list).getByRole("textbox"), "extra@ex.com")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect((savedBody?.contact as Record<string, unknown>)?.extra_emails).toEqual(["extra@ex.com"])
+    expect(savedBody).not.toHaveProperty("profile")
   })
 })

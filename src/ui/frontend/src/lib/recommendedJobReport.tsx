@@ -59,15 +59,22 @@ export function artifactHasContent(artifacts: unknown, key: string): boolean {
   if (raw == null) return false
   if (Array.isArray(raw)) return raw.length > 0
   if (typeof raw === "object") {
-    return Object.values(raw as Record<string, unknown>).some(
-      v => typeof v === "string" && v.trim().length > 0,
-    )
+    return Object.values(raw as Record<string, unknown>).some(v => {
+      if (typeof v === "string" && v.trim().length > 0) return true
+      if (Array.isArray(v) && v.length > 0) return true
+      return false
+    })
   }
+  // AST-1100: non-empty pin string counts as content (pre-hydrate or hydrate skipped).
+  if (typeof raw === "string") return raw.trim().length > 0
   return false
 }
 
 export function printResumeVisible(artifacts: unknown): boolean {
-  return artifactHasContent(artifacts, "resume_content")
+  return (
+    artifactHasContent(artifacts, "job_resume")
+    || artifactHasContent(artifacts, "resume_content")
+  )
 }
 
 export function printCoverVisible(artifacts: unknown): boolean {
@@ -80,8 +87,8 @@ export function materialsPreviewVisible(
 ): boolean {
   if (jobState === "CANDIDATE_REVIEW") return true
   return (
-    artifactHasContent(artifacts, "resume_content")
-    || artifactHasContent(artifacts, "cover_letter")
+    printResumeVisible(artifacts)
+    || printCoverVisible(artifacts)
   )
 }
 
