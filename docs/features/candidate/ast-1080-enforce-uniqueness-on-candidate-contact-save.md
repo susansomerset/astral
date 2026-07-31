@@ -179,3 +179,18 @@ No conflicts requiring `conf-!!-NONE`.
 | Publish ref | `origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` |
 | Built | `a80e51c5c3e233afea30d0b73331072e8f0f2535` |
 | Notes | Stage 1 — within collapse + cross hard-fail on `save_candidate_data` / initiate paths via AST-1079 config. |
+
+### Radia — code-rubric.v1
+
+`[code-rubric] revision=1` · **Overall:** DISCUSS (stragglers only; product CLEAN)
+
+**What’s solid**
+- Gate matches Stage 1: config-driven tokens, within collapse, cross `ValueError` toast shape, Style D on `save_candidate_data(debug=True)`, initiate paths gated with `debug=False`.
+- Proposed-contact merge + `blob["contact"] = proposed` follows plan (no private `_deep_merge` call).
+- Engineer `code()` = `src/core/candidate.py` only; Betty owns test-tree.
+
+**Issues**
+- **discuss (straggler):** Joan excluded docs/features + test-tree + utils-adjacent path statutes at plan time; three-dot vs `origin/dev` (incl. AST-1079 ancestry) brings them in scope. All score **conforms** — no product fix.
+
+**Recommended actions**
+- Ada: no code change for stragglers; `resolve-child` → User Testing unless a discuss thread is opened.
