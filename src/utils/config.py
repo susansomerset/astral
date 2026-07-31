@@ -1172,7 +1172,7 @@ CANDIDATE_CONFIG = {
 CANDIDATE_LIBRARY_CONFIG = {
     "contact_keys": (
         "contact_email", "reply_email", "phone", "location",
-        "github", "linkedin_url", "websites", "timezone",
+        "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
         "title_patterns", "reason_codes",
     ),
@@ -1407,6 +1407,10 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.contact_email",   # transitional pre-1014
         "profile.reply_email",
     ),
+    # List-valued binding emails (AST-1092) — not in scalar email_paths (_lookup_path_value is str-only).
+    "email_list_paths": (
+        "contact.extra_emails",
+    ),
     "name_paths": (
         "first", "last", "full",           # AST-1014 name columns when present
         "profile.first", "profile.last",   # transitional
@@ -1436,6 +1440,7 @@ CANDIDATE_CONTACT_UNIQUENESS_CONFIG = {
     # List-valued contact fields: each non-empty entry is one uniqueness token.
     "list_paths": (
         "contact.websites",
+        "contact.extra_emails",
     ),
     # Same object as lookup Slack homes (AST-1066 / AST-1068).
     "slack_user_id_paths": CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"],
@@ -1464,6 +1469,7 @@ assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"]["email"] == "casefold"
 assert CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True  # email uniqueness must stay casefold while lookup is
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]
+assert isinstance(CANDIDATE_LOOKUP_CONFIG["email_list_paths"], tuple)
 assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scopes"] == ("within_candidate", "cross_candidate")
 for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]:
     assert isinstance(_p, str) and _p.startswith("contact."), _p
@@ -1473,6 +1479,12 @@ _contact_key_set = set(CANDIDATE_LIBRARY_CONFIG["contact_keys"])
 for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"] + CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]:
     _key = _p.split(".", 1)[1]
     assert _key in _contact_key_set, _p
+# Bind list emails must also be uniqueness list tokens (no Profile-only drift).
+_uniqueness_list_set = set(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
+for _p in CANDIDATE_LOOKUP_CONFIG["email_list_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+    assert _p.split(".", 1)[1] in _contact_key_set, _p
+    assert _p in _uniqueness_list_set, _p
 for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
     assert _mode in ("casefold", "exact"), _mode
 
@@ -4005,8 +4017,9 @@ DATA_SHAPES = {
                         {"key": "first", "label": "First Name", "type": "text"},
                         {"key": "last", "label": "Last Name", "type": "text"},
                         {"key": "full", "label": "Full Name", "type": "text"},
-                        {"key": "contact.contact_email", "label": "Contact Email", "type": "text"},
-                        {"key": "contact.reply_email", "label": "Reply Email", "type": "text"},
+                        {"key": "contact.contact_email", "label": "Email for Resume", "type": "text"},
+                        {"key": "contact.reply_email", "label": "Email for Messages (if different)", "type": "text"},
+                        {"key": "contact.extra_emails", "label": "Extra emails (binding)", "type": "string_list"},
                         {"key": "contact.phone", "label": "Phone", "type": "text"},
                         {"key": "contact.location", "label": "Location", "type": "text"},
                         {"key": "contact.github", "label": "GitHub (username or URL)", "type": "text"},

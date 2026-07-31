@@ -26,8 +26,9 @@ Human-entered. Profile/Admin edit this blob (plus name/pronoun columns).
 
 | Key | Token | Description |
 |-----|-------|-------------|
-| `contact.contact_email` | `{$CONTACT_EMAIL}` | Astral-message / contact email |
-| `contact.reply_email` | `{$REPLY_EMAIL}` | Reply-to email for applications |
+| `contact.contact_email` | `{$CONTACT_EMAIL}` | Email for resume / applications |
+| `contact.reply_email` | `{$REPLY_EMAIL}` | Email for messages (if different from resume email) |
+| `contact.extra_emails` | — | Additional binding emails (JSON string list; Profile `string_list`; lookup `email_list_paths` + uniqueness `list_paths`) |
 | `contact.phone` | `{$PHONE}` | Phone number |
 | `contact.location` | `{$LOCATION}` | City/region |
 | `contact.github` | `{$GITHUB}` | GitHub URL (username coerced to URL on save) |
