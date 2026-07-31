@@ -168,3 +168,14 @@ superseded_by: null
 - **§1.1 / in-scope-only:** No anomaly deletes, no boot SQL, no AST-1108.
 - **Statute AUTHORING / orch.roles.archie-approves-statutes:** `status: active` + `approved_by: Archie`; pattern stays `proposed`.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority`
+**Tip:** `b962895c`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `d530d452` | statute astral.dispatch.run-next-is-chain-authority + register |
+| 2 | `fc645e23` | proposed pattern.dispatch.run-next-chain-authority |
+| 3 | `b962895c` | CODE_RULES §2.6.0 pointer |
