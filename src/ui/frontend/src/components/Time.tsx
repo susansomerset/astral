@@ -9,8 +9,8 @@ export default function Time({ value }: { value: string | null | undefined }) {
   const { candidates, selectedId } = useCandidate()
   const tz = useMemo(() => {
     const c = candidates.find(x => x.astral_candidate_id === selectedId)
-    const contact = c?.candidate_data?.contact as Record<string, string> | undefined
-    return contact?.timezone || "UTC"
+    const profile = c?.candidate_data?.profile as Record<string, string> | undefined
+    return profile?.timezone || "UTC"
   }, [candidates, selectedId])
   return <>{fmtTime(value, tz)}</>
 }

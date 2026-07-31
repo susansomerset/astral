@@ -140,4 +140,42 @@ describe("JobsInReview", () => {
       expect(document.querySelectorAll(".grade-dot").length).toBeGreaterThanOrEqual(3)
     })
   })
+
+  describe("AST-1086 compact headers and grade-dot tooltips", () => {
+    it("grades-only Passed Job List shows compact JL header with full-name title", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [jobs[0]]))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      const th = screen.getByRole("columnheader", { name: "JL" })
+      expect(th).toHaveAttribute("title", "Job List (5)")
+      expect(th.textContent).toMatch(/^JL/)
+      expect(screen.queryByRole("columnheader", { name: /Job List \(JL\)/ })).not.toBeInTheDocument()
+    })
+
+    it("grade-dot title includes reason and confidence parenthetical", async () => {
+      const tipJob = {
+        astral_job_id: "tip-ir",
+        job_title: "Tooltip In Review",
+        company: "TipCo",
+        state: "PASSED_JOBLIST",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        joblist_grades: [{
+          vector: "Job List (JL)",
+          grade: "A",
+          confidence: 5,
+          reason: "Clear joblist fit",
+        }],
+      }
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [tipJob]))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      const dot = document.querySelector(".grade-dot.dot-a")
+      expect(dot).toBeTruthy()
+      expect(dot?.getAttribute("title")).toBe(
+        "Clear joblist fit (The source explicitly states it.)",
+      )
+    })
+  })
 })

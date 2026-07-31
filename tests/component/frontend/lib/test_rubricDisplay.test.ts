@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest"
 import {
+  CONFIDENCE_DESCRIPTIONS,
   RUBRIC_DEFAULT_IMPORTANCE,
   analysisTimeScoreForJob,
   buildJobListRubricColumns,
   buildJobListRubricColumnsForGroup,
   buildJobListRubricColumnsFromArtifact,
+  confidenceDescription,
+  formatGradeDotTooltip,
   formatRubricColumnTooltip,
   formatRubricVectorHeader,
   groupJobsByAlignedRubric,
@@ -13,6 +16,7 @@ import {
   jobListRubricFingerprint,
   jobListRubricFingerprintFromGrades,
   normalizeRubricVectorKey,
+  parseGradesVectorName,
   resolveRubricHeaderCode,
   rubricItemImportance,
   sortJobListRubricColumns,
@@ -52,6 +56,20 @@ describe("resolveRubricHeaderCode", () => {
   it("prefers code then label prefix", () => {
     expect(resolveRubricHeaderCode({ code: "TE", label: "Technical" })).toBe("TE")
     expect(resolveRubricHeaderCode({ label: "Culture" })).toBe("CU")
+  })
+
+  it("extracts paren code from label when code absent", () => {
+    expect(resolveRubricHeaderCode({ label: "Technical (TE)" })).toBe("TE")
+  })
+})
+
+describe("parseGradesVectorName", () => {
+  it("splits Name (XX) into compact code and clean label", () => {
+    expect(parseGradesVectorName("Technical (TE)")).toEqual({ code: "TE", label: "Technical" })
+  })
+
+  it("keeps bare short labels unchanged", () => {
+    expect(parseGradesVectorName("Fit")).toEqual({ code: "Fit", label: "Fit" })
   })
 })
 
@@ -189,7 +207,10 @@ describe("AST-1064 job-carried list helpers", () => {
         like_grades: [{ vector: "Technical (TE)", grade: "D" }],
       },
     })
-    expect(fallback[0].headerCode).toBe("Technical (TE)")
+    // AST-1086: grades-only Name (XX) → compact headerCode, clean label tooltip
+    expect(fallback[0].headerCode).toBe("TE")
+    expect(fallback[0].label).toBe("Technical")
+    expect(fallback[0].headerTooltip).toBe("Technical (5)")
   })
 
   it("prefers phase score over latest_score", () => {
@@ -197,5 +218,38 @@ describe("AST-1064 job-carried list helpers", () => {
     expect(analysisTimeScoreForJob({ latest_score: 9 }, "like_grades")).toBe(9)
     expect(analysisTimeScoreForJob({ latest_score: 2 }, "")).toBe(2)
     expect(analysisTimeScoreForJob({}, "like_grades")).toBeNull()
+  })
+})
+
+describe("AST-1086 compact headers and grade-dot confidence tooltips", () => {
+  const col = {
+    code: "TE",
+    label: "Technical",
+    importance: 5,
+    headerCode: "TE",
+    headerTooltip: "Technical (5)",
+    gradeDescriptions: { B: "Solid skills" },
+  }
+
+  it("mirrors CONFIDENCE_DESCRIPTIONS 1–5 for display", () => {
+    expect(CONFIDENCE_DESCRIPTIONS[5]).toBe("The source explicitly states it.")
+    expect(CONFIDENCE_DESCRIPTIONS[1]).toBe("The source doesn't say it out loud, but it's possible.")
+    expect(confidenceDescription(4)).toBe("The source strongly suggests it.")
+    expect(confidenceDescription(0.9)).toBe("")
+    expect(confidenceDescription(6)).toBe("")
+    expect(confidenceDescription(undefined)).toBe("")
+  })
+
+  it("appends confidence parenthetical to grade-dot tooltip when 1–5", () => {
+    expect(formatGradeDotTooltip(col, "B", "from job", 4)).toBe(
+      "from job (The source strongly suggests it.)",
+    )
+    expect(formatGradeDotTooltip(col, "B", undefined, 3)).toBe(
+      "Solid skills (The source hints about it.)",
+    )
+    expect(formatGradeDotTooltip(col, "B", "reason only")).toBe("reason only")
+    expect(formatGradeDotTooltip(col, "Z", undefined, 2)).toBe(
+      "(The source makes a vague reference.)",
+    )
   })
 })

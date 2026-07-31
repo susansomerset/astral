@@ -32,22 +32,22 @@ Signature verify (HMAC v0 + skew), URL challenge parse, `chat.postMessage` behin
 
 ---
 
-### AST-1068 · AST-1043
+### AST-1070 · AST-1043
 
-**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1070-slack-sourced-conversation-context`.
 
-`fetch_user_profile` via `users.info` (gated). Contact: **`docs/test-bible/core/contact.md`**.
+`fetch_conversation_history`: `conversations.history` vs `conversations.replies`, gated by `require_controlled_external_io`, raises on `ok:false`. Contact cache consumers: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| users.info profile / gate / ok:false | `src/external/slack.py` | **`TestAst1068FetchUserProfile`** |
+| History / replies / gate / ok:false | `src/external/slack.py` | **`TestAst1070FetchConversationHistory`** |
 
-**Broken / obsolete:** none — additive.
+**Broken / obsolete:** none — additive Web API helper.
 
 **Integration:** no existing scenario — no revision.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/external/test_slack.py::TestAst1068FetchUserProfile \
+  tests/component/external/test_slack.py::TestAst1070FetchConversationHistory \
   -q
 ```

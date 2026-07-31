@@ -12,24 +12,14 @@ interface Candidate {
   astral_candidate_id: string
   state: string
   candidate_data: Record<string, unknown>
-  first?: string
-  last?: string
-  full?: string
-  pronouns?: string
   has_api_key?: boolean
   [key: string]: unknown
 }
 
 function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
   const cd = c.candidate_data || {}
-  const contact = (cd.contact || {}) as Record<string, unknown>
-  return {
-    ...c,
-    first: c.first ?? "",
-    last: c.last ?? "",
-    contact_email: contact.contact_email ?? "",
-    api_key_status: c.has_api_key ? "Set" : "Not set",
-  }
+  const profile = (cd.profile || {}) as Record<string, unknown>
+  return { ...c, ...profile, api_key_status: c.has_api_key ? "Set" : "Not set" }
 }
 
 interface CandidateShapes {
@@ -39,7 +29,7 @@ interface CandidateShapes {
 
 function pronounFieldFromShapes(shapes: CandidateShapes | null): Field | undefined {
   const contact = shapes?.detail?.profile?.[0]
-  return contact?.fields?.find(f => f.key === "pronouns")
+  return contact?.fields?.find(f => f.key === "profile.pronoun_preference")
 }
 
 function PronounSelect({
@@ -104,10 +94,10 @@ export default function ManageCandidates() {
   const [validStates, setValidStates] = useState<string[]>([])
   const [viewing, setViewing] = useState<Candidate | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [addForm, setAddForm] = useState({ first: "", last: "", contact_email: "", pronouns: "" })
+  const [addForm, setAddForm] = useState({ first: "", last: "", contact_email: "", pronoun_preference: "" })
   const [editOpen, setEditOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Candidate | null>(null)
-  const [editForm, setEditForm] = useState({ first: "", last: "", contact_email: "", pronouns: "", state: "", api_key: "" })
+  const [editForm, setEditForm] = useState({ first: "", last: "", contact_email: "", pronoun_preference: "", state: "", api_key: "" })
   const [showKey, setShowKey] = useState(false)
   const [clearKey, setClearKey] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -149,7 +139,7 @@ export default function ManageCandidates() {
   }, [loadAll, loadDispatchTaskCounts])
 
   function handleAddSave() {
-    const { first, last, contact_email, pronouns } = addForm
+    const { first, last, contact_email, pronoun_preference } = addForm
     if (!first.trim() || !last.trim()) {
       setToast({ text: "First and last name are required", variant: "error" })
       return
@@ -160,12 +150,12 @@ export default function ManageCandidates() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         astral_candidate_id: candidateId,
-        first: first.trim(),
-        last: last.trim(),
-        pronouns,
         candidate_data: {
-          contact: {
+          profile: {
+            first: first.trim(),
+            last: last.trim(),
             contact_email: contact_email.trim(),
+            pronoun_preference,
           },
         },
       }),
@@ -176,7 +166,7 @@ export default function ManageCandidates() {
       })
       .then(() => {
         setAddOpen(false)
-        setAddForm({ first: "", last: "", contact_email: "", pronouns: "" })
+        setAddForm({ first: "", last: "", contact_email: "", pronoun_preference: "" })
         setToast({ text: `Candidate "${first} ${last}" created`, variant: "success" })
         loadAll()
         loadDispatchTaskCounts()
@@ -187,13 +177,13 @@ export default function ManageCandidates() {
 
   function openEdit(c: Candidate) {
     const cd = c.candidate_data || {}
-    const contact = (cd.contact || {}) as Record<string, unknown>
+    const profile = (cd.profile || {}) as Record<string, unknown>
     setEditTarget(c)
     setEditForm({
-      first: String(c.first ?? ""),
-      last: String(c.last ?? ""),
-      contact_email: String(contact.contact_email ?? ""),
-      pronouns: String(c.pronouns ?? ""),
+      first: (profile.first as string) || "",
+      last: (profile.last as string) || "",
+      contact_email: (profile.contact_email as string) || "",
+      pronoun_preference: String(profile.pronoun_preference ?? ""),
       state: c.state || "",
       api_key: "",
     })
@@ -204,13 +194,13 @@ export default function ManageCandidates() {
 
   function handleEditSave() {
     if (!editTarget) return
-    const { first, last, contact_email, pronouns, state, api_key } = editForm
+    const { first, last, contact_email, pronoun_preference, state, api_key } = editForm
     const payload: Record<string, unknown> = {
-      first: first.trim(),
-      last: last.trim(),
-      pronouns,
-      contact: {
+      profile: {
+        first: first.trim(),
+        last: last.trim(),
         contact_email: contact_email.trim(),
+        pronoun_preference,
       },
       state,
     }
@@ -385,8 +375,8 @@ export default function ManageCandidates() {
         {pronounField && (
           <PronounSelect
             field={pronounField}
-            value={addForm.pronouns}
-            onChange={v => setAddForm(p => ({ ...p, pronouns: v }))}
+            value={addForm.pronoun_preference}
+            onChange={v => setAddForm(p => ({ ...p, pronoun_preference: v }))}
           />
         )}
       </Modal>
@@ -408,8 +398,8 @@ export default function ManageCandidates() {
         {pronounField && (
           <PronounSelect
             field={pronounField}
-            value={editForm.pronouns}
-            onChange={v => setEditForm(p => ({ ...p, pronouns: v }))}
+            value={editForm.pronoun_preference}
+            onChange={v => setEditForm(p => ({ ...p, pronoun_preference: v }))}
           />
         )}
         <div className="dep-field">

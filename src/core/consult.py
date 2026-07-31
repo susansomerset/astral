@@ -395,36 +395,6 @@ def _ensure_jobs_astral_ids(jobs: list, batch_entities: list) -> None:
             job["astral_job_id"] = batch_entities[i].get("astral_job_id")
 
 
-def _bind_response_jobs_to_claimed(response_jobs: list, claimed_jobs: list) -> None:
-    """Rewrite placeholder / single-job mismatched astral_job_id to claimed ids (AST-1076).
-
-    Assemble prefixes use 000/001…; fields-output Ruth often echoes that as astral_job_id.
-    """
-    claimed_ids = [j["astral_job_id"] for j in claimed_jobs if j.get("astral_job_id")]
-    if not response_jobs or not claimed_ids:
-        return
-    claimed_set = set(claimed_ids)
-    # Single-job: any non-claimed echo (e.g. "000") → sole claim id.
-    if len(response_jobs) == 1 and len(claimed_ids) == 1:
-        if not isinstance(response_jobs[0], dict):
-            return
-        aid = (response_jobs[0].get("astral_job_id") or "").strip()
-        if aid not in claimed_set:
-            response_jobs[0]["astral_job_id"] = claimed_ids[0]
-        return
-    # Ordered: empty or \\d{1,3} position echoes only — leave non-digit fabricated UUIDs alone.
-    if len(response_jobs) != len(claimed_ids):
-        return
-    for i, rj in enumerate(response_jobs):
-        if not isinstance(rj, dict):
-            continue
-        aid = (rj.get("astral_job_id") or "").strip()
-        if aid in claimed_set:
-            continue
-        if not aid or re.fullmatch(r"\d{1,3}", aid):
-            rj["astral_job_id"] = claimed_ids[i]
-
-
 def _job_from_rubric_json(obj: dict, task_config: dict, ctx: dict) -> dict:
     rubric = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), task_config)
     grade_rows: List[Dict[str, Any]] = []
@@ -1219,8 +1189,6 @@ async def _run_batch_consult(
             "failed": 0,
             "total": len(jobs),
         }
-
-    _bind_response_jobs_to_claimed(response_jobs, jobs)
 
     if debug:
         ts = result.get("timesheet", {})

@@ -2,9 +2,6 @@ import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useCandidate } from "../contexts/CandidateContext"
 import IntakeChatModal, { type IntakeSourceMaterials } from "../components/IntakeChatModal"
-import IntakePreamblePanel from "../components/IntakePreamblePanel"
-import IntakeTopicMenuPanel from "../components/IntakeTopicMenuPanel"
-import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useUserConfirm } from "../components/UserPrompt"
 import api from "../lib/api"
@@ -18,7 +15,21 @@ const emptyMaterials = (): IntakeSourceMaterials => ({
 const RESUME_INTAKE_TITLE = "Resume Intake"
 const RESUME_INTAKE_MESSAGE = "Would you like to continue your intake?"
 
-type IntakePhase = "idle" | "preamble" | "topic_menu" | "chat"
+function intakeConfirmMessage(materials: IntakeSourceMaterials): string {
+  const lines = [
+    "Start a candidate intake interview? Your saved resume and profile materials on this candidate will be used.",
+  ]
+  const missing: string[] = []
+  if (!materials.sample_cover_text.trim()) missing.push("sample cover letter")
+  if (!materials.linkedin_profile_text.trim()) missing.push("LinkedIn profile text")
+  if (missing.length) {
+    lines.push(
+      "",
+      `Note: ${missing.join(" and ")} ${missing.length > 1 ? "are" : "is"} not saved on this candidate yet. You can continue, but Estelle will have less context.`,
+    )
+  }
+  return lines.join("\n")
+}
 
 type IntakeResumeDialogProps = {
   onContinue: () => void
@@ -68,7 +79,7 @@ export default function CandidateIntake() {
   const confirm = useUserConfirm()
   const { selectedId } = useCandidate()
   const [materials, setMaterials] = useState<IntakeSourceMaterials>(emptyMaterials)
-  const [phase, setPhase] = useState<IntakePhase>("idle")
+  const [modalOpen, setModalOpen] = useState(false)
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false)
   const [startOverBusy, setStartOverBusy] = useState(false)
   const [freshStartKey, setFreshStartKey] = useState(0)
@@ -78,17 +89,15 @@ export default function CandidateIntake() {
   const goProfile = useCallback(() => navigate("/candidate/profile"), [navigate])
   const clearToast = useCallback(() => setToast(null), [])
 
-  const openPreamble = useCallback(() => {
+  const openModalAfterResumeChoice = useCallback(() => {
     setResumeDialogOpen(false)
-    setPhase("preamble")
+    setModalOpen(true)
   }, [])
 
   const handleResumeContinue = useCallback(() => {
-    // Active session — skip preamble; Estelle chat only.
     setFreshStartMode(false)
-    setResumeDialogOpen(false)
-    setPhase("chat")
-  }, [])
+    openModalAfterResumeChoice()
+  }, [openModalAfterResumeChoice])
 
   const handleResumeStartOver = useCallback(async () => {
     if (!selectedId || startOverBusy) return
@@ -111,7 +120,7 @@ export default function CandidateIntake() {
       }
       setFreshStartMode(true)
       setFreshStartKey(k => k + 1)
-      openPreamble()
+      openModalAfterResumeChoice()
     } catch (e) {
       setToast({
         text: e instanceof Error ? e.message : "Failed to start over",
@@ -120,32 +129,16 @@ export default function CandidateIntake() {
     } finally {
       setStartOverBusy(false)
     }
-  }, [selectedId, startOverBusy, openPreamble])
+  }, [selectedId, startOverBusy, openModalAfterResumeChoice])
 
   const handleResumeDismiss = useCallback(() => {
     setResumeDialogOpen(false)
     goProfile()
   }, [goProfile])
 
-  const handlePreambleComplete = useCallback(
-    (m: IntakeSourceMaterials) => {
-      if (!m.starting_resume_text.trim()) {
-        setToast({
-          text: "Resume text is required before Estelle can begin.",
-          variant: "error",
-        })
-        goProfile()
-        return
-      }
-      setMaterials(m)
-      setPhase("topic_menu")
-    },
-    [goProfile],
-  )
-
   useEffect(() => {
     if (!selectedId) return
-    setPhase("idle")
+    setModalOpen(false)
     setResumeDialogOpen(false)
     let cancelled = false
 
@@ -158,9 +151,17 @@ export default function CandidateIntake() {
         if (cancelled) return
         const ctx = (c.candidate_data?.context ?? {}) as Record<string, string>
         const loaded: IntakeSourceMaterials = {
-          starting_resume_text: ctx.raw_resume ?? ctx.starting_resume_text ?? "",
-          sample_cover_text: ctx.raw_sample ?? ctx.sample_cover_text ?? "",
-          linkedin_profile_text: ctx.raw_profile ?? ctx.linkedin_profile_text ?? "",
+          starting_resume_text: ctx.starting_resume_text ?? "",
+          sample_cover_text: ctx.sample_cover_text ?? "",
+          linkedin_profile_text: ctx.linkedin_profile_text ?? "",
+        }
+        if (!loaded.starting_resume_text.trim()) {
+          setToast({
+            text: "Add Original Resume Text on Profile before starting Intake.",
+            variant: "error",
+          })
+          goProfile()
+          return
         }
         setMaterials(loaded)
 
@@ -177,21 +178,16 @@ export default function CandidateIntake() {
           return
         }
 
-        const ok = await confirm(
-          "Start a candidate intake interview? We'll collect any missing source materials, then Estelle will begin.",
-          {
-            title: "Start Intake",
-            confirmLabel: "Continue",
-          },
-        )
+        const ok = await confirm(intakeConfirmMessage(loaded), {
+          title: "Start Intake",
+          confirmLabel: "Continue",
+        })
         if (cancelled) return
         if (!ok) {
           goProfile()
           return
         }
-        setFreshStartMode(true)
-        setFreshStartKey(k => k + 1)
-        setPhase("preamble")
+        setModalOpen(true)
       })
       .catch(() => {
         if (cancelled) return
@@ -218,26 +214,7 @@ export default function CandidateIntake() {
           onDismiss={handleResumeDismiss}
         />
       )}
-      {phase === "preamble" && (
-        <Modal open onClose={goProfile} title="Candidate Intake" size="wide">
-          <IntakePreamblePanel
-            candidateId={selectedId}
-            initialMaterials={materials}
-            onComplete={handlePreambleComplete}
-            onCancel={goProfile}
-          />
-        </Modal>
-      )}
-      {phase === "topic_menu" && (
-        <Modal open onClose={goProfile} title="Candidate Intake" size="wide">
-          <IntakeTopicMenuPanel
-            candidateId={selectedId}
-            onDone={goProfile}
-            onCancel={goProfile}
-          />
-        </Modal>
-      )}
-      {phase === "chat" && (
+      {modalOpen && (
         <IntakeChatModal
           key={freshStartKey}
           open

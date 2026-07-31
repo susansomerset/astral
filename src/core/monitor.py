@@ -33,7 +33,7 @@ def auto_run_error(
       - total_errors > 0
 
     Subject prefix is [{deploy_label}] or [{deploy_label}/{last_name}] from
-    ASTRAL_DEPLOY_ENV and the dispatch task candidate's last name column.
+    ASTRAL_DEPLOY_ENV and the dispatch task candidate's profile.last.
 
     Fetches log entries for the batch (already flushed to DB at this point),
     formats subject + body, and sends via Gmail. Never raises — a failed alert
@@ -85,13 +85,14 @@ def _format_log_body(batch_id: str) -> str:
 
 
 def _resolve_candidate_last_name(candidate_id: str) -> str | None:
-    """Candidate last name column for subject triage; None when missing or empty."""
+    """Profile last name for subject triage; None when missing or empty."""
     if not (candidate_id or "").strip():
         return None
     row = database.get_candidate(candidate_id.strip())
     if not row:
         return None
-    last = (row.get("last") or "").strip()
+    profile = (row.get("candidate_data") or {}).get("profile") or {}
+    last = (profile.get("last") or "").strip()
     return last or None
 
 

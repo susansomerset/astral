@@ -1535,7 +1535,7 @@ def _store_response_block(
     ).hexdigest()[:16]
     agent_data_id = f"{batch_id}-response-{content_hash}"
     # AST-984: tag RESPONSE with entity_id for list_entity_latest_agent_refs
-    result = save_agent_data(
+    save_agent_data(
         agent_data_id=agent_data_id,
         entity_type=entity_type,
         task_key=task_key,

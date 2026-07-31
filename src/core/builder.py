@@ -7,7 +7,7 @@ Public: ``build_resume``, ``build_resume_from_job``, ``build_cover_letter``,
 ``build_session_cover_letter``.
 
 ``get_candidate`` / DB rows expose ``candidate_data`` as the nested blob that
-contains ``contact``, ``artifacts``, and ``context``. ``build_resume_from_job``
+contains ``profile``, ``artifacts``, and ``context``. ``build_resume_from_job``
 expects that inner shape (or a full row — see ``_coerce_candidate_blob``).
 """
 
@@ -59,20 +59,12 @@ _KEY_TO_HEADING: Dict[str, str] = {
 
 
 def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """Inner ``candidate_data`` dict, or unwrap a full ``get_candidate`` row.
-
-    When unwrapping a full row, attach ``_first``/``_last``/``_full`` from table columns
-    for contact-header rendering (AST-1014).
-    """
+    """Inner ``candidate_data`` dict, or unwrap a full ``get_candidate`` row."""
     if not isinstance(raw, dict):
         return {}
     inner = raw.get("candidate_data")
     if isinstance(inner, dict):
-        out = dict(inner)
-        out["_first"] = raw.get("first") or ""
-        out["_last"] = raw.get("last") or ""
-        out["_full"] = raw.get("full") or ""
-        return out
+        return inner
     return raw
 
 
@@ -99,9 +91,9 @@ def _cover_letter_source_label(job_data: dict, candidate_data: dict) -> Optional
     cl = artifacts.get("cover_letter")
     if isinstance(cl, dict) and _cover_letter_nonempty(cl):
         return "job_data.artifacts.cover_letter"
-    sample = ((candidate_data or {}).get("context") or {}).get("raw_sample")
+    sample = ((candidate_data or {}).get("context") or {}).get("sample_cover_text")
     if isinstance(sample, str) and sample.strip():
-        return "candidate_data.context.raw_sample"
+        return "candidate_data.context.sample_cover_text"
     return None
 
 
@@ -188,7 +180,7 @@ def build_resume_from_job(
 ) -> str:
     """Render job-tailored resume HTML from an in-memory job row + candidate blob (no job fetch).
 
-    ``candidate_data`` is the inner dict (``contact``, ``artifacts``, ``context``) or a full
+    ``candidate_data`` is the inner dict (``profile``, ``artifacts``, ``context``) or a full
     DB row from ``get_candidate`` (nested ``candidate_data`` is unwrapped).
     """
     cd = _coerce_candidate_blob(candidate_data)
@@ -210,7 +202,7 @@ def build_resume_from_job(
         )
         raise
     render = candidate_mod.filter_content_to_resume_structure(render, structure)
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
+    _apply_profile_to_render_dict(render, cd.get("profile") or {})
     style = _merge_effective_style(cd)
     cover = _resolve_cover_letter(job_data, cd)
     markers = _apply_resume_text_markers(render)
@@ -224,7 +216,7 @@ def build_resume_from_job(
         cover_letter=cover or {},
         critical_keywords=kw,
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
-        cover_profile=cd.get("contact") or {},
+        cover_profile=cd.get("profile") or {},
         body_section_ids=ordered_body,
         body_section_titles=titles,
     )
@@ -325,7 +317,7 @@ def build_cover_letter_from_job(
         )
         raise ValueError(msg)
     render: Dict[str, Any] = {}
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
+    _apply_profile_to_render_dict(render, cd.get("profile") or {})
     markers = _apply_resume_text_markers(render)
     style = _merge_effective_style(cd)
     html_out = _emit_html_document(
@@ -335,14 +327,14 @@ def build_cover_letter_from_job(
         cover_letter=cover,
         critical_keywords=None,
         emit_prior_experience=False,
-        cover_profile=cd.get("contact") or {},
+        cover_profile=cd.get("profile") or {},
         body_section_ids=[],
         body_section_titles={},
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd)
-        contact = cd.get("contact") or {}
-        safe_sig = _safe_image_src(contact.get("cover_letter_signature_image"))
+        profile = cd.get("profile") or {}
+        safe_sig = _safe_image_src(profile.get("cover_letter_signature_image"))
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
@@ -387,7 +379,7 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         raise ValueError(msg)
     structure = candidate_mod.resolve_resume_structure(cd)
     render = candidate_mod.filter_content_to_resume_structure(dict(br), structure)
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
+    _apply_profile_to_render_dict(render, cd.get("profile") or {})
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
     ordered_body = _structure_ordered_body_ids(structure)
@@ -452,17 +444,17 @@ def build_session_base_resume(
             debug=debug,
         )
         raise ValueError(msg)
-    # Synthetic blob only — never get_candidate / selected-candidate contact.
+    # Synthetic blob only — never get_candidate / selected-candidate profile.
     cd = {
         "artifacts": {
             "resume_structure": resume_structure,
             "base_resume": base_resume,
         },
-        "contact": {},
+        "profile": {},
     }
     structure = candidate_mod.resolve_resume_structure(cd)
     render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
-    # Skip _apply_contact_to_render_dict — contact/header from paste section strings.
+    # Skip _apply_profile_to_render_dict — contact/header from paste section strings.
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
     ordered_body = _structure_ordered_body_ids(structure)
@@ -837,7 +829,7 @@ def _resolve_cover_letter(job_data: dict, candidate_data: dict) -> Optional[dict
     cl = artifacts.get("cover_letter")
     if isinstance(cl, dict) and _cover_letter_nonempty(cl):
         return _cover_letter_fields_for_read(cl)
-    sample = (candidate_data.get("context") or {}).get("raw_sample")
+    sample = (candidate_data.get("context") or {}).get("sample_cover_text")
     if isinstance(sample, str) and sample.strip():
         # v1: entire sample string is body; re_line/signature empty until UI captures structured cover.
         return {"re_line": "", "body": sample.strip(), "signature": ""}
@@ -853,25 +845,28 @@ def _cover_letter_nonempty(cl: dict) -> bool:
     return False
 
 
-def _apply_contact_to_render_dict(render: dict, contact: dict, *, first: str = "", last: str = "", full: str = "") -> None:
-    """Overwrite identity/contact from name columns + contact blob (AST-1014)."""
-    name = (full or "").strip() or f"{(first or '').strip()} {(last or '').strip()}".strip()
+def _apply_profile_to_render_dict(render: dict, profile: dict) -> None:
+    """Overwrite identity/contact from profile; never use artifact strings for those fields when profile supplies."""
+    first = (profile.get("first") or "").strip()
+    last = (profile.get("last") or "").strip()
+    name = f"{first} {last}".strip()
     if name:
         render["candidate_name"] = name
+    # DATA_SHAPES has no profile headline for job title — keep artifact candidate_title (still escaped at emit).
     parts: List[str] = []
-    email = (contact.get("contact_email") or contact.get("reply_email") or "").strip()
+    email = (profile.get("contact_email") or profile.get("reply_email") or "").strip()
     if email:
         parts.append(email)
-    phone = (contact.get("phone") or "").strip()
+    phone = (profile.get("phone") or "").strip()
     if phone:
         parts.append(phone)
-    li = (contact.get("linkedin_url") or "").strip()
+    li = (profile.get("linkedin_url") or "").strip()
     if li:
         parts.append(li)
-    gh = (contact.get("github") or "").strip()
+    gh = (profile.get("github") or "").strip()
     if gh:
         parts.append(gh)
-    loc = (contact.get("location") or "").strip()
+    loc = (profile.get("location") or "").strip()
     if loc:
         parts.append(loc)
     if parts:

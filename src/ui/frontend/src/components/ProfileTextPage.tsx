@@ -3,7 +3,7 @@ import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import Toast, { type ToastMessage } from "./Toast"
 
-/** Edits one string field under candidate_data.contact (merge save). */
+/** Edits one string field under candidate_data.profile (merge save). */
 interface ProfileTextPageProps {
   title: string
   profileKey: string
@@ -23,8 +23,8 @@ export default function ProfileTextPage({ title, profileKey }: ProfileTextPagePr
     api(`/api/candidates/${selectedId}`)
       .then(r => r.json())
       .then(c => {
-        const contact = c.candidate_data?.contact
-        const val = typeof contact?.[profileKey] === "string" ? contact[profileKey] : ""
+        const prof = c.candidate_data?.profile
+        const val = typeof prof?.[profileKey] === "string" ? prof[profileKey] : ""
         setSaved(val)
         setDraft(val)
       })
@@ -37,15 +37,15 @@ export default function ProfileTextPage({ title, profileKey }: ProfileTextPagePr
     api(`/api/candidates/${selectedId}/data`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contact: { [profileKey]: draft } }),
+      body: JSON.stringify({ profile: { [profileKey]: draft } }),
     })
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
         return r.json()
       })
       .then(c => {
-        const contact = c.candidate_data?.contact
-        const val = typeof contact?.[profileKey] === "string" ? contact[profileKey] : draft
+        const prof = c.candidate_data?.profile
+        const val = typeof prof?.[profileKey] === "string" ? prof[profileKey] : draft
         setSaved(val)
         setDraft(val)
         setToast({ text: `${title} saved`, variant: "success" })

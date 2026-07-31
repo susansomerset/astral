@@ -7,10 +7,6 @@ export interface CandidateInfo {
   astral_candidate_id: string
   state: string
   candidate_data: Record<string, unknown>
-  first?: string
-  last?: string
-  full?: string
-  pronouns?: string
 }
 
 interface CandidateCtx {
@@ -64,8 +60,8 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
   // Keep fmtTime's timezone in sync with the selected candidate
   useEffect(() => {
     const c = candidates.find(x => x.astral_candidate_id === selectedId)
-    const contact = c?.candidate_data?.contact as Record<string, string> | undefined
-    setFmtTimezone(contact?.timezone || "UTC")
+    const profile = c?.candidate_data?.profile as Record<string, string> | undefined
+    setFmtTimezone(profile?.timezone || "UTC")
   }, [selectedId, candidates])
 
   return (

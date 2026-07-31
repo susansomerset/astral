@@ -2993,3 +2993,146 @@ class TestAst1079ContactUniquenessConfig:
         for path in uniq["scalar_paths"] + uniq["list_paths"]:
             assert path.startswith("contact.")
             assert path.split(".", 1)[1] in contact_keys
+
+
+class TestAst1081ContactShapesConfig:
+    """AST-1081: DATA_SHAPES Contact Information exposes full / websites / reason_codes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_full_websites_reason_codes_in_contact_shapes(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["full"]["label"] == "Full Name"
+        assert by_key["full"]["type"] == "text"
+        assert by_key["contact.websites"]["label"] == "Websites"
+        assert by_key["contact.websites"]["type"] == "string_list"
+        assert by_key["contact.reason_codes"]["label"] == "Reason Codes"
+        assert by_key["contact.reason_codes"]["type"] == "textarea"
+        # Still columns + contact.* — never profile.*
+        keys = list(by_key)
+        assert "first" in keys and "last" in keys
+        assert not any(k.startswith("profile.") for k in keys)
+
+    def test_field_order_full_after_last_websites_after_linkedin(self) -> None:
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("full") == keys.index("last") + 1
+        assert keys.index("contact.websites") == keys.index("contact.linkedin_url") + 1
+        assert keys.index("contact.reason_codes") > keys.index("pronouns")
+
+    def test_admin_manage_shapes_unchanged_no_websites(self) -> None:
+        # Boundary: Admin Manage Candidates stays on its narrow field set
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        list_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["list"]["manage"]]
+        assert "contact.websites" not in edit_keys
+        assert "contact.reason_codes" not in edit_keys
+        assert "full" not in edit_keys
+        assert "contact.websites" not in list_keys
+        assert "full" not in list_keys
+
+
+class TestAst1082ProfileContactLabelsNav:
+    """AST-1082: GitHub/LinkedIn username-or-URL labels; no Title Patterns nav duplicate."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_github_linkedin_username_or_url_labels(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.github"]["label"] == "GitHub (username or URL)"
+        assert by_key["contact.linkedin_url"]["label"] == "LinkedIn (username or URL)"
+        # Keys/types unchanged from AST-1081 shapes contract
+        assert by_key["contact.github"]["type"] == "text"
+        assert by_key["contact.linkedin_url"]["type"] == "text"
+
+    def test_candidate_nav_omits_title_patterns(self) -> None:
+        candidate = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in candidate["items"]]
+        paths = [i["path"] for i in candidate["items"]]
+        assert "Title Patterns" not in labels
+        assert "/candidate/title_patterns" not in paths
+        assert "/candidate/profile" in paths
+
+    def test_profile_shapes_keep_title_patterns_section(self) -> None:
+        # Single edit surface remains on Profile (not nav)
+        sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        title = next(s for s in sections if s["label"] == "Title Patterns")
+        assert title["fields"][0]["key"] == "contact.title_patterns"
+
+
+class TestAst1084EvaluateJdCriteria:
+    """AST-1084: EMBEDDED_EVALUATE_JD_CRITERIA QC/GC definitions (wire-up is AST-1085)."""
+
+    def test_qc_gc_registry_order_and_shape(self) -> None:
+        rows = cfg.EMBEDDED_EVALUATE_JD_CRITERIA
+        assert isinstance(rows, tuple)
+        assert len(rows) == 2
+        qc, gc = rows
+        assert qc["code"] == "QC"
+        assert qc["label"] == "Quality Check"
+        assert qc["importance"] == 1
+        assert gc["code"] == "GC"
+        assert gc["label"] == "Gut Check"
+        assert gc["importance"] == 1
+        # Boundary: not folded into the company prefilter RC registry
+        pf_codes = {r["code"] for r in cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA}
+        assert "QC" not in pf_codes and "GC" not in pf_codes
+
+    def test_qc_grades_abcdef_subset_and_descriptions(self) -> None:
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        by_grade = {g["grade"]: g["description"] for g in qc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "F"]
+        assert by_grade["A"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements and information about the company the candidate would be working for."
+        )
+        assert by_grade["B"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements, but limited information about the company the candidate would be working for."
+        )
+        assert by_grade["C"] == (
+            "This content references a job with enough detail about the role and "
+            "requirements to perform fit analysis for the candidate."
+        )
+        assert by_grade["F"] == (
+            "This is not enough information to perform job fit analysis, either because "
+            "it is not a job description, or it is too vague to determine fit for the candidate."
+        )
+        # content mirrors letter lines (Reality Check A = … style)
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in qc["content"]
+        assert "Quality Check — is this enough of a JD to analyze?" in qc["content"]
+
+    def test_gc_grades_include_d_x_and_descriptions(self) -> None:
+        gc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[1]
+        by_grade = {g["grade"]: g["description"] for g in gc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+        assert by_grade["A"] == (
+            "Based on the candidate's bio provided, this job would be a slam dunk for them."
+        )
+        assert by_grade["B"] == (
+            "Based on the candidate's bio provided, this job could be a good fit for them."
+        )
+        assert by_grade["C"] == (
+            "Based on the candidate's bio, this job would be doable, with caveats, for them."
+        )
+        assert by_grade["D"] == (
+            "Based on the candidate's bio, this job would be a stretch-to-impossible for them."
+        )
+        assert by_grade["F"] == "There's really no way this candidate could ever do this job."
+        assert by_grade["X"] == (
+            "There's not enough information about the job to make this determination with certainty."
+        )
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in gc["content"]
+        assert "Gut Check — is this even plausible for this candidate?" in gc["content"]

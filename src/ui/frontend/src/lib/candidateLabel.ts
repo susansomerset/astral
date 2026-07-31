@@ -1,7 +1,8 @@
 import type { CandidateInfo } from "../contexts/CandidateContext"
 
 export function candidateBaseLabel(c: CandidateInfo): string {
-  return [c.first, c.last].filter(Boolean).join(" ") || c.astral_candidate_id
+  const cd = (c.candidate_data || {}) as { first?: string; last?: string }
+  return [cd.first, cd.last].filter(Boolean).join(" ") || c.astral_candidate_id
 }
 
 export function candidateOptionLabel(c: CandidateInfo, all: CandidateInfo[]): string {

@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
-- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
+- candidate — Candidate: state, candidate_data JSON blob, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
@@ -70,7 +70,6 @@ from src.utils.config import (
     CHARS_PER_TOKEN,
     CANDIDATE_LEGACY_STATE_MAP,
     CANDIDATE_LEGACY_TRIGGER_STATES,
-    CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STATES,
     remap_legacy_candidate_state,
     COMPANY_STATES,
@@ -2451,7 +2450,7 @@ def record_to_company_job_scan(
 # ---- Candidate ----
 
 def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
-    """Create candidate table if not present; add missing columns. Idempotent.
+    """Create candidate table if not present; add candidate_api_key if missing. Idempotent.
     astral_candidate_id is lowercase last name (e.g. 'somerset'), same convention as company short_name."""
     global _candidate_schema_ensured
     if _candidate_schema_ensured:
@@ -2462,12 +2461,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
             CREATE TABLE candidate (
                 astral_candidate_id TEXT PRIMARY KEY,
                 state TEXT NOT NULL DEFAULT 'NEW_CANDIDATE',
-                state_history TEXT DEFAULT '[]',
                 candidate_data TEXT,
-                first TEXT,
-                last TEXT,
-                full TEXT,
-                pronouns TEXT,
                 candidate_api_key TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2478,14 +2472,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     else:
         # Idempotent migration: add missing columns on existing databases
         cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate)").fetchall()}
-        for col, col_def in [
-            ("candidate_api_key", "TEXT"),
-            ("state_history", "TEXT DEFAULT '[]'"),
-            ("first", "TEXT"),
-            ("last", "TEXT"),
-            ("full", "TEXT"),
-            ("pronouns", "TEXT"),
-        ]:
+        for col, col_def in [("candidate_api_key", "TEXT")]:
             if col not in cols:
                 try:
                     conn.execute(f"ALTER TABLE candidate ADD COLUMN {col} {col_def}")
@@ -2496,108 +2483,10 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
     _migrate_candidate_data_structure(conn)
     _migrate_pronoun_preference_backfill(conn)
     _migrate_context_arrays_to_text(conn)
-    _migrate_candidate_library_ast1014(conn)
     # AST-973: remap legacy states/triggers only (never Phase A hard-delete on ensure)
     _legacy_candidate_migrate_conn(conn, dry_run=False, phases="BC")
     _drop_entity_agent_responses_column(conn, "candidate")
     _candidate_schema_ensured = True
-
-
-
-def _migrate_candidate_library_ast1014(conn: sqlite3.Connection) -> None:
-    """AST-1014: profile→contact, lift name/pronoun columns, remap context raw keys. Idempotent."""
-    contact_keys = CANDIDATE_LIBRARY_CONFIG["contact_keys"]
-    remap = CANDIDATE_LIBRARY_CONFIG["context_key_remap"]
-    join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
-    rows = conn.execute(
-        "SELECT astral_candidate_id, candidate_data, first, last, full, pronouns FROM candidate"
-    ).fetchall()
-    changed = False
-    for row in rows:
-        cid = row[0]
-        raw = row[1]
-        col_first = row[2] or ""
-        col_last = row[3] or ""
-        col_full = row[4] or ""
-        col_pronouns = row[5] or ""
-        try:
-            cd = json.loads(raw) if raw else {}
-        except (TypeError, ValueError):
-            cd = {}
-        if not isinstance(cd, dict):
-            cd = {}
-        row_changed = False
-        profile = cd.get("profile")
-        contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
-        if isinstance(profile, dict):
-            for k in contact_keys:
-                if k in profile and k not in contact:
-                    contact[k] = profile[k]
-            if not col_first and isinstance(profile.get("first"), str):
-                col_first = profile["first"]
-                row_changed = True
-            if not col_last and isinstance(profile.get("last"), str):
-                col_last = profile["last"]
-                row_changed = True
-            pref = profile.get("pronoun_preference")
-            if not col_pronouns and isinstance(pref, str) and pref.strip():
-                col_pronouns = pref.strip()
-                row_changed = True
-            cd.pop("profile", None)
-            row_changed = True
-        cd["contact"] = contact
-        context = cd.get("context") if isinstance(cd.get("context"), dict) else {}
-        for old_k, new_k in remap.items():
-            if old_k in context:
-                if new_k not in context:
-                    context[new_k] = context[old_k]
-                context.pop(old_k, None)
-                row_changed = True
-        for k in ("hopes", "interests", "concerns"):
-            if k not in context:
-                context[k] = ""
-                row_changed = True
-        cd["context"] = context
-        if not isinstance(cd.get("artifacts"), dict):
-            cd["artifacts"] = {}
-            row_changed = True
-        if not col_full:
-            parts = [
-                p for p in (
-                    col_first.strip() if isinstance(col_first, str) else "",
-                    col_last.strip() if isinstance(col_last, str) else "",
-                )
-                if p
-            ]
-            col_full = join.join(parts)
-            if col_full:
-                row_changed = True
-        if not (isinstance(col_pronouns, str) and col_pronouns.strip() in PRONOUN_PREFERENCE_OPTIONS):
-            col_pronouns = PRONOUN_PREFERENCE_DEFAULT
-            row_changed = True
-        # Already-migrated probe: contact present, no profile, no old remap keys
-        if not row_changed:
-            if "profile" in cd:
-                row_changed = True
-            elif any(k in context for k in remap):
-                row_changed = True
-        if not row_changed:
-            continue
-        conn.execute(
-            """UPDATE candidate SET candidate_data = ?, first = ?, last = ?, full = ?, pronouns = ?
-               WHERE astral_candidate_id = ?""",
-            (
-                json.dumps(cd),
-                col_first or "",
-                col_last or "",
-                col_full or "",
-                col_pronouns or "",
-                cid,
-            ),
-        )
-        changed = True
-    if changed:
-        conn.commit()
 
 
 def _migrate_candidate_data_structure(conn: sqlite3.Connection) -> None:
@@ -2660,35 +2549,17 @@ def _migrate_candidate_data_structure(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_pronoun_preference_backfill(conn: sqlite3.Connection) -> None:
-    """Idempotent backfill: unset pronouns → they/them (AST-573 / AST-1014 columns)."""
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate)").fetchall()}
-    has_pronouns_col = "pronouns" in cols
-    if has_pronouns_col:
-        rows = conn.execute(
-            "SELECT astral_candidate_id, candidate_data, pronouns FROM candidate"
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT astral_candidate_id, candidate_data FROM candidate").fetchall()
+    """One-time idempotent backfill: unset profile.pronoun_preference → they/them (AST-573)."""
+    rows = conn.execute("SELECT astral_candidate_id, candidate_data FROM candidate").fetchall()
     for row in rows:
-        cid = row[0]
         raw = row[1]
-        col_pronouns = (row[2] if has_pronouns_col and len(row) > 2 else None) or ""
+        if not raw:
+            continue
         try:
-            cd = json.loads(raw) if raw else {}
+            cd = json.loads(raw)
         except (TypeError, ValueError):
-            cd = {}
+            continue
         if not isinstance(cd, dict):
-            cd = {}
-        # AST-1014 library shape: pronouns live on the column (and never recreate profile).
-        if "contact" in cd and "profile" not in cd:
-            if has_pronouns_col:
-                pref = col_pronouns if isinstance(col_pronouns, str) else ""
-                if pref.strip() in PRONOUN_PREFERENCE_OPTIONS:
-                    continue
-                conn.execute(
-                    "UPDATE candidate SET pronouns = ? WHERE astral_candidate_id = ?",
-                    (PRONOUN_PREFERENCE_DEFAULT, cid),
-                )
             continue
         profile = cd.setdefault("profile", {})
         pref = profile.get("pronoun_preference")
@@ -2697,7 +2568,7 @@ def _migrate_pronoun_preference_backfill(conn: sqlite3.Connection) -> None:
         profile["pronoun_preference"] = PRONOUN_PREFERENCE_DEFAULT
         conn.execute(
             "UPDATE candidate SET candidate_data = ? WHERE astral_candidate_id = ?",
-            (json.dumps(cd), cid),
+            (json.dumps(cd), row[0]),
         )
     conn.commit()
 
@@ -3023,7 +2894,7 @@ def _ensure_company_table_for_upsert(conn: sqlite3.Connection) -> None:
 
 
 def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Parse candidate_data / state_history JSON, normalize name columns, decrypt api key."""
+    """Parse candidate_data JSON, decrypt candidate_api_key. Mutates and returns d."""
     if d.get("candidate_data"):
         try:
             d["candidate_data"] = json.loads(d["candidate_data"])
@@ -3031,16 +2902,6 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["candidate_data"] = {}
     else:
         d["candidate_data"] = {}
-    if d.get("state_history"):
-        try:
-            d["state_history"] = json.loads(d["state_history"])
-        except (TypeError, ValueError):
-            d["state_history"] = []
-    else:
-        d["state_history"] = []
-    for col in ("first", "last", "full", "pronouns"):
-        if d.get(col) is None:
-            d[col] = ""
     if d.get("candidate_api_key"):
         try:
             d["candidate_api_key"] = decrypt_value(d["candidate_api_key"])
@@ -3056,17 +2917,10 @@ def save_candidate(
     candidate_data: Optional[Dict[str, Any]] = None,
     candidate_api_key: Optional[str] = None,
     merge: bool = True,
-    first: Optional[str] = None,
-    last: Optional[str] = None,
-    full: Optional[str] = None,
-    pronouns: Optional[str] = None,
-    state_history: Optional[List[Dict[str, Any]]] = None,
-) -> None:
+    ) -> None:
     """Upsert a candidate row, following the save_job pattern.
     INSERT (new PK): state required. UPDATE (existing PK): only provided fields are set.
     candidate_data: merge=True deep-merges with existing; merge=False overwrites.
-    first/last/full/pronouns: set only when provided (AST-1014).
-    state_history: overwrite when provided; preserve when omitted (AST-971).
     candidate_api_key: if provided, Fernet-encrypted before storage.
     Auto-sets updated_at; auto-sets state_changed_at when state changes."""
     now = _utc_now()
@@ -3088,21 +2942,10 @@ def save_candidate(
                 if state not in allowed:
                     raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                 cdata_str = json.dumps(candidate_data) if candidate_data else "{}"
-                hist_str = json.dumps(state_history if state_history is not None else [])
                 conn.execute(
-                    """INSERT INTO candidate (
-                        astral_candidate_id, state, state_history, candidate_data,
-                        first, last, full, pronouns,
-                        candidate_api_key, created_at, updated_at, state_changed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        astral_candidate_id, state, hist_str, cdata_str,
-                        "" if first is None else first,
-                        "" if last is None else last,
-                        "" if full is None else full,
-                        "" if pronouns is None else pronouns,
-                        encrypted_key, now, now, now,
-                    ),
+                    """INSERT INTO candidate (astral_candidate_id, state, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (astral_candidate_id, state, cdata_str, encrypted_key, now, now, now),
                 )
             else:
                 sets: List[str] = []
@@ -3125,21 +2968,6 @@ def save_candidate(
                     else:
                         sets.append("candidate_data = ?")
                         params.append(json.dumps(candidate_data))
-                if first is not None:
-                    sets.append("first = ?")
-                    params.append(first)
-                if last is not None:
-                    sets.append("last = ?")
-                    params.append(last)
-                if full is not None:
-                    sets.append("full = ?")
-                    params.append(full)
-                if pronouns is not None:
-                    sets.append("pronouns = ?")
-                    params.append(pronouns)
-                if state_history is not None:
-                    sets.append("state_history = ?")
-                    params.append(json.dumps(state_history))
                 if encrypted_key is not None:
                     sets.append("candidate_api_key = ?")
                     params.append(encrypted_key)
