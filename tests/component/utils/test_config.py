@@ -2980,7 +2980,10 @@ class TestAst1079ContactUniquenessConfig:
             "contact.github",
             "contact.linkedin_url",
         )
-        assert uniq["list_paths"] == ("contact.websites", "contact.extra_emails")
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert uniq["email_list_paths"] is cfg.CANDIDATE_LOOKUP_CONFIG["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert "contact.extra_emails" not in uniq["list_paths"]
         assert uniq["scopes"] == ("within_candidate", "cross_candidate")
         assert uniq["compare"] == {
             "email": "casefold",
@@ -2990,7 +2993,7 @@ class TestAst1079ContactUniquenessConfig:
         }
         assert cfg.CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True
         contact_keys = set(cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"])
-        for path in uniq["scalar_paths"] + uniq["list_paths"]:
+        for path in uniq["scalar_paths"] + uniq["list_paths"] + uniq["email_list_paths"]:
             assert path.startswith("contact.")
             assert path.split(".", 1)[1] in contact_keys
 
@@ -3095,12 +3098,28 @@ class TestAst1092ExtraBindingEmailsConfig:
         luc = cfg.CANDIDATE_LOOKUP_CONFIG
         uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
         assert luc["email_list_paths"] == ("contact.extra_emails",)
-        assert "contact.extra_emails" in uniq["list_paths"]
+        # AST-1095: extras are email pool via email_list_paths, not list_paths
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert "contact.extra_emails" not in uniq["list_paths"]
         # Bind list emails must not be scalar email_paths (str-only reader)
         assert "contact.extra_emails" not in luc["email_paths"]
         # Admin manage still unchanged (Profile owns this UAT surface)
         edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
         assert "contact.extra_emails" not in edit_keys
+
+
+
+# Branches: shared email pool email_paths ∪ email_list_paths (AST-1095).
+class TestAst1095EmailUniqueRootAndExtraConfig:
+    """AST-1095: uniqueness email_list_paths identity; list_paths websites-only."""
+
+    def test_email_list_paths_identity_and_websites_only_list_paths(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert set(uniq["email_list_paths"]).isdisjoint(set(uniq["list_paths"]))
 
 
 class TestAst1084EvaluateJdCriteria:
