@@ -175,3 +175,25 @@ Durable @Estelle per–Slack-user activity summary (JSON under `db_dir`): `list_
   -q
 ```
 
+### AST-1101 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`.
+
+Durable listen re-read every `slack_listen_enabled()`; Events background `_run_handle_slack_event_background` logs failures; after accept, hear-ack via `format_contact_reply_text` + `contact_post_message` when Estelle turn did not `slack_post.ok`; activity still AST-1094 on accept. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Listen re-read + hear-ack + background log | `src/core/contact.py` | **`TestAst1101ChannelHearEvidence`** |
+
+**Broken / obsolete:** none — additive; ingress stubs with successful Estelle `slack_post` still skip hear-ack.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/core/test_contact.py::TestAst1094EstelleActivity \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  -q
+```
+

@@ -2980,7 +2980,10 @@ class TestAst1079ContactUniquenessConfig:
             "contact.github",
             "contact.linkedin_url",
         )
-        assert uniq["list_paths"] == ("contact.websites", "contact.extra_emails")
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert uniq["email_list_paths"] is cfg.CANDIDATE_LOOKUP_CONFIG["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert "contact.extra_emails" not in uniq["list_paths"]
         assert uniq["scopes"] == ("within_candidate", "cross_candidate")
         assert uniq["compare"] == {
             "email": "casefold",
@@ -2990,7 +2993,7 @@ class TestAst1079ContactUniquenessConfig:
         }
         assert cfg.CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True
         contact_keys = set(cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"])
-        for path in uniq["scalar_paths"] + uniq["list_paths"]:
+        for path in uniq["scalar_paths"] + uniq["list_paths"] + uniq["email_list_paths"]:
             assert path.startswith("contact.")
             assert path.split(".", 1)[1] in contact_keys
 
@@ -3095,12 +3098,28 @@ class TestAst1092ExtraBindingEmailsConfig:
         luc = cfg.CANDIDATE_LOOKUP_CONFIG
         uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
         assert luc["email_list_paths"] == ("contact.extra_emails",)
-        assert "contact.extra_emails" in uniq["list_paths"]
+        # AST-1095: extras are email pool via email_list_paths, not list_paths
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert "contact.extra_emails" not in uniq["list_paths"]
         # Bind list emails must not be scalar email_paths (str-only reader)
         assert "contact.extra_emails" not in luc["email_paths"]
         # Admin manage still unchanged (Profile owns this UAT surface)
         edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
         assert "contact.extra_emails" not in edit_keys
+
+
+
+# Branches: shared email pool email_paths ∪ email_list_paths (AST-1095).
+class TestAst1095EmailUniqueRootAndExtraConfig:
+    """AST-1095: uniqueness email_list_paths identity; list_paths websites-only."""
+
+    def test_email_list_paths_identity_and_websites_only_list_paths(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert set(uniq["email_list_paths"]).isdisjoint(set(uniq["list_paths"]))
 
 
 class TestAst1084EvaluateJdCriteria:
@@ -3184,7 +3203,8 @@ class TestAst1088GazeEmailConfig:
         assert g["task_key"] == "gaze_email"
         assert g["account_address"] == "astral.career.match@gmail.com"
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
-        assert g["auto_mode"] is True
+        # AST-1098: seed law CLICK (was True on AST-1088 tip).
+        assert g["auto_mode"] is False
         assert g["min_count"] == 1
         assert g["batch_size"] == 1
         assert g["freq_hrs"] == 0
@@ -3212,6 +3232,38 @@ class TestAst1088GazeEmailConfig:
         assert "gaze_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "gaze_email" not in cfg.DISPATCH_RETIRED_TASK_KEYS
         assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
+
+
+# Branches: gaze_email seed CLICK + catalog seed locks (AST-1098).
+@pytest.mark.skipif(
+    getattr(cfg, "GAZE_EMAIL_CONFIG", {}).get("auto_mode") is not False,
+    reason="AST-1098 GAZE_EMAIL_CONFIG auto_mode CLICK not on this publish tip",
+)
+class TestAst1098GazeEmailSeedClick:
+    def test_gaze_and_catalog_seeds_are_click(self) -> None:
+        assert cfg.GAZE_EMAIL_CONFIG["auto_mode"] is False
+        assert all(not bool(e.get("auto_mode")) for e in cfg.METEORITE_DISPATCH_TASKS)
+        assert all(
+            not bool(e.get("auto_mode"))
+            for e in cfg.CANDIDATE_STAGE_DISPATCH.values()
+            if "auto_mode" in e
+        )
+
+    def test_seed_auto_false_statute_registered(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        statute = root / "canon/statutes/astral/dispatch/astral.dispatch.seed-auto-false.md"
+        assert statute.is_file()
+        body = statute.read_text()
+        assert "id: astral.dispatch.seed-auto-false" in body
+        assert "status: active" in body
+        readme = (root / "canon/statutes/README.md").read_text()
+        assert "astral.dispatch.seed-auto-false" in readme
+        assert "**57** active" in readme or "57 active" in readme
+        harvest = (root / "canon/statutes/HARVEST.md").read_text()
+        assert "astral.dispatch.seed-auto-false" in harvest
+        assert "AST-1098" in harvest
 
 
 # Branches: GAZE_EMAIL_CONFIG runner literals (AST-1090).
@@ -3272,6 +3324,16 @@ class TestAst1089ParseMeteoriteEmailConfig:
 
 
 # Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
+
+# Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).
+class TestAst1101HearAckConfig:
+    """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
+
+    def test_hear_ack_reply_text(self) -> None:
+        text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
+        assert isinstance(text, str) and text.strip()
+
+
 class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"

@@ -49,6 +49,7 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.config.secrets-and-env-specific-from-environ` | scoped | ci | `astral/config/astral.config.secrets-and-env-specific-from-environ.md` |
 | `astral.debug.no-repo-root-artifacts-dir` | scoped | hook | `astral/debug/astral.debug.no-repo-root-artifacts-dir.md` |
 | `astral.debug.spikes-under-debug-dir` | scoped | hook | `astral/debug/astral.debug.spikes-under-debug-dir.md` |
+| `astral.dispatch.seed-auto-false` | scoped | judgment | `astral/dispatch/astral.dispatch.seed-auto-false.md` |
 | `astral.docs.features-single-file-per-ticket` | scoped | judgment | `astral/docs/astral.docs.features-single-file-per-ticket.md` |
 | `astral.git.betty-no-src-or-features` | scoped | hook | `astral/git/astral.git.betty-no-src-or-features.md` |
 | `astral.git.engineer-test-tree-ban` | scoped | hook | `astral/git/astral.git.engineer-test-tree-ban.md` |
@@ -94,4 +95,4 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `orch.roles.engineer-assignee-through-resolve` | universal | judgment | `orchestration/roles/orch.roles.engineer-assignee-through-resolve.md` |
 | `orch.roles.pre-commit-path-bans` | universal | hook | `orchestration/roles/orch.roles.pre-commit-path-bans.md` |
 
-Full harvest crosswalk and narrative leftovers: [HARVEST.md](HARVEST.md). **56** active statutes in corpus.
+Full harvest crosswalk and narrative leftovers: [HARVEST.md](HARVEST.md). **57** active statutes in corpus.
