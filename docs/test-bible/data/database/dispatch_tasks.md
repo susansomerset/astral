@@ -290,3 +290,25 @@ Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NU
   -q
 ```
 
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+`get_due_tasks` / `count_eligible_for_dispatch_task` special-case `gaze_email` via `_gaze_email_available_count` (freq gate; available_count=1 when due — not live inbox size). Per-candidate link helper lives on jobs cluster (**`TestAst1090JobLinkExistsForCandidate`** in `test_jobs.py`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Due signal for null-candidate shell | `src/data/database.py` | **`TestAst1090GazeEmailDue`** |
+| Per-candidate job_link | `src/data/database.py` | **`TestAst1090JobLinkExistsForCandidate`** (`test_jobs.py`) |
+
+**Broken / obsolete:** none — additive due path (null entity rows previously skipped).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  tests/component/data/database/test_jobs.py::TestAst1090JobLinkExistsForCandidate \
+  -q
+```
+

@@ -3181,6 +3181,22 @@ class TestAst1088GazeEmailConfig:
         assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
 
 
+# Branches: GAZE_EMAIL_CONFIG runner literals (AST-1090).
+@pytest.mark.skipif(
+    "subject_url_schemes" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
+    reason="AST-1090 GAZE_EMAIL_CONFIG runner keys not on this publish tip",
+)
+class TestAst1090GazeEmailRunnerConfig:
+    def test_runner_literals(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert set(g["subject_url_schemes"]) == {"http", "https"}
+        assert g["dispatch_ledger_candidate_id"] == ""
+        assert g["debug_func"] == "gaze_email.run"
+        # Shell keys from AST-1088 remain.
+        assert g["task_key"] == "gaze_email"
+        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+
+
 # Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
 @pytest.mark.skipif(
     "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),

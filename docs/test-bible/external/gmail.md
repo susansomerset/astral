@@ -73,3 +73,24 @@ Sole OAuth scope `gmail.modify` (replaces send+readonly pair). Public `archive_m
 ```
 
 **Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.
+
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+`GmailInboxMessage.internal_date_ms` from Gmail `internalDate` (0 if missing/unparseable) for unbound retention age. Runner primary: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| internalDate parse + list row field | `src/external/gmail.py` | **`TestAst1090InternalDateMs`**; revised **`TestListInboxMessages`** exact dicts |
+
+**Broken / obsolete:** list/metadata exact-equality asserts missing `internal_date_ms` — revised.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_gmail.py \
+  -q
+```
+
