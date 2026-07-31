@@ -1817,27 +1817,17 @@ CANDIDATE_STAGE_DISPATCH = {
         "trigger_state": "REQUESTED_ARTIFACTS",
         "pass_state": "ARTIFACTS_READY",
         "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
-        # Sequential fan-in — not run_next daisy-chain. Title patterns stay profile/intake.
-        "craft_task_keys": [
-            "craft_company_search_terms",
-            "craft_joblist_rubric",
-            "craft_jobdesc_rubric",
-            "craft_do_rubric",
-            "craft_get_rubric",
-            "craft_like_rubric",
-            "craft_prefilter_rubric",
-        ],
+        # Entry hop only — succession via agent_task.run_next (AST-1113).
+        "craft_task_key": "craft_company_search_terms",
     },
 }
 assert all(
     k in TASK_CONFIG
     for k in (
-        [CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"]]
-        + list(CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"])
-        + [
-            CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-        ]
+        CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
+        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
     )
 )
 
