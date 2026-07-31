@@ -3943,7 +3943,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         monkeypatch.setattr(
             agent_mod,
             "_block_text_by_type",
-            lambda blocks, typ: "Validation failed: schema",
+            lambda blocks, typ, debug=False: "Validation failed: schema",
         )
         assert (
             agent_mod._hop_agent_ref_for_parent("job", "job-1", "advise_job_resume", None)
@@ -3963,7 +3963,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         monkeypatch.setattr(
             agent_mod,
             "_block_text_by_type",
-            lambda blocks, typ: "upstream advice",
+            lambda blocks, typ, debug=False: "upstream advice",
         )
         ref = agent_mod._hop_agent_ref_for_parent("job", "job-1", "advise_job_resume", None)
         assert ref is not None
@@ -4155,7 +4155,7 @@ class TestAst769GeneralCallerHydration:
         monkeypatch.setattr(
             agent_mod,
             "_block_text_by_type",
-            lambda blocks, typ: '{"selected_page": 1}',
+            lambda blocks, typ, debug=False: '{"selected_page": 1}',
         )
         entity = {
             "state": "JOBLIST_IDENTIFIED",
