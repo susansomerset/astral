@@ -178,3 +178,26 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
   tests/component/core/test_tracker.py::TestAst1099PinJobArtifactAgentDataId \
   -q
 ```
+
+
+---
+
+### AST-1100 · AST-1091
+
+**Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
+
+`resolve_job_artifact_agent_data_body` loads RESPONSE `block_data` by pin id (coat-check empty/missing). `hydrate_job_artifacts_for_display` shallow-copies artifacts and replaces pin-slot strings with resolved bodies (no `save_job_data`). Pin write = **AST-1099**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve + hydrate overlay | `src/core/tracker.py` | **`TestAst1100ResolveHydrateJobArtifactPins`** |
+
+**Broken / obsolete:** none on tracker pin-write suites.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1100ResolveHydrateJobArtifactPins \
+  -q
+```

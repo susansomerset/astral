@@ -3358,3 +3358,15 @@ class TestAst1099JobArtifactAgentDataPinConfig:
         # Legacy body keys remain for cancel of older rows / manual PUTs.
         assert "resume_content" in keys
         assert "application_responses" in keys
+
+
+class TestAst1100ArtifactTabPinKeys:
+    """AST-1100: JAR artifact tabs remap to AST-1099 pin slots."""
+
+    def test_artifact_tabs_use_pin_slot_keys(self) -> None:
+        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
+        assert by_id["artifact_resume"]["use_resume_structure"] is True
+        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+        assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
+        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
