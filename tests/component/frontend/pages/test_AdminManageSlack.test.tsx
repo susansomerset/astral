@@ -13,7 +13,7 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 
 const mockedApi = vi.mocked(api)
 
-describe("AdminManageSlack — AST-1067 / AST-1094 (§6c routed page)", () => {
+describe("AdminManageSlack — AST-1067 / AST-1094 / AST-1105 (§6c routed page)", () => {
   beforeEach(() => {
     mockedApi.mockReset()
   })
@@ -73,6 +73,8 @@ describe("AdminManageSlack — AST-1067 / AST-1094 (§6c routed page)", () => {
           users: [
             {
               slack_user_id: "U-estelle",
+              slack_username: "estelle.user",
+              slack_display_name: "Estelle User",
               bind_ok: true,
               astral_candidate_id: "cand-1",
               candidate_state: "PROSPECT",
@@ -89,6 +91,10 @@ describe("AdminManageSlack — AST-1067 / AST-1094 (§6c routed page)", () => {
       expect(screen.getByRole("heading", { name: "@Estelle users" })).toBeInTheDocument(),
     )
     expect(screen.getByText("U-estelle")).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "Username" })).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "Display" })).toBeInTheDocument()
+    expect(screen.getByText("estelle.user")).toBeInTheDocument()
+    expect(screen.getByText("Estelle User")).toBeInTheDocument()
     expect(screen.getByText("ok")).toBeInTheDocument()
     expect(screen.getByText("cand-1")).toBeInTheDocument()
     expect(screen.getByText("3")).toBeInTheDocument()
@@ -102,5 +108,30 @@ describe("AdminManageSlack — AST-1067 / AST-1094 (§6c routed page)", () => {
     await waitFor(() =>
       expect(screen.getByText("No @Estelle users recorded yet.")).toBeInTheDocument(),
     )
+  })
+
+  it("renders em dash when username/display missing (AST-1105)", async () => {
+    mockApis(async (url) => {
+      if (url === "/api/admin/contact/estelle_activity") {
+        return jsonResponse({
+          users: [
+            {
+              slack_user_id: "U-bare",
+              slack_username: null,
+              slack_display_name: null,
+              bind_ok: false,
+              astral_candidate_id: null,
+              candidate_state: null,
+              inbound_message_count: 1,
+              last_channel: "C1",
+              last_message_ts: "1.0",
+            },
+          ],
+        })
+      }
+    })
+    renderWithProviders(<AdminManageSlack />)
+    await waitFor(() => expect(screen.getByText("U-bare")).toBeInTheDocument())
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2)
   })
 })
