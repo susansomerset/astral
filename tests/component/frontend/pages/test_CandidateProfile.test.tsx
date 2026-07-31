@@ -22,6 +22,7 @@ const profileSections = {
         fields: [
           { key: "first", label: "First Name", type: "text" },
           { key: "last", label: "Last Name", type: "text" },
+          { key: "full", label: "Full Name", type: "text" },
           {
             key: "pronouns",
             label: "Pronoun preference",
@@ -33,6 +34,10 @@ const profileSections = {
               { value: "he/him", label: "he/him" },
             ],
           },
+          { key: "contact.github", label: "GitHub (username or URL)", type: "text" },
+          { key: "contact.linkedin_url", label: "LinkedIn (username or URL)", type: "text" },
+          { key: "contact.websites", label: "Websites", type: "string_list" },
+          { key: "contact.reason_codes", label: "Reason Codes", type: "textarea" },
         ],
       },
       {
@@ -42,6 +47,10 @@ const profileSections = {
       {
         label: "Original Resume Text",
         fields: [{ key: "context.raw_resume", label: "Original Resume Text", type: "textarea" }],
+      },
+      {
+        label: "Title Patterns",
+        fields: [{ key: "contact.title_patterns", label: "Title Patterns (one regex per line)", type: "textarea" }],
       },
       {
         label: "Signature Image",
@@ -73,15 +82,25 @@ function installProfileMocks(overrides: {
       return jsonResponse(profileSections)
     }
     if (url === `/api/candidates/${candidateId}` && !init) {
+      // Top-level name columns (incl. full) — editValuesFromCandidate reads c.full, not contact blob
       return jsonResponse({
         first: "Ada",
         last: "Lovelace",
+        full: "Ada Lovelace",
         pronouns: "they/them",
         candidate_data: overrides.candidate ?? candidateData,
       })
     }
     if (url === `/api/candidates/${candidateId}/data` && init?.method === "PUT") {
-      return overrides.save ? overrides.save(init) : jsonResponse({ candidate_data: candidateData })
+      return overrides.save
+        ? overrides.save(init)
+        : jsonResponse({
+            first: "Ada",
+            last: "Lovelace",
+            full: "Ada Lovelace",
+            pronouns: "they/them",
+            candidate_data: candidateData,
+          })
     }
     if (url === "/api/ui_config" || url === "/api/system/ui_config") {
       return jsonResponse({ cover_letter_signature_image: { max_width_px: 200, max_height_px: 80 } })
@@ -178,5 +197,123 @@ describe("CandidateProfile", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getAllByText("nope").length).toBeGreaterThan(0))
+  })
+})
+
+// AST-1082: Profile load/save wires full + websites[]; shape labels; Title Patterns on Profile only
+describe("CandidateProfile AST-1082 contact manage", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("PUT includes full override and contact.websites list; never profile.*", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      candidate: {
+        contact: { websites: ["https://a.example"], github: "ada" },
+        context: { bio_summary: "builder", raw_resume: "resume text" },
+      },
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({
+          first: "Ada",
+          last: "Lovelace",
+          full: "Countess of Lovelace",
+          pronouns: "they/them",
+          candidate_data: {
+            contact: { websites: ["https://a.example"], github: "ada" },
+            context: { bio_summary: "builder", raw_resume: "resume text" },
+          },
+        })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    const fullField = screen.getByText("Full Name", { selector: "label.dep-field-label" }).closest(".dep-field")!
+    const fullInput = within(fullField as HTMLElement).getByRole("textbox")
+    expect(fullInput).toHaveValue("Ada Lovelace")
+    await userEvent.clear(fullInput)
+    await userEvent.type(fullInput, "Countess of Lovelace")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect(savedBody?.full).toBe("Countess of Lovelace")
+    expect(savedBody?.first).toBe("Ada")
+    expect(savedBody?.last).toBe("Lovelace")
+    expect((savedBody?.contact as Record<string, unknown>)?.websites).toEqual(["https://a.example"])
+    expect(savedBody).not.toHaveProperty("profile")
+  })
+
+  it("normalizes missing websites to [] and round-trips Add website row on Save", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      candidate: {
+        contact: { phone: "555" },
+        context: { bio_summary: "builder", raw_resume: "resume text" },
+      },
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({
+          first: "Ada",
+          last: "Lovelace",
+          full: "Ada Lovelace",
+          pronouns: "they/them",
+          candidate_data: {
+            contact: { phone: "555", websites: ["https://new.example"] },
+            context: { bio_summary: "builder", raw_resume: "resume text" },
+          },
+        })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    // Missing blob websites → string_list starts empty (Add only)
+    const addBtn = screen.getByRole("button", { name: "Add" })
+    const list = addBtn.closest(".dep-string-list") as HTMLElement
+    await userEvent.click(addBtn)
+    const siteInput = within(list).getByRole("textbox")
+    await userEvent.type(siteInput, "https://new.example")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect((savedBody?.contact as Record<string, unknown>)?.websites).toEqual(["https://new.example"])
+    expect(savedBody?.full).toBe("Ada Lovelace")
+  })
+
+  it("renders username-or-URL labels and keeps Title Patterns on Profile tabs", async () => {
+    installProfileMocks()
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    expect(screen.getByText("GitHub (username or URL)", { selector: "label.dep-field-label" })).toBeInTheDocument()
+    expect(screen.getByText("LinkedIn (username or URL)", { selector: "label.dep-field-label" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Title Patterns" })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Title Patterns" }))
+    // TabbedTextArea hosts the section (not FormFields labels) — heading + textarea is the edit surface
+    expect(screen.getByRole("heading", { name: "Title Patterns" })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/title patterns/i)).toBeInTheDocument()
+  })
+
+  it("cleared full is still present on PUT so core empty-full recompute can run", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({
+          first: "Ada",
+          last: "Lovelace",
+          full: "Ada Lovelace",
+          pronouns: "they/them",
+          candidate_data: candidateData,
+        })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    const fullField = screen.getByText("Full Name", { selector: "label.dep-field-label" }).closest(".dep-field")!
+    const fullInput = within(fullField as HTMLElement).getByRole("textbox")
+    await userEvent.clear(fullInput)
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect(Object.prototype.hasOwnProperty.call(savedBody, "full")).toBe(true)
+    expect(savedBody?.full).toBe("")
   })
 })
