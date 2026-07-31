@@ -167,3 +167,20 @@ Repo **`agent_task.json`** enriches **`contact_estelle_turn`** prompts (ACL `ski
   tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
   -q
 ```
+
+### AST-1089 · AST-1087
+
+Repo **`agent_task.json`** gains **`parse_meteorite_email`** (Ruth email-HTML parse shell; both `html_links` / `subject_body` modes in prompts). Catalog frozenset **46 → 47**; UAT fixture byte-locked. Primary config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + Ruth parse prompts | `data/admin/agent_task.json` | **`TestAst1089ParseMeteoriteEmailCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **46**-row asserts → **47**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  -q
+```

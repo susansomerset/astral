@@ -1618,3 +1618,46 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
   -q
 ```
+
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+`GAZE_EMAIL_CONFIG` (task key, account expectation, unbound retention days, row seed) + `TASK_CONFIG["gaze_email"]` shell (`requires_candidate_key: False`; null entity/trigger — mailbox poller, no claim queue). `dispatch_task_admin_defaults("gaze_email")` returns null entity/trigger/sort_by and `batch_call_mode=0`. Secrets stay environ. Data/provision/Gmail: **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/external/gmail.md`**. Ruth parse / runner are siblings **AST-1089** / **AST-1090**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block + TASK_CONFIG shell + admin defaults | `src/utils/config.py` | **`TestAst1088GazeEmailConfig`** |
+
+**Broken / obsolete:** none for config (additive).
+
+**Integration:** no existing scenarios assert `GAZE_EMAIL_CONFIG` / `gaze_email` task key — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  -q
+```
+
+### AST-1089 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`.
+
+`METEORITE_EMAIL_PARSE_CONFIG` (`task_key` + `parse_modes` `html_links` / `subject_body`) + `TASK_CONFIG["parse_meteorite_email"]` (fields schema; `requires_candidate_key: True`; `entity_type` / `trigger_state` None — **not** a meteorite dispatch claim). Catalog shell: **`docs/test-bible/core/repo_admin_json.md`**. Gaze shell / runner are siblings **AST-1088** / **AST-1090**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse config + TASK_CONFIG (not dispatch) | `src/utils/config.py` | **`TestAst1089ParseMeteoriteEmailConfig`** |
+| Catalog + AST-756 byte lock | `data/admin/agent_task.json` | **`TestAst1089ParseMeteoriteEmailCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** (47 keys) |
+
+**Broken / obsolete:** AST-786 **46 → 47** (+ UAT fixture byte lock for `parse_meteorite_email`).
+
+**Integration:** no existing scenarios assert parse_meteorite_email / METEORITE_EMAIL_PARSE_CONFIG — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  -q
+```
