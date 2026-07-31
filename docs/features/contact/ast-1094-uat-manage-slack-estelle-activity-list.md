@@ -412,3 +412,97 @@ type EstelleActivityRow = {
 
 Stages 1–5 landed: `activity_state_filename`, `contact_estelle_activity.py`, record on accept + `list_estelle_activity`, GET `/estelle_activity`, Manage Slack activity table.
 
+
+---
+
+## Radia review — code-rubric.v1
+
+**Overall:** CLEAN  
+**Publish tip reviewed:** `65096646` (`origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`)  
+**Diff:** `origin/dev...65096646` — layers `{core, data, utils, ui, docs}`; change_types `{add, modify}`; 17 paths (focused UAT AC #9).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | activity_state_filename in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1094 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits touch src only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external edits; UI never calls slack |
+| astral.layers.import-direction | scoped | conforms | ui→core→data; data→utils only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | table renders API rows; no hard-coded state sets |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | GET /estelle_activity @require_admin |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data silent; core/API log failures |
+| astral.standards.database-header-inventory | scoped | conforms | choose-JSON under db_dir; no new SQLite table |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on list + record when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | data I/O vs core record/list vs thin API |
+| astral.standards.in-scope-only | scoped | conforms | no Events/skills/turn-loop/cache ownership |
+| astral.standards.logging-via-utils | scoped | conforms | Contact get_logger; data silent |
+| astral.standards.no-cross-contamination | scoped | conforms | focused 17-path tip; no unrelated deletes |
+| astral.standards.no-hardcoded-sets | scoped | conforms | filename from CONTACT_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | public list_estelle_activity / data record+list |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | no state transition ownership; resolve untouched |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | extends AdminManageSlack.tsx |
+| astral.ui.naming-conventions | scoped | conforms | snake_case /estelle_activity |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no worker config change |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHA 65096646 |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1094-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | tip includes merge-tests; no lost origin/dev paths |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1094-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held (JSON summary; no transcript SoT) |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–5 land as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Katherine remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.manage-pages / pattern.ui.admin-endpoint | conforms | Manage Slack table + thin admin GET |
+| pattern.config.config-block | conforms | CONTACT_CONFIG activity_state_filename |
+| pattern.core.contact-agent (proposed) | conforms | record on accept + list_estelle_activity |
+
+### Plan adherence
+
+Stages 1–5 match the combined plan almost verbatim (config key, data module, resolve wrap + activity record, GET route, Manage Slack table). Self-Assessment MAJOR-CHANGE / high / Medium matches footprint. Sibling boundaries held (no Events/skills/turn-loop/cache ownership).
+
+### Findings
+
+None.
+
+### What’s solid
+
+JSON-under-`db_dir` summary (not conversation SoT); record after resolve / before turn; bind_ok from candidate id; `@require_admin`; Style D gated; UI keeps listen usable if activity GET fails.
+
+### Notes
+
+no plan-rubric verdict attached
+
