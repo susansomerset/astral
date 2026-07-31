@@ -238,3 +238,11 @@ python3 -c "import json; json.load(open('data/admin/agent_task.json')); assert a
 ### Statutes checked (summary)
 
 56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1089-…`. One **violates** (`astral.standards.in-scope-only`). Full table in Linear review comment.
+
+## Resolution
+
+**2026-07-31** — Radia code-rubric.v1 FIX-NOW addressed.
+
+- **fix-now:** Removed smuggled `dispatch_task_admin_defaults` early-return on `GAZE_EMAIL_CONFIG["task_key"]` from `src/utils/config.py` (AST-1088 shell; undefined on this tip → `NameError`). Belongs on AST-1088 with the config definition.
+- **Smoke:** `dispatch_task_admin_defaults("qualify_meteorite")` returns job defaults; Betty AST-1089 manifest still **8 passed**.
+- **discuss (straggler):** No product change (Joan / three-dot scoring note only).
