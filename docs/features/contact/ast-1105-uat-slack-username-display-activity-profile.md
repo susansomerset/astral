@@ -232,6 +232,7 @@ Stages 1–5 landed: `fetch_user_profile.username`, activity identity fields, re
 | astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
 | astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
 | astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.dispatch.seed-auto-false | scoped | conforms | config Profile Slack fields only; no dispatch seed |
 | astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
 | astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1105 |
 | astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
