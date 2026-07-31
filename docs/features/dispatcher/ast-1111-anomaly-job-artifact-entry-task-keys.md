@@ -84,3 +84,15 @@ Delete the config shadow `JOB_ARTIFACT_ENTRY_TASK_KEYS` and its wrapper `build_a
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `88ab9675` | delete JOB_ARTIFACT_ENTRY_TASK_KEYS + build_artifacts_chain_task_keys |
+
+### Radia — code-rubric.v1 (AST-1111)
+
+`[code-rubric] revision=1` · tip reviewed `230c0f4c` · **Overall: DISCUSS** (C4 stragglers only; deliverable conforms)
+
+**What's solid**
+
+- Delete-only: `JOB_ARTIFACT_ENTRY_TASK_KEYS` + `build_artifacts_chain_task_keys()` gone; zero `src/` hits; no replacement membership list.
+- §2.6.0 helpers untouched; hop_task_keys / craft_task_keys / boot SQL left to siblings.
+- Betty owns test/bible retirement of frozenset asserts; engineer Stage 1 is `config.py` only.
+
+**Discuss (C4 stragglers)** — Joan excluded many scoped statutes via plan `change_types={delete}`; three-dot git status is `modify`/`add`, so they are in-scope here (scores themselves `conforms`). See Linear comment for the full list.
