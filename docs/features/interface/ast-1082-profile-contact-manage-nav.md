@@ -99,3 +99,25 @@ Wire Candidate Profile load/save so Contact Information (name columns + `contact
 **Built:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav` @ `071960d900b69d20c73e278c901d209a9f3eba9d`
 
 Stages 1–2: `editValuesFromCandidate` always includes `full` and normalizes `contact.websites` to `string[]`; `DATA_SHAPES` GitHub/LinkedIn labels say username-or-URL; Candidate `NAV_CONFIG` / routes already omit title-patterns (no nav edit). Tests deferred to Betty.
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1082
+**Publish ref tip at review:** `9ab0d73fce5065bb150e1bca5619f68b282e6875`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1: `editValuesFromCandidate` always sends `full` + normalizes `contact.websites` to `string[]` on load and post-Save remap; still shape-driven FormFields/TabbedTextArea (no hardcoded contact field list).
+- Stage 2: GitHub/LinkedIn username-or-URL labels in `DATA_SHAPES`; Candidate `NAV_CONFIG` has no Title Patterns item (verify-only; no nav edit needed).
+- Boundaries vs AST-1081 / Admin / preamble held in this ticket’s `code()` commits.
+
+### Findings
+
+**discuss:** C4 stragglers — Joan Excluded several statutes (plan Files Changed was Profile + label-only config) that are in-scope on `origin/dev...` three-dot because AST-1081 sibling + Betty `merge-tests` are on the tip. Sweep scores them **conforms**; no product action — resolve-child acknowledge.
+
+### Recommended actions
+
+- Implementer: acknowledge straggler discuss; no `fix-now` product changes.
