@@ -805,11 +805,21 @@ body {{
 
 
 def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:
-    """Prefer job resume_content; else base_resume. Raises if neither is a non-empty dict."""
+    """Prefer job resume_content; else pin job_resume; else base_resume."""
     artifacts = job_data.get("artifacts") or {}
     rc = artifacts.get("resume_content")
     if _is_nonempty_resume_dict(rc):
         return dict(rc)
+    # AST-1100: resolve finalize_job_resume pin when legacy body missing.
+    pin = artifacts.get("job_resume")
+    if isinstance(pin, str) and pin.strip():
+        from src.core.tracker import resolve_job_artifact_agent_data_body
+
+        body = resolve_job_artifact_agent_data_body(pin)
+        if _is_nonempty_resume_dict(body):
+            return dict(body)
+    if isinstance(pin, dict) and _is_nonempty_resume_dict(pin):
+        return dict(pin)
     br = (candidate_data.get("artifacts") or {}).get("base_resume")
     if _is_nonempty_resume_dict(br):
         return dict(br)
@@ -832,11 +842,18 @@ def _cover_letter_fields_for_read(cl: dict) -> dict:
 
 
 def _resolve_cover_letter(job_data: dict, candidate_data: dict) -> Optional[dict]:
-    """Job cover_letter dict if any field non-empty; else sample_cover_text → body-only v1 mapping."""
+    """Job cover_letter dict if any field non-empty; else pin resolve; else sample_cover."""
     artifacts = job_data.get("artifacts") or {}
     cl = artifacts.get("cover_letter")
     if isinstance(cl, dict) and _cover_letter_nonempty(cl):
         return _cover_letter_fields_for_read(cl)
+    # AST-1100: cover_letter may be a RESPONSE agent_data_id pin string.
+    if isinstance(cl, str) and cl.strip():
+        from src.core.tracker import resolve_job_artifact_agent_data_body
+
+        body = resolve_job_artifact_agent_data_body(cl)
+        if isinstance(body, dict) and _cover_letter_nonempty(body):
+            return _cover_letter_fields_for_read(body)
     sample = (candidate_data.get("context") or {}).get("raw_sample")
     if isinstance(sample, str) and sample.strip():
         # v1: entire sample string is body; re_line/signature empty until UI captures structured cover.

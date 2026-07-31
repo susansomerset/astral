@@ -2484,3 +2484,44 @@ class TestAst1024BuildSessionCoverLetter:
         fields["letter_date"] = ["nope"]  # type: ignore[assignment]
         with pytest.raises(ValueError, match="letter_date must be a string"):
             builder_mod.build_session_cover_letter(fields, debug=True)
+
+
+class TestAst1100BuilderPinResolve:
+    """AST-1100: builder prefers resolved pins when legacy body dicts missing."""
+
+    def test_resolve_resume_sections_from_pin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.tracker.resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {"professional_summary": "From pin", "experience": "x"},
+        )
+        out = builder_mod._resolve_resume_sections(
+            {"artifacts": {"job_resume": "pin-resume"}},
+            {"artifacts": {}},
+        )
+        assert out["professional_summary"] == "From pin"
+
+    def test_resolve_resume_prefers_legacy_resume_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        resolve = MagicMock(return_value={"professional_summary": "pin"})
+        monkeypatch.setattr("src.core.tracker.resolve_job_artifact_agent_data_body", resolve)
+        out = builder_mod._resolve_resume_sections(
+            {
+                "artifacts": {
+                    "resume_content": {"professional_summary": "legacy", "experience": "e"},
+                    "job_resume": "pin-resume",
+                }
+            },
+            {"artifacts": {}},
+        )
+        assert out["professional_summary"] == "legacy"
+        resolve.assert_not_called()
+
+    def test_resolve_cover_letter_from_pin_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.tracker.resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {"re_line": "Re", "body": "Hello", "signature": ""},
+        )
+        out = builder_mod._resolve_cover_letter(
+            {"artifacts": {"cover_letter": "pin-cover"}},
+            {"context": {}},
+        )
+        assert out == {"re_line": "Re", "body": "Hello", "signature": ""}

@@ -3353,7 +3353,6 @@ class TestAst1105ProfileSlackFields:
         assert "contact.slack_user_id" not in paths
         assert "contact.slack_username" not in paths
 
-
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
 
@@ -3366,3 +3365,35 @@ class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
         assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")
+
+
+class TestAst1099JobArtifactAgentDataPinConfig:
+    """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
+
+    def test_pin_by_task_map(self) -> None:
+        assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
+            "finalize_job_resume": "job_resume",
+            "finalize_cover_letter": "cover_letter",
+            "propose_application_responses": "proposed_answers",
+        }
+
+    def test_clear_keys_include_pin_slots(self) -> None:
+        keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "job_resume" in keys
+        assert "proposed_answers" in keys
+        assert "cover_letter" in keys
+        # Legacy body keys remain for cancel of older rows / manual PUTs.
+        assert "resume_content" in keys
+        assert "application_responses" in keys
+
+
+class TestAst1100ArtifactTabPinKeys:
+    """AST-1100: JAR artifact tabs remap to AST-1099 pin slots."""
+
+    def test_artifact_tabs_use_pin_slot_keys(self) -> None:
+        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
+        assert by_id["artifact_resume"]["use_resume_structure"] is True
+        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+        assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
+        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"

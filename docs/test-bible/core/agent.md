@@ -522,3 +522,23 @@ Same `_store_response_block` / `debug=True` `result` bind as **AST-1076** (intak
   tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome \
   -q
 ```
+
+### AST-1099 · AST-1091
+
+**Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
+
+After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, `do_task` pins the RESPONSE `agent_data_id` into `job_data.artifacts` **before** `run_next` (mid-chain + terminal). Failed hops do not pin. Terminal body-copy via `persist_job_artifact_from_parsed` removed for finalize hops. Config map: **`docs/test-bible/utils/config.md`**. Tracker helper: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Mid-chain / terminal pin + no body-copy | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
+
+**Broken / obsolete:** any expectation that terminal `do_task` body-copies `finalize_job_resume` / `finalize_cover_letter` into `artifacts.resume_content` / dict `cover_letter` — superseded by pointer pin (AST-1100 remaps readers).
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  -q
+```

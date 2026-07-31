@@ -2375,7 +2375,16 @@ JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
     "cover_letter",
     "application_responses",
+    "job_resume",
+    "proposed_answers",
 )
+
+# AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
+JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
+    "finalize_job_resume": "job_resume",
+    "finalize_cover_letter": "cover_letter",
+    "propose_application_responses": "proposed_answers",
+}
 
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",
@@ -2431,11 +2440,12 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_resume",
         "nav_label": "Job Resume",
-        "artifact_key": "resume_content",
+        "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
     },
@@ -2449,7 +2459,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_application",
         "nav_label": "Application Questions",
-        "artifact_key": "application_responses",
+        "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
     },

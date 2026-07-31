@@ -1792,6 +1792,46 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+### AST-1099 · AST-1091
+
+**Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
+
+`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps the three hop keys → `job_resume` / `cover_letter` / `proposed_answers`. `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those pin slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  -q
+```
+
+### AST-1100 · AST-1091
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
+
+`JOBS_RECOMMENDED_ARTIFACT_TABS` `artifact_key`s remap to pin slots `job_resume` / `cover_letter` / `proposed_answers`. Resolve/hydrate: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tab key remap | `src/utils/config.py` | **`TestAst1100ArtifactTabPinKeys`** |
+
+**Broken / obsolete:** fixture `report_artifact_tabs` keys — see **`docs/test-bible/frontend/lib.md`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  -q
+```
+
 ### AST-1105 · AST-1043 (UAT)
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`.
@@ -1811,4 +1851,3 @@ Profile Contact Information: `contact.slack_user_id` + `contact.slack_username` 
   tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
   -q
 ```
-
