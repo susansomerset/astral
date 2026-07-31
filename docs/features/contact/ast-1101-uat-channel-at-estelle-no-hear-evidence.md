@@ -122,3 +122,9 @@ assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG
 **Conf:** `high` — Durable listen file already exists (AST-1067); activity record already on accept (AST-1094); Estelle turn already composes prefix + `contact_post_message` (AST-1073); bug maps to sticky hydrate + silent thread failures + turn-post gaps.
 
 **Risk:** `Medium` — Wrong hear-ack could double-reply if “posted” detection is wrong; mitigated by requiring `slack_post.ok is True` before skipping hear-ack. Listen re-read fail-closed when file missing keeps config default.
+
+## Review (build stub)
+
+- **Publish ref:** `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`
+- **Tip:** `c7ff9851` — listen re-read + hear-ack (stages 1–2)
+- **Stage commits:** `84d97108` (config), `c7ff9851` (contact)
