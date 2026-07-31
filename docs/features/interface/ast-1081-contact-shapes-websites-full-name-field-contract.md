@@ -112,3 +112,26 @@ Expose the missing Profile contact field contracts (`full`, `contact.websites`, 
 **Built:** `origin/sub/AST-1065/AST-1081-contact-shapes-websites-full` @ `de354de123ab419a547a97587f7c870b4e14f090`
 
 Stages 1–3: `DATA_SHAPES` Contact Information adds `full`, `contact.websites` (`string_list`), `contact.reason_codes`; FormFields `string_list` Add/Remove (label `Add`); `save_candidate_data` empty-`full` → `recompute_full_name` + websites list coerce. Profile page/nav deferred to AST-1082. Tests deferred to Betty.
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1081
+**Publish ref:** `996e815a93611f7ca157836f48d7b03605b368e7`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3 match the plan: `DATA_SHAPES` exposes `full` / `contact.websites` (`string_list`) / `contact.reason_codes`; FormFields renders `string_list` with Add/Remove; `save_candidate_data` empty/whitespace `full` → `recompute_full_name`, websites list coerce + `ValueError` on non-list.
+- Boundaries held: no `CandidateProfile.tsx`, no Admin `edit.manage` expand, no new routes.
+- One `merge-tests(AST-1081)` SHA; engineer `code()` commits stay off the test tree.
+
+### Findings
+
+**discuss:** straggler — `astral.git.engineer-test-tree-ban` excluded at plan time but in-scope on diff (`tests/**`, `docs/test-bible/**` via Betty). Product commits still clean; no engineer test-tree edit. No product action — note for resolve-child.
+
+### Recommended actions
+
+- Implementer: acknowledge straggler discuss; no `fix-now` product changes.
+- AST-1082 owns Profile load/save / nav for the new shape fields.
