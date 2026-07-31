@@ -34,6 +34,7 @@ from src.utils.config import (
     INFLOW_CONFIG,
     TASK_CONFIG,
     METEORITE_DISPATCH_TASKS,
+    GAZE_EMAIL_CONFIG,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
     dispatch_chain_claim_states_for_row,
@@ -290,6 +291,43 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
         "skipped_missing_config": skipped_missing_config,
         "retired": retired,
     }
+
+
+
+def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
+    """Idempotent insert of the shared Astral inbox gaze_email row (null candidate_id).
+
+    Does not wire due-task eligibility or the mailbox runner (AST-1090).
+    """
+    tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
+    if tk not in TASK_CONFIG:
+        return {"task_key": tk, "added": 0, "skipped": 0, "skipped_missing_config": 1, "id": None}
+    existing = None
+    for row in database.list_dispatch_tasks():
+        if (row.get("task_key") or "").strip() != tk:
+            continue
+        cid = row.get("candidate_id")
+        if cid is None or str(cid).strip() == "":
+            existing = row
+            break
+    if existing is not None:
+        return {"task_key": tk, "added": 0, "skipped": 1, "skipped_missing_config": 0, "id": existing.get("id")}
+    new_id = database.save_dispatch_task(
+        candidate_id=None,
+        task_key=tk,
+        min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
+        auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
+        entity_type=GAZE_EMAIL_CONFIG["entity_type"],
+        trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
+        batch_size=GAZE_EMAIL_CONFIG["batch_size"],
+        freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+    )
+    return {"task_key": tk, "added": 1, "skipped": 0, "skipped_missing_config": 0, "id": new_id}
+
+
+def provision_gaze_email_dispatch_task() -> Dict[str, Any]:
+    """Startup provision for the shared gaze_email dispatch shell (AST-1088)."""
+    return ensure_gaze_email_dispatch_task()
 
 
 # ---------------------------------------------------------------------------
@@ -1095,6 +1133,19 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    try:
+        gstats = provision_gaze_email_dispatch_task()
+        _sched_log.info(
+            "AST-1088 gaze_email dispatch provision task_key=%s added=%s skipped=%s "
+            "skipped_missing_config=%s id=%s",
+            gstats.get("task_key"),
+            gstats.get("added"),
+            gstats.get("skipped"),
+            gstats.get("skipped_missing_config"),
+            gstats.get("id"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1088 gaze_email dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
