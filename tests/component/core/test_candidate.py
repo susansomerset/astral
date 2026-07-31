@@ -2953,3 +2953,254 @@ class TestAst1075PreambleConfirmedAt:
         assert dbg.call_args_list[0].kwargs["func"] == "candidate.mark_topic_menu_preamble_confirmed"
         candidate_mod.mark_topic_menu_preamble_confirmed("c1", debug=False)
         assert dbg.call_count == 2
+
+
+# AST-1081: empty-full recompute + contact.websites list coercion on save.
+class TestAst1081ContactShapesSaveContract:
+    """AST-1081: save_candidate_data empty/whitespace full → join; websites list coerce."""
+
+    def test_empty_full_recomputes_from_submitted_first_last(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Old", "last": "Name"},
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"first": "Ada", "last": "Lovelace", "full": "   "},
+        )
+        assert save.call_args.kwargs["full"] == "Ada Lovelace"
+        assert save.call_args.kwargs["first"] == "Ada"
+        assert save.call_args.kwargs["last"] == "Lovelace"
+
+    def test_empty_full_falls_back_to_existing_columns(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        candidate_mod.save_candidate_data("c1", {"full": ""})
+        assert save.call_args.kwargs["full"] == "Ada Lovelace"
+
+    def test_nonempty_full_override_is_stripped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"full": "  Countess of Lovelace  "},
+        )
+        assert save.call_args.kwargs["full"] == "Countess of Lovelace"
+
+    def test_websites_none_becomes_empty_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"websites": None, "phone": "555"}}
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == []
+
+    def test_websites_list_strips_and_drops_empties(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "websites": ["  https://a.example  ", "", "  ", "https://b.example"],
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == [
+            "https://a.example",
+            "https://b.example",
+        ]
+
+    def test_websites_non_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        with pytest.raises(ValueError, match="contact.websites must be a list"):
+            candidate_mod.save_candidate_data(
+                "c1", {"contact": {"websites": "https://not-a-list.example"}}
+            )
+
+
+# Branches: within collapse; cross hard-fail; Style D; initiate wire (AST-1080).
+class TestAst1080ContactUniqueness:
+    """AST-1080: contact uniqueness gate on save / initiate via AST-1079 config."""
+
+    def _other(self, cid: str, **contact_fields: object) -> dict:
+        return {
+            "astral_candidate_id": cid,
+            "candidate_data": {"contact": dict(contact_fields)},
+        }
+
+    def test_within_dedupe_clears_duplicate_reply_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "Ada@Example.com",
+                    "reply_email": "ada@example.com",
+                }
+            },
+        )
+        contact = save.call_args.kwargs["candidate_data"]["contact"]
+        assert contact["contact_email"] == "Ada@Example.com"
+        assert contact["reply_email"] == ""
+
+    def test_within_dedupe_collapses_websites(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "websites": [
+                        "https://a.example",
+                        "HTTPS://A.EXAMPLE",
+                        "https://b.example",
+                    ]
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == [
+            "https://a.example",
+            "https://b.example",
+        ]
+
+    def test_cross_collision_casefold_email_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="Ada@Example.com")
+            ],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"This contact info is already used by another candidate \(ada@example\.com\)\.",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"contact_email": "ada@example.com"}}
+            )
+        assert save.call_count == 0
+
+    def test_same_candidate_keeps_own_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda *_a, **_k: self._other("c1", contact_email="ada@example.com"),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("c1", contact_email="ada@example.com")
+            ],
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"contact_email": "ada@example.com", "phone": "555"}}
+        )
+        assert save.call_count == 1
+        assert (
+            save.call_args.kwargs["candidate_data"]["contact"]["contact_email"]
+            == "ada@example.com"
+        )
+
+    def test_initiate_candidate_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="taken@ex.com")
+            ],
+        )
+        with pytest.raises(
+            ValueError, match="already used by another candidate"
+        ):
+            candidate_mod.initiate_candidate(
+                "new-c",
+                {"contact": {"contact_email": "taken@ex.com"}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
+    def test_debug_emits_within_and_cross_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        caplog.set_level("DEBUG")
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "solo@ex.com",
+                    "reply_email": "solo@ex.com",
+                }
+            },
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "enforce_contact_uniqueness" in combined
+        assert "within_dedupe" in combined or "recorded|within_dedupe" in combined
+        assert "cross_clear" in combined or "recorded|cross_clear" in combined
+
