@@ -298,10 +298,18 @@ def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
     """Idempotent insert of the shared Astral inbox gaze_email row (null candidate_id).
 
     Due eligibility + mailbox runner live on AST-1090 (`get_due_tasks` / `_dispatch_one`).
+    AST-1098: reconcile stuck AUTO-on shared row back to seed CLICK.
     """
     tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
     if tk not in TASK_CONFIG:
-        return {"task_key": tk, "added": 0, "skipped": 0, "skipped_missing_config": 1, "id": None}
+        return {
+            "task_key": tk,
+            "added": 0,
+            "skipped": 0,
+            "reconciled": 0,
+            "skipped_missing_config": 1,
+            "id": None,
+        }
     existing = None
     for row in database.list_dispatch_tasks():
         if (row.get("task_key") or "").strip() != tk:
@@ -311,7 +319,25 @@ def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
             existing = row
             break
     if existing is not None:
-        return {"task_key": tk, "added": 0, "skipped": 1, "skipped_missing_config": 0, "id": existing.get("id")}
+        # Bad-seed / prior AUTO: force seed law CLICK on this shared row only.
+        if bool(existing.get("auto_mode")):
+            database.update_dispatch_task(int(existing["id"]), auto_mode=False)
+            return {
+                "task_key": tk,
+                "added": 0,
+                "skipped": 0,
+                "reconciled": 1,
+                "skipped_missing_config": 0,
+                "id": existing.get("id"),
+            }
+        return {
+            "task_key": tk,
+            "added": 0,
+            "skipped": 1,
+            "reconciled": 0,
+            "skipped_missing_config": 0,
+            "id": existing.get("id"),
+        }
     new_id = database.save_dispatch_task(
         candidate_id=None,
         task_key=tk,
@@ -322,7 +348,14 @@ def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
         batch_size=GAZE_EMAIL_CONFIG["batch_size"],
         freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
     )
-    return {"task_key": tk, "added": 1, "skipped": 0, "skipped_missing_config": 0, "id": new_id}
+    return {
+        "task_key": tk,
+        "added": 1,
+        "skipped": 0,
+        "reconciled": 0,
+        "skipped_missing_config": 0,
+        "id": new_id,
+    }
 
 
 def provision_gaze_email_dispatch_task() -> Dict[str, Any]:

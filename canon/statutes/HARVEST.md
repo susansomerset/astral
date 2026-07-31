@@ -18,6 +18,7 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `astral.config.secrets-and-env-specific-from-environ` | scoped | ci | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.secrets-and-env-specific-from-environ.md` |
 | create (AST-921) | `astral.debug.no-repo-root-artifacts-dir` | scoped | hook | docs/ASTRAL_CODE_RULES.md | `astral/debug/astral.debug.no-repo-root-artifacts-dir.md` |
 | create (AST-921) | `astral.debug.spikes-under-debug-dir` | scoped | hook | docs/ASTRAL_CODE_RULES.md | `astral/debug/astral.debug.spikes-under-debug-dir.md` |
+| create (AST-1098) | `astral.dispatch.seed-auto-false` | scoped | judgment | AST-1093 / AST-1098 | `astral/dispatch/astral.dispatch.seed-auto-false.md` |
 | create (AST-921) | `astral.docs.features-single-file-per-ticket` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/docs/astral.docs.features-single-file-per-ticket.md` |
 | create (AST-921) | `astral.git.betty-no-src-or-features` | scoped | hook | docs/ASTRAL_GIT_WORKFLOW.md | `astral/git/astral.git.betty-no-src-or-features.md` |
 | already-landed (AST-920) | `astral.git.engineer-test-tree-ban` | scoped | hook | docs/ASTRAL_TEAM_WORKFLOW.md | `astral/git/astral.git.engineer-test-tree-ban.md` |
@@ -63,7 +64,7 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `orch.roles.engineer-assignee-through-resolve` | universal | judgment | docs/ASTRAL_TEAM_WORKFLOW.md | `orchestration/roles/orch.roles.engineer-assignee-through-resolve.md` |
 | create (AST-921) | `orch.roles.pre-commit-path-bans` | universal | hook | docs/ASTRAL_GIT_WORKFLOW.md | `orchestration/roles/orch.roles.pre-commit-path-bans.md` |
 
-**Counts:** 51 created by AST-921; 5 already-landed (AST-920); 56 total active mappings in this register.
+**Counts:** 51 created by AST-921; 5 already-landed (AST-920); 1 created by AST-1098; 57 total active mappings in this register.
 
 ## Narrative leftovers
 

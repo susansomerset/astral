@@ -62,6 +62,8 @@ def record_estelle_activity(
     candidate_state: Optional[str],
     last_channel: Optional[str],
     last_message_ts: Optional[str],
+    slack_username: Optional[str] = None,
+    slack_display_name: Optional[str] = None,
 ) -> dict:
     """Upsert one Slack user: increment inbound count; refresh bind + last seen.
 
@@ -78,8 +80,27 @@ def record_estelle_activity(
     prev = by.get(uid) if isinstance(by.get(uid), dict) else {}
     prev_count = prev.get("inbound_message_count")
     count = int(prev_count) + 1 if isinstance(prev_count, int) and prev_count >= 0 else 1
+    # Keep prior identity when later calls pass None (e.g. users.info blip).
+    prev_user = prev.get("slack_username") if isinstance(prev.get("slack_username"), str) else None
+    prev_disp = (
+        prev.get("slack_display_name")
+        if isinstance(prev.get("slack_display_name"), str)
+        else None
+    )
+    uname = (
+        slack_username.strip()
+        if isinstance(slack_username, str) and slack_username.strip()
+        else prev_user
+    )
+    dname = (
+        slack_display_name.strip()
+        if isinstance(slack_display_name, str) and slack_display_name.strip()
+        else prev_disp
+    )
     row = {
         "slack_user_id": uid,
+        "slack_username": uname,
+        "slack_display_name": dname,
         "bind_ok": bind_ok,
         "astral_candidate_id": astral_candidate_id if isinstance(astral_candidate_id, str) else None,
         "candidate_state": candidate_state if isinstance(candidate_state, str) else None,

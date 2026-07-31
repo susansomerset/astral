@@ -1509,6 +1509,8 @@ CONTACT_CONFIG = {
     # Format with environment= (deploy label). AST-1067 applies when listen is on
     # and deploy is not production.
     "non_production_reply_prefix_template": "[{environment}] ",
+    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
+    "hear_ack_reply_text": "Heard you — Estelle is listening.",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
@@ -1565,6 +1567,7 @@ assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
+assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -2234,11 +2237,12 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 # Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
 # AST-1090 runner extends this block (schemes / ledger placeholder / Style D func).
 # Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
+# AST-1098: seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 GAZE_EMAIL_CONFIG = {
     "task_key": "gaze_email",
     "account_address": "astral.career.match@gmail.com",
     "unbound_retention_days": 7,
-    "auto_mode": True,
+    "auto_mode": False,
     "min_count": 1,
     "batch_size": 1,
     "freq_hrs": 0,
@@ -2258,6 +2262,13 @@ assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
 assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
 assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
 assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
+assert GAZE_EMAIL_CONFIG["auto_mode"] is False
+# AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
+assert all(
+    not bool(e.get("auto_mode"))
+    for e in CANDIDATE_STAGE_DISPATCH.values()
+    if "auto_mode" in e
+)
 # AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
 # Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
 # must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
@@ -2328,6 +2339,8 @@ METEORITE_DISPATCH_TASKS = (
         "freq_hrs": 0,
     },
 )
+# AST-1098: meteorite seed catalog stays CLICK.
+assert all(not bool(e.get("auto_mode")) for e in METEORITE_DISPATCH_TASKS)
 
 # Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
 METEORITE_GDL_OUTCOME_BY_TASK = {
@@ -4034,6 +4047,8 @@ DATA_SHAPES = {
                         {"key": "first", "label": "First Name", "type": "text"},
                         {"key": "last", "label": "Last Name", "type": "text"},
                         {"key": "full", "label": "Full Name", "type": "text"},
+                        {"key": "contact.slack_user_id", "label": "Slack user id", "type": "text"},
+                        {"key": "contact.slack_username", "label": "Slack username", "type": "text"},
                         {"key": "contact.contact_email", "label": "Email for Resume", "type": "text"},
                         {"key": "contact.reply_email", "label": "Email for Messages (if different)", "type": "text"},
                         {"key": "contact.extra_emails", "label": "Extra emails (binding)", "type": "string_list"},

@@ -154,11 +154,14 @@ def fetch_user_profile(user_id: str) -> dict:
     display = str(
         profile.get("display_name") or profile.get("real_name") or ""
     ).strip()
+    # Slack workspace username/handle (not display name).
+    username = str(user.get("name") or "").strip()
     return {
         "slack_user_id": sid,
         "first": first,
         "last": last,
         "display_name": display,
+        "username": username,
     }
 
 
