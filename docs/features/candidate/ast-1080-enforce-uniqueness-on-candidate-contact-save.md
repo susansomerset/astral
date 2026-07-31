@@ -194,3 +194,14 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Recommended actions**
 - Ada: no code change for stragglers; `resolve-child` → User Testing unless a discuss thread is opened.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Review tip:** `6ebd6457` (`docs(AST-1080): Radia review — contact uniqueness gate`)  
+**Outcome:** clean — no fix-now; no product or config changes.
+
+| Finding | Disposition |
+| -- | -- |
+| discuss (straggler) — Joan excluded docs/test-tree/utils-adjacent statutes at plan time; three-dot scores conforms | Accepted as documented; no code change |
+| Joan non-blocking discusses (inline merge parity; list_candidates scan) | Left as planned; implementation matches plan |
