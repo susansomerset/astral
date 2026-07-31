@@ -1246,6 +1246,26 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+Admin **Manage Slack** (§6c): below listen controls, **@Estelle users** table from `GET /api/admin/contact/estelle_activity` — Slack user, bind ok/fail, candidate, message count, last channel/ts. Empty copy when no rows. API: **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Activity table + empty state (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** (AST-1094 cases) |
+
+**Broken / obsolete:** none — additive table on existing Manage Slack page; listen tests still require listen GET (activity GET mocked empty).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx
+```
+
+
 ---
 
 ### AST-1075 · AST-953
@@ -1297,3 +1317,94 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
   ../../../tests/component/frontend/test_routes.test.tsx
 ```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+Candidate Profile (§6c): Resume/Messages labels; `extra_emails` normalize to `string[]` + Add round-trip. Config/core: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile labels + extra_emails (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile AST-1092 extra binding emails`**; revised AST-1082 websites Add scoped to Websites field |
+
+**Broken / obsolete:** AST-1082 websites Add used global `getByRole('Add')` — revised to scope under Websites label (second `string_list`).
+
+**Integration:** none — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+### AST-1105 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`.
+
+Manage Slack activity table: **Username** + **Display** columns (`—` when null).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Username/Display columns (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** |
+
+**Broken / obsolete:** AST-1094 activity mock without identity — revised.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+
+---
+
+### AST-1104 · AST-1102
+
+**Parent:** [AST-1102 — Bug when select All candidates and All avail count](https://linear.app/astralcareermatch/issue/AST-1102/bug-when-select-all-candidates-and-all-avail-count). **Publish:** `origin/sub/AST-1102/AST-1104-fix-sa-blank-candidate-all-avail-all`.
+
+Scheduled Actions blank-page survival (§6c): Candidate All + Avail All must keep title/filters/list mounted when nav-selected candidate `contact.timezone` is a non-IANA string — Last Run `<Time>` → `fmtTime` absorbs `RangeError` (UTC retry). Avail All still shows zero/empty Avail rows; default Avail `gt0` unchanged. Product fix is `fmt.ts` only (Branch A).
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Candidate All + Avail All keeps chrome + zero-Avail Last Run (§6c) | `AdminScheduledActions.tsx` (untouched) + `fmt.ts` / `Time` | **`test_AdminScheduledActions_AST1104.test.tsx`** — **`AST-1104 Candidate All + Avail All blank-page survival`** (2 cases) |
+| 2 | Invalid IANA zone → UTC fallback (lib) | `fmt.ts` | **`test_fmt.test.ts`** — falls back to UTC when timezone invalid |
+| 3 | `<Time>` invalid `contact.timezone` → UTC | `Time.tsx` | **`test_Time.test.tsx`** — invalid timezone case; fixtures use `contact.timezone` |
+| 4 | Regression: Avail default / Expand All / filters | same | **`test_AdminScheduledActions.test.tsx`** — **`AST-894\|AST-887\|AST-893\|AST-751\|AST-768\|AST-785`** |
+
+**Broken / obsolete:** **`test_Time.test.tsx`** still mocked `candidate_data.profile.timezone` after contact-path product — revised to `contact.timezone`.
+
+**Integration:** no existing SA blank-page / timezone scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/lib/test_fmt.test.ts \
+  ../../../tests/component/frontend/components/test_Time.test.tsx \
+  --testNamePattern="AST-1104|AST-894|AST-887|AST-893|AST-751|AST-768|AST-785|fmtTime|Time"
+```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
+
+| # | Area | Source | Component tests |
+| --- | --- | --- | --- |
+| 1 | Routed page Avail gt0 carve-out (§6c) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions_AST1106.test.tsx`** — **`AST-1106 gaze_email always visible under Avail gt0`** (2 cases) |
+| 2 | Regression: default gt0 still hides non-flag zero-avail | same | case 2 in that file; re-run **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
+
+**Broken / obsolete:** none (predicate widened via API flag only).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1106|AST-887|AST-894"
+```
+

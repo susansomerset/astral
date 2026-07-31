@@ -1681,3 +1681,192 @@ Extends `GAZE_EMAIL_CONFIG` with runner literals: `subject_url_schemes`, `dispat
   tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
   -q
 ```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library + lookup `email_list_paths`. (Uniqueness email pool via **`email_list_paths`** is **AST-1095** — not `list_paths`.) Save/bind + Profile: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Labels + key + email_list_paths + uniqueness align | `src/utils/config.py` | **`TestAst1092ExtraBindingEmailsConfig`**; revised **`TestAst1079ContactUniquenessConfig`** / **AST-1095** for pool |
+
+**Broken / obsolete:** AST-1079 originally websites-only `list_paths`; AST-1092 briefly parked extras on `list_paths` — **AST-1095** moves extras to uniqueness `email_list_paths`.
+
+**Integration:** no existing Profile extra-email bind scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  -q
+```
+
+
+
+### AST-1095 · AST-1045 (UAT)
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra`.
+
+`CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"]` (identity with lookup); `list_paths` websites-only. Email pool = `email_paths` ∪ `email_list_paths` under `compare["email"]`. Gate: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| email_list_paths identity + websites-only list_paths | `src/utils/config.py` | **`TestAst1095EmailUniqueRootAndExtraConfig`**; revised **`TestAst1079ContactUniquenessConfig`**, **`TestAst1092ExtraBindingEmailsConfig`** |
+
+**Broken / obsolete:** AST-1079 / AST-1092 asserts that put `contact.extra_emails` on uniqueness `list_paths` — revised to `email_list_paths`.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1095EmailUniqueRootAndExtraConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  -q
+```
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+`CONTACT_CONFIG["activity_state_filename"]` = `contact_estelle_activity.json` (durable @Estelle activity summary under `db_dir`). Data/core/API/UI: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| activity_state_filename | `src/utils/config.py` | **`TestAst1094ActivityConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG key.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1094ActivityConfig \
+  -q
+```
+
+
+### AST-1101 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`.
+
+`CONTACT_CONFIG["hear_ack_reply_text"]` — fallback Slack copy when accept succeeds but Estelle turn does not post. Core hear-ack / listen re-read: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| hear_ack_reply_text | `src/utils/config.py` | **`TestAst1101HearAckConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG key.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1101HearAckConfig \
+  -q
+```
+
+### AST-1098 · AST-1093
+
+**Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
+
+`GAZE_EMAIL_CONFIG["auto_mode"]` → **False** (CLICK seed); module asserts keep meteorite + candidate-stage seed catalogs CLICK. Statute `astral.dispatch.seed-auto-false` + README/HARVEST register. Reconcile: **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seed CLICK + catalog locks + statute register | `src/utils/config.py`, `canon/statutes/**` | **`TestAst1098GazeEmailSeedClick`**; revised **`TestAst1088GazeEmailConfig`** |
+
+**Broken / obsolete:** AST-1088 `auto_mode is True` assert — superseded by seed law CLICK.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1098GazeEmailSeedClick \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  -q
+```
+
+### AST-1099 · AST-1091
+
+**Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
+
+`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps the three hop keys → `job_resume` / `cover_letter` / `proposed_answers`. `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those pin slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  -q
+```
+
+### AST-1100 · AST-1091
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
+
+`JOBS_RECOMMENDED_ARTIFACT_TABS` `artifact_key`s remap to pin slots `job_resume` / `cover_letter` / `proposed_answers`. Resolve/hydrate: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tab key remap | `src/utils/config.py` | **`TestAst1100ArtifactTabPinKeys`** |
+
+**Broken / obsolete:** fixture `report_artifact_tabs` keys — see **`docs/test-bible/frontend/lib.md`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  -q
+```
+
+### AST-1105 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`.
+
+Profile Contact Information: `contact.slack_user_id` + `contact.slack_username` (not Contact skill ACL).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Profile Slack fields | `src/utils/config.py` | **`TestAst1105ProfileSlackFields`** |
+
+**Broken / obsolete:** none — additive Profile fields.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
+  -q
+```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+`ADMIN_CONFIG["always_visible_under_avail_gt0_dispatch_task_keys"]` seeded from `GAZE_EMAIL_CONFIG["task_key"]`; helper `admin_always_visible_under_avail_gt0_dispatch_task_keys()`. API stamp + SA filter: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Avail-gt0 always-visible keys | `src/utils/config.py` | **`TestAst1106AlwaysVisibleUnderAvailGt0`** |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  -q
+```
+

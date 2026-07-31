@@ -442,3 +442,22 @@ Ad Hoc `_build_adhoc_live_content("qualify_meteorite")` lockstep with consult as
   tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite \
   -q
 ```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+`list_dtasks` stamps boolean `always_visible_under_avail_gt0` from config helper; does **not** fake `available_count`. Config / SA: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stamp flag; avail gate unchanged | `src/ui/api/api_admin.py` | **`TestAst1106ListDtasksAlwaysVisibleFlag`** |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1106ListDtasksAlwaysVisibleFlag \
+  -q
+```
+
