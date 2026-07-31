@@ -1,4 +1,4 @@
-"""Admin Contact skill ACL + Manage Slack listen API (AST-1071 / AST-1067).
+"""Admin Contact skill ACL + Manage Slack listen/activity API (AST-1071 / AST-1067 / AST-1094).
 
 Thin wrappers over src.core.contact.
 """
@@ -9,6 +9,7 @@ from ui.auth import require_admin
 from src.core.contact import (
     contact_is_production_deploy,
     contact_skills,
+    list_estelle_activity,
     run_contact_skill,
     set_slack_listen_enabled,
     slack_listen_enabled,
@@ -55,6 +56,20 @@ def contact_put_listen():
         logger.warning("[api_contact] listen set failed: %s", e)
         return jsonify({"error": str(e)}), 502
     return jsonify(_listen_payload()), 200
+
+
+
+@contact_bp.route("/estelle_activity", methods=["GET"])
+@require_admin
+def contact_get_estelle_activity():
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        users = list_estelle_activity(debug=debug)
+    except Exception as e:
+        logger.warning("[api_contact] estelle_activity list failed: %s", e)
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"users": users}), 200
 
 
 @contact_bp.route("/skills", methods=["GET"])
