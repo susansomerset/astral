@@ -731,3 +731,25 @@ Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evalua
   tests/component/core/test_candidate.py::TestAst1081ContactShapesSaveContract \
   -q
 ```
+
+### AST-1095 · AST-1045 (UAT)
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra`.
+
+Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_emails`) under casefold email compare on save/initiate; within-candidate root+extra collapse; cross root↔extra / extra↔extra hard-fail toast `ValueError`; initiate coerce parity for `extra_emails`. Config: **`docs/test-bible/utils/config.md`**. Base gate: **AST-1080**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Root↔extra / extra↔extra cross + within + initiate | `src/core/candidate.py` | **`TestAst1095EmailUniqueRootAndExtra`** |
+
+**Broken / obsolete:** none for AST-1080 scalar/website cases — additive email-list pool walk.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1095EmailUniqueRootAndExtra \
+  tests/component/core/test_candidate.py::TestAst1080ContactUniqueness \
+  -q
+```
+

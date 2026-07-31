@@ -3393,3 +3393,141 @@ class TestAst1092ExtraBindingEmails:
             candidate_mod.get_candidate_id_for_query("https://not-an-email.example")
             is None
         )
+
+# Branches: root↔extra shared email pool on uniqueness gate (AST-1095).
+class TestAst1095EmailUniqueRootAndExtra:
+    """AST-1095: root and extra_emails share casefold email pool across candidates."""
+
+    def _other(self, cid: str, **contact_fields: object) -> dict:
+        return {
+            "astral_candidate_id": cid,
+            "candidate_data": {"contact": dict(contact_fields)},
+        }
+
+    def test_cross_root_blocks_extra_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        owner = self._other("owner", contact_email="Ada@Example.com")
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [owner],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"This contact info is already used by another candidate \(ada@example\.com\)\.",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"extra_emails": ["ada@example.com"]}}
+            )
+        assert save.call_count == 0
+        assert owner["candidate_data"]["contact"]["contact_email"] == "Ada@Example.com"
+
+    def test_cross_extra_blocks_root_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        owner = self._other("owner", extra_emails=["Taken@Ex.com"])
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [owner],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"already used by another candidate \(taken@ex\.com\)",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"contact_email": "taken@ex.com"}}
+            )
+        assert save.call_count == 0
+        assert owner["candidate_data"]["contact"]["extra_emails"] == ["Taken@Ex.com"]
+
+    def test_cross_extra_blocks_extra_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", extra_emails=["dup@ex.com"])
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"extra_emails": ["DUP@ex.com"]}}
+            )
+        assert save.call_count == 0
+
+    def test_within_root_and_extra_collapses_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "Ada@Example.com",
+                    "extra_emails": ["ada@example.com", "other@ex.com"],
+                }
+            },
+        )
+        contact = save.call_args.kwargs["candidate_data"]["contact"]
+        assert contact["contact_email"] == "Ada@Example.com"
+        assert contact["extra_emails"] == ["other@ex.com"]
+
+    def test_initiate_extra_emails_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="taken@ex.com")
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.initiate_candidate(
+                "new-c",
+                {"contact": {"extra_emails": ["  taken@ex.com  "]}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
+    def test_initiate_prospect_extra_emails_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", extra_emails=["taken@ex.com"])
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.initiate_prospect_candidate(
+                "new-p",
+                {"contact": {"contact_email": "taken@ex.com"}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+

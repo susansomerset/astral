@@ -1689,13 +1689,13 @@ Extends `GAZE_EMAIL_CONFIG` with runner literals: `subject_url_schemes`, `dispat
 
 **Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
 
-Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library + lookup `email_list_paths` + uniqueness `list_paths`. Save/bind + Profile: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/pages.md`**.
+Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library + lookup `email_list_paths`. (Uniqueness email pool via **`email_list_paths`** is **AST-1095** — not `list_paths`.) Save/bind + Profile: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/pages.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Labels + key + email_list_paths + uniqueness align | `src/utils/config.py` | **`TestAst1092ExtraBindingEmailsConfig`**; revised **`TestAst1079ContactUniquenessConfig`** (`list_paths` + `extra_emails`) |
+| Labels + key + email_list_paths + uniqueness align | `src/utils/config.py` | **`TestAst1092ExtraBindingEmailsConfig`**; revised **`TestAst1079ContactUniquenessConfig`** / **AST-1095** for pool |
 
-**Broken / obsolete:** AST-1079 `list_paths == ("contact.websites",)` — revised to include `contact.extra_emails`.
+**Broken / obsolete:** AST-1079 originally websites-only `list_paths`; AST-1092 briefly parked extras on `list_paths` — **AST-1095** moves extras to uniqueness `email_list_paths`.
 
 **Integration:** no existing Profile extra-email bind scenario — no revision; do not invent new integration coverage.
 
@@ -1706,6 +1706,29 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+
+
+### AST-1095 · AST-1045 (UAT)
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra`.
+
+`CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"]` (identity with lookup); `list_paths` websites-only. Email pool = `email_paths` ∪ `email_list_paths` under `compare["email"]`. Gate: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| email_list_paths identity + websites-only list_paths | `src/utils/config.py` | **`TestAst1095EmailUniqueRootAndExtraConfig`**; revised **`TestAst1079ContactUniquenessConfig`**, **`TestAst1092ExtraBindingEmailsConfig`** |
+
+**Broken / obsolete:** AST-1079 / AST-1092 asserts that put `contact.extra_emails` on uniqueness `list_paths` — revised to `email_list_paths`.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1095EmailUniqueRootAndExtraConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  -q
+```
 
 ### AST-1094 · AST-1043
 
@@ -1724,6 +1747,27 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1094ActivityConfig \
+  -q
+```
+
+### AST-1098 · AST-1093
+
+**Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
+
+`GAZE_EMAIL_CONFIG["auto_mode"]` → **False** (CLICK seed); module asserts keep meteorite + candidate-stage seed catalogs CLICK. Statute `astral.dispatch.seed-auto-false` + README/HARVEST register. Reconcile: **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seed CLICK + catalog locks + statute register | `src/utils/config.py`, `canon/statutes/**` | **`TestAst1098GazeEmailSeedClick`**; revised **`TestAst1088GazeEmailConfig`** |
+
+**Broken / obsolete:** AST-1088 `auto_mode is True` assert — superseded by seed law CLICK.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1098GazeEmailSeedClick \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
   -q
 ```
 
