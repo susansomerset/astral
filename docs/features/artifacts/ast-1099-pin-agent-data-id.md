@@ -115,4 +115,32 @@ No conflicts requiring `conf-!!-NONE`.
 ## Review
 
 **Branch:** `sub/AST-1091/AST-1099-pin-agent-data-id`  
-**Commit:** `76928f73`
+**Commit (code):** `76928f73`  
+**Publish tip reviewed:** `fe09931b` (`merge-tests(AST-1099)`)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1099  
+**Overall:** DISCUSS
+
+### What’s solid
+- Config map + clear-key extension match Stage 1 exactly; pointer-only slots.
+- `pin_job_artifact_agent_data_id` coat-checks empty/blank ids; Style D `debug_detail` only when `debug=True`.
+- `do_task` pins after successful RESPONSE store and **before** `run_next`; terminal `persist_job_artifact_from_parsed` body-copy removed for finalize hops.
+- Lazy tracker import keeps the documented agent↔tracker cycle break.
+- Betty one-SHA `merge-tests` + component coverage for map / helper / mid-chain pins.
+
+### Issues
+**discuss (C4 straggler):** Joan excluded `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, and `astral.debug.spikes-under-debug-dir` at plan time; ticket-scoped diff makes them in-scope. All three **conform** on the code (single features file; Betty owns tests; plan under `docs/features/`). No product fix required.
+
+### Recommended actions
+- Engineer: no fix-now. On resolve-child, acknowledge stragglers / move to User Testing if no product disagreement.
+- AST-1100 remains the reader/remap sibling (intentional pointer-string gap on UAT surfaces).
+
+### Notes
+- Formal `origin/dev...origin/sub/...` three-dot is epic-ancestry polluted (multiple merge bases). Statute applies_when + product judgment used **AST-1099 commit change set** (`2cc10e72` / `76928f73` / `449c61cc` / `fe09931b`).
+- Plan-rubric verdict attached (Joan APPROVED).
+
+context_tokens≈42000
+
+— Radia
