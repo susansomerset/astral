@@ -1750,3 +1750,24 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+### AST-1098 · AST-1093
+
+**Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
+
+`GAZE_EMAIL_CONFIG["auto_mode"]` → **False** (CLICK seed); module asserts keep meteorite + candidate-stage seed catalogs CLICK. Statute `astral.dispatch.seed-auto-false` + README/HARVEST register. Reconcile: **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seed CLICK + catalog locks + statute register | `src/utils/config.py`, `canon/statutes/**` | **`TestAst1098GazeEmailSeedClick`**; revised **`TestAst1088GazeEmailConfig`** |
+
+**Broken / obsolete:** AST-1088 `auto_mode is True` assert — superseded by seed law CLICK.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1098GazeEmailSeedClick \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  -q
+```
+
