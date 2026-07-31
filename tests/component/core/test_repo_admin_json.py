@@ -253,6 +253,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "meteorite_like",
         "meteorite_upshot",
         "parse_job_list",
+        "parse_meteorite_email",
         "preamble_validate_response",
         "prefilter_company",
         "propose_application_responses",
@@ -269,10 +270,11 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (46 rows after AST-1073 tip).
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (47 rows after AST-1089 tip).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
-    Includes `contact_estelle_turn`, `preamble_validate_response`, and AST-1075 topic_menu rows.
+    Includes `contact_estelle_turn`, `preamble_validate_response`, AST-1075 topic_menu rows,
+    and AST-1089 `parse_meteorite_email`.
     """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
@@ -281,9 +283,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_46_current_catalog_keys(self) -> None:
+    def test_repo_json_has_47_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 46
+        assert len(rows) == 47
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -299,7 +301,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_46_current_rows(
+    def test_startup_apply_loads_all_47_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -317,7 +319,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 46
+            assert count == 47
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -669,3 +671,26 @@ class TestAst1075TopicMenuCatalogRows:
             "backstory",
         ):
             assert informs in cache
+
+
+class TestAst1089ParseMeteoriteEmailCatalogRow:
+    """AST-1089: Ruth parse_meteorite_email shell in repo agent_task JSON."""
+
+    def test_parse_meteorite_email_ruth_shell_and_modes(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["parse_meteorite_email"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == "Parse Meteorite Email"
+        assert row["task_seq"] == 2.4
+        cache = row["cache_prompt"]
+        assert "html_links" in cache
+        assert "subject_body" in cache
+        assert "PARSE_MODE" in cache
+        # Mechanical extract — not qualify / invent URLs.
+        assert "not qualify" in cache.lower()
+        assert "invent" in cache.lower()
+        user = row["user_prompt"]
+        assert "PARSE_MODE" in user or "parse" in user.lower()
+        assert by["qualify_meteorite"]["task_seq"] == 2.5
