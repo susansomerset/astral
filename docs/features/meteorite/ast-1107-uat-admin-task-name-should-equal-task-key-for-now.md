@@ -89,3 +89,14 @@ cmp -s data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.
 - **§3 UI:** No frontend business-rule change; data already drives the label.
 - **in-scope-only:** No runner / Gmail / TASK_CONFIG prompt / `task_key` renames.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1087/AST-1107-uat-admin-task-name-should-equal-task-key-for-now`
+**Tip:** `adb30fc1`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `3356309c` | agent_task task_name equals task_key (47 rows rewritten) |
+| 2 | `adb30fc1` | AST-756 fixture sync after task_name rewrite |
+
