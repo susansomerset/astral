@@ -1509,6 +1509,8 @@ CONTACT_CONFIG = {
     # Format with environment= (deploy label). AST-1067 applies when listen is on
     # and deploy is not production.
     "non_production_reply_prefix_template": "[{environment}] ",
+    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
+    "hear_ack_reply_text": "Heard you — Estelle is listening.",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
@@ -1565,6 +1567,7 @@ assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
+assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
