@@ -6,11 +6,13 @@ AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 AST-1068: `resolve_slack_user` + PROSPECT create-on-miss (wired on accept).
 AST-1070: Slack-sourced conversation context load / process-local cache / append.
 AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
-Estelle turn loop: AST-1046 — not here.
+AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
+Conversational envelope contract: AST-1072.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import threading
@@ -35,7 +37,7 @@ from src.external.slack import (
     post_message,
     verify_slack_signature,
 )
-from src.utils.config import CONTACT_CONFIG
+from src.utils.config import CONTACT_CONFIG, CONTACT_ESTELLE_CONFIG
 from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -587,6 +589,213 @@ def resolve_slack_user(
     }
 
 
+
+def run_contact_estelle_turn(
+    *,
+    channel: str,
+    text: str,
+    thread_ts: Optional[str] = None,
+    message_ts: Optional[str] = None,
+    astral_candidate_id: Optional[str] = None,
+    candidate_state: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """One Contact Estelle conversational turn (AST-1073).
+
+    Returns a dict with at least:
+      ok, outcome, reply, admin_aside, skill_results, slack_post, error
+    """
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+
+    empty = {
+        "ok": False,
+        "outcome": None,
+        "reply": None,
+        "admin_aside": None,
+        "skill_results": [],
+        "slack_post": None,
+        "error": None,
+    }
+
+    # a. Listen re-check (defense in depth — handle_slack_event already gates).
+    if not slack_listen_enabled():
+        out = dict(empty)
+        out["error"] = "listen_off"
+        return out
+
+    # Late import avoids core→agent cycles at module load.
+    from src.core.agent import conversational_turn_from_do_task_result, do_task
+
+    max_chars = int(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"])
+    msg_limit = int(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"])
+
+    def _trim(s: str) -> str:
+        raw = s if isinstance(s, str) else ""
+        if len(raw) <= max_chars:
+            return raw
+        return raw[:max_chars] + "…"
+
+    # b. Context → live_content
+    ctx = load_slack_conversation_context(
+        channel=channel, thread_ts=thread_ts, debug=debug
+    )
+    lines = [
+        f"channel={channel}",
+        f"thread_ts={thread_ts or ''}",
+        f"astral_candidate_id={astral_candidate_id or ''}",
+        f"candidate_state={candidate_state or ''}",
+        "",
+        "## Available Contact skills (ACL)",
+        "Only emit skill_calls entries whose skill_key is listed below;",
+        "fields keys must be allowlisted paths; omit skill_calls when none.",
+    ]
+    for skill_key, meta in contact_skills().items():
+        desc = (meta or {}).get("description") or ""
+        paths = (meta or {}).get("allowed_paths") or ()
+        path_s = ", ".join(str(x) for x in paths)
+        lines.append(f"- {skill_key}: {desc} | paths: {path_s}")
+    lines.append("")
+    lines.append("## Conversation")
+    messages = list(ctx.get("messages") or [])
+    if msg_limit > 0 and len(messages) > msg_limit:
+        messages = messages[-msg_limit:]
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        who = m.get("user") or m.get("bot_id") or "unknown"
+        lines.append(f"[{who}] {_trim(m.get('text') or '')}")
+    lines.append("")
+    lines.append("## Latest inbound")
+    lines.append(_trim(text if isinstance(text, str) else ""))
+    live_content = "\n".join(lines)
+
+    # c. Candidate raft for tokens
+    candidate_data: dict = {}
+    if isinstance(astral_candidate_id, str) and astral_candidate_id.strip():
+        row = get_candidate(astral_candidate_id)
+        if isinstance(row, dict):
+            cd = row.get("candidate_data")
+            candidate_data = cd if isinstance(cd, dict) else {}
+
+    # d. do_task + envelope helper
+    task_key = CONTACT_ESTELLE_CONFIG["task_key"]
+    result = asyncio.run(
+        do_task(
+            task_key,
+            live_content=live_content,
+            index=astral_candidate_id or channel,
+            candidate_data=candidate_data,
+            debug=debug,
+            store_agent_data=True,
+        )
+    )
+    turn = conversational_turn_from_do_task_result(result)
+
+    # e. Optional skill_calls (ACL via run_contact_skill)
+    skill_results = []
+    parsed = result.get("parsed_response") if isinstance(result, dict) else None
+    raw_calls = parsed.get("skill_calls") if isinstance(parsed, dict) else None
+    calls = raw_calls if isinstance(raw_calls, list) else []
+    for item in calls:
+        if not isinstance(item, dict):
+            continue
+        skill_key = item.get("skill_key")
+        fields = item.get("fields")
+        if not isinstance(skill_key, str) or not isinstance(fields, dict):
+            continue
+        if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
+            skill_results.append(
+                {"ok": False, "error": "no_candidate", "skill_key": skill_key}
+            )
+            continue
+        try:
+            skill_results.append(
+                run_contact_skill(
+                    skill_key,
+                    astral_candidate_id=astral_candidate_id,
+                    fields=fields,
+                    debug=debug,
+                )
+            )
+        except Exception as exc:  # ValueError + unexpected — keep turn alive
+            skill_results.append(
+                {"ok": False, "error": str(exc), "skill_key": skill_key}
+            )
+
+    # f. Outbound reply — only success/concern with non-empty reply
+    reply = turn.get("reply")
+    slack_post = None
+    outcome = turn.get("outcome")
+    reply_ok = (
+        bool(turn.get("success"))
+        and isinstance(reply, str)
+        and bool(reply.strip())
+        and outcome in ("success", "concern")
+    )
+    if reply_ok:
+        reply_thread_ts = thread_ts or message_ts
+        outbound = format_contact_reply_text(reply)
+        slack_post = contact_post_message(
+            channel=channel,
+            text=outbound,
+            thread_ts=reply_thread_ts,
+            debug=debug,
+        )
+
+    # g. Admin aside → logs only (never Slack)
+    aside = turn.get("admin_aside")
+    if outcome == "concern" and isinstance(aside, str) and aside.strip():
+        aside_preview = aside if len(aside) <= _TEXT_DEBUG_MAX else aside[:_TEXT_DEBUG_MAX] + "…"
+        log.warning(
+            "contact estelle concern aside candidate=%s aside=%s",
+            astral_candidate_id,
+            aside_preview,
+        )
+
+    do_task_error = None
+    if isinstance(result, dict) and not result.get("success"):
+        do_task_error = result.get("error")
+
+    out = {
+        "ok": bool(turn.get("success")) and do_task_error is None,
+        "outcome": outcome,
+        "reply": reply if isinstance(reply, str) else None,
+        "admin_aside": aside if isinstance(aside, str) else None,
+        "skill_results": skill_results,
+        "slack_post": slack_post,
+        "error": do_task_error,
+    }
+
+    # h. Style D (debug=True only) — lengths/counts, not full blobs
+    if debug:
+        ident = (
+            astral_candidate_id
+            if isinstance(astral_candidate_id, str) and astral_candidate_id.strip()
+            else str(channel)
+        )
+        log.debug_index(
+            func="contact.run_contact_estelle_turn",
+            index=1,
+            total=1,
+            identifier=ident,
+            outcome=str(outcome or out.get("error") or "unknown"),
+        )
+        skill_ok = sum(1 for r in skill_results if isinstance(r, dict) and r.get("ok"))
+        reply_len = len(reply) if isinstance(reply, str) else 0
+        aside_len = len(aside) if isinstance(aside, str) else 0
+        slack_ok = None
+        if isinstance(slack_post, dict):
+            slack_ok = bool(slack_post.get("ok"))
+        log.debug_detail(
+            f"outcome={outcome!r} success={bool(turn.get('success'))} "
+            f"reply_len={reply_len} admin_aside_len={aside_len} "
+            f"skill_calls={len(calls)} skill_ok={skill_ok} slack_ok={slack_ok}"
+        )
+
+    return out
+
+
 def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
     """Route one Slack Events API payload into Contact (listen-gated)."""
     log = get_logger(__name__)
@@ -708,6 +917,22 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
             },
             debug=debug,
         )
+    # AST-1073: one Estelle turn after accept + resolve + inbound cache append.
+    if result.get("accepted") and isinstance(channel, str) and channel:
+        try:
+            turn_out = run_contact_estelle_turn(
+                channel=channel,
+                text=text,
+                thread_ts=event.get("thread_ts"),
+                message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                astral_candidate_id=result.get("astral_candidate_id"),
+                candidate_state=result.get("candidate_state"),
+                debug=debug,
+            )
+            result["estelle_turn"] = turn_out
+        except Exception as exc:
+            log.error("contact estelle turn failed: %s", exc, exc_info=True)
+            result["estelle_turn"] = {"ok": False, "error": str(exc)}
     if debug:
         preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
         log.debug_index(

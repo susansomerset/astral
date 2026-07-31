@@ -2854,6 +2854,26 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
+# Branches: turn-loop trim keys + optional skill_calls schema (AST-1073).
+class TestAst1073ContactEstelleTurnConfig:
+    def test_turn_context_trim_keys(self) -> None:
+        assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] == 40
+        assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] == 500
+        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+
+    def test_skill_calls_optional_on_chat_schema(self) -> None:
+        schema = cfg.TASK_CONFIG["contact_estelle_turn"]["response_schema"]
+        assert schema["reply"]["required"] is True
+        calls = schema["skill_calls"]
+        assert calls["required"] is False
+        assert calls["type"] == "list"
+        assert calls["items_schema"]["skill_key"]["required"] is True
+        assert calls["items_schema"]["fields"]["required"] is True
+        # stringify shows skill_calls example list
+        chat = json.loads(cfg.stringify_response_schema("contact_estelle_turn"))
+        assert "skill_calls" in chat["agent_payload"]
+
+
 class TestAst1074TopicMenuConfig:
     """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
 
