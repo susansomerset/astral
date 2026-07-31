@@ -508,12 +508,12 @@ Parse regression (Susan staging **`CLRAOCVK`** vs correct **`CLRRACOVK`**): **`d
 
 ### AST-740 · AST-734
 
-Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry; adds explicit `JOB_ARTIFACT_ENTRY_TASK_KEYS` for consult job-artifact dispatch hops (replaces phase-string probe). UI grouping is DB-only (**AST-738** / **AST-739**).
+Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry. **AST-740** originally added explicit `JOB_ARTIFACT_ENTRY_TASK_KEYS` for consult job-artifact hops; **AST-1111** deletes that frozenset (and the cover-letter carve-out wrapper) — chain membership is `agent_task.run_next` / §2.6.0 helpers. UI grouping is DB-only (**AST-738** / **AST-739**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | No `phase`/`seq` in `TASK_CONFIG` | `src/utils/config.py` | `TestAst740RemoveConfigGrouping::test_task_config_entries_lack_phase_and_seq` |
-| Artifact hop frozenset | `src/utils/config.py`, `src/core/consult.py` | `TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_membership` |
+| Artifact hop frozenset absent (**AST-1111**) | `src/utils/config.py` | `TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_absent`; **`TestAst1111JobArtifactEntryShadowDeleted`** |
 | Revised AST-520/504/505 config assertions | `tests/component/utils/test_config.py` | `TestAst520AnticipateScanTaskKey`, `TestAst504CompanySearchTermsConfig`, `TestAst505InflowDiscoveryConfig` |
 | Seed defaults without config phase | `scripts/migrations/backfill_task_grouping_metadata.py` | `TestAst738TaskGroupingMetadata` (revised unassigned defaults) |
 | API drops backward-compat `phase`/`seq` | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi` |
@@ -1867,6 +1867,31 @@ Profile Contact Information: `contact.slack_user_id` + `contact.slack_username` 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  -q
+```
+
+### AST-1111 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1111-anomaly-job-artifact-entry-task-keys`.
+
+Deletes dead `JOB_ARTIFACT_ENTRY_TASK_KEYS` and `build_artifacts_chain_task_keys()` (cover-letter frozenset carve-out) against statute `astral.dispatch.run-next-is-chain-authority`. No replacement membership set — §2.6.0 / `run_next` helpers remain authority. Does **not** own hop_task_keys (**AST-1112**) or craft_task_keys / boot SQL (**AST-1113**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Entry frozenset + wrapper absent | `src/utils/config.py` | **`TestAst1111JobArtifactEntryShadowDeleted`**; revised **`TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_absent`** |
+
+**Broken / obsolete (Betty revision):** **`TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_membership`**; **`TestAst844BuildArtifactsChainTaskKeys`** (config hop-registry frozenset).
+
+**Regression (required):** **AST-848** hop labels / claim helpers; **AST-849** dispatch-chain claim states (unchanged product path).
+
+**AST-1111** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1111JobArtifactEntryShadowDeleted \
+  tests/component/utils/test_config.py::TestAst740RemoveConfigGrouping \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
   -q
 ```
 
