@@ -105,3 +105,14 @@ approved_at: "2026-07-31"
 - **in-scope-only:** No Gmail remint, no Railway severity, no runner/Ruth/UI redesign.
 - **Statute AUTHORING:** active + Archie approved; no draft status in-repo.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`
+**Tip:** `927ce685`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `c9ed3be6` | GAZE_EMAIL_CONFIG seed auto_mode CLICK |
+| 2 | `93538a82` | reconcile shared gaze_email AUTO to CLICK |
+| 3 | `927ce685` | statute astral.dispatch.seed-auto-false + register |
