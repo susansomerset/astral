@@ -1792,7 +1792,6 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
-
 ### AST-1099 · AST-1091
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
@@ -1810,5 +1809,25 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  -q
+```
+
+### AST-1100 · AST-1091
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
+
+`JOBS_RECOMMENDED_ARTIFACT_TABS` `artifact_key`s remap to pin slots `job_resume` / `cover_letter` / `proposed_answers`. Resolve/hydrate: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tab key remap | `src/utils/config.py` | **`TestAst1100ArtifactTabPinKeys`** |
+
+**Broken / obsolete:** fixture `report_artifact_tabs` keys — see **`docs/test-bible/frontend/lib.md`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
   -q
 ```
