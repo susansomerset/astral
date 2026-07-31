@@ -396,3 +396,102 @@ class TestAst1075TopicMenuRoutes:
         )
         assert resp.status_code == 400
         assert "preamble not confirmed" in resp.get_json()["error"]
+
+
+class TestAst1097ArchiveActiveRoute:
+    """AST-1097: POST …/intake/sessions/active/archive — Start Over HTTP surface."""
+
+    _PATH = "/api/candidates/cand-1/intake/sessions/active/archive"
+
+    def test_requires_auth(self, intake_client: FlaskClient) -> None:
+        assert intake_client.post(self._PATH, json={}).status_code == 401
+
+    def test_missing_candidate_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda candidate_id: None)
+        resp = intake_client.post(
+            "/api/candidates/missing/intake/sessions/active/archive",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+        assert "not found" in resp.get_json()["error"]
+
+    def test_success_200_shape(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            lambda candidate_id: {
+                "archived_session_id": "sess-1",
+                "archived_at": "2026-07-31 12:00:00",
+                "intakes_old_count": 1,
+            },
+        )
+        resp = intake_client.post(self._PATH, json={}, headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body == {
+            "archived_session_id": "sess-1",
+            "archived_at": "2026-07-31 12:00:00",
+            "intakes_old_count": 1,
+        }
+
+    def test_no_active_session_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            MagicMock(side_effect=LookupError("no active intake session")),
+        )
+        resp = intake_client.post(self._PATH, json={}, headers=auth_headers)
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == "no active intake session"
+
+    def test_core_value_error_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Defense-in-depth: route pre-checks candidate; core ValueError still maps to 404.
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            MagicMock(side_effect=ValueError("Candidate not found: cand-1")),
+        )
+        resp = intake_client.post(self._PATH, json={}, headers=auth_headers)
+        assert resp.status_code == 404
+        assert "not found" in resp.get_json()["error"]
+
+    def test_after_archive_get_active_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            lambda candidate_id: {
+                "archived_session_id": "sess-1",
+                "archived_at": "2026-07-31 12:00:00",
+                "intakes_old_count": 1,
+            },
+        )
+        monkeypatch.setattr(intake_mod, "fetch_active_intake_session", lambda candidate_id: None)
+        assert intake_client.post(self._PATH, json={}, headers=auth_headers).status_code == 200
+        get_resp = intake_client.get(
+            "/api/candidates/cand-1/intake/sessions/active", headers=auth_headers,
+        )
+        assert get_resp.status_code == 404
+        assert get_resp.get_json()["error"] == "no active intake session"
