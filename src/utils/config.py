@@ -2427,11 +2427,12 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_resume",
         "nav_label": "Job Resume",
-        "artifact_key": "resume_content",
+        "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
     },
@@ -2445,7 +2446,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
         "tab_id": "artifact_application",
         "nav_label": "Application Questions",
-        "artifact_key": "application_responses",
+        "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
     },

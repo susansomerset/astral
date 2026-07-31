@@ -224,6 +224,61 @@ def pin_job_artifact_agent_data_id(
     return True
 
 
+_JOB_ARTIFACT_PIN_KEYS = ("job_resume", "cover_letter", "proposed_answers")
+
+
+def resolve_job_artifact_agent_data_body(
+    agent_data_id: Any,
+    *,
+    debug: bool = False,
+) -> Any:
+    """AST-1100: load RESPONSE body by pin id. Never writes. Blank/missing → None."""
+    dbg = get_logger(__name__, debug_flag=True) if debug else None
+
+    def _skip(reason: str) -> None:
+        if dbg is not None:
+            dbg.debug_detail(f"artifact_resolve skipped reason={reason}")
+
+    pin_id = str(agent_data_id).strip() if agent_data_id is not None else ""
+    if not pin_id:
+        _skip("empty_agent_data_id")
+        return None
+    row = database.get_agent_data(pin_id)
+    if not row:
+        _skip("missing_agent_data_row")
+        return None
+    text = row.get("block_data") or row.get("content") or ""
+    if not isinstance(text, str) or not text.strip():
+        _skip("empty_block_data")
+        return None
+    # Lazy: reuse agent parse (JSON / agent_payload unwrap) without import cycle at module load.
+    from src.core.agent import _parsed_response_from_stored_response_text
+
+    body = _parsed_response_from_stored_response_text(text, "")
+    if dbg is not None:
+        dbg.debug_detail(f"artifact_resolve agent_data_id={pin_id} recorded")
+    return body
+
+
+def hydrate_job_artifacts_for_display(
+    artifacts: Any,
+    *,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """AST-1100: shallow-copy artifacts; replace pin-slot strings with resolved bodies (no save)."""
+    if not isinstance(artifacts, dict):
+        return {}
+    out = dict(artifacts)
+    for key in _JOB_ARTIFACT_PIN_KEYS:
+        raw = out.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        body = resolve_job_artifact_agent_data_body(raw, debug=debug)
+        if body is not None:
+            out[key] = body
+    return out
+
+
 def _artifact_shape_required_keys(shape_name: str) -> List[str]:
     shape = (BUILD_CONFIG.get("artifact_shapes") or {}).get(shape_name) or {}
     return [

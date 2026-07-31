@@ -143,3 +143,9 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 | coat-check-never-store-empty | Resolve skips blank ids; hydrate does not write empties |
 | §3.3 import-direction | UI → core → data; lazy imports for cycles |
 | in-scope-only | Three UAT surfaces / three pin keys only |
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`  
+**Tip:** _(filled after push)_  
+**Built:** Stages 1–5 — tab remap to pin slots; `resolve_job_artifact_agent_data_body` + `hydrate_job_artifacts_for_display`; job GET hydrate; PUT aliases for `job_resume` / `proposed_answers`; builder pin resolve; FE visibility helpers. Tests/bible deferred to Betty.
