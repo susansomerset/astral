@@ -112,9 +112,23 @@ No conflicts requiring `conf-!!-NONE`.
 | Ticket | AST-1095 |
 | Publish ref | `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra` |
 | Built | `e47d94f4` (rebuild on `origin/ftr`; prior `a5d8c1a2`) |
-| Notes | Stage 1 — uniqueness `email_list_paths` email pool + gate/initiate coerce; websites-only `list_paths`. FIX-UAT — no Radia code-rubric pass. |
+| Notes | Stage 1 intent OK; Radia **FIX-NOW** — out-of-scope hunks on tip (see Resolution / Linear). |
 
 ## Resolution
 
 **Date:** 2026-07-31  
 **Outcome:** clean (FIX-UAT) — Betty manifest green (17 passed); no Radia fix-now; publish tip rebuilt on `origin/ftr` without pull-merge ancestry.
+
+### Radia — code-rubric.v1
+
+`[code-rubric] revision=1` · **Overall:** FIX-NOW
+
+**What’s solid**
+- Intended Stage 1 shape is present: uniqueness `email_list_paths` by identity from lookup; websites-only `list_paths`; gate collect/dedupe/cross walk email list under email compare; initiate coerce before gate.
+
+**Issues (fix-now)**
+- `code(AST-1095)` vs `origin/ftr` also lands unrelated AST-1085/1087–1090 / DATA_SHAPES / full-name / craft-rubric hunks outside Files Changed. Strip to uniqueness + minimal `extra_emails` prerequisites (or land AST-1092 on ftr first, then redo a clean 1095 tip).
+- Plan excluded `get_candidate_id_for_query` edits; tip still expands bind via `email_list_paths` — revert unless scope is expanded.
+
+**Recommended actions**
+- Ada `resolve-child`: rewrite publish tip to plan Files Changed only; re-run Betty as needed; do not treat premature Resolution “clean” as review sign-off.
