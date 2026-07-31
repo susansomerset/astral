@@ -170,3 +170,12 @@ On the candidate contact **save** path, apply within-candidate dedupe and cross-
 | data-raises-caller-logs | Core raises `ValueError`; UI already logs/surfaces |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review
+
+| Field | Value |
+| -- | -- |
+| Ticket | AST-1080 |
+| Publish ref | `origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` |
+| Built | `a80e51c5c3e233afea30d0b73331072e8f0f2535` |
+| Notes | Stage 1 — within collapse + cross hard-fail on `save_candidate_data` / initiate paths via AST-1079 config. |
