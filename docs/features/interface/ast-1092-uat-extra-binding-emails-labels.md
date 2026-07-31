@@ -122,3 +122,25 @@ UAT fix: rename Profile Contact email field labels to purpose names, and let a c
 **Built:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels` @ `766cb39e8eb4772919282a589cc507c6bb59c8de`
 
 Stages 1–3: `extra_emails` in library + lookup `email_list_paths` + uniqueness `list_paths`; Profile Resume/Messages labels + `string_list`; save coerce mirrors websites; bind expands list emails only (not websites); Profile load/remap normalizes `extra_emails` to `string[]`. Tests deferred to Betty.
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1092
+**Publish ref tip at review:** `46d2ae0b1dd5ac6a6676410ec9c4446eebe4327f`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stages 1–3: config vocabulary (`extra_emails`, `email_list_paths`, uniqueness `list_paths`, Resume/Messages labels, shape `string_list`); save coerce shared with websites; bind expands list emails only (explicitly not websites); Profile normalize mirrors websites pattern.
+- Import-time asserts keep bind list paths ⊆ uniqueness list paths and `contact_keys`.
+- Boundaries held: no Admin expand, no websites-as-email, no new routes.
+
+### Findings
+
+None.
+
+### Recommended actions
+
+- Implementer: none for product; proceed resolve-child → User Testing.
