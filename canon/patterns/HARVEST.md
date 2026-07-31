@@ -28,5 +28,6 @@ Supporting harvest packages (also citable):
 | create (AST-969) | `pattern.config.config-block` | config | `config/pattern.config.config-block.md` | CODE_RULES §2.1 | AC: new config block |
 | create (AST-969) | `pattern.layers.import-discipline` | layers | `layers/pattern.layers.import-discipline.md` | CODE_RULES §2.5 / §3.3 | supporting |
 | create (AST-969) | `pattern.ui.admin-endpoint` | ui | `ui/pattern.ui.admin-endpoint.md` | CODE_RULES §2.9 / §3.2 | AC: new admin endpoint |
+| create (AST-1110) | `pattern.dispatch.run-next-chain-authority` | dispatch | `dispatch/pattern.dispatch.run-next-chain-authority.md` | AST-1109 | proposed — run_next chain authority; not yet Archie-approved |
 
 Propose→approve lifecycle prose lives in [AUTHORING.md](AUTHORING.md). This ticket exercised it once on `pattern.state.entity-state-transitions` (Stage 2 proposed → Stage 3 approved).

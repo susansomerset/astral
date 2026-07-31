@@ -16,7 +16,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 1,
-    "task_name": "Anticipate Scan"
+    "task_name": "anticipate_scan"
   },
   {
     "task_key_uuid": "120fe030-1f98-476b-a363-b0e24ae615b0",
@@ -35,7 +35,7 @@
     "task_group_order": "1000",
     "task_group_name": "Candidate Intake",
     "task_seq": 3,
-    "task_name": "Request Artifact Build"
+    "task_name": "intake_build_request"
   },
   {
     "task_key_uuid": "15ed451b-8e21-4e10-82ed-533b737448bd",
@@ -54,7 +54,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 1,
-    "task_name": "Gaze For Jobs"
+    "task_name": "gaze"
   },
   {
     "task_key_uuid": "19ff1048-8146-433e-87a2-8d645bec4515",
@@ -73,7 +73,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 10,
-    "task_name": "Propose Application Responses"
+    "task_name": "propose_application_responses"
   },
   {
     "task_key_uuid": "20b3eba4-97d5-47a1-8eb9-e0263da8b612",
@@ -92,7 +92,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 5,
-    "task_name": "Check Job Resume"
+    "task_name": "check_job_resume"
   },
   {
     "task_key_uuid": "29dbed0b-e6f6-4feb-a59d-72821871006c",
@@ -111,7 +111,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 13,
-    "task_name": "Craft Do Rubric"
+    "task_name": "craft_do_rubric"
   },
   {
     "task_key_uuid": "38b24896-cb8f-46bd-93b8-45dc9ed938c9",
@@ -130,7 +130,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 8,
-    "task_name": "Parse Job List"
+    "task_name": "parse_job_list"
   },
   {
     "task_key_uuid": "3baf4afa-74e3-49ae-87c2-f2aff78a6e29",
@@ -149,7 +149,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 12,
-    "task_name": "Craft Get Rubric"
+    "task_name": "craft_get_rubric"
   },
   {
     "task_key_uuid": "415015f9-9e5b-46e1-ae3d-e8868b3f4a1b",
@@ -168,7 +168,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 3,
-    "task_name": "Craft Prefilter Rubric"
+    "task_name": "craft_prefilter_rubric"
   },
   {
     "task_key_uuid": "416605b1-8d73-472d-8410-85f18bcf2040",
@@ -187,7 +187,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 2,
-    "task_name": "Vet Inflow Discovery"
+    "task_name": "vet_inflow_discovery"
   },
   {
     "task_key_uuid": "45d0920f-6b0a-4e4c-be15-07732e8ff5e9",
@@ -206,7 +206,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 3,
-    "task_name": "Fetch Job Description"
+    "task_name": "fetch_jd"
   },
   {
     "task_key_uuid": "52aa0d8f-bad7-471f-ae0f-965a1dfffbae",
@@ -225,7 +225,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 4,
-    "task_name": "Draft Job Resume"
+    "task_name": "draft_job_resume"
   },
   {
     "task_key_uuid": "5f69640f-e2c0-4c9b-b948-a1ba2923e65a",
@@ -244,7 +244,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 7,
-    "task_name": "Select Job Page"
+    "task_name": "select_job_page"
   },
   {
     "task_key_uuid": "65d22f2c-0251-4c4d-9473-b1ca41602822",
@@ -263,7 +263,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 4,
-    "task_name": "Fetch Website"
+    "task_name": "fetch_website"
   },
   {
     "task_key_uuid": "66ab6b7c-31ac-4413-80ac-4f7e48a1f36c",
@@ -282,7 +282,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 11,
-    "task_name": "Craft Jobdesc Rubric"
+    "task_name": "craft_jobdesc_rubric"
   },
   {
     "task_key_uuid": "69a1ec8f-a980-4189-ae08-8faec53f786a",
@@ -301,7 +301,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 8,
-    "task_name": "Grade Job: Like"
+    "task_name": "grade_like"
   },
   {
     "task_key_uuid": "6e5c7fa2-787f-47c7-95ea-2cece7a52fc9",
@@ -320,7 +320,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 9,
-    "task_name": "Analysis Upshot"
+    "task_name": "analysis_upshot"
   },
   {
     "task_key_uuid": "6e71fc8f-2cba-452e-bdd0-c8e2906eb6d7",
@@ -339,7 +339,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 9,
-    "task_name": "Recheck No Openings"
+    "task_name": "recheck_no_openings"
   },
   {
     "task_key_uuid": "77ac0379-1b69-4137-817e-7a2281f68b71",
@@ -358,7 +358,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 3,
-    "task_name": "Advise Job Resume"
+    "task_name": "advise_job_resume"
   },
   {
     "task_key_uuid": "78cdfa52-d898-4403-8c06-2d0a4b3c4fc8",
@@ -377,7 +377,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 5,
-    "task_name": "Prefilter Company"
+    "task_name": "prefilter_company"
   },
   {
     "task_key_uuid": "79f96ce9-408a-4a8b-8a46-bb651ff192b6",
@@ -396,7 +396,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 6,
-    "task_name": "Grade Job: Get"
+    "task_name": "grade_get"
   },
   {
     "task_key_uuid": "a8c3e1f2-4b5d-4e6a-9c0d-1f2a3b4c5d6e",
@@ -415,7 +415,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 7,
-    "task_name": "Fetch Culture Pages"
+    "task_name": "fetch_culture_pages"
   },
   {
     "task_key_uuid": "812df76b-5d41-485c-81e6-d18cbba8173f",
@@ -434,7 +434,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 7,
-    "task_name": "Draft Cover Letter"
+    "task_name": "draft_cover_letter"
   },
   {
     "task_key_uuid": "81565cba-6773-4339-b8a2-1b6b7daaba93",
@@ -453,7 +453,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 2,
-    "task_name": "Craft Company Search Terms"
+    "task_name": "craft_company_search_terms"
   },
   {
     "task_key_uuid": "81f58059-d15a-4996-906f-ab2347240fad",
@@ -472,7 +472,7 @@
     "task_group_order": "1000",
     "task_group_name": "Candidate Intake",
     "task_seq": 2,
-    "task_name": "Candidate Response"
+    "task_name": "intake_candidate_response"
   },
   {
     "task_key_uuid": "88495334-5071-4e8b-8d9f-7be43e98b04e",
@@ -491,7 +491,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 1,
-    "task_name": "Inflow Discovery"
+    "task_name": "inflow_discovery"
   },
   {
     "task_key_uuid": "8916bc65-2fb2-4c52-b7ab-84c3429fb7dc",
@@ -510,7 +510,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 10,
-    "task_name": "Craft Joblist Rubric"
+    "task_name": "craft_joblist_rubric"
   },
   {
     "task_key_uuid": "8bbae02e-19a0-4816-8a90-2d5af1a9b753",
@@ -529,7 +529,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 6,
-    "task_name": "Finalize Job Resume"
+    "task_name": "finalize_job_resume"
   },
   {
     "task_key_uuid": "9accef2a-0076-4e5f-b81b-0c58b8a45193",
@@ -548,7 +548,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 6,
-    "task_name": "Fetch Job Pages"
+    "task_name": "fetch_job_pages"
   },
   {
     "task_key_uuid": "bb6e0afa-0a6a-4b31-8dca-9b585d4c76ce",
@@ -567,7 +567,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 2,
-    "task_name": "Contemplate Job"
+    "task_name": "contemplate_job"
   },
   {
     "task_key_uuid": "c3a0ea1e-9c5d-448b-8431-97d356975257",
@@ -586,7 +586,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 14,
-    "task_name": "Craft Like Rubric"
+    "task_name": "craft_like_rubric"
   },
   {
     "task_key_uuid": "c69f12ff-2dea-4889-83e3-7b5c485dd006",
@@ -605,7 +605,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 5,
-    "task_name": "Grade Job: Do"
+    "task_name": "grade_do"
   },
   {
     "task_key_uuid": "d2a27b21-ce50-436b-bf95-4337b23f81b2",
@@ -624,7 +624,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 5,
-    "task_name": "Craft Resume Base"
+    "task_name": "craft_resume_base"
   },
   {
     "task_key_uuid": "da070eb9-52d0-4d69-9073-2acb9ec8ca1a",
@@ -643,7 +643,7 @@
     "task_group_order": "1000",
     "task_group_name": "Candidate Intake",
     "task_seq": 1,
-    "task_name": "Initiate Candidate"
+    "task_name": "intake_initiate_candidate"
   },
   {
     "task_key_uuid": "e6063761-953c-44d9-8cfa-118936601b0d",
@@ -662,7 +662,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 8,
-    "task_name": "Check Cover Letter"
+    "task_name": "check_cover_letter"
   },
   {
     "task_key_uuid": "ec3ab1ae-926e-476f-9f56-6cec43a00057",
@@ -681,7 +681,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 2,
-    "task_name": "Grade Job: Listing"
+    "task_name": "qualify_job_listings"
   },
   {
     "task_key_uuid": "ee6cadf7-7623-4dc7-ab93-29619e3cfc3b",
@@ -700,7 +700,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 4,
-    "task_name": "Grade Job: Description"
+    "task_name": "evaluate_jd"
   },
   {
     "task_key_uuid": "f5ec8478-0aeb-4e6d-b78b-c9afd5f84bfd",
@@ -719,7 +719,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 9,
-    "task_name": "Finalize Cover Letter"
+    "task_name": "finalize_cover_letter"
   },
   {
     "task_key_uuid": "8080f2cd-a895-4554-8b7d-1e1e0d56fdfa",
@@ -737,7 +737,7 @@
     "task_group_order": "1",
     "task_group_name": "Candidate Preamble",
     "task_seq": 1,
-    "task_name": "Validate Preamble Answer",
+    "task_name": "preamble_validate_response",
     "updated_at": "2026-07-28 19:11:40"
   },
   {
@@ -757,7 +757,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 6,
-    "task_name": "Simple Resume Parse"
+    "task_name": "simple_resume_parse"
   },
   {
     "task_key_uuid": "613d3205-83aa-4170-b6c9-edb71250137b",
@@ -776,7 +776,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 10,
-    "task_name": "Grade Job: Like (Meteorite)"
+    "task_name": "meteorite_like"
   },
   {
     "task_key_uuid": "dd589bcb-a2e1-4ac4-962f-f700cd3dad46",
@@ -795,7 +795,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 11,
-    "task_name": "Analysis Upshot (Meteorite)"
+    "task_name": "meteorite_upshot"
   },
   {
     "task_key": "qualify_meteorite",
@@ -804,7 +804,7 @@
     "agent_id": "college_intern_ruth",
     "task_group_order": "4000",
     "task_group_name": "Job Review",
-    "task_name": "Qualify Meteorite",
+    "task_name": "qualify_meteorite",
     "task_seq": 2.5,
     "system_prompt": "",
     "cache_prompt": "## INSTRUCTIONS\n\nEach item is a METEORITE job that already holds raw or visible text (email body, recruiter forward, or Playwright-fetched page text) \u2014 NOT a normal job-board listing scrape.\n\nReturn JSON with a jobs list. For each astral_job_id provide:\n- company_job_id: employer external job UUID (for dedupe)\n- job_title: authoritative title\n- job_link: primary job URL\n- jd_text: authoritative visible job-description text\n\nDo not emit grade vectors. Usable extracts = success; bogus/404/unusable pages are apply-layer fails.\n",
@@ -833,7 +833,7 @@
     "task_group_order": "2000",
     "task_group_name": "Topic Menu",
     "task_seq": 1,
-    "task_name": "Topic Menu Preamble Confirm"
+    "task_name": "topic_menu_preamble_confirm"
   },
   {
     "task_key_uuid": "e6a74312-7307-42bd-88d2-e81c0c5c6f28",
@@ -852,7 +852,7 @@
     "task_group_order": "2000",
     "task_group_name": "Topic Menu",
     "task_seq": 2,
-    "task_name": "Generate Topic Menu"
+    "task_name": "topic_menu_generate"
   },
   {
     "task_key_uuid": "59eb6a1d-0988-414b-8a10-34375eba03e3",
@@ -871,7 +871,7 @@
     "task_group_order": "6000",
     "task_group_name": "Contact Estelle",
     "task_seq": 1,
-    "task_name": "Contact Estelle Turn"
+    "task_name": "contact_estelle_turn"
   },
   {
     "task_key_uuid": "577b9ffb-d682-4569-8dd5-0cea0c6aa057",
@@ -889,7 +889,26 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 2.4,
-    "task_name": "Parse Meteorite Email",
+    "task_name": "parse_meteorite_email",
     "updated_at": "2026-07-31 02:02:16"
+  },
+  {
+    "task_key_uuid": "519eba14-091c-45d2-9fa7-ff94b42bf9cf",
+    "task_key": "gaze_email",
+    "current": 1,
+    "agent_id": "n/a",
+    "user_prompt": "",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-31 17:50:00",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 2.3,
+    "task_name": "gaze_email"
   }
 ]

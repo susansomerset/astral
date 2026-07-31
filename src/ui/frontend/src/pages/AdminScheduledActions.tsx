@@ -50,7 +50,7 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
 
 interface DispatchTask {
   id: number
-  candidate_id: string
+  candidate_id: string | null
   task_key: string
   entity_type: string | null
   trigger_state?: string | null
@@ -66,6 +66,7 @@ interface DispatchTask {
   last_run_at: string | null
   updated_at: string | null
   available_count: number
+  always_visible_under_avail_gt0?: boolean
 }
 
 interface ThreadEntry {
@@ -243,7 +244,7 @@ function ScheduledPhaseTable({
                   </span>
                 </td>
                 <td>
-                  <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
+                  <ListTableTruncatedCell text={row.candidate_id || "—"} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={formatAvailableCount(row.available_count)} maxChars={truncateChars} />
@@ -431,7 +432,9 @@ export default function ScheduledActions() {
     if (debugFilter === "on") filtered = filtered.filter(r => !!r.debug)
     if (debugFilter === "off") filtered = filtered.filter(r => !r.debug)
     if (availGtZeroFilter === "gt0") {
-      filtered = filtered.filter(r => (r.available_count ?? 0) > 0)
+      filtered = filtered.filter(
+        r => (r.available_count ?? 0) > 0 || !!r.always_visible_under_avail_gt0,
+      )
     }
     if (freqFilter !== "") filtered = filtered.filter(r => (r.freq_hrs ?? 0) === Number(freqFilter))
     if (minCountFilter !== "") filtered = filtered.filter(r => r.min_count === Number(minCountFilter))
@@ -582,7 +585,7 @@ export default function ScheduledActions() {
     setEditRow(row)
     const cfg = allTaskKeys[row.task_key]
     setForm({
-      candidate_id: row.candidate_id,
+      candidate_id: row.candidate_id ?? "",
       task_key: row.task_key,
       trigger_state: row.trigger_state || cfg?.trigger_state || "",
       freq_hrs: String(row.freq_hrs ?? 0),

@@ -63,6 +63,7 @@ from src.utils.config import (
     dispatch_entity_state_registry,
     ADMIN_CONFIG,
     admin_hidden_dispatch_task_keys,
+    admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
@@ -878,6 +879,9 @@ def list_dtasks():
                 exc,
             )
             row["available_count"] = 0
+        row["always_visible_under_avail_gt0"] = (
+            row.get("task_key") in admin_always_visible_under_avail_gt0_dispatch_task_keys()
+        )
     hidden = admin_hidden_dispatch_task_keys()
     rows = [r for r in rows if r.get("task_key") not in hidden]
     if request.args.get("req_dict"):

@@ -3870,14 +3870,56 @@ def _patch_entity_latest_refs(monkeypatch: pytest.MonkeyPatch, refs: List[Dict[s
         lambda et, eid: list(refs),
     )
 
+
+def _patch_resume_run_next_parents(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AST-1112: parent resolution reads live agent_task.run_next — not hop_task_keys."""
+    chain = {
+        "anticipate_scan": "contemplate_job",
+        "contemplate_job": "advise_job_resume",
+        "advise_job_resume": "draft_job_resume",
+        "draft_job_resume": "check_job_resume",
+        "check_job_resume": "finalize_job_resume",
+        "finalize_job_resume": "",
+    }
+
+    def _gat(tk: str) -> Dict[str, Any]:
+        if tk not in chain:
+            return {}
+        return {"run_next": chain[tk]}
+
+    monkeypatch.setattr(agent_mod, "get_agent_task", _gat)
+
+
 class TestAst597MidChainResumeHydrationAndTransitions:
     """AST-597 / AST-803: agent_data caller hydration; per-hop compound transitions retired."""
 
-    def test_resume_artifact_parent_hop_key_first_hop_none(self) -> None:
-        assert agent_mod._resume_artifact_parent_hop_key("anticipate_scan") is None
+    def test_parent_hop_task_key_first_hop_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_resume_run_next_parents(monkeypatch)
+        assert agent_mod._parent_hop_task_key_for_child("anticipate_scan") is None
 
-    def test_resume_artifact_parent_hop_key_mid_chain(self) -> None:
-        assert agent_mod._resume_artifact_parent_hop_key("draft_job_resume") == "advise_job_resume"
+    def test_parent_hop_task_key_mid_chain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_resume_run_next_parents(monkeypatch)
+        assert (
+            agent_mod._parent_hop_task_key_for_child("draft_job_resume")
+            == "advise_job_resume"
+        )
+
+    def test_parent_hop_task_key_ambiguous_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod, "get_task_keys", lambda: ["a", "b", "draft_job_resume"]
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent_task",
+            lambda tk: {"run_next": "draft_job_resume"} if tk in ("a", "b") else {},
+        )
+        assert agent_mod._parent_hop_task_key_for_child("draft_job_resume") is None
 
     def test_parsed_response_from_stored_unwraps_agent_payload(self) -> None:
         raw = json.dumps({"agent_payload": ["line-a", "line-b"]})
@@ -3901,7 +3943,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         monkeypatch.setattr(
             agent_mod,
             "_block_text_by_type",
-            lambda blocks, typ: "Validation failed: schema",
+            lambda blocks, typ, debug=False: "Validation failed: schema",
         )
         assert (
             agent_mod._hop_agent_ref_for_parent("job", "job-1", "advise_job_resume", None)
@@ -3921,13 +3963,16 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         monkeypatch.setattr(
             agent_mod,
             "_block_text_by_type",
-            lambda blocks, typ: "upstream advice",
+            lambda blocks, typ, debug=False: "upstream advice",
         )
         ref = agent_mod._hop_agent_ref_for_parent("job", "job-1", "advise_job_resume", None)
         assert ref is not None
         assert ref["prompt_blocks"][0]["id"] == "good"
 
-    def test_hydrate_resume_entry_chain_context_first_hop_empty(self) -> None:
+    def test_hydrate_resume_entry_chain_context_first_hop_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_resume_run_next_parents(monkeypatch)
         ctx, err = agent_mod._hydrate_resume_entry_chain_context("job-1", "anticipate_scan")
         assert err is None
         assert ctx == {}
@@ -3935,6 +3980,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
     def test_hydrate_resume_entry_chain_context_builds_agent_data_tokens(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _patch_resume_run_next_parents(monkeypatch)
         job = {"astral_job_id": "job-hydrate"}
         monkeypatch.setattr(
             "src.core.tracker.get_job",
@@ -3976,6 +4022,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
     def test_hydrate_resume_entry_chain_context_missing_upstream(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _patch_resume_run_next_parents(monkeypatch)
         monkeypatch.setattr(
             "src.core.tracker.get_job",
             lambda jid: {"astral_job_id": jid},
@@ -4108,7 +4155,7 @@ class TestAst769GeneralCallerHydration:
         monkeypatch.setattr(
             agent_mod,
             "_block_text_by_type",
-            lambda blocks, typ: '{"selected_page": 1}',
+            lambda blocks, typ, debug=False: '{"selected_page": 1}',
         )
         entity = {
             "state": "JOBLIST_IDENTIFIED",

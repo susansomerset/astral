@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Retarget artifact-chain dispatch_task rows off the chain's output state.
+"""Retarget cover-letter dispatch_task rows off the chain's output state.
 
 CANDIDATE_REVIEW is the BUILD_ARTIFACTS chain's graduation target, so rows that claim
-on it never match a dispatch-ready job. Run once per environment; idempotent.
+on it never match a dispatch-ready job. Cover-letter hops (no task_type=CHAIN yet)
+are the ones historically defaulted wrong; resume hops already claimed BUILD_ARTIFACTS.
+Run once per environment; idempotent.
 """
 
 import sqlite3
@@ -11,14 +13,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.utils.config import (
-    ASTRAL_CONFIG,
-    BUILD_ARTIFACTS_BASE_STATE,
-    JOB_ARTIFACT_ENTRY_TASK_KEYS,
-)
+from src.utils.config import ASTRAL_CONFIG, BUILD_ARTIFACTS_BASE_STATE
 
 dry_run = "--apply" not in sys.argv
-task_keys = sorted(JOB_ARTIFACT_ENTRY_TASK_KEYS | {"draft_cover_letter"})
+# Cover-letter hops only — resume hops already used BUILD_ARTIFACTS as trigger.
+task_keys = (
+    "draft_cover_letter",
+    "check_cover_letter",
+    "finalize_cover_letter",
+    "propose_application_responses",
+)
 placeholders = ",".join("?" for _ in task_keys)
 params = (*task_keys, "CANDIDATE_REVIEW")
 
@@ -32,7 +36,7 @@ for r in rows:
     print(f"  id={r['id']} {r['candidate_id']}/{r['task_key']} {r['trigger_state']} -> {BUILD_ARTIFACTS_BASE_STATE}")
 
 if not rows:
-    print("No artifact-chain rows on CANDIDATE_REVIEW — nothing to do.")
+    print("No cover-letter rows on CANDIDATE_REVIEW — nothing to do.")
 elif dry_run:
     print(f"\n{len(rows)} row(s) would change. Re-run with --apply to commit.")
 else:

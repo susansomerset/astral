@@ -184,3 +184,46 @@ Repo **`agent_task.json`** gains **`parse_meteorite_email`** (Ruth email-HTML pa
   tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
   -q
 ```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+Repo **`agent_task.json`** gains empty-prompt **`gaze_email`** Job Review shell (`task_seq` 2.3); AST-756 fixture byte-locked. Catalog frozenset **47 → 48**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog row + fixture lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1106GazeEmailCatalogRow`**; revised **`TestAst786AgentTaskRepoJsonSeed`** (48) |
+
+**Broken / obsolete:** AST-786 **47**-row asserts → **48**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  -q
+```
+
+### AST-1107 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1107-uat-admin-task-name-should-equal-task-key-for-now`.
+
+Temporary UAT clarity: every current `agent_task.task_name` equals that row’s `task_key` (repo JSON + AST-756 fixture). Grouping / prompts / `task_key` identifiers unchanged. UI already renders `task_name || task_key`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog label rewrite + fixture lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1107TaskNameEqualsTaskKey`**; revised catalog row asserts that pinned friendly labels |
+
+**Broken / obsolete:** Friendly `task_name` asserts (Qualify Meteorite, Parse Meteorite Email, Topic Menu…, etc.) → `task_name == task_key`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1107TaskNameEqualsTaskKey \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  -q
+```
+

@@ -232,7 +232,11 @@ Every company and every job has a `state`. Entities are processed in batches bas
 
 **Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.0-run-next-carveout-detail`
 
+**Statute:** `astral.dispatch.run-next-is-chain-authority`
+
 Within a **single** `do_task` invocation, when `ctx` carries `dispatch_trigger_state`, successful hops may write runtime DB labels `{trigger}.{task_key}` and recurse via `run_next` until the terminal hop. Terminal graduation to a registered `JOB_STATES` key happens in the same invocation when `dispatch_chain_graduate_on_terminal` is true and the last hop's `run_next` is empty. Runtime hop labels are **not** `JOB_STATES` registry keys; batch claim may accept them (see `is_valid_job_batch_claim_state` in `config.py`). This carve-out does **not** apply to roster/consult score transitions (`render_verdict`) or company batches.
+
+Config must not define parallel hop-membership or hop-order lists that restate chains already encoded in `agent_task.run_next` — see statute `astral.dispatch.run-next-is-chain-authority`.
 
 State transitions are config-driven and managed by the core layer only. The data layer (`database.py`) and its core wrappers (`tracker.py`, `roster.py`) accept the target state as a parameter from the caller and perform the database update — they do not decide what the next state should be.
 

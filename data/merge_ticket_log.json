@@ -4,19 +4,19 @@
     "recorded_at": "2026-07-31T00:04:37Z"
   },
   {
-    "ticket_id": "AST-1087",
-    "recorded_at": "2026-07-31T02:52:34Z"
-  },
-  {
-    "ticket_id": "AST-1096",
-    "recorded_at": "2026-07-31T04:58:55Z"
-  },
-  {
     "ticket_id": "AST-1043",
     "recorded_at": "2026-07-31T06:09:53Z"
   },
   {
     "ticket_id": "AST-1091",
     "recorded_at": "2026-07-31T06:17:21Z"
+  },
+  {
+    "ticket_id": "AST-1102",
+    "recorded_at": "2026-07-31T06:18:14Z"
+  },
+  {
+    "ticket_id": "AST-1087",
+    "recorded_at": "2026-07-31T18:28:37Z"
   }
 ]

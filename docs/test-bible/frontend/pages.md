@@ -1386,3 +1386,25 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1104|AST-894|AST-887|AST-893|AST-751|AST-768|AST-785|fmtTime|Time"
 ```
 
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
+
+| # | Area | Source | Component tests |
+| --- | --- | --- | --- |
+| 1 | Routed page Avail gt0 carve-out (§6c) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions_AST1106.test.tsx`** — **`AST-1106 gaze_email always visible under Avail gt0`** (2 cases) |
+| 2 | Regression: default gt0 still hides non-flag zero-avail | same | case 2 in that file; re-run **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
+
+**Broken / obsolete:** none (predicate widened via API flag only).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1106|AST-887|AST-894"
+```
+

@@ -508,12 +508,12 @@ Parse regression (Susan staging **`CLRAOCVK`** vs correct **`CLRRACOVK`**): **`d
 
 ### AST-740 · AST-734
 
-Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry; adds explicit `JOB_ARTIFACT_ENTRY_TASK_KEYS` for consult job-artifact dispatch hops (replaces phase-string probe). UI grouping is DB-only (**AST-738** / **AST-739**).
+Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry. **AST-740** originally added explicit `JOB_ARTIFACT_ENTRY_TASK_KEYS` for consult job-artifact hops; **AST-1111** deletes that frozenset (and the cover-letter carve-out wrapper) — chain membership is `agent_task.run_next` / §2.6.0 helpers. UI grouping is DB-only (**AST-738** / **AST-739**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | No `phase`/`seq` in `TASK_CONFIG` | `src/utils/config.py` | `TestAst740RemoveConfigGrouping::test_task_config_entries_lack_phase_and_seq` |
-| Artifact hop frozenset | `src/utils/config.py`, `src/core/consult.py` | `TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_membership` |
+| Artifact hop frozenset absent (**AST-1111**) | `src/utils/config.py` | `TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_absent`; **`TestAst1111JobArtifactEntryShadowDeleted`** |
 | Revised AST-520/504/505 config assertions | `tests/component/utils/test_config.py` | `TestAst520AnticipateScanTaskKey`, `TestAst504CompanySearchTermsConfig`, `TestAst505InflowDiscoveryConfig` |
 | Seed defaults without config phase | `scripts/migrations/backfill_task_grouping_metadata.py` | `TestAst738TaskGroupingMetadata` (revised unassigned defaults) |
 | API drops backward-compat `phase`/`seq` | `src/ui/api/api_admin.py` | `TestAst740NoConfigPhaseSeqInApi`; revised `TestAst738TaskGroupingApi` |
@@ -1851,3 +1851,101 @@ Profile Contact Information: `contact.slack_user_id` + `contact.slack_username` 
   tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
   -q
 ```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+`ADMIN_CONFIG["always_visible_under_avail_gt0_dispatch_task_keys"]` seeded from `GAZE_EMAIL_CONFIG["task_key"]`; helper `admin_always_visible_under_avail_gt0_dispatch_task_keys()`. API stamp + SA filter: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Avail-gt0 always-visible keys | `src/utils/config.py` | **`TestAst1106AlwaysVisibleUnderAvailGt0`** |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  -q
+```
+
+### AST-1111 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1111-anomaly-job-artifact-entry-task-keys`.
+
+Deletes dead `JOB_ARTIFACT_ENTRY_TASK_KEYS` and `build_artifacts_chain_task_keys()` (cover-letter frozenset carve-out) against statute `astral.dispatch.run-next-is-chain-authority`. No replacement membership set — §2.6.0 / `run_next` helpers remain authority. Does **not** own hop_task_keys (**AST-1112**) or craft_task_keys / boot SQL (**AST-1113**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Entry frozenset + wrapper absent | `src/utils/config.py` | **`TestAst1111JobArtifactEntryShadowDeleted`**; revised **`TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_absent`** |
+
+**Broken / obsolete (Betty revision):** **`TestAst740RemoveConfigGrouping::test_job_artifact_entry_task_keys_membership`**; **`TestAst844BuildArtifactsChainTaskKeys`** (config hop-registry frozenset).
+
+**Regression (required):** **AST-848** hop labels / claim helpers; **AST-849** dispatch-chain claim states (unchanged product path).
+
+**AST-1111** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1111JobArtifactEntryShadowDeleted \
+  tests/component/utils/test_config.py::TestAst740RemoveConfigGrouping \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  -q
+```
+
+### AST-1112 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.
+
+Retires `BUILD_CONFIG.resume_artifact_chain.hop_task_keys` / `_RESUME_ARTIFACT_HOP_TASK_KEYS` / `resume_artifact_hop_task_keys()` as chain-membership authority. Resume/artifact parent resolution uses `_parent_hop_task_key_for_child` (live `agent_task.run_next`). Legacy compound labels keep `TASK_CONFIG` membership via `legacy_build_artifacts_hop`. Does **not** own `JOB_ARTIFACT_ENTRY_TASK_KEYS` (**AST-1111**) or craft_task_keys / boot SQL (**AST-1113**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop-list authority absent | `src/utils/config.py` | **`TestAst1112ResumeHopTaskKeysShadowDeleted`** |
+| Parent via `run_next` (+ ambiguous → None) | `src/core/agent.py` | **`TestAst597MidChainResumeHydrationAndTransitions::test_parent_hop_task_key_*`** |
+| Hydrate uses run_next parents | `src/core/agent.py` | revised **`test_hydrate_resume_entry_chain_context_*`** (same class) |
+| Flat BUILD_ARTIFACTS + CHAIN triggers | `src/utils/config.py` | **`TestAst803FlatBuildArtifactsChainDispatch`** (unchanged surface; no hop-list helper) |
+
+**Broken / obsolete (Betty revision):** **`_resume_artifact_parent_hop_key`** tests; any assert on `resume_artifact_hop_task_keys` / `hop_task_keys` / `_RESUME_ARTIFACT_HOP_TASK_KEYS`.
+
+**Regression (required):** **AST-848** hop labels; **AST-849** claim states; **AST-855** dispatch-chain hop debug (ctx path — not config hop tuple).
+
+**AST-1112** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1112ResumeHopTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  -q
+```
+
+### AST-1113 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
+
+Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as craft succession authority; singular `craft_task_key` entry only. Walk via `_current_agent_task_run_next` with `suppress_run_next`. Boot migration confirm/corrects craft `run_next` links. Does **not** own JOB_ARTIFACT_ENTRY (**AST-1111**) or hop_task_keys (**AST-1112**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Entry key only (no `craft_task_keys`) | `src/utils/config.py` | **`TestAst1113CraftTaskKeysShadowDeleted`**; revised **`TestAst972CandidateStageDispatch`** |
+| Walk + suppress + mid-fail | `src/core/candidate.py` | revised **`TestAst972RequestedStageDispatch::test_artifacts_dispatch_*`** |
+| Boot craft run_next migration | `src/data/database.py` | **`TestAst1113CraftRunNextChainMigration`** |
+
+**Broken / obsolete (Betty revision):** asserts on `arts["craft_task_keys"]`; artifacts dispatch that reads the list for hop order.
+
+**AST-1113** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+

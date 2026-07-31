@@ -264,7 +264,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 | 2 | Runtime hop write + chain graduation | `src/core/tracker.py` | **`TestAst848DispatchChainTracker`** |
 | 3 | Per-hop DB write + terminal graduation + hard failure | `src/core/agent.py` | **`TestAst848DispatchChainDoTask`** |
 
-**Regression (required):** **AST-597** mid-chain hydration without per-hop compound transitions; **AST-844** hop registry (**`TestAst844BuildArtifactsChainTaskKeys`**). Consult/dispatch claim wiring is sibling **AST-849**.
+**Regression (required):** **AST-597** mid-chain hydration without per-hop compound transitions; **AST-1111** config shadow absence (**`TestAst1111JobArtifactEntryShadowDeleted`**). Consult/dispatch claim wiring is sibling **AST-849**.
 
 **AST-848** narrowed run (agent + config + tracker slice):
 
@@ -293,7 +293,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 **Broken / obsolete (Betty revision):** **`TestAst803ChainGraduation`**, **`TestAst803ChainHelpers`**, **`_run_build_artifacts_chain_batch`** / **`do_chain_for_job`** / **`_run_craft_job_cover_letter_batch`** consult tests; **`test_ast596_resume_hop_mismatch_skips_claim`** (pre-claim guard removed — post-claim filter in item 2).
 
-**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`**; **AST-844** **`TestAst844BuildArtifactsChainTaskKeys`**; **AST-534** dispatch-key honesty (non-chain **`grade_do`** row in **`TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`**).
+**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`**; **AST-1111** **`TestAst1111JobArtifactEntryShadowDeleted`**; **AST-534** dispatch-key honesty (non-chain **`grade_do`** row in **`TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`**).
 
 **AST-849** narrowed run:
 
@@ -308,7 +308,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/core/test_dispatcher.py::TestRunUnified::test_ast849_post_claim_filter_skips_row_mismatch \
   tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
   tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key \
-  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/utils/test_config.py::TestAst1111JobArtifactEntryShadowDeleted \
   -q
 ```
 
@@ -540,5 +540,26 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  -q
+```
+
+### AST-1112 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.
+
+Primary config map: **`docs/test-bible/utils/config.md`** AST-1112. Agent surface: `_resume_artifact_parent_hop_key` deleted; `_parent_hop_task_key_for_child` is sole parent resolver (ambiguous parents → `None`); hydrate/debug no longer consult `resume_artifact_hop_task_keys`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parent via `run_next` | `src/core/agent.py` | **`TestAst597MidChainResumeHydrationAndTransitions::test_parent_hop_task_key_*`** |
+| Hydrate entry chain context | `src/core/agent.py` | revised **`test_hydrate_resume_entry_chain_context_*`** |
+
+**Broken / obsolete (Betty revision):** **`test_resume_artifact_parent_hop_key_*`**.
+
+**AST-1112** agent slice (full narrowed run in config bible):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
   -q
 ```

@@ -4853,6 +4853,36 @@ def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -
     return
 
 
+def _apply_ast1113_craft_run_next_chain_migration(conn: sqlite3.Connection) -> None:
+    """AST-1113: confirm/correct craft_* agent_task.run_next succession (idempotent)."""
+    chain = (
+        ("craft_company_search_terms", "craft_joblist_rubric"),
+        ("craft_joblist_rubric", "craft_jobdesc_rubric"),
+        ("craft_jobdesc_rubric", "craft_do_rubric"),
+        ("craft_do_rubric", "craft_get_rubric"),
+        ("craft_get_rubric", "craft_like_rubric"),
+        ("craft_like_rubric", "craft_prefilter_rubric"),
+        ("craft_prefilter_rubric", ""),
+    )
+    for task_key, expected in chain:
+        try:
+            row = conn.execute(
+                "SELECT task_key_uuid, run_next FROM agent_task WHERE task_key = ? AND current = 1 LIMIT 1",
+                (task_key,),
+            ).fetchone()
+        except sqlite3.Error:
+            return
+        if not row:
+            continue
+        if (row[1] or "").strip() == (expected or "").strip():
+            continue
+        conn.execute(
+            "UPDATE agent_task SET run_next = ?, updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
+            (expected, row[0]),
+        )
+        conn.commit()
+
+
 def _apply_ast834_clear_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
     """AST-834: clear stale select_job_page → parse_job_list Manage Tasks link (idempotent)."""
     try:
@@ -4963,6 +4993,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
                 conn.commit()
     _apply_ast469_select_job_page_run_next_migration(conn)
     _apply_ast834_clear_select_job_page_run_next_migration(conn)
+    _apply_ast1113_craft_run_next_chain_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
     # AST-1108: AST-776/822/880 vet_inflow_discovery prompt migrations retired (repo JSON wins).

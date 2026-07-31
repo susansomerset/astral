@@ -363,20 +363,9 @@ class TestAst740RemoveConfigGrouping:
             assert "phase" not in entry, task_key
             assert "seq" not in entry, task_key
 
-    def test_job_artifact_entry_task_keys_membership(self) -> None:
-        expected = {
-            "anticipate_scan",
-            "contemplate_job",
-            "advise_job_resume",
-            "draft_job_resume",
-            "check_job_resume",
-            "finalize_job_resume",
-            "check_cover_letter",
-            "finalize_cover_letter",
-            "propose_application_responses",
-        }
-        assert cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS == frozenset(expected)
-        assert "draft_cover_letter" not in cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS
+    def test_job_artifact_entry_task_keys_absent(self) -> None:
+        # AST-1111: frozenset shadow deleted — chain membership is run_next (§2.6.0).
+        assert not hasattr(cfg, "JOB_ARTIFACT_ENTRY_TASK_KEYS")
 
 
 class TestAst594DraftJobResumeSchema:
@@ -709,16 +698,40 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
-class TestAst844BuildArtifactsChainTaskKeys:
-    """AST-844: full BUILD_ARTIFACTS CHAIN hop set for consult resolution."""
+class TestAst1111JobArtifactEntryShadowDeleted:
+    """AST-1111: JOB_ARTIFACT_ENTRY_TASK_KEYS + cover-letter carve-out wrapper gone."""
 
-    def test_includes_terminal_and_cover_hops_excludes_draft_cover_letter(self) -> None:
-        keys = cfg.build_artifacts_chain_task_keys()
-        assert "propose_application_responses" in keys
-        assert "check_cover_letter" in keys
-        assert "finalize_cover_letter" in keys
-        assert "draft_cover_letter" not in keys
-        assert keys == cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS - frozenset({"draft_cover_letter"})
+    def test_entry_frozenset_and_wrapper_absent(self) -> None:
+        assert not hasattr(cfg, "JOB_ARTIFACT_ENTRY_TASK_KEYS")
+        assert not hasattr(cfg, "build_artifacts_chain_task_keys")
+
+
+class TestAst1112ResumeHopTaskKeysShadowDeleted:
+    """AST-1112: hop_task_keys / resume_artifact_hop_task_keys no longer chain authority."""
+
+    def test_hop_list_authority_absent(self) -> None:
+        assert not hasattr(cfg, "resume_artifact_hop_task_keys")
+        assert not hasattr(cfg, "_RESUME_ARTIFACT_HOP_TASK_KEYS")
+        assert not hasattr(cfg, "build_artifacts_claim_states")
+        assert not hasattr(cfg, "all_resume_artifact_compound_states")
+        rac = cfg.BUILD_CONFIG["resume_artifact_chain"]
+        assert "hop_task_keys" not in rac
+        assert rac.get("first_task_key") == "contemplate_job"
+
+    def test_legacy_compound_membership_via_task_config(self) -> None:
+        legacy = cfg.resume_artifact_compound_state("anticipate_scan")
+        assert cfg.legacy_build_artifacts_hop(legacy) == "anticipate_scan"
+        assert cfg.legacy_build_artifacts_hop("BUILD_ARTIFACTS.not_a_task") is None
+
+
+class TestAst1113CraftTaskKeysShadowDeleted:
+    """AST-1113: craft_task_keys list gone; singular craft_task_key entry only."""
+
+    def test_requested_artifacts_entry_key_only(self) -> None:
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert "craft_task_keys" not in arts
+        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert arts["craft_task_key"] in cfg.TASK_CONFIG
 
 
 class TestAst848DispatchHopLabels:
@@ -2084,8 +2097,10 @@ class TestAst972CandidateStageDispatch:
         assert "craft_resume_base" in cfg.TASK_CONFIG
         assert resume["task_key"] in cfg.TASK_CONFIG
         assert arts["task_key"] in cfg.TASK_CONFIG
-        for k in arts["craft_task_keys"]:
-            assert k in cfg.TASK_CONFIG
+        # AST-1113: singular entry key — hop order is agent_task.run_next, not craft_task_keys.
+        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert "craft_task_keys" not in arts
+        assert arts["craft_task_key"] in cfg.TASK_CONFIG
 
     def test_claim_states_include_retry_companions(self) -> None:
         assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
@@ -3397,3 +3412,17 @@ class TestAst1100ArtifactTabPinKeys:
         assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
         assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
         assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+
+# Branches: ADMIN_CONFIG always-visible under Avail gt0 — mailbox shells (AST-1106).
+@pytest.mark.skipif(
+    not hasattr(cfg, "admin_always_visible_under_avail_gt0_dispatch_task_keys"),
+    reason="AST-1106 admin always-visible helper not on this publish tip",
+)
+class TestAst1106AlwaysVisibleUnderAvailGt0:
+    def test_helper_seeded_from_gaze_email_config(self) -> None:
+        keys = cfg.admin_always_visible_under_avail_gt0_dispatch_task_keys()
+        assert isinstance(keys, frozenset)
+        assert cfg.GAZE_EMAIL_CONFIG["task_key"] in keys
+        raw = cfg.ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
+        assert raw[0] is cfg.GAZE_EMAIL_CONFIG["task_key"] or raw[0] == cfg.GAZE_EMAIL_CONFIG["task_key"]
+
