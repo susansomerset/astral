@@ -214,7 +214,7 @@ _GMAIL_SCOPES = [
 ## Review
 
 **Publish ref:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`
-**Tip:** `ddf97eaf`
+**Tip:** `bf172084`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
@@ -222,3 +222,4 @@ _GMAIL_SCOPES = [
 | 2 | `d138f905` | nullable candidate_id + save gate |
 | 3 | `090c0abc` | provision null-candidate gaze_email row |
 | 4 | `7dc42f3d` | Gmail archive + trash under gmail.modify |
+| 4b | `bf172084` | sole `_GMAIL_SCOPES` = gmail.modify (Betty hold) |
