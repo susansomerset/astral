@@ -861,3 +861,83 @@ class TestAst997ExperienceJobArrayPersist:
         assert tracker_mod.job_has_persisted_resume_body("job-997", job) is True
         empty = {"job_data": {"artifacts": {"resume_content": {"experience": []}}}}
         assert tracker_mod.job_has_persisted_resume_body("job-997", empty) is False
+
+
+class TestAst1099PinJobArtifactAgentDataId:
+    """AST-1099: pin RESPONSE agent_data_id into job_data.artifacts (never store empty)."""
+
+    def test_pins_nonempty_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict[str, object]] = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        assert tracker_mod.pin_job_artifact_agent_data_id(
+            "job-1099", "job_resume", "batch-1-response-abcd"
+        ) is True
+        assert saved == [{"artifacts": {"job_resume": "batch-1-response-abcd"}}]
+
+    def test_strips_whitespace_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict[str, object]] = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        assert tracker_mod.pin_job_artifact_agent_data_id(
+            "job-1099", "cover_letter", "  id-42  "
+        ) is True
+        assert saved[0]["artifacts"]["cover_letter"] == "id-42"
+
+    def test_empty_id_skips_write(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict[str, object]] = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        assert tracker_mod.pin_job_artifact_agent_data_id("job-1099", "job_resume", "") is False
+        assert tracker_mod.pin_job_artifact_agent_data_id("job-1099", "job_resume", "   ") is False
+        assert tracker_mod.pin_job_artifact_agent_data_id("job-1099", "job_resume", None) is False
+        assert saved == []
+
+    def test_missing_job_or_key_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict[str, object]] = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        assert tracker_mod.pin_job_artifact_agent_data_id("", "job_resume", "id-1") is False
+        assert tracker_mod.pin_job_artifact_agent_data_id("job-1099", "", "id-1") is False
+        assert saved == []
+
+    def test_debug_true_logs_recorded_and_skip(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: None)
+        caplog.set_level("DEBUG")
+        assert tracker_mod.pin_job_artifact_agent_data_id(
+            "job-1099", "proposed_answers", "resp-9", debug=True
+        ) is True
+        assert tracker_mod.pin_job_artifact_agent_data_id(
+            "job-1099", "proposed_answers", "", debug=True
+        ) is False
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "artifact_pin key=proposed_answers agent_data_id=resp-9 recorded" in combined
+        assert "artifact_pin key=proposed_answers skipped reason=empty_agent_data_id" in combined
+
+    def test_clear_job_build_artifacts_removes_pin_slots(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: list[tuple[str, dict, bool]] = []
+
+        def _save(jid: str, payload: dict, replace: bool = False) -> None:
+            saved.append((jid, payload, replace))
+
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job",
+            lambda jid: {
+                "job_data": {
+                    "artifacts": {
+                        "job_resume": "id-resume",
+                        "cover_letter": "id-cover",
+                        "proposed_answers": "id-answers",
+                        "analysis_upshot": {"summary": "keep"},
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", _save)
+        tracker_mod.clear_job_build_artifacts("job-1099")
+        art = saved[0][1]["artifacts"]
+        assert "job_resume" not in art
+        assert "cover_letter" not in art
+        assert "proposed_answers" not in art
+        assert art["analysis_upshot"] == {"summary": "keep"}
