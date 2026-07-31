@@ -143,3 +143,9 @@ Revision 1 — 2026-07-31
 Driven by: Joan `[plan-discuss] round=1 concern` — Stage 2 Branch C vs Files Changed (`orch.pipeline.plan-is-bible` / `astral.standards.in-scope-only`)  
 Changes: Added conditional Files Changed rows for `useListTableColumnMeasure.ts` and `useSectionExpandPolicy.ts`; rewrote Branch C to authorize only those table paths (plus SA page when pinned there) and to 🛑 + amend if the stack names anything else.
 
+## Review (build)
+
+**Built:** `origin/sub/AST-1102/AST-1104-fix-sa-blank-candidate-all-avail-all` @ `2b9dc4085c8c675b472be0f1c86f7529b39b169c`
+
+Stage 1 pinned Branch A (`fmtTime` RangeError on invalid `timeZone`). Stage 2: `fmt.ts` absorbs locale/timezone failures with UTC retry then raw ISO — Last Run cells cannot empty `#root`. Branches B/C not applied. SA regression smoke `AST-894|AST-887|AST-893|AST-751|AST-768|AST-785` green (24). Tests deferred to Betty.
+
