@@ -118,3 +118,8 @@ No `config.py` edits (definitions are AST-1084). No `consult.py` / dispatcher / 
 - Jobs list / Recommended Job Modal display (AST-1059 / 1063 / 1064).
 - Admin UI to edit constant definitions.
 - One-time `rubric_vector` backfill migration.
+
+## Review
+
+- **Commit:** `889a68d7`
+- **Branch:** `sub/AST-1077/AST-1085-wire-constants-evaluate-jd`
