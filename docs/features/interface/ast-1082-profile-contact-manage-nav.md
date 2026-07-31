@@ -121,3 +121,12 @@ Stages 1–2: `editValuesFromCandidate` always includes `full` and normalizes `c
 ### Recommended actions
 
 - Implementer: acknowledge straggler discuss; no `fix-now` product changes.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Outcome:** clean — no product changes.
+
+- **fix-now:** none.
+- **discuss (C4 stragglers):** Acknowledged. Statutes Joan excluded at plan time are in-scope on `origin/dev...` tip via AST-1081 rollup + Betty `merge-tests`; Radia scored them **conforms**. Engineer `code(AST-1082)` commits stay Profile map + `DATA_SHAPES` labels only. No plan/product edit required.
+- Publish tip rebuilt on `b4678507` without a `git pull` / `Merge remote-tracking origin/dev` commit (merge-child hygiene).
