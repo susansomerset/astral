@@ -3068,3 +3068,71 @@ class TestAst1082ProfileContactLabelsNav:
         sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
         title = next(s for s in sections if s["label"] == "Title Patterns")
         assert title["fields"][0]["key"] == "contact.title_patterns"
+
+
+class TestAst1084EvaluateJdCriteria:
+    """AST-1084: EMBEDDED_EVALUATE_JD_CRITERIA QC/GC definitions (wire-up is AST-1085)."""
+
+    def test_qc_gc_registry_order_and_shape(self) -> None:
+        rows = cfg.EMBEDDED_EVALUATE_JD_CRITERIA
+        assert isinstance(rows, tuple)
+        assert len(rows) == 2
+        qc, gc = rows
+        assert qc["code"] == "QC"
+        assert qc["label"] == "Quality Check"
+        assert qc["importance"] == 1
+        assert gc["code"] == "GC"
+        assert gc["label"] == "Gut Check"
+        assert gc["importance"] == 1
+        # Boundary: not folded into the company prefilter RC registry
+        pf_codes = {r["code"] for r in cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA}
+        assert "QC" not in pf_codes and "GC" not in pf_codes
+
+    def test_qc_grades_abcdef_subset_and_descriptions(self) -> None:
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        by_grade = {g["grade"]: g["description"] for g in qc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "F"]
+        assert by_grade["A"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements and information about the company the candidate would be working for."
+        )
+        assert by_grade["B"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements, but limited information about the company the candidate would be working for."
+        )
+        assert by_grade["C"] == (
+            "This content references a job with enough detail about the role and "
+            "requirements to perform fit analysis for the candidate."
+        )
+        assert by_grade["F"] == (
+            "This is not enough information to perform job fit analysis, either because "
+            "it is not a job description, or it is too vague to determine fit for the candidate."
+        )
+        # content mirrors letter lines (Reality Check A = … style)
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in qc["content"]
+        assert "Quality Check — is this enough of a JD to analyze?" in qc["content"]
+
+    def test_gc_grades_include_d_x_and_descriptions(self) -> None:
+        gc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[1]
+        by_grade = {g["grade"]: g["description"] for g in gc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+        assert by_grade["A"] == (
+            "Based on the candidate's bio provided, this job would be a slam dunk for them."
+        )
+        assert by_grade["B"] == (
+            "Based on the candidate's bio provided, this job could be a good fit for them."
+        )
+        assert by_grade["C"] == (
+            "Based on the candidate's bio, this job would be doable, with caveats, for them."
+        )
+        assert by_grade["D"] == (
+            "Based on the candidate's bio, this job would be a stretch-to-impossible for them."
+        )
+        assert by_grade["F"] == "There's really no way this candidate could ever do this job."
+        assert by_grade["X"] == (
+            "There's not enough information about the job to make this determination with certainty."
+        )
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in gc["content"]
+        assert "Gut Check — is this even plausible for this candidate?" in gc["content"]

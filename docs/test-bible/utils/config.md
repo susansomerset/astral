@@ -1595,3 +1595,26 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/utils/test_config.py::TestAst1082ProfileContactLabelsNav \
   -q
 ```
+
+
+---
+
+### AST-1084 · AST-1077
+
+**Parent:** [AST-1077 — Add a constant set of rubric vectors to generated JD evaluate vectors](https://linear.app/astralcareermatch/issue/AST-1077/add-a-constant-set-of-rubric-vectors-to-generated-jd-evaluate-vectors). **Publish:** `origin/sub/AST-1077/AST-1084-config-constant-jd-vectors`.
+
+`EMBEDDED_EVALUATE_JD_CRITERIA` — QC then GC (importance **1**; grade letters/descriptions from parent Original brief). Definitions only; merge into evaluate_jd hydration is **AST-1085**. Sibling of **`EMBEDDED_COMPANY_PREFILTER_CRITERIA`** (**AST-707**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Embedded QC/GC registry | `src/utils/config.py` | **`TestAst1084EvaluateJdCriteria`** |
+
+**Broken / obsolete:** none — additive unused constant until wire-up.
+
+**Integration:** none — config definitions only; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  -q
+```
