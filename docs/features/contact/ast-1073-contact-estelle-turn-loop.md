@@ -223,8 +223,26 @@ The plan is binding. Execute stages in order. One commit per stage on the epic w
 
 | Field | Value |
 |-------|-------|
-| Status | Code Complete |
+| Status | Review Posted |
 | Publish ref | `origin/sub/AST-1046/AST-1073-contact-estelle-turn-loop` |
-| Tip | `136b53d292248472ce76d14314a502a1fd72ef65` |
+| Tip | `17a94c645659e9762f874c72dee086f1e3c11fea` (pre-review; docs tip follows) |
 | Branch | `sub/AST-1046/AST-1073-contact-estelle-turn-loop` |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Overall:** DISCUSS (C4 stragglers only — no product fix-now)
+
+**What's solid**
+- Stage 1–3 match tip: `CONTACT_ESTELLE_CONFIG` trim keys + optional `skill_calls`; `run_contact_estelle_turn` + `handle_slack_event` hook; prompt seed with ACL/`skill_calls`.
+- `do_task(CONTACT_ESTELLE_CONFIG["task_key"])` only; Slack via existing Contact helpers; Style D gated on `debug=True` with lengths/counts.
+- Listen re-check, no-post on failure/empty reply, concern aside via `logger.warning` (not Slack), late `agent` import with cycle comment.
+
+**Findings**
+- **discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; diff touches `docs/features/**`. Merits: conforms (plan docs, not spikes). No product action.
+- **discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; feature docs in diff. Merits: conforms (one file per ticket). No product action.
+- **discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; `tests/**` + bible in tip via Betty `test()` + engineer `merge-tests`. Merits: conforms. No product action.
+
+**advisory:** `data/admin/agent_task.json` also normalizes unicode escapes across unrelated task rows (merge noise); `contact_estelle_turn` row itself matches Stage 3.
+
+**Recommended:** Engineer may treat Overall DISCUSS as non-blocking for resolve unless they want a plan-rubric exclusion refresh; no code changes required for the stragglers.
 
