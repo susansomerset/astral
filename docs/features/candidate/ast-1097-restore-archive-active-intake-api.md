@@ -79,3 +79,11 @@ UAT Start Over posts `POST /api/candidates/{id}/intake/sessions/active/archive` 
 **Issues (discuss):** C4 stragglers — Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot diff brings them in-scope. All three score **conforms** (plan doc not a spike; single features file; Betty `test()`/`merge-tests` for test-tree). No product fix-now.
 
 **Recommended actions:** Resolve-child can treat as paperwork; no code change required for the stragglers.
+
+## Resolution
+
+**2026-07-31** — `resolve(AST-1097): — clean`
+
+- Radia code-rubric.v1 rev=1: **DISCUSS** overall; **no fix-now**. Three C4 stragglers all **conforms** — no product or plan-content change required.
+- Merged `origin/dev` + Radia `docs(AST-1097): Radia review — findings` (`7e041a37`) onto publish-ref; product archive route unchanged from `code(AST-1097)`.
+- §9a dry-run vs `origin/dev` and `origin/ftr/AST-1096-restart-intake-gets-a-500-error` before User Testing.
