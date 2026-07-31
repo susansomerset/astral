@@ -3353,7 +3353,6 @@ class TestAst1105ProfileSlackFields:
         assert "contact.slack_user_id" not in paths
         assert "contact.slack_username" not in paths
 
-
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
 
@@ -3386,3 +3385,29 @@ class TestAst1099JobArtifactAgentDataPinConfig:
         # Legacy body keys remain for cancel of older rows / manual PUTs.
         assert "resume_content" in keys
         assert "application_responses" in keys
+
+
+class TestAst1100ArtifactTabPinKeys:
+    """AST-1100: JAR artifact tabs remap to AST-1099 pin slots."""
+
+    def test_artifact_tabs_use_pin_slot_keys(self) -> None:
+        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
+        assert by_id["artifact_resume"]["use_resume_structure"] is True
+        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+        assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
+        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+
+# Branches: ADMIN_CONFIG always-visible under Avail gt0 — mailbox shells (AST-1106).
+@pytest.mark.skipif(
+    not hasattr(cfg, "admin_always_visible_under_avail_gt0_dispatch_task_keys"),
+    reason="AST-1106 admin always-visible helper not on this publish tip",
+)
+class TestAst1106AlwaysVisibleUnderAvailGt0:
+    def test_helper_seeded_from_gaze_email_config(self) -> None:
+        keys = cfg.admin_always_visible_under_avail_gt0_dispatch_task_keys()
+        assert isinstance(keys, frozenset)
+        assert cfg.GAZE_EMAIL_CONFIG["task_key"] in keys
+        raw = cfg.ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
+        assert raw[0] is cfg.GAZE_EMAIL_CONFIG["task_key"] or raw[0] == cfg.GAZE_EMAIL_CONFIG["task_key"]
+

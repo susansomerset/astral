@@ -1792,7 +1792,6 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
-
 ### AST-1099 · AST-1091
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
@@ -1850,6 +1849,24 @@ Profile Contact Information: `contact.slack_user_id` + `contact.slack_username` 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
+  -q
+```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+`ADMIN_CONFIG["always_visible_under_avail_gt0_dispatch_task_keys"]` seeded from `GAZE_EMAIL_CONFIG["task_key"]`; helper `admin_always_visible_under_avail_gt0_dispatch_task_keys()`. API stamp + SA filter: **`docs/test-bible/ui/api/api_admin.md`**, **`docs/test-bible/frontend/pages.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Avail-gt0 always-visible keys | `src/utils/config.py` | **`TestAst1106AlwaysVisibleUnderAvailGt0`** |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
   -q
 ```
 

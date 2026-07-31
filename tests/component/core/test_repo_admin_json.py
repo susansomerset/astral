@@ -243,6 +243,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "finalize_cover_letter",
         "finalize_job_resume",
         "gaze",
+        "gaze_email",
         "grade_do",
         "grade_get",
         "grade_like",
@@ -270,11 +271,11 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (47 rows after AST-1089 tip).
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (48 rows after AST-1106 tip).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
     Includes `contact_estelle_turn`, `preamble_validate_response`, AST-1075 topic_menu rows,
-    and AST-1089 `parse_meteorite_email`.
+    AST-1089 `parse_meteorite_email`, and AST-1106 `gaze_email`.
     """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
@@ -283,9 +284,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_47_current_catalog_keys(self) -> None:
+    def test_repo_json_has_48_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 47
+        assert len(rows) == 48
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -301,7 +302,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_47_current_rows(
+    def test_startup_apply_loads_all_48_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -319,7 +320,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 47
+            assert count == 48
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -694,3 +695,21 @@ class TestAst1089ParseMeteoriteEmailCatalogRow:
         user = row["user_prompt"]
         assert "PARSE_MODE" in user or "parse" in user.lower()
         assert by["qualify_meteorite"]["task_seq"] == 2.5
+
+
+class TestAst1106GazeEmailCatalogRow:
+    """AST-1106: gaze_email Job Review mailbox shell in repo agent_task JSON."""
+
+    def test_gaze_email_job_review_empty_prompt_shell(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        assert "gaze_email" in by
+        row = by["gaze_email"]
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == "gaze_email"
+        assert row["task_seq"] == 2.3
+        assert row["agent_id"] == "n/a"
+        assert row["user_prompt"] == ""
+        assert by["parse_meteorite_email"]["task_seq"] == 2.4
+        assert by["qualify_meteorite"]["task_seq"] == 2.5
+
