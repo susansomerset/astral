@@ -116,3 +116,30 @@ approved_at: "2026-07-31"
 | 1 | `c9ed3be6` | GAZE_EMAIL_CONFIG seed auto_mode CLICK |
 | 2 | `93538a82` | reconcile shared gaze_email AUTO to CLICK |
 | 3 | `927ce685` | statute astral.dispatch.seed-auto-false + register |
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1098
+**Publish ref tip (at review):** `2230461251bf6e1991a3b57254c15f6012ddec85`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stages 1–3 match plan: `GAZE_EMAIL_CONFIG["auto_mode"]=False` + seed catalog asserts; ensure insert from config + reconcile stuck AUTO→CLICK; statute `astral.dispatch.seed-auto-false` with Archie approval + README/HARVEST 57.
+- Betty `test` + one `merge-tests(AST-1098)` SHA on the sub.
+
+### Issues
+
+**discuss (straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; tip three-dot includes `docs/features/**` + Betty test-tree so sweep scores them in-scope (all still **conforms**).
+
+**advisory:** Joan’s boot-reconcile tradeoff (operator AUTO on shared `gaze_email` does not survive next ensure) is intentional per plan Decision. Provision INFO log still omits `reconciled=` (return shape has it).
+
+### Recommended actions
+
+None for fix-now.
+
+### Statutes checked (summary)
+
+57 active statutes swept vs `origin/dev...origin/sub/AST-1093/AST-1098-…`. No violates. Full table in Linear review comment.
