@@ -144,3 +144,13 @@ No conflicts requiring `conf-!!-NONE`.
 context_tokens≈42000
 
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Outcome:** clean — no product fix-now
+
+- **discuss (C4 straggler):** Closed without code change. Radia confirmed the three Joan-excluded statutes **conform** on the tip (`astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.debug.spikes-under-debug-dir`). No disagreement; no product edit.
+- **advisory (pointer-string until AST-1100):** Left as planned Medium risk; sibling AST-1100 owns reader remap.
