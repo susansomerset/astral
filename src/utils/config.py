@@ -38,6 +38,7 @@ Config sections:
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
   GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088)
+  METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
@@ -515,6 +516,32 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "agent_task": "qualify_meteorite",
+    },
+    # AST-1087 / AST-1089: Ruth parse of bound meteorite email HTML (not a dispatch claim task).
+    # AST-1090 calls do_task with METEORITE_EMAIL_PARSE_CONFIG["task_key"] + candidate ctx.
+    "parse_meteorite_email": {
+        "response_format": "json",
+        "output_type": "fields",
+        "scored": False,
+        "response_schema": {
+            "parse_mode": {"type": "str", "required": True},
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "job_link": {"type": "str", "required": True},
+                    "job_title": {"type": "str", "required": False},
+                    "metadata": {"type": "str", "required": False},
+                },
+            },
+            "jd_link": {"type": "str", "required": False},
+            "content_text": {"type": "str", "required": False},
+        },
+        "context_format": "parse_meteorite_email_{index}",
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "parse_meteorite_email",
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
@@ -2203,6 +2230,16 @@ GAZE_EMAIL_CONFIG = {
 assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
 assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
 assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
+# AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
+# Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
+# must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
+METEORITE_EMAIL_PARSE_CONFIG = {
+    "task_key": "parse_meteorite_email",
+    # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
+    "parse_modes": ("html_links", "subject_body"),
+}
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
+assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.

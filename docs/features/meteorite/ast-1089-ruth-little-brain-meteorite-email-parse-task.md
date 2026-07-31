@@ -196,3 +196,53 @@ python3 -c "import json; json.load(open('data/admin/agent_task.json')); assert a
 - **§3.3 imports:** No new cross-layer imports in this ticket.
 - **§3.5 naming:** `parse_meteorite_email` / `METEORITE_EMAIL_PARSE_CONFIG` match meteorite naming.
 - **in-scope-only:** Explicitly excludes AST-1088 shell and AST-1090 runner.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`
+**Plan path:** `docs/features/meteorite/ast-1089-ruth-little-brain-meteorite-email-parse-task.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `66edd249` | `METEORITE_EMAIL_PARSE_CONFIG` + `TASK_CONFIG["parse_meteorite_email"]` |
+| 2 | `8d6eefe7` | Ruth `agent_task.json` + AST-756 fixture (+ inventory comment) |
+
+**Tip:** `8d6eefe7a8bd998190d000f8cccd43723b6ef1db` on `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1089
+**Publish ref tip (at review):** `1ae256abc40f6df55a8e32985026d48c238c49ca`
+**Overall:** FIX-NOW
+
+### What’s solid
+
+- Stage 1–2 Ruth slice matches plan: `METEORITE_EMAIL_PARSE_CONFIG`, `TASK_CONFIG["parse_meteorite_email"]` with `requires_candidate_key: True`, Ruth `agent_task` row, AST-756 fixture byte-identical.
+- Parse modes / schema / prompts align with Decisions; not added to `METEORITE_DISPATCH_TASKS`.
+- Betty `test` + single `merge-tests` SHA on the sub.
+
+### Issues
+
+**fix-now:** `src/utils/config.py` `dispatch_task_admin_defaults` early-return references `GAZE_EMAIL_CONFIG["task_key"]` but **`GAZE_EMAIL_CONFIG` is not defined** on this tip (and `gaze_email` is not in `TASK_CONFIG`). Introduced in `8d6eefe7` (AST-1089 code). Every successful call to `dispatch_task_admin_defaults` will `NameError`. Also AST-1088 shell scope smuggled into this ticket (`astral.standards.in-scope-only` / plan Out of scope).
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot tip includes `docs/features/**` + Betty test-tree — scored in-scope on diff (verdicts still conforms).
+
+### Recommended actions
+
+1. Remove the `GAZE_EMAIL_CONFIG` early-return from this sub (belongs on AST-1088 with the config definition), or do not land that hunk here.
+2. Re-run a quick import/`dispatch_task_admin_defaults` smoke after the delete.
+3. Straggler discuss rows need no product change unless resolve wants Joan re-ack.
+
+### Statutes checked (summary)
+
+56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1089-…`. One **violates** (`astral.standards.in-scope-only`). Full table in Linear review comment.
+
+## Resolution
+
+**2026-07-31** — Radia code-rubric.v1 FIX-NOW addressed.
+
+- **fix-now:** Removed smuggled `dispatch_task_admin_defaults` early-return on `GAZE_EMAIL_CONFIG["task_key"]` from `src/utils/config.py` (AST-1088 shell; undefined on this tip → `NameError`). Belongs on AST-1088 with the config definition.
+- **Smoke:** `dispatch_task_admin_defaults("qualify_meteorite")` returns job defaults; Betty AST-1089 manifest still **8 passed**.
+- **discuss (straggler):** No product change (Joan / three-dot scoring note only).
