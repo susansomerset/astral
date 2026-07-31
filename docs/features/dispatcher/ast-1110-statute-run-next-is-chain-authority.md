@@ -179,3 +179,23 @@ superseded_by: null
 | 1 | `d530d452` | statute astral.dispatch.run-next-is-chain-authority + register |
 | 2 | `fc645e23` | proposed pattern.dispatch.run-next-chain-authority |
 | 3 | `b962895c` | CODE_RULES §2.6.0 pointer |
+
+### Radia — code-rubric.v1 (AST-1110)
+
+`[code-rubric] revision=1` · tip reviewed `27130c72` · **Overall: DISCUSS** (C4 stragglers only; deliverable conforms)
+
+**What's solid**
+
+- Active Archie-approved statute at SCHEMA path; README/HARVEST count **58**.
+- Pattern lands `proposed` (not approved); remediations bind statute first.
+- CODE_RULES §2.6.0 statute pointer + clarifying sentence; no `src/**` / frozenset deletes.
+- Betty test-bible docs-acceptance + merge-tests; no engineer test-tree edits for AST-1110.
+
+**Discuss (C4 stragglers)** — Joan excluded at plan time; three-dot diff brings them in-scope (statute scores themselves `conforms`):
+
+- `astral.debug.spikes-under-debug-dir`
+- `astral.docs.features-single-file-per-ticket`
+- `astral.git.betty-no-src-or-features`
+- `astral.git.engineer-test-tree-ban`
+
+**Recommended:** resolve-child can treat as acknowledge-and-proceed unless implementer wants plan Files Changed to list the plan path + Betty bible for future Joan runs.
