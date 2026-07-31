@@ -38,6 +38,7 @@ Config sections:
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
+  CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
 import json
@@ -1382,6 +1383,64 @@ CANDIDATE_LOOKUP_CONFIG = {
         "contact.slack_user_id",
     ),
 }
+
+# ---------------------------------------------------------------------------
+# CANDIDATE_CONTACT_UNIQUENESS_CONFIG: save-gate field contract (AST-1079 / AST-1045).
+# Vocabulary only — within-candidate dedupe + cross-candidate collision enforcement
+# is AST-1080. Email / slack path tuples must stay aligned with CANDIDATE_LOOKUP_CONFIG.
+# ---------------------------------------------------------------------------
+CANDIDATE_CONTACT_UNIQUENESS_CONFIG = {
+    # Same object as lookup — bind/lookup and uniqueness share one email vocabulary
+    # (including transitional profile.* until gone).
+    "email_paths": CANDIDATE_LOOKUP_CONFIG["email_paths"],
+    # Non-email identity handles under the AST-1014 contact blob.
+    "scalar_paths": (
+        "contact.phone",
+        "contact.github",
+        "contact.linkedin_url",
+    ),
+    # List-valued contact fields: each non-empty entry is one uniqueness token.
+    "list_paths": (
+        "contact.websites",
+    ),
+    # Same object as lookup Slack homes (AST-1066 / AST-1068).
+    "slack_user_id_paths": CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"],
+    # Compare mode per path group. Enforcement (AST-1080) must:
+    #   - strip whitespace on all string values before compare
+    #   - for "casefold": compare with str.casefold()
+    #   - for "exact": compare stripped strings as-is (no casefold)
+    #   - skip empty / missing values (not uniqueness tokens)
+    "compare": {
+        "email": "casefold",
+        "scalar": "casefold",
+        "list": "casefold",
+        "slack_user_id": "exact",
+    },
+    # Both scopes use the same path set. Semantics of refuse vs collapse are AST-1080
+    # (parent OQ: avoid adding the same contact info twice; hard-fail cross-candidate).
+    "scopes": (
+        "within_candidate",
+        "cross_candidate",
+    ),
+}
+
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"] is CANDIDATE_LOOKUP_CONFIG["email_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"] is CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"]["email"] == "casefold"
+assert CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True  # email uniqueness must stay casefold while lookup is
+assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]
+assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]
+assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scopes"] == ("within_candidate", "cross_candidate")
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]:
+    assert isinstance(_p, str) and _p.startswith("contact."), _p
+_contact_key_set = set(CANDIDATE_LIBRARY_CONFIG["contact_keys"])
+for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"] + CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]:
+    _key = _p.split(".", 1)[1]
+    assert _key in _contact_key_set, _p
+for _mode in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["compare"].values():
+    assert _mode in ("casefold", "exact"), _mode
 
 # ---------------------------------------------------------------------------
 # CONTACT_CONFIG: Astral Contact / Estelle foundation (AST-1066 / AST-1043).

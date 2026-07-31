@@ -2,7 +2,8 @@
 Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
-transition_candidate_state, parse_candidate_resume, check_context_complete.
+transition_candidate_state, parse_candidate_resume, check_context_complete,
+contact uniqueness enforcement on save (AST-1080).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -33,6 +34,7 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
+    CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
     TOPIC_MENU_CONFIG,
@@ -102,6 +104,208 @@ def normalize_contact_urls(contact: dict) -> None:
         handle = val.lstrip("@").strip()
         contact[key] = f"{base}{handle}" if handle else val
 
+
+def _uniqueness_compare_token(raw: Any, mode: str) -> str:
+    """Strip + compare-mode normalize for uniqueness tokens (AST-1080)."""
+    if not isinstance(raw, str):
+        return ""
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    if mode == "exact":
+        return stripped
+    return stripped.casefold()
+
+
+def _iter_uniqueness_path_values(source: Dict[str, Any], dotted_path: str) -> list:
+    """Raw stripped string values for one uniqueness path (scalar or list)."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    if dotted_path in cfg["list_paths"]:
+        parts = dotted_path.split(".")
+        cur: Any = source.get("candidate_data") or {}
+        if not isinstance(cur, dict):
+            return []
+        for seg in parts:
+            if not isinstance(cur, dict):
+                return []
+            cur = cur.get(seg)
+        out: list = []
+        if isinstance(cur, list):
+            for item in cur:
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+        elif isinstance(cur, str) and cur.strip():
+            out.append(cur.strip())
+        return out
+    v = _lookup_path_value(source, dotted_path)
+    return [v] if v else []
+
+
+def _collect_uniqueness_tokens_from_candidate(candidate: Dict[str, Any]) -> list:
+    """Return [(compare_token, path), ...] in config path order."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    compare = cfg["compare"]
+    out: list = []
+    groups = (
+        (cfg["email_paths"], compare["email"]),
+        (cfg["scalar_paths"], compare["scalar"]),
+        (cfg["list_paths"], compare["list"]),
+        (cfg["slack_user_id_paths"], compare["slack_user_id"]),
+    )
+    for paths, mode in groups:
+        for path in paths:
+            for raw in _iter_uniqueness_path_values(candidate, path):
+                tok = _uniqueness_compare_token(raw, mode)
+                if tok:
+                    out.append((tok, path))
+    return out
+
+
+def _collect_uniqueness_tokens_from_contact(contact: Dict[str, Any]) -> list:
+    """Tokens from a bare contact dict (write-side proposed blob)."""
+    return _collect_uniqueness_tokens_from_candidate(
+        {"candidate_data": {"contact": contact}}
+    )
+
+
+def _dedupe_contact_within(contact: dict) -> list:
+    """Collapse duplicate uniqueness tokens inside one contact blob (mutates)."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    compare = cfg["compare"]
+    seen: set = set()
+    notes: list = []
+    # Scalar / email / slack under contact.* — keep first, clear later dups.
+    scalar_groups = (
+        (cfg["email_paths"], compare["email"]),
+        (cfg["scalar_paths"], compare["scalar"]),
+        (cfg["slack_user_id_paths"], compare["slack_user_id"]),
+    )
+    for paths, mode in scalar_groups:
+        for path in paths:
+            if not path.startswith("contact."):
+                continue
+            key = path.split(".", 1)[1]
+            raw = contact.get(key)
+            tok = _uniqueness_compare_token(raw, mode)
+            if not tok:
+                continue
+            if tok in seen:
+                contact[key] = ""
+                notes.append(f"cleared {path} (duplicate)")
+            else:
+                seen.add(tok)
+    # List paths (websites): keep first unique entries; drop tokens already seen.
+    for path in cfg["list_paths"]:
+        if not path.startswith("contact."):
+            continue
+        key = path.split(".", 1)[1]
+        mode = compare["list"]
+        raw_list = contact.get(key)
+        if not isinstance(raw_list, list):
+            continue
+        kept: list = []
+        for item in raw_list:
+            if not isinstance(item, str):
+                kept.append(item)
+                continue
+            tok = _uniqueness_compare_token(item, mode)
+            if not tok:
+                kept.append(item)
+                continue
+            if tok in seen:
+                notes.append(f"removed duplicate from {path}")
+                continue
+            seen.add(tok)
+            kept.append(item)
+        contact[key] = kept
+    return notes
+
+
+def _find_cross_candidate_contact_collision(
+    candidate_id: str, contact: dict
+) -> Optional[Tuple[str, str, str]]:
+    """Return (display_value, path, other_id) on first cross-candidate token hit."""
+    mine = _collect_uniqueness_tokens_from_contact(contact)
+    if not mine:
+        return None
+    mine_map = {tok: path for tok, path in mine}
+    self_id = (candidate_id or "").strip()
+    # Display values from this contact (path → first stripped raw).
+    display_by_path: Dict[str, str] = {}
+    for path in (
+        tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"])
+    ):
+        if not path.startswith("contact."):
+            continue
+        for raw in _iter_uniqueness_path_values(
+            {"candidate_data": {"contact": contact}}, path
+        ):
+            display_by_path.setdefault(path, raw)
+    for other in list_candidates(include_deleted=False):
+        other_id = (other.get("astral_candidate_id") or "").strip()
+        if not other_id or other_id == self_id:
+            continue
+        for tok, _opath in _collect_uniqueness_tokens_from_candidate(other):
+            if tok not in mine_map:
+                continue
+            path = mine_map[tok]
+            display = display_by_path.get(path) or tok
+            return (display, path, other_id)
+    return None
+
+
+def _enforce_contact_uniqueness(
+    candidate_id: str, contact: dict, *, debug: bool = False
+) -> None:
+    """Within-candidate collapse + cross-candidate hard-fail (AST-1080)."""
+    notes = _dedupe_contact_within(contact)
+    if debug:
+        logger.debug_index(
+            func="enforce_contact_uniqueness",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded|within_dedupe" if notes else "found|within_clean",
+        )
+        if notes:
+            for line in truncate_debug_content("; ".join(notes)):
+                logger.debug_detail(f"within={line}")
+        else:
+            logger.debug_detail("within=clean")
+        logger.debug_detail(
+            f"token_count={len(_collect_uniqueness_tokens_from_contact(contact))}"
+        )
+    hit = _find_cross_candidate_contact_collision(candidate_id, contact)
+    if hit:
+        display, path, other_id = hit
+        if debug:
+            logger.debug_index(
+                func="enforce_contact_uniqueness",
+                index=2,
+                total=2,
+                identifier=candidate_id,
+                outcome="found|cross_collision",
+            )
+            logger.debug_detail(f"path={path}")
+            for line in truncate_debug_content(display):
+                logger.debug_detail(f"value={line}")
+            logger.debug_detail(f"other_candidate_id={other_id}")
+        shown = display if len(display) <= 80 else display[:80]
+        raise ValueError(
+            f"This contact info is already used by another candidate ({shown})."
+        )
+    if debug:
+        logger.debug_index(
+            func="enforce_contact_uniqueness",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded|cross_clear",
+        )
+        logger.debug_detail("cross=clear")
 
 
 _PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
@@ -246,6 +450,7 @@ def initiate_candidate(
     contact = cd.get("contact")
     if isinstance(contact, dict):
         normalize_contact_urls(contact)
+        _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
     first_v = "" if first is None else str(first)
     last_v = "" if last is None else str(last)
     full_v = full if full is not None else recompute_full_name(first_v, last_v)
@@ -285,6 +490,7 @@ def initiate_prospect_candidate(
     contact = cd.get("contact")
     if isinstance(contact, dict):
         normalize_contact_urls(contact)
+        _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
     first_v = "" if first is None else str(first)
     last_v = "" if last is None else str(last)
     full_v = recompute_full_name(first_v, last_v)
@@ -357,6 +563,34 @@ def save_candidate_data(
             else:
                 raise ValueError("contact.websites must be a list of strings")
         normalize_contact_urls(contact)
+        # Proposed contact after merge (merge=True) or replace payload (merge=False).
+        if not replace:
+            existing = database.get_candidate(candidate_id) or {}
+            existing_cd = existing.get("candidate_data") or {}
+            if not isinstance(existing_cd, dict):
+                existing_cd = {}
+            existing_contact = existing_cd.get("contact")
+            if isinstance(existing_contact, dict):
+                proposed = copy.deepcopy(existing_contact)
+                # Match database._deep_merge overwrite/list-replace for contact keys.
+                for k, v in contact.items():
+                    if (
+                        k in proposed
+                        and isinstance(proposed[k], dict)
+                        and isinstance(v, dict)
+                    ):
+                        inner = copy.deepcopy(proposed[k])
+                        for ik, iv in v.items():
+                            inner[ik] = iv
+                        proposed[k] = inner
+                    else:
+                        proposed[k] = v
+            else:
+                proposed = copy.deepcopy(contact)
+        else:
+            proposed = copy.deepcopy(contact)
+        _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
+        blob["contact"] = proposed
 
     steps = []
     if col_kwargs:
