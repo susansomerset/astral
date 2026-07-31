@@ -117,3 +117,13 @@ Retire `BUILD_CONFIG.resume_artifact_chain.hop_task_keys` / `_RESUME_ARTIFACT_HO
 | §3.5 naming | Pass — no new public APIs; dead helpers removed |
 | `astral.standards.in-scope-only` | Pass — no JOB_ARTIFACT_ENTRY / craft / statute edits |
 | `astral.standards.no-hardcoded-sets` | Pass — not “moving the set into config”; deleting the shadow |
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`
+**Tip:** `e0939f15`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `e457b343` | retire resume hop_task_keys config authority |
+| 2 | `e0939f15` | resume hop succession via run_next parents |
